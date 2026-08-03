@@ -1,0 +1,87 @@
+# The Eye — CI (ADR-P0-16: supply-chain baseline is Phase 0 scope, not deferred)
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: eye
+          POSTGRES_PASSWORD: eye_local_dev
+          POSTGRES_DB: eye
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eye -d eye"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.9.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: pnpm }
+      - name: Install (frozen lockfile — pinned dependency closure)
+        run: pnpm install --frozen-lockfile
+      - name: Module boundaries (ES-65-003, blocking)
+        run: pnpm boundaries
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+      - name: Unit + conformance tests (golden fixtures)
+        run: pnpm test
+      - name: Migrations + integration tests
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
+          EYE_DB_APP_PASSWORD: eye_app_local_dev
+          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
+          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
+        run: |
+          pnpm db:migrate
+          pnpm --filter @eye/api test:int
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.9.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Secret scanning (gitleaks, blocking)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: SBOM generation (CycloneDX)
+        run: |
+          pnpm dlx @cyclonedx/cyclonedx-npm --omit dev --output-file sbom.cdx.json || \
+          pnpm dlx @cyclonedx/cdxgen -o sbom.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with: { name: sbom, path: sbom.cdx.json }
+      - name: Dependency vulnerability scan (blocking at high)
+        run: pnpm audit --audit-level high
+      - name: License inventory (allowlist-checked, blocking)
+        run: node scripts/license-inventory.mjs
+      - name: Container image scan (Trivy, blocking at HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true

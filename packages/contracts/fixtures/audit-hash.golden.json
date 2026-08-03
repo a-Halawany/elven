@@ -1,0 +1,6 @@
+{
+  "_comment": "GOLDEN FIXTURE (ADR-P0-09) — frozen 2026-08-03. Any change to these digests is a breaking change to the audit hash structure and requires a new hash_alg_version.",
+  "row_hash": "7b86700317cede8d57e1d8e8790c4c6a922192e763fd27ad8cba81ca1097a4ce",
+  "second_row_hash": "3b2682eede32f3908361e8d5e5225115bd8f75f274e50c897538beb2f505ca86",
+  "content_digest_empty_obj": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+}

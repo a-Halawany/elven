@@ -1,0 +1,22 @@
+{
+  "name": "@eye/tokens",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./css": "./dist/tokens.css",
+    "./tailwind": { "types": "./dist/tailwind-preset.d.ts", "default": "./dist/tailwind-preset.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node dist/emit-css.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "echo 'tokens: typecheck only (Phase 0)'"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "@types/node": "26.1.2"
+  }
+}

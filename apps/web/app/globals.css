@@ -1,0 +1,18 @@
+/* Semantic token variables only (UX-ADR-010) — generated sheet from @eye/tokens. */
+@import '@eye/tokens/css';
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--eye-color-canvas);
+  color: var(--eye-color-ink-default);
+  font-family: var(--eye-font-ui);
+  font-size: var(--eye-type-body-md);
+  line-height: var(--eye-type-body-md-line);
+}
+:focus-visible {
+  outline: var(--eye-border-focus) solid var(--eye-color-focus);
+  outline-offset: 1px;
+}
+/* Logical properties only — no left/right physical properties (RTL-safe). */
+main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); }

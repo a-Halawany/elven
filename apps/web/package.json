@@ -1,0 +1,24 @@
+{
+  "name": "@eye/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev -p 3000",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'web: typecheck covers lint (Phase 0)'",
+    "test": "echo 'web: e2e tests run from repo root (M7)'"
+  },
+  "dependencies": {
+    "@eye/tokens": "workspace:*",
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "typescript": "5.9.3"
+  }
+}

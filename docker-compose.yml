@@ -1,0 +1,34 @@
+# The Eye — local development profile (the only profile in Phase 0; see EXC-P0-004)
+# Images pinned by major; digests recorded in conformance.manifest.json after first pull.
+services:
+  postgres:
+    image: postgres:18
+    container_name: eye-postgres
+    environment:
+      POSTGRES_USER: eye
+      POSTGRES_PASSWORD: ${EYE_DB_PASSWORD:-eye_local_dev}
+      POSTGRES_DB: eye
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18+ images place PGDATA under /var/lib/postgresql/<major>; mount the parent.
+      - eye-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eye -d eye"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8
+    container_name: eye-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  eye-pgdata:

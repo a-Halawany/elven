@@ -1,0 +1,80 @@
+{
+  "$comment": "Machine-readable conformance manifest (ES-02-002, ES-65-001). Maps repository units to canonical layers/components, owners, and controls.",
+  "repository": "the-eye",
+  "constitution_edition": "Volume 0 v1.0 (frozen founding baseline, 2026-08-01)",
+  "architecture_baseline": "Volume 3 v1.0 (ADR-0001..ADR-0020)",
+  "phase": "Phase 0 — Foundation & Governance Spine",
+  "units": [
+    {
+      "path": "packages/contracts",
+      "component_ids": ["CP-OBJ-00"],
+      "description": "Canonical envelope, header, error catalog, truth-state model, JCS canonicalization, audit hash structure — language-neutral source of truth",
+      "controls": ["ES-20", "ES-21", "ES-24", "ADR-P0-05", "ADR-P0-06", "ADR-P0-09", "ADR-P0-13"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "packages/tokens",
+      "component_ids": ["CP-UX-01"],
+      "description": "Volume 9 Appendix A design-token registry → CSS variables + Tailwind semantic aliases",
+      "controls": ["UX-ADR-010", "ADR-P0-14"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/identity",
+      "component_ids": ["CP-IAM-01"],
+      "description": "Principals (human/workload), credentials, sessions, federation port, break-glass",
+      "controls": ["ES-49", "IA-49", "ADR-P0-04"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/tenancy",
+      "component_ids": ["CP-TEN-01"],
+      "description": "Tenants, Customer Intelligence Domains, scope resolution, governed lifecycle",
+      "controls": ["ES-08", "ES-51", "ADR-0006", "ADR-P0-04"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/policy",
+      "component_ids": ["CP-POL-01"],
+      "description": "PDP + policy bundles + POL records; PEP guard lives in shared; internal append port",
+      "controls": ["ES-50", "ES-13", "ADR-P0-10"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/audit",
+      "component_ids": ["CP-AUD-01"],
+      "description": "Hash-chained append-only audit ledger, chain heads allocator, seals, verifier, security intake; internal append port",
+      "controls": ["ES-55", "C-036", "ADR-P0-09"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/objects",
+      "component_ids": ["CP-OBJ-01"],
+      "description": "Canonical object service, schema registry, transactional outbox, commit pipeline",
+      "controls": ["ES-24", "ES-26", "ES-27", "ES-28", "ADR-P0-05", "ADR-P0-07", "ADR-P0-08", "ADR-P0-12"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/config",
+      "component_ids": ["CP-CFG-01"],
+      "description": "Schema-validated versioned eye.* configuration",
+      "controls": ["ES-66", "ADR-P0-15"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/api/src/health",
+      "component_ids": ["CP-OPS-01"],
+      "description": "Health/readiness — classified telemetry-only (documented, not a bypass)",
+      "controls": ["ADR-P0-08"],
+      "owner": "founding-engineer"
+    },
+    {
+      "path": "apps/web",
+      "component_ids": ["CP-UX-02"],
+      "description": "WS-19 Platform and Customer Administration shell (access mode, never a truth store)",
+      "controls": ["ES-04-004", "UX-ADR-017", "ADR-P0-14"],
+      "owner": "founding-engineer"
+    }
+  ],
+  "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers."
+}
