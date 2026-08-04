@@ -98,3 +98,41 @@ describe('RLS fail-closed isolation', () => {
     ).rejects.toThrow(/append-only|permission denied/);
   });
 });
+
+describe('canonical objects append-only at DB level (acceptance criterion 8)', () => {
+  it('UPDATE and DELETE on canonical_objects are rejected for the app role', async () => {
+    await expect(
+      app.transaction().execute(async (tx) => {
+        await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
+        await sql`update objects.canonical_objects set classification = 'tampered'`.execute(tx);
+      }),
+    ).rejects.toThrow(/permission denied|append-only/);
+    await expect(
+      app.transaction().execute(async (tx) => {
+        await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
+        await sql`delete from objects.canonical_objects`.execute(tx);
+      }),
+    ).rejects.toThrow(/permission denied|append-only/);
+  });
+
+  it('minimum-provenance CHECK constraint holds at the database level too', async () => {
+    await expect(
+      app.transaction().execute(async (tx) => {
+        await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
+        await tx
+          .insertInto('objects.canonical_objects')
+          .values({
+            object_id: uuidv7(), object_type: 'CLM', tenant_id: null, domain_id: null,
+            scope: 'PLATFORM', object_version: 1, lifecycle_state: 'proposed',
+            owning_component: 'test', accountable_owner: 'test',
+            truth_state: 'asserted', synthetic_state: false,
+            classification: 'internal', purpose_scope: 'test', schema_ref: 'CLM@v1',
+            audit_correlation_id: uuidv7(), payload: '{}', content_digest: 'a'.repeat(64),
+            source_object_ids: '[]', evidence_refs: '[]', human_refs: '[]',
+            contradiction_refs: '[]', corroboration_refs: '[]',
+          })
+          .execute();
+      }),
+    ).rejects.toThrow(/minimum_provenance|violates/);
+  });
+});

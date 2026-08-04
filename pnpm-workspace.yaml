@@ -9,4 +9,5 @@ minimumReleaseAgeExclude:
   - jose@6.2.8
 allowBuilds:
   argon2: true
+  msgpackr-extract: true
   sharp: true
