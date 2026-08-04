@@ -1,13 +1,12 @@
-import { defaultLocale, t } from '../lib/i18n';
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { getSession } from '../lib/api';
 
 export default function Home() {
-  const locale = defaultLocale;
-  return (
-    <main>
-      <h1 style={{ color: 'var(--eye-color-ink-strong)', fontSize: 'var(--eye-type-heading-1)' }}>
-        {t('app.workspace', locale)}
-      </h1>
-      <p style={{ color: 'var(--eye-color-ink-muted)' }}>{t('shell.status.scaffold', locale)}</p>
-    </main>
-  );
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(getSession() !== null ? '/admin' : '/login');
+  }, [router]);
+  return null;
 }

@@ -131,6 +131,7 @@ export class AuthGuard implements CanActivate {
     const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_ROUTE, [ctx.getHandler(), ctx.getClass()]);
     if (isPublic === true) return true;
     const req = ctx.switchToHttp().getRequest<EyeRequest>();
+    if (req.path === '/healthz' || req.path === '/readyz') return true; // telemetry-only classified
     const correlationId = req.eyeCorrelationId ?? newId();
 
     const header = req.headers.authorization;

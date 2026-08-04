@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "eye-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@eye/web", "dev"],
+      "port": 3000
+    }
+  ]
+}
