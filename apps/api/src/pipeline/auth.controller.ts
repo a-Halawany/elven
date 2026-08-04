@@ -33,7 +33,7 @@ export class AuthController {
   async login(
     @Req() req: EyeRequest,
     @Body() body: { payload?: LoginPayload },
-  ): Promise<{ principalId: string; tokens: TokenPair }> {
+  ): Promise<{ principalId: string; tokens: TokenPair; rotationRequired: boolean }> {
     const correlationId = req.eyeCorrelationId ?? 'unknown';
     const username = body.payload?.username;
     const password = body.payload?.password;
@@ -77,6 +77,57 @@ export class AuthController {
     };
     await this.db.transaction().execute(async (tx) => appendAuditEvent(tx, event));
     return result;
+  }
+
+  /**
+   * Credential rotation — the ONLY operation a bootstrap_rotation session may
+   * perform (ADR-P0-17). Authenticated; audited; revokes all sessions on
+   * success so the caller must log in again with the new secret.
+   */
+  @Post('/rotate')
+  async rotate(
+    @Req() req: EyeRequest,
+    @Body() body: { payload?: { currentPassword?: string; newPassword?: string } },
+  ): Promise<{ rotated: boolean }> {
+    const correlationId = req.eyeCorrelationId ?? 'unknown';
+    const principal = req.eyePrincipal;
+    if (principal === undefined) throw new HttpException(errorBody('EYE_IDN_001', correlationId), 401);
+    const current = body.payload?.currentPassword;
+    const next = body.payload?.newPassword;
+    if (typeof current !== 'string' || typeof next !== 'string' || next.length < 12) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'currentPassword + newPassword (>=12) required'), 400);
+    }
+    const ok = await this.identity.rotateCredential(principal.principalId, current, next);
+    if (!ok) {
+      await recordSecurityFailure(this.audit, req, 'authentication_failed', 'EYE-IDN-002', correlationId, ['rotation rejected']);
+      throw new HttpException(errorBody('EYE_IDN_002', correlationId), 401);
+    }
+    const event: AuditEventBody = {
+      event_type: 'identity.credential_rotated',
+      outcome: 'success',
+      scope: 'PLATFORM',
+      tenant_id: null,
+      domain_id: null,
+      actor: `principal:${principal.principalId}`,
+      delegation_id: null,
+      action: 'identity.credential.rotate',
+      target_type: 'PRN',
+      target_id: principal.principalId,
+      target_version: null,
+      purpose_id: 'authentication',
+      policy_decision_id: null,
+      policy_version: null,
+      result_code: 'OK',
+      occurred_at: new Date().toISOString(),
+      clock_quality: 'trusted',
+      correlation_id: correlationId,
+      causation_id: null,
+      trace_id: req.eyeEnvelope?.trace_id ?? null,
+      request_digest: null,
+      metadata: { forced: principal.assurance === 'bootstrap_rotation' },
+    };
+    await this.db.transaction().execute(async (tx) => appendAuditEvent(tx, event));
+    return { rotated: true };
   }
 
   @Public()

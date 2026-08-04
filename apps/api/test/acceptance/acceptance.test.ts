@@ -33,6 +33,11 @@ let api: ChildProcess;
 let db: Kysely<any>;
 let adminToken = '';
 let adminPrincipalId = '';
+// Test fixtures for the ephemeral local/CI database only — the bootstrap
+// mechanism itself takes its one-time secret from the environment and never
+// commits or logs it (ADR-P0-17).
+const INITIAL_PW = process.env['EYE_TEST_BOOTSTRAP_PASSWORD'] ?? 'accept-initial-secret-000000';
+const ROTATED_PW = process.env['EYE_TEST_ADMIN_PASSWORD'] ?? 'accept-rotated-secret-000000';
 let tenantId = '';
 let domainId = '';
 const run = uuidv7().slice(-12);
@@ -90,7 +95,7 @@ beforeAll(async () => {
   execFileSync('node', [join(ROOT, 'scripts', 'migrate.mjs')], { env: ENV });
   try {
     execFileSync('node', [join(ROOT, 'dist', 'bootstrap', 'run-bootstrap.js')], {
-      env: { ...ENV, EYE_BOOTSTRAP_ADMIN: 'platform-admin', EYE_BOOTSTRAP_PASSWORD: 'bootstrap-local-dev-1' },
+      env: { ...ENV, EYE_BOOTSTRAP_ADMIN: 'platform-admin', EYE_BOOTSTRAP_PASSWORD: INITIAL_PW },
       stdio: 'pipe',
     });
   } catch {
@@ -126,14 +131,53 @@ describe('AC-12: fully local reproducible startup', () => {
   });
 });
 
-describe('AC-1: authorized platform administrator authentication', () => {
-  it('login succeeds and the authentication itself is audited', async () => {
-    const payload = { username: 'platform-admin', password: 'bootstrap-local-dev-1' };
-    const r = await post('/v1/auth/login', {
-      scope: 'PLATFORM', action: 'identity.session.create', object_type: 'SES',
-      principal_id: 'anonymous', purpose_id: 'authentication',
-    }, payload, '');
-    expect(r.status).toBe(201);
+async function loginAs(username: string, password: string) {
+  return post('/v1/auth/login', {
+    scope: 'PLATFORM', action: 'identity.session.create', object_type: 'SES',
+    principal_id: 'anonymous', purpose_id: 'authentication',
+  }, { username, password }, '');
+}
+
+describe('AC-1: authorized platform administrator authentication (one-time bootstrap secret)', () => {
+  it('first bootstrap login FORCES rotation; rotated credential then authenticates normally', async () => {
+    // Try the rotated credential first (environment already rotated on re-runs).
+    let r = await loginAs('platform-admin', ROTATED_PW);
+    if (r.status !== 201) {
+      // Fresh environment: the one-time secret must demand rotation…
+      r = await loginAs('platform-admin', INITIAL_PW);
+      expect(r.status).toBe(201);
+      expect(r.body.rotationRequired).toBe(true);
+      const bootstrapToken = r.body.tokens.accessToken as string;
+      const bootPid = r.body.principalId as string;
+
+      // …and a bootstrap_rotation session is denied every governed action (fail closed).
+      const denied = await post('/v1/platform/tenants/list', {
+        scope: 'PLATFORM', action: 'tenancy.tenant.list', object_type: 'TEN',
+        side_effect_class: 'none', principal_id: `principal:${bootPid}`,
+      }, {}, bootstrapToken);
+      expect(denied.status).toBe(403);
+
+      // Rotate (audited), sessions revoked, then log in with the new secret.
+      const rot = await post('/v1/auth/rotate', {
+        scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'PRN',
+        principal_id: `principal:${bootPid}`, purpose_id: 'authentication',
+      }, { currentPassword: INITIAL_PW, newPassword: ROTATED_PW }, bootstrapToken);
+      expect(rot.status).toBe(201);
+      const rotRows = await auditRowsFor(rot.correlationId);
+      expect(rotRows.some((x) => x['event_type'] === 'identity.credential_rotated')).toBe(true);
+      // Old bootstrap token is dead (sessions revoked).
+      const stale = await post('/v1/platform/tenants/list', {
+        scope: 'PLATFORM', action: 'tenancy.tenant.list', object_type: 'TEN',
+        side_effect_class: 'none', principal_id: `principal:${bootPid}`,
+      }, {}, bootstrapToken);
+      expect(stale.status).toBe(401);
+      // One-time secret no longer works.
+      const replay = await loginAs('platform-admin', INITIAL_PW);
+      expect(replay.status).toBe(401);
+      r = await loginAs('platform-admin', ROTATED_PW);
+      expect(r.status).toBe(201);
+    }
+    expect(r.body.rotationRequired).toBe(false);
     adminToken = r.body.tokens.accessToken;
     adminPrincipalId = r.body.principalId;
     const rows = await auditRowsFor(r.correlationId);

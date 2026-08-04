@@ -151,6 +151,18 @@ export class PdpService {
       revocationState: 'none' as const,
     };
 
+    // Bootstrap-rotation sessions may not perform ANY governed action (ADR-P0-17):
+    // the only permitted operation is credential rotation, which happens at the
+    // authentication boundary, not through the pipeline.
+    if (input.principal.assurance === 'bootstrap_rotation') {
+      return {
+        ...base,
+        decision: 'deny',
+        obligations: [],
+        reason: 'credential rotation required before any governed action (one-time bootstrap secret)',
+      };
+    }
+
     const rule = BUNDLE_V1.find((r) => input.action.startsWith(r.actionPrefix));
     if (!rule) {
       // Unknown action: cannot be safely resolved → indeterminate (deny at PEP).

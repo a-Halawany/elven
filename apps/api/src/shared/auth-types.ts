@@ -15,6 +15,6 @@ export interface AuthenticatedPrincipal {
   homeScope: Scope;
   homeTenantId: string | null;
   homeDomainId: string | null;
-  assurance: 'password' | 'break_glass' | 'system';
+  assurance: 'password' | 'break_glass' | 'bootstrap_rotation' | 'system';
   bindings: RoleBinding[];
 }

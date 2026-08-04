@@ -38,17 +38,39 @@ export class IdentityService {
     this.secret = new TextEncoder().encode(cfg['eye.identity.jwt_secret']);
   }
 
-  /** Login — bounded auth lookup (SECURITY DEFINER); failures return null (caller routes to security intake). */
-  async login(username: string, password: string): Promise<{ principalId: string; tokens: TokenPair } | null> {
+  /**
+   * Login — bounded auth lookup (SECURITY DEFINER); failures return null
+   * (caller routes to security intake). One-time bootstrap semantics
+   * (ADR-P0-17): a `must_rotate` credential past its expiry is revoked and
+   * unusable; within expiry it yields a `bootstrap_rotation` session that can
+   * ONLY rotate the credential (PDP denies all other actions).
+   */
+  async login(
+    username: string,
+    password: string,
+  ): Promise<{ principalId: string; tokens: TokenPair; rotationRequired: boolean } | null> {
     const rows = await sql<{
       principal_id: string; kind: string; scope: string; tenant_id: string | null;
       domain_id: string | null; status: string; credential_id: string; secret_hash: string;
+      credential_status: string; credential_expires_at: Date | null;
     }>`select * from identity.auth_lookup(${username})`.execute(this.db);
     const row = rows.rows[0];
     if (!row) return null;
     const ok = await argon2.verify(row.secret_hash, password).catch(() => false);
     if (!ok) return null;
 
+    const mustRotate = row.credential_status === 'must_rotate';
+    if (mustRotate && row.credential_expires_at !== null && new Date(row.credential_expires_at) < new Date()) {
+      // One-time secret expired unused: disable it permanently.
+      await this.db
+        .updateTable('identity.credentials')
+        .set({ status: 'revoked' })
+        .where('id', '=', row.credential_id)
+        .execute();
+      return null;
+    }
+
+    const assurance = mustRotate ? 'bootstrap_rotation' : 'password';
     const sessionId = newId();
     const refreshToken = newId() + '.' + newId();
     const expiresAt = new Date(Date.now() + this.cfg['eye.identity.refresh_ttl_seconds'] * 1000);
@@ -57,18 +79,54 @@ export class IdentityService {
       .values({
         id: sessionId,
         principal_id: row.principal_id,
-        assurance: 'password',
+        assurance,
         status: 'active',
         refresh_token_hash: sha256(refreshToken),
         expires_at: expiresAt,
       })
       .execute();
 
-    const accessToken = await this.signAccess(row.principal_id, sessionId, 'password');
+    const accessToken = await this.signAccess(row.principal_id, sessionId, assurance);
     return {
       principalId: row.principal_id,
       tokens: { accessToken, refreshToken, expiresInSeconds: this.cfg['eye.identity.access_ttl_seconds'] },
+      rotationRequired: mustRotate,
     };
+  }
+
+  /**
+   * Credential rotation (forced on first bootstrap use). Verifies the current
+   * secret, marks it rotated, installs the new one, and revokes every active
+   * session of the principal — the caller must log in again with the new secret.
+   */
+  async rotateCredential(principalId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    const cred = await this.db
+      .selectFrom('identity.credentials')
+      .select(['id', 'secret_hash'])
+      .where('principal_id', '=', principalId)
+      .where('status', 'in', ['active', 'must_rotate'])
+      .where('type', '=', 'password')
+      .executeTakeFirst();
+    if (cred === undefined) return false;
+    const ok = await argon2.verify(cred.secret_hash, currentPassword).catch(() => false);
+    if (!ok) return false;
+    const newHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    await this.db
+      .updateTable('identity.credentials')
+      .set({ status: 'rotated', rotated_at: new Date() })
+      .where('id', '=', cred.id)
+      .execute();
+    await this.db
+      .insertInto('identity.credentials')
+      .values({ id: newId(), principal_id: principalId, type: 'password', secret_hash: newHash, status: 'active' })
+      .execute();
+    await this.db
+      .updateTable('identity.sessions')
+      .set({ status: 'revoked', revoked_at: new Date() })
+      .where('principal_id', '=', principalId)
+      .where('status', '=', 'active')
+      .execute();
+    return true;
   }
 
   async refresh(refreshToken: string): Promise<TokenPair | null> {

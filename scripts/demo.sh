@@ -19,8 +19,13 @@ echo "==> 3/6 migrations"
 pnpm db:migrate
 
 echo "==> 4/6 audited bootstrap (one-shot; skipped if platform admin exists)"
-EYE_BOOTSTRAP_ADMIN=platform-admin EYE_BOOTSTRAP_PASSWORD=bootstrap-local-dev-1 \
+# One-time secret: generated per environment, exported only into this shell,
+# never committed, never echoed, never logged (ADR-P0-17). First login FORCES
+# rotation; the credential disables itself if unused for 24h.
+export EYE_BOOTSTRAP_PASSWORD="${EYE_BOOTSTRAP_PASSWORD:-$(openssl rand -base64 24)}"
+EYE_BOOTSTRAP_ADMIN=platform-admin \
   node apps/api/dist/bootstrap/run-bootstrap.js || true
+echo "    bootstrap secret is in \$EYE_BOOTSTRAP_PASSWORD (this shell only — not shown)" 
 
 echo "==> 5/6 start API (:3401) and web shell (:3000)"
 (cd apps/api && node dist/main.js &> /tmp/eye-api.log &)
@@ -34,7 +39,9 @@ pnpm --filter @eye/api test:accept
 cat << 'DONE'
 
   Demo ready:
-    WS-19 shell:  http://localhost:3000   (platform-admin / bootstrap-local-dev-1)
+    WS-19 shell:  http://localhost:3000
+                  user: platform-admin — first sign-in uses \$EYE_BOOTSTRAP_PASSWORD
+                  and FORCES you to set a new password (one-time secret)
     API:          http://localhost:3401/readyz
   Walkthrough: login -> Tenants & Domains (governed create with review step)
     -> Users & Roles -> Canonical Objects (create claim; leave evidence empty

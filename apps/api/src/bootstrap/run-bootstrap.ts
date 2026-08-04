@@ -21,12 +21,21 @@ import { SYSTEM_PIPELINE_PRINCIPAL } from '../audit/audit.service.js';
 async function main(): Promise<void> {
   const username = process.env['EYE_BOOTSTRAP_ADMIN'];
   const password = process.env['EYE_BOOTSTRAP_PASSWORD'];
-  if (username === undefined || username.length < 3 || password === undefined || password.length < 12) {
-    console.error('bootstrap: EYE_BOOTSTRAP_ADMIN (>=3 chars) and EYE_BOOTSTRAP_PASSWORD (>=12 chars) are required');
+  if (username === undefined || username.length < 3 || password === undefined || password.length < 16) {
+    // The secret is environment-supplied only: never committed, never defaulted,
+    // never logged (ADR-P0-17). Generate one per environment, e.g.:
+    //   EYE_BOOTSTRAP_PASSWORD="$(openssl rand -base64 24)"
+    console.error('bootstrap: EYE_BOOTSTRAP_ADMIN (>=3 chars) and EYE_BOOTSTRAP_PASSWORD (>=16 chars) are required from the environment');
     process.exit(1);
   }
 
   const cfg = loadConfig();
+  // Config restricts eye.runtime.env to local|test — the bootstrap path cannot
+  // operate against production or real customer data (ADR-P0-17).
+  if (cfg['eye.runtime.env'] !== 'local' && cfg['eye.runtime.env'] !== 'test') {
+    console.error('bootstrap: refused outside local/test environments');
+    process.exit(1);
+  }
   const db = createAppDb(cfg);
   const correlationId = newId();
 
@@ -65,7 +74,10 @@ async function main(): Promise<void> {
           principal_id: principalId,
           type: 'password',
           secret_hash: await argon2.hash(password, { type: argon2.argon2id }),
-          status: 'active',
+          // One-time secret: forces rotation on first use; disabled if unused
+          // within 24 hours (ADR-P0-17).
+          status: 'must_rotate',
+          expires_at: new Date(Date.now() + 24 * 3600 * 1000),
         })
         .execute();
       await tx
@@ -113,6 +125,9 @@ async function main(): Promise<void> {
       console.log('  THE EYE — PLATFORM BOOTSTRAP (conspicuous, audited, one-shot)');
       console.log(`  platform_admin principal: ${principalId}`);
       console.log(`  username:                 ${username}`);
+      console.log('  secret:                   [environment-supplied, NOT logged]');
+      console.log('  one-time:                 first login FORCES rotation; unused');
+      console.log('                            credential disables after 24h');
       console.log(`  audit correlation:        ${correlationId} (partition: platform)`);
       console.log('==============================================================');
     });

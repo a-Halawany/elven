@@ -2,7 +2,7 @@
   "name": "the-eye",
   "private": true,
   "version": "0.0.1",
-  "description": "The Eye — The Operating System for Strategic Intelligence (Phase 0: Foundation & Governance Spine)",
+  "description": "The Eye \u2014 The Operating System for Strategic Intelligence (Phase 0: Foundation & Governance Spine)",
   "engines": {
     "node": ">=24.0.0 <25",
     "pnpm": ">=11"
@@ -16,9 +16,11 @@
     "boundaries": "depcruise apps packages --config .dependency-cruiser.cjs",
     "db:migrate": "pnpm --filter @eye/api db:migrate",
     "db:bootstrap": "pnpm --filter @eye/api db:bootstrap",
-    "license:check": "node scripts/license-inventory.mjs"
+    "license:check": "node scripts/license-inventory.mjs",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "dependency-cruiser": "18.1.1"
   }
 }

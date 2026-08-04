@@ -31,6 +31,18 @@ required_evidence:       Restore + re-verification exercise record; anchor round
 status:                  open
 ```
 
+## Security correction record — exposed bootstrap credential (closed)
+
+```yaml
+correction_id:           SEC-P0-001
+title:                   Shared documented bootstrap credential treated as exposed and replaced
+detected:                2026-08-04 (gate-closure review, instruction C)
+disposition:             CLOSED 2026-08-04
+action:                  Exposed credential + platform_admin binding revoked; all active sessions revoked; one-time environment-generated bootstrap secret with forced first-use rotation and 24h unused-expiry implemented (ADR-P0-17, migration 0007); production/customer-data operation structurally impossible (runtime env restricted to local|test)
+evidence:                Acceptance AC-1 (rotation forced; old secret and old session dead after rotation); audit events identity.credential_rotated on the platform partition
+residual_risk:           None beyond EXC-P0-002 (local IdP assurance), which remains open and unchanged
+```
+
 ## EXC-P0-002 — Local credential IdP; no external federation; no MFA
 
 ```yaml

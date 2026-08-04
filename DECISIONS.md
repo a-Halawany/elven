@@ -21,6 +21,7 @@
 | ADR-P0-14 | Design tokens, no optimistic consequential UI, i18n/RTL foundations | Accepted | 2026-08-03 |
 | ADR-P0-15 | Schema-validated versioned `eye.*` configuration | Accepted | 2026-08-03 |
 | ADR-P0-16 | Supply-chain baseline in Phase 0 CI | Accepted | 2026-08-03 |
+| ADR-P0-17 | One-time bootstrap secret with forced rotation (security correction) | Accepted | 2026-08-04 |
 
 ---
 
@@ -89,3 +90,10 @@ Configuration in versioned, schema-validated documents under `eye.*` namespaces 
 
 ## ADR-P0-16 — Supply-chain baseline in Phase 0 CI
 Phase 0 CI includes SBOM generation (CycloneDX), dependency vulnerability scanning (OSV/audit), container image scanning, secret scanning, and license inventory — all blocking at declared thresholds. Artifact signing/attestation deferred by bounded exception EXC-P0-003 (expiry 2026-09-30).
+
+## ADR-P0-17 — One-time bootstrap secret with forced rotation (security correction)
+**Status:** Accepted 2026-08-04 (gate-closure instruction C).
+**Context:** the initial local bootstrap used a shared documented credential (`bootstrap-local-dev-1`), which must be treated as exposed.
+**Decision:** the bootstrap secret is environment-supplied only (`EYE_BOOTSTRAP_PASSWORD`, ≥16 chars) — never committed, never defaulted, never logged (the bootstrap prints `[environment-supplied, NOT logged]`); unique per environment (demo generates via `openssl rand -base64 24` into the shell env only). The credential is created `must_rotate` with a 24h expiry: unused past expiry ⇒ permanently revoked on next attempt; first login yields a `bootstrap_rotation` session that the PDP denies for every governed action — the only permitted operation is `/v1/auth/rotate`, which verifies the current secret, installs the new one, and revokes all sessions (forced re-login). Config restricts `eye.runtime.env` to `local|test`, so the bootstrap path cannot operate against production or real customer data.
+**Remediation applied:** the exposed local credential and its platform_admin binding were revoked; a fresh bootstrap ran under the new mechanism; the full flow (forced rotation, denial of governed actions pre-rotation, dead old secret, dead old session) is asserted in the acceptance suite (AC-1) and exercised by the Playwright login setup.
+**Anchors:** Vol 3 Ch.22 (emergency access: time-bound, conspicuous, independently reviewed); IA-52-003; ES-49-005.

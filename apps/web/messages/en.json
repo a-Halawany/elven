@@ -34,5 +34,9 @@
   "audit.title": "Audit Ledger (sanitized projection — obligations enforced)",
   "audit.verify": "Verify chain",
   "common.cancel": "Cancel",
-  "common.loading": "Loading…"
+  "common.loading": "Loading…",
+  "login.rotation.required": "One-time bootstrap secret detected — set a new password before continuing.",
+  "login.rotation.new": "New password (min 12 characters)",
+  "login.rotation.submit": "Set new password",
+  "login.rotation.done": "Password set. Sign in again with your new password."
 }

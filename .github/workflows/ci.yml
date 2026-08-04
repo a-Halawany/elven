@@ -60,6 +60,44 @@ jobs:
           EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
         run: pnpm --filter @eye/api test:accept
 
+  browser-regression:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: eye
+          POSTGRES_PASSWORD: eye_local_dev
+          POSTGRES_DB: eye
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eye -d eye"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.9.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Install Chrome (stable channel)
+        run: pnpm exec playwright install chrome
+      - name: Phase 0 browser regression gate (10 scenarios, blocking)
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
+          EYE_DB_APP_PASSWORD: eye_app_local_dev
+          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
+          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
+        run: pnpm exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-traces, path: test-results/ }
+
   supply-chain:
     runs-on: ubuntu-latest
     steps:

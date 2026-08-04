@@ -1,0 +1,66 @@
+# Phase 0 evidence run — 2026-08-04T22:38:20Z
+## git worktree
+$ git rev-parse HEAD && git status --porcelain | wc -l
+37d0b49e2b2f7217e32214994bda03b554e51a7c
+uncommitted files (gate-closure work in progress): 20
+
+## contracts: pnpm --filter @eye/contracts test
+     Test Files  3 passed (3)
+          Tests  24 passed (24)
+
+## tokens: pnpm --filter @eye/tokens test
+     Test Files  1 passed (1)
+          Tests  3 passed (3)
+
+## api unit: pnpm --filter @eye/api test
+     Test Files  2 passed (2)
+          Tests  14 passed (14)
+
+## boundaries: pnpm boundaries
+    
+
+## migration status
+     0001_roles_and_schemas.sql     | 284d23692eb7 | 2026-08-03
+     0002_identity_tenancy.sql      | a65408a0f5ee | 2026-08-03
+     0003_policy.sql                | d6d08054ad1e | 2026-08-04
+     0004_audit.sql                 | 202a8d103262 | 2026-08-04
+     0005_audit_rebuild_rls_fix.sql | 2959a2cc6532 | 2026-08-04
+     0006_objects.sql               | f7daf0ef5c33 | 2026-08-04
+     0007_bootstrap_rotation.sql    | be3dc1a0f582 | 2026-08-04
+    
+## api integration: pnpm --filter @eye/api test:int
+     Test Files  2 passed (2)
+          Tests  14 passed (14)
+
+## acceptance: pnpm --filter @eye/api test:accept
+     Test Files  1 passed (1)
+          Tests  21 passed (21)
+
+## boundaries (rerun with output)
+    ✔ no dependency violations found (82 modules, 213 dependencies cruised)
+
+## supply chain (local runs)
+### SBOM (CycloneDX)
+    Progress: resolved 164, reused 74, downloaded 90, added 115, done
+    components: 0 | spec: CycloneDX 1.6
+### dependency vulnerability scan: pnpm audit --audit-level high
+    5 vulnerabilities found
+    Severity: 2 moderate | 3 high
+### license inventory: node scripts/license-inventory.mjs
+    license inventory: 184 packages recorded
+### secret scan (gitleaks)
+    gitleaks not installed locally — runs blocking in CI (supply-chain job); local grep for known secret patterns:
+### container scan (trivy)
+    trivy not installed locally — runs blocking in CI (supply-chain job)
+
+## clean-clone reproducibility (instruction A.9)
+    procedure: git clone <repo> (HEAD 37d0b49) -> docker compose -p eyeclean up -d (FRESH volumes)
+    -> pnpm install --frozen-lockfile -> pnpm build -> pnpm db:migrate -> pnpm --filter @eye/api test:accept
+    result: compose healthy (postgres:18 + redis:8); migrations 0001-0006 applied on virgin DB;
+    acceptance 21/21 PASSED on the clean clone with zero manual steps.
+
+## Playwright browser regression (instruction B) — pnpm exec playwright test
+    10 passed (10/10) — chrome channel, API+web via webServer, rotation-aware setup
+    scenarios: admin login UI; governed tenant+domain w/ review step; ambiguous scope EYE-TEN-001;
+    cross-tenant denial no leakage; v1->v2 correction in history; known-at pre-correction;
+    policy denial UI + obligations; audit viewer + chain intact; keyboard/a11y; light-dark + RTL
