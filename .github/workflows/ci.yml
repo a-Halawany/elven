@@ -51,6 +51,14 @@ jobs:
         run: |
           pnpm db:migrate
           pnpm --filter @eye/api test:int
+      - name: Phase 0 acceptance suite (15 criteria + request paths)
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
+          EYE_DB_APP_PASSWORD: eye_app_local_dev
+          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
+          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
+        run: pnpm --filter @eye/api test:accept
 
   supply-chain:
     runs-on: ubuntu-latest

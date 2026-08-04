@@ -11,7 +11,8 @@
     "test:int": "vitest run --config vitest.int.config.ts",
     "lint": "echo 'api: typecheck + depcruise cover lint (Phase 0)'",
     "db:migrate": "node scripts/migrate.mjs",
-    "db:bootstrap": "node dist/bootstrap/run-bootstrap.js"
+    "db:bootstrap": "node dist/bootstrap/run-bootstrap.js",
+    "test:accept": "vitest run --config vitest.accept.config.ts"
   },
   "dependencies": {
     "@eye/contracts": "workspace:*",
