@@ -6,7 +6,7 @@
  * and the resolved scope (EYE-TEN-001).
  */
 import type { Scope } from '@eye/contracts';
-import type { AuthenticatedPrincipal } from '../identity/identity.service.js';
+import type { AuthenticatedPrincipal } from './auth-types.js';
 
 export interface ScopeContext {
   scope: Scope;

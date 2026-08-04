@@ -8,25 +8,34 @@
  *  - no circular dependencies
  */
 const API = 'apps/api/src';
-const apiModules = ['identity', 'tenancy', 'policy', 'audit', 'objects', 'health'];
+const apiModules = ['identity', 'tenancy', 'policy', 'audit', 'objects', 'health', 'pipeline'];
 
-/** Forbid module A importing module B internals, for all distinct pairs. */
+/**
+ * Contract-only integration matrix (ES-04-003). The request pipeline is the
+ * edge orchestrator: it may import identity/policy/audit (incl. their bounded
+ * internal append ports) — nothing else crosses module lines except modules
+ * calling the pipeline itself.
+ */
+const allowedImports = {
+  pipeline: ['identity', 'policy', 'audit'],
+  identity: [],
+  tenancy: ['pipeline'],
+  policy: [],
+  audit: [],
+  objects: ['pipeline'],
+  health: [],
+};
 const crossModuleRules = [];
 for (const from of apiModules) {
   for (const to of apiModules) {
     if (from === to) continue;
-    // The commit pipeline (objects) may use the bounded internal append ports.
-    const allowedViaPort =
-      from === 'objects' && (to === 'policy' || to === 'audit');
+    if ((allowedImports[from] ?? []).includes(to)) continue;
     crossModuleRules.push({
       name: `no-${from}-to-${to}`,
       severity: 'error',
       comment: `API module "${from}" may not reach into "${to}" (contract-only integration, ES-04-003)`,
       from: { path: `^${API}/${from}/` },
-      to: {
-        path: `^${API}/${to}/`,
-        ...(allowedViaPort ? { pathNot: `^${API}/${to}/internal/` } : {}),
-      },
+      to: { path: `^${API}/${to}/` },
     });
   }
 }
@@ -66,7 +75,8 @@ module.exports = {
         'bounded internal append ports (ADR-P0-08): only the owning module and the objects commit pipeline may import policy/internal or audit/internal',
       from: {
         path: `^${API}/`,
-        pathNot: `^${API}/(objects|policy|audit)/`,
+        // bootstrap is the audited one-shot seed (ADR-P0-04) — it appends its own evidence.
+        pathNot: `^${API}/(pipeline|policy|audit|bootstrap)/`,
       },
       to: { path: `^${API}/(policy|audit)/internal/` },
     },

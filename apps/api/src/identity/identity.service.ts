@@ -15,24 +15,9 @@ import { APP_DB } from '../shared/shared.module.js';
 import type { Db } from '../shared/db.js';
 import { newId } from '../shared/ids.js';
 import type { Scope } from '@eye/contracts';
+import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 
-export interface RoleBinding {
-  roleCode: string;
-  scope: Scope;
-  tenantId: string | null;
-  domainId: string | null;
-}
-
-export interface AuthenticatedPrincipal {
-  principalId: string;
-  sessionId: string;
-  kind: 'human' | 'workload' | 'agent';
-  homeScope: Scope;
-  homeTenantId: string | null;
-  homeDomainId: string | null;
-  assurance: 'password' | 'break_glass' | 'system';
-  bindings: RoleBinding[];
-}
+export type { AuthenticatedPrincipal, RoleBinding } from '../shared/auth-types.js';
 
 export interface TokenPair {
   accessToken: string;
