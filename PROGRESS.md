@@ -2,7 +2,13 @@
 
 | Phase | Layers | Status | Notes |
 |---|---|---|---|
-| Phase 0 — Foundation & Governance Spine | Cross-cutting | **APPROVED 2026-08-03 — IN PROGRESS (M1)** | Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3: pre-code corrections applied — request order, request-path taxonomy, audit allocator/hash/seal semantics, honest exception posture). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md). |
+| Phase 0 — Foundation & Governance Spine | Cross-cutting | **APPROVED 2026-08-03 — IN PROGRESS (M2)** | Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md). |
+
+## Milestone log
+
+| M | Status | Evidence |
+|---|---|---|
+| M1 Scaffold | **DONE 2026-08-03** (commit `dbb2e31`) | contracts 24 tests + tokens 3 tests green; golden audit-hash fixture frozen; boundaries clean (42 modules); API boots, `/healthz` + `/readyz` (db:true, telemetry-only classified); web builds; Compose (postgres:18+redis:8) healthy; migration 0001 applied (roles + schemas + append-only guard); CI with SBOM/audit/gitleaks/Trivy/license inventory. Deviation: API default port 3401 (3001 occupied locally). Risks: none new. Next: M2. |
 | Phase 1 — World Observation Layer | L1 | Not started | Observation/Crawler/Collection agent contracts introduced here |
 | Phase 2 — Intelligence Layer | L2 | Not started | Model Gateway live; Cleaning/Classification/NER/Relationship agents |
 | Phase 3 — Enterprise Memory & Knowledge Graph | L3–L4 | Not started | Graph/Memory/Reasoning agents; stewardship workflows |
