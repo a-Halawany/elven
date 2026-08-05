@@ -11,3 +11,8 @@ allowBuilds:
   argon2: true
   msgpackr-extract: true
   sharp: true
+# Security remediation of pnpm-audit findings (gate instruction 4; ADR-P0-01
+# patching policy): force patched transitive versions under next.
+overrides:
+  sharp: '>=0.35.0'
+  postcss: '>=8.5.23'

@@ -102,11 +102,16 @@ describe('exact privilege boundary (correction #3)', () => {
   });
 
   it('even the superuser cannot UPDATE/DELETE evidence rows (trigger raises)', async () => {
+    // Self-sufficient on a virgin database: create the row this test targets
+    // (a zero-row UPDATE would trivially "succeed" without firing the trigger).
+    const tenant = uuidv7();
+    const partitionId = `tenant:${tenant}`;
+    await appendVia(app, partitionId, mkEvent(tenant, 'superuser.tamper.target'));
     await expect(
-      sql`update audit.audit_events set previous_hash = repeat('e', 64) where audit_seq = 1 and partition_id = 'platform'`.execute(su),
+      sql`update audit.audit_events set previous_hash = repeat('e', 64) where audit_seq = 1 and partition_id = ${partitionId}`.execute(su),
     ).rejects.toThrow(/append-only/);
     await expect(
-      sql`delete from audit.audit_events where audit_seq = 1 and partition_id = 'platform'`.execute(su),
+      sql`delete from audit.audit_events where audit_seq = 1 and partition_id = ${partitionId}`.execute(su),
     ).rejects.toThrow(/append-only/);
   });
 });
