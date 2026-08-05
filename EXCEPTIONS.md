@@ -21,12 +21,15 @@ compensating_controls:
   - Per-partition hash chains with domain-separated SHA-256 over JCS + golden fixtures
   - Pre-incident seals; verifier job; tamper response (freeze, incident, no re-sealing)
   - Exact DB privilege boundary (INSERT-only evidence; dedicated allocator role) with negative tests
-  - Independently verified audit-schema backups
   - AnchorSink external-anchoring interface reserved
+  # CORRECTED (gate review): "independently verified audit-schema backups" was
+  # previously listed as a control but no backup-verification mechanism exists
+  # yet — no evidence can be produced, so the claim is REMOVED. Implementing and
+  # verifying independent audit backups is part of the exit criteria below.
 prohibited_exposure:     No production or customer deployment; no non-repudiation claims to external parties
 expiry_date:             2026-10-31
 expiry_milestone:        Before Phase 3 gate
-exit_criteria:           Audit ledger replicated to an independent store/failure domain with integrity anchors; recovery exercise passes
+exit_criteria:           Audit ledger replicated to an independent store/failure domain with integrity anchors; independently verified audit backups implemented; recovery exercise passes
 required_evidence:       Restore + re-verification exercise record; anchor round-trip test; updated threat assessment
 status:                  open
 ```
@@ -137,4 +140,63 @@ expiry_milestone:        With EXC-P0-002 closure
 exit_criteria:           Dynamic/short-lived secret issuance for non-local profiles
 required_evidence:       Secret-scan history; issuance-service design record
 status:                  open
+```
+
+---
+
+## Inherited open Phase 0 exceptions (Phase 1 operates under these)
+
+EXC-P0-001 (audit ledger shares primary DB failure domain) · EXC-P0-002 (local credential IdP, no external federation/MFA) · EXC-P0-003 (no artifact signing/attestation) · EXC-P0-004 (single deployment profile) · EXC-P0-005 (.env secrets, local dev). All open, in-date; earliest expiry 2026-09-30 (EXC-P0-003).
+
+## EXC-P1-001 — Heuristic-only quarantine scanning (no malware engine) — PROPOSED
+
+```yaml
+exception_id:            EXC-P1-001
+requirement_ids:         [DP-16-001, DP-16-005, DP-12-002]   # intake validation/quarantine + document ingestion (Vol 7 Ch.16/12)
+related_architecture_ids: [L1-C07 (Quarantine and Malware Inspection), DZ-03 (Transfer quarantine)]
+invariant_ids:           []   # inspection capability deferred; no constitutional semantic waived
+title:                   Quarantine performs structural/heuristic checks only; no AV/malware engine integrated in the local profile
+owner:                   Founding engineer (this project)
+approver:                Project owner (pending PHASE 1 approval)
+reason:                  No AV engine is available in the local Compose profile; content is never executed, semantically parsed, or inline-rendered in Phase 1.
+risk:                    HONEST STATEMENT — malicious payloads may pass heuristic checks undetected and rest in the evidence vault. Bounded because Phase 1 never executes, extracts, or inline-renders content, and downloads are attachment-only from a sandboxed path.
+consequence_class:       C2
+affected_profiles:       [local-dev]
+compensating_controls:
+  - Strict type/size allowlists; declared-vs-sniffed type recording; expansion limits; path-traversal rejection
+  - No content execution/extraction/inline rendering anywhere in Phase 1
+  - Quarantine isolation volume; admission is an explicit audited decision
+  - Malicious-input fixture corpus in CI
+prohibited_exposure:     No external deployment; no real customer data; no production claims; NO unqualified malware-safety claims; no deployment-parity claims for scanning
+expiry_date:             2026-12-31
+expiry_milestone:        Before first external deployment
+exit_criteria:           Pluggable scanning engine integrated + quarantine verdicts recorded as evidence
+required_evidence:       Engine integration tests; verdict audit records; corpus pass results
+status:                  proposed (opens only upon PHASE 1 approval)
+```
+
+## EXC-P1-002 — Evidence vault on local Docker volumes — PROPOSED
+
+```yaml
+exception_id:            EXC-P1-002
+requirement_ids:         [DP-28-001, DP-28-002, IA-33-002, IA-62-003]   # object/evidence storage + backup coverage (Vol 7 Ch.28, Vol 6 Ch.33/62)
+related_architecture_ids: [L1-C05 (Raw Preservation and Evidence Vault), DZ-04 (Raw evidence tier), INF-ST-02 (evidence object store), SC-02]
+invariant_ids:           [C-043 (durability risk bounded; semantics not waived)]
+title:                   Evidence vault on local named Docker volumes (eye-quarantine + eye-evidence); no independent replicated object store
+owner:                   Founding engineer (this project)
+approver:                Project owner (pending PHASE 1 approval)
+reason:                  Local-dev is the only profile; the volumes explicitly do NOT define the production storage architecture.
+risk:                    HONEST STATEMENT — evidence durability depends on a single host filesystem; loss of the volume loses raw evidence bytes (canonical metadata + digests in Postgres prove what existed but not its content).
+consequence_class:       C2
+affected_profiles:       [local-dev]
+compensating_controls:
+  - Content digests recorded in canonical EVD rows; verification pre/post storage and on every read
+  - Tenant/domain-scoped opaque locators; no cross-tenant dedup/existence disclosure
+  - Create-if-absent atomic writes; separate quarantine/admitted volumes
+prohibited_exposure:     No external deployment; no real customer data; no production claims; no durability or deployment-parity claims
+expiry_date:             2026-12-31
+expiry_milestone:        First multi-profile milestone
+exit_criteria:           EvidenceStore adapter for a replicated object store + restore/reconciliation exercise
+required_evidence:       Cross-store round-trip + digest verification + recovery exercise records
+status:                  proposed (opens only upon PHASE 1 approval)
 ```

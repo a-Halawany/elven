@@ -51,13 +51,14 @@ Matrix: [PHASE0_REPORT.md §4](PHASE0_REPORT.md). Test anchors (all in `apps/api
 - **Secret scan**: gitleaks runs blocking in CI (supply-chain job); local pattern sweep found no hardcoded secrets (local-dev fixture literals excluded by design and documented in EXC-P0-005).
 - **Container scan**: Trivy runs blocking (HIGH/CRITICAL) in CI.
 
-## A.8 — Worktree evidence
+## A.8 — Worktree evidence and commit reconciliation
 
-Committed Phase 0 tip: `8101479` (M7); Phase 1 plan commit `37d0b49`. `git status --porcelain` at each phase commit: clean (each milestone was committed atomically; the current worktree carries only the in-flight gate-closure changeset, committed as the gate-closure commit that includes this file — `git show --stat HEAD` reproduces it).
+**Authoritative verification target: `GATE_CANDIDATE_SHA`** — the single documentation-only gate-candidate commit, identified in the final gate bundle's `git-metadata.txt` (full 40-char SHA, ancestry, clean `git status`). All Rev-3 verification (A.6, A.9, A.11 and the raw transcripts in `evidence/`) ran against a clean checkout of that exact SHA.
+Historical milestone commits for traceability only: `dc38fba` (docs baseline) → `dbb2e31` (M1) → `c619776`/`bc70bd6` (M2–M4) → `78d696b` (M5) → `bf3a62f` (M6) → `8101479` (M7) → `37d0b49` (Phase 1 plan Rev 1) → `27efe3e` (gate closure) → `f589afd` (progress) → GATE_CANDIDATE_SHA (Rev-3 corrections). Earlier fresh-run numbers recorded in this file were captured at `37d0b49`/`f589afd`-era worktrees; the **binding** results are the GATE_CANDIDATE_SHA clean-checkout transcripts.
 
 ## A.9 — Clean-clone reproducibility
 
-Procedure executed 2026-08-04: `git clone` (HEAD `37d0b49`) → `docker compose -p eyeclean up -d` (**fresh volumes**) → `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm db:migrate` (0001–0006 applied on a virgin database) → `pnpm --filter @eye/api test:accept` ⇒ **21/21 passed with zero manual steps**. Stack then destroyed (`down -v`).
+Procedure first executed 2026-08-04 at `37d0b49`, re-executed against `GATE_CANDIDATE_SHA` for Rev 3 (raw transcript in the bundle): `git clone` → `docker compose -p eyeclean up -d` (**fresh volumes**) → `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm db:migrate` (0001–0006 applied on a virgin database) → `pnpm --filter @eye/api test:accept` ⇒ **21/21 passed with zero manual steps**. Stack then destroyed (`down -v`).
 
 ## A.10 — Migration status + demo
 

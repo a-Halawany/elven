@@ -1,6 +1,6 @@
 # THE EYE — Phase 0 Report: Foundation & Governance Spine
 
-> Status: **COMPLETE — all 15 acceptance criteria pass with reproducible evidence** (21-test acceptance suite green, 2026-08-04).
+> Status: **COMPLETE — all 15 acceptance criteria pass with reproducible evidence** (21-test acceptance suite green, 2026-08-04; regression gate re-verified against the Phase 1 gate candidate — see PHASE0_EVIDENCE.md for GATE_CANDIDATE_SHA and the clean-checkout verification transcript).
 > Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3) · ADRs: [DECISIONS.md](DECISIONS.md) · Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) · Log: [PROGRESS.md](PROGRESS.md)
 
 ---
@@ -25,7 +25,12 @@
 ./scripts/demo.sh
 ```
 
-Compose up → build → migrate → audited bootstrap → API :3401 + shell :3000 → acceptance suite. Login `platform-admin` / `bootstrap-local-dev-1`. Walkthrough: Tenants (review-step create) → Users & Roles → Canonical Objects (create claim; empty evidence ⇒ `EYE-PRV-001`; open object ⇒ history + known-at) → Audit Ledger (Verify chain).
+Compose up → build → migrate → audited bootstrap → API :3401 + shell :3000 → acceptance suite.
+
+**Bootstrap identity (ADR-P0-17):** the bootstrap secret is **environment-generated and one-time** — `demo.sh` generates it via `openssl rand -base64 24` into `$EYE_BOOTSTRAP_PASSWORD` (this shell only; never committed, never logged, unique per environment). The credential is created `must_rotate` with a 24-hour unused-expiry (then permanently revoked); the **first sign-in forces rotation** — the bootstrap session is denied every governed action by the PDP until a new password is set, and rotation revokes all sessions. The bootstrap path is structurally restricted to `local|test` runtime environments and cannot operate against production or real customer data.
+Sign in as `platform-admin` with `$EYE_BOOTSTRAP_PASSWORD`, complete the forced rotation, then walk through: Tenants (review-step create) → Users & Roles → Canonical Objects (create claim; empty evidence ⇒ `EYE-PRV-001`; open object ⇒ history + known-at) → Audit Ledger (Verify chain).
+
+> Historical note: the original Phase 0 demo used a documented shared credential (`bootstrap-local-dev-1`). During gate closure it was **treated as exposed and revoked** (credential, binding, and sessions), and the one-time mechanism above replaced it — see ADR-P0-17 and SEC-P0-001 in [EXCEPTIONS.md](EXCEPTIONS.md). The literal appears here only as historical evidence of the remediated exposure.
 
 ## 3. Test results
 
@@ -62,7 +67,7 @@ Browser-verified live: login → overview (health) → objects (v1/v2 history, b
 ## 5. Deviations from plan (with reasons)
 
 1. **API default port 3401** (plan: 3001) — 3001 occupied by an unrelated local service.
-2. **E2E via API-level acceptance suite + live browser walkthrough instead of Playwright** — deterministic, CI-runnable evidence for all criteria was achievable without adding a browser-automation dependency in Phase 0; the UI journey was verified live in-browser (screenshots in session). Playwright lands with Phase 1 hardening if desired.
+2. **Playwright deferral — historical deviation, remediated during gate closure.** Phase 0 initially shipped an API-level acceptance suite plus a live browser walkthrough instead of the planned Playwright suite. During gate closure the gap was closed: `e2e/phase0.spec.ts` covers ten scenarios (login, governed creation with review step, ambiguous-scope fail-closed, cross-tenant denial without leakage, v1→v2 correction, known-at pre-correction, policy denial + obligation evidence, audit viewer + chain integrity, keyboard/a11y, light/dark + RTL) and runs as a blocking `browser-regression` CI job. It is now part of the standing Phase 0 regression gate.
 3. **Edge controllers for identity-admin/audit live in the pipeline module** — avoids module cycles while services stay with their owning modules; documented in code (ES-04-004: controllers are access modes).
 4. **Migration 0005** re-created `rebuild_chain_heads` with an explicit PLATFORM context (RLS blocked its ledger read) — caught by the allocator-rebuild integration test.
 5. **`occurred_at` generated column is ISO-8601 text** (timestamptz cast is not IMMUTABLE in PG18 generated columns); lexicographic = chronological for Z-normalized strings.
