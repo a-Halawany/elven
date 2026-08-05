@@ -1,0 +1,37 @@
+# CVE-level dispositions for the EXACT pinned images (remediation R8).
+# Scope: LOCAL-ONLY Phase 0 development profile (EXC-P0-004). External or
+# customer-data use under these dispositions is PROHIBITED — before any such
+# use the images must be re-pinned to patched builds and re-scanned as a
+# blocking release gate.
+# Owner: founding-engineer. Disposition date: 2026-08-05. Expiry: 2026-11-05
+# (or the next monthly ADR-P0-01 patch-cadence re-pin, whichever is earlier).
+#
+# Image: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (postgres:18-alpine)
+#
+# 1) c-ares 1.34.6-r0 (OS package). Fix (1.34.8-r0) not yet in any published
+#    postgres:18-alpine build. DoS-class; PostgreSQL bound to 127.0.0.1 only.
+CVE-2026-33630
+#
+# 2) /usr/local/bin/gosu — Go stdlib CVEs compiled into the upstream gosu 1.19
+#    binary shipped by EVERY current official postgres image (all variants).
+#    gosu runs only once at container start to drop root; none of the findings
+#    (net/http, net/mail, crypto DoS classes) are reachable in that use, and
+#    the daemon itself is loopback-bound. No patched official build exists.
+CVE-2025-68121
+CVE-2025-61726
+CVE-2025-61729
+CVE-2026-25679
+CVE-2026-27145
+CVE-2026-32280
+CVE-2026-32281
+CVE-2026-32283
+CVE-2026-33811
+CVE-2026-33814
+CVE-2026-39820
+CVE-2026-39822
+CVE-2026-39836
+CVE-2026-42499
+CVE-2026-42504
+#
+# Image: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 (redis:8-alpine)
+# Clean at HIGH/CRITICAL — no dispositions.

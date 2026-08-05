@@ -1,10 +1,20 @@
 /**
- * Audited bootstrap seed (ADR-P0-04) — creates the first platform administrator.
+ * Audited bootstrap seed (ADR-P0-04/17, remediation R6/R7) — creates the first
+ * platform administrator.
  *
  * Modeled on break-glass rules (Vol 3 Ch.22): time-bound (one-shot), conspicuous
  * (loud output + durable audit evidence), independently reviewable (audit event
  * on the PLATFORM partition under system provenance), never erases the audit path.
  * Refuses to run when a platform administrator already exists.
+ *
+ * Runs on the SYSTEM pool (eye_system): platform context via the audited
+ * eye_set_system_context port; the password credential goes through the
+ * identity.credential_issue definer port (human-only, status-checked).
+ *
+ * Exit codes (R7 — failures are never hidden):
+ *   0 — bootstrap performed
+ *   2 — already bootstrapped (caller may continue)
+ *   1 — real failure (caller must abort)
  *
  * Usage:
  *   EYE_BOOTSTRAP_ADMIN=<username> EYE_BOOTSTRAP_PASSWORD=<password> node dist/bootstrap/run-bootstrap.js
@@ -13,10 +23,14 @@ import { sql } from 'kysely';
 import * as argon2 from 'argon2';
 import type { AuditEventBody } from '@eye/contracts';
 import { loadConfig } from '../config/config.js';
-import { createAppDb } from '../shared/db.js';
+import { createSystemDb } from '../shared/db.js';
 import { newId } from '../shared/ids.js';
 import { appendAuditEvent } from '../audit/internal/audit-append.port.js';
 import { SYSTEM_PIPELINE_PRINCIPAL } from '../audit/audit.service.js';
+
+export const EXIT_ALREADY_BOOTSTRAPPED = 2;
+
+class AlreadyBootstrappedError extends Error {}
 
 async function main(): Promise<void> {
   const username = process.env['EYE_BOOTSTRAP_ADMIN'];
@@ -36,13 +50,13 @@ async function main(): Promise<void> {
     console.error('bootstrap: refused outside local/test environments');
     process.exit(1);
   }
-  const db = createAppDb(cfg);
+  const db = createSystemDb(cfg);
   const correlationId = newId();
 
   try {
     await db.transaction().execute(async (tx) => {
-      // System provenance: explicit PLATFORM scope context for RLS.
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
+      // System provenance: audited platform context (eye_system only — R1a).
+      await sql`select public.eye_set_system_context('one-shot platform bootstrap')`.execute(tx);
 
       const existing = await tx
         .selectFrom('identity.role_bindings')
@@ -51,7 +65,9 @@ async function main(): Promise<void> {
         .where('revoked_at', 'is', null)
         .executeTakeFirst();
       if (existing !== undefined) {
-        throw new Error('a platform administrator already exists — bootstrap refuses to run twice (use governed admin flows)');
+        throw new AlreadyBootstrappedError(
+          'a platform administrator already exists — bootstrap refuses to run twice (use governed admin flows)',
+        );
       }
 
       const principalId = newId();
@@ -64,22 +80,17 @@ async function main(): Promise<void> {
           tenant_id: null,
           domain_id: null,
           display_name: username,
+          login_name: username, // unique login identifier (R6)
           status: 'active',
         })
         .execute();
-      await tx
-        .insertInto('identity.credentials')
-        .values({
-          id: newId(),
-          principal_id: principalId,
-          type: 'password',
-          secret_hash: await argon2.hash(password, { type: argon2.argon2id }),
-          // One-time secret: forces rotation on first use; disabled if unused
-          // within 24 hours (ADR-P0-17).
-          status: 'must_rotate',
-          expires_at: new Date(Date.now() + 24 * 3600 * 1000),
-        })
-        .execute();
+      // One-time secret: forces rotation on first use; disabled if unused
+      // within 24 hours (ADR-P0-17). Issued through the definer port (R6).
+      await sql`select identity.credential_issue(
+        ${newId()}::uuid, ${principalId}::uuid,
+        ${await argon2.hash(password, { type: argon2.argon2id })},
+        'must_rotate', ${new Date(Date.now() + 24 * 3600 * 1000)}
+      )`.execute(tx);
       await tx
         .insertInto('identity.role_bindings')
         .values({
@@ -131,9 +142,17 @@ async function main(): Promise<void> {
       console.log(`  audit correlation:        ${correlationId} (partition: platform)`);
       console.log('==============================================================');
     });
-  } finally {
+  } catch (e) {
+    if (e instanceof AlreadyBootstrappedError) {
+      console.log(`bootstrap: ${e.message}`);
+      await db.destroy();
+      process.exit(EXIT_ALREADY_BOOTSTRAPPED);
+    }
+    console.error('bootstrap: FAILED —', e instanceof Error ? e.message : e);
     await db.destroy();
+    process.exit(1);
   }
+  await db.destroy();
 }
 
 void main();

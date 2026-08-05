@@ -1,4 +1,20 @@
 # The Eye — CI (ADR-P0-16: supply-chain baseline is Phase 0 scope, not deferred)
+#
+# Remediation R7/R8 notes:
+#  - Infrastructure comes up via docker-compose.yml, so CI exercises the SAME
+#    digest-pinned images (postgres:18-alpine / redis:8-alpine by sha256) and
+#    the SAME loopback + Redis-auth profile as local runs.
+#  - Every secret is generated per run (ephemeral) — no fixed reusable
+#    credentials anywhere in the pipeline.
+#  - The supply-chain job scans BOTH the repository filesystem (labeled as a
+#    filesystem scan) AND the exact pinned container images (labeled as image
+#    scans, blocking at HIGH/CRITICAL; .trivyignore holds the dated CVE-level
+#    dispositions). A digest-consistency step proves the scanned digests are
+#    the ones in docker-compose.yml and conformance.manifest.json.
+#  - This workflow defines the gate pipeline. For the local-only Phase 0 gate,
+#    local-equivalent evidence (same commands, raw logs) is what is presented;
+#    no hosted-CI execution is claimed. Jobs: 3 (build-test,
+#    browser-regression, supply-chain).
 name: ci
 on:
   push:
@@ -11,26 +27,25 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: eye
-          POSTGRES_PASSWORD: eye_local_dev
-          POSTGRES_DB: eye
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U eye -d eye"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-      redis:
-        image: redis:8
-        ports: ['6379:6379']
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with: { version: 11.9.0 }
       - uses: actions/setup-node@v4
         with: { node-version: '24', cache: pnpm }
+      - name: Generate ephemeral run secrets (R7 — no fixed credentials)
+        run: |
+          gen() { openssl rand -hex 24; }
+          {
+            echo "EYE_DB_PASSWORD=$(gen)"
+            echo "EYE_DB_APP_PASSWORD=$(gen)"
+            echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
+            echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
+            echo "EYE_REDIS_PASSWORD=$(gen)"
+            echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
+          } >> "$GITHUB_ENV"
+      - name: Compose up (digest-pinned postgres/redis, loopback, redis auth)
+        run: docker compose up -d --wait
       - name: Install (frozen lockfile — pinned dependency closure)
         run: pnpm install --frozen-lockfile
       - name: Module boundaries (ES-65-003, blocking)
@@ -41,47 +56,44 @@ jobs:
         run: pnpm build
       - name: Unit + conformance tests (golden fixtures)
         run: pnpm test
-      - name: Migrations + integration tests
+      - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
+        # Acceptance runs BEFORE integration: the acceptance beforeAll relies on
+        # the one-shot bootstrap creating the reserved `platform-admin`; the
+        # integration suites intentionally create additional platform_admin
+        # principals, which would make the (correct) one-shot bootstrap refuse.
         env:
           EYE_DB_HOST: localhost
-          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
-          EYE_DB_APP_PASSWORD: eye_app_local_dev
-          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
-          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: |
           pnpm db:migrate
-          pnpm --filter @eye/api test:int
-      - name: Phase 0 acceptance suite (15 criteria + request paths)
+          pnpm --filter @eye/api test:accept
+      - name: Integration tests (isolation, privileges, audit concurrency, refresh)
         env:
           EYE_DB_HOST: localhost
-          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
-          EYE_DB_APP_PASSWORD: eye_app_local_dev
-          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
-          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
-        run: pnpm --filter @eye/api test:accept
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
+        run: pnpm --filter @eye/api test:int
 
   browser-regression:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: eye
-          POSTGRES_PASSWORD: eye_local_dev
-          POSTGRES_DB: eye
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U eye -d eye"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-      redis:
-        image: redis:8
-        ports: ['6379:6379']
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with: { version: 11.9.0 }
       - uses: actions/setup-node@v4
         with: { node-version: '24', cache: pnpm }
+      - name: Generate ephemeral run secrets (R7 — no fixed credentials)
+        run: |
+          gen() { openssl rand -hex 24; }
+          {
+            echo "EYE_DB_PASSWORD=$(gen)"
+            echo "EYE_DB_APP_PASSWORD=$(gen)"
+            echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
+            echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
+            echo "EYE_REDIS_PASSWORD=$(gen)"
+            echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
+          } >> "$GITHUB_ENV"
+      - name: Compose up (digest-pinned postgres/redis, loopback, redis auth)
+        run: docker compose up -d --wait
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Install Chrome (stable channel)
@@ -89,10 +101,7 @@ jobs:
       - name: Phase 0 browser regression gate (10 scenarios, blocking)
         env:
           EYE_DB_HOST: localhost
-          EYE_DB_MIGRATE_PASSWORD: eye_local_dev
-          EYE_DB_APP_PASSWORD: eye_app_local_dev
-          EYE_DB_ALLOCATOR_PASSWORD: eye_allocator_local_dev
-          EYE_IDENTITY_JWT_SECRET: ci-only-secret-not-production-0000000000
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -112,18 +121,20 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: SBOM generation (CycloneDX)
-        run: |
-          pnpm dlx @cyclonedx/cyclonedx-npm --omit dev --output-file sbom.cdx.json || \
-          pnpm dlx @cyclonedx/cdxgen -o sbom.cdx.json
-      - name: Upload SBOM
+      - name: SBOM generation (pinned tracked generator; FAILS on empty SBOM)
+        run: node scripts/generate-sbom.mjs
+      - name: Upload SBOM + reconciliation
         uses: actions/upload-artifact@v4
-        with: { name: sbom, path: sbom.cdx.json }
+        with:
+          name: sbom
+          path: |
+            evidence/supply-chain/sbom.cdx.json
+            evidence/supply-chain/reconciliation.txt
       - name: Dependency vulnerability scan (blocking at high)
         run: pnpm audit --audit-level high
       - name: License inventory (allowlist-checked, blocking)
         run: node scripts/license-inventory.mjs
-      - name: Container image scan (Trivy, blocking at HIGH/CRITICAL)
+      - name: Repository FILESYSTEM scan (Trivy fs — labeled as such)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
@@ -131,3 +142,27 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
+      - name: Pinned-digest consistency (compose == manifest == scan targets)
+        run: |
+          PG_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['postgres']['digest'])")
+          REDIS_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['redis']['digest'])")
+          grep -qF "image: $PG_DIGEST" docker-compose.yml || { echo "compose postgres digest != manifest"; exit 1; }
+          grep -qF "image: $REDIS_DIGEST" docker-compose.yml || { echo "compose redis digest != manifest"; exit 1; }
+          echo "PG_DIGEST=$PG_DIGEST" >> "$GITHUB_ENV"
+          echo "REDIS_DIGEST=$REDIS_DIGEST" >> "$GITHUB_ENV"
+      - name: EXACT container IMAGE scan — postgres (Trivy image, blocking HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.PG_DIGEST }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore
+      - name: EXACT container IMAGE scan — redis (Trivy image, blocking HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.REDIS_DIGEST }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore

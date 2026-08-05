@@ -1,19 +1,26 @@
 /**
- * Canonical object service — CP-OBJ-01 (ADR-P0-05/06/07).
- * Create / version / correct / as-of retrieval. Header validated against the
- * contracts schema; payload validated against the registered object-type
- * schema; writes without minimum provenance rejected (EYE-PRV-001); versions
- * are immutable and content-addressed; corrections are non-destructive new
- * versions linked via correction_of.
+ * Canonical object service — CP-OBJ-01 (ADR-P0-05/06/07, remediation R5).
+ * Create / version / correct / as-of retrieval. Every production write
+ * validates the COMPLETE 43-field header against the contracts schema;
+ * content_digest binds all 43 registry fields + payload via one JCS
+ * representation (canonicalHeaderDigest); the write re-reads the stored row,
+ * rebuilds the header, and re-verifies the digest INSIDE the same transaction
+ * (storage round-trip verification — a lossy mapping aborts the write).
+ * Payload validated against the registered object-type schema; writes without
+ * minimum provenance rejected (EYE-PRV-001); versions are immutable and
+ * content-addressed; corrections are non-destructive new versions linked via
+ * correction_of.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {
-  contentDigest,
+  canonicalHeaderDigest,
   errorBody,
   hasMinimumProvenance,
   isTruthState,
+  validateHeader,
+  type CanonicalHeader,
   type TruthState,
 } from '@eye/contracts';
 import type { Tx } from '../shared/db.js';
@@ -196,9 +203,12 @@ export class ObjectsService {
       throw bad('EYE_PRV_001', correlationId, 'write rejected: no evidence/source/method/human provenance supplied');
     }
 
-    // Temporal sanity (four-axis model).
+    // Temporal sanity (four-axis model). DB CHECK valid_interval_order mirrors this.
     if (input.validTo != null && input.validFrom == null) {
       throw bad('EYE_TMP_001', correlationId, 'valid_to requires valid_from', 400);
+    }
+    if (input.validTo != null && input.validFrom != null && new Date(input.validTo) <= new Date(input.validFrom)) {
+      throw bad('EYE_TMP_001', correlationId, 'valid_to must be after valid_from', 400);
     }
 
     // Payload schema from the registry.
@@ -218,8 +228,14 @@ export class ObjectsService {
       throw bad('EYE_REQ_001', correlationId, `payload schema violation: ${detail}`, 400);
     }
 
+    // Timestamps are normalized to ISO-8601 UTC (ms precision) so the header,
+    // the stored row, and the round-trip rebuild share one representation.
+    const iso = (s: string | null | undefined): string | null => (s == null ? null : new Date(s).toISOString());
     const recordedAt = new Date();
-    const header = {
+
+    // The COMPLETE 43-field header (R5) — validated as a whole on every
+    // production write, then digest-bound in its entirety.
+    const header: CanonicalHeader = {
       object_id: v.objectId,
       object_type: input.objectType,
       tenant_id: ctx.tenantId,
@@ -229,69 +245,167 @@ export class ObjectsService {
       lifecycle_state: v.lifecycle,
       owning_component: 'CP-OBJ-01',
       accountable_owner: actor,
+      source_object_ids: prov.source_object_ids,
+      event_time: iso(input.eventTime),
+      observation_time: iso(input.observationTime),
+      valid_from: iso(input.validFrom),
+      valid_to: iso(input.validTo),
+      recorded_at: recordedAt.toISOString(),
+      time_precision: input.timePrecision ?? 'exact',
+      source_clock_quality: input.sourceClockQuality ?? 'trusted',
       truth_state: truthState,
       synthetic_state: syntheticState,
-      recorded_at: recordedAt.toISOString(),
+      confidence: null,
+      uncertainty: null,
+      evidence_refs: prov.evidence_refs,
+      provenance_ref: null,
+      method_ref: prov.method_ref,
+      contradiction_refs: [],
+      corroboration_refs: [],
+      human_refs: prov.human_refs,
+      classification: input.classification,
+      purpose_scope: input.purposeScope,
+      rights_profile: null,
+      residency_profile: null,
+      retention_profile: null,
+      access_policy_ref: null,
+      quality_profile: null,
+      quality_state: null,
+      freshness_state: null,
+      schema_ref: `${input.objectType}@${schemaVersion}`,
+      ontology_ref: null,
       correction_of: v.correctionOf,
+      supersedes: v.correctionOf, // corrected version is superseded for current use
+      withdrawal_reason: null,
+      audit_correlation_id: correlationId,
+      content_ref: null,
     };
-    const digest = contentDigest({ header, payload: input.payload });
+    const hv = validateHeader(header);
+    if (!hv.ok) {
+      throw bad('EYE_REQ_001', correlationId, `canonical header invalid: ${(hv.errors ?? []).join('; ')}`, 422);
+    }
+    const digest = canonicalHeaderDigest(header, input.payload);
 
     await tx
       .insertInto('objects.canonical_objects')
       .values({
-        object_id: v.objectId,
-        object_type: input.objectType,
-        tenant_id: ctx.tenantId,
-        domain_id: ctx.domainId,
-        scope: ctx.scope,
+        object_id: header.object_id,
+        object_type: header.object_type,
+        tenant_id: header.tenant_id,
+        domain_id: header.domain_id,
+        scope: header.scope,
         object_version: v.version,
-        lifecycle_state: v.lifecycle,
-        owning_component: 'CP-OBJ-01',
-        accountable_owner: actor,
-        source_object_ids: JSON.stringify(prov.source_object_ids),
-        event_time: input.eventTime ?? null,
-        observation_time: input.observationTime ?? null,
-        valid_from: input.validFrom ?? null,
-        valid_to: input.validTo ?? null,
+        lifecycle_state: header.lifecycle_state,
+        owning_component: header.owning_component,
+        accountable_owner: header.accountable_owner,
+        source_object_ids: JSON.stringify(header.source_object_ids),
+        event_time: header.event_time,
+        observation_time: header.observation_time,
+        valid_from: header.valid_from,
+        valid_to: header.valid_to,
         recorded_at: recordedAt,
-        time_precision: input.timePrecision ?? 'exact',
-        source_clock_quality: input.sourceClockQuality ?? 'trusted',
-        truth_state: truthState,
-        synthetic_state: syntheticState,
+        time_precision: header.time_precision,
+        source_clock_quality: header.source_clock_quality,
+        truth_state: header.truth_state,
+        synthetic_state: header.synthetic_state,
         confidence: null,
         uncertainty: null,
-        evidence_refs: JSON.stringify(prov.evidence_refs),
-        provenance_ref: null,
-        method_ref: prov.method_ref,
-        contradiction_refs: '[]',
-        corroboration_refs: '[]',
-        human_refs: JSON.stringify(prov.human_refs),
-        classification: input.classification,
-        purpose_scope: input.purposeScope,
-        rights_profile: null,
-        residency_profile: null,
-        retention_profile: null,
-        access_policy_ref: null,
-        quality_profile: null,
+        evidence_refs: JSON.stringify(header.evidence_refs),
+        provenance_ref: header.provenance_ref,
+        method_ref: header.method_ref,
+        contradiction_refs: JSON.stringify(header.contradiction_refs),
+        corroboration_refs: JSON.stringify(header.corroboration_refs),
+        human_refs: JSON.stringify(header.human_refs),
+        classification: header.classification,
+        purpose_scope: header.purpose_scope,
+        rights_profile: header.rights_profile,
+        residency_profile: header.residency_profile,
+        retention_profile: header.retention_profile,
+        access_policy_ref: header.access_policy_ref,
+        quality_profile: header.quality_profile,
         quality_state: null,
         freshness_state: null,
-        schema_ref: `${input.objectType}@${schemaVersion}`,
-        ontology_ref: null,
-        correction_of: v.correctionOf,
-        supersedes: v.correctionOf, // corrected version is superseded for current use
-        withdrawal_reason: null,
-        audit_correlation_id: correlationId,
-        content_ref: null,
+        schema_ref: header.schema_ref,
+        ontology_ref: header.ontology_ref,
+        correction_of: header.correction_of,
+        supersedes: header.supersedes,
+        withdrawal_reason: header.withdrawal_reason,
+        audit_correlation_id: header.audit_correlation_id,
+        content_ref: header.content_ref,
         payload: JSON.stringify(input.payload),
         content_digest: digest,
       })
       .execute();
 
-    return (await tx
+    const stored = (await tx
       .selectFrom('objects.canonical_objects')
       .selectAll()
       .where('object_id', '=', v.objectId)
       .where('object_version', '=', v.version)
       .executeTakeFirstOrThrow()) as ObjectRow;
+
+    // R5 — storage round-trip verification INSIDE the same transaction: the
+    // stored row must rebuild to a header whose digest equals what we computed
+    // and persisted. A lossy or reordered mapping aborts (rolls back) here.
+    const rebuilt = rebuildHeaderFromRow(stored);
+    const roundTrip = canonicalHeaderDigest(rebuilt, stored['payload'] as Record<string, unknown>);
+    if (roundTrip !== digest || stored.content_digest !== digest) {
+      throw bad('EYE_STA_003', correlationId, 'storage round-trip digest verification failed — write aborted', 500);
+    }
+
+    return stored;
   }
+}
+
+/** Rebuild the 43-field canonical header from a stored row (round-trip check). */
+export function rebuildHeaderFromRow(row: ObjectRow): CanonicalHeader {
+  const isoOf = (v: unknown): string | null => (v == null ? null : new Date(v as string | Date).toISOString());
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : (JSON.parse(String(v)) as string[]));
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    v == null ? null : typeof v === 'object' ? (v as Record<string, unknown>) : (JSON.parse(String(v)) as Record<string, unknown>);
+  return {
+    object_id: String(row.object_id),
+    object_type: String(row.object_type),
+    tenant_id: (row['tenant_id'] as string | null) ?? null,
+    domain_id: (row['domain_id'] as string | null) ?? null,
+    scope: row['scope'] as CanonicalHeader['scope'],
+    object_version: String(Number(row.object_version)),
+    lifecycle_state: String(row.lifecycle_state),
+    owning_component: String(row['owning_component']),
+    accountable_owner: String(row['accountable_owner']),
+    source_object_ids: arr(row['source_object_ids']),
+    event_time: isoOf(row['event_time']),
+    observation_time: isoOf(row['observation_time']),
+    valid_from: isoOf(row['valid_from']),
+    valid_to: isoOf(row['valid_to']),
+    recorded_at: isoOf(row.recorded_at) as string,
+    time_precision: String(row['time_precision']),
+    source_clock_quality: row['source_clock_quality'] as CanonicalHeader['source_clock_quality'],
+    truth_state: String(row.truth_state),
+    synthetic_state: Boolean(row['synthetic_state']),
+    confidence: obj(row['confidence']),
+    uncertainty: obj(row['uncertainty']),
+    evidence_refs: arr(row['evidence_refs']),
+    provenance_ref: (row['provenance_ref'] as string | null) ?? null,
+    method_ref: (row['method_ref'] as string | null) ?? null,
+    contradiction_refs: arr(row['contradiction_refs']),
+    corroboration_refs: arr(row['corroboration_refs']),
+    human_refs: arr(row['human_refs']),
+    classification: String(row['classification']),
+    purpose_scope: String(row['purpose_scope']),
+    rights_profile: (row['rights_profile'] as string | null) ?? null,
+    residency_profile: (row['residency_profile'] as string | null) ?? null,
+    retention_profile: (row['retention_profile'] as string | null) ?? null,
+    access_policy_ref: (row['access_policy_ref'] as string | null) ?? null,
+    quality_profile: (row['quality_profile'] as string | null) ?? null,
+    quality_state: obj(row['quality_state']),
+    freshness_state: obj(row['freshness_state']),
+    schema_ref: String(row['schema_ref']),
+    ontology_ref: (row['ontology_ref'] as string | null) ?? null,
+    correction_of: (row['correction_of'] as string | null) ?? null,
+    supersedes: (row['supersedes'] as string | null) ?? null,
+    withdrawal_reason: (row['withdrawal_reason'] as string | null) ?? null,
+    audit_correlation_id: String(row['audit_correlation_id']),
+    content_ref: (row['content_ref'] as string | null) ?? null,
+  };
 }

@@ -1,4 +1,8 @@
 -- 0001: database roles and module schemas.
+-- REBASED (invariant remediation R7, pre-production): committed role passwords
+-- replaced with __EYE_DB_*_PASSWORD__ placeholders substituted by the runner
+-- from the environment; the runner also re-applies ALTER ROLE passwords on
+-- every run so environment values are ACTUALLY applied to PostgreSQL.
 -- Exact privilege boundary (ADR-P0-09, ADR-P0-02):
 --   eye_app             — application role: INSERT/SELECT on evidence & canonical tables,
 --                         full DML only where a table is explicitly mutable.
@@ -8,10 +12,10 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'eye_app') THEN
-    CREATE ROLE eye_app LOGIN PASSWORD 'eye_app_local_dev';
+    CREATE ROLE eye_app LOGIN PASSWORD '__EYE_DB_APP_PASSWORD__';
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'eye_audit_allocator') THEN
-    CREATE ROLE eye_audit_allocator LOGIN PASSWORD 'eye_allocator_local_dev';
+    CREATE ROLE eye_audit_allocator LOGIN PASSWORD '__EYE_DB_ALLOCATOR_PASSWORD__';
   END IF;
 END $$;
 

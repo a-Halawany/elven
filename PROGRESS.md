@@ -2,7 +2,11 @@
 
 | Phase | Layers | Status | Notes |
 |---|---|---|---|
-| Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE 2026-08-04 — all 15 acceptance criteria pass** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open, in-date). |
+| Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE + INVARIANT-REMEDIATED 2026-08-05** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). Remediation: [PHASE0_INVARIANT_REMEDIATION_PLAN.md](PHASE0_INVARIANT_REMEDIATION_PLAN.md) (R1–R10). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open P0 in-date; 2 P1 proposed). |
+
+## Invariant-remediation gate (2026-08-05)
+
+Candidate reviewed: `ce1ee0d`. Source inspection found invariant violations the green suite did not detect; the bounded remediation R1–R10 was authorized and executed. Final candidate: **`GATE_CANDIDATE_SHA`** (see `evidence/git-metadata.txt`). Migration range extended to **0001–0008** (0008 = signed request context + DOMAIN-aware FORCE-RLS matrix, PUBLIC-EXECUTE revocation + bounded append/seal/recovery ports, refresh-token rotation with reuse detection, identity integrity, temporal constraint). Suites at the final SHA: contracts **118**, tokens **3**, api unit **14**, integration **38** (domain-isolation, privileges, audit-chain incl. concurrent append-vs-verify/seal, refresh), acceptance **34** (15 criteria + §7.2 + R4/R10 #6/#7/#8), Playwright **10**. Supply chain: non-empty CycloneDX SBOM (280 components) + prod/dev license reconciliation; `pnpm audit` **0**; exact-image Trivy scans of the pinned postgres:18-alpine / redis:8-alpine digests **clean at HIGH/CRITICAL** under dated `.trivyignore` dispositions. No Phase 1/L1 application code written.
 
 ## Milestone log
 
@@ -15,7 +19,7 @@
 | M5 Canonical objects | **DONE 2026-08-04** (commit `78d696b`) | Migration 0006 (typed 40-field header, four-axis temporal, DB CHECKs incl. minimum provenance, append-only, RLS, outbox, schema registry); create/correct/known-at/history; outbox → BullMQ post-commit. Tests: +2 integration (DB-level immutability, provenance CHECK). |
 | M6 WS-19 shell | **DONE 2026-08-04** (commit `bf3a62f`) | Token-driven UI (light+dark, logical CSS/RTL-safe, 3-channel truth badges); login/tenants/principals/objects/audit pages; review-step creation; receipts from authoritative responses only; browser-verified end-to-end (chain verify: intact, head matches). |
 | M7 Acceptance | **DONE 2026-08-04** | 21-test acceptance suite green (15 criteria + §7.2 request paths); wired into CI; demo script `scripts/demo.sh`; Phase Report published. Deviations documented in [PHASE0_REPORT.md](PHASE0_REPORT.md) §5. |
-| Phase 1 — World Observation Layer | L1 | **PLAN Rev 2 + gate-closure evidence submitted — awaiting final approval** | Plan: [PHASE1_PLAN.md](PHASE1_PLAN.md) (Rev 2). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). Coverage: [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md). Playwright gate (10/10) + bootstrap hardening (ADR-P0-17) landed in commit 27efe3e. |
+| Phase 1 — World Observation Layer | L1 | **PLAN Rev 4 (cumulative) — awaiting final approval; no P1 application code written** | Plan: [PHASE1_PLAN.md](PHASE1_PLAN.md) (Rev 4). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). Coverage: [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md). P1 exceptions EXC-P1-001/002 remain `proposed` (not opened). |
 | Phase 2 — Intelligence Layer | L2 | Not started | Model Gateway live; Cleaning/Classification/NER/Relationship agents |
 | Phase 3 — Enterprise Memory & Knowledge Graph | L3–L4 | Not started | Graph/Memory/Reasoning agents; stewardship workflows |
 | Phase 4 — Digital Twins & Prediction Engine | L5–L6 | Not started | Twin Reconciliation/Prediction agents |

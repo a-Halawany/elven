@@ -1,8 +1,12 @@
 /**
  * PHASE 0 ACCEPTANCE SUITE — reproducible evidence for the 15 acceptance
- * criteria (PHASE0_PLAN.md §16) and the §7.2 request-path requirements.
- * Spawns the built API (dist/) against the Compose Postgres, runs migrations
- * and (idempotent) bootstrap first. Run: pnpm test:accept (after pnpm build).
+ * criteria (PHASE0_PLAN.md §16), the §7.2 request-path requirements, and the
+ * remediation-mandated audit-on-commit tests (R10 #6, #7, #8) plus audited
+ * refresh rotation (R4). Spawns the built API (dist/) against the Compose
+ * Postgres, runs migrations and (idempotent) bootstrap first.
+ * R7: every credential comes from the generated .eye-local/env handoff (via
+ * test/setup-env.ts) or the caller's environment — no fixed literals.
+ * Run: pnpm test:accept (after pnpm build).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
@@ -18,26 +22,36 @@ const REPO = join(ROOT, '..', '..');
 const PORT = 3499;
 const BASE = `http://localhost:${PORT}`;
 
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`${name} must be provided (generated .eye-local/env or caller environment)`);
+  return v;
+}
+
 const ENV = {
   ...process.env,
   EYE_RUNTIME_PORT: String(PORT),
   EYE_DB_HOST: process.env['EYE_DB_HOST'] ?? 'localhost',
-  EYE_DB_APP_PASSWORD: process.env['EYE_DB_APP_PASSWORD'] ?? 'eye_app_local_dev',
-  EYE_DB_ALLOCATOR_PASSWORD: process.env['EYE_DB_ALLOCATOR_PASSWORD'] ?? 'eye_allocator_local_dev',
-  EYE_DB_MIGRATE_PASSWORD: process.env['EYE_DB_MIGRATE_PASSWORD'] ?? 'eye_local_dev',
-  EYE_IDENTITY_JWT_SECRET: process.env['EYE_IDENTITY_JWT_SECRET'] ?? 'acceptance-secret-not-production-000000',
+  EYE_DB_APP_PASSWORD: required('EYE_DB_APP_PASSWORD'),
+  EYE_DB_ALLOCATOR_PASSWORD: required('EYE_DB_ALLOCATOR_PASSWORD'),
+  EYE_DB_SYSTEM_PASSWORD: required('EYE_DB_SYSTEM_PASSWORD'),
+  EYE_DB_MIGRATE_PASSWORD: required('EYE_DB_MIGRATE_PASSWORD'),
+  EYE_REDIS_PASSWORD: required('EYE_REDIS_PASSWORD'),
+  EYE_IDENTITY_JWT_SECRET: required('EYE_IDENTITY_JWT_SECRET'),
 };
 
 let api: ChildProcess;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let db: Kysely<any>;
+let db: Kysely<any>; // eye_app — used for privilege NEGATIVES only
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sysDb: Kysely<any>; // eye_system — evidence verification reads
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let su: Kysely<any>; // migrate — audit-failure injection (freeze toggle) only
 let adminToken = '';
 let adminPrincipalId = '';
-// Test fixtures for the ephemeral local/CI database only — the bootstrap
-// mechanism itself takes its one-time secret from the environment and never
-// commits or logs it (ADR-P0-17).
-const INITIAL_PW = process.env['EYE_TEST_BOOTSTRAP_PASSWORD'] ?? 'accept-initial-secret-000000';
-const ROTATED_PW = process.env['EYE_TEST_ADMIN_PASSWORD'] ?? 'accept-rotated-secret-000000';
+// R7: ephemeral generated test secrets (per environment, never committed).
+const INITIAL_PW = required('EYE_TEST_BOOTSTRAP_PASSWORD');
+const ROTATED_PW = required('EYE_TEST_ADMIN_PASSWORD');
 let tenantId = '';
 let domainId = '';
 const run = uuidv7().slice(-12);
@@ -83,23 +97,55 @@ async function post(path: string, over: EnvOver, payload: unknown = {}, token = 
   return { status: r.status, body: (await r.json()) as Record<string, any>, correlationId: envelope.correlation_id as string };
 }
 
-async function auditRowsFor(correlationId: string): Promise<Array<Record<string, unknown>>> {
-  return db.transaction().execute(async (tx) => {
-    await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-    return tx.selectFrom('audit.audit_events').selectAll().where('correlation_id', '=', correlationId).execute();
+/** Evidence reads under the audited system context (raw GUCs are inert — R1a). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function sysRead<T>(fn: (tx: Kysely<any>) => Promise<T>): Promise<T> {
+  return sysDb.transaction().execute(async (tx) => {
+    await sql`select public.eye_set_system_context('acceptance evidence verification')`.execute(tx);
+    return fn(tx as never);
   });
 }
 
+async function auditRowsFor(correlationId: string): Promise<Array<Record<string, unknown>>> {
+  return sysRead(async (tx) =>
+    tx.selectFrom('audit.audit_events').selectAll().where('correlation_id', '=', correlationId).execute());
+}
+
+async function polRowsFor(correlationId: string): Promise<Array<Record<string, unknown>>> {
+  return sysRead(async (tx) =>
+    tx.selectFrom('policy.policy_decisions').selectAll().where('correlation_id', '=', correlationId).execute());
+}
+
+async function setPartitionFrozen(partitionId: string, frozen: boolean): Promise<void> {
+  await sql`update audit.audit_chain_heads set frozen = ${frozen} where partition_id = ${partitionId}`.execute(su);
+}
+
+async function loginAs(username: string, password: string) {
+  return post('/v1/auth/login', {
+    scope: 'PLATFORM', action: 'identity.session.create', object_type: 'SES',
+    principal_id: 'anonymous', purpose_id: 'authentication',
+  }, { username, password }, '');
+}
+
+async function refreshWith(token: string) {
+  return post('/v1/auth/refresh', {
+    scope: 'PLATFORM', action: 'identity.session.refresh', object_type: 'SES',
+    principal_id: 'anonymous', purpose_id: 'authentication',
+  }, { refreshToken: token }, '');
+}
+
 beforeAll(async () => {
-  // Reproducible startup: migrate + bootstrap (idempotent) + spawn built API.
+  // Reproducible startup: migrate + bootstrap (honest exit codes) + spawn built API.
   execFileSync('node', [join(ROOT, 'scripts', 'migrate.mjs')], { env: ENV });
   try {
     execFileSync('node', [join(ROOT, 'dist', 'bootstrap', 'run-bootstrap.js')], {
       env: { ...ENV, EYE_BOOTSTRAP_ADMIN: 'platform-admin', EYE_BOOTSTRAP_PASSWORD: INITIAL_PW },
       stdio: 'pipe',
     });
-  } catch {
-    // platform admin already exists — bootstrap correctly refuses to run twice
+  } catch (e) {
+    // Exit 2 = already bootstrapped (expected on re-runs); anything else is real.
+    const status = (e as { status?: number }).status;
+    if (status !== 2) throw e;
   }
   api = spawn('node', [join(ROOT, 'dist', 'main.js')], { env: ENV, stdio: 'pipe' });
   for (let i = 0; i < 40; i += 1) {
@@ -109,19 +155,22 @@ beforeAll(async () => {
     } catch { /* not up yet */ }
     await new Promise((res) => setTimeout(res, 250));
   }
-  db = new Kysely({
-    dialect: new PostgresDialect({
-      pool: new pg.Pool({
-        host: ENV.EYE_DB_HOST, port: 5432, database: 'eye',
-        user: 'eye_app', password: ENV.EYE_DB_APP_PASSWORD, max: 4,
+  const mkPool = (user: string, password: string) =>
+    new Kysely({
+      dialect: new PostgresDialect({
+        pool: new pg.Pool({ host: ENV.EYE_DB_HOST, port: 5432, database: 'eye', user, password, max: 4 }),
       }),
-    }),
-  });
+    });
+  db = mkPool('eye_app', ENV.EYE_DB_APP_PASSWORD) as never;
+  sysDb = mkPool('eye_system', ENV.EYE_DB_SYSTEM_PASSWORD) as never;
+  su = mkPool('eye', ENV.EYE_DB_MIGRATE_PASSWORD) as never;
 }, 60_000);
 
 afterAll(async () => {
   api?.kill();
   await db?.destroy();
+  await sysDb?.destroy();
+  await su?.destroy();
 });
 
 describe('AC-12: fully local reproducible startup', () => {
@@ -130,13 +179,6 @@ describe('AC-12: fully local reproducible startup', () => {
     expect(r).toMatchObject({ status: 'ok', db: true, classification: 'telemetry-only' });
   });
 });
-
-async function loginAs(username: string, password: string) {
-  return post('/v1/auth/login', {
-    scope: 'PLATFORM', action: 'identity.session.create', object_type: 'SES',
-    principal_id: 'anonymous', purpose_id: 'authentication',
-  }, { username, password }, '');
-}
 
 describe('AC-1: authorized platform administrator authentication (one-time bootstrap secret)', () => {
   it('first bootstrap login FORCES rotation; rotated credential then authenticates normally', async () => {
@@ -157,7 +199,7 @@ describe('AC-1: authorized platform administrator authentication (one-time boots
       }, {}, bootstrapToken);
       expect(denied.status).toBe(403);
 
-      // Rotate (audited), sessions revoked, then log in with the new secret.
+      // Rotate (audited, atomic with its evidence), sessions revoked, then log in anew.
       const rot = await post('/v1/auth/rotate', {
         scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'PRN',
         principal_id: `principal:${bootPid}`, purpose_id: 'authentication',
@@ -197,6 +239,95 @@ describe('AC-1: authorized platform administrator authentication (one-time boots
     expect(intake).toBeDefined();
     // Sanitization: never credentials/payload content in the evidence.
     expect(JSON.stringify(intake)).not.toContain('wrong-password');
+    // R3: rate limiting aggregates — the drop counter field is always present.
+    const meta = JSON.parse(String((intake as Record<string, unknown>)['event_jcs'] ?? '{}')) as {
+      metadata?: { suppressed_since_last?: number };
+    };
+    expect(typeof meta.metadata?.suppressed_since_last).toBe('number');
+  });
+});
+
+describe('R4: refresh-token rotation over the wire (audited)', () => {
+  it('rotates on every successful refresh; detects replay; revokes on reuse; audits all three', async () => {
+    const login = await loginAs('platform-admin', ROTATED_PW);
+    expect(login.status).toBe(201);
+    const first = login.body.tokens.refreshToken as string;
+
+    // 1. Successful refresh returns a NEW refresh token — audited as rotation.
+    const r1 = await refreshWith(first);
+    expect(r1.status).toBe(201);
+    const second = r1.body.refreshToken as string;
+    expect(second).not.toBe(first);
+    const rows1 = await auditRowsFor(r1.correlationId);
+    expect(rows1.some((x) => x['event_type'] === 'identity.refresh_rotated')).toBe(true);
+
+    // 2. REPLAY of the invalidated first token → rejected, session revoked, audited.
+    const r2 = await refreshWith(first);
+    expect(r2.status).toBe(401);
+    const rows2 = await auditRowsFor(r2.correlationId);
+    expect(rows2.some((x) => x['event_type'] === 'identity.refresh_reuse_detected')).toBe(true);
+
+    // 3. The whole session is revoked on reuse — even the newest token is dead.
+    const r3 = await refreshWith(second);
+    expect(r3.status).toBe(401);
+    const rows3 = await auditRowsFor(r3.correlationId);
+    expect(rows3.some((x) => x['event_type'] === 'identity.refresh_rejected')).toBe(true);
+  });
+});
+
+describe('R10 #8: session/credential/token mutations ROLL BACK when the audit commit fails', () => {
+  it('login creates NO session when the audit append cannot commit', async () => {
+    const countActive = async () =>
+      Number(((await sql<{ n: string }>`select count(*) n from identity.sessions where status = 'active'`.execute(su)).rows[0] ?? { n: '0' }).n);
+
+    await setPartitionFrozen('platform', true);
+    try {
+      const before = await countActive();
+      const r = await loginAs('platform-admin', ROTATED_PW);
+      expect(r.status).toBe(500); // audit append blocked → the WHOLE login fails
+      const after = await countActive();
+      expect(after).toBe(before); // no session slipped through without evidence
+    } finally {
+      await setPartitionFrozen('platform', false);
+    }
+    // The system works again after unfreezing (proves the failure was the injection).
+    const ok = await loginAs('platform-admin', ROTATED_PW);
+    expect(ok.status).toBe(201);
+  });
+
+  it('refresh performs NO token-state mutation when the audit append cannot commit', async () => {
+    const login = await loginAs('platform-admin', ROTATED_PW);
+    const token = login.body.tokens.refreshToken as string;
+    await setPartitionFrozen('platform', true);
+    try {
+      const r = await refreshWith(token);
+      expect(r.status).toBe(500);
+    } finally {
+      await setPartitionFrozen('platform', false);
+    }
+    // The SAME token still rotates cleanly — the failed attempt consumed nothing.
+    const ok = await refreshWith(token);
+    expect(ok.status).toBe(201);
+  });
+
+  it('credential rotation rolls back atomically when the audit append cannot commit', async () => {
+    const login = await loginAs('platform-admin', ROTATED_PW);
+    const token = login.body.tokens.accessToken as string;
+    const pid = login.body.principalId as string;
+    await setPartitionFrozen('platform', true);
+    try {
+      const r = await post('/v1/auth/rotate', {
+        scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'PRN',
+        principal_id: `principal:${pid}`, purpose_id: 'authentication',
+      }, { currentPassword: ROTATED_PW, newPassword: ROTATED_PW + 'X' }, token);
+      expect(r.status).toBe(500);
+    } finally {
+      await setPartitionFrozen('platform', false);
+    }
+    // Old credential still valid; the aborted new one never took effect.
+    const ok = await loginAs('platform-admin', ROTATED_PW);
+    expect(ok.status).toBe(201);
+    adminToken = ok.body.tokens.accessToken;
   });
 });
 
@@ -220,6 +351,35 @@ describe('AC-2/AC-3: governed tenant+domain creation under explicit scopes', () 
   });
 });
 
+describe('R10 #6: scope/route/envelope mismatches leave DURABLE sanitized evidence', () => {
+  it('envelope-scope mismatch records a request.scope_denied audit event before failing', async () => {
+    const r = await post('/v1/platform/tenants/list', {
+      scope: 'TENANT', tenant_id: tenantId, action: 'tenancy.tenant.list', object_type: 'TEN', side_effect_class: 'none',
+    });
+    expect(r.status).toBe(403);
+    const rows = await auditRowsFor(r.correlationId);
+    const denial = rows.find((x) => x['event_type'] === 'request.scope_denied');
+    expect(denial).toBeDefined();
+    expect(denial!['outcome']).toBe('denied');
+  });
+
+  it('envelope-action mismatch (smuggled intent) records durable denial evidence', async () => {
+    // Valid envelope shape, but the declared action does not match the route's.
+    const r = await post('/v1/platform/tenants/list', {
+      scope: 'PLATFORM', action: 'tenancy.tenant.delete', object_type: 'TEN', side_effect_class: 'none',
+    });
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('EYE-TEN-001');
+    const rows = await auditRowsFor(r.correlationId);
+    const denial = rows.find((x) => x['event_type'] === 'request.scope_denied');
+    expect(denial).toBeDefined();
+    expect(denial!['outcome']).toBe('denied');
+    // Sanitized: bounded reason + routing metadata only — never payload content.
+    const body = JSON.parse(String(denial!['event_jcs'])) as { metadata: { reason: string } };
+    expect(body.metadata.reason).toContain('action');
+  });
+});
+
 describe('AC-4/§7.2: every request path has an executable audit path', () => {
   it('allowed write: object + POL + AUD atomically, ack after commit', async () => {
     const payload = {
@@ -234,15 +394,10 @@ describe('AC-4/§7.2: every request path has an executable audit path', () => {
     expect(r.status).toBe(201);
     const rows = await auditRowsFor(r.correlationId);
     expect(rows.some((x) => x['outcome'] === 'success' && x['action'] === 'objects.create')).toBe(true);
-    const pol = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      return tx.selectFrom('policy.policy_decisions').selectAll().where('correlation_id', '=', r.correlationId).execute();
-    });
+    const pol = await polRowsFor(r.correlationId);
     expect(pol).toHaveLength(1);
-    const outbox = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      return tx.selectFrom('objects.object_outbox').selectAll().where('correlation_id', '=', r.correlationId).execute();
-    });
+    const outbox = await sysRead(async (tx) =>
+      tx.selectFrom('objects.object_outbox').selectAll().where('correlation_id', '=', r.correlationId).execute());
     expect(outbox).toHaveLength(1);
   });
 
@@ -253,10 +408,8 @@ describe('AC-4/§7.2: every request path has an executable audit path', () => {
     expect(r.status).toBe(201);
     const rows = await auditRowsFor(r.correlationId);
     expect(rows.some((x) => x['action'] === 'audit.read' && x['outcome'] === 'success')).toBe(true);
-    const outbox = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      return tx.selectFrom('objects.object_outbox').selectAll().where('correlation_id', '=', r.correlationId).execute();
-    });
+    const outbox = await sysRead(async (tx) =>
+      tx.selectFrom('objects.object_outbox').selectAll().where('correlation_id', '=', r.correlationId).execute());
     expect(outbox).toHaveLength(0);
   });
 
@@ -267,11 +420,12 @@ describe('AC-4/§7.2: every request path has an executable audit path', () => {
       classification: 'internal', purposeScope: 'analysis',
       payload: { subject: 'a', predicate: 'b', object_value: 'c' },
     };
-    const before = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      const c = await tx.selectFrom('objects.canonical_objects').select(sql`count(*)`.as('n')).executeTakeFirst();
-      return Number((c as { n: string }).n);
-    });
+    const countObjects = async () =>
+      sysRead(async (tx) => {
+        const c = await tx.selectFrom('objects.canonical_objects').select(sql`count(*)`.as('n')).executeTakeFirst();
+        return Number((c as { n: string }).n);
+      });
+    const before = await countObjects();
     const r = await post(`/v1/tenants/${tenantId}/domains/${domainId}/objects`, {
       scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.create',
       object_type: 'CLM', purpose_id: 'analysis', consequence_class: 'C3',
@@ -280,12 +434,7 @@ describe('AC-4/§7.2: every request path has an executable audit path', () => {
     expect(r.body.code).toBe('EYE-AUT-001');
     const rows = await auditRowsFor(r.correlationId);
     expect(rows.some((x) => x['outcome'] === 'denied')).toBe(true);
-    const after = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      const c = await tx.selectFrom('objects.canonical_objects').select(sql`count(*)`.as('n')).executeTakeFirst();
-      return Number((c as { n: string }).n);
-    });
-    expect(after).toBe(before); // AC-10: transactional consistency — no partial object
+    expect(await countObjects()).toBe(before); // AC-10: transactional consistency — no partial object
   });
 
   it('failure path: malformed envelope → sanitized security intake, EYE-REQ-001', async () => {
@@ -302,19 +451,84 @@ describe('AC-4/§7.2: every request path has an executable audit path', () => {
   });
 
   it('health endpoints are classified telemetry-only (no per-request audit)', async () => {
-    const beforeCount = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      const c = await tx.selectFrom('audit.audit_events').select(sql`count(*)`.as('n')).executeTakeFirst();
-      return Number((c as { n: string }).n);
-    });
+    const countEvents = async () =>
+      sysRead(async (tx) => {
+        const c = await tx.selectFrom('audit.audit_events').select(sql`count(*)`.as('n')).executeTakeFirst();
+        return Number((c as { n: string }).n);
+      });
+    const beforeCount = await countEvents();
     await fetch(BASE + '/healthz');
     await fetch(BASE + '/readyz');
-    const afterCount = await db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', 'PLATFORM', true)`.execute(tx);
-      const c = await tx.selectFrom('audit.audit_events').select(sql`count(*)`.as('n')).executeTakeFirst();
-      return Number((c as { n: string }).n);
+    expect(await countEvents()).toBe(beforeCount);
+  });
+});
+
+describe('R10 #7: handler failures inside allowed paths leave DURABLE failure evidence', () => {
+  it('provenance failure (EYE-PRV-001) rolls back the write but records POL + AUD failure evidence', async () => {
+    const payload = {
+      objectType: 'CLM', truthState: 'asserted', evidenceRefs: [],
+      classification: 'internal', purposeScope: 'analysis',
+      payload: { subject: 'x', predicate: 'y', object_value: 'z' },
+    };
+    const r = await post(`/v1/tenants/${tenantId}/domains/${domainId}/objects`, {
+      scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.create', object_type: 'CLM', purpose_id: 'analysis',
+    }, payload);
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('EYE-PRV-001');
+    const rows = await auditRowsFor(r.correlationId);
+    const failure = rows.find((x) => x['outcome'] === 'failure' && x['action'] === 'objects.create');
+    expect(failure).toBeDefined();
+    expect(failure!['result_code']).toBe('EYE-PRV-001');
+    const pol = await polRowsFor(r.correlationId);
+    expect(pol.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('payload-validation failure records durable failure evidence', async () => {
+    const payload = {
+      objectType: 'CLM', truthState: 'asserted', evidenceRefs: ['evd:1'],
+      classification: 'internal', purposeScope: 'analysis',
+      payload: { not_the_schema: true },
+    };
+    const r = await post(`/v1/tenants/${tenantId}/domains/${domainId}/objects`, {
+      scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.create', object_type: 'CLM', purpose_id: 'analysis',
+    }, payload);
+    expect(r.status).toBe(400);
+    const rows = await auditRowsFor(r.correlationId);
+    expect(rows.some((x) => x['outcome'] === 'failure')).toBe(true);
+  });
+
+  it('version-conflict failure (EYE-STA-002) records durable failure evidence', async () => {
+    const mk = () => ({
+      objectType: 'CLM', truthState: 'asserted', evidenceRefs: ['evd:v'],
+      classification: 'internal', purposeScope: 'analysis',
+      payload: { subject: 'V', predicate: 'has', object_value: 'W' },
     });
-    expect(afterCount).toBe(beforeCount);
+    const objBase = `/v1/tenants/${tenantId}/domains/${domainId}/objects`;
+    const over = { scope: 'DOMAIN' as const, tenant_id: tenantId, domain_id: domainId, object_type: 'CLM', purpose_id: 'analysis' };
+    const c = await post(objBase, { ...over, action: 'objects.create' }, mk());
+    expect(c.status).toBe(201);
+    const objectId = c.body.object.object_id as string;
+    const stale = await post(`${objBase}/${objectId}/correct`, { ...over, action: 'objects.correct' }, { expectedVersion: 99, correction: mk() });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe('EYE-STA-002');
+    const rows = await auditRowsFor(stale.correlationId);
+    const failure = rows.find((x) => x['outcome'] === 'failure');
+    expect(failure).toBeDefined();
+    expect(failure!['result_code']).toBe('EYE-STA-002');
+  });
+
+  it('consequential-read handler failure re-records its evidence durably after rollback', async () => {
+    const objBase = `/v1/tenants/${tenantId}/domains/${domainId}/objects`;
+    const r = await post(`${objBase}/${uuidv7()}/get`, {
+      scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.read',
+      object_type: 'CLM', side_effect_class: 'none', purpose_id: 'analysis',
+    }, {});
+    expect(r.status).toBe(404); // EYE-STA-001: no authorized version matches
+    const rows = await auditRowsFor(r.correlationId);
+    const failure = rows.find((x) => x['outcome'] === 'failure' && x['action'] === 'objects.read');
+    expect(failure).toBeDefined();
+    const pol = await polRowsFor(r.correlationId);
+    expect(pol.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -357,6 +571,8 @@ describe('AC-6/AC-7: canonical object lifecycle', () => {
     const c = await post(objBase, { ...over, action: 'objects.create' }, mk('WidgetCo'));
     expect(c.status).toBe(201);
     objectId = c.body.object.object_id;
+    // R5: the stored row carries the full-header digest, verified round-trip in-tx.
+    expect(String(c.body.object.content_digest)).toMatch(/^[0-9a-f]{64}$/);
     tAfterV1 = new Date().toISOString();
     await new Promise((res) => setTimeout(res, 25));
     const fix = await post(`${objBase}/${objectId}/correct`, { ...over, action: 'objects.correct' }, { expectedVersion: 1, correction: mk('WidgetCo Inc.') });
@@ -375,6 +591,20 @@ describe('AC-6/AC-7: canonical object lifecycle', () => {
     const asof = await post(`${objBase}/${objectId}/get`, { ...over, action: 'objects.read' }, { knownAt: tAfterV1 });
     expect(Number(asof.body.object.object_version)).toBe(1);
     expect(asof.body.object.payload.object_value).toBe('WidgetCo');
+  });
+
+  it('rejects temporal inconsistency: valid_to <= valid_from (EYE-TMP-001)', async () => {
+    const payload = {
+      objectType: 'CLM', truthState: 'asserted', evidenceRefs: ['evd:t'],
+      validFrom: '2026-02-01T00:00:00.000Z', validTo: '2026-01-01T00:00:00.000Z',
+      classification: 'internal', purposeScope: 'analysis',
+      payload: { subject: 'x', predicate: 'y', object_value: 'z' },
+    };
+    const r = await post(`/v1/tenants/${tenantId}/domains/${domainId}/objects`, {
+      scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.create', object_type: 'CLM', purpose_id: 'analysis',
+    }, payload);
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe('EYE-TMP-001');
   });
 
   it('rejects writes without valid provenance (EYE-PRV-001)', async () => {
@@ -412,14 +642,17 @@ describe('AC-8/AC-9: database-level immutability and chain integrity', () => {
 
 describe('AC-11: cross-tenant negatives without metadata leakage', () => {
   it('a tenant admin of tenant A is denied tenant B access with no B metadata in the error', async () => {
-    const pw = 'accept-admin-passw0rd!';
+    // R7: per-run generated credential (never a fixed literal).
+    const pw = `A1!${uuidv7()}`;
+    const loginName = `accept-admin-${run}`;
     const cp = await post(`/v1/tenants/${tenantId}/principals`, {
       scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN',
-    }, { kind: 'human', displayName: `accept-admin-${run}`, password: pw, roleCode: 'tenant_admin' });
+    }, { kind: 'human', displayName: `Acceptance Admin ${run}`, loginName, password: pw, roleCode: 'tenant_admin' });
     expect(cp.status).toBe(201);
     const login = await post('/v1/auth/login', {
       scope: 'PLATFORM', action: 'identity.session.create', object_type: 'SES', principal_id: 'anonymous', purpose_id: 'authentication',
-    }, { username: `accept-admin-${run}`, password: pw }, '');
+    }, { username: loginName, password: pw }, '');
+    expect(login.status).toBe(201);
     const aToken = login.body.tokens.accessToken;
     const aPid = login.body.principalId;
 
@@ -434,15 +667,50 @@ describe('AC-11: cross-tenant negatives without metadata leakage', () => {
     const s = JSON.stringify(r.body);
     expect(s).not.toContain(otherTenant);
     expect(s).not.toContain('accept-');
+    // R10 #6: the scope-resolution failure left durable denial evidence.
+    const rows = await auditRowsFor(r.correlationId);
+    const denial = rows.find((x) => x['event_type'] === 'request.scope_denied');
+    expect(denial).toBeDefined();
+    expect(denial!['outcome']).toBe('denied');
+  });
+
+  it('R6: creating a workload principal with a password is refused', async () => {
+    const r = await post(`/v1/tenants/${tenantId}/principals`, {
+      scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN',
+    }, { kind: 'workload', displayName: `wl-${run}`, loginName: `wl-${run}`, password: `A1!${uuidv7()}`, roleCode: 'tenant_admin' });
+    expect(r.status).toBe(400);
   });
 });
 
 describe('AC-13/14/15: repo-level conformance evidence', () => {
   it('CI enforces boundaries, schemas, scans, and tests (workflow present with blocking steps)', () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
-    for (const needle of ['pnpm boundaries', 'gitleaks', 'cyclonedx', 'trivy', 'license-inventory', 'pnpm audit', 'test:int']) {
+    for (const needle of [
+      'pnpm boundaries', 'gitleaks', 'generate-sbom', 'trivy', 'license-inventory',
+      'pnpm audit', 'test:int',
+      'scan-type: image', // R8: EXACT image scans, not a mislabeled fs scan
+      'scan-type: fs',    // the filesystem scan is present AND labeled as such
+    ]) {
       expect(ci.toLowerCase()).toContain(needle.toLowerCase());
     }
+  });
+
+  it('compose images are digest-pinned and recorded in the conformance manifest (R7)', () => {
+    const manifest = JSON.parse(readFileSync(join(REPO, 'conformance.manifest.json'), 'utf8')) as {
+      pinned_images: Record<string, { digest: string }>;
+    };
+    const compose = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
+    const images = Object.values(manifest.pinned_images).filter(
+      (v): v is { digest: string } => typeof v === 'object' && v !== null && 'digest' in v,
+    );
+    expect(images).toHaveLength(2); // postgres + redis
+    for (const image of images) {
+      expect(image.digest).toMatch(/@sha256:[0-9a-f]{64}$/);
+      expect(compose).toContain(`image: ${image.digest}`);
+    }
+    expect(compose).toContain('127.0.0.1:5432:5432'); // loopback only
+    expect(compose).toContain('127.0.0.1:6379:6379');
+    expect(compose).toContain('--requirepass'); // Redis auth
   });
 
   it('English UI with i18n/RTL-ready foundations', () => {
@@ -459,7 +727,7 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
 
   it('no constitutional invariant is waived inside EXCEPTIONS.md (honest posture)', () => {
     const exc = readFileSync(join(REPO, 'EXCEPTIONS.md'), 'utf8');
-    expect(exc).toContain('No exception waives the constitutional semantics'.replace('No exception waives', 'no exception waives').replace('no exception waives the constitutional semantics', 'exception waives the constitutional semantics'));
+    expect(exc).toContain('exception waives the constitutional semantics');
     expect(exc).toContain('HONEST STATEMENT');
     for (const field of ['owner:', 'approver:', 'requirement_ids:', 'consequence_class:', 'compensating_controls:', 'prohibited_exposure:', 'expiry_date:', 'exit_criteria:', 'required_evidence:', 'status:']) {
       expect(exc).toContain(field);

@@ -17,7 +17,7 @@
 | **Request pipeline** | Corrected order (envelope → authenticate → scope from principal+routing → policy → validate → commit); five executable request paths (write / consequential read / denied / failure / health-telemetry-only); bounded internal append ports under `system.commit-pipeline`; ack only after commit |
 | **Canonical objects** | Typed 40-field header as the authoritative representation; four-axis temporal model; DB-privilege-level append-only (+ CHECK constraints incl. minimum provenance); non-destructive correction with `correction_of`/`supersedes`; current / **known-at** (no hindsight contamination) / history retrieval; schema registry (DC-compatibility slots); transactional outbox → BullMQ post-commit publication |
 | **WS-19 shell** | Vol 9 token-driven (semantic CSS variables, light+dark, logical properties/RTL-safe); login; governed tenant/domain creation with review step; principals; object browser (3-channel truth badges, version history, known-at query); audit viewer (sanitized projection, chain verify); receipts only from authoritative responses (no optimistic UI); i18n catalog (en, ar slot) |
-| **CI / supply chain** | boundaries, typecheck, build, unit+conformance, migrations+integration, **acceptance suite**, SBOM (CycloneDX), pnpm audit, gitleaks, Trivy, license inventory — all blocking |
+| **CI / supply chain** | Three jobs (`build-test`, `browser-regression`, `supply-chain`): boundaries, typecheck, build, unit+conformance, migrations+integration, **acceptance suite**, Playwright browser gate, SBOM (CycloneDX, fails on empty), pnpm audit, gitleaks, license inventory, `trivy fs` (labeled) + `trivy image` of the exact pinned digests (blocking HIGH/CRITICAL) — all blocking. Local-equivalent evidence for this local-only gate; hosted CI is not claimed. |
 
 ## 2. How to run and demo
 
@@ -36,11 +36,13 @@ Sign in as `platform-admin` with `$EYE_BOOTSTRAP_PASSWORD`, complete the forced 
 
 | Suite | Result |
 |---|---|
-| contracts unit + golden fixtures | 24/24 |
+| contracts unit + golden fixtures + header registry/digest binding | 118/118 |
 | tokens | 3/3 |
 | API unit (PDP decision table, scope fail-closed) | 14/14 |
-| API integration (privilege boundary, 16-writer gap-free concurrency, rollback no-gap, allocator rebuild, tamper freeze, RLS negatives, DB-level immutability) | 14/14 |
-| **Acceptance (15 criteria + §7.2 request paths)** | **21/21** |
+| API integration (domain-isolation matrix, privilege boundary, concurrent append-vs-verify/seal, refresh rotation/replay/concurrency, DB-level immutability) | 38/38 |
+| **Acceptance (15 criteria + §7.2 request paths + R4/R10 #6/#7/#8)** | **34/34** |
+
+> Test counts above are the **post-invariant-remediation** figures (final gate SHA in `evidence/git-metadata.txt`). The pre-remediation figures (24/24 contracts, 14/14 integration, 21/21 acceptance) are historical — see [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md) §H.
 
 Browser-verified live: login → overview (health) → objects (v1/v2 history, badges) → audit (chain intact, head matches).
 

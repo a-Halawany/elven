@@ -1,66 +1,210 @@
-# Phase 0 evidence run — 2026-08-04T22:38:20Z
-## git worktree
-$ git rev-parse HEAD && git status --porcelain | wc -l
-37d0b49e2b2f7217e32214994bda03b554e51a7c
-uncommitted files (gate-closure work in progress): 20
+# THE EYE — Phase 0 invariant-remediation gate — raw run log
+# host: Darwin 25.5.0  date: 2026-08-05T15:05:16Z
+# node: v24.11.1  pnpm: 11.9.0  docker: Docker version 28.5.1, build e180ab8
+# trivy: Version: 0.73.0  gitleaks: 8.30.1
+# DB: virgin volume; migrations 0001-0008 applied fresh
+# NOTE: acceptance runs before integration (see ci.yml — one-shot bootstrap ordering)
 
-## contracts: pnpm --filter @eye/contracts test
-     Test Files  3 passed (3)
-          Tests  24 passed (24)
+=== $ pnpm boundaries (15:05:17Z) ===
+$ depcruise apps packages --config .dependency-cruiser.cjs
 
-## tokens: pnpm --filter @eye/tokens test
-     Test Files  1 passed (1)
-          Tests  3 passed (3)
+✔ no dependency violations found (85 modules, 222 dependencies cruised)
 
-## api unit: pnpm --filter @eye/api test
-     Test Files  2 passed (2)
-          Tests  14 passed (14)
+[exit=0]
 
-## boundaries: pnpm boundaries
-    
+=== $ pnpm typecheck (15:05:18Z) ===
+$ pnpm -r typecheck
+Scope: 4 of 5 workspace projects
+packages/contracts typecheck$ tsc -p tsconfig.json --noEmit
+packages/tokens typecheck$ tsc -p tsconfig.json --noEmit
+packages/tokens typecheck: Done
+packages/contracts typecheck: Done
+apps/web typecheck$ tsc --noEmit
+apps/api typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck: Done
+apps/api typecheck: Done
+[exit=0]
 
-## migration status
-     0001_roles_and_schemas.sql     | 284d23692eb7 | 2026-08-03
-     0002_identity_tenancy.sql      | a65408a0f5ee | 2026-08-03
-     0003_policy.sql                | d6d08054ad1e | 2026-08-04
-     0004_audit.sql                 | 202a8d103262 | 2026-08-04
-     0005_audit_rebuild_rls_fix.sql | 2959a2cc6532 | 2026-08-04
-     0006_objects.sql               | f7daf0ef5c33 | 2026-08-04
-     0007_bootstrap_rotation.sql    | be3dc1a0f582 | 2026-08-04
-    
-## api integration: pnpm --filter @eye/api test:int
-     Test Files  2 passed (2)
-          Tests  14 passed (14)
+=== $ pnpm build (15:05:20Z) ===
+$ pnpm -r build
+Scope: 4 of 5 workspace projects
+packages/contracts build$ tsc -p tsconfig.json
+packages/tokens build$ tsc -p tsconfig.json && node dist/emit-css.js
+packages/tokens build: tokens.css written (5599 bytes)
+packages/tokens build: Done
+packages/contracts build: Done
+apps/api build$ tsc -p tsconfig.build.json
+apps/web build$ next build
+apps/web build: ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+apps/web build:  We detected multiple lockfiles and selected the directory of /Users/halawany/work/personal/mohammed/pnpm-workspace.yaml as the root directory.
+apps/web build:  To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+apps/web build:    See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+apps/web build:  Detected additional lockfiles: 
+apps/web build:    * /Users/halawany/work/personal/mohammed/new_project/pnpm-workspace.yaml
+apps/web build: ▲ Next.js 16.2.12 (Turbopack)
+apps/web build:   Creating an optimized production build ...
+apps/api build: Done
+apps/web build: ✓ Compiled successfully in 991ms
+apps/web build:   Running TypeScript ...
+apps/web build:   Finished TypeScript in 941ms ...
+apps/web build:   Collecting page data using 10 workers ...
+apps/web build:   Generating static pages using 10 workers (0/9) ...
+apps/web build:   Generating static pages using 10 workers (2/9) 
+apps/web build:   Generating static pages using 10 workers (4/9) 
+apps/web build:   Generating static pages using 10 workers (6/9) 
+apps/web build: ✓ Generating static pages using 10 workers (9/9) in 209ms
+apps/web build:   Finalizing page optimization ...
+apps/web build: Route (app)
+apps/web build: ┌ ○ /
+apps/web build: ├ ○ /_not-found
+apps/web build: ├ ○ /admin
+apps/web build: ├ ○ /admin/audit
+apps/web build: ├ ○ /admin/objects
+apps/web build: ├ ○ /admin/principals
+apps/web build: ├ ○ /admin/tenants
+apps/web build: └ ○ /login
+apps/web build: ○  (Static)  prerendered as static content
+apps/web build: Done
+[exit=0]
 
-## acceptance: pnpm --filter @eye/api test:accept
-     Test Files  1 passed (1)
-          Tests  21 passed (21)
+=== $ pnpm db:migrate (15:05:25Z) ===
+$ pnpm --filter @eye/api db:migrate
+$ node scripts/migrate.mjs
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+[exit=0]
 
-## boundaries (rerun with output)
-    ✔ no dependency violations found (82 modules, 213 dependencies cruised)
+=== $ pnpm --filter @eye/contracts test (15:05:26Z) ===
+$ vitest run
 
-## supply chain (local runs)
-### SBOM (CycloneDX)
-    Progress: resolved 164, reused 74, downloaded 90, added 115, done
-    components: 0 | spec: CycloneDX 1.6
-### dependency vulnerability scan: pnpm audit --audit-level high
-    5 vulnerabilities found
-    Severity: 2 moderate | 3 high
-### license inventory: node scripts/license-inventory.mjs
-    license inventory: 184 packages recorded
-### secret scan (gitleaks)
-    gitleaks not installed locally — runs blocking in CI (supply-chain job); local grep for known secret patterns:
-### container scan (trivy)
-    trivy not installed locally — runs blocking in CI (supply-chain job)
+ RUN  v4.1.10 /Users/halawany/work/personal/mohammed/new_project/packages/contracts
 
-## clean-clone reproducibility (instruction A.9)
-    procedure: git clone <repo> (HEAD 37d0b49) -> docker compose -p eyeclean up -d (FRESH volumes)
-    -> pnpm install --frozen-lockfile -> pnpm build -> pnpm db:migrate -> pnpm --filter @eye/api test:accept
-    result: compose healthy (postgres:18 + redis:8); migrations 0001-0006 applied on virgin DB;
-    acceptance 21/21 PASSED on the clean clone with zero manual steps.
 
-## Playwright browser regression (instruction B) — pnpm exec playwright test
-    10 passed (10/10) — chrome channel, API+web via webServer, rotation-aware setup
-    scenarios: admin login UI; governed tenant+domain w/ review step; ambiguous scope EYE-TEN-001;
-    cross-tenant denial no leakage; v1->v2 correction in history; known-at pre-correction;
-    policy denial UI + obligations; audit viewer + chain intact; keyboard/a11y; light-dark + RTL
+ Test Files  4 passed (4)
+      Tests  118 passed (118)
+   Start at  18:05:26
+   Duration  233ms (transform 143ms, setup 0ms, import 253ms, tests 80ms, environment 0ms)
+
+[exit=0]
+
+=== $ pnpm --filter @eye/tokens test (15:05:26Z) ===
+$ vitest run
+
+ RUN  v4.1.10 /Users/halawany/work/personal/mohammed/new_project/packages/tokens
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  18:05:27
+   Duration  112ms (transform 18ms, setup 0ms, import 27ms, tests 3ms, environment 0ms)
+
+[exit=0]
+
+=== $ pnpm --filter @eye/api test (15:05:27Z) ===
+$ vitest run
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  18:05:28
+   Duration  227ms (transform 57ms, setup 0ms, import 171ms, tests 5ms, environment 0ms)
+
+[exit=0]
+
+=== $ pnpm --filter @eye/api test:accept (15:05:28Z) ===
+$ vitest run --config vitest.accept.config.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.accept.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  18:05:28
+   Duration  2.58s (transform 47ms, setup 19ms, import 136ms, tests 2.35s, environment 0ms)
+
+[exit=0]
+
+=== $ pnpm --filter @eye/api test:int (15:05:31Z) ===
+$ vitest run --config vitest.int.config.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  4 passed (4)
+      Tests  38 passed (38)
+   Start at  18:05:31
+   Duration  1.36s (transform 84ms, setup 35ms, import 476ms, tests 563ms, environment 0ms)
+
+[exit=0]
+
+=== $ pnpm exec playwright test (15:05:33Z) ===
+[WebServer] $ next start -p 3000
+[WebServer] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+[WebServer]  We detected multiple lockfiles and selected the directory of /Users/halawany/work/personal/mohammed/pnpm-workspace.yaml as the root directory.
+[WebServer]  To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+[WebServer]    See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+[WebServer]  Detected additional lockfiles: 
+[WebServer]    * /Users/halawany/work/personal/mohammed/new_project/pnpm-workspace.yaml
+[WebServer] 
+[WebServer] ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+
+Running 10 tests using 1 worker
+
+
+  ✓   1 e2e/phase0.spec.ts:154:7 › Phase 0 browser regression › 1. platform administrator login (UI) (734ms)
+  ✓   2 e2e/phase0.spec.ts:161:7 › Phase 0 browser regression › 2. governed tenant and domain creation with review step (UI) (571ms)
+  ✓   3 e2e/phase0.spec.ts:174:7 › Phase 0 browser regression › 3. ambiguous scope fails closed (EYE-TEN-001) (7ms)
+  ✓   4 e2e/phase0.spec.ts:184:7 › Phase 0 browser regression › 4. cross-tenant access denied without metadata leakage (6ms)
+  ✓   5 e2e/phase0.spec.ts:197:7 › Phase 0 browser regression › 5. canonical object v1 → v2 correction visible in UI history (647ms)
+  ✓   6 e2e/phase0.spec.ts:211:7 › Phase 0 browser regression › 6. known-at query returns the pre-correction state (UI) (666ms)
+  ✓   7 e2e/phase0.spec.ts:229:7 › Phase 0 browser regression › 7. policy denial in UI + obligation evidence on audit view (774ms)
+  ✓   8 e2e/phase0.spec.ts:244:7 › Phase 0 browser regression › 8. audit viewer shows events and chain-integrity status (UI) (486ms)
+  ✓   9 e2e/phase0.spec.ts:253:7 › Phase 0 browser regression › 9. keyboard navigation and basic accessibility (348ms)
+  ✓  10 e2e/phase0.spec.ts:271:7 › Phase 0 browser regression › 10. light/dark presentation and RTL-layout smoke (468ms)
+
+  10 passed (10.4s)
+[exit=0]
+
+=== supply chain ===
+=== $ node scripts/generate-sbom.mjs (15:05:44Z) ===
+SBOM: 280 components (192 production, 88 development-only)
+lockfile package-entry count (approx heading match): 698
+reconciliation: RECONCILED (evidence/supply-chain/reconciliation.txt)
+[exit=0]
+
+=== $ node scripts/license-inventory.mjs (15:05:44Z) ===
+license inventory: 186 packages recorded
+[exit=0]
+
+=== $ bash scripts/verify-images.sh (15:05:45Z) ===
+# Exact-image digest + blocking-scan verification
+timestamp: 2026-08-05T15:05:45Z
+trivy: Version: 0.73.0
+docker: Docker version 28.5.1, build e180ab8
+compose[postgres]: digest matches manifest (postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+compose[redis]: digest matches manifest (redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+--- trivy image scans (blocking HIGH/CRITICAL, dispositions: .trivyignore) ---
+postgres image scan exit: 0 (target: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+redis image scan exit:    0 (target: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+result: PASS (digests consistent; both exact-image scans clean at HIGH/CRITICAL under dated dispositions)
+[exit=0]
+

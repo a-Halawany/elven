@@ -11,9 +11,16 @@ import { expect, test, type Page } from '@playwright/test';
 
 const API = 'http://localhost:3401';
 const REPO = join(__dirname, '..');
-const INITIAL_PW = process.env['EYE_TEST_BOOTSTRAP_PASSWORD'] ?? 'accept-initial-secret-000000';
-const ROTATED_PW = process.env['EYE_TEST_ADMIN_PASSWORD'] ?? 'accept-rotated-secret-000000';
-const TENANT_ADMIN_PW = 'e2e-tenant-admin-passw0rd!';
+// R7: generated ephemeral secrets (0600 .eye-local/env, loaded by
+// playwright.config.ts) or caller-supplied — never fixed literals.
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`${name} must be provided (generated .eye-local/env or caller environment)`);
+  return v;
+}
+const INITIAL_PW = required('EYE_TEST_BOOTSTRAP_PASSWORD');
+const ROTATED_PW = required('EYE_TEST_ADMIN_PASSWORD');
+const TENANT_ADMIN_PW = `A1!${crypto.randomUUID()}`; // per-run ephemeral
 
 // Minimal JCS (objects here are flat/sorted-safe) + digest for envelope building.
 function jcs(v: unknown): string {
@@ -73,20 +80,21 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
 test.describe.serial('Phase 0 browser regression', () => {
   test.beforeAll(async () => {
     execFileSync('node', [join(REPO, 'apps/api/scripts/migrate.mjs')], {
-      env: { ...process.env, EYE_DB_MIGRATE_PASSWORD: process.env['EYE_DB_MIGRATE_PASSWORD'] ?? 'eye_local_dev' },
+      env: { ...process.env, EYE_DB_MIGRATE_PASSWORD: required('EYE_DB_MIGRATE_PASSWORD') },
     });
     try {
       execFileSync('node', [join(REPO, 'apps/api/dist/bootstrap/run-bootstrap.js')], {
         env: {
           ...process.env,
-          EYE_DB_APP_PASSWORD: process.env['EYE_DB_APP_PASSWORD'] ?? 'eye_app_local_dev',
-          EYE_IDENTITY_JWT_SECRET: process.env['EYE_IDENTITY_JWT_SECRET'] ?? 'e2e-secret-not-production-000000000000',
           EYE_BOOTSTRAP_ADMIN: 'platform-admin',
           EYE_BOOTSTRAP_PASSWORD: INITIAL_PW,
         },
         stdio: 'pipe',
       });
-    } catch { /* already bootstrapped */ }
+    } catch (e) {
+      // Exit 2 = already bootstrapped (expected on re-runs); anything else is real.
+      if ((e as { status?: number }).status !== 2) throw e;
+    }
 
     // Rotation-aware admin login (same protocol as the acceptance suite).
     let r = await loginApi('platform-admin', ROTATED_PW);
@@ -136,7 +144,7 @@ test.describe.serial('Phase 0 browser regression', () => {
     // Tenant admin for cross-tenant + denial scenarios.
     const p = await api(`/v1/tenants/${tenantId}/principals`, {
       action: 'identity.principal.create', scope: 'TENANT', tenant_id: tenantId, object_type: 'PRN', principal_id: pid,
-    }, { kind: 'human', displayName: `e2e-admin-${run}`, password: TENANT_ADMIN_PW, roleCode: 'tenant_admin' });
+    }, { kind: 'human', displayName: `e2e-admin-${run}`, loginName: `e2e-admin-${run}`, password: TENANT_ADMIN_PW, roleCode: 'tenant_admin' });
     expect(p.status).toBe(201);
     const tl = await loginApi(`e2e-admin-${run}`, TENANT_ADMIN_PW);
     expect(tl.status).toBe(201);

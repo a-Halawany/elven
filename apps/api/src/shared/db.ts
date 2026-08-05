@@ -29,6 +29,23 @@ export function createAppDb(cfg: EyeConfig): Db {
   return new Kysely({ dialect: new PostgresDialect({ pool }) });
 }
 
+/**
+ * System pool — role eye_system: the only role granted eye_set_system_context.
+ * Used by bounded system paths only: authentication flows (atomic session +
+ * audit), bootstrap, outbox publisher, audit verifier/sealer, security intake.
+ */
+export function createSystemDb(cfg: EyeConfig): Db {
+  const pool = new pg.Pool({
+    host: cfg['eye.db.host'],
+    port: cfg['eye.db.port'],
+    database: cfg['eye.db.name'],
+    user: cfg['eye.db.system_user'],
+    password: cfg['eye.db.system_password'],
+    max: 6,
+  });
+  return new Kysely({ dialect: new PostgresDialect({ pool }) });
+}
+
 export function createMigrateDb(cfg: EyeConfig): Db {
   const pool = new pg.Pool({
     host: cfg['eye.db.host'],

@@ -1,14 +1,22 @@
 /**
- * Canonical intelligence object header — Volume 7 Appendix E (40 fields),
- * an additive refinement of Volume 3 Ch.7's 8 field groups. (ADR-P0-05)
+ * Canonical intelligence object header (remediation R5).
+ *
+ * EXPLICIT FIELD REGISTRY: 40 authoritative Volume 7 Appendix E fields plus
+ * 3 governed extensions (`scope` per ADR-P0-04, `synthetic_state` and
+ * `human_refs` per Volume 3 Appendix B) = 43 stored fields. The stored schema
+ * is a 43-field schema; it is never described as a 40-field schema.
  *
  * The authoritative representation is the typed relational row in
  * `objects.canonical_objects`; this module defines the shared shape,
- * validation, and the content-digest rule (SHA-256 over JCS).
+ * validation, the registry, and the content-digest rule:
+ * content_digest = SHA-256(JCS({header: <all 43 fields>, payload})) — every
+ * authoritative header field is digest-bound (temporal, provenance, policy,
+ * classification, quality and schema fields included).
  * Four-axis temporal model: event / observation / valid / record time (ADR-P0-07).
  */
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import { contentDigest } from './audit.js';
 
 export interface CanonicalHeader {
   // Identity block
@@ -165,6 +173,69 @@ export const HEADER_SCHEMA = {
     { if: { properties: { valid_to: { type: 'string' } } }, then: { properties: { valid_from: { type: 'string' } } } },
   ],
 } as const;
+
+/**
+ * R5 — the explicit canonical field registry.
+ * 40 authoritative Volume 7 Appendix E fields; the stored schema adds the 3
+ * governed extensions below for 43 stored fields in total.
+ */
+export const AUTHORITATIVE_HEADER_FIELDS = [
+  // Identity block (Vol 7 App. E)
+  'object_id', 'object_type', 'tenant_id', 'domain_id', 'object_version',
+  'lifecycle_state', 'owning_component', 'accountable_owner', 'source_object_ids',
+  // Temporal block (four axes)
+  'event_time', 'observation_time', 'valid_from', 'valid_to', 'recorded_at',
+  'time_precision', 'source_clock_quality',
+  // Epistemic block
+  'truth_state', 'confidence', 'uncertainty',
+  // Provenance block
+  'evidence_refs', 'provenance_ref', 'method_ref', 'contradiction_refs', 'corroboration_refs',
+  // Policy block
+  'classification', 'purpose_scope', 'rights_profile', 'residency_profile',
+  'retention_profile', 'access_policy_ref',
+  // Quality block
+  'quality_profile', 'quality_state', 'freshness_state',
+  // Schema/semantics block
+  'schema_ref', 'ontology_ref',
+  // Correction block
+  'correction_of', 'supersedes', 'withdrawal_reason',
+  // Audit / payload block
+  'audit_correlation_id', 'content_ref',
+] as const;
+
+/** Governed extensions, each reconciled with the frozen canonical model. */
+export const GOVERNED_EXTENSION_FIELDS = [
+  'scope',            // ADR-P0-04 — explicit PLATFORM/TENANT/DOMAIN scope axis
+  'synthetic_state',  // Vol 3 App. B — synthetic-content marker (C-018)
+  'human_refs',       // Vol 3 App. B — human attribution provenance
+] as const;
+
+/** The complete stored-field registry: 40 authoritative + 3 governed = 43. */
+export const CANONICAL_HEADER_FIELDS = [
+  ...AUTHORITATIVE_HEADER_FIELDS,
+  ...GOVERNED_EXTENSION_FIELDS,
+] as const;
+
+export const AUTHORITATIVE_HEADER_FIELD_COUNT = 40;
+export const CANONICAL_HEADER_FIELD_COUNT = 43;
+
+/**
+ * content_digest = SHA-256(JCS({header: <all 43 registry fields>, payload})).
+ * Every field of the registry is bound — a mutation of ANY header field (or
+ * the payload) changes the digest. Callers must pass a complete header
+ * (validateHeader enforces exactly the registry's fields).
+ */
+export function canonicalHeaderDigest(header: CanonicalHeader, payload: Record<string, unknown>): string {
+  const bound: Record<string, unknown> = {};
+  for (const f of CANONICAL_HEADER_FIELDS) {
+    const v = (header as unknown as Record<string, unknown>)[f];
+    if (v === undefined) {
+      throw new Error(`canonicalHeaderDigest: header is missing registry field "${f}" — all 43 fields are digest-bound`);
+    }
+    bound[f] = v;
+  }
+  return contentDigest({ header: bound, payload });
+}
 
 let compiled: ReturnType<Ajv2020['compile']> | null = null;
 

@@ -23,6 +23,24 @@ const client = new pg.Client({
 
 const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
+// R7: role-password placeholders are substituted from the environment. The
+// runner refuses to run with placeholders unset, and re-applies ALTER ROLE
+// after migrations so environment passwords are actually in effect.
+const ROLE_SECRETS = {
+  __EYE_DB_APP_PASSWORD__: ['eye_app', process.env.EYE_DB_APP_PASSWORD],
+  __EYE_DB_ALLOCATOR_PASSWORD__: ['eye_audit_allocator', process.env.EYE_DB_ALLOCATOR_PASSWORD],
+  __EYE_DB_SYSTEM_PASSWORD__: ['eye_system', process.env.EYE_DB_SYSTEM_PASSWORD],
+};
+function substitutePlaceholders(sql, filename) {
+  for (const [ph, [role, value]] of Object.entries(ROLE_SECRETS)) {
+    if (sql.includes(ph)) {
+      if (!value) throw new Error(`migration ${filename} needs env password for role ${role} (placeholder ${ph}) — refusing to run with it unset`);
+      sql = sql.replaceAll(ph, value.replaceAll("'", "''"));
+    }
+  }
+  return sql;
+}
+
 await client.connect();
 try {
   await client.query(`
@@ -38,8 +56,10 @@ try {
 
   const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
   for (const f of files) {
-    const sql = readFileSync(join(dir, f), 'utf8');
-    const digest = sha256(sql);
+    const raw = readFileSync(join(dir, f), 'utf8');
+    // Digest is over the COMMITTED file (placeholders), never over secrets.
+    const digest = sha256(raw);
+    const sql = substitutePlaceholders(raw, f);
     if (applied.has(f)) {
       if (applied.get(f) !== digest) {
         throw new Error(`migration ${f} was modified after being applied (digest mismatch) — migrations are immutable; add a new file`);
@@ -59,6 +79,15 @@ try {
     }
   }
   console.log('migrations up to date');
+  // Ensure env-supplied role passwords are actually applied (idempotent).
+  for (const [ph, [role, value]] of Object.entries(ROLE_SECRETS)) {
+    if (!value) continue;
+    const exists = await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role]);
+    if (exists.rowCount > 0) {
+      await client.query(`ALTER ROLE ${role} PASSWORD '${value.replaceAll("'", "''")}'`);
+    }
+  }
+  console.log('role passwords synchronized from environment');
 } finally {
   await client.end();
 }

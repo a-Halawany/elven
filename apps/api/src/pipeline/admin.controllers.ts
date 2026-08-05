@@ -24,6 +24,8 @@ function ctx(req: EyeRequest) {
 interface CreatePrincipalPayload {
   kind?: 'human' | 'workload';
   displayName?: string;
+  /** Unique login identifier (R6) — required when a password is issued. */
+  loginName?: string;
   password?: string;
   roleCode?: string;
   domainId?: string;
@@ -60,6 +62,7 @@ export class AdminControllers {
         tenantId,
         domainId: p.domainId ?? null,
         displayName: p.displayName as string,
+        ...(p.loginName !== undefined ? { loginName: p.loginName } : {}),
         ...(p.password !== undefined ? { password: p.password } : {}),
         ...(p.roleCode !== undefined ? { roleCode: p.roleCode } : {}),
       });

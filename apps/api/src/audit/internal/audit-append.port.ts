@@ -1,20 +1,18 @@
 /**
- * Bounded internal append port for AUD records (ADR-P0-08 §7.3, ADR-P0-09).
- * Importable ONLY by the audit module and the commit pipeline.
+ * Bounded internal append port for AUD records (ADR-P0-08 §7.3, ADR-P0-09, R2b).
+ * Importable ONLY by the audit module, the commit pipeline, and bootstrap.
  *
- * Sequence inside the caller's transaction:
- *   1. audit.advance_chain_head(partition)  — locks head row, returns (seq, prev)
- *   2. compute row_hash = SHA-256(JCS({version, partition_id, audit_seq, previous_hash, event}))
- *   3. INSERT the immutable row (event_jcs canonical bytes; typed cols generated)
- *   4. audit.commit_chain_head(partition, seq, row_hash)
- * The head-row lock holds until COMMIT — appends serialize per partition and
- * a rollback leaves no gap. Audit durability precedes acknowledgement
- * (ES-55-002): the caller's transaction includes this append or nothing.
+ * Since remediation R2, eye_app/eye_system hold NO direct INSERT on
+ * audit_events: the append goes through the SECURITY DEFINER port
+ * audit.append_event(partition, seq, event, prev, hash), which enforces
+ * partition/event scope consistency AND that the caller's signed context is
+ * authorized for the event's scope — forging cross-scope or inconsistent
+ * evidence is structurally rejected at the database. commit_chain_head is
+ * invoked inside the port under the same head lock.
  */
 import { sql } from 'kysely';
 import {
   auditRowHash,
-  jcsCanonicalize,
   partitionIdFor,
   type AuditEventBody,
 } from '@eye/contracts';
@@ -43,18 +41,9 @@ export async function appendAuditEvent(tx: Tx, event: AuditEventBody): Promise<A
     event,
   });
 
-  await tx
-    .insertInto('audit.audit_events')
-    .values({
-      partition_id: partitionId,
-      audit_seq: auditSeq,
-      event_jcs: jcsCanonicalize(event),
-      previous_hash: head.prev_hash,
-      row_hash: rowHash,
-    })
-    .execute();
-
-  await sql`select audit.commit_chain_head(${partitionId}, ${auditSeq}, ${rowHash})`.execute(tx);
+  await sql`select audit.append_event(
+    ${partitionId}, ${auditSeq}, ${JSON.stringify(event)}::jsonb, ${head.prev_hash}, ${rowHash}
+  )`.execute(tx);
 
   return { partitionId, auditSeq, rowHash };
 }

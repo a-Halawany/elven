@@ -4,8 +4,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/int/**/*.test.ts'],
+    setupFiles: ['./test/setup-env.ts'], // R7: generated ephemeral secrets
     passWithNoTests: true,
-    testTimeout: 30000,
+    testTimeout: 60000,
+    hookTimeout: 60000,
     // Integration tests share one DB — no parallel files.
     fileParallelism: false,
   },

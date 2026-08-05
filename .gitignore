@@ -9,3 +9,8 @@ coverage/
 .DS_Store
 *.log
 sbom/
+# R7: local secret handoff (0600) — never committed
+.eye-local/
+# transient test-run state — never tracked as evidence
+test-results/
+playwright-report/

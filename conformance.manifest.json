@@ -76,5 +76,23 @@
       "owner": "founding-engineer"
     }
   ],
-  "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers."
+  "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers.",
+  "pinned_images": {
+    "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
+    "postgres": {
+      "human_tag": "postgres:18-alpine",
+      "digest": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "pinned_at": "2026-08-05"
+    },
+    "redis": {
+      "human_tag": "redis:8-alpine",
+      "digest": "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+      "pinned_at": "2026-08-05"
+    }
+  },
+  "sbom_generator": {
+    "$comment": "Remediation R8 — validated SBOM generator, pinned and tracked; CI fails when the produced SBOM has zero components.",
+    "tool": "scripts/generate-sbom.mjs (lockfile-driven CycloneDX 1.6, tracked in-repo)",
+    "input": "pnpm-lock.yaml"
+  }
 }

@@ -1,0 +1,38 @@
+GATE_CANDIDATE_SHA=ce1ee0d45559e29fbae95d7858848485f7b63a27
+
+--- rev-parse HEAD ---
+ce1ee0d45559e29fbae95d7858848485f7b63a27
+
+--- ancestry ---
+ce1ee0d Gate remediation: pnpm-audit high findings fixed via workspace overrides (sharp>=0.35.0, postcss>=8.5.23 — zero known vulnerabilities); virgin-DB self-sufficiency fix for the superuser tamper integration test
+e3bd088 Rev 3 gate corrections (documentation only): PHASE0_REPORT bootstrap/Playwright remediation notes, PHASE1_PLAN Revision 3 (corrections A-F), EXCEPTIONS P1 proposed entries + audit-backup control honesty fix, C-013 extensibility language, commit-reference reconciliation
+f589afd PROGRESS: gate-closure status
+27efe3e Gate closure: bootstrap identity hardening, Playwright regression gate, Phase 0 evidence package, Phase 1 plan Rev 2
+37d0b49 Phase 1 Plan: World Observation Layer (L1) — presented for approval
+8101479 M7: Phase 0 acceptance suite, CI wiring, demo script, Phase Report
+bf3a62f M6: WS-19 admin shell — login, tenants/domains, principals, object browser, audit viewer
+78d696b M5: canonical object service, commit pipeline completion, transactional outbox
+bc70bd6 M2-M4: identity+tenancy endpoints, ABAC policy engine, hash-chained audit ledger
+c619776 M2 (data layer): identity + tenancy schemas, RLS, services, scope resolution
+dbb2e31 M1: monorepo scaffold — contracts, tokens, API+web shells, Compose, CI, boundaries
+dc38fba docs: Phase 0 baseline — spec volumes, approved plan (Rev 3), ADRs, exception register
+
+--- status (worktree at bundle time; evidence artifacts are bundle-only, untracked by design) ---
+ M evidence/supply-chain/pnpm-audit-exit.txt
+ M evidence/supply-chain/pnpm-audit.json
+?? evidence/git-metadata.txt
+?? evidence/supply-chain/ci-statement.txt
+?? evidence/supply-chain/gitleaks-report.json
+?? evidence/supply-chain/gitleaks-stdout.txt
+?? evidence/supply-chain/license-policy.txt
+?? evidence/supply-chain/licenses-dev.json
+?? evidence/supply-chain/licenses-prod.json
+?? evidence/supply-chain/pnpm-audit-human.txt
+?? evidence/supply-chain/reconciliation.txt
+?? evidence/supply-chain/sbom.cdx.json
+?? evidence/supply-chain/trivy-fs.txt
+?? evidence/supply-chain/trivy-summary.txt
+?? scripts/generate-sbom.mjs
+
+--- tracked-tree hash ---
+c3b87c0fe925fa9b3a4e595d7aa534c1bd6e91f4

@@ -1,15 +1,22 @@
 # The Eye — local development profile (the only profile in Phase 0; see EXC-P0-004)
-# Images pinned by major; digests recorded in conformance.manifest.json after first pull.
+# Remediation R7:
+#  - images pinned by IMMUTABLE DIGEST (recorded in conformance.manifest.json;
+#    human-readable tags: postgres:18-alpine / redis:8-alpine — alpine variants
+#    chosen for the clean HIGH/CRITICAL OS baseline, see evidence/supply-chain/)
+#  - PostgreSQL and Redis bind to LOOPBACK ONLY
+#  - Redis requires authentication (EYE_REDIS_PASSWORD)
+#  - no default operational secrets in executable paths: required env vars fail
+#    the profile fast when unset
 services:
   postgres:
-    image: postgres:18
+    image: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 # postgres:18-alpine
     container_name: eye-postgres
     environment:
       POSTGRES_USER: eye
-      POSTGRES_PASSWORD: ${EYE_DB_PASSWORD:-eye_local_dev}
+      POSTGRES_PASSWORD: ${EYE_DB_PASSWORD:?EYE_DB_PASSWORD is required (no committed default)}
       POSTGRES_DB: eye
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # postgres:18+ images place PGDATA under /var/lib/postgresql/<major>; mount the parent.
       - eye-pgdata:/var/lib/postgresql
@@ -20,12 +27,15 @@ services:
       retries: 10
 
   redis:
-    image: redis:8
+    image: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 # redis:8-alpine
     container_name: eye-redis
+    command: ["redis-server", "--requirepass", "${EYE_REDIS_PASSWORD:?EYE_REDIS_PASSWORD is required (no committed default)}"]
+    environment:
+      REDIS_HEALTHCHECK_PASSWORD: ${EYE_REDIS_PASSWORD}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_HEALTHCHECK_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10

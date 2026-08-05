@@ -1,29 +1,25 @@
 /**
- * Audit chain integration tests (ADR-P0-09) — run against the Compose Postgres.
- * Covers: exact privilege boundary, DB-level append-only, tamper response
- * (freeze + incident + no re-seal), gap-free concurrency, allocator rebuild.
+ * Audit chain integration tests (ADR-P0-09, remediation R2) — run against the
+ * Compose Postgres, through the REAL append port (appendAuditEvent →
+ * audit.append_event) and the REAL AuditService.verifyPartition() /
+ * sealPartition() implementations. Covers: exact privilege boundary, DB-level
+ * append-only, tamper response (atomic freeze+incident, no re-seal), gap-free
+ * concurrency, allocator rebuild, and (mandated 10) concurrent append vs
+ * verify/seal.
  */
+import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import pg from 'pg';
-import { Kysely, PostgresDialect, sql } from 'kysely';
-import { auditRowHash, GENESIS_HASH, jcsCanonicalize, type AuditEventBody } from '@eye/contracts';
+import { sql } from 'kysely';
+import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
 import { uuidv7 } from 'uuidv7';
+import { appDb, superDb, systemDb, type AnyDb } from './helpers.js';
+import { appendAuditEvent } from '../../src/audit/internal/audit-append.port.js';
+import { AuditService } from '../../src/audit/audit.service.js';
 
-const HOST = process.env['EYE_DB_HOST'] ?? 'localhost';
-const PORT = Number(process.env['EYE_DB_PORT'] ?? 5432);
-
-function mkDb(user: string, password: string): Kysely<never> {
-  return new Kysely({
-    dialect: new PostgresDialect({
-      pool: new pg.Pool({ host: HOST, port: PORT, database: 'eye', user, password, max: 8 }),
-    }),
-  });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let app: Kysely<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let su: Kysely<any>; // migrate/superuser — used ONLY to simulate tampering in fixtures
+let app: AnyDb;
+let su: AnyDb; // migrate/superuser — used ONLY to simulate out-of-band tampering
+let system: AnyDb;
+let audit: AuditService;
 
 function mkEvent(partitionKey: string, action: string): AuditEventBody {
   return {
@@ -48,44 +44,32 @@ function mkEvent(partitionKey: string, action: string): AuditEventBody {
     causation_id: null,
     trace_id: null,
     request_digest: null,
-    metadata: {},
-  };
+  } as unknown as AuditEventBody;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function appendVia(db: Kysely<any>, partitionId: string, event: AuditEventBody): Promise<number> {
-  return db.transaction().execute(async (tx) => {
-    const head = (
-      await sql<{ seq: string; prev_hash: string }>`select * from audit.advance_chain_head(${partitionId})`.execute(tx)
-    ).rows[0]!;
-    const auditSeq = Number(head.seq);
-    const rowHash = auditRowHash({ partitionId, auditSeq, previousHash: head.prev_hash, event });
-    await tx
-      .insertInto('audit.audit_events')
-      .values({
-        partition_id: partitionId,
-        audit_seq: auditSeq,
-        event_jcs: jcsCanonicalize(event),
-        previous_hash: head.prev_hash,
-        row_hash: rowHash,
-      })
-      .execute();
-    await sql`select audit.commit_chain_head(${partitionId}, ${auditSeq}, ${rowHash})`.execute(tx);
-    return auditSeq;
+/** Append through the REAL port on the system pool (PLATFORM system context). */
+async function appendReal(tenantKey: string, action: string): Promise<number> {
+  return system.transaction().execute(async (tx) => {
+    await sql`select public.eye_set_system_context('audit-chain test append')`.execute(tx);
+    const ref = await appendAuditEvent(tx as never, { ...mkEvent(tenantKey, action), metadata: {} } as AuditEventBody);
+    return ref.auditSeq;
   });
 }
 
 beforeAll(() => {
-  app = mkDb(process.env['EYE_DB_APP_USER'] ?? 'eye_app', process.env['EYE_DB_APP_PASSWORD'] ?? 'eye_app_local_dev');
-  su = mkDb(process.env['EYE_DB_MIGRATE_USER'] ?? 'eye', process.env['EYE_DB_MIGRATE_PASSWORD'] ?? 'eye_local_dev');
+  app = appDb();
+  su = superDb();
+  system = systemDb();
+  audit = new AuditService(app as never, system as never);
 });
 
 afterAll(async () => {
   await app.destroy();
   await su.destroy();
+  await system.destroy();
 });
 
-describe('exact privilege boundary (correction #3)', () => {
+describe('exact privilege boundary', () => {
   it('app role cannot UPDATE or DELETE audit_events (privilege + trigger)', async () => {
     await expect(
       sql`update audit.audit_events set row_hash = repeat('f', 64) where audit_seq = 1`.execute(app),
@@ -102,11 +86,9 @@ describe('exact privilege boundary (correction #3)', () => {
   });
 
   it('even the superuser cannot UPDATE/DELETE evidence rows (trigger raises)', async () => {
-    // Self-sufficient on a virgin database: create the row this test targets
-    // (a zero-row UPDATE would trivially "succeed" without firing the trigger).
     const tenant = uuidv7();
     const partitionId = `tenant:${tenant}`;
-    await appendVia(app, partitionId, mkEvent(tenant, 'superuser.tamper.target'));
+    await appendReal(tenant, 'superuser.tamper.target');
     await expect(
       sql`update audit.audit_events set previous_hash = repeat('e', 64) where audit_seq = 1 and partition_id = ${partitionId}`.execute(su),
     ).rejects.toThrow(/append-only/);
@@ -116,64 +98,50 @@ describe('exact privilege boundary (correction #3)', () => {
   });
 });
 
-describe('gap-free concurrent appends (correction #3 / ADR-P0-09)', () => {
+describe('gap-free concurrent appends (ADR-P0-09)', () => {
   it('16 parallel writers on one partition produce a strict 1..16 sequence and a verifiable chain', async () => {
     const tenant = uuidv7();
     const partitionId = `tenant:${tenant}`;
     const results = await Promise.all(
-      Array.from({ length: 16 }, (_, i) => appendVia(app, partitionId, mkEvent(tenant, `concurrent.${i}`))),
+      Array.from({ length: 16 }, (_, i) => appendReal(tenant, `concurrent.${i}`)),
     );
     const seqs = [...results].sort((a, b) => a - b);
     expect(seqs).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
 
-    // Recompute the chain end-to-end.
-    const rows = (await su
-      .selectFrom('audit.audit_events')
-      .select(['audit_seq', 'event', 'previous_hash', 'row_hash'])
-      .where('partition_id', '=', partitionId)
-      .orderBy('audit_seq')
-      .execute()) as Array<{ audit_seq: string; event: AuditEventBody; previous_hash: string; row_hash: string }>;
-    let prev = GENESIS_HASH;
-    for (const r of rows) {
-      expect(r.previous_hash).toBe(prev);
-      const recomputed = auditRowHash({
-        partitionId,
-        auditSeq: Number(r.audit_seq),
-        previousHash: prev,
-        event: r.event,
-      });
-      expect(recomputed).toBe(r.row_hash);
-      prev = r.row_hash;
-    }
+    // The REAL verifier agrees.
+    const report = await audit.verifyPartition(partitionId);
+    expect(report.ok).toBe(true);
+    expect(report.checked).toBe(16);
+    expect(report.headMatches).toBe(true);
   });
 
   it('a rolled-back transaction leaves no gap', async () => {
     const tenant = uuidv7();
     const partitionId = `tenant:${tenant}`;
-    await appendVia(app, partitionId, mkEvent(tenant, 'pre'));
+    await appendReal(tenant, 'pre');
     await expect(
-      app.transaction().execute(async (tx) => {
+      system.transaction().execute(async (tx) => {
+        await sql`select public.eye_set_system_context('rollback test')`.execute(tx);
         await sql`select * from audit.advance_chain_head(${partitionId})`.execute(tx);
         throw new Error('simulated failure after allocation');
       }),
     ).rejects.toThrow('simulated failure');
-    const seq = await appendVia(app, partitionId, mkEvent(tenant, 'post'));
+    const seq = await appendReal(tenant, 'post');
     expect(seq).toBe(2); // no gap from the aborted allocation
   });
 });
 
-describe('allocator is reconstructable from the ledger (correction #3)', () => {
+describe('allocator is reconstructable from the ledger', () => {
   it('rebuild_chain_heads restores a corrupted head from immutable rows', async () => {
     const tenant = uuidv7();
     const partitionId = `tenant:${tenant}`;
-    await appendVia(app, partitionId, mkEvent(tenant, 'a'));
-    await appendVia(app, partitionId, mkEvent(tenant, 'b'));
+    await appendReal(tenant, 'a');
+    await appendReal(tenant, 'b');
     const before = await su
       .selectFrom('audit.audit_chain_heads')
       .selectAll()
       .where('partition_id', '=', partitionId)
       .executeTakeFirstOrThrow();
-    // Corrupt the (non-evidence) allocator state as superuser, then rebuild.
     await sql`update audit.audit_chain_heads set next_seq = 999, head_hash = repeat('a', 64) where partition_id = ${partitionId}`.execute(su);
     await sql`select audit.rebuild_chain_heads()`.execute(su);
     const after = await su
@@ -186,18 +154,106 @@ describe('allocator is reconstructable from the ledger (correction #3)', () => {
   });
 });
 
-describe('tamper response (correction #4)', () => {
-  it('detects tampering, freezes the partition, raises an incident, refuses new appends and re-sealing', async () => {
+describe('tamper response — REAL AuditService.verifyPartition()', () => {
+  it('detects tampering, freezes + records the incident ATOMICALLY, refuses appends and sealing', async () => {
     const tenant = uuidv7();
     const partitionId = `tenant:${tenant}`;
-    for (let i = 1; i <= 3; i += 1) await appendVia(app, partitionId, mkEvent(tenant, `t.${i}`));
+    for (let i = 1; i <= 3; i += 1) await appendReal(tenant, `t.${i}`);
 
-    // Simulate out-of-band tampering: disable the guard trigger as superuser.
+    // Out-of-band tampering (superuser disables the guard trigger).
     await sql`alter table audit.audit_events disable trigger audit_events_append_only`.execute(su);
     await sql`update audit.audit_events set event_jcs = replace(event_jcs, '"t.2"', '"TAMPERED"') where partition_id = ${partitionId} and audit_seq = 2`.execute(su);
     await sql`alter table audit.audit_events enable trigger audit_events_append_only`.execute(su);
 
-    // Verify (as the app would): recompute chain.
+    const report = await audit.verifyPartition(partitionId);
+    expect(report.ok).toBe(false);
+    expect(report.brokenAtSeq).toBe(2);
+    expect(report.incidentId).not.toBeNull();
+
+    // Freeze and incident landed together (the definer port is atomic).
+    const head = await su
+      .selectFrom('audit.audit_chain_heads').selectAll()
+      .where('partition_id', '=', partitionId).executeTakeFirstOrThrow();
+    expect(head.frozen).toBe(true);
+    const incidents = await su
+      .selectFrom('audit.integrity_incidents').selectAll()
+      .where('partition_id', '=', partitionId).execute();
+    expect(incidents).toHaveLength(1);
+
+    // New appends fail closed; the REAL sealer refuses the tampered range.
+    await expect(appendReal(tenant, 'after-tamper')).rejects.toThrow(/frozen/);
+    const seal = await audit.sealPartition(partitionId, 'test-sealer');
+    expect(seal.sealed).toBe(false);
+    expect(seal.reason).toMatch(/verification failed|integrity incident|frozen/);
+  });
+});
+
+describe('mandated 10 — concurrent append vs REAL verify/seal', () => {
+  it('an append storm never yields a false tamper verdict, and every seal covers exactly a verified head', async () => {
+    const tenant = uuidv7();
+    const partitionId = `tenant:${tenant}`;
+    await appendReal(tenant, 'seed');
+
+    const APPENDERS = 6;
+    const PER_APPENDER = 10;
+    let appended = 1;
+    const appenders = Array.from({ length: APPENDERS }, (_, a) =>
+      (async () => {
+        for (let i = 0; i < PER_APPENDER; i += 1) {
+          await appendReal(tenant, `storm.${a}.${i}`);
+          appended += 1;
+        }
+      })(),
+    );
+
+    const verifyReports: Array<{ ok: boolean; checked: number }> = [];
+    const sealResults: Array<{ sealed: boolean; reason: string }> = [];
+    const checker = (async () => {
+      // Interleave verifications and seals with the storm.
+      for (let round = 0; round < 8; round += 1) {
+        verifyReports.push(await audit.verifyPartition(partitionId));
+        sealResults.push(await audit.sealPartition(partitionId, `sealer-${round}`));
+      }
+    })();
+
+    await Promise.all([...appenders, checker]);
+
+    // No verification under concurrency ever produced a false tamper verdict.
+    for (const r of verifyReports) expect(r.ok).toBe(true);
+    // Seals either advanced or honestly reported nothing new — never failed.
+    for (const s of sealResults) {
+      expect(s.sealed || s.reason === 'nothing new to seal').toBe(true);
+    }
+
+    // Final state: full chain verifies; seals are contiguous, non-overlapping,
+    // and the last seal ends at a head that existed when it was verified.
+    const final = await audit.verifyPartition(partitionId);
+    expect(final.ok).toBe(true);
+    expect(final.checked).toBe(1 + APPENDERS * PER_APPENDER);
+
+    const seals = await su
+      .selectFrom('audit.audit_seals').selectAll()
+      .where('partition_id', '=', partitionId)
+      .orderBy('range_start_seq').execute();
+    expect(seals.length).toBeGreaterThan(0);
+    let expectedStart = 1;
+    for (const s of seals) {
+      expect(Number(s.range_start_seq)).toBe(expectedStart);
+      expect(Number(s.range_end_seq)).toBeGreaterThanOrEqual(Number(s.range_start_seq));
+      expectedStart = Number(s.range_end_seq) + 1;
+      // The sealed head hash is exactly the row hash of the sealed end row —
+      // i.e. the head that was verified under the lock.
+      const endRow = await su
+        .selectFrom('audit.audit_events')
+        .select(['row_hash'])
+        .where('partition_id', '=', partitionId)
+        .where('audit_seq', '=', Number(s.range_end_seq))
+        .executeTakeFirstOrThrow();
+      expect(s.head_hash).toBe(endRow.row_hash);
+    }
+    expect(expectedStart - 1).toBeLessThanOrEqual(1 + APPENDERS * PER_APPENDER);
+
+    // Full verification of the final chain end-to-end (recompute from genesis).
     const rows = (await su
       .selectFrom('audit.audit_events')
       .select(['audit_seq', 'event', 'previous_hash', 'row_hash'])
@@ -205,31 +261,10 @@ describe('tamper response (correction #4)', () => {
       .orderBy('audit_seq')
       .execute()) as Array<{ audit_seq: string; event: AuditEventBody; previous_hash: string; row_hash: string }>;
     let prev = GENESIS_HASH;
-    let brokenAt: number | null = null;
     for (const r of rows) {
-      const recomputed = auditRowHash({ partitionId, auditSeq: Number(r.audit_seq), previousHash: prev, event: r.event });
-      if (recomputed !== r.row_hash) {
-        brokenAt = Number(r.audit_seq);
-        break;
-      }
-      prev = r.row_hash;
+      expect(r.previous_hash).toBe(prev);
+      prev = auditRowHash({ partitionId, auditSeq: Number(r.audit_seq), previousHash: prev, event: r.event });
+      expect(prev).toBe(r.row_hash);
     }
-    expect(brokenAt).toBe(2);
-
-    // Freeze + incident (what AuditService.verifyPartition does on detection).
-    await sql`select audit.freeze_partition(${partitionId})`.execute(app);
-    await app
-      .insertInto('audit.integrity_incidents')
-      .values({
-        id: uuidv7(),
-        partition_id: partitionId,
-        range_start_seq: 2,
-        range_end_seq: 3,
-        details: JSON.stringify({ broken_at_seq: 2, note: 'test tamper fixture' }),
-      })
-      .execute();
-
-    // New appends fail closed (EYE-AUD-001 semantics at the pipeline).
-    await expect(appendVia(app, partitionId, mkEvent(tenant, 'after-tamper'))).rejects.toThrow(/frozen/);
   });
 });

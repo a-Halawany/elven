@@ -36,19 +36,35 @@ export interface EyeRequest extends Request {
   eyeCorrelationId?: string;
 }
 
-/** Bounded intake: at most N security-intake writes per minute per process. */
+/**
+ * Bounded intake: at most N security-intake writes per minute per process.
+ * R3: rate limiting AGGREGATES — excess failures are counted, and the count of
+ * suppressed failures since the last admitted write rides on the next admitted
+ * event (suppressed_since_last). Drops are never silently erased.
+ */
 class IntakeLimiter {
   private windowStart = Date.now();
   private count = 0;
+  private suppressed = 0;
   constructor(private readonly maxPerMinute = 120) {}
-  allow(): boolean {
+  admit(): { allowed: boolean; suppressedSinceLast: number } {
     const now = Date.now();
     if (now - this.windowStart > 60_000) {
       this.windowStart = now;
       this.count = 0;
     }
     this.count += 1;
-    return this.count <= this.maxPerMinute;
+    if (this.count > this.maxPerMinute) {
+      this.suppressed += 1;
+      return { allowed: false, suppressedSinceLast: this.suppressed };
+    }
+    const suppressedSinceLast = this.suppressed;
+    this.suppressed = 0;
+    return { allowed: true, suppressedSinceLast };
+  }
+  /** An admitted write failed — its suppressed count must not be lost. */
+  restore(suppressedSinceLast: number): void {
+    this.suppressed += suppressedSinceLast;
   }
 }
 const intakeLimiter = new IntakeLimiter();
@@ -61,7 +77,8 @@ export async function recordSecurityFailure(
   correlationId: string,
   diagnostics: string[],
 ): Promise<void> {
-  if (!intakeLimiter.allow()) return; // bounded — never a ledger-flooding vector
+  const gate = intakeLimiter.admit();
+  if (!gate.allowed) return; // bounded — never a ledger-flooding vector; drop is COUNTED above
   try {
     await audit.securityIntake({
       failureClass,
@@ -70,9 +87,12 @@ export async function recordSecurityFailure(
       route: req.path,
       method: req.method,
       diagnostics,
+      suppressedSinceLast: gate.suppressedSinceLast,
     });
   } catch {
-    // Intake failure must not mask the original rejection; the request still fails closed.
+    // Intake failure must not mask the original rejection; the request still
+    // fails closed — and the suppressed count is restored, not erased.
+    intakeLimiter.restore(gate.suppressedSinceLast + 1);
   }
 }
 

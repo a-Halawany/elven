@@ -5,12 +5,9 @@
  * commit pipeline. All queries run inside a transaction carrying the RLS
  * scope context (SET LOCAL from the resolved — never client-claimed — scope).
  */
-import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'kysely';
-import { APP_DB } from '../shared/shared.module.js';
-import type { Db, Tx } from '../shared/db.js';
+import { Injectable } from '@nestjs/common';
+import type { Tx } from '../shared/db.js';
 import { newId } from '../shared/ids.js';
-import type { ScopeContext } from '../shared/scope.js';
 
 export interface TenantRecord {
   id: string;
@@ -24,17 +21,8 @@ export interface TenantRecord {
 
 @Injectable()
 export class TenancyService {
-  constructor(@Inject(APP_DB) private readonly db: Db) {}
-
-  /** Apply the RLS scope context inside a transaction (fail closed when absent). */
-  async withScope<T>(ctx: ScopeContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.db.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.scope', ${ctx.scope}, true)`.execute(tx);
-      await sql`select set_config('eye.tenant_id', ${ctx.tenantId ?? ''}, true)`.execute(tx);
-      await sql`select set_config('eye.domain_id', ${ctx.domainId ?? ''}, true)`.execute(tx);
-      return fn(tx);
-    });
-  }
+  // Scope context is established exclusively by the commit pipeline via the
+  // signed eye_set_context port (R1a); every method here takes the pipeline tx.
 
   /** Governed creation: draft + activation in one reviewed admin action (Phase 0 profile). */
   async createTenant(tx: Tx, actor: string, name: string, residency: string): Promise<TenantRecord> {

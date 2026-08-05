@@ -18,6 +18,7 @@ export default function PrincipalsPage() {
   const [error, setError] = useState<Err>(null);
   const [receipt, setReceipt] = useState<Rcpt>(null);
   const [displayName, setDisplayName] = useState('');
+  const [loginName, setLoginName] = useState('');
   const [password, setPassword] = useState('');
   const [roleCode, setRoleCode] = useState('tenant_admin');
 
@@ -40,7 +41,7 @@ export default function PrincipalsPage() {
 
   async function createPrincipal() {
     setError(null);
-    const payload = { kind: 'human', displayName, password, roleCode };
+    const payload = { kind: 'human', displayName, loginName, password, roleCode };
     const r = await call<{ principal: { principalId: string }; receipt: { policyDecisionId: string; auditSeq: number } }>(
       `/v1/tenants/${tenantId}/principals`,
       { scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN' },
@@ -48,7 +49,7 @@ export default function PrincipalsPage() {
     );
     if (r.ok && r.data !== undefined) {
       setReceipt(r.data.receipt);
-      setDisplayName(''); setPassword('');
+      setDisplayName(''); setLoginName(''); setPassword('');
       await refresh();
     } else setError(r.error ?? null);
   }
@@ -69,12 +70,13 @@ export default function PrincipalsPage() {
           <Panel title={t('principals.create', locale)}>
             <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap' }}>
               <input style={inputStyle} placeholder="display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              <input style={inputStyle} placeholder="login name (unique)" value={loginName} onChange={(e) => setLoginName(e.target.value)} />
               <input style={inputStyle} type="password" placeholder="password (min 12)" value={password} onChange={(e) => setPassword(e.target.value)} />
               <select style={inputStyle} value={roleCode} onChange={(e) => setRoleCode(e.target.value)}>
                 <option value="tenant_admin">tenant_admin</option>
                 <option value="auditor">auditor</option>
               </select>
-              <button style={buttonStyle} disabled={displayName.length < 2 || password.length < 12} onClick={() => void createPrincipal()}>
+              <button style={buttonStyle} disabled={displayName.length < 2 || loginName.length < 3 || password.length < 12} onClick={() => void createPrincipal()}>
                 {t('principals.create', locale)}
               </button>
             </div>

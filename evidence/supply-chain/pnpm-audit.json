@@ -1,128 +1,16 @@
-[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides". See https://pnpm.io/settings for the new home of each setting.
 {
-  "advisories": {
-    "1117015": {
-      "findings": [
-        {
-          "version": "8.4.31",
-          "paths": [
-            "apps__web>next>postcss"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1117015,
-      "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
-      "module_name": "postcss",
-      "vulnerable_versions": "<8.5.10",
-      "patched_versions": ">=8.5.10",
-      "severity": "moderate",
-      "cwe": "CWE-79",
-      "github_advisory_id": "GHSA-qx2v-qp2m-jg93",
-      "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93"
-    },
-    "1124066": {
-      "findings": [
-        {
-          "version": "0.34.5",
-          "paths": [
-            "apps__web>next>sharp"
-          ],
-          "dev": false,
-          "optional": true,
-          "bundled": false
-        }
-      ],
-      "id": 1124066,
-      "title": "sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591",
-      "module_name": "sharp",
-      "vulnerable_versions": "<0.35.0",
-      "patched_versions": ">=0.35.0",
-      "severity": "high",
-      "cwe": "CWE-1395",
-      "github_advisory_id": "GHSA-f88m-g3jw-g9cj",
-      "url": "https://github.com/advisories/GHSA-f88m-g3jw-g9cj"
-    },
-    "1124252": {
-      "findings": [
-        {
-          "version": "8.4.31",
-          "paths": [
-            "apps__web>next>postcss"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1124252,
-      "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
-      "module_name": "postcss",
-      "vulnerable_versions": "<=8.5.11",
-      "patched_versions": ">=8.5.12",
-      "severity": "high",
-      "cwe": "CWE-22, CWE-200",
-      "github_advisory_id": "GHSA-6g55-p6wh-862q",
-      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q"
-    },
-    "1124288": {
-      "findings": [
-        {
-          "version": "8.4.31",
-          "paths": [
-            "apps__web>next>postcss"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1124288,
-      "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
-      "module_name": "postcss",
-      "vulnerable_versions": "<=8.5.17",
-      "patched_versions": ">=8.5.18",
-      "severity": "high",
-      "cwe": "CWE-22",
-      "github_advisory_id": "GHSA-r28c-9q8g-f849",
-      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849"
-    },
-    "1130709": {
-      "findings": [
-        {
-          "version": "8.4.31",
-          "paths": [
-            "apps__web>next>postcss"
-          ],
-          "dev": false,
-          "optional": false,
-          "bundled": false
-        }
-      ],
-      "id": 1130709,
-      "title": "PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset",
-      "module_name": "postcss",
-      "vulnerable_versions": "<=8.5.22",
-      "patched_versions": ">=8.5.23",
-      "severity": "moderate",
-      "cwe": "CWE-22, CWE-200",
-      "github_advisory_id": "GHSA-fxqj-rqcc-2cmp",
-      "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp"
-    }
-  },
+  "advisories": {},
   "metadata": {
     "vulnerabilities": {
       "info": 0,
       "low": 0,
-      "moderate": 2,
-      "high": 3,
+      "moderate": 0,
+      "high": 0,
       "critical": 0
     },
-    "dependencies": 180,
-    "devDependencies": 123,
-    "optionalDependencies": 77,
-    "totalDependencies": 348
+    "dependencies": 182,
+    "devDependencies": 120,
+    "optionalDependencies": 79,
+    "totalDependencies": 349
   }
 }

@@ -1,0 +1,63 @@
+/**
+ * Local secret material loader (remediation R7).
+ *
+ * Single supported handoff channel for generated secrets: the 0600, gitignored
+ * .eye-local/env file at the repo root. Caller-supplied environment values
+ * ALWAYS win; any key missing from both the environment and the file is
+ * generated here (cryptographically random, per-environment, never committed,
+ * never a fixed literal) and persisted so subsequent processes (API, tests,
+ * demo, Playwright) share the same material.
+ *
+ * Used by: scripts/demo.sh (bash equivalent), vitest setup files,
+ * playwright.config.ts, and the verification harness.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+const GENERATED_KEYS = [
+  'EYE_DB_PASSWORD',
+  'EYE_DB_APP_PASSWORD',
+  'EYE_DB_ALLOCATOR_PASSWORD',
+  'EYE_DB_SYSTEM_PASSWORD',
+  'EYE_REDIS_PASSWORD',
+  'EYE_IDENTITY_JWT_SECRET',
+  // Ephemeral per-environment test credentials (never fixed literals):
+  'EYE_TEST_BOOTSTRAP_PASSWORD',
+  'EYE_TEST_ADMIN_PASSWORD',
+];
+
+const gen = () => randomBytes(24).toString('base64url');
+
+export function loadLocalEnv(root = ROOT) {
+  const dir = join(root, '.eye-local');
+  const file = join(dir, 'env');
+  const stored = {};
+  if (existsSync(file)) {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line);
+      if (m) stored[m[1]] = m[2];
+    }
+  }
+  let dirty = false;
+  for (const key of GENERATED_KEYS) {
+    if (process.env[key]) continue; // caller-supplied environment wins
+    if (stored[key] === undefined) {
+      stored[key] = gen();
+      dirty = true;
+    }
+    process.env[key] = stored[key];
+  }
+  if (dirty) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const body = Object.entries(stored).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
+    writeFileSync(file, body, { mode: 0o600 });
+    chmodSync(file, 0o600);
+  }
+  // Migrate role uses the compose superuser password unless told otherwise.
+  process.env['EYE_DB_MIGRATE_PASSWORD'] ??= process.env['EYE_DB_PASSWORD'];
+  return { ...process.env };
+}

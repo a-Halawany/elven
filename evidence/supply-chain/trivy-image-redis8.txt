@@ -1,0 +1,20 @@
+2026-08-05T18:05:45+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-08-05T18:05:45+03:00	INFO	[secret] Secret scanning is enabled
+2026-08-05T18:05:45+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-08-05T18:05:45+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-08-05T18:05:45+03:00	INFO	Detected OS	family="alpine" version="3.23.5"
+2026-08-05T18:05:45+03:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.23" repository="3.23" pkg_num=22
+2026-08-05T18:05:45+03:00	INFO	Number of language-specific files	num=0
+
+Report Summary
+
+┌───────────────────────────────────────────────────────────────────────────────┬────────┬─────────────────┬─────────┐
+│                                    Target                                     │  Type  │ Vulnerabilities │ Secrets │
+├───────────────────────────────────────────────────────────────────────────────┼────────┼─────────────────┼─────────┤
+│ redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 │ alpine │        0        │    -    │
+│ (alpine 3.23.5)                                                               │        │                 │         │
+└───────────────────────────────────────────────────────────────────────────────┴────────┴─────────────────┴─────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+

@@ -8,7 +8,8 @@
 
 ```yaml
 exception_id:            EXC-P0-001
-requirement_ids:         [INF-ST-03, DR-11, SC-08 (separate protection), IA-58-003]
+requirement_ids:         [IA-58-003]
+related_architecture_ids: [INF-ST-03, DR-11, SC-08 (separate protection)]   # Volume 3/6 architecture identifiers, kept separate from requirement IDs
 invariant_ids:           [C-036 (semantics NOT waived), C-043 (resilience risk bounded)]
 title:                   Audit chains live in the primary PostgreSQL cluster (separate schema + dedicated roles) instead of an independent audit store/failure domain
 owner:                   Founding engineer (this project)
@@ -100,7 +101,10 @@ status:                  open
 
 ```yaml
 exception_id:            EXC-P0-004
-requirement_ids:         [IA-03-006, ES-14 (parity fixtures across profiles), PR-*-004]
+# CORRECTED (invariant-remediation gate): wildcard "PR-*-004" and chapter-family
+# "ES-14" replaced with exact identifiers. The -004 parity requirement exists
+# once per Volume 8 capability chapter; the family is enumerated exhaustively.
+requirement_ids:         [IA-03-006, ES-14-001, ES-14-005, PR-01-004, PR-02-004, PR-03-004, PR-04-004, PR-05-004, PR-06-004, PR-07-004, PR-08-004, PR-09-004, PR-10-004, PR-11-004, PR-12-004, PR-13-004, PR-14-004, PR-15-004, PR-16-004, PR-17-004, PR-18-004, PR-19-004, PR-20-004, PR-21-004, PR-22-004, PR-23-004, PR-24-004, PR-25-004, PR-26-004, PR-27-004, PR-28-004, PR-29-004, PR-30-004, PR-31-004, PR-32-004, PR-33-004, PR-34-004, PR-35-004, PR-36-004, PR-37-004, PR-38-004, PR-39-004, PR-40-004, PR-41-004, PR-42-004, PR-43-004, PR-44-004, PR-45-004, PR-46-004, PR-47-004, PR-48-004, PR-49-004, PR-50-004, PR-51-004, PR-52-004, PR-53-004, PR-54-004, PR-55-004, PR-56-004, PR-57-004, PR-58-004, PR-59-004, PR-60-004, PR-61-004, PR-62-004, PR-63-004, PR-64-004, PR-65-004, PR-66-004, PR-67-004, PR-68-004, PR-69-004, PR-70-004, PR-71-004, PR-72-004]
 invariant_ids:           [C-042 (parity untested, not redefined)]
 title:                   Only the local Docker Compose profile exists; parity fixtures are written profile-agnostically but exercised on one profile
 owner:                   Founding engineer (this project)
@@ -172,7 +176,7 @@ expiry_date:             2026-12-31
 expiry_milestone:        Before first external deployment
 exit_criteria:           Pluggable scanning engine integrated + quarantine verdicts recorded as evidence
 required_evidence:       Engine integration tests; verdict audit records; corpus pass results
-status:                  proposed (opens only upon PHASE 1 approval)
+status:                  proposed   # controlled enum {proposed, open, closed, expired}; becomes open only upon PHASE 1 approval
 ```
 
 ## EXC-P1-002 — Evidence vault on local Docker volumes — PROPOSED
@@ -198,5 +202,5 @@ expiry_date:             2026-12-31
 expiry_milestone:        First multi-profile milestone
 exit_criteria:           EvidenceStore adapter for a replicated object store + restore/reconciliation exercise
 required_evidence:       Cross-store round-trip + digest verification + recovery exercise records
-status:                  proposed (opens only upon PHASE 1 approval)
+status:                  proposed   # controlled enum {proposed, open, closed, expired}; becomes open only upon PHASE 1 approval
 ```
