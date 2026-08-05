@@ -14,3 +14,7 @@ sbom/
 # transient test-run state — never tracked as evidence
 test-results/
 playwright-report/
+
+# Gate-bundle artifacts that DESCRIBE the committed SHA (generated post-commit)
+evidence/git-metadata.txt
+evidence/tracked-source.sha256
