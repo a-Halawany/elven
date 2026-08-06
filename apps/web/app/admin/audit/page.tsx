@@ -57,7 +57,8 @@ export default function AuditPage() {
     setReport(null);
     const r = await call<{ report: VerifyReport }>(
       '/v1/platform/audit/verify',
-      { scope: 'PLATFORM', action: 'audit.read', object_type: 'AUD', side_effect_class: 'none' },
+      // Gate-2 §6: verification is its OWN governed action, not audit.read.
+      { scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none' },
       { partitionId: partition },
     );
     if (r.ok && r.data !== undefined) setReport(r.data.report);

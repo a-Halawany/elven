@@ -3,82 +3,148 @@
   "repository": "the-eye",
   "constitution_edition": "Volume 0 v1.0 (frozen founding baseline, 2026-08-01)",
   "architecture_baseline": "Volume 3 v1.0 (ADR-0001..ADR-0020)",
-  "phase": "Phase 0 — Foundation & Governance Spine",
+  "phase": "Phase 0 \u2014 Foundation & Governance Spine",
   "units": [
     {
       "path": "packages/contracts",
-      "component_ids": ["CP-OBJ-00"],
-      "description": "Canonical envelope, header, error catalog, truth-state model, JCS canonicalization, audit hash structure — language-neutral source of truth",
-      "controls": ["ES-20", "ES-21", "ES-24", "ADR-P0-05", "ADR-P0-06", "ADR-P0-09", "ADR-P0-13"],
+      "component_ids": [
+        "CP-OBJ-00"
+      ],
+      "description": "Canonical envelope, header, error catalog, truth-state model, JCS canonicalization, audit hash structure \u2014 language-neutral source of truth",
+      "controls": [
+        "ES-20",
+        "ES-21",
+        "ES-24",
+        "ADR-P0-05",
+        "ADR-P0-06",
+        "ADR-P0-09",
+        "ADR-P0-13"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "packages/tokens",
-      "component_ids": ["CP-UX-01"],
-      "description": "Volume 9 Appendix A design-token registry → CSS variables + Tailwind semantic aliases",
-      "controls": ["UX-ADR-010", "ADR-P0-14"],
+      "component_ids": [
+        "CP-UX-01"
+      ],
+      "description": "Volume 9 Appendix A design-token registry \u2192 CSS variables + Tailwind semantic aliases",
+      "controls": [
+        "UX-ADR-010",
+        "ADR-P0-14"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/identity",
-      "component_ids": ["CP-IAM-01"],
+      "component_ids": [
+        "CP-IAM-01"
+      ],
       "description": "Principals (human/workload), credentials, sessions, federation port, break-glass",
-      "controls": ["ES-49", "IA-49", "ADR-P0-04"],
+      "controls": [
+        "ES-49",
+        "IA-49",
+        "ADR-P0-04"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/tenancy",
-      "component_ids": ["CP-TEN-01"],
+      "component_ids": [
+        "CP-TEN-01"
+      ],
       "description": "Tenants, Customer Intelligence Domains, scope resolution, governed lifecycle",
-      "controls": ["ES-08", "ES-51", "ADR-0006", "ADR-P0-04"],
+      "controls": [
+        "ES-08",
+        "ES-51",
+        "ADR-0006",
+        "ADR-P0-04"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/policy",
-      "component_ids": ["CP-POL-01"],
+      "component_ids": [
+        "CP-POL-01"
+      ],
       "description": "PDP + policy bundles + POL records; PEP guard lives in shared; internal append port",
-      "controls": ["ES-50", "ES-13", "ADR-P0-10"],
+      "controls": [
+        "ES-50",
+        "ES-13",
+        "ADR-P0-10"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/audit",
-      "component_ids": ["CP-AUD-01"],
+      "component_ids": [
+        "CP-AUD-01"
+      ],
       "description": "Hash-chained append-only audit ledger, chain heads allocator, seals, verifier, security intake; internal append port",
-      "controls": ["ES-55", "C-036", "ADR-P0-09"],
+      "controls": [
+        "ES-55",
+        "C-036",
+        "ADR-P0-09"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/objects",
-      "component_ids": ["CP-OBJ-01"],
+      "component_ids": [
+        "CP-OBJ-01"
+      ],
       "description": "Canonical object service, schema registry, transactional outbox, commit pipeline",
-      "controls": ["ES-24", "ES-26", "ES-27", "ES-28", "ADR-P0-05", "ADR-P0-07", "ADR-P0-08", "ADR-P0-12"],
+      "controls": [
+        "ES-24",
+        "ES-26",
+        "ES-27",
+        "ES-28",
+        "ADR-P0-05",
+        "ADR-P0-07",
+        "ADR-P0-08",
+        "ADR-P0-12"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/config",
-      "component_ids": ["CP-CFG-01"],
+      "component_ids": [
+        "CP-CFG-01"
+      ],
       "description": "Schema-validated versioned eye.* configuration",
-      "controls": ["ES-66", "ADR-P0-15"],
+      "controls": [
+        "ES-66",
+        "ADR-P0-15"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/api/src/health",
-      "component_ids": ["CP-OPS-01"],
-      "description": "Health/readiness — classified telemetry-only (documented, not a bypass)",
-      "controls": ["ADR-P0-08"],
+      "component_ids": [
+        "CP-OPS-01"
+      ],
+      "description": "Health/readiness \u2014 classified telemetry-only (documented, not a bypass)",
+      "controls": [
+        "ADR-P0-08"
+      ],
       "owner": "founding-engineer"
     },
     {
       "path": "apps/web",
-      "component_ids": ["CP-UX-02"],
+      "component_ids": [
+        "CP-UX-02"
+      ],
       "description": "WS-19 Platform and Customer Administration shell (access mode, never a truth store)",
-      "controls": ["ES-04-004", "UX-ADR-017", "ADR-P0-14"],
+      "controls": [
+        "ES-04-004",
+        "UX-ADR-017",
+        "ADR-P0-14"
+      ],
       "owner": "founding-engineer"
     }
   ],
   "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers.",
   "pinned_images": {
-    "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
+    "$comment": "Remediation R7/R8 \u2014 local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
     "postgres": {
       "human_tag": "postgres:18-alpine",
       "digest": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
@@ -91,8 +157,19 @@
     }
   },
   "sbom_generator": {
-    "$comment": "Remediation R8 — validated SBOM generator, pinned and tracked; CI fails when the produced SBOM has zero components.",
+    "$comment": "Remediation R8 \u2014 validated SBOM generator, pinned and tracked; CI fails when the produced SBOM has zero components.",
     "tool": "scripts/generate-sbom.mjs (lockfile-driven CycloneDX 1.6, tracked in-repo)",
     "input": "pnpm-lock.yaml"
-  }
+  },
+  "runtime_authorities": {
+    "$comment": "Gate-2 G1 \u2014 one database credential per authority. A compromise of the ordinary request path cannot reach any authoritative capability. The break-glass recovery role is deliberately absent from every application pool.",
+    "eye_app": "RLS-governed SELECT only",
+    "eye_commit": "governed business writes + bound POL/AUD ports + canonical admission + outbox enqueue",
+    "eye_identity": "identity/credential/session mutation + identity-flow evidence",
+    "eye_publisher": "outbox claim + compare-and-set publication acknowledgement only",
+    "eye_verifier": "audit verification, sealing and tamper evidence",
+    "eye_recovery": "break-glass chain-head rebuild \u2014 no application pool loads this credential",
+    "eye_audit_allocator": "chain-head allocation (definer-owned)"
+  },
+  "migration_range": "0001-0010 (0009 and 0010 are governed forward migrations; 0001-0008 unchanged)"
 }

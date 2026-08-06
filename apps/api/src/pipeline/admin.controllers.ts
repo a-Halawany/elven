@@ -55,6 +55,7 @@ export class AdminControllers {
     const out = await this.pipeline.write(envelope, principal, {
       scope: 'TENANT', tenantId, domainId: null,
       action: 'identity.principal.create', objectType: 'PRN', objectId: null,
+      authority: 'identity',
     }, async (tx) => {
       const created = await this.principals.createPrincipal(tx, {
         kind: p.kind ?? 'human',
@@ -122,19 +123,36 @@ export class AdminControllers {
     return { events: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq }, obligationsApplied: out.obligations };
   }
 
-  /** Chain verification (platform authority). Verification results are audited internally. */
+  /**
+   * Chain verification — governed as its OWN action `audit.verify` (Gate-2 §6),
+   * not as `audit.read`. The requested partition, the authorization decision,
+   * the verification result (or failure) and the resulting evidence are all
+   * recorded; a malformed request goes through the centralized durable
+   * rejection path rather than throwing without evidence.
+   */
   @Post('/platform/audit/verify')
   async auditVerify(@Req() req: EyeRequest, @Body() body: { payload?: { partitionId?: string } }) {
     const { envelope, principal } = ctx(req);
+    const route = {
+      scope: 'PLATFORM' as const, tenantId: null, domainId: null,
+      action: 'audit.verify', objectType: 'AUD', objectId: null,
+    };
     const partitionId = body.payload?.partitionId;
-    if (typeof partitionId !== 'string') {
-      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'partitionId required'), 400);
+    if (typeof partitionId !== 'string' || partitionId.length === 0) {
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'partitionId required',
+      );
     }
-    const out = await this.pipeline.consequentialRead(envelope, principal, {
-      scope: 'PLATFORM', tenantId: null, domainId: null,
-      action: 'audit.read', objectType: 'AUD', objectId: null,
-    }, async () => null);
-    const report = await this.audit.verifyPartition(partitionId);
-    return { report, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+    // The verification itself runs inside the governed read so the decision and
+    // the outcome are bound to one another in the evidence.
+    const out = await this.pipeline.consequentialRead(envelope, principal, route, async () => {
+      const report = await this.audit.verifyPartition(partitionId as string);
+      return report;
+    });
+    return {
+      report: out.result,
+      receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq },
+      obligationsApplied: out.obligations,
+    };
   }
 }

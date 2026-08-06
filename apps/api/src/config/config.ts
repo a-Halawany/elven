@@ -17,10 +17,17 @@ const schema = z.object({
   'eye.db.app_password': z.string().min(1),
   'eye.db.allocator_user': z.string().default('eye_audit_allocator'),
   'eye.db.allocator_password': z.string().min(1),
-  // System workload role (bootstrap, outbox publisher, audit verifier, auth
-  // flows) — the ONLY role able to establish PLATFORM system context (R1a).
-  'eye.db.system_user': z.string().default('eye_system'),
-  'eye.db.system_password': z.string().min(1),
+  // Gate-2 least-privilege runtime roles (migration 0009). Each authority is a
+  // separate credential; the BREAK-GLASS RECOVERY role is deliberately absent
+  // from this schema so no application pool can ever load it.
+  'eye.db.commit_user': z.string().default('eye_commit'),
+  'eye.db.commit_password': z.string().min(1),
+  'eye.db.identity_user': z.string().default('eye_identity'),
+  'eye.db.identity_password': z.string().min(1),
+  'eye.db.publisher_user': z.string().default('eye_publisher'),
+  'eye.db.publisher_password': z.string().min(1),
+  'eye.db.verifier_user': z.string().default('eye_verifier'),
+  'eye.db.verifier_password': z.string().min(1),
   'eye.db.migrate_user': z.string().default('eye'),
   'eye.db.migrate_password': z.string().min(1),
   'eye.redis.host': z.string().default('localhost'),
@@ -50,8 +57,14 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_DB_APP_PASSWORD: 'eye.db.app_password',
   EYE_DB_ALLOCATOR_USER: 'eye.db.allocator_user',
   EYE_DB_ALLOCATOR_PASSWORD: 'eye.db.allocator_password',
-  EYE_DB_SYSTEM_USER: 'eye.db.system_user',
-  EYE_DB_SYSTEM_PASSWORD: 'eye.db.system_password',
+  EYE_DB_COMMIT_USER: 'eye.db.commit_user',
+  EYE_DB_COMMIT_PASSWORD: 'eye.db.commit_password',
+  EYE_DB_IDENTITY_USER: 'eye.db.identity_user',
+  EYE_DB_IDENTITY_PASSWORD: 'eye.db.identity_password',
+  EYE_DB_PUBLISHER_USER: 'eye.db.publisher_user',
+  EYE_DB_PUBLISHER_PASSWORD: 'eye.db.publisher_password',
+  EYE_DB_VERIFIER_USER: 'eye.db.verifier_user',
+  EYE_DB_VERIFIER_PASSWORD: 'eye.db.verifier_password',
   EYE_REDIS_HOST: 'eye.redis.host',
   EYE_REDIS_PORT: 'eye.redis.port',
   EYE_REDIS_PASSWORD: 'eye.redis.password',

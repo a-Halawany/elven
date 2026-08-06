@@ -41,6 +41,13 @@ jobs:
             echo "EYE_DB_APP_PASSWORD=$(gen)"
             echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
             echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
+            echo "EYE_DB_COMMIT_PASSWORD=$(gen)"
+            echo "EYE_DB_IDENTITY_PASSWORD=$(gen)"
+            echo "EYE_DB_PUBLISHER_PASSWORD=$(gen)"
+            echo "EYE_DB_VERIFIER_PASSWORD=$(gen)"
+            echo "EYE_DB_RECOVERY_PASSWORD=$(gen)"
+            echo "EYE_TEST_BOOTSTRAP_PASSWORD=$(gen)"
+            echo "EYE_TEST_ADMIN_PASSWORD=$(gen)"
             echo "EYE_REDIS_PASSWORD=$(gen)"
             echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
           } >> "$GITHUB_ENV"
@@ -50,10 +57,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Module boundaries (ES-65-003, blocking)
         run: pnpm boundaries
-      - name: Typecheck
-        run: pnpm typecheck
-      - name: Build
-        run: pnpm build
+      # Gate-2 §10: typecheck runs BEFORE build and must pass from a genuinely
+      # clean checkout. Workspace packages expose their sources through the
+      # "development" export condition, so no pre-built dist is required.
+      # This step also asserts that no stale dist/.next/tsbuildinfo is present.
+      - name: Clean-source typecheck + build (blocking, real CI order)
+        run: bash scripts/verify-clean-typecheck.sh
       - name: Unit + conformance tests (golden fixtures)
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
@@ -89,6 +98,13 @@ jobs:
             echo "EYE_DB_APP_PASSWORD=$(gen)"
             echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
             echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
+            echo "EYE_DB_COMMIT_PASSWORD=$(gen)"
+            echo "EYE_DB_IDENTITY_PASSWORD=$(gen)"
+            echo "EYE_DB_PUBLISHER_PASSWORD=$(gen)"
+            echo "EYE_DB_VERIFIER_PASSWORD=$(gen)"
+            echo "EYE_DB_RECOVERY_PASSWORD=$(gen)"
+            echo "EYE_TEST_BOOTSTRAP_PASSWORD=$(gen)"
+            echo "EYE_TEST_ADMIN_PASSWORD=$(gen)"
             echo "EYE_REDIS_PASSWORD=$(gen)"
             echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
           } >> "$GITHUB_ENV"

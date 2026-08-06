@@ -14,12 +14,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import {
-  appDb, systemDb, superDb, seedTenant, seedDomain,
+  appDb, commitDb, identityDb, superDb, seedTenant, seedDomain,
   createPrincipalWithSession, withCtx, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 
 let app: AnyDb;
-let system: AnyDb;
+let commit: AnyDb;
+let identity: AnyDb;
 let su: AnyDb;
 
 let tenant = '';
@@ -35,7 +36,8 @@ let bAdmin: TestPrincipal; // domain B admin
 
 beforeAll(async () => {
   app = appDb();
-  system = systemDb();
+  commit = commitDb();
+  identity = identityDb();
   su = superDb();
   tenant = await seedTenant(su, 'iso-t');
   tenantOther = await seedTenant(su, 'iso-o');
@@ -43,10 +45,10 @@ beforeAll(async () => {
   domainB = await seedDomain(su, tenant, 'dom-b');
   domainOther = await seedDomain(su, tenantOther, 'dom-o');
 
-  platformAdmin = await createPrincipalWithSession(system, { scope: 'PLATFORM', roleCode: 'platform_admin', label: 'iso-p' });
-  tenantAdmin = await createPrincipalWithSession(system, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'iso-t' });
-  aAdmin = await createPrincipalWithSession(system, { scope: 'DOMAIN', tenantId: tenant, domainId: domainA, roleCode: 'domain_admin', label: 'iso-a' });
-  bAdmin = await createPrincipalWithSession(system, { scope: 'DOMAIN', tenantId: tenant, domainId: domainB, roleCode: 'domain_admin', label: 'iso-b' });
+  platformAdmin = await createPrincipalWithSession(identity, su, { scope: 'PLATFORM', roleCode: 'platform_admin', label: 'iso-p' });
+  tenantAdmin = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'iso-t' });
+  aAdmin = await createPrincipalWithSession(identity, su, { scope: 'DOMAIN', tenantId: tenant, domainId: domainA, roleCode: 'domain_admin', label: 'iso-a' });
+  bAdmin = await createPrincipalWithSession(identity, su, { scope: 'DOMAIN', tenantId: tenant, domainId: domainB, roleCode: 'domain_admin', label: 'iso-b' });
 
   // Seed one row per scoped table in EACH domain (A, B, other-tenant) through
   // domain contexts (writes) so write-isolation is exercised on the way in.
@@ -54,26 +56,23 @@ beforeAll(async () => {
     [aAdmin, tenant, domainA],
     [bAdmin, tenant, domainB],
   ] as const) {
-    await withCtx(app, who, 'DOMAIN', t, d, async (tx) => {
+    await withCtx(commit, who, 'DOMAIN', t, d, async (tx) => {
       await sql`insert into tenancy.lifecycle_events (id, scope, tenant_id, domain_id, event, actor, details)
         values (${uuidv7()}, 'DOMAIN', ${t}, ${d}, 'domain.test', ${'principal:' + who.principalId}, '{}')`.execute(tx);
-      await sql`insert into objects.object_outbox (id, scope, tenant_id, domain_id, event_type, payload, correlation_id, causation_id, status)
-        values (${uuidv7()}, 'DOMAIN', ${t}, ${d}, 'test.event', '{}', ${uuidv7()}, ${uuidv7()}, 'pending')`.execute(tx);
-      await sql`select policy.append_decision(${JSON.stringify({
-        id: uuidv7(), scope: 'DOMAIN', tenant_id: t, domain_id: d, decision: 'allow',
-        obligations: [], principal_id: `principal:${who.principalId}`, delegation_id: null,
-        action: 'test.action', object_type: 'CLM', object_id: null, purpose_id: 'test',
-        consequence_class: 'C1', environment: {}, input_digest: 'x'.repeat(64),
-        bundle_version: 'bundle-v1', exception_ref: null, expires_at: null,
-        revocation_state: 'none', reason: 'isolation fixture', correlation_id: uuidv7(),
-      })}::jsonb)`.execute(tx);
+      await sql`select objects.enqueue_event(${uuidv7()}::uuid, 'test.event', '{}'::jsonb,
+        ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+      await sql`select policy.commit_decision(
+        ${uuidv7()}::uuid, 'test.action', 'CLM', null::uuid, 'C1', 'allow', '[]'::jsonb,
+        ${'x'.repeat(64)}, 'bundle-v1', null, null, 'none', 'isolation fixture',
+        ${uuidv7()}::uuid, null, '{}'::jsonb)`.execute(tx);
     });
   }
 });
 
 afterAll(async () => {
   await app.destroy();
-  await system.destroy();
+  await commit.destroy();
+  await identity.destroy();
   await su.destroy();
 });
 
@@ -113,14 +112,17 @@ describe('mandated 1 — domain A vs domain B in the SAME tenant', () => {
     }
   });
 
-  it('domain A cannot WRITE rows labeled domain B (RLS WITH CHECK)', async () => {
+  it('domain A cannot WRITE rows labeled domain B (RLS WITH CHECK on the commit authority)', async () => {
+    // Run these on the COMMIT authority: the ordinary application role has no
+    // INSERT at all (proved in adversarial.test.ts), so the interesting question
+    // is whether the authoritative writer is still confined by RLS. It is.
     await expect(
-      withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
         sql`insert into tenancy.lifecycle_events (id, scope, tenant_id, domain_id, event, actor, details)
           values (${uuidv7()}, 'DOMAIN', ${tenant}, ${domainB}, 'domain.forged', 'principal:a', '{}')`.execute(tx)),
     ).rejects.toThrow(/row-level security|policy/i);
     await expect(
-      withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
         sql`insert into objects.object_outbox (id, scope, tenant_id, domain_id, event_type, payload, correlation_id, causation_id, status)
           values (${uuidv7()}, 'DOMAIN', ${tenant}, ${domainB}, 'forged.event', '{}', ${uuidv7()}, ${uuidv7()}, 'pending')`.execute(tx)),
     ).rejects.toThrow(/row-level security|policy/i);
@@ -170,26 +172,12 @@ describe('mandated 2 — tenant and platform boundaries stay intact', () => {
   });
 
   it('audit events written under a domain context are invisible to the sibling domain', async () => {
-    // Written via the real append port under domain A's signed context.
-    await withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
-      const head = (
-        await sql<{ seq: string; prev_hash: string }>`select * from audit.advance_chain_head(${'tenant:' + tenant})`.execute(tx)
-      ).rows[0]!;
-      const { auditRowHash } = await import('@eye/contracts');
-      const event = {
-        event_type: 'test.domain_a', outcome: 'success', scope: 'DOMAIN',
-        tenant_id: tenant, domain_id: domainA, actor: `principal:${aAdmin.principalId}`,
-        delegation_id: null, action: 'test.a', target_type: null, target_id: null,
-        target_version: null, purpose_id: 'test', policy_decision_id: null,
-        policy_version: null, result_code: 'OK', occurred_at: new Date().toISOString(),
-        clock_quality: 'trusted', correlation_id: uuidv7(), causation_id: null,
-        trace_id: null, request_digest: null, metadata: {},
-      };
-      const rowHash = auditRowHash({
-        partitionId: `tenant:${tenant}`, auditSeq: Number(head.seq),
-        previousHash: head.prev_hash, event: event as never,
-      });
-      await sql`select audit.append_event(${'tenant:' + tenant}, ${Number(head.seq)}, ${JSON.stringify(event)}::jsonb, ${head.prev_hash}, ${rowHash})`.execute(tx);
+    // Written via the REAL bound port under domain A's context: scope, tenant,
+    // domain and actor are all derived inside the trusted boundary.
+    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
+      await sql`select audit.commit_event('test.domain_a', 'test.a', 'success', 'OK',
+        null, null, null, null::uuid, null, ${uuidv7()}::uuid, null::uuid, null, null, null,
+        '{}'::jsonb)`.execute(tx);
     });
     const fromB = await withCtx(app, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
       sql`select * from audit.audit_events where event_type = 'test.domain_a'`.execute(tx));
@@ -200,32 +188,38 @@ describe('mandated 2 — tenant and platform boundaries stay intact', () => {
   });
 
   it('canonical objects: domain A rows are unreadable and unwritable from domain B', async () => {
-    await withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
-      await sql`insert into objects.canonical_objects (
-        object_id, object_type, tenant_id, domain_id, scope, object_version,
-        lifecycle_state, owning_component, accountable_owner, truth_state,
-        classification, purpose_scope, schema_ref, audit_correlation_id, payload, content_digest, evidence_refs
-      ) values (
-        ${uuidv7()}, 'CLM', ${tenant}, ${domainA}, 'DOMAIN', 1,
-        'admitted', 'CP-OBJ-01', 'principal:test', 'asserted',
-        'internal', 'test', 'CLM@v1', ${uuidv7()}, '{}', ${'c'.repeat(64)}, '["e:1"]'
-      )`.execute(tx);
+    // Canonical writes exist only through the admission port (digest recomputed
+    // inside the boundary), so this fixture proves isolation of an ADMITTED row.
+    const { canonicalHeaderDigest } = await import('@eye/contracts');
+    const objectId = uuidv7();
+    const header = {
+      object_id: objectId, object_type: 'CLM', tenant_id: tenant, domain_id: domainA,
+      scope: 'DOMAIN' as const, object_version: '1', lifecycle_state: 'admitted',
+      owning_component: 'CP-OBJ-01', accountable_owner: 'principal:test', source_object_ids: [],
+      event_time: null, observation_time: '2026-08-05T00:00:00.000Z', valid_from: null, valid_to: null,
+      recorded_at: '2026-08-05T00:00:00.000Z', time_precision: 'exact',
+      source_clock_quality: 'trusted' as const, truth_state: 'asserted', synthetic_state: false,
+      confidence: null, uncertainty: null, evidence_refs: ['evd:iso'], provenance_ref: null,
+      method_ref: null, contradiction_refs: [], corroboration_refs: [], human_refs: [],
+      classification: 'internal', purpose_scope: 'test', rights_profile: null,
+      residency_profile: null, retention_profile: null, access_policy_ref: null,
+      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'CLM@v1',
+      ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
+      audit_correlation_id: uuidv7(), content_ref: null,
+    };
+    const payload = { subject: 'S', predicate: 'p', object_value: 'V' };
+    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
+      await sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
+        ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx);
     });
     const fromB = await withCtx(app, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
       sql`select * from objects.canonical_objects where domain_id = ${domainA}`.execute(tx));
     expect(fromB.rows).toHaveLength(0);
     await expect(
-      withCtx(app, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
-        sql`insert into objects.canonical_objects (
-          object_id, object_type, tenant_id, domain_id, scope, object_version,
-          lifecycle_state, owning_component, accountable_owner, truth_state,
-          classification, purpose_scope, schema_ref, audit_correlation_id, payload, content_digest, evidence_refs
-        ) values (
-          ${uuidv7()}, 'CLM', ${tenant}, ${domainA}, 'DOMAIN', 1,
-          'admitted', 'CP-OBJ-01', 'principal:forged', 'asserted',
-          'internal', 'test', 'CLM@v1', ${uuidv7()}, '{}', ${'d'.repeat(64)}, '["e:1"]'
-        )`.execute(tx)),
-    ).rejects.toThrow(/row-level security|policy/i);
+      withCtx(commit, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
+        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
+          ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx))
+    ).rejects.toThrow(/not authorized for the object scope/);
   });
 });
 
@@ -250,15 +244,15 @@ describe('signed-context port authority checks', () => {
   });
 
   it('rejects context for a revoked session', async () => {
-    const victim = await createPrincipalWithSession(system, {
+    const victim = await createPrincipalWithSession(identity, su, {
       scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'iso-rev',
     });
-    await system.transaction().execute(async (tx) => {
-      await sql`select public.eye_set_system_context('test session revocation')`.execute(tx);
-      await sql`select identity.sessions_revoke_all(${victim.principalId}::uuid)`.execute(tx);
+    await identity.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_system('test session revocation')`.execute(tx);
+      await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(tx);
     });
     await expect(
       withCtx(app, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
-    ).rejects.toThrow(/context denied: no active session/);
+    ).rejects.toThrow(/session not active|authority epoch changed/);
   });
 });

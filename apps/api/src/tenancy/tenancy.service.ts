@@ -1,11 +1,14 @@
 /**
- * Tenancy — CP-TEN-01 (ADR-P0-04; ES-08 governed domain lifecycle).
- * Tenant/domain creation is a governed workflow: draft → active, every
- * transition appends a lifecycle event (append-only) and is audited by the
- * commit pipeline. All queries run inside a transaction carrying the RLS
- * scope context (SET LOCAL from the resolved — never client-claimed — scope).
+ * Tenancy — CP-TEN-01 (ADR-P0-04; ES-08 governed domain lifecycle; Gate-2 §1/§3).
+ *
+ * Tenant/domain creation is a governed workflow executed through SECURITY
+ * DEFINER ports on the COMMIT authority: no runtime role holds INSERT on
+ * tenancy tables. Domain creation is a TENANT-level act — the port refuses a
+ * DOMAIN context outright, so a domain principal can never widen its reach.
+ * Reads run under the bound context and the exact-match isolation matrix.
  */
 import { Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 import { newId } from '../shared/ids.js';
 
@@ -22,35 +25,12 @@ export interface TenantRecord {
 @Injectable()
 export class TenancyService {
   // Scope context is established exclusively by the commit pipeline via the
-  // signed eye_set_context port (R1a); every method here takes the pipeline tx.
+  // bound ctx.issue() port; every method here takes the pipeline transaction.
 
-  /** Governed creation: draft + activation in one reviewed admin action (Phase 0 profile). */
+  /** Governed creation: draft + activation in one reviewed admin action. */
   async createTenant(tx: Tx, actor: string, name: string, residency: string): Promise<TenantRecord> {
     const id = newId();
-    const now = new Date();
-    await tx
-      .insertInto('tenancy.tenants')
-      .values({
-        id,
-        name,
-        status: 'active',
-        residency_profile: residency,
-        retention_profile: 'default',
-        activated_at: now,
-      })
-      .execute();
-    await tx
-      .insertInto('tenancy.lifecycle_events')
-      .values({
-        id: newId(),
-        scope: 'TENANT',
-        tenant_id: id,
-        domain_id: null,
-        event: 'tenant.created',
-        actor,
-        details: JSON.stringify({ name, residency_profile: residency }),
-      })
-      .execute();
+    await sql`select tenancy.create_tenant(${id}::uuid, ${name}, ${residency}, ${actor})`.execute(tx);
     return (await tx
       .selectFrom('tenancy.tenants')
       .selectAll()
@@ -58,24 +38,14 @@ export class TenancyService {
       .executeTakeFirstOrThrow()) as TenantRecord;
   }
 
-  async createDomain(tx: Tx, actor: string, tenantId: string, name: string): Promise<{ id: string; name: string; status: string }> {
+  async createDomain(
+    tx: Tx,
+    actor: string,
+    tenantId: string,
+    name: string,
+  ): Promise<{ id: string; name: string; status: string }> {
     const id = newId();
-    await tx
-      .insertInto('tenancy.domains')
-      .values({ id, tenant_id: tenantId, name, status: 'active', activated_at: new Date() })
-      .execute();
-    await tx
-      .insertInto('tenancy.lifecycle_events')
-      .values({
-        id: newId(),
-        scope: 'DOMAIN',
-        tenant_id: tenantId,
-        domain_id: id,
-        event: 'domain.created',
-        actor,
-        details: JSON.stringify({ name }),
-      })
-      .execute();
+    await sql`select tenancy.create_domain(${id}::uuid, ${tenantId}::uuid, ${name}, ${actor})`.execute(tx);
     return { id, name, status: 'active' };
   }
 
@@ -85,5 +55,16 @@ export class TenancyService {
 
   async listDomains(tx: Tx, tenantId: string): Promise<unknown[]> {
     return tx.selectFrom('tenancy.domains').selectAll().where('tenant_id', '=', tenantId).orderBy('created_at').execute();
+  }
+
+  /**
+   * Explicitly authorized read model (Gate-2 §3): a DOMAIN principal's own
+   * tenant identity, exposed through a named port rather than through the
+   * general row-visibility predicate.
+   */
+  async myTenant(tx: Tx): Promise<{ id: string; name: string; status: string } | undefined> {
+    return (
+      await sql<{ id: string; name: string; status: string }>`select * from tenancy.my_tenant()`.execute(tx)
+    ).rows[0];
   }
 }

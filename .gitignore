@@ -15,6 +15,8 @@ sbom/
 test-results/
 playwright-report/
 
-# Gate-bundle artifacts that DESCRIBE the committed SHA (generated post-commit)
-evidence/git-metadata.txt
-evidence/tracked-source.sha256
+# Gate-2 §10: evidence is NEVER part of the source candidate it describes.
+# Everything under evidence/ is produced by RUNNING the frozen source candidate,
+# so it is absent from the source commit and recorded afterwards in a separate
+# evidence-attestation commit (which tracks it explicitly). It is intentionally
+# NOT ignored here — ignoring it would prevent that attestation.

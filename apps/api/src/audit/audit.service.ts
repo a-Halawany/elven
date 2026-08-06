@@ -1,28 +1,28 @@
 /**
- * Audit query / verify / seal / intake — CP-AUD-01 (ADR-P0-09, remediation R2c/R3).
- * - query: policy-filtered, obligation-aware (mask_secret_metadata projects
- *   sanitized columns only — the obligation is EXECUTED here, ES-13-004).
- * - verifyPartition: recompute the JCS hash chain AGAINST A LOCKED HEAD —
- *   the head row lock serializes with appends (advance/commit hold the same
- *   lock through COMMIT), so verification sees a stable, complete prefix.
- *   On tamper → audit.open_integrity_incident freezes the partition AND
- *   records the incident in one definer call (never a silent freeze).
- * - sealPartition: verify and seal in ONE transaction under the same head
- *   lock — the seal covers exactly the verified head; intervening appends
- *   cannot enter a seal without verification (append_seal re-checks the head
- *   under the lock and rejects if it moved).
- * - securityIntake: bounded sanitized intake for failed/unauthenticated
- *   requests (ADR-P0-08 §7.2) on the SYSTEM pool. Rate limiting AGGREGATES:
- *   each admitted event carries suppressed_since_last — drops are counted,
- *   never erased.
+ * Audit query / verify / seal / intake — CP-AUD-01 (ADR-P0-09; Gate-2 §1/§4/§6).
+ *
+ * Authority split:
+ *   query        — APP pool, inside the caller's governed transaction; the
+ *                  mask_secret_metadata obligation is EXECUTED as a sanitized
+ *                  projection (ES-13-004).
+ *   verify/seal  — VERIFIER pool (eye_verifier). Verification locks the head,
+ *                  recomputes the chain against exactly that head and seals
+ *                  precisely what it verified. Tamper detection records
+ *                  freeze + incident atomically; REPAIR (chain-head rebuild) is
+ *                  NOT reachable from here — it belongs to the break-glass
+ *                  recovery role which no application pool loads.
+ *   intake       — IDENTITY pool. Sanitized failure evidence for
+ *                  unauthenticated/rejected requests, with restart-durable
+ *                  suppression accounting in audit.intake_suppression so
+ *                  rate-limited drops can never be silently erased.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
-import { APP_DB, SYSTEM_DB } from '../shared/shared.module.js';
+import { APP_DB, IDENTITY_DB, VERIFIER_DB } from '../shared/shared.module.js';
 import type { Db, Tx } from '../shared/db.js';
 import { newId } from '../shared/ids.js';
-import { appendAuditEvent } from './internal/audit-append.port.js';
+import { degradedAudit } from '../shared/degraded-store.js';
 
 export const SYSTEM_PIPELINE_PRINCIPAL = 'workload:system.commit-pipeline';
 
@@ -33,7 +33,6 @@ export interface VerifyReport {
   brokenAtSeq: number | null;
   headMatches: boolean | null;
   incidentId: string | null;
-  /** Head (next_seq, head_hash) the verification was performed against. */
   verifiedHeadSeq: number | null;
   verifiedHeadHash: string | null;
 }
@@ -48,7 +47,8 @@ const SANITIZED_COLUMNS = [
 export class AuditService {
   constructor(
     @Inject(APP_DB) private readonly db: Db,
-    @Inject(SYSTEM_DB) private readonly systemDb: Db,
+    @Inject(VERIFIER_DB) private readonly verifierDb: Db,
+    @Inject(IDENTITY_DB) private readonly identityDb: Db,
   ) {}
 
   /** Obligation-aware query. mask=true → sanitized projection only. */
@@ -64,13 +64,16 @@ export class AuditService {
   }
 
   /**
-   * Recompute the chain against a locked head. On mismatch: atomic
-   * freeze+incident via the definer port; the tampered range is never sealed.
+   * Verify against a STABLE SNAPSHOT (REPEATABLE READ) reading the head without
+   * the append lock. This is deadlock-free against a governed transaction that
+   * already holds the head lock to write its own evidence, while still giving a
+   * consistent prefix: every row up to the snapshot's head is committed and no
+   * later append can change what this transaction sees.
    */
   async verifyPartition(partitionId: string): Promise<VerifyReport> {
-    return this.systemDb.transaction().execute(async (tx) => {
-      await sql`select public.eye_set_system_context('audit chain verification')`.execute(tx);
-      return this.verifyLocked(tx, partitionId);
+    return this.verifierDb.transaction().setIsolationLevel('repeatable read').execute(async (tx) => {
+      await sql`select ctx.issue_system('audit chain verification')`.execute(tx);
+      return this.verifyChain(tx, partitionId, false);
     });
   }
 
@@ -80,9 +83,9 @@ export class AuditService {
    * lock until COMMIT, so nothing unverified can enter this seal.
    */
   async sealPartition(partitionId: string, sealer: string): Promise<{ sealed: boolean; reason: string }> {
-    return this.systemDb.transaction().execute(async (tx) => {
-      await sql`select public.eye_set_system_context('audit partition sealing')`.execute(tx);
-      const report = await this.verifyLocked(tx, partitionId);
+    return this.verifierDb.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_system('audit partition sealing')`.execute(tx);
+      const report = await this.verifyChain(tx, partitionId, true);
       if (report.verifiedHeadSeq === null) return { sealed: false, reason: 'no such partition' };
       if (!report.ok) {
         return { sealed: false, reason: 'verification failed — tampered ranges are never sealed as trusted' };
@@ -104,8 +107,6 @@ export class AuditService {
       const start = last === undefined ? 1 : Number(last.range_end_seq) + 1;
       const end = report.verifiedHeadSeq;
       if (end < start) return { sealed: false, reason: 'nothing new to seal' };
-      // Definer port re-checks (under the same lock) that the head is exactly
-      // what we verified, and refuses when frozen or an incident exists.
       await sql`select audit.append_seal(
         ${newId()}, ${partitionId}, ${start}, ${end}, ${report.verifiedHeadHash}, ${sealer}
       )`.execute(tx);
@@ -113,19 +114,27 @@ export class AuditService {
     });
   }
 
-  /** Core verification: MUST run with system context; locks the head first. */
-  private async verifyLocked(tx: Tx, partitionId: string): Promise<VerifyReport> {
+  /**
+   * Core verification: MUST run with system context.
+   * `lockHead` = true for the sealing path (the seal must cover exactly the head
+   * it verified); false for pure verification on a stable snapshot.
+   */
+  private async verifyChain(tx: Tx, partitionId: string, lockHead: boolean): Promise<VerifyReport> {
     const head = (
-      await sql<{ next_seq: string; head_hash: string; frozen: boolean }>`
-        select * from audit.lock_head_for_seal(${partitionId})`.execute(tx)
+      lockHead
+        ? await sql<{ next_seq: string; head_hash: string; frozen: boolean }>`
+            select * from audit.lock_head_for_seal(${partitionId})`.execute(tx)
+        : await sql<{ next_seq: string; head_hash: string; frozen: boolean }>`
+            select * from audit.read_head(${partitionId})`.execute(tx)
     ).rows[0];
     if (head === undefined) {
-      return { partitionId, checked: 0, ok: false, brokenAtSeq: null, headMatches: null, incidentId: null, verifiedHeadSeq: null, verifiedHeadHash: null };
+      return {
+        partitionId, checked: 0, ok: false, brokenAtSeq: null, headMatches: null,
+        incidentId: null, verifiedHeadSeq: null, verifiedHeadHash: null,
+      };
     }
     const headSeq = Number(head.next_seq) - 1;
 
-    // The head lock is held by appends through COMMIT: every row <= headSeq is
-    // committed and visible; no new row can advance the head while we hold it.
     const rows = (await tx
       .selectFrom('audit.audit_events')
       .select(['audit_seq', 'event', 'previous_hash', 'row_hash'])
@@ -161,11 +170,8 @@ export class AuditService {
 
     if (brokenAtSeq !== null || !headMatches) {
       const incidentId = newId();
-      // Atomic freeze + incident record — a silent freeze is impossible.
       await sql`select audit.open_integrity_incident(
-        ${incidentId},
-        ${partitionId},
-        ${brokenAtSeq ?? 0},
+        ${incidentId}, ${partitionId}, ${brokenAtSeq ?? 0},
         ${rows.length > 0 ? Number(rows[rows.length - 1]!.audit_seq) : 0},
         ${JSON.stringify({
           broken_at_seq: brokenAtSeq,
@@ -173,18 +179,25 @@ export class AuditService {
           note: 'partition frozen; range must not be re-sealed as trusted; recover through the governed procedure',
         })}::jsonb
       )`.execute(tx);
-      return { partitionId, checked: rows.length, ok: false, brokenAtSeq, headMatches, incidentId, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash };
+      return {
+        partitionId, checked: rows.length, ok: false, brokenAtSeq, headMatches,
+        incidentId, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
+      };
     }
-    return { partitionId, checked: rows.length, ok: true, brokenAtSeq: null, headMatches, incidentId: null, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash };
+    return {
+      partitionId, checked: rows.length, ok: true, brokenAtSeq: null, headMatches,
+      incidentId: null, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
+    };
   }
 
   /**
-   * Security-audit intake (ADR-P0-08 §7.2 failure path). Sanitized metadata only:
-   * correlation, failure class, route/method, envelope-shape diagnostics.
-   * NEVER credentials, tokens, payload content, or client-declared scope.
-   * Runs on the SYSTEM pool in its own transaction (the failed request has no
-   * transaction of its own). suppressedSinceLast makes rate-limit drops
-   * visible: the count of failures dropped since the previous admitted event.
+   * Security-audit intake (ADR-P0-08 §7.2 failure path). Sanitized metadata
+   * only: correlation, failure class, route/method, envelope-shape diagnostics.
+   * NEVER credentials, tokens, payload content or client-declared scope.
+   *
+   * Rate-limit accounting is RESTART-DURABLE: audit.bump_suppression records
+   * drops in the database, and the count of drops since the previous admitted
+   * write rides on the next admitted event.
    */
   async securityIntake(input: {
     failureClass: 'envelope_invalid' | 'authentication_failed' | 'scope_invalid' | 'validation_failed';
@@ -195,40 +208,48 @@ export class AuditService {
     diagnostics: string[];
     suppressedSinceLast: number;
   }): Promise<void> {
-    const event: AuditEventBody = {
-      event_type: 'security.intake',
-      outcome: 'failure',
-      scope: 'PLATFORM', // unauthenticated/unresolvable requests chain to the platform partition
-      tenant_id: null,
-      domain_id: null,
-      actor: 'anonymous',
-      delegation_id: null,
-      action: 'request.rejected',
-      target_type: null,
-      target_id: null,
-      target_version: null,
-      purpose_id: null,
-      policy_decision_id: null,
-      policy_version: null,
-      result_code: input.resultCode,
-      occurred_at: new Date().toISOString(),
-      clock_quality: 'trusted',
-      correlation_id: input.correlationId,
-      causation_id: null,
-      trace_id: null,
-      request_digest: null,
-      metadata: {
-        failure_class: input.failureClass,
-        route: input.route,
-        method: input.method,
-        diagnostics: input.diagnostics.slice(0, 10).map((d) => d.slice(0, 200)),
-        recorded_by: SYSTEM_PIPELINE_PRINCIPAL,
-        suppressed_since_last: input.suppressedSinceLast,
-      },
-    };
-    await this.systemDb.transaction().execute(async (tx) => {
-      await sql`select public.eye_set_system_context('security intake evidence')`.execute(tx);
-      await appendAuditEvent(tx, event);
+    await this.identityDb.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_system('security intake evidence')`.execute(tx);
+      await sql`select audit.commit_identity_event(
+        null::uuid, null::uuid, 'security.intake', 'request.rejected', 'failure',
+        ${input.resultCode}, ${input.correlationId}::uuid,
+        ${JSON.stringify({
+          failure_class: input.failureClass,
+          route: input.route,
+          method: input.method,
+          diagnostics: input.diagnostics.slice(0, 10).map((d) => d.slice(0, 200)),
+          recorded_by: SYSTEM_PIPELINE_PRINCIPAL,
+          suppressed_since_last: input.suppressedSinceLast,
+        })}::jsonb
+      )`.execute(tx);
     });
+  }
+
+  /** Restart-durable suppression accounting (Gate-2 §6). */
+  async accountIntake(bucket: string, admitted: boolean): Promise<number> {
+    try {
+      return await this.identityDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_system('intake suppression accounting')`.execute(tx);
+        const r = (
+          await sql<{ n: string }>`select audit.bump_suppression(${bucket}, ${admitted}) as n`.execute(tx)
+        ).rows[0];
+        return Number(r?.n ?? 0);
+      });
+    } catch (e) {
+      // The counter itself is unavailable: record durably rather than lose the
+      // fact that accounting was skipped.
+      degradedAudit.record({
+        kind: 'evidence_write_failed',
+        correlationId: null, route: null, failureClass: 'intake_accounting', scope: null,
+        detail: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+        suppressedCarried: 0,
+      });
+      return 0;
+    }
+  }
+
+  /** Degraded-state snapshot for /readyz (never presented as healthy). */
+  degradedState(): { degraded: boolean; since: string | null; incidents: number; lastError: string | null } {
+    return degradedAudit.state();
   }
 }

@@ -30,6 +30,13 @@ const ROLE_SECRETS = {
   __EYE_DB_APP_PASSWORD__: ['eye_app', process.env.EYE_DB_APP_PASSWORD],
   __EYE_DB_ALLOCATOR_PASSWORD__: ['eye_audit_allocator', process.env.EYE_DB_ALLOCATOR_PASSWORD],
   __EYE_DB_SYSTEM_PASSWORD__: ['eye_system', process.env.EYE_DB_SYSTEM_PASSWORD],
+  // Gate-2 least-privilege runtime roles (migration 0009).
+  __EYE_DB_COMMIT_PASSWORD__: ['eye_commit', process.env.EYE_DB_COMMIT_PASSWORD],
+  __EYE_DB_IDENTITY_PASSWORD__: ['eye_identity', process.env.EYE_DB_IDENTITY_PASSWORD],
+  __EYE_DB_PUBLISHER_PASSWORD__: ['eye_publisher', process.env.EYE_DB_PUBLISHER_PASSWORD],
+  __EYE_DB_VERIFIER_PASSWORD__: ['eye_verifier', process.env.EYE_DB_VERIFIER_PASSWORD],
+  // Break-glass recovery: a credential exists, but NO application pool loads it.
+  __EYE_DB_RECOVERY_PASSWORD__: ['eye_recovery', process.env.EYE_DB_RECOVERY_PASSWORD],
 };
 function substitutePlaceholders(sql, filename) {
   for (const [ph, [role, value]] of Object.entries(ROLE_SECRETS)) {

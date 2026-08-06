@@ -1,7 +1,7 @@
-# THE EYE — Phase 1 Plan: World Observation Layer (L1) — Revision 4
+# THE EYE — Phase 1 Plan: World Observation Layer (L1) — Revision 5
 
 > Status: **AWAITING FINAL APPROVAL** — no Phase 1 application code until approval.
-> Revision 4 is **cumulative and self-contained**: it restates everything binding from Revisions 1–3 (locked decisions, milestone table, corrections A–F and the prior review's F–K) plus the Phase 0 invariant-remediation gate corrections (fault-injection enumeration at every acquisition boundary and sub-boundary; complete-origin credential semantics; transactionally protected final contract revalidation). No architectural redesign; the frozen architecture, roadmap, and locked answers stand.
+> Revision 5 is **cumulative and self-contained**, preserving Revision 4 in full (locked decisions, the complete P1-M1…M7 milestone table, corrections A–F and the prior review's F–K, complete-origin credential semantics, transactionally protected final contract revalidation) and adding the Gate-2 closure requirement: fault injection is enumerated **separately at every numbered acquisition step and every durable sub-boundary** — no grouped ranges such as "between steps 2 and 5" — covering POL/AUD-plus-`run.started` atomicity and every write, fsync, rename, verification, transaction, outbox and checkpoint boundary (§5.13). No architectural redesign; the frozen architecture, roadmap, and locked answers stand.
 > Honest scope: Phase 1 delivers the **first connector cohort** of L1 — see [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md). It does not complete L1 or the source universe.
 
 ---
@@ -39,7 +39,7 @@ P1-01 SRC/OBS/EVD as canonical objects via the existing commit pipeline · P1-02
 
 ## 4. Data model — event-sourced, scope-mandatory (correction A)
 
-**Universal scope rule:** every event row, projection row, checkpoint, queue job, scheduler record, blob manifest, quarantine case, correction case, coverage measurement, and outbox envelope carries **immutable, non-null `scope` + `tenant_id` + `domain_id` fields as applicable to its scope class** (NOT NULL enforced by CHECK constraints mirroring the Phase 0 scope-consistency constraints). Scope values are populated **only from the authenticated principal + trusted routing** at the pipeline boundary — never from client payloads. Scope context in the database is established exclusively through the Phase 0 signed-context ports (`eye_set_context` / `eye_set_system_context`) — raw GUCs are inert (migration 0008).
+**Universal scope rule:** every event row, projection row, checkpoint, queue job, scheduler record, blob manifest, quarantine case, correction case, coverage measurement, and outbox envelope carries **immutable, non-null `scope` + `tenant_id` + `domain_id` fields as applicable to its scope class** (NOT NULL enforced by CHECK constraints mirroring the Phase 0 scope-consistency constraints). Scope values are populated **only from the authenticated principal + trusted routing** at the pipeline boundary — never from client payloads. Scope context in the database is established exclusively through the Phase 0 BOUND-context ports (`ctx.issue` / `ctx.issue_system` / `ctx.issue_evidence`, migrations 0009–0010) — raw GUCs are inert, and a context is bound to session + principal + tenant + domain + scope + assurance + purpose + issued-at + expiry + single-use nonce + revocation epoch + issuing backend + issuing transaction.
 
 **Isolation independent of PostgreSQL RLS:**
 - *Redis/BullMQ*: queue names and Job Scheduler ids are scope-prefixed (`obs:{tenant}:{domain}:…`); every job payload carries the scope triple, and **workers re-resolve and re-authorize scope from the job's agent principal + source-contract reference at execution time** — a replayed or tampered job whose payload scope disagrees with the contract's registered scope is rejected and quarantined (fail closed, audited). Queue payloads may carry **scoped opaque identifiers, the exact source-contract version, correlation id, idempotency key, and budgets — never credentials, secrets, or delegated authority** (credential references resolve server-side at execution under the agent's grant).
@@ -83,27 +83,58 @@ Append-only tables never carry mutable completion state (pattern: immutable star
     - *Retry idempotency* — the acquisition-attempt key is `(source id, contract version, run id, item natural key)`. **Only an exact replay of the same acquisition attempt no-ops** (detected via the attempt key; audited as a no-op).
     - *Evidence identity* — **identical bytes observed at a later observation time constitute a NEW observation**: a new OBS with its own observation_time, referencing the same content digest (the vault may share the identical bytes **within the same tenant/domain only**, §9). Content digest is identity of *bytes*, never of *observations*.
 
-### 5.13 Fault injection — every boundary AND sub-boundary (mandatory tests)
+### 5.13 Fault injection — enumerated per NUMBERED STEP and per DURABLE SUB-BOUNDARY
 
-Each numbered case below is an executable fault-injection test; each must leave no partial canonical state and must be recovered by the documented mechanism:
+Each row is one executable fault-injection test. Rows are keyed to a single step
+or a single durable sub-boundary — **no grouped ranges**. "Durable sub-boundary"
+means any point where the observable state of a store changes: a write, an
+fsync, a rename/link, a digest verification, a transaction begin/commit/abort, an
+outbox insert, a queue add, or a checkpoint append.
 
-| # | Injection point | Required behavior after crash/failure |
+| # | Injection point (exact) | Required behavior |
 |---|---|---|
-| F1 | before step 2 | nothing persisted |
-| F2 | between 2 and 5 (incl. mid-egress in 4) | `run.started` only; sweeper marks `run.failed(reason=interrupted)` |
-| F3 | between 5 and 6 (bytes written, not verified) | unverified quarantine blob; case expires via sweeper; never admitted |
-| F4 | between 6 and 8a (verified, not admitted) | quarantine blob + events; expire or admit on retry |
-| F5 | between 8a and 8b (candidate copied, not verified) | orphan candidate; swept to investigation |
-| F6 | between 8b and 8c (candidate verified, no tx) | orphan candidate; swept to investigation |
-| F7 | inside 8d (contract deactivated concurrently) | admission aborts; candidate orphaned (8g); cancellation events appended |
-| F8 | during 8e (mid-commit abort) | DB atomicity: all-or-nothing; candidate becomes orphan on abort (8g) |
-| F9 | between 8e and 8f (committed, tombstone pending) | manifest committed; sweeper completes the quarantine tombstone idempotently |
-| F10 | **checkpoint boundary**: between 8f and 9 (committed, checkpoint NOT advanced) | re-fetch hits the attempt key → audited no-op; checkpoint advances on the retry |
-| F11 | **checkpoint boundary**: crash DURING checkpoint append (9) | `run.checkpointed` absent ⇒ same as F10; a torn checkpoint row is impossible (single-row append) |
-| F12 | **publication boundary**: outbox publish failure (10) | outbox row stays `pending`; at-least-once retry next tick; idempotent job id dedupes |
-| F13 | **publication boundary**: crash AFTER queue add, BEFORE outbox row marked published | duplicate publish attempt dedupes on job id (outbox row id); consumers see one job |
-| F14 | **sweeper recovery**: crash DURING sweeper reconciliation (11) | sweeper operations are idempotent (re-run converges); a half-processed orphan is re-processed, never dropped |
-| F15 | **sweeper recovery**: sweeper itself injected to fail on one item | failure recorded as an audited sweeper event; remaining items unaffected; item retried next sweep |
+| F01 | before step 1 (nothing attempted) | nothing persisted anywhere |
+| F02 | inside step 1, after agent authentication, before scope resolution | nothing persisted; no run row |
+| F03 | inside step 1, after scope resolution, before PDP evaluation | nothing persisted |
+| F04 | inside step 1, after PDP decision, before step 2 opens its transaction | decision not persisted; no run row; retry is clean |
+| F05 | step 2, inside the POL/AUD transaction, BEFORE commit | atomic abort: no POL, no AUD, no `run.started` — all three are in ONE transaction |
+| F06 | step 2, at commit (crash during commit) | all-or-nothing: either POL+AUD+`run.started` are all present, or none are |
+| F07 | step 2, immediately AFTER commit, before step 3 | `run.started` present with POL/AUD; sweeper marks `run.failed(reason=interrupted)` after timeout |
+| F08 | step 3, contract revalidation returns non-active | abort before egress; cancellation event appended; no external I/O performed |
+| F09 | step 3, crash after revalidation, before egress | no egress; sweeper reconciles the started run |
+| F10 | step 4, during external acquisition (mid-stream) | no bytes admitted; partial buffer discarded; budgets released; sweeper reconciles |
+| F11 | step 4, after acquisition completes, before step 5 opens the file | nothing in quarantine; retry re-acquires |
+| F12 | step 5, quarantine WRITE partially completed (no fsync) | unverified quarantine blob; never admitted; case expires via sweeper |
+| F13 | step 5, after write, before rename/link into the quarantine locator | orphan temp file; sweeper removes; nothing referenced |
+| F14 | step 6, after fsync, before digest re-read | blob durable but unverified; must be re-verified or expired; never admitted |
+| F15 | step 6, digest re-read MISMATCHES | quarantine case rejected with an integrity event; blob never admitted |
+| F16 | step 7, during bounded validation/scanning | item quarantined with the validation verdict recorded; no admission |
+| F17 | step 8a, admitted-candidate copy partially written | orphan candidate; no manifest row; unreachable via every retrieval path; swept to investigation |
+| F18 | step 8b, after candidate fsync, before candidate digest re-read | orphan candidate; swept to investigation |
+| F19 | step 8b, candidate digest MISMATCHES the quarantine original | admission aborts; candidate deleted/quarantined; integrity event recorded |
+| F20 | step 8c, crash after opening the transaction, before 8d | transaction aborts; candidate orphaned (8g) |
+| F21 | step 8d, contract deactivated concurrently (lock contention resolved against us) | admission aborts inside the transaction; candidate orphaned; cancellation events appended |
+| F22 | step 8d, crash while holding the contract row lock | lock released by abort; admission aborts; candidate orphaned |
+| F23 | step 8e, crash BEFORE commit | atomic abort: no manifest, no OBS/EVD, no custody event, no POL, no AUD, no outbox row |
+| F24 | step 8e, crash AT commit | all-or-nothing across manifest + OBS/EVD + custody + POL + AUD + outbox |
+| F25 | step 8e, crash immediately AFTER commit, before 8f | manifest committed and authoritative; quarantine tombstone pending; sweeper completes it idempotently |
+| F26 | step 8f, crash after appending the finalized custody state, before the quarantine tombstone | sweeper completes the tombstone; no double-admission |
+| F27 | step 8f, crash during the quarantine tombstone write | tombstone is idempotent; sweeper re-runs it to completion |
+| F28 | step 9, crash BEFORE the checkpoint append | re-fetch hits the attempt key → audited no-op; checkpoint advances on the retry |
+| F29 | step 9, crash DURING the checkpoint append | single-row append: either present or absent, never torn; same recovery as F28 |
+| F30 | step 9, crash AFTER the checkpoint append, before step 10 | checkpoint durable; publication retried by the outbox sweep |
+| F31 | step 10, queue add fails (transport down) | outbox row stays `pending`; at-least-once retry; no data loss |
+| F32 | step 10, crash AFTER queue add, BEFORE the publish acknowledgement | duplicate publish dedupes on the idempotent job id; consumers observe one event |
+| F33 | step 10, publish acknowledgement compare-and-set loses the race | exactly one acknowledgement wins; status transitions once |
+| F34 | step 11, crash DURING sweeper reconciliation of one item | sweeper operations are idempotent; the half-processed item is re-processed, never dropped |
+| F35 | step 11, sweeper fails on one item (poison item) | audited sweeper failure event; remaining items unaffected; item retried next sweep |
+| F36 | step 11, sweeper crashes between classifying and acting on an orphan | classification is re-derived on the next sweep; no orphan is silently deleted |
+
+**Atomicity assertions carried by these tests:** (a) POL + AUD + `run.started`
+share ONE transaction (F05/F06); (b) manifest + OBS/EVD + custody + POL + AUD +
+outbox share ONE transaction (F23/F24); (c) no external I/O occurs inside any
+database transaction (structural assertion, A4); (d) the filesystem copy is
+never described as part of the database transaction (§5 8a–8b).
 
 ## 6. Executable coverage model (correction C)
 
@@ -174,13 +205,13 @@ Each agent identity is: **instance- and version-specific** (principal display na
 
 | M | Deliverable |
 |---|---|
-| P1-M1 | Migration 0009 (observation event tables + projections + RLS under the signed-context ports), SRC schema + registry + contract enforcement, `collection_manager` role, policy rules |
+| P1-M1 | Migration 0011 (observation event tables + projections + RLS under the signed-context ports), SRC schema + registry + contract enforcement, `collection_manager` role, policy rules |
 | P1-M2 | Evidence vault (tenant-scoped, dual volumes, create-if-absent, digest verify) + quarantine lifecycle + upload connector + content controls (§8.2) |
 | P1-M3 | Adapter SDK + RSS (framing §10.1, parser isolation §8.3) + REST poller + network hardening (§8.1, complete-origin credential stripping) + Job Schedulers (60s floor) + agent contracts (§11) |
 | P1-M4 | Coverage model + health events/projection + `SourceHealthChanged` + sweeper/reconciliation (§5.11) |
 | P1-M5 | Correction intake (§10.2) + `CorrectionReceived` |
 | P1-M6 | WS-02 UI + **Playwright specs** (register source w/ review; health view; evidence browser + safe download; correction intake; quarantine queue) |
-| P1-M7 | Acceptance extension (§13 matrix incl. the §5.13 fault-injection table) + malicious-input corpus + Phase 0 regression (full API acceptance + Playwright 10) + Phase 1 Report |
+| P1-M7 | Acceptance extension (§13 matrix incl. the §5.13 per-step fault-injection table F01–F36) + malicious-input corpus + Phase 0 regression (full API acceptance + Playwright 10) + Phase 1 Report |
 
 Estimate: **~2.5–3.5 weeks**.
 
@@ -191,7 +222,7 @@ Estimate: **~2.5–3.5 weeks**.
 | A1 | Source contract: full §7 field set; registrar ≠ approver; 3-point revalidation incl. the transactionally protected admission check (8d); **each §7 fail-closed case exercised** (expiry, revocation, version incompatibility, rights, purpose, residency, classification, invalid credentials, schema drift) | API + integration |
 | A2 | Chain of custody: source identity, method + connector version + agent identity/code digest, event/observation time, digest verified pre/post storage and on read; byte-identical retrieval; POL/AUD before retrieval | Integration + acceptance |
 | A3 | **Four-time SRC/OBS/EVD conformance**: event/observation/valid/record time populated per type rules; **known-at queries** over OBS/EVD reproduce pre-correction knowledge states | Integration + acceptance |
-| A4 | Acquisition lifecycle: no external I/O inside DB transactions (structural assertion); **fault injection at EVERY §5.13 boundary and sub-boundary (F1–F15, incl. checkpoint, publication, and sweeper-recovery injections)** leaves no partial canonical state; orphan sweeper recovers each case; exact-replay no-op vs. **new-observation-at-later-time distinction** | Fault-injection integration |
+| A4 | Acquisition lifecycle: no external I/O inside DB transactions (structural assertion); **fault injection at EVERY §5.13 numbered step and durable sub-boundary (F01–F36, incl. every write/fsync/rename/verification/transaction/outbox/checkpoint boundary and sweeper recovery)** leaves no partial canonical state; orphan sweeper recovers each case; exact-replay no-op vs. **new-observation-at-later-time distinction** | Fault-injection integration |
 | A5 | Isolation: cross-tenant/domain negatives across **API, direct SQL, worker execution with tampered job scope, replayed queue jobs, outbox events, blob retrieval, and existence/timing disclosure** | Isolation suite |
 | A6 | Coverage/health: all dimensions with stored `evaluated_at`/window/denominator/universe-version/calc-version/evidence refs; `unknown`/`not_applicable`(+approved reason)/`insufficient_evidence` states honored; unknown never healthy; **deterministic health replay** from stored events + measurements | Unit + integration + UI |
 | A7 | Vault: **missing-blob and corrupt-blob reads** fail closed with audited integrity errors; denied retrieval leaks nothing; quarantine/admitted separation | Integration |

@@ -4,12 +4,12 @@
  * business decision authority is never acquired through administration
  * (PER-18, ES-50-004).
  *
- * Remediation R6: humans authenticate by a UNIQUE login_name (display_name is
- * display-only); password credentials are issued exclusively through the
- * identity.credential_issue definer port, which refuses non-human principals;
- * password policy is enforced on every creation path; role bindings are
- * constrained by DB FKs to the role's declared scope and the (tenant, domain)
- * consistency proofs.
+ * Gate-2 §1/§3: every mutation goes through identity.create_principal on the
+ * IDENTITY authority. The port derives the grantor from the bound context and
+ * the database trigger then enforces that (a) the binding never exceeds the
+ * principal's own scope and (b) the grantor's authority dominates the binding —
+ * so a DOMAIN principal can neither create tenant-level principals nor grant
+ * itself tenant administration.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
@@ -57,56 +57,13 @@ export class PrincipalsService {
     }
 
     const principalId = newId();
-    await tx
-      .insertInto('identity.principals')
-      .values({
-        id: principalId,
-        kind: input.kind,
-        scope: input.scope,
-        tenant_id: input.tenantId,
-        domain_id: input.domainId,
-        display_name: input.displayName,
-        login_name: input.kind === 'human' ? (input.loginName ?? null) : null,
-        status: 'active',
-      })
-      .execute();
-
-    if (input.password !== undefined) {
-      const hash = await argon2.hash(input.password, { type: argon2.argon2id });
-      // Definer port: human-only, status-checked; direct credential-table
-      // access is revoked (R1c).
-      await sql`select identity.credential_issue(
-        ${newId()}::uuid, ${principalId}::uuid, ${hash}, 'active', null
-      )`.execute(tx);
-    }
-
-    if (input.roleCode !== undefined) {
-      await this.bindRole(tx, principalId, input.roleCode, input.scope, input.tenantId, input.domainId);
-    }
+    const secretHash =
+      input.password === undefined ? null : await argon2.hash(input.password, { type: argon2.argon2id });
+    await sql`select identity.create_principal(
+      ${principalId}::uuid, ${input.kind}, ${input.scope}, ${input.tenantId}::uuid, ${input.domainId}::uuid,
+      ${input.displayName}, ${input.loginName ?? null}, ${secretHash}, ${input.roleCode ?? null}
+    )`.execute(tx);
     return { principalId };
-  }
-
-  async bindRole(
-    tx: Tx,
-    principalId: string,
-    roleCode: string,
-    scope: Scope,
-    tenantId: string | null,
-    domainId: string | null,
-  ): Promise<{ bindingId: string }> {
-    const bindingId = newId();
-    await tx
-      .insertInto('identity.role_bindings')
-      .values({
-        id: bindingId,
-        principal_id: principalId,
-        role_code: roleCode,
-        scope,
-        tenant_id: tenantId,
-        domain_id: domainId,
-      })
-      .execute();
-    return { bindingId };
   }
 
   async listPrincipals(tx: Tx): Promise<unknown[]> {

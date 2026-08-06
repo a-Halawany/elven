@@ -25,6 +25,7 @@ import { IdentityService } from '../identity/identity.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { newId } from '../shared/ids.js';
+import { degradedAudit } from '../shared/degraded-store.js';
 
 export const PUBLIC_ROUTE = 'eye:public';
 /** Marks authentication endpoints + telemetry-only endpoints (documented classification). */
@@ -37,37 +38,29 @@ export interface EyeRequest extends Request {
 }
 
 /**
- * Bounded intake: at most N security-intake writes per minute per process.
- * R3: rate limiting AGGREGATES — excess failures are counted, and the count of
- * suppressed failures since the last admitted write rides on the next admitted
- * event (suppressed_since_last). Drops are never silently erased.
+ * Bounded intake with RESTART-DURABLE suppression accounting (Gate-2 §6).
+ *
+ * The in-process window bounds ledger writes; the DROP COUNT is persisted by
+ * audit.accountIntake (audit.intake_suppression), so a restart cannot erase the
+ * fact that failures were coalesced. Each admitted event carries the number of
+ * drops recorded since the previous admitted write.
  */
 class IntakeLimiter {
   private windowStart = Date.now();
   private count = 0;
-  private suppressed = 0;
   constructor(private readonly maxPerMinute = 120) {}
-  admit(): { allowed: boolean; suppressedSinceLast: number } {
+  admit(): boolean {
     const now = Date.now();
     if (now - this.windowStart > 60_000) {
       this.windowStart = now;
       this.count = 0;
     }
     this.count += 1;
-    if (this.count > this.maxPerMinute) {
-      this.suppressed += 1;
-      return { allowed: false, suppressedSinceLast: this.suppressed };
-    }
-    const suppressedSinceLast = this.suppressed;
-    this.suppressed = 0;
-    return { allowed: true, suppressedSinceLast };
-  }
-  /** An admitted write failed — its suppressed count must not be lost. */
-  restore(suppressedSinceLast: number): void {
-    this.suppressed += suppressedSinceLast;
+    return this.count <= this.maxPerMinute;
   }
 }
 const intakeLimiter = new IntakeLimiter();
+const INTAKE_BUCKET = 'security-intake';
 
 export async function recordSecurityFailure(
   audit: AuditService,
@@ -77,8 +70,11 @@ export async function recordSecurityFailure(
   correlationId: string,
   diagnostics: string[],
 ): Promise<void> {
-  const gate = intakeLimiter.admit();
-  if (!gate.allowed) return; // bounded — never a ledger-flooding vector; drop is COUNTED above
+  const allowed = intakeLimiter.admit();
+  // Durable accounting happens for BOTH outcomes: a suppressed failure is
+  // counted in the database, never dropped on the floor.
+  const suppressedSinceLast = await audit.accountIntake(INTAKE_BUCKET, allowed);
+  if (!allowed) return;
   try {
     await audit.securityIntake({
       failureClass,
@@ -87,12 +83,21 @@ export async function recordSecurityFailure(
       route: req.path,
       method: req.method,
       diagnostics,
-      suppressedSinceLast: gate.suppressedSinceLast,
+      suppressedSinceLast,
     });
-  } catch {
-    // Intake failure must not mask the original rejection; the request still
-    // fails closed — and the suppressed count is restored, not erased.
-    intakeLimiter.restore(gate.suppressedSinceLast + 1);
+  } catch (e) {
+    // Never mask the original rejection — but never silently swallow the lost
+    // evidence either: it goes to the independent degraded journal, which marks
+    // the process degraded and is surfaced by /readyz.
+    degradedAudit.record({
+      kind: 'evidence_write_failed',
+      correlationId,
+      route: req.path,
+      failureClass,
+      scope: null,
+      detail: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+      suppressedCarried: suppressedSinceLast,
+    });
   }
 }
 

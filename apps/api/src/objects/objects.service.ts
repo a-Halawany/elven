@@ -12,6 +12,7 @@
  * correction_of.
  */
 import { HttpException, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {
@@ -286,56 +287,13 @@ export class ObjectsService {
     }
     const digest = canonicalHeaderDigest(header, input.payload);
 
-    await tx
-      .insertInto('objects.canonical_objects')
-      .values({
-        object_id: header.object_id,
-        object_type: header.object_type,
-        tenant_id: header.tenant_id,
-        domain_id: header.domain_id,
-        scope: header.scope,
-        object_version: v.version,
-        lifecycle_state: header.lifecycle_state,
-        owning_component: header.owning_component,
-        accountable_owner: header.accountable_owner,
-        source_object_ids: JSON.stringify(header.source_object_ids),
-        event_time: header.event_time,
-        observation_time: header.observation_time,
-        valid_from: header.valid_from,
-        valid_to: header.valid_to,
-        recorded_at: recordedAt,
-        time_precision: header.time_precision,
-        source_clock_quality: header.source_clock_quality,
-        truth_state: header.truth_state,
-        synthetic_state: header.synthetic_state,
-        confidence: null,
-        uncertainty: null,
-        evidence_refs: JSON.stringify(header.evidence_refs),
-        provenance_ref: header.provenance_ref,
-        method_ref: header.method_ref,
-        contradiction_refs: JSON.stringify(header.contradiction_refs),
-        corroboration_refs: JSON.stringify(header.corroboration_refs),
-        human_refs: JSON.stringify(header.human_refs),
-        classification: header.classification,
-        purpose_scope: header.purpose_scope,
-        rights_profile: header.rights_profile,
-        residency_profile: header.residency_profile,
-        retention_profile: header.retention_profile,
-        access_policy_ref: header.access_policy_ref,
-        quality_profile: header.quality_profile,
-        quality_state: null,
-        freshness_state: null,
-        schema_ref: header.schema_ref,
-        ontology_ref: header.ontology_ref,
-        correction_of: header.correction_of,
-        supersedes: header.supersedes,
-        withdrawal_reason: header.withdrawal_reason,
-        audit_correlation_id: header.audit_correlation_id,
-        content_ref: header.content_ref,
-        payload: JSON.stringify(input.payload),
-        content_digest: digest,
-      })
-      .execute();
+    // Gate-2 §5: the ONLY canonical write path. objects.admit_version re-checks
+    // the complete 40+3 field registry, RECOMPUTES the header+payload digest
+    // inside the trusted boundary, and refuses a supplied digest that does not
+    // bind them. No runtime role holds direct INSERT on canonical_objects.
+    await sql`select objects.admit_version(
+      ${JSON.stringify(header)}::jsonb, ${JSON.stringify(input.payload)}::jsonb, ${digest}
+    )`.execute(tx);
 
     const stored = (await tx
       .selectFrom('objects.canonical_objects')

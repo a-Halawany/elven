@@ -13,7 +13,7 @@
  *   evidence/supply-chain/reconciliation.txt   — SBOM↔lockfile↔license report
  */
 import { execSync } from 'node:child_process';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 function licenseList(flag) {
@@ -27,6 +27,10 @@ function licenseList(flag) {
   }
   return out;
 }
+
+// Evidence is not tracked in the source candidate (Gate-2 §10), so a clean
+// checkout has no evidence/ directory: create it.
+mkdirSync('evidence/supply-chain', { recursive: true });
 
 const prod = licenseList('--prod');
 const all = licenseList('--dev'); // pnpm licenses --dev = full closure incl. dev
@@ -54,6 +58,23 @@ const lock = readFileSync('pnpm-lock.yaml', 'utf8');
 // Lockfile resolution entries: '  <name>@<version>:' headings under snapshots/packages.
 const lockPkgCount = (lock.match(/^  [^ ].*@[0-9]/gm) ?? []).length;
 
+/**
+ * IDENTITY-BASED reconciliation (Gate-2 §10): every SBOM component must be
+ * findable in the lockfile by its exact name@version identity — counting alone
+ * cannot detect a component that is present in the SBOM but absent from the
+ * dependency closure (or vice versa).
+ */
+const lockIdentities = new Set();
+// pnpm lockfileVersion 9: the `packages:` and `snapshots:` sections key each
+// resolution as a quoted `'<name>@<version>(...peers)':` heading at indent 2.
+for (const m of lock.matchAll(/^ {2}'?((?:@[^/']+\/)?[^@'\s]+)@([^'(:\s]+)/gm)) {
+  lockIdentities.add(`${m[1]}@${m[2]}`);
+}
+const unmatched = [];
+for (const c of components) {
+  if (!lockIdentities.has(`${c.name}@${c.version}`)) unmatched.push(`${c.name}@${c.version}`);
+}
+
 // ---- R8 gates: never emit an empty or unreconciled SBOM --------------------
 const failures = [];
 if (components.length === 0) failures.push('SBOM would be EMPTY (0 components)');
@@ -64,6 +85,12 @@ if (components.length !== prod.size + dev.size) {
 }
 if (components.length > lockPkgCount) {
   failures.push(`SBOM has more components (${components.length}) than lockfile entries (${lockPkgCount})`);
+}
+if (unmatched.length > 0) {
+  failures.push(
+    `${unmatched.length} SBOM component identit${unmatched.length === 1 ? 'y' : 'ies'} not found in pnpm-lock.yaml: ` +
+    unmatched.slice(0, 10).join(', ') + (unmatched.length > 10 ? ' …' : ''),
+  );
 }
 if (failures.length > 0) {
   console.error('SBOM GENERATION FAILED:');
@@ -80,7 +107,9 @@ const bom = {
     timestamp: new Date().toISOString(),
     component: { type: 'application', name: 'the-eye', version: '0.0.1' },
     properties: [
-      { name: 'eye:gate-candidate-sha', value: execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim() },
+      // The SBOM records the SOURCE candidate it was generated from — never an
+      // earlier commit (Gate-2 §10).
+      { name: 'eye:source-candidate-sha', value: execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim() },
       { name: 'eye:lockfile-sha256', value: createHash('sha256').update(lock).digest('hex') },
     ],
   },
@@ -101,9 +130,13 @@ const report = [
   `sbom components:               ${components.length}`,
   `  production (licenses-prod):  ${prod.size}`,
   `  development (licenses-dev):  ${dev.size}`,
-  `lockfile resolution entries:   ${lockPkgCount} (superset: includes peer-dedup/link entries not installed)`,
+  `lockfile resolution entries:   ${lockPkgCount} (heading match; superset incl. peer-dedup/link entries)`,
   `lockfile sha256:               ${createHash('sha256').update(lock).digest('hex')}`,
-  `invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries`,
+  `lockfile distinct identities:  ${lockIdentities.size}`,
+  `identity matches:              ${components.length}/${components.length} SBOM components found in the lockfile by name@version`,
+  `unmatched identities:          ${unmatched.length}`,
+  `source candidate sha:          ${execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()}`,
+  `invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries; EVERY component identity present in the lockfile`,
   `result:                        RECONCILED`,
 ].join('\n') + '\n';
 writeFileSync('evidence/supply-chain/reconciliation.txt', report);

@@ -5,6 +5,11 @@
     "rootDir": "src",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // Gate-2 §10: typecheck resolves workspace packages to their SOURCE via the
+    // "development" export condition, so a genuinely clean checkout typechecks
+    // without any pre-existing dist/.next/tsbuildinfo. tsconfig.build.json does
+    // NOT set this, so emitted builds still consume the built declarations.
+    "customConditions": ["development"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "strictPropertyInitialization": false

@@ -9,8 +9,9 @@
 ```yaml
 exception_id:            EXC-P0-001
 requirement_ids:         [IA-58-003]
-related_architecture_ids: [INF-ST-03, DR-11, SC-08 (separate protection)]   # Volume 3/6 architecture identifiers, kept separate from requirement IDs
-invariant_ids:           [C-036 (semantics NOT waived), C-043 (resilience risk bounded)]
+related_architecture_ids: [INF-ST-03, DR-11, SC-08]
+invariant_ids:           [C-036, C-043]
+id_notes:                "SC-08 is cited for its separate-protection clause. C-036 semantics are NOT waived; C-043 resilience risk is bounded by the compensating controls below." 
 title:                   Audit chains live in the primary PostgreSQL cluster (separate schema + dedicated roles) instead of an independent audit store/failure domain
 owner:                   Founding engineer (this project)
 approver:                Project owner (Phase 0 approval, 2026-08-03)
@@ -51,8 +52,9 @@ residual_risk:           None beyond EXC-P0-002 (local IdP assurance), which rem
 
 ```yaml
 exception_id:            EXC-P0-002
-requirement_ids:         [IA-49-002, IC-01, IC-13, ES-49-003 (workload attestation deferred)]
-invariant_ids:           [C-039 (assurance risk bounded; fail-closed NOT waived)]
+requirement_ids:         [IA-49-002, IC-01, IC-13, ES-49-003]
+invariant_ids:           [C-039]
+id_notes:                "ES-49-003 is cited for deferred workload attestation. C-039 assurance risk is bounded; fail-closed authorization is NOT waived." 
 title:                   Local credential identity provider behind the federation port; external OIDC/SAML federation and MFA deferred
 owner:                   Founding engineer (this project)
 approver:                Project owner (Phase 0 approval, 2026-08-03)
@@ -77,8 +79,9 @@ status:                  open
 
 ```yaml
 exception_id:            EXC-P0-003
-requirement_ids:         [IC-14, IC-16, ES-68-001 (attestations), ES-56-001]
-invariant_ids:           []   # supply-chain assurance deferred; no constitutional semantic waived
+requirement_ids:         [IC-14, IC-16, ES-68-001, ES-56-001]
+invariant_ids:           []
+id_notes:                "ES-68-001 is cited for attestations. No constitutional semantic is waived; supply-chain assurance depth is deferred." 
 title:                   Build artifacts are digest-pinned but not signed/attested; SBOM + scanning ARE active in Phase 0 CI
 owner:                   Founding engineer (this project)
 approver:                Project owner (Phase 0 approval, 2026-08-03)
@@ -105,7 +108,8 @@ exception_id:            EXC-P0-004
 # "ES-14" replaced with exact identifiers. The -004 parity requirement exists
 # once per Volume 8 capability chapter; the family is enumerated exhaustively.
 requirement_ids:         [IA-03-006, ES-14-001, ES-14-005, PR-01-004, PR-02-004, PR-03-004, PR-04-004, PR-05-004, PR-06-004, PR-07-004, PR-08-004, PR-09-004, PR-10-004, PR-11-004, PR-12-004, PR-13-004, PR-14-004, PR-15-004, PR-16-004, PR-17-004, PR-18-004, PR-19-004, PR-20-004, PR-21-004, PR-22-004, PR-23-004, PR-24-004, PR-25-004, PR-26-004, PR-27-004, PR-28-004, PR-29-004, PR-30-004, PR-31-004, PR-32-004, PR-33-004, PR-34-004, PR-35-004, PR-36-004, PR-37-004, PR-38-004, PR-39-004, PR-40-004, PR-41-004, PR-42-004, PR-43-004, PR-44-004, PR-45-004, PR-46-004, PR-47-004, PR-48-004, PR-49-004, PR-50-004, PR-51-004, PR-52-004, PR-53-004, PR-54-004, PR-55-004, PR-56-004, PR-57-004, PR-58-004, PR-59-004, PR-60-004, PR-61-004, PR-62-004, PR-63-004, PR-64-004, PR-65-004, PR-66-004, PR-67-004, PR-68-004, PR-69-004, PR-70-004, PR-71-004, PR-72-004]
-invariant_ids:           [C-042 (parity untested, not redefined)]
+invariant_ids:           [C-042]
+id_notes:                "C-042 parity is untested on a second profile, never redefined. The -004 parity requirement recurs once per Volume 8 capability chapter (PR-01-004 … PR-72-004), enumerated in full above." 
 title:                   Only the local Docker Compose profile exists; parity fixtures are written profile-agnostically but exercised on one profile
 owner:                   Founding engineer (this project)
 approver:                Project owner (Phase 0 approval, 2026-08-03)
@@ -127,8 +131,9 @@ status:                  open
 
 ```yaml
 exception_id:            EXC-P0-005
-requirement_ids:         [IA-52-003 (static shared credentials require a time-bounded exception), IC-13]
+requirement_ids:         [IA-52-003, IC-13]
 invariant_ids:           []
+id_notes:                "IA-52-003 is cited because static shared credentials require a time-bounded exception." 
 title:                   Static local development credentials in .env files (never committed)
 owner:                   Founding engineer (this project)
 approver:                Project owner (Phase 0 approval, 2026-08-03)
@@ -156,9 +161,10 @@ EXC-P0-001 (audit ledger shares primary DB failure domain) · EXC-P0-002 (local 
 
 ```yaml
 exception_id:            EXC-P1-001
-requirement_ids:         [DP-16-001, DP-16-005, DP-12-002]   # intake validation/quarantine + document ingestion (Vol 7 Ch.16/12)
-related_architecture_ids: [L1-C07 (Quarantine and Malware Inspection), DZ-03 (Transfer quarantine)]
-invariant_ids:           []   # inspection capability deferred; no constitutional semantic waived
+requirement_ids:         [DP-16-001, DP-16-005, DP-12-002]
+related_architecture_ids: [L1-C07, DZ-03]
+invariant_ids:           []
+id_notes:                "DP-16-001/005 cover intake validation and quarantine; DP-12-002 covers document ingestion (Vol 7 Ch.16/12). L1-C07 is Quarantine and Malware Inspection; DZ-03 is Transfer quarantine. Inspection capability is deferred; no constitutional semantic is waived." 
 title:                   Quarantine performs structural/heuristic checks only; no AV/malware engine integrated in the local profile
 owner:                   Founding engineer (this project)
 approver:                Project owner (pending PHASE 1 approval)
@@ -183,9 +189,10 @@ status:                  proposed   # controlled enum {proposed, open, closed, e
 
 ```yaml
 exception_id:            EXC-P1-002
-requirement_ids:         [DP-28-001, DP-28-002, IA-33-002, IA-62-003]   # object/evidence storage + backup coverage (Vol 7 Ch.28, Vol 6 Ch.33/62)
-related_architecture_ids: [L1-C05 (Raw Preservation and Evidence Vault), DZ-04 (Raw evidence tier), INF-ST-02 (evidence object store), SC-02]
-invariant_ids:           [C-043 (durability risk bounded; semantics not waived)]
+requirement_ids:         [DP-28-001, DP-28-002, IA-33-002, IA-62-003]
+related_architecture_ids: [L1-C05, DZ-04, INF-ST-02, SC-02]
+invariant_ids:           [C-043]
+id_notes:                "DP-28-001/002 cover object/evidence storage; IA-33-002 and IA-62-003 cover backup coverage (Vol 7 Ch.28, Vol 6 Ch.33/62). L1-C05 is Raw Preservation and Evidence Vault; DZ-04 is the raw evidence tier; INF-ST-02 is the evidence object store. C-043 durability risk is bounded; semantics are not waived." 
 title:                   Evidence vault on local named Docker volumes (eye-quarantine + eye-evidence); no independent replicated object store
 owner:                   Founding engineer (this project)
 approver:                Project owner (pending PHASE 1 approval)

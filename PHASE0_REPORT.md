@@ -1,6 +1,6 @@
 # THE EYE — Phase 0 Report: Foundation & Governance Spine
 
-> Status: **COMPLETE — all 15 acceptance criteria pass with reproducible evidence** (21-test acceptance suite green, 2026-08-04; regression gate re-verified against the Phase 1 gate candidate — see PHASE0_EVIDENCE.md for GATE_CANDIDATE_SHA and the clean-checkout verification transcript).
+> Status: **COMPLETE + GATE-2 CLOSED** — all 15 acceptance criteria pass with reproducible evidence (34-test acceptance suite plus the 17-test Gate-2 adversarial matrix; see [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md) for `SOURCE_CANDIDATE_SHA`, `EVIDENCE_ATTESTATION_SHA` and the isolated clean-checkout transcript).
 > Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3) · ADRs: [DECISIONS.md](DECISIONS.md) · Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) · Log: [PROGRESS.md](PROGRESS.md)
 
 ---
@@ -10,14 +10,14 @@
 | Area | Delivered |
 |---|---|
 | **Monorepo** | pnpm workspace: `apps/api` (NestJS 11, Node 24 LTS), `apps/web` (Next.js 16 / React 19.2), `packages/contracts`, `packages/tokens`; dependency-cruiser module boundaries as a blocking CI check |
-| **Contracts** | RFC 8785 JCS canonicalization + golden fixtures; canonical envelope schema (scope-conditional rules); 40-field canonical header schema; `EYE-XXX-NNN` error catalog (28 codes); truth-state enum (Vol 7 App. E, 9 values) with fixture-tested cross-volume compatibility mappings; audit hash structure `SHA-256(JCS({version, partition_id, audit_seq, previous_hash, event}))` with frozen golden digests |
-| **Identity & tenancy** | Principals (human/workload/agent), argon2id credentials, revocable sessions with continuous re-check, short-lived kid-rotatable JWTs; governed tenant/CID creation with append-only lifecycle evidence; PLATFORM/TENANT/DOMAIN scope model; audited one-shot conspicuous bootstrap; break-glass schema |
+| **Contracts** | RFC 8785 JCS canonicalization + golden fixtures (with a byte-for-byte equivalent in-database implementation, Gate-2 G4); canonical envelope schema (scope-conditional rules); explicit canonical header registry — **40 authoritative Volume 7 Appendix E fields + 3 governed extensions = 43 stored fields**; `EYE-XXX-NNN` error catalog (28 codes); truth-state enum (Vol 7 App. E, 9 values) with fixture-tested cross-volume compatibility mappings; audit hash structure `SHA-256(JCS({version, partition_id, audit_seq, previous_hash, event}))` with frozen golden digests |
+| **Identity & tenancy** | Principals (human/workload/agent) with unique login identifiers, argon2id credentials, revocable sessions with continuous re-check, short-lived kid-rotatable JWTs carrying the session context key, append-only refresh-token family ledger; governed tenant/CID creation; exact-match PLATFORM/TENANT/DOMAIN isolation; database-enforced single-use audited bootstrap; break-glass schema |
 | **Policy** | ABAC PDP: `allow / deny / indeterminate / allow-with-obligations`; obligations executed at the enforcing boundary (audit mask → sanitized projection); indeterminate→deny; purpose required; C3+ denied fail-closed (no human-gate runtime yet); POL records carry exception/expiry/revocation + input digest; PEP + Postgres RLS as independent second enforcement |
 | **Audit** | Per-(scope,tenant) hash chains; `audit_chain_heads` allocator (dedicated role, SECURITY DEFINER advance/commit pair, rebuild-from-ledger); typed columns GENERATED from canonical bytes (single authority); pre-incident seals; tamper response = freeze + incident + compare-to-trusted-seal + **no re-sealing**; sanitized rate-bounded security intake; `AnchorSink` reserved |
-| **Request pipeline** | Corrected order (envelope → authenticate → scope from principal+routing → policy → validate → commit); five executable request paths (write / consequential read / denied / failure / health-telemetry-only); bounded internal append ports under `system.commit-pipeline`; ack only after commit |
-| **Canonical objects** | Typed 40-field header as the authoritative representation; four-axis temporal model; DB-privilege-level append-only (+ CHECK constraints incl. minimum provenance); non-destructive correction with `correction_of`/`supersedes`; current / **known-at** (no hindsight contamination) / history retrieval; schema registry (DC-compatibility slots); transactional outbox → BullMQ post-commit publication |
+| **Request pipeline** | Corrected order (envelope → authenticate → **bound context** → policy → validate → commit) across six least-privilege authorities; five executable request paths (write / consequential read / denied / failure / health-telemetry-only) plus a centralized durable rejection path; POL/AUD built inside the database trusted boundary; **fail-closed 503 + independent fsynced degraded journal + degraded `/readyz`** when audit persistence is unavailable; ack only after commit |
+| **Canonical objects** | Typed 43-column header (40 authoritative + 3 governed) as the authoritative representation, written ONLY through `objects.admit_version` with server-side digest recomputation; four-axis temporal model; DB-privilege-level append-only (+ CHECK constraints incl. minimum provenance); non-destructive correction with `correction_of`/`supersedes`; current / **known-at** (no hindsight contamination) / history retrieval; schema registry (DC-compatibility slots); transactional outbox → BullMQ post-commit publication |
 | **WS-19 shell** | Vol 9 token-driven (semantic CSS variables, light+dark, logical properties/RTL-safe); login; governed tenant/domain creation with review step; principals; object browser (3-channel truth badges, version history, known-at query); audit viewer (sanitized projection, chain verify); receipts only from authoritative responses (no optimistic UI); i18n catalog (en, ar slot) |
-| **CI / supply chain** | Three jobs (`build-test`, `browser-regression`, `supply-chain`): boundaries, typecheck, build, unit+conformance, migrations+integration, **acceptance suite**, Playwright browser gate, SBOM (CycloneDX, fails on empty), pnpm audit, gitleaks, license inventory, `trivy fs` (labeled) + `trivy image` of the exact pinned digests (blocking HIGH/CRITICAL) — all blocking. Local-equivalent evidence for this local-only gate; hosted CI is not claimed. |
+| **CI / supply chain** | Three jobs (`build-test`, `browser-regression`, `supply-chain`): boundaries, clean-source typecheck **before** build (blocking, no stale artifacts), unit+conformance, migrations+integration, **acceptance suite**, Playwright browser gate, SBOM (CycloneDX, fails on empty), pnpm audit, gitleaks, license inventory, `trivy fs` (labeled) + `trivy image` of the exact pinned digests (blocking HIGH/CRITICAL) — all blocking. Local-equivalent evidence for this local-only gate; hosted CI is not claimed. |
 
 ## 2. How to run and demo
 
@@ -39,10 +39,10 @@ Sign in as `platform-admin` with `$EYE_BOOTSTRAP_PASSWORD`, complete the forced 
 | contracts unit + golden fixtures + header registry/digest binding | 118/118 |
 | tokens | 3/3 |
 | API unit (PDP decision table, scope fail-closed) | 14/14 |
-| API integration (domain-isolation matrix, privilege boundary, concurrent append-vs-verify/seal, refresh rotation/replay/concurrency, DB-level immutability) | 38/38 |
+| API integration (Gate-2 adversarial matrix, domain-isolation matrix, audit-chain concurrency + tamper, recovery-authority separation) | 70/70 |
 | **Acceptance (15 criteria + §7.2 request paths + R4/R10 #6/#7/#8)** | **34/34** |
 
-> Test counts above are the **post-invariant-remediation** figures (final gate SHA in `evidence/git-metadata.txt`). The pre-remediation figures (24/24 contracts, 14/14 integration, 21/21 acceptance) are historical — see [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md) §H.
+> Test counts above are the **post-Gate-2** figures (SOURCE_CANDIDATE_SHA in `evidence/git-metadata.txt`). Earlier figures (24/24 contracts, 14/14 then 38/38 integration, 21/21 acceptance) are historical — see [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md) §H.
 
 Browser-verified live: login → overview (health) → objects (v1/v2 history, badges) → audit (chain intact, head matches).
 

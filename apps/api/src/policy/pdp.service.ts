@@ -68,6 +68,18 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    // Gate-2 §6: chain verification is its OWN governed action, distinct from
+    // reading events — a verifier may prove integrity without evidence access,
+    // and the decision is recorded against audit.verify.
+    actionPrefix: 'audit.verify',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'auditor', atScope: 'TENANT' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
     actionPrefix: 'audit.read',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },

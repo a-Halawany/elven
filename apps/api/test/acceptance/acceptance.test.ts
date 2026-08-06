@@ -35,6 +35,10 @@ const ENV = {
   EYE_DB_APP_PASSWORD: required('EYE_DB_APP_PASSWORD'),
   EYE_DB_ALLOCATOR_PASSWORD: required('EYE_DB_ALLOCATOR_PASSWORD'),
   EYE_DB_SYSTEM_PASSWORD: required('EYE_DB_SYSTEM_PASSWORD'),
+  EYE_DB_COMMIT_PASSWORD: required('EYE_DB_COMMIT_PASSWORD'),
+  EYE_DB_IDENTITY_PASSWORD: required('EYE_DB_IDENTITY_PASSWORD'),
+  EYE_DB_PUBLISHER_PASSWORD: required('EYE_DB_PUBLISHER_PASSWORD'),
+  EYE_DB_VERIFIER_PASSWORD: required('EYE_DB_VERIFIER_PASSWORD'),
   EYE_DB_MIGRATE_PASSWORD: required('EYE_DB_MIGRATE_PASSWORD'),
   EYE_REDIS_PASSWORD: required('EYE_REDIS_PASSWORD'),
   EYE_IDENTITY_JWT_SECRET: required('EYE_IDENTITY_JWT_SECRET'),
@@ -97,13 +101,16 @@ async function post(path: string, over: EnvOver, payload: unknown = {}, token = 
   return { status: r.status, body: (await r.json()) as Record<string, any>, correlationId: envelope.correlation_id as string };
 }
 
-/** Evidence reads under the audited system context (raw GUCs are inert — R1a). */
+/**
+ * Evidence verification reads. Gate-2: the ordinary application role can no
+ * longer see across scopes at all, and the bound context is single-use and
+ * proof-bound, so the harness verifies stored evidence through the migrate
+ * superuser connection (which bypasses RLS by definition). This is a TEST
+ * OBSERVATION path only — no production code path has this reach.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sysRead<T>(fn: (tx: Kysely<any>) => Promise<T>): Promise<T> {
-  return sysDb.transaction().execute(async (tx) => {
-    await sql`select public.eye_set_system_context('acceptance evidence verification')`.execute(tx);
-    return fn(tx as never);
-  });
+  return su.transaction().execute(async (tx) => fn(tx as never));
 }
 
 async function auditRowsFor(correlationId: string): Promise<Array<Record<string, unknown>>> {
@@ -162,7 +169,7 @@ beforeAll(async () => {
       }),
     });
   db = mkPool('eye_app', ENV.EYE_DB_APP_PASSWORD) as never;
-  sysDb = mkPool('eye_system', ENV.EYE_DB_SYSTEM_PASSWORD) as never;
+  sysDb = mkPool('eye_commit', ENV.EYE_DB_COMMIT_PASSWORD) as never;
   su = mkPool('eye', ENV.EYE_DB_MIGRATE_PASSWORD) as never;
 }, 60_000);
 
@@ -267,11 +274,18 @@ describe('R4: refresh-token rotation over the wire (audited)', () => {
     const rows2 = await auditRowsFor(r2.correlationId);
     expect(rows2.some((x) => x['event_type'] === 'identity.refresh_reuse_detected')).toBe(true);
 
-    // 3. The whole session is revoked on reuse — even the newest token is dead.
+    // 3. The whole FAMILY is revoked on reuse — the newest token is dead too, and
+    // because it is a known-but-invalidated generation it is reported as reuse.
     const r3 = await refreshWith(second);
     expect(r3.status).toBe(401);
     const rows3 = await auditRowsFor(r3.correlationId);
-    expect(rows3.some((x) => x['event_type'] === 'identity.refresh_rejected')).toBe(true);
+    expect(rows3.some((x) => x['event_type'] === 'identity.refresh_reuse_detected')).toBe(true);
+
+    // 4. A token that was never issued is simply rejected (no family to revoke).
+    const r4 = await refreshWith(`${uuidv7()}.never-issued`);
+    expect(r4.status).toBe(401);
+    const rows4 = await auditRowsFor(r4.correlationId);
+    expect(rows4.some((x) => x['event_type'] === 'identity.refresh_rejected')).toBe(true);
   });
 });
 
@@ -284,12 +298,21 @@ describe('R10 #8: session/credential/token mutations ROLL BACK when the audit co
     try {
       const before = await countActive();
       const r = await loginAs('platform-admin', ROTATED_PW);
-      expect(r.status).toBe(500); // audit append blocked → the WHOLE login fails
+      // Gate-2 §6: audit unavailable ⇒ FAIL CLOSED with 503 + durable degraded
+      // evidence, never a silent success.
+      expect(r.status).toBe(503);
       const after = await countActive();
       expect(after).toBe(before); // no session slipped through without evidence
     } finally {
       await setPartitionFrozen('platform', false);
     }
+    // Degraded state is durable + surfaced (never presented as healthy).
+    const ready = (await (await fetch(BASE + '/readyz')).json()) as {
+      status: string; audit: string; auditIncidents: number;
+    };
+    expect(ready.audit).toBe('degraded');
+    expect(ready.status).toBe('degraded');
+    expect(ready.auditIncidents).toBeGreaterThan(0);
     // The system works again after unfreezing (proves the failure was the injection).
     const ok = await loginAs('platform-admin', ROTATED_PW);
     expect(ok.status).toBe(201);
@@ -301,7 +324,7 @@ describe('R10 #8: session/credential/token mutations ROLL BACK when the audit co
     await setPartitionFrozen('platform', true);
     try {
       const r = await refreshWith(token);
-      expect(r.status).toBe(500);
+      expect(r.status).toBe(503);
     } finally {
       await setPartitionFrozen('platform', false);
     }
@@ -320,7 +343,7 @@ describe('R10 #8: session/credential/token mutations ROLL BACK when the audit co
         scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'PRN',
         principal_id: `principal:${pid}`, purpose_id: 'authentication',
       }, { currentPassword: ROTATED_PW, newPassword: ROTATED_PW + 'X' }, token);
-      expect(r.status).toBe(500);
+      expect(r.status).toBe(503);
     } finally {
       await setPartitionFrozen('platform', false);
     }
@@ -631,7 +654,7 @@ describe('AC-8/AC-9: database-level immutability and chain integrity', () => {
   it('platform + tenant audit chains verify intact via the API', async () => {
     for (const partition of ['platform', `tenant:${tenantId}`]) {
       const r = await post('/v1/platform/audit/verify', {
-        scope: 'PLATFORM', action: 'audit.read', object_type: 'AUD', side_effect_class: 'none',
+        scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
       }, { partitionId: partition });
       expect(r.status).toBe(201);
       expect(r.body.report.ok).toBe(true);

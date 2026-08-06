@@ -1,8 +1,0 @@
-# SBOM / lockfile / license reconciliation — 2026-08-05T15:05:44.914Z
-sbom components:               280
-  production (licenses-prod):  192
-  development (licenses-dev):  88
-lockfile resolution entries:   698 (superset: includes peer-dedup/link entries not installed)
-lockfile sha256:               cfa3bf275009f4ecd62c843e93f1ac06c8197ad9d21bdb3b0b6137a45970d907
-invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries
-result:                        RECONCILED

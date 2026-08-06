@@ -1,16 +1,23 @@
 /**
- * Identity service — CP-IAM-01 (ADR-P0-04/17, remediation R3/R4/R6).
+ * Identity service — CP-IAM-01 (ADR-P0-04/17; Gate-2 §1/§2/§7).
  *
  * All credential/session state is reached ONLY through narrow SECURITY DEFINER
- * ports (direct table privileges are revoked). Authentication uses the unique
- * `login_name` (display_name is display-only). Auth flows that mutate state
- * (login/rotate/refresh) are executed by the AuthController inside ONE
- * transaction together with their audit evidence on the SYSTEM pool — this
- * service exposes tx-scoped primitives for that.
+ * ports executed on the dedicated IDENTITY pool (eye_identity). The ordinary
+ * application role holds no identity-mutation capability at all.
+ *
+ * Context proof-of-possession (Gate-2 §2): every session carries a random
+ * CONTEXT KEY whose hash is stored on the session row. The plaintext travels
+ * only inside the signed access token (`ctxk` claim), so establishing an
+ * authoritative database context requires possession of a live token for that
+ * exact session — holding the application credential is not enough.
+ *
+ * Refresh tokens live in an append-only FAMILY LEDGER: replay of ANY previously
+ * invalidated generation (n-1, n-2, n-10, …) is theft evidence and revokes the
+ * whole family. Only hashes are ever stored.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { sql } from 'kysely';
 import { EYE_CONFIG } from '../config/config.module.js';
@@ -37,6 +44,7 @@ export interface VerifiedCredential {
 }
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
+const freshKey = (): string => randomBytes(32).toString('base64url');
 
 export const MIN_PASSWORD_LENGTH = 12;
 
@@ -46,12 +54,13 @@ export class IdentityService {
 
   constructor(
     @Inject(EYE_CONFIG) private readonly cfg: EyeConfig,
+    // Read-only pool: used ONLY for the per-request session/binding re-check.
     @Inject(APP_DB) private readonly db: Db,
   ) {
     this.secret = new TextEncoder().encode(cfg['eye.identity.jwt_secret']);
   }
 
-  // ===== verification primitives (no state mutation) =====
+  // ===== verification primitives (no state mutation; identity tx) =====
 
   /** Verify login_name + password. Never logs or stores the password. */
   async verifyPassword(tx: Tx, loginName: string, password: string): Promise<VerifiedCredential | null> {
@@ -74,42 +83,61 @@ export class IdentityService {
     await sql`select identity.credential_revoke(${credentialId}::uuid)`.execute(tx);
   }
 
-  // ===== session primitives (tx-scoped; caller owns atomicity with audit) =====
+  // ===== session primitives (identity pool; caller owns atomicity with audit) =====
 
-  async createSession(
+  /**
+   * Open a session: generates the refresh token AND the context key, stores
+   * only their hashes, and starts a new token family.
+   */
+  async openSession(
     tx: Tx,
     principalId: string,
     assurance: 'password' | 'break_glass' | 'bootstrap_rotation',
-  ): Promise<{ sessionId: string; refreshToken: string }> {
+  ): Promise<{ sessionId: string; refreshToken: string; contextKey: string }> {
     const sessionId = newId();
-    const refreshToken = newId() + '.' + newId();
+    const familyId = newId();
+    const refreshToken = `${newId()}.${randomBytes(24).toString('base64url')}`;
+    const contextKey = freshKey();
     const expiresAt = new Date(Date.now() + this.cfg['eye.identity.refresh_ttl_seconds'] * 1000);
-    await sql`select identity.session_create(
-      ${sessionId}::uuid, ${principalId}::uuid, ${assurance}, ${sha256(refreshToken)}, ${expiresAt}
+    await sql`select identity.session_open(
+      ${sessionId}::uuid, ${principalId}::uuid, ${assurance}, ${sha256(refreshToken)},
+      ${sha256(contextKey)}, ${expiresAt}, ${familyId}::uuid
     )`.execute(tx);
-    return { sessionId, refreshToken };
+    return { sessionId, refreshToken, contextKey };
   }
 
   /**
-   * R4: refresh rotation. Atomically replaces the refresh token; detects reuse
-   * of the invalidated previous token and revokes the session on reuse.
+   * Refresh rotation over the append-only family ledger. Any invalidated
+   * generation presented again is reuse: the family is revoked and the
+   * principal's revocation epoch is bumped, which also kills every outstanding
+   * database context.
    */
   async rotateRefreshToken(
     tx: Tx,
     presentedToken: string,
   ): Promise<
-    | { outcome: 'rotated'; sessionId: string; principalId: string; assurance: string; newRefreshToken: string }
-    | { outcome: 'reuse'; sessionId: string; principalId: string }
+    | { outcome: 'rotated'; sessionId: string; principalId: string; assurance: string;
+        newRefreshToken: string; newContextKey: string; generation: number }
+    | { outcome: 'reuse'; sessionId: string; principalId: string; generation: number }
     | { outcome: 'invalid' }
   > {
-    const newRefreshToken = newId() + '.' + newId();
+    const newRefreshToken = `${newId()}.${randomBytes(24).toString('base64url')}`;
+    const newContextKey = freshKey();
     const r = (
-      await sql<{ outcome: string; session_id: string | null; principal_id: string | null; assurance: string | null }>`
-        select * from identity.refresh_rotate(${sha256(presentedToken)}, ${sha256(newRefreshToken)})`.execute(tx)
+      await sql<{
+        outcome: string; session_id: string | null; principal_id: string | null;
+        assurance: string | null; generation: number | null;
+      }>`select * from identity.refresh_rotate_family(
+           ${sha256(presentedToken)}, ${sha256(newRefreshToken)}, ${sha256(newContextKey)})`.execute(tx)
     ).rows[0];
     if (!r || r.outcome === 'invalid') return { outcome: 'invalid' };
     if (r.outcome === 'reuse') {
-      return { outcome: 'reuse', sessionId: r.session_id as string, principalId: r.principal_id as string };
+      return {
+        outcome: 'reuse',
+        sessionId: r.session_id as string,
+        principalId: r.principal_id as string,
+        generation: Number(r.generation ?? 0),
+      };
     }
     return {
       outcome: 'rotated',
@@ -117,10 +145,12 @@ export class IdentityService {
       principalId: r.principal_id as string,
       assurance: r.assurance as string,
       newRefreshToken,
+      newContextKey,
+      generation: Number(r.generation ?? 0),
     };
   }
 
-  /** Credential rotation (forced on first bootstrap use). Tx-scoped; revokes all sessions. */
+  /** Credential rotation (forced on first bootstrap use). Bumps the epoch. */
   async rotateCredential(tx: Tx, principalId: string, currentPassword: string, newPassword: string): Promise<boolean> {
     if (newPassword.length < MIN_PASSWORD_LENGTH) return false;
     const cred = (
@@ -131,7 +161,7 @@ export class IdentityService {
     const ok = await argon2.verify(cred.secret_hash, currentPassword).catch(() => false);
     if (!ok) return false;
     const newHash = await argon2.hash(newPassword, { type: argon2.argon2id });
-    await sql`select identity.credential_rotate(
+    await sql`select identity.credential_rotate_v2(
       ${principalId}::uuid, ${cred.id}::uuid, ${newId()}::uuid, ${newHash}
     )`.execute(tx);
     return true;
@@ -140,7 +170,7 @@ export class IdentityService {
   // ===== access-token verification (read-only; app pool) =====
 
   async verifyAccess(token: string): Promise<AuthenticatedPrincipal | null> {
-    let payload: { sub?: string; sid?: string; asr?: string };
+    let payload: { sub?: string; sid?: string; asr?: string; ctxk?: string };
     try {
       const r = await jwtVerify(token, this.secret, {
         issuer: this.cfg['eye.identity.jwt_issuer'],
@@ -150,7 +180,7 @@ export class IdentityService {
     } catch {
       return null;
     }
-    if (!payload.sub || !payload.sid) return null;
+    if (!payload.sub || !payload.sid || !payload.ctxk) return null;
 
     const session = (
       await sql<{ id: string; principal_id: string; assurance: string }>`
@@ -179,6 +209,8 @@ export class IdentityService {
     return {
       principalId: p.principal_id,
       sessionId: session.id,
+      // Proof-of-possession material for ctx.issue(); never logged or persisted.
+      contextKey: payload.ctxk,
       kind: p.kind as AuthenticatedPrincipal['kind'],
       homeScope: p.scope as Scope,
       homeTenantId: p.tenant_id,
@@ -188,8 +220,8 @@ export class IdentityService {
     };
   }
 
-  async signAccess(principalId: string, sessionId: string, assurance: string): Promise<string> {
-    return new SignJWT({ sid: sessionId, asr: assurance })
+  async signAccess(principalId: string, sessionId: string, assurance: string, contextKey: string): Promise<string> {
+    return new SignJWT({ sid: sessionId, asr: assurance, ctxk: contextKey })
       .setProtectedHeader({ alg: 'HS256', kid: this.cfg['eye.identity.jwt_kid'] })
       .setSubject(principalId)
       .setIssuer(this.cfg['eye.identity.jwt_issuer'])

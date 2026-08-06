@@ -11,7 +11,7 @@
  * Used by: scripts/demo.sh (bash equivalent), vitest setup files,
  * playwright.config.ts, and the verification harness.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,13 @@ const GENERATED_KEYS = [
   'EYE_DB_APP_PASSWORD',
   'EYE_DB_ALLOCATOR_PASSWORD',
   'EYE_DB_SYSTEM_PASSWORD',
+  // Gate-2 least-privilege runtime roles (migration 0009):
+  'EYE_DB_COMMIT_PASSWORD',
+  'EYE_DB_IDENTITY_PASSWORD',
+  'EYE_DB_PUBLISHER_PASSWORD',
+  'EYE_DB_VERIFIER_PASSWORD',
+  // Break-glass recovery credential — generated, but never loaded by the app:
+  'EYE_DB_RECOVERY_PASSWORD',
   'EYE_REDIS_PASSWORD',
   'EYE_IDENTITY_JWT_SECRET',
   // Ephemeral per-environment test credentials (never fixed literals):
@@ -36,6 +43,20 @@ export function loadLocalEnv(root = ROOT) {
   const dir = join(root, '.eye-local');
   const file = join(dir, 'env');
   const stored = {};
+  // Gate-2 §8: an EXISTING handoff file is checked and REPAIRED to 0600 (and its
+  // directory to 0700) before it is read — a permissive mode from an earlier run
+  // or a careless copy is corrected, not tolerated.
+  if (existsSync(dir)) {
+    try {
+      if ((statSync(dir).mode & 0o777) !== 0o700) chmodSync(dir, 0o700);
+    } catch { /* best effort; the file check below is the load-bearing one */ }
+  }
+  if (existsSync(file)) {
+    if ((statSync(file).mode & 0o777) !== 0o600) {
+      chmodSync(file, 0o600);
+      console.warn(`[eye] repaired permissions on ${file} to 0600`);
+    }
+  }
   if (existsSync(file)) {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       const m = /^([A-Z0-9_]+)=(.*)$/.exec(line);

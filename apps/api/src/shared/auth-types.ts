@@ -11,6 +11,12 @@ export interface RoleBinding {
 export interface AuthenticatedPrincipal {
   principalId: string;
   sessionId: string;
+  /**
+   * Proof-of-possession material for establishing an authoritative database
+   * context (Gate-2 §2). Delivered only inside the verified access token; never
+   * logged, never persisted, never returned to a client in a response body.
+   */
+  contextKey: string;
   kind: 'human' | 'workload' | 'agent';
   homeScope: Scope;
   homeTenantId: string | null;
