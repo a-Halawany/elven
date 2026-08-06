@@ -1,0 +1,12 @@
+# SBOM / lockfile / license reconciliation — 2026-08-06T09:01:21.765Z
+sbom components:               280
+  production (licenses-prod):  192
+  development (licenses-dev):  88
+lockfile resolution entries:   698 (heading match; superset incl. peer-dedup/link entries)
+lockfile sha256:               cfa3bf275009f4ecd62c843e93f1ac06c8197ad9d21bdb3b0b6137a45970d907
+lockfile distinct identities:  349
+identity matches:              280/280 SBOM components found in the lockfile by name@version
+unmatched identities:          0
+source candidate sha:          2deded44904e5a4ec264938085c2aaa93d9636b6
+invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries; EVERY component identity present in the lockfile
+result:                        RECONCILED

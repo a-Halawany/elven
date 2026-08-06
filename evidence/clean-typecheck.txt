@@ -1,0 +1,57 @@
+# Clean-source typecheck verification (no stale build artifacts)
+timestamp: 2026-08-06T09:00:42Z
+node: v24.11.1  pnpm: 11.9.0  tsc: undefined
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "tsc" not found
+source sha: 2deded44904e5a4ec264938085c2aaa93d9636b6
+
+==> removing every build artifact
+==> asserting none remain
+  none present
+==> pnpm typecheck (CI order: typecheck BEFORE build)
+$ pnpm -r typecheck
+Scope: 4 of 5 workspace projects
+packages/contracts typecheck$ tsc -p tsconfig.json --noEmit
+packages/tokens typecheck$ tsc -p tsconfig.json --noEmit
+packages/tokens typecheck: Done
+packages/contracts typecheck: Done
+apps/api typecheck$ tsc -p tsconfig.json --noEmit
+apps/web typecheck$ tsc --noEmit
+apps/web typecheck: Done
+apps/api typecheck: Done
+typecheck exit: 0
+==> pnpm build (must still succeed after a clean typecheck)
+$ pnpm -r build
+Scope: 4 of 5 workspace projects
+packages/contracts build$ tsc -p tsconfig.json
+packages/tokens build$ tsc -p tsconfig.json && node dist/emit-css.js
+packages/tokens build: tokens.css written (5599 bytes)
+packages/tokens build: Done
+packages/contracts build: Done
+apps/web build$ next build
+apps/api build$ tsc -p tsconfig.build.json
+apps/web build: ▲ Next.js 16.2.12 (Turbopack)
+apps/web build:   Creating an optimized production build ...
+apps/api build: Done
+apps/web build: ✓ Compiled successfully in 923ms
+apps/web build:   Running TypeScript ...
+apps/web build:   Finished TypeScript in 862ms ...
+apps/web build:   Collecting page data using 10 workers ...
+apps/web build:   Generating static pages using 10 workers (0/9) ...
+apps/web build:   Generating static pages using 10 workers (2/9) 
+apps/web build:   Generating static pages using 10 workers (4/9) 
+apps/web build:   Generating static pages using 10 workers (6/9) 
+apps/web build: ✓ Generating static pages using 10 workers (9/9) in 211ms
+apps/web build:   Finalizing page optimization ...
+apps/web build: Route (app)
+apps/web build: ┌ ○ /
+apps/web build: ├ ○ /_not-found
+apps/web build: ├ ○ /admin
+apps/web build: ├ ○ /admin/audit
+apps/web build: ├ ○ /admin/objects
+apps/web build: ├ ○ /admin/principals
+apps/web build: ├ ○ /admin/tenants
+apps/web build: └ ○ /login
+apps/web build: ○  (Static)  prerendered as static content
+apps/web build: Done
+build exit: 0
+result: PASS — clean-source typecheck and build both succeed in CI order

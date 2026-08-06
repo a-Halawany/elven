@@ -1,0 +1,26 @@
+2026-08-06T12:01:24+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-08-06T12:01:24+03:00	INFO	[secret] Secret scanning is enabled
+2026-08-06T12:01:24+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-08-06T12:01:24+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-08-06T12:01:24+03:00	INFO	Detected OS	family="alpine" version="3.24.1"
+2026-08-06T12:01:24+03:00	WARN	This OS version is not on the EOL list	family="alpine" version="3.24"
+2026-08-06T12:01:24+03:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.24" repository="3.24" pkg_num=53
+2026-08-06T12:01:24+03:00	INFO	Number of language-specific files	num=1
+2026-08-06T12:01:24+03:00	INFO	[gobinary] Detecting vulnerabilities...
+2026-08-06T12:01:24+03:00	WARN	Using severities from other vendors for some vulnerabilities. Read https://trivy.dev/docs/v0.73/guide/scanner/vulnerability#severity-selection for details.
+2026-08-06T12:01:24+03:00	INFO	Some vulnerabilities have been ignored/suppressed. Use the "--show-suppressed" flag to display them.
+
+Report Summary
+
+┌──────────────────────────────────────────────────────────────────────────────────┬──────────┬─────────────────┬─────────┐
+│                                      Target                                      │   Type   │ Vulnerabilities │ Secrets │
+├──────────────────────────────────────────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 │  alpine  │        0        │    -    │
+│ (alpine 3.24.1)                                                                  │          │                 │         │
+├──────────────────────────────────────────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ usr/local/bin/gosu                                                               │ gobinary │        0        │    -    │
+└──────────────────────────────────────────────────────────────────────────────────┴──────────┴─────────────────┴─────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
