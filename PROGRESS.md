@@ -4,6 +4,47 @@
 |---|---|---|---|
 | Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE + GATE-2.1 CLOSURE SUBMITTED 2026-08-07** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). Remediation: [PHASE0_INVARIANT_REMEDIATION_PLAN.md](PHASE0_INVARIANT_REMEDIATION_PLAN.md) (R1–R10) then [PHASE0_GATE2_CLOSURE_PLAN.md](PHASE0_GATE2_CLOSURE_PLAN.md) (G1–G10), then [GATE2_1_PLAN.md](GATE2_1_PLAN.md) (C1–C11). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open P0 in-date; 2 P1 proposed). |
 
+## Gate-2.2 — final consolidated Phase 0 closure (IN PROGRESS, started 2026-08-08)
+
+Gate-2.1 (`1e6b29b` source / `2ee3a26` evidence) was **rejected**; Gate-2.2 is the
+final consolidated correction pass (C1–C19). Controlled record:
+[GATE2_2_FINAL_CLOSURE_PLAN.md](GATE2_2_FINAL_CLOSURE_PLAN.md). Governed forward
+migrations from **0013**; 0001–0012 byte-identical (no rebaseline/rehash).
+
+**Measured baseline of the rejected candidate** (rebuilt virgin before any change):
+integration 147/147, unit+contracts+tokens 198/198, acceptance 41/42 (the one
+failure was a *leftover degraded journal* from earlier stale-DB runs, not a code
+regression — confirmed by a clean run at 42/42). So Gate-2.2 corrects architecture,
+not a broken build.
+
+**Resumption ledger (safe to resume across sessions):**
+
+| Area | Migration / files | State |
+|---|---|---|
+| C1 operation closure | `0013_operation_closure.sql`, `test/int/gate22-operation-closure.test.ts` | ✅ done & verified, committed `bf9f039` |
+| C2 evidence de-authorization | `0014_evidence_deauthorization.sql`, `test/int/gate22-evidence-deauthorization.test.ts` | ✅ done & verified (RLS visibility gated on read-capable mode; `issue_evidence` PLATFORM-elevation bug fixed with authority-parity binding check) |
+| C3 single-use bootstrap | 0015 | ⏳ next |
+| C4 identity mutators | 0015 | ⏳ ports: `bump_epoch`, `session_open`, `refresh_rotate_family`, `credential_issue/revoke/rotate_v2`, `sessions_revoke_all_v2` |
+| C5 verifier/seal/availability | 0015 | ⏳ ports: `open_integrity_incident`, `lock_head_for_seal`, `append_seal`, `commit_integrity_event`, `record/reconcile_availability_incident` |
+| C6 capability binding | 0015 | ⏳ exact target/correlation at every port; server-derived actor |
+| C7 outbox hardening | 0015 | ⏳ lease TTL bound (`p_lease_seconds` currently unbounded), retry budget, dead-letter, stale-lease reclaim |
+| C8–C12 | — | ⏳ |
+| C13 catalog authority gate | `scripts/authority-inventory.mjs` | ⏳ |
+| C14 adversarial matrix | — | ⏳ |
+| C15–C17 supply chain / SBOM / CycloneDX | — | ⏳ |
+| C18 forward/virgin proof | — | ⏳ |
+| C19 docs + NOLOGIN roles | — | ⏳ (`eye_system` + legacy roles still LOGIN) |
+| Freeze + Codex + ZIP | — | ⏳ |
+
+**Environment notes for resumption:** virgin rebuild via
+`scratchpad/virgin.sh` (force-removes `eye-redis`/`eye-postgres`, `down -v`, `up`,
+`pnpm db:migrate`). Integration suite: `cd apps/api && node_modules/.bin/vitest run
+--config vitest.int.config.ts`. Full integration currently **214/214**, acceptance
+**42/42**. Codex MCP is **not connected** in this environment (mandated cluster
+reviews need it wired up); interactive MCP OAuth is unavailable in headless runs.
+The 52 MB `evidence/the-eye-source.bundle` is now **untracked** (kept on disk) and
+`evidence/*.bundle` + `*.zip` are gitignored per the approved packaging decision.
+
 ## Gate-2.1 closure — final authority-boundary closure (2026-08-07)
 
 Source candidate reviewed: `2deded44904e5a4ec264938085c2aaa93d9636b6` (evidence attestation

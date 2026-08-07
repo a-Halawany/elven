@@ -20,3 +20,10 @@ playwright-report/
 # so it is absent from the source commit and recorded afterwards in a separate
 # evidence-attestation commit (which tracks it explicitly). It is intentionally
 # NOT ignored here — ignoring it would prevent that attestation.
+
+# Gate evidence packaging (Gate-2.2 approved packaging decision):
+# git bundles and packaged archives are delivered inside the final ZIP, never
+# committed into the repository. Ordinary evidence logs/manifests/docs stay tracked.
+evidence/*.bundle
+*.zip
+THE_EYE_PHASE0_GATE*_*.zip
