@@ -1,0 +1,294 @@
+########################################################################
+# THE EYE — PHASE 0 GATE-2.1 — ISOLATED GATE RUN (raw log)
+# SOURCE_CANDIDATE_SHA = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+# isolated git worktree · virgin Compose volumes · no reused node_modules
+# no pre-existing build artifacts · no evidence present at start
+# started : 2026-08-07T13:58:24Z
+# node v24.11.1 · pnpm 11.9.0 · Docker version 28.5.1
+########################################################################
+
+===== 0. the checkout is genuinely clean =====
+node_modules : 0
+dist/.next   : 0
+evidence/    : 0
+tracked files: 161
+
+===== 1. pnpm install --frozen-lockfile =====
++ @playwright/test 1.62.1
++ dependency-cruiser 18.1.1
+
+Done in 3.4s using pnpm v11.9.0
+
+===== 2. clean-source typecheck + build (CI order: typecheck BEFORE build) =====
+  none present
+==> pnpm typecheck (CI order: typecheck BEFORE build)
+typecheck exit: 0
+==> pnpm build (must still succeed after a clean typecheck)
+build exit: 0
+result: PASS — clean-source typecheck and build both succeed in CI order
+
+===== 3. module boundaries =====
+
+✔ no dependency violations found (88 modules, 231 dependencies cruised)
+
+
+===== 4. supply-chain gate inputs: licence closures (prod AND dev) + SBOM =====
+license inventory: 280 packages checked (192 production, 88 development-only)
+license gate: PASS (production and development)
+SBOM: 280 components (192 production, 88 development-only)
+lockfile package-entry count (approx heading match): 698
+reconciliation: RECONCILED bidirectionally (0 governed exclusion(s))
+cyclonedx 1.6 schema: VALID
+
+===== 5. contracts (incl. RFC 8785 conformance corpus) =====
+ Test Files  5 passed (5)
+      Tests  181 passed (181)
+
+===== 6. tokens =====
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+===== 7. api unit + gate (negative fixtures + shipped artifacts + loader parity) =====
+ Test Files  4 passed (4)
+      Tests  57 passed (57)
+
+===== 8. BOTH DATABASE PATHS (virgin volumes; full acceptance+integration on each) =====
+############################################################
+# PATH A — FORWARD UPGRADE (0001-0010 -> 0011/0012)
+############################################################
+(virgin volume verified: 0 migrations recorded, superuser authenticates)
+--- applying 0001-0010 ONLY ---
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+applying 0009_privilege_separation_and_bound_context.sql ... ok
+applying 0010_bound_evidence_and_admission_ports.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+--- seeding real data through the PRE-UPGRADE ports ---
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+business rows seeded
+DO
+audit event seeded through the 0010-era commit path
+
+--- PRE-UPGRADE state ---
+tenants=1 domains=1 principals=1 bindings=1 sessions=1 audit=1 heads=1 migrations=10
+pre-upgrade audit row_hash: dc08eb799ae02197d38dc98c972eeaf126806d732ab2190821d90661cd5527e7
+
+--- UPGRADING the existing database (0011/0012 restored) ---
+applying 0011_authority_boundary_closure.sql ... ok
+applying 0012_evidence_capability_and_port_binding.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+--- POST-UPGRADE state (identical data, 12 migrations) ---
+tenants=1 domains=1 principals=1 bindings=1 sessions=1 audit=1 heads=1 migrations=12
+VERIFIED: every pre-upgrade row count is unchanged across the upgrade
+VERIFIED: the pre-upgrade audit row hash is byte-identical (dc08eb799ae02197d38dc98c972eeaf126806d732ab2190821d90661cd5527e7)
+
+--- applied-file immutability: 0001-0010 digests and timestamps ---
+0001_roles_and_schemas.sql  4834a4fe991173b4  2026-08-07 13:58:48.546958+00
+0002_identity_tenancy.sql  a65408a0f5ee839b  2026-08-07 13:58:48.555609+00
+0003_policy.sql  d6d08054ad1e0437  2026-08-07 13:58:48.56951+00
+0004_audit.sql  202a8d103262d717  2026-08-07 13:58:48.574017+00
+0005_audit_rebuild_rls_fix.sql  2959a2cc65329898  2026-08-07 13:58:48.581544+00
+0006_objects.sql  f7daf0ef5c33ede0  2026-08-07 13:58:48.582934+00
+0007_bootstrap_rotation.sql  be3dc1a0f582bd5a  2026-08-07 13:58:48.589619+00
+0008_invariant_remediation.sql  335563cbf953bdcb  2026-08-07 13:58:48.592444+00
+0009_privilege_separation_and_bound_context.sql  b464bfe572150171  2026-08-07 13:58:48.609055+00
+0010_bound_evidence_and_admission_ports.sql  feacc85536b48ed0  2026-08-07 13:58:48.634408+00
+0011_authority_boundary_closure.sql  0738fe95ddf83b69  2026-08-07 13:58:48.974158+00
+0012_evidence_capability_and_port_binding.sql  c68a43fa9c289d34  2026-08-07 13:58:48.996204+00
+
+--- the pre-upgrade audit row still verifies under the NEW canonicalizer ---
+ALL 1 PRE-UPGRADE ROW(S) STILL VERIFY (event_jcs == canon.jcs(event))
+
+--- legacy mechanisms are UNREACHABLE (must be 0) ---
+legacy definitions remaining = 0
+
+--- the APPLICATION serves the full suites on the UPGRADED database ---
+      Tests  42 passed (42)
+   Start at  16:58:49
+   Duration  3.69s (transform 42ms, setup 16ms, import 128ms, tests 3.49s, environment 0ms)
+
+      Tests  199 passed (199)
+   Start at  16:58:53
+   Duration  6.31s (transform 82ms, setup 34ms, import 459ms, tests 5.47s, environment 0ms)
+
+
+PATH A RESULT: forward upgrade complete — no rebaseline, no data loss, suites green.
+
+############################################################
+# PATH B — VIRGIN INSTALL (0001-0012 on an empty database)
+############################################################
+(virgin volume verified: 0 migrations recorded, superuser authenticates)
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+applying 0009_privilege_separation_and_bound_context.sql ... ok
+applying 0010_bound_evidence_and_admission_ports.sql ... ok
+applying 0011_authority_boundary_closure.sql ... ok
+applying 0012_evidence_capability_and_port_binding.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+migrations recorded = 12
+tenants=0 domains=0 principals=0 bindings=0 sessions=0 audit=0 heads=0 migrations=12
+
+--- the APPLICATION serves the full suites on the VIRGIN database ---
+      Tests  42 passed (42)
+   Start at  16:59:04
+   Duration  3.49s (transform 45ms, setup 16ms, import 115ms, tests 3.29s, environment 0ms)
+
+      Tests  199 passed (199)
+   Start at  16:59:08
+   Duration  6.40s (transform 84ms, setup 33ms, import 462ms, tests 5.56s, environment 0ms)
+
+
+PATH B RESULT: virgin install complete — 12 migrations applied, suites green.
+
+===== 9. authority-boundary catalog (live database, re-runnable) =====
+=== 1. DIRECT DML on any governed table, by any runtime role (must be NONE) ===
+NONE
+
+=== 2. EXECUTE on each authoritative port, per role ===
+issue_bootstrap(p_correlation uuid)  ->  eye_identity
+issue_commit(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_target text, p_correlation uuid, p_policy_decision uuid, p_bundle text, p_consequence text, p_ttl_seconds integer)  ->  eye_commit,eye_identity
+issue_evidence(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_route_scope text, p_route_tenant uuid, p_route_domain uuid, p_correlation uuid, p_ttl_seconds integer)  ->  eye_commit,eye_identity
+issue_identity_op(p_operation text, p_subject uuid, p_correlation uuid, p_ttl_seconds integer)  ->  eye_identity
+issue_publish(p_event_id uuid)  ->  eye_publisher
+issue_verify(p_partition text, p_seal boolean)  ->  eye_verifier
+audit.advance_chain_head  ->  (none)
+audit.commit_chain_head  ->  (none)
+audit.commit_event  ->  eye_commit,eye_identity
+audit.commit_identity_event  ->  eye_identity
+audit.commit_intake_event  ->  eye_identity
+audit.commit_integrity_event  ->  eye_verifier
+audit.my_domain_integrity  ->  eye_commit
+audit.my_partition_integrity  ->  eye_commit,eye_verifier
+audit.rebuild_chain_heads  ->  eye_recovery
+identity.auth_bindings  ->  eye_identity
+identity.auth_lookup  ->  eye_identity
+identity.auth_principal  ->  eye_identity
+identity.bootstrap_mark_one_time  ->  eye_identity
+identity.create_principal  ->  eye_identity
+identity.session_bindings  ->  eye_app,eye_identity
+identity.session_get_active  ->  eye_identity
+identity.session_open  ->  eye_identity
+identity.session_subject  ->  eye_app,eye_identity
+objects.admit_version  ->  eye_commit
+objects.enqueue_event  ->  eye_commit
+objects.outbox_ack_leased  ->  eye_publisher
+objects.outbox_lease  ->  eye_publisher
+policy.commit_decision  ->  eye_commit,eye_identity
+tenancy.create_domain  ->  eye_commit
+tenancy.create_tenant  ->  eye_commit
+tenancy.my_tenant  ->  eye_app,eye_commit
+
+=== 3. PUBLIC EXECUTE anywhere in the governed schemas (must be NONE) ===
+NONE
+
+=== 4. RLS: enabled AND forced, with policy counts ===
+audit.audit_chain_heads  rls=true forced=true policies=2
+audit.audit_events  rls=true forced=true policies=2
+audit.audit_seals  rls=true forced=true policies=2
+audit.availability_incidents  rls=true forced=true policies=2
+audit.intake_suppression  rls=true forced=true policies=2
+audit.integrity_incidents  rls=true forced=true policies=2
+config.runtime_profile  rls=true forced=true policies=0
+ctx.context_secret  rls=true forced=true policies=0
+ctx.issued  rls=true forced=true policies=0
+identity.bootstrap_claim  rls=true forced=true policies=0
+identity.break_glass_grants  rls=true forced=true policies=0
+identity.credentials  rls=true forced=true policies=0
+identity.principals  rls=true forced=true policies=3
+identity.refresh_tokens  rls=true forced=true policies=0
+identity.role_bindings  rls=true forced=true policies=3
+identity.roles  rls=true forced=true policies=1
+identity.sessions  rls=true forced=true policies=0
+objects.canonical_field_registry  rls=true forced=true policies=1
+objects.canonical_objects  rls=true forced=true policies=2
+objects.object_outbox  rls=true forced=true policies=3
+objects.schema_registry  rls=true forced=true policies=1
+policy.policy_bundles  rls=true forced=true policies=1
+policy.policy_decisions  rls=true forced=true policies=2
+tenancy.domains  rls=true forced=true policies=3
+tenancy.lifecycle_events  rls=true forced=true policies=2
+tenancy.tenants  rls=true forced=true policies=3
+
+=== 5. Legacy mechanisms (every count must be 0) ===
+ctx.issue_system / ctx.issue / eye_ctx_field / eye_set_context / eye_set_system_context / outbox_ack / outbox_claim / my_partition_status = 0
+
+=== 6. Every authoritative port revalidates LIVE authority or capability ===
+audit.commit_event  ->  REVALIDATES (assert_live_authority mode-check)
+audit.commit_identity_event  ->  REVALIDATES (assert_capability mode-check)
+audit.commit_intake_event  ->  REVALIDATES (assert_capability)
+audit.commit_integrity_event  ->  REVALIDATES (assert_capability)
+identity.bootstrap_mark_one_time  ->  REVALIDATES (assert_capability mode-check)
+identity.create_principal  ->  REVALIDATES (assert_business_authority assert_capability mode-check)
+objects.admit_version  ->  REVALIDATES (assert_live_authority mode-check)
+objects.enqueue_event  ->  REVALIDATES (assert_live_authority mode-check)
+objects.outbox_ack_leased  ->  REVALIDATES (assert_capability)
+objects.outbox_lease  ->  REVALIDATES (assert_capability)
+policy.commit_decision  ->  REVALIDATES (assert_live_authority mode-check)
+tenancy.create_domain  ->  REVALIDATES (assert_business_authority)
+tenancy.create_tenant  ->  REVALIDATES (assert_business_authority)
+
+=== 7. Context secret and issuance ledger are unreachable (must be NONE) ===
+NONE
+
+===== 10. pnpm audit (blocking at high) =====
+No known vulnerabilities found
+
+===== 11. exact pinned-image digest + scan verification =====
+# Exact-image digest + blocking-scan verification
+timestamp: 2026-08-07T13:59:16Z
+trivy: Version: 0.73.0
+docker: Docker version 28.5.1, build e180ab8
+compose[postgres]: digest matches manifest (postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+compose[redis]: digest matches manifest (redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+--- trivy image scans (blocking HIGH/CRITICAL, dispositions: .trivyignore) ---
+postgres image scan exit: 0 (target: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+redis image scan exit:    0 (target: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+result: PASS (digests consistent; both exact-image scans clean at HIGH/CRITICAL under dated dispositions)
+
+===== 12. browser regression gate (Playwright, 10 journeys) =====
+  ✓   1 e2e/phase0.spec.ts:157:7 › Phase 0 browser regression › 1. platform administrator login (UI) (610ms)
+  ✓   2 e2e/phase0.spec.ts:164:7 › Phase 0 browser regression › 2. governed tenant and domain creation with review step (UI) (482ms)
+  ✓   3 e2e/phase0.spec.ts:177:7 › Phase 0 browser regression › 3. ambiguous scope fails closed (EYE-TEN-001) (11ms)
+  ✓   4 e2e/phase0.spec.ts:187:7 › Phase 0 browser regression › 4. cross-tenant access denied without metadata leakage (5ms)
+  ✓   5 e2e/phase0.spec.ts:200:7 › Phase 0 browser regression › 5. canonical object v1 → v2 correction visible in UI history (551ms)
+  ✓   6 e2e/phase0.spec.ts:214:7 › Phase 0 browser regression › 6. known-at query returns the pre-correction state (UI) (711ms)
+  ✓   7 e2e/phase0.spec.ts:235:7 › Phase 0 browser regression › 7. policy denial in UI + obligation evidence on audit view (713ms)
+  ✓   8 e2e/phase0.spec.ts:250:7 › Phase 0 browser regression › 8. audit viewer shows events and chain-integrity status (UI) (453ms)
+  ✓   9 e2e/phase0.spec.ts:259:7 › Phase 0 browser regression › 9. keyboard navigation and basic accessibility (320ms)
+  ✓  10 e2e/phase0.spec.ts:277:7 › Phase 0 browser regression › 10. light/dark presentation and RTL-layout smoke (409ms)
+  10 passed (10.6s)
+
+===== 13. virgin demo transcript + teardown =====
+==> wiping volumes + local secret handoff (VIRGIN run)
+==> running ./scripts/demo.sh (full transcript captured)
+demo.sh exit: 0
+==> login-flow proof against the running API
+rotated-credential login: status=201 rotationRequired=false hasTokens=true
+wrong-credential login:   status=401 rotationRequired=n/a hasTokens=false
+result: PASS — virgin demo produces a usable, governed login flow
+
+########################################################################
+# finished: 2026-08-07T13:59:49Z
+# GATE RESULT: PASS — every mandatory step green at 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+########################################################################

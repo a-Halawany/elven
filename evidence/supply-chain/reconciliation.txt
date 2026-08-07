@@ -1,0 +1,15 @@
+# SBOM / lockfile / license reconciliation — 2026-08-07T13:58:40.512Z
+sbom components:               280
+  production (licenses-prod):  192
+  development (licenses-dev):  88
+lockfile resolution entries:   698 (heading match; superset incl. peer-dedup/link entries)
+lockfile sha256:               cfa3bf275009f4ecd62c843e93f1ac06c8197ad9d21bdb3b0b6137a45970d907
+lockfile distinct identities:  349
+closure identities (prod+dev): 280
+forward  (sbom -> closure):    280/280 matched, 0 unmatched
+reverse  (closure -> sbom):    280/280 matched, 0 unmatched, 0 governed exclusion(s)
+stale exclusions:              0
+cyclonedx 1.6 schema:          VALID
+source candidate sha:          1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries; BIDIRECTIONAL identity reconciliation (sbom<->closure) with governed exclusions; CycloneDX 1.6 schema validity
+result:                        RECONCILED

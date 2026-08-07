@@ -1,0 +1,105 @@
+SOURCE_CANDIDATE_SHA: 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+
+## git log --oneline -8
+1e6b29b Phase 0 Gate-2.1 closure (C1-C11): final authority-boundary closure
+09ab114 Gate-2 evidence attestation for SOURCE_CANDIDATE_SHA=2deded44904e5a4ec264938085c2aaa93d9636b6
+2deded4 Phase 0 Gate-2 closure (G1-G10): least-privilege authorities, bound non-replayable context, exact-match domain isolation, unforgeable in-database evidence, admission-only canonical writes, fail-closed audit coverage, token-family reuse detection, hardened bootstrap, clean-source typecheck
+562fffa Gate metadata: untrack post-commit SHA-descriptor artifacts (bundle-only)
+75522e3 Phase 0 invariant remediation (R1–R10): enforceable isolation matrix, privilege boundary, complete audit-on-commit, refresh rotation, full-header digest, identity integrity, secrets/infra, supply-chain truthfulness
+ce1ee0d Gate remediation: pnpm-audit high findings fixed via workspace overrides (sharp>=0.35.0, postcss>=8.5.23 — zero known vulnerabilities); virgin-DB self-sufficiency fix for the superuser tamper integration test
+e3bd088 Rev 3 gate corrections (documentation only): PHASE0_REPORT bootstrap/Playwright remediation notes, PHASE1_PLAN Revision 3 (corrections A-F), EXCEPTIONS P1 proposed entries + audit-backup control honesty fix, C-013 extensibility language, commit-reference reconciliation
+f589afd PROGRESS: gate-closure status
+
+## git show --stat (source candidate)
+1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+Halawany
+Fri Aug 7 16:00:19 2026 +0300
+Phase 0 Gate-2.1 closure (C1-C11): final authority-boundary closure
+
+ .github/workflows/ci.yml                           |   16 +-
+ GATE2_1_PLAN.md                                    |  230 +
+ PHASE0_EVIDENCE.md                                 |  181 +-
+ PHASE1_PLAN.md                                     |   52 +-
+ PROGRESS.md                                        |   77 +-
+ .../migrations/0011_authority_boundary_closure.sql |  704 +++
+ .../0012_evidence_capability_and_port_binding.sql  | 1092 ++++
+ apps/api/scripts/migrate.mjs                       |   13 +-
+ apps/api/src/audit/audit.service.ts                |   54 +-
+ apps/api/src/bootstrap/run-bootstrap.ts            |    6 +-
+ .../src/health/degraded-reconciliation.service.ts  |   69 +
+ apps/api/src/health/health.module.ts               |    3 +-
+ apps/api/src/identity/identity.service.ts          |   36 +-
+ apps/api/src/identity/principals.service.ts        |   28 +-
+ apps/api/src/objects/objects.controller.ts         |   37 +-
+ apps/api/src/objects/objects.service.ts            |   81 +-
+ apps/api/src/objects/outbox.publisher.ts           |   17 +-
+ apps/api/src/pipeline/admin.controllers.ts         |   49 +-
+ apps/api/src/pipeline/auth.controller.ts           |   44 +-
+ apps/api/src/pipeline/pipeline.service.ts          |  418 +-
+ apps/api/src/shared/capabilities.ts                |  104 +
+ apps/api/src/shared/degraded-store.ts              |   54 +-
+ apps/api/src/tenancy/tenancy.controller.ts         |   35 +-
+ apps/api/src/tenancy/tenancy.service.ts            |   56 +-
+ apps/api/test/acceptance/acceptance.test.ts        |  259 +
+ apps/api/test/gate/supply-chain-artifacts.test.ts  |   87 +
+ apps/api/test/gate/supply-chain.test.ts            |  363 ++
+ apps/api/test/int/adversarial.test.ts              |  295 +-
+ apps/api/test/int/audit-chain.test.ts              |   63 +-
+ apps/api/test/int/domain-isolation.test.ts         |  139 +-
+ apps/api/test/int/gate21-adversarial.test.ts       |  788 +++
+ apps/api/test/int/helpers.ts                       |  138 +-
+ apps/api/test/int/rfc8785-crosslang.test.ts        |  152 +
+ apps/api/vitest.config.ts                          |    4 +-
+ conformance.manifest.json                          |   52 +-
+ e2e/phase0.spec.ts                                 |   10 +-
+ evidence/README.md                                 |   25 -
+ evidence/clean-typecheck.txt                       |   57 -
+ evidence/demo-virgin-transcript.txt                |  132 -
+ evidence/git-metadata.txt                          |   27 -
+ evidence/supply-chain/gitleaks-git-report.json     |    1 -
+ evidence/supply-chain/gitleaks-git-stdout.txt      |   10 -
+ evidence/supply-chain/gitleaks-report.json         |    1 -
+ evidence/supply-chain/gitleaks-stdout.txt          |    9 -
+ evidence/supply-chain/licenses-dev.json            |  442 --
+ evidence/supply-chain/licenses-prod.json           |  962 ----
+ evidence/supply-chain/reconciliation.txt           |   12 -
+ evidence/supply-chain/sbom.cdx.json                | 5626 --------------------
+ evidence/supply-chain/trivy-fs.txt                 |   19 -
+ evidence/supply-chain/trivy-image-postgres18.txt   |   26 -
+ evidence/supply-chain/trivy-image-redis8.txt       |   20 -
+ evidence/supply-chain/verify-images.txt            |   10 -
+ evidence/test-runs.txt                             |  381 --
+ evidence/tracked-source-manifest.sha256            |  146 -
+ evidence/tracked-source.sha256                     |    7 -
+ .../contracts/test/fixtures/rfc8785-corpus.json    |  384 ++
+ .../contracts/test/rfc8785-conformance.test.ts     |   75 +
+ playwright.config.ts                               |   85 +-
+ scripts/demo.sh                                    |   60 +-
+ scripts/generate-evidence.mjs                      |  182 +
+ scripts/generate-sbom.mjs                          |   66 +-
+ scripts/lib/supply-chain.mjs                       |  219 +
+ scripts/license-inventory.mjs                      |   59 +-
+ scripts/local-env.cjs                              |   65 +
+ scripts/local-env.mjs                              |   36 +-
+ scripts/verify-authority-boundary.sh               |  111 +
+ scripts/verify-db-paths.sh                         |  152 +
+ scripts/verify-demo.sh                             |   11 +-
+ supply-chain-exclusions.json                       |    4 +
+ 69 files changed, 6631 insertions(+), 8597 deletions(-)
+
+## tracked file count
+161
+
+## digests
+git archive 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 sha256: e41e566803f43ecfefddca270df3672335a022bf4b487c46becb8aecddc49a3d
+the-eye-source.bundle sha256: ac260ab5bb0c16db8880ae6b85f65079d113e20142d57090108c65cebe5c9a57
+
+## bundle verification (git requires this to run inside a repository)
+The bundle contains these 2 refs:
+1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 refs/heads/gate-source-candidate
+1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 HEAD
+The bundle records a complete history.
+The bundle uses this hash algorithm: sha1
+
+## bundle self-check
+a fresh clone of the bundle lands on 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 with 0 evidence files

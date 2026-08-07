@@ -1,0 +1,68 @@
+########################################################################
+# THE EYE — PHASE 0 GATE-2.1 — ISOLATED GATE RUN (raw log)
+# SOURCE_CANDIDATE_SHA = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+# isolated git worktree · virgin Compose volumes · no reused node_modules
+# no pre-existing build artifacts · no evidence present at start
+# started : 2026-08-07T13:58:24Z
+# node v24.11.1 · pnpm 11.9.0 · Docker version 28.5.1
+########################################################################
+
+===== 0. the checkout is genuinely clean =====
+node_modules : 0
+dist/.next   : 0
+evidence/    : 0
+tracked files: 161
+
+===== 1. pnpm install --frozen-lockfile =====
++ @playwright/test 1.62.1
++ dependency-cruiser 18.1.1
+
+Done in 3.4s using pnpm v11.9.0
+
+===== 2. clean-source typecheck + build (CI order: typecheck BEFORE build) =====
+  none present
+==> pnpm typecheck (CI order: typecheck BEFORE build)
+typecheck exit: 0
+==> pnpm build (must still succeed after a clean typecheck)
+build exit: 0
+result: PASS — clean-source typecheck and build both succeed in CI order
+
+===== 3. module boundaries =====
+
+✔ no dependency violations found (88 modules, 231 dependencies cruised)
+
+
+===== 4. supply-chain gate inputs: licence closures (prod AND dev) + SBOM =====
+license inventory: 280 packages checked (192 production, 88 development-only)
+license gate: PASS (production and development)
+SBOM: 280 components (192 production, 88 development-only)
+lockfile package-entry count (approx heading match): 698
+reconciliation: RECONCILED bidirectionally (0 governed exclusion(s))
+cyclonedx 1.6 schema: VALID
+
+===== 12. browser regression gate (Playwright, 10 journeys) =====
+  ✓   1 e2e/phase0.spec.ts:157:7 › Phase 0 browser regression › 1. platform administrator login (UI) (610ms)
+  ✓   2 e2e/phase0.spec.ts:164:7 › Phase 0 browser regression › 2. governed tenant and domain creation with review step (UI) (482ms)
+  ✓   3 e2e/phase0.spec.ts:177:7 › Phase 0 browser regression › 3. ambiguous scope fails closed (EYE-TEN-001) (11ms)
+  ✓   4 e2e/phase0.spec.ts:187:7 › Phase 0 browser regression › 4. cross-tenant access denied without metadata leakage (5ms)
+  ✓   5 e2e/phase0.spec.ts:200:7 › Phase 0 browser regression › 5. canonical object v1 → v2 correction visible in UI history (551ms)
+  ✓   6 e2e/phase0.spec.ts:214:7 › Phase 0 browser regression › 6. known-at query returns the pre-correction state (UI) (711ms)
+  ✓   7 e2e/phase0.spec.ts:235:7 › Phase 0 browser regression › 7. policy denial in UI + obligation evidence on audit view (713ms)
+  ✓   8 e2e/phase0.spec.ts:250:7 › Phase 0 browser regression › 8. audit viewer shows events and chain-integrity status (UI) (453ms)
+  ✓   9 e2e/phase0.spec.ts:259:7 › Phase 0 browser regression › 9. keyboard navigation and basic accessibility (320ms)
+  ✓  10 e2e/phase0.spec.ts:277:7 › Phase 0 browser regression › 10. light/dark presentation and RTL-layout smoke (409ms)
+  10 passed (10.6s)
+
+===== 13. virgin demo transcript + teardown =====
+==> wiping volumes + local secret handoff (VIRGIN run)
+==> running ./scripts/demo.sh (full transcript captured)
+demo.sh exit: 0
+==> login-flow proof against the running API
+rotated-credential login: status=201 rotationRequired=false hasTokens=true
+wrong-credential login:   status=401 rotationRequired=n/a hasTokens=false
+result: PASS — virgin demo produces a usable, governed login flow
+
+########################################################################
+# finished: 2026-08-07T13:59:49Z
+# GATE RESULT: PASS — every mandatory step green at 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+########################################################################

@@ -1,0 +1,126 @@
+# Virgin demo.sh login-flow verification
+timestamp: 2026-08-07T13:59:31Z
+node: v24.11.1  pnpm: 11.9.0  docker: Docker version 28.5.1, build e180ab8
+==> wiping volumes + local secret handoff (VIRGIN run)
+eye-postgres
+eye-redis
+ Network gate-wt_default  Removing
+ Volume gate-wt_eye-pgdata  Removing
+ Volume gate-wt_eye-pgdata  Removed
+ Network gate-wt_default  Removed
+==> running ./scripts/demo.sh (full transcript captured)
+==> local secret material ready in .eye-local/env (0600, gitignored, canonical loader)
+==> 1/6 docker compose up (postgres:18-alpine + redis:8-alpine, digest-pinned, loopback-only)
+ Network gate-wt_default  Creating
+ Network gate-wt_default  Created
+ Volume gate-wt_eye-pgdata  Creating
+ Volume gate-wt_eye-pgdata  Created
+ Container eye-redis  Creating
+ Container eye-postgres  Creating
+ Container eye-redis  Created
+ Container eye-postgres  Created
+ Container eye-redis  Starting
+ Container eye-postgres  Starting
+ Container eye-postgres  Started
+ Container eye-redis  Started
+ Container eye-redis  Waiting
+ Container eye-postgres  Waiting
+ Container eye-redis  Healthy
+ Container eye-postgres  Healthy
+==> 2/6 install + build
+Scope: all 5 workspace projects
+Already up to date
+Done in 168ms using pnpm v11.9.0
+$ pnpm -r build
+Scope: 4 of 5 workspace projects
+packages/contracts build$ tsc -p tsconfig.json
+packages/tokens build$ tsc -p tsconfig.json && node dist/emit-css.js
+packages/tokens build: tokens.css written (5599 bytes)
+packages/tokens build: Done
+packages/contracts build: Done
+apps/api build$ tsc -p tsconfig.build.json
+apps/web build$ next build
+apps/web build: ▲ Next.js 16.2.12 (Turbopack)
+apps/web build:   Creating an optimized production build ...
+apps/api build: Done
+apps/web build: ✓ Compiled successfully in 847ms
+apps/web build:   Running TypeScript ...
+apps/web build:   Finished TypeScript in 914ms ...
+apps/web build:   Collecting page data using 10 workers ...
+apps/web build:   Generating static pages using 10 workers (0/9) ...
+apps/web build:   Generating static pages using 10 workers (2/9) 
+apps/web build:   Generating static pages using 10 workers (4/9) 
+apps/web build:   Generating static pages using 10 workers (6/9) 
+apps/web build: ✓ Generating static pages using 10 workers (9/9) in 194ms
+apps/web build:   Finalizing page optimization ...
+apps/web build: Route (app)
+apps/web build: ┌ ○ /
+apps/web build: ├ ○ /_not-found
+apps/web build: ├ ○ /admin
+apps/web build: ├ ○ /admin/audit
+apps/web build: ├ ○ /admin/objects
+apps/web build: ├ ○ /admin/principals
+apps/web build: ├ ○ /admin/tenants
+apps/web build: └ ○ /login
+apps/web build: ○  (Static)  prerendered as static content
+apps/web build: Done
+==> 3/6 migrations
+$ pnpm --filter @eye/api db:migrate
+$ node scripts/migrate.mjs
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+applying 0009_privilege_separation_and_bound_context.sql ... ok
+applying 0010_bound_evidence_and_admission_ports.sql ... ok
+applying 0011_authority_boundary_closure.sql ... ok
+applying 0012_evidence_capability_and_port_binding.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+==> 4/6 audited bootstrap (one-shot; exit 2 = already bootstrapped)
+==============================================================
+  THE EYE — PLATFORM BOOTSTRAP (conspicuous, audited, single-use)
+  platform_admin principal: 019fdc85-cb9e-7219-ae40-6eeaef6fd230
+  username:                 platform-admin
+  secret:                   [environment-supplied, NOT logged]
+  one-time:                 first login FORCES rotation; unused
+                            credential disables after 24h
+  audit correlation:        019fdc85-cb89-727f-aed5-119fab13fa93 (partition: platform)
+==============================================================
+==> 5/6 start API (:3401) and web shell (:3000)
+{"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+==> 6/6 acceptance suite (15 criteria + remediation paths, reproducible evidence)
+$ vitest run --config vitest.accept.config.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.accept.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/41f9bd54-615a-4c55-b883-1f9e0c92601d/scratchpad/gate-wt/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  42 passed (42)
+   Start at  16:59:45
+   Duration  3.41s (transform 45ms, setup 18ms, import 103ms, tests 3.22s, environment 0ms)
+
+
+  Demo ready:
+    WS-19 shell:  http://localhost:3000
+                  user: platform-admin
+                  password: EYE_TEST_ADMIN_PASSWORD in .eye-local/env (0600)
+                  (the acceptance suite exercised the forced first-login
+                   rotation of the one-time bootstrap secret)
+    API:          http://localhost:3401/readyz
+  Walkthrough: login -> Tenants & Domains (governed create with review step)
+    -> Users & Roles -> Canonical Objects (create claim; leave evidence empty
+    to see EYE-PRV-001; open an object for version history + known-at query)
+    -> Audit Ledger (sanitized projection; Verify chain).
+demo.sh exit: 0
+==> login-flow proof against the running API
+rotated-credential login: status=201 rotationRequired=false hasTokens=true
+wrong-credential login:   status=401 rotationRequired=n/a hasTokens=false
+result: PASS — virgin demo produces a usable, governed login flow

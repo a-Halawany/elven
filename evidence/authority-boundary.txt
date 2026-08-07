@@ -1,0 +1,99 @@
+########################################################################
+# THE EYE — PHASE 0 GATE-2.1 — ISOLATED GATE RUN (raw log)
+# SOURCE_CANDIDATE_SHA = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+# isolated git worktree · virgin Compose volumes · no reused node_modules
+# no pre-existing build artifacts · no evidence present at start
+# started : 2026-08-07T13:58:24Z
+# node v24.11.1 · pnpm 11.9.0 · Docker version 28.5.1
+########################################################################
+
+===== 9. authority-boundary catalog (live database, re-runnable) =====
+=== 1. DIRECT DML on any governed table, by any runtime role (must be NONE) ===
+NONE
+
+=== 2. EXECUTE on each authoritative port, per role ===
+issue_bootstrap(p_correlation uuid)  ->  eye_identity
+issue_commit(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_target text, p_correlation uuid, p_policy_decision uuid, p_bundle text, p_consequence text, p_ttl_seconds integer)  ->  eye_commit,eye_identity
+issue_evidence(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_route_scope text, p_route_tenant uuid, p_route_domain uuid, p_correlation uuid, p_ttl_seconds integer)  ->  eye_commit,eye_identity
+issue_identity_op(p_operation text, p_subject uuid, p_correlation uuid, p_ttl_seconds integer)  ->  eye_identity
+issue_publish(p_event_id uuid)  ->  eye_publisher
+issue_verify(p_partition text, p_seal boolean)  ->  eye_verifier
+audit.advance_chain_head  ->  (none)
+audit.commit_chain_head  ->  (none)
+audit.commit_event  ->  eye_commit,eye_identity
+audit.commit_identity_event  ->  eye_identity
+audit.commit_intake_event  ->  eye_identity
+audit.commit_integrity_event  ->  eye_verifier
+audit.my_domain_integrity  ->  eye_commit
+audit.my_partition_integrity  ->  eye_commit,eye_verifier
+audit.rebuild_chain_heads  ->  eye_recovery
+identity.auth_bindings  ->  eye_identity
+identity.auth_lookup  ->  eye_identity
+identity.auth_principal  ->  eye_identity
+identity.bootstrap_mark_one_time  ->  eye_identity
+identity.create_principal  ->  eye_identity
+identity.session_bindings  ->  eye_app,eye_identity
+identity.session_get_active  ->  eye_identity
+identity.session_open  ->  eye_identity
+identity.session_subject  ->  eye_app,eye_identity
+objects.admit_version  ->  eye_commit
+objects.enqueue_event  ->  eye_commit
+objects.outbox_ack_leased  ->  eye_publisher
+objects.outbox_lease  ->  eye_publisher
+policy.commit_decision  ->  eye_commit,eye_identity
+tenancy.create_domain  ->  eye_commit
+tenancy.create_tenant  ->  eye_commit
+tenancy.my_tenant  ->  eye_app,eye_commit
+
+=== 3. PUBLIC EXECUTE anywhere in the governed schemas (must be NONE) ===
+NONE
+
+=== 4. RLS: enabled AND forced, with policy counts ===
+audit.audit_chain_heads  rls=true forced=true policies=2
+audit.audit_events  rls=true forced=true policies=2
+audit.audit_seals  rls=true forced=true policies=2
+audit.availability_incidents  rls=true forced=true policies=2
+audit.intake_suppression  rls=true forced=true policies=2
+audit.integrity_incidents  rls=true forced=true policies=2
+config.runtime_profile  rls=true forced=true policies=0
+ctx.context_secret  rls=true forced=true policies=0
+ctx.issued  rls=true forced=true policies=0
+identity.bootstrap_claim  rls=true forced=true policies=0
+identity.break_glass_grants  rls=true forced=true policies=0
+identity.credentials  rls=true forced=true policies=0
+identity.principals  rls=true forced=true policies=3
+identity.refresh_tokens  rls=true forced=true policies=0
+identity.role_bindings  rls=true forced=true policies=3
+identity.roles  rls=true forced=true policies=1
+identity.sessions  rls=true forced=true policies=0
+objects.canonical_field_registry  rls=true forced=true policies=1
+objects.canonical_objects  rls=true forced=true policies=2
+objects.object_outbox  rls=true forced=true policies=3
+objects.schema_registry  rls=true forced=true policies=1
+policy.policy_bundles  rls=true forced=true policies=1
+policy.policy_decisions  rls=true forced=true policies=2
+tenancy.domains  rls=true forced=true policies=3
+tenancy.lifecycle_events  rls=true forced=true policies=2
+tenancy.tenants  rls=true forced=true policies=3
+
+=== 5. Legacy mechanisms (every count must be 0) ===
+ctx.issue_system / ctx.issue / eye_ctx_field / eye_set_context / eye_set_system_context / outbox_ack / outbox_claim / my_partition_status = 0
+
+=== 6. Every authoritative port revalidates LIVE authority or capability ===
+audit.commit_event  ->  REVALIDATES (assert_live_authority mode-check)
+audit.commit_identity_event  ->  REVALIDATES (assert_capability mode-check)
+audit.commit_intake_event  ->  REVALIDATES (assert_capability)
+audit.commit_integrity_event  ->  REVALIDATES (assert_capability)
+identity.bootstrap_mark_one_time  ->  REVALIDATES (assert_capability mode-check)
+identity.create_principal  ->  REVALIDATES (assert_business_authority assert_capability mode-check)
+objects.admit_version  ->  REVALIDATES (assert_live_authority mode-check)
+objects.enqueue_event  ->  REVALIDATES (assert_live_authority mode-check)
+objects.outbox_ack_leased  ->  REVALIDATES (assert_capability)
+objects.outbox_lease  ->  REVALIDATES (assert_capability)
+policy.commit_decision  ->  REVALIDATES (assert_live_authority mode-check)
+tenancy.create_domain  ->  REVALIDATES (assert_business_authority)
+tenancy.create_tenant  ->  REVALIDATES (assert_business_authority)
+
+=== 7. Context secret and issuance ledger are unreachable (must be NONE) ===
+NONE
+

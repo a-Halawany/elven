@@ -1,0 +1,118 @@
+########################################################################
+# THE EYE — PHASE 0 GATE-2.1 — ISOLATED GATE RUN (raw log)
+# SOURCE_CANDIDATE_SHA = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+# isolated git worktree · virgin Compose volumes · no reused node_modules
+# no pre-existing build artifacts · no evidence present at start
+# started : 2026-08-07T13:58:24Z
+# node v24.11.1 · pnpm 11.9.0 · Docker version 28.5.1
+########################################################################
+
+===== 8. BOTH DATABASE PATHS (virgin volumes; full acceptance+integration on each) =====
+############################################################
+# PATH A — FORWARD UPGRADE (0001-0010 -> 0011/0012)
+############################################################
+(virgin volume verified: 0 migrations recorded, superuser authenticates)
+--- applying 0001-0010 ONLY ---
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+applying 0009_privilege_separation_and_bound_context.sql ... ok
+applying 0010_bound_evidence_and_admission_ports.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+--- seeding real data through the PRE-UPGRADE ports ---
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+business rows seeded
+DO
+audit event seeded through the 0010-era commit path
+
+--- PRE-UPGRADE state ---
+tenants=1 domains=1 principals=1 bindings=1 sessions=1 audit=1 heads=1 migrations=10
+pre-upgrade audit row_hash: dc08eb799ae02197d38dc98c972eeaf126806d732ab2190821d90661cd5527e7
+
+--- UPGRADING the existing database (0011/0012 restored) ---
+applying 0011_authority_boundary_closure.sql ... ok
+applying 0012_evidence_capability_and_port_binding.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+--- POST-UPGRADE state (identical data, 12 migrations) ---
+tenants=1 domains=1 principals=1 bindings=1 sessions=1 audit=1 heads=1 migrations=12
+VERIFIED: every pre-upgrade row count is unchanged across the upgrade
+VERIFIED: the pre-upgrade audit row hash is byte-identical (dc08eb799ae02197d38dc98c972eeaf126806d732ab2190821d90661cd5527e7)
+
+--- applied-file immutability: 0001-0010 digests and timestamps ---
+0001_roles_and_schemas.sql  4834a4fe991173b4  2026-08-07 13:58:48.546958+00
+0002_identity_tenancy.sql  a65408a0f5ee839b  2026-08-07 13:58:48.555609+00
+0003_policy.sql  d6d08054ad1e0437  2026-08-07 13:58:48.56951+00
+0004_audit.sql  202a8d103262d717  2026-08-07 13:58:48.574017+00
+0005_audit_rebuild_rls_fix.sql  2959a2cc65329898  2026-08-07 13:58:48.581544+00
+0006_objects.sql  f7daf0ef5c33ede0  2026-08-07 13:58:48.582934+00
+0007_bootstrap_rotation.sql  be3dc1a0f582bd5a  2026-08-07 13:58:48.589619+00
+0008_invariant_remediation.sql  335563cbf953bdcb  2026-08-07 13:58:48.592444+00
+0009_privilege_separation_and_bound_context.sql  b464bfe572150171  2026-08-07 13:58:48.609055+00
+0010_bound_evidence_and_admission_ports.sql  feacc85536b48ed0  2026-08-07 13:58:48.634408+00
+0011_authority_boundary_closure.sql  0738fe95ddf83b69  2026-08-07 13:58:48.974158+00
+0012_evidence_capability_and_port_binding.sql  c68a43fa9c289d34  2026-08-07 13:58:48.996204+00
+
+--- the pre-upgrade audit row still verifies under the NEW canonicalizer ---
+ALL 1 PRE-UPGRADE ROW(S) STILL VERIFY (event_jcs == canon.jcs(event))
+
+--- legacy mechanisms are UNREACHABLE (must be 0) ---
+legacy definitions remaining = 0
+
+--- the APPLICATION serves the full suites on the UPGRADED database ---
+      Tests  42 passed (42)
+   Start at  16:58:49
+   Duration  3.69s (transform 42ms, setup 16ms, import 128ms, tests 3.49s, environment 0ms)
+
+      Tests  199 passed (199)
+   Start at  16:58:53
+   Duration  6.31s (transform 82ms, setup 34ms, import 459ms, tests 5.47s, environment 0ms)
+
+
+PATH A RESULT: forward upgrade complete — no rebaseline, no data loss, suites green.
+
+############################################################
+# PATH B — VIRGIN INSTALL (0001-0012 on an empty database)
+############################################################
+(virgin volume verified: 0 migrations recorded, superuser authenticates)
+applying 0001_roles_and_schemas.sql ... ok
+applying 0002_identity_tenancy.sql ... ok
+applying 0003_policy.sql ... ok
+applying 0004_audit.sql ... ok
+applying 0005_audit_rebuild_rls_fix.sql ... ok
+applying 0006_objects.sql ... ok
+applying 0007_bootstrap_rotation.sql ... ok
+applying 0008_invariant_remediation.sql ... ok
+applying 0009_privilege_separation_and_bound_context.sql ... ok
+applying 0010_bound_evidence_and_admission_ports.sql ... ok
+applying 0011_authority_boundary_closure.sql ... ok
+applying 0012_evidence_capability_and_port_binding.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+
+migrations recorded = 12
+tenants=0 domains=0 principals=0 bindings=0 sessions=0 audit=0 heads=0 migrations=12
+
+--- the APPLICATION serves the full suites on the VIRGIN database ---
+      Tests  42 passed (42)
+   Start at  16:59:04
+   Duration  3.49s (transform 45ms, setup 16ms, import 115ms, tests 3.29s, environment 0ms)
+
+      Tests  199 passed (199)
+   Start at  16:59:08
+   Duration  6.40s (transform 84ms, setup 33ms, import 462ms, tests 5.56s, environment 0ms)
+
+
+PATH B RESULT: virgin install complete — 12 migrations applied, suites green.
+

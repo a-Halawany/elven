@@ -1,0 +1,2 @@
+e41e566803f43ecfefddca270df3672335a022bf4b487c46becb8aecddc49a3d  git archive 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+# Reproduce: git archive 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 | shasum -a 256

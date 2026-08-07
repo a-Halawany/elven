@@ -1,0 +1,29 @@
+THE EYE — PHASE 0 GATE-2.1 — DECLARED SHAs
+
+SOURCE_CANDIDATE_SHA     = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33
+EVIDENCE_ATTESTATION_SHA = the commit that CONTAINS this file (see the note below)
+
+The source candidate contains NO evidence: it is the frozen source under review.
+The evidence attestation contains ONLY evidence produced by RUNNING that candidate,
+and changes no tracked source.
+
+A commit cannot contain its own hash, so the attestation SHA is not embedded here.
+It is reported in the delivery message and is the HEAD of the delivered repository:
+
+    git clone evidence/the-eye-source.bundle v && cd v
+    git rev-parse HEAD        # = 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33  (the bundle stops at the candidate)
+    # then, in the delivered repository:
+    git diff --name-only <SOURCE_CANDIDATE_SHA> <EVIDENCE_ATTESTATION_SHA>
+    # must list evidence/ paths ONLY.
+
+git archive 1e6b29b2f7ddbdc16520d0968d159fe0bab86f33 | shasum -a 256
+  = e41e566803f43ecfefddca270df3672335a022bf4b487c46becb8aecddc49a3d
+evidence/the-eye-source.bundle sha256
+  = ac260ab5bb0c16db8880ae6b85f65079d113e20142d57090108c65cebe5c9a57
+
+tracked files in the candidate  : 161
+evidence files in the candidate : 0
+0
+
+GATE RESULT at this candidate: PASS — 492 tests green across every mandatory
+suite, both database paths proven, all 22 mandated adversarial tests present.

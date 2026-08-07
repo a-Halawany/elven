@@ -1,0 +1,10 @@
+# Exact-image digest + blocking-scan verification
+timestamp: 2026-08-07T13:59:16Z
+trivy: Version: 0.73.0
+docker: Docker version 28.5.1, build e180ab8
+compose[postgres]: digest matches manifest (postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+compose[redis]: digest matches manifest (redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+--- trivy image scans (blocking HIGH/CRITICAL, dispositions: .trivyignore) ---
+postgres image scan exit: 0 (target: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15)
+redis image scan exit:    0 (target: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+result: PASS (digests consistent; both exact-image scans clean at HIGH/CRITICAL under dated dispositions)
