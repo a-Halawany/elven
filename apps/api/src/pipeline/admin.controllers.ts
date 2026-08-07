@@ -48,15 +48,19 @@ export class AdminControllers {
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
+    const route = {
+      scope: 'TENANT' as const, tenantId, domainId: null,
+      action: 'identity.principal.create', objectType: 'PRN', objectId: null,
+      authority: 'identity' as const,
+    };
+    // Gate-2.1 §7: durable sanitized evidence for every authenticated rejection.
     if (typeof p.displayName !== 'string' || p.displayName.length < 2) {
-      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'displayName required'), 400);
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'displayName required', 400,
+      );
     }
     const scope: Scope = p.domainId !== undefined ? 'DOMAIN' : 'TENANT';
-    const out = await this.pipeline.write(envelope, principal, {
-      scope: 'TENANT', tenantId, domainId: null,
-      action: 'identity.principal.create', objectType: 'PRN', objectId: null,
-      authority: 'identity',
-    }, async (tx) => {
+    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
       const created = await this.principals.createPrincipal(tx, {
         kind: p.kind ?? 'human',
         scope,
@@ -143,12 +147,33 @@ export class AdminControllers {
         envelope, principal, route, 'EYE-REQ-001', 'partitionId required',
       );
     }
-    // The verification itself runs inside the governed read so the decision and
-    // the outcome are bound to one another in the evidence.
-    const out = await this.pipeline.consequentialRead(envelope, principal, route, async () => {
-      const report = await this.audit.verifyPartition(partitionId as string);
-      return report;
-    });
+    // Gate-2.1 §7: the verification runs INSIDE the governed read and its actual
+    // finding becomes the evidence. An unknown or damaged partition is recorded as
+    // a failure with the full detail — never as a generic success because the
+    // handler returned.
+    const out = await this.pipeline.consequentialReadEvidenced(
+      envelope, principal, route,
+      async () => this.audit.verifyPartition(partitionId as string),
+      (report) => ({
+        outcome: report.ok ? ('success' as const) : ('failure' as const),
+        resultCode: report.ok ? 'OK' : `EYE-AUD-${report.resultClass === 'partition_unknown' ? '404' : '001'}`,
+        metadata: {
+          requested_partition: partitionId,
+          result_class: report.resultClass,
+          checked: report.checked,
+          ok: report.ok,
+          head_matches: report.headMatches,
+          verified_head_seq: report.verifiedHeadSeq,
+          verified_head_hash: report.verifiedHeadHash,
+          expected_head_seq: report.expectedHeadSeq,
+          expected_head_hash: report.expectedHeadHash,
+          calculated_head_seq: report.calculatedHeadSeq,
+          calculated_head_hash: report.calculatedHeadHash,
+          broken_at_seq: report.brokenAtSeq,
+          incident_id: report.incidentId,
+        },
+      }),
+    );
     return {
       report: out.result,
       receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq },

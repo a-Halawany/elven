@@ -15,7 +15,7 @@
  * reports on cannot report on it. It lives in `shared` as a cross-cutting
  * capability so no module boundary is crossed to reach it.
  */
-import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, existsSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, existsSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -32,7 +32,19 @@ export interface DegradedRecord {
   suppressedCarried: number;
 }
 
-const DEFAULT_DIR = process.env['EYE_DEGRADED_DIR'] ?? join(process.cwd(), '.eye-local', 'degraded');
+/**
+ * The journal location is a property of the DEPLOYMENT, not of the directory the
+ * process happened to be started from (Gate-2.1 §7). Deriving it from
+ * `process.cwd()` meant a restart from a different working directory read a
+ * different journal and therefore came back reporting `ok` — silently discarding
+ * exactly the degraded state this store exists to preserve. It is resolved from
+ * this module's own location instead: `<app root>/.eye-local/degraded`, with an
+ * explicit override for operators who place it elsewhere.
+ */
+// `__dirname` (the API compiles to CommonJS): dist/shared → up two levels is the
+// application root, both from dist/ at runtime and from src/ under ts-node.
+const APP_ROOT = join(__dirname, '..', '..');
+const DEFAULT_DIR = process.env['EYE_DEGRADED_DIR'] ?? join(APP_ROOT, '.eye-local', 'degraded');
 
 class DegradedAuditStore {
   private degradedSince: string | null = null;
@@ -92,6 +104,44 @@ class DegradedAuditStore {
       correlationId: null, route: null, failureClass: null, scope: null,
       detail, suppressedCarried: 0,
     });
+  }
+
+  /**
+   * Gate-2.1 §7: RESTART RECOVERY. A degraded flag held only in memory is a
+   * degraded flag that a crash silently clears — so on startup the journal is
+   * replayed in order and the flag is restored unless a later
+   * `degraded_recovered` record closed it. Recovery is therefore something that
+   * has to be RECORDED, not something a restart grants for free.
+   */
+  reloadFromJournal(): { degraded: boolean; unreconciled: number; since: string | null } {
+    let since: string | null = null;
+    let count = 0;
+    for (const rec of this.readAll()) {
+      if (rec.kind === 'degraded_recovered') {
+        since = null;
+        count = 0;
+      } else {
+        since ??= rec.at;
+        count += 1;
+      }
+    }
+    if (since !== null) {
+      this.degradedSince = since;
+      this.count = count;
+      this.lastError = 'restored from durable journal on startup (unreconciled)';
+    }
+    return { degraded: since !== null, unreconciled: count, since };
+  }
+
+  /**
+   * Mark degraded from a GOVERNED database record (an open availability
+   * incident), for the case where this process' local journal was lost but the
+   * ledger still shows the degradation unreconciled.
+   */
+  restoreFromIncident(at: string, detail: string): void {
+    this.degradedSince ??= at;
+    this.count += 1;
+    this.lastError = detail.slice(0, 200);
   }
 
   /** Reconciliation input: every record written by this process' journal. */

@@ -1,34 +1,45 @@
 /**
- * License inventory — allowlist-checked (ADR-P0-16).
- * Walks installed workspace dependencies, records name@version + license,
- * fails on any license outside the allowlist.
+ * License inventory — allowlist-checked over PRODUCTION AND DEVELOPMENT closures
+ * (ADR-P0-16; Gate-2.1 §9).
+ *
+ * Checking production alone was the gap: a copyleft build tool, test harness or
+ * codegen dependency is still shipped inside the repository, still executed in
+ * CI, and still a licence obligation. Both scopes are gated here, and a violation
+ * is attributed to the scope it came from.
  */
 import { execSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { checkLicenses, LICENSE_ALLOWLIST } from './lib/supply-chain.mjs';
 
-const ALLOW = new Set([
-  'MIT', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', 'Apache-2.0', '0BSD',
-  'BlueOak-1.0.0', 'CC-BY-4.0', 'CC0-1.0', 'Unlicense', 'Python-2.0',
-  'MIT OR Apache-2.0', '(MIT OR CC0-1.0)', 'Apache-2.0 OR MIT', '(Apache-2.0 OR MPL-1.1)',
-  '(MIT AND CC-BY-3.0)', 'MPL-2.0', '(AFL-2.1 OR BSD-3-Clause)', '(BSD-2-Clause OR MIT OR Apache-2.0)',
-  '(MIT AND Zlib)', '(WTFPL OR MIT)', 'LGPL-3.0-or-later',
-]);
-
-const raw = execSync('pnpm licenses list --json --prod', { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-const data = JSON.parse(raw);
-const inventory = [];
-const violations = [];
-for (const [license, pkgs] of Object.entries(data)) {
-  for (const p of pkgs) {
-    inventory.push({ name: p.name, versions: p.versions, license });
-    if (!ALLOW.has(license)) violations.push(`${p.name} (${license})`);
+function inventory(flag) {
+  const raw = execSync(`pnpm licenses list --json ${flag}`, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const data = JSON.parse(raw);
+  const out = [];
+  for (const [license, pkgs] of Object.entries(data)) {
+    for (const p of pkgs) {
+      for (const v of p.versions) out.push({ name: p.name, version: v, license });
+    }
   }
+  return out;
 }
+
+const prod = inventory('--prod');
+const all = inventory('--dev'); // pnpm --dev returns the full closure
+const prodIds = new Set(prod.map((p) => `${p.name}@${p.version}`));
+const dev = all.filter((p) => !prodIds.has(`${p.name}@${p.version}`));
+
+const result = checkLicenses({ production: prod, development: dev }, LICENSE_ALLOWLIST);
+
 mkdirSync('sbom', { recursive: true });
-writeFileSync('sbom/license-inventory.json', JSON.stringify(inventory, null, 2));
-console.log(`license inventory: ${inventory.length} packages recorded`);
-if (violations.length > 0) {
-  console.error('LICENSE VIOLATIONS (not in allowlist):');
-  for (const v of violations) console.error('  - ' + v);
+writeFileSync(
+  'sbom/license-inventory.json',
+  JSON.stringify({ production: prod, development: dev }, null, 2) + '\n',
+);
+console.log(`license inventory: ${result.checked} packages checked (${prod.length} production, ${dev.length} development-only)`);
+
+if (!result.ok) {
+  console.error('LICENSE VIOLATIONS (not in the allowlist):');
+  for (const v of result.violations) console.error(`  - [${v.scope}] ${v.name} (${v.license})`);
   process.exit(1);
 }
+console.log('license gate: PASS (production and development)');

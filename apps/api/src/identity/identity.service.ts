@@ -182,23 +182,20 @@ export class IdentityService {
     }
     if (!payload.sub || !payload.sid || !payload.ctxk) return null;
 
-    const session = (
-      await sql<{ id: string; principal_id: string; assurance: string }>`
-        select * from identity.session_get_active(${payload.sid}::uuid)`.execute(this.db)
-    ).rows[0];
-    if (!session || session.principal_id !== payload.sub) return null;
-
-    const p = (
+    // Gate-2.1 §5: CALLER-BOUND lookups. The application role can resolve only
+    // the subject of the session whose context key it presents — it can no longer
+    // probe an arbitrary principal, binding or session UUID across tenants.
+    const subject = (
       await sql<{
-        principal_id: string; kind: string; scope: string;
-        tenant_id: string | null; domain_id: string | null; status: string;
-      }>`select * from identity.auth_principal(${payload.sub}::uuid)`.execute(this.db)
+        session_id: string; principal_id: string; assurance: string; kind: string;
+        scope: string; tenant_id: string | null; domain_id: string | null; status: string;
+      }>`select * from identity.session_subject(${payload.sid}::uuid, ${payload.ctxk})`.execute(this.db)
     ).rows[0];
-    if (!p || p.status !== 'active') return null;
+    if (!subject || subject.principal_id !== payload.sub) return null;
 
     const bindings = (
       await sql<{ role_code: string; scope: string; tenant_id: string | null; domain_id: string | null }>`
-        select * from identity.auth_bindings(${payload.sub}::uuid)`.execute(this.db)
+        select * from identity.session_bindings(${payload.sid}::uuid, ${payload.ctxk})`.execute(this.db)
     ).rows.map((b) => ({
       roleCode: b.role_code,
       scope: b.scope as Scope,
@@ -207,15 +204,14 @@ export class IdentityService {
     }));
 
     return {
-      principalId: p.principal_id,
-      sessionId: session.id,
-      // Proof-of-possession material for ctx.issue(); never logged or persisted.
+      principalId: subject.principal_id,
+      sessionId: subject.session_id,
       contextKey: payload.ctxk,
-      kind: p.kind as AuthenticatedPrincipal['kind'],
-      homeScope: p.scope as Scope,
-      homeTenantId: p.tenant_id,
-      homeDomainId: p.domain_id,
-      assurance: (session.assurance as AuthenticatedPrincipal['assurance']) ?? 'password',
+      kind: subject.kind as AuthenticatedPrincipal['kind'],
+      homeScope: subject.scope as Scope,
+      homeTenantId: subject.tenant_id,
+      homeDomainId: subject.domain_id,
+      assurance: (subject.assurance as AuthenticatedPrincipal['assurance']) ?? 'password',
       bindings,
     };
   }

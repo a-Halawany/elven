@@ -20,7 +20,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
 import { APP_DB, IDENTITY_DB, VERIFIER_DB } from '../shared/shared.module.js';
-import type { Db, Tx } from '../shared/db.js';
+import type { Db, Tx as KyselyTx } from '../shared/db.js';
+import type { BoundedCapability } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
 
@@ -35,6 +36,13 @@ export interface VerifyReport {
   incidentId: string | null;
   verifiedHeadSeq: number | null;
   verifiedHeadHash: string | null;
+  /** Gate-2.1 §7: the head the LEDGER claims vs the head RECOMPUTED from rows. */
+  expectedHeadHash: string | null;
+  calculatedHeadHash: string | null;
+  expectedHeadSeq: number | null;
+  calculatedHeadSeq: number | null;
+  /** Machine-readable outcome class, so evidence never has to be inferred. */
+  resultClass: 'verified' | 'partition_unknown' | 'chain_broken' | 'head_mismatch';
 }
 
 const SANITIZED_COLUMNS = [
@@ -51,15 +59,15 @@ export class AuditService {
     @Inject(IDENTITY_DB) private readonly identityDb: Db,
   ) {}
 
-  /** Obligation-aware query. mask=true → sanitized projection only. */
-  async query(tx: Tx, opts: { limit: number; mask: boolean; correlationId?: string }): Promise<unknown[]> {
-    let q = tx
-      .selectFrom('audit.audit_events')
-      .orderBy('partition_id')
-      .orderBy('audit_seq', 'desc')
+  /** Obligation-aware query through the bounded capability. */
+  async query(cap: BoundedCapability, opts: { limit: number; mask: boolean; correlationId?: string }): Promise<unknown[]> {
+    let q = cap
+      .read('audit.audit_events')
+      .orderBy('partition_id' as never)
+      .orderBy('audit_seq' as never, 'desc')
       .limit(Math.min(opts.limit, 500));
-    q = opts.mask ? q.select([...SANITIZED_COLUMNS]) : q.selectAll();
-    if (opts.correlationId !== undefined) q = q.where('correlation_id', '=', opts.correlationId);
+    q = opts.mask ? q.select([...SANITIZED_COLUMNS] as never) : q.selectAll();
+    if (opts.correlationId !== undefined) q = q.where('correlation_id', '=', opts.correlationId as never);
     return q.execute();
   }
 
@@ -72,7 +80,7 @@ export class AuditService {
    */
   async verifyPartition(partitionId: string): Promise<VerifyReport> {
     return this.verifierDb.transaction().setIsolationLevel('repeatable read').execute(async (tx) => {
-      await sql`select ctx.issue_system('audit chain verification')`.execute(tx);
+      await sql`select ctx.issue_verify(${partitionId}, false)`.execute(tx);
       return this.verifyChain(tx, partitionId, false);
     });
   }
@@ -84,7 +92,7 @@ export class AuditService {
    */
   async sealPartition(partitionId: string, sealer: string): Promise<{ sealed: boolean; reason: string }> {
     return this.verifierDb.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_system('audit partition sealing')`.execute(tx);
+      await sql`select ctx.issue_verify(${partitionId}, true)`.execute(tx);
       const report = await this.verifyChain(tx, partitionId, true);
       if (report.verifiedHeadSeq === null) return { sealed: false, reason: 'no such partition' };
       if (!report.ok) {
@@ -119,7 +127,7 @@ export class AuditService {
    * `lockHead` = true for the sealing path (the seal must cover exactly the head
    * it verified); false for pure verification on a stable snapshot.
    */
-  private async verifyChain(tx: Tx, partitionId: string, lockHead: boolean): Promise<VerifyReport> {
+  private async verifyChain(tx: KyselyTx, partitionId: string, lockHead: boolean): Promise<VerifyReport> {
     const head = (
       lockHead
         ? await sql<{ next_seq: string; head_hash: string; frozen: boolean }>`
@@ -128,9 +136,13 @@ export class AuditService {
             select * from audit.read_head(${partitionId})`.execute(tx)
     ).rows[0];
     if (head === undefined) {
+      // An UNKNOWN partition is not a successful verification of nothing.
       return {
         partitionId, checked: 0, ok: false, brokenAtSeq: null, headMatches: null,
         incidentId: null, verifiedHeadSeq: null, verifiedHeadHash: null,
+        expectedHeadHash: null, calculatedHeadHash: null,
+        expectedHeadSeq: null, calculatedHeadSeq: null,
+        resultClass: 'partition_unknown',
       };
     }
     const headSeq = Number(head.next_seq) - 1;
@@ -182,11 +194,17 @@ export class AuditService {
       return {
         partitionId, checked: rows.length, ok: false, brokenAtSeq, headMatches,
         incidentId, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
+        expectedHeadHash: head.head_hash, calculatedHeadHash: prev,
+        expectedHeadSeq: headSeq, calculatedHeadSeq: expectedSeq - 1,
+        resultClass: brokenAtSeq !== null ? 'chain_broken' : 'head_mismatch',
       };
     }
     return {
       partitionId, checked: rows.length, ok: true, brokenAtSeq: null, headMatches,
       incidentId: null, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
+      expectedHeadHash: head.head_hash, calculatedHeadHash: prev,
+      expectedHeadSeq: headSeq, calculatedHeadSeq: expectedSeq - 1,
+      resultClass: 'verified',
     };
   }
 
@@ -209,10 +227,11 @@ export class AuditService {
     suppressedSinceLast: number;
   }): Promise<void> {
     await this.identityDb.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_system('security intake evidence')`.execute(tx);
-      await sql`select audit.commit_identity_event(
-        null::uuid, null::uuid, 'security.intake', 'request.rejected', 'failure',
-        ${input.resultCode}, ${input.correlationId}::uuid,
+      await sql`select ctx.issue_identity_op('identity.security.intake', null::uuid,
+        ${input.correlationId}::uuid, 60)`.execute(tx);
+      await sql`select audit.commit_intake_event(
+        'security.intake', 'request.rejected', ${input.resultCode},
+        ${input.correlationId}::uuid, null::uuid,
         ${JSON.stringify({
           failure_class: input.failureClass,
           route: input.route,
@@ -229,7 +248,8 @@ export class AuditService {
   async accountIntake(bucket: string, admitted: boolean): Promise<number> {
     try {
       return await this.identityDb.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_system('intake suppression accounting')`.execute(tx);
+        await sql`select ctx.issue_identity_op('identity.security.intake', null::uuid,
+          ${newId()}::uuid, 60)`.execute(tx);
         const r = (
           await sql<{ n: string }>`select audit.bump_suppression(${bucket}, ${admitted}) as n`.execute(tx)
         ).rows[0];

@@ -3,14 +3,14 @@
   "repository": "the-eye",
   "constitution_edition": "Volume 0 v1.0 (frozen founding baseline, 2026-08-01)",
   "architecture_baseline": "Volume 3 v1.0 (ADR-0001..ADR-0020)",
-  "phase": "Phase 0 \u2014 Foundation & Governance Spine",
+  "phase": "Phase 0 — Foundation & Governance Spine",
   "units": [
     {
       "path": "packages/contracts",
       "component_ids": [
         "CP-OBJ-00"
       ],
-      "description": "Canonical envelope, header, error catalog, truth-state model, JCS canonicalization, audit hash structure \u2014 language-neutral source of truth",
+      "description": "Canonical envelope, header, error catalog, truth-state model, JCS canonicalization, audit hash structure — language-neutral source of truth",
       "controls": [
         "ES-20",
         "ES-21",
@@ -27,7 +27,7 @@
       "component_ids": [
         "CP-UX-01"
       ],
-      "description": "Volume 9 Appendix A design-token registry \u2192 CSS variables + Tailwind semantic aliases",
+      "description": "Volume 9 Appendix A design-token registry → CSS variables + Tailwind semantic aliases",
       "controls": [
         "UX-ADR-010",
         "ADR-P0-14"
@@ -122,7 +122,7 @@
       "component_ids": [
         "CP-OPS-01"
       ],
-      "description": "Health/readiness \u2014 classified telemetry-only (documented, not a bypass)",
+      "description": "Health/readiness — classified telemetry-only (documented, not a bypass)",
       "controls": [
         "ADR-P0-08"
       ],
@@ -144,7 +144,7 @@
   ],
   "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers.",
   "pinned_images": {
-    "$comment": "Remediation R7/R8 \u2014 local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
+    "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
     "postgres": {
       "human_tag": "postgres:18-alpine",
       "digest": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
@@ -157,19 +157,43 @@
     }
   },
   "sbom_generator": {
-    "$comment": "Remediation R8 \u2014 validated SBOM generator, pinned and tracked; CI fails when the produced SBOM has zero components.",
+    "$comment": "Remediation R8 — validated SBOM generator, pinned and tracked; CI fails when the produced SBOM has zero components.",
     "tool": "scripts/generate-sbom.mjs (lockfile-driven CycloneDX 1.6, tracked in-repo)",
     "input": "pnpm-lock.yaml"
   },
   "runtime_authorities": {
-    "$comment": "Gate-2 G1 \u2014 one database credential per authority. A compromise of the ordinary request path cannot reach any authoritative capability. The break-glass recovery role is deliberately absent from every application pool.",
-    "eye_app": "RLS-governed SELECT only",
-    "eye_commit": "governed business writes + bound POL/AUD ports + canonical admission + outbox enqueue",
-    "eye_identity": "identity/credential/session mutation + identity-flow evidence",
-    "eye_publisher": "outbox claim + compare-and-set publication acknowledgement only",
-    "eye_verifier": "audit verification, sealing and tamper evidence",
-    "eye_recovery": "break-glass chain-head rebuild \u2014 no application pool loads this credential",
+    "$comment": "Gate-2.1 — one database credential per authority, and NO runtime role holds direct DML on any governed table: every write goes through a narrowly typed definer port whose bound capability is checked inside the boundary. The mintable action set is bound to the minting role. The break-glass recovery role is deliberately absent from every application pool.",
+    "eye_app": "RLS-governed SELECT only; mints NO capability of any kind; caller-bound identity lookups only",
+    "eye_commit": "governed business writes through bound ports (non-identity actions only): POL/AUD, canonical admission, outbox enqueue",
+    "eye_identity": "identity/credential/session mutation, identity-flow and intake evidence, and the request evidence for identity.* actions only",
+    "eye_publisher": "outbox lease + lease-tied compare-and-set acknowledgement only (no table UPDATE)",
+    "eye_verifier": "audit verification, sealing and integrity evidence; cannot append audit events",
+    "eye_recovery": "break-glass chain-head rebuild — no application pool loads this credential",
     "eye_audit_allocator": "chain-head allocation (definer-owned)"
   },
-  "migration_range": "0001-0010 (0009 and 0010 are governed forward migrations; 0001-0008 unchanged)"
+  "migration_range": "0001-0012 (0011 and 0012 are governed forward migrations; 0001-0010 unchanged, digests still valid)",
+  "gate_scripts": {
+    "$comment": "Gate-2.1 §9 — the executable gate controls, tracked in-repo and re-runnable by a reviewer.",
+    "clean_typecheck": "scripts/verify-clean-typecheck.sh",
+    "database_paths": "scripts/verify-db-paths.sh (forward upgrade + virgin install, each with the full suites)",
+    "authority_boundary": "scripts/verify-authority-boundary.sh (live grant/RLS/capability catalog)",
+    "supply_chain_library": "scripts/lib/supply-chain.mjs (licence gate, bidirectional reconciliation, CycloneDX 1.6 validation — shared by the CI scripts and the negative-fixture tests)",
+    "sbom": "scripts/generate-sbom.mjs",
+    "licences": "scripts/license-inventory.mjs (production AND development closures)",
+    "evidence": "scripts/generate-evidence.mjs (per-file manifest, archive digest, bundle, README with runnable reproduce commands)",
+    "images": "scripts/verify-images.sh",
+    "demo": "scripts/verify-demo.sh"
+  },
+  "supply_chain_gates": {
+    "$comment": "Gate-2.1 §9 — each gate has controlled negative fixtures in apps/api/test/gate/supply-chain.test.ts.",
+    "licence_scopes": [
+      "production",
+      "development"
+    ],
+    "cyclonedx_schema_validation": "ajv (pinned workspace version) against the CycloneDX 1.6 structural schema, offline",
+    "reconciliation": "bidirectional (SBOM ↔ dependency closure) with governed exclusions in supply-chain-exclusions.json; stale exclusions fail the gate"
+  },
+  "sbom": {
+    "$comment": "Gate-2.1 — validated SBOM generator, pinned and tracked; CI fails when the SBOM is empty, fails CycloneDX 1.6 schema validation, or does not reconcile in BOTH directions with the dependency closure."
+  }
 }

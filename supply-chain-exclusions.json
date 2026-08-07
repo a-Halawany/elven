@@ -1,0 +1,4 @@
+{
+  "$comment": "GOVERNED SBOM exclusions (Gate-2.1 §9). Bidirectional reconciliation requires every dependency-closure identity to appear in the SBOM; anything legitimately absent is recorded HERE, with a reason, or the gate fails. An exclusion that is no longer needed is reported as stale and must be removed.",
+  "exclusions": []
+}

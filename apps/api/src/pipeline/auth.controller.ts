@@ -25,6 +25,7 @@ import { Public, recordSecurityFailure, type EyeRequest } from './http.js';
 import { IDENTITY_DB } from '../shared/shared.module.js';
 import type { Db, Tx } from '../shared/db.js';
 import { degradedAudit } from '../shared/degraded-store.js';
+import { newId } from '../shared/ids.js';
 
 interface LoginPayload {
   username?: string;
@@ -39,24 +40,45 @@ export class AuthController {
     @Inject(IDENTITY_DB) private readonly identityDb: Db,
   ) {}
 
-  private async inAuthTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  /**
+   * Gate-2.1 §2: one capability per DECLARED identity operation. There is no
+   * general system context any more, so a transaction opened to authenticate
+   * cannot be reused to rotate a credential or refresh a token.
+   */
+  private async inIdentityOp<T>(
+    operation: string, subject: string | null, correlationId: string, fn: (tx: Tx) => Promise<T>,
+  ): Promise<T> {
     return this.identityDb.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_system('authentication flow')`.execute(tx);
+      await sql`select ctx.issue_identity_op(${operation}, ${subject}::uuid, ${correlationId}::uuid, 60)`.execute(tx);
       return fn(tx);
     });
   }
 
   /** Fail closed when authoritative audit persistence is unavailable. */
   private auditUnavailable(correlationId: string, e: unknown): HttpException {
+    const detail = e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
     degradedAudit.record({
       kind: 'audit_unavailable',
       correlationId,
       route: 'identity.auth',
       failureClass: 'audit_unavailable',
       scope: 'PLATFORM',
-      detail: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+      detail,
       suppressedCarried: 0,
     });
+    // Gate-2.1 §7: the degradation is also filed in the GOVERNED ledger, so a
+    // restart (or a lost local journal) still finds it unreconciled. The local
+    // journal alone is a per-process record; recovery has to be governed.
+    void this.identityDb
+      .transaction()
+      .execute(async (tx) => {
+        await sql`select ctx.issue_identity_op('identity.security.intake', null::uuid,
+          ${correlationId}::uuid, 60)`.execute(tx);
+        await sql`select audit.record_availability_incident(
+          ${newId()}::uuid, 'audit_unavailable', 'PLATFORM', ${correlationId}::uuid,
+          ${JSON.stringify({ route: 'identity.auth', detail })}::jsonb)`.execute(tx);
+      })
+      .catch(() => undefined); // the journal already holds it; never mask the 503
     return new HttpException(
       errorBody('EYE_INT_001', correlationId, 'authoritative audit unavailable — request refused'),
       503,
@@ -79,14 +101,14 @@ export class AuthController {
 
     let result;
     try {
-      result = await this.inAuthTx(async (tx) => {
+      result = await this.inIdentityOp('identity.session.create', null, correlationId, async (tx) => {
         const cred = await this.identity.verifyPassword(tx, username, password);
         if (cred === null) return null;
         if (cred.expiredUnused) {
           await this.identity.revokeCredential(tx, cred.credentialId);
           await sql`select audit.commit_identity_event(
             ${cred.principalId}::uuid, null::uuid, 'identity.bootstrap_expired',
-            'identity.credential.revoke', 'denied', 'EYE-IDN-002', ${correlationId}::uuid,
+            'identity.session.create', 'denied', 'EYE-IDN-002', ${correlationId}::uuid,
             ${JSON.stringify({ reason: 'one-time bootstrap secret expired unused' })}::jsonb
           )`.execute(tx);
           return null;
@@ -134,12 +156,17 @@ export class AuthController {
     const current = body.payload?.currentPassword;
     const next = body.payload?.newPassword;
     if (typeof current !== 'string' || typeof next !== 'string' || next.length < 12) {
+      // Gate-2.1 §7: an AUTHENTICATED rotation attempt that fails validation
+      // leaves durable sanitized evidence. The passwords never appear in it.
+      await recordSecurityFailure(this.audit, req, 'validation_failed', 'EYE-REQ-001', correlationId, [
+        'currentPassword + newPassword (>=12) required',
+      ]);
       throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'currentPassword + newPassword (>=12) required'), 400);
     }
 
     let ok: boolean;
     try {
-      ok = await this.inAuthTx(async (tx) => {
+      ok = await this.inIdentityOp('identity.credential.rotate', principal.principalId, correlationId, async (tx) => {
         const rotated = await this.identity.rotateCredential(tx, principal.principalId, current, next);
         if (!rotated) return false;
         await sql`select audit.commit_identity_event(
@@ -173,12 +200,15 @@ export class AuthController {
     const correlationId = req.eyeCorrelationId ?? 'unknown';
     const token = body.payload?.refreshToken;
     if (typeof token !== 'string') {
+      await recordSecurityFailure(this.audit, req, 'validation_failed', 'EYE-REQ-001', correlationId, [
+        'credential payload is malformed',
+      ]);
       throw new HttpException(errorBody('EYE_REQ_001', correlationId), 400);
     }
 
     let result;
     try {
-      result = await this.inAuthTx(async (tx) => {
+      result = await this.inIdentityOp('identity.session.refresh', null, correlationId, async (tx) => {
         const r = await this.identity.rotateRefreshToken(tx, token);
         if (r.outcome === 'rotated') {
           await sql`select audit.commit_identity_event(

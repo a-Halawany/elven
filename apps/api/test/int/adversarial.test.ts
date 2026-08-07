@@ -39,8 +39,8 @@ import { join } from 'node:path';
 import { jcsCanonicalize, canonicalHeaderDigest, type CanonicalHeader } from '@eye/contracts';
 import {
   appDb, commitDb, identityDb, publisherDb, verifierDb, recoveryDb, superDb, allocatorDb,
-  seedTenant, seedDomain, createPrincipalWithSession, withCtx, withSystemCtx, sha256,
-  type AnyDb, type TestPrincipal,
+  seedTenant, seedDomain, createPrincipalWithSession, withCtx, withIdentityOp,
+  withPublishCtx, sha256, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 
 let app: AnyDb;
@@ -124,14 +124,30 @@ describe('1 — eye_app cannot reach credential material or identity mutation', 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('2 — eye_app cannot mint another principal’s authority', () => {
+describe('2 — no principal’s authority can be minted without its proof', () => {
+  it('eye_app can mint NO capability of any kind (Gate-2.1 §2)', async () => {
+    // The application role's context surface is now empty: it holds EXECUTE on no
+    // minter at all, so "which context may eye_app forge" has no answer.
+    for (const call of [
+      `ctx.issue_commit('${'0'.repeat(8)}-0000-0000-0000-000000000000'::uuid,'k','PLATFORM',null::uuid,null::uuid,'p','a','t',null::uuid,null::uuid,'bundle-v1','C1',60)`,
+      "ctx.issue_identity_op('identity.session.create',null::uuid,null::uuid,60)",
+      "ctx.issue_publish(null::uuid)",
+      "ctx.issue_verify('platform',false)",
+      "ctx.issue_bootstrap(null::uuid)",
+    ]) {
+      await expect(sql`select ${sql.raw(call)}`.execute(app), call).rejects.toThrow(/permission denied/);
+    }
+  });
+
   it('cannot establish a context for a session it holds no proof for', async () => {
-    // It knows the session id (ids are not secrets) but not the context key.
+    // The COMMIT authority may mint — but only with proof of possession. It knows
+    // the session id (ids are not secrets) and still cannot use it.
     await expect(
-      app.transaction().execute(async (tx) => {
-        await sql`select ctx.issue(
+      commit.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_commit(
           ${platformAdmin.sessionId}::uuid, ${'not-the-real-context-key-000000'}, 'PLATFORM',
-          null::uuid, null::uuid, 'attack', 60
+          null::uuid, null::uuid, 'attack', 'a', 't', ${uuidv7()}::uuid, ${uuidv7()}::uuid,
+          'bundle-v1', 'C1', 60
         )`.execute(tx);
       }),
     ).rejects.toThrow(/invalid session proof/);
@@ -139,31 +155,42 @@ describe('2 — eye_app cannot mint another principal’s authority', () => {
 
   it('cannot mint a PLATFORM context from a tenant principal’s session', async () => {
     await expect(
-      withCtx(app, tenantAdmin, 'PLATFORM', null, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, tenantAdmin, 'PLATFORM', null, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/no qualifying binding/);
   });
 
   it('cannot mint a TENANT context for a foreign tenant', async () => {
     await expect(
-      withCtx(app, tenantAdmin, 'TENANT', tenantOther, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, tenantAdmin, 'TENANT', tenantOther, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/no qualifying binding/);
   });
 
-  it('cannot reach the system-context port at all', async () => {
-    await expect(sql`select ctx.issue_system('attack')`.execute(app)).rejects.toThrow(/permission denied/);
+  it('the universal system-context port no longer EXISTS', async () => {
+    // Not "denied" — GONE. A dropped function cannot be re-granted by mistake.
+    const remaining = await sql<{ n: string }>`
+      select count(*) n from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+       where (ns.nspname = 'ctx' and p.proname in ('issue_system','issue'))
+          or (ns.nspname = 'public' and p.proname in ('eye_ctx_field','eye_set_context','eye_set_system_context'))
+      `.execute(su);
+    expect(Number(remaining.rows[0]!.n)).toBe(0);
+    // And the evidence minter is not reachable from the application role.
     await expect(
-      sql`select ctx.issue_evidence(${platformAdmin.sessionId}::uuid, ${platformAdmin.contextKey}, 'PLATFORM', null, null, 'x', 60)`.execute(app),
+      sql`select ctx.issue_evidence(${platformAdmin.sessionId}::uuid, ${platformAdmin.contextKey},
+        'PLATFORM', null::uuid, null::uuid, 'x', 'a', 'PLATFORM', null::uuid, null::uuid, ${uuidv7()}::uuid, 60)`.execute(app),
     ).rejects.toThrow(/permission denied/);
   });
 
   it('cannot forge a context by setting the GUC directly', async () => {
     const out = await app.transaction().execute(async (tx) => {
+      // A complete, well-formed v3 payload — every field plausible, signature
+      // guessed. 22 fields, exactly the real layout.
       const forged = [
-        'v2', platformAdmin.sessionId, platformAdmin.principalId, 'PLATFORM', '', '',
+        'v3', platformAdmin.sessionId, platformAdmin.principalId, 'PLATFORM', '', '',
         'password', 'attack', new Date().toISOString(), new Date(Date.now() + 60000).toISOString(),
-        uuidv7(), '1', 'authority', '1', 'f'.repeat(64),
+        uuidv7(), '1', 'authority', 'business', 'tenancy.tenant.create', 'target',
+        uuidv7(), '1', '1', uuidv7(), 'bundle-v1', 'f'.repeat(64),
       ].join('|');
-      await sql`select set_config('eye.ctx2', ${forged}, true)`.execute(tx);
+      await sql`select set_config('eye.ctx3', ${forged}, true)`.execute(tx);
       const scope = (await sql<{ s: string }>`select public.eye_scope() s`.execute(tx)).rows[0]!.s;
       const rows = await sql`select * from tenancy.tenants`.execute(tx);
       return { scope, n: rows.rows.length };
@@ -177,7 +204,7 @@ describe('2 — eye_app cannot mint another principal’s authority', () => {
       scope: 'PLATFORM', roleCode: 'platform_admin', label: 'adv-boot', assurance: 'bootstrap_rotation',
     });
     await expect(
-      withCtx(app, boot, 'PLATFORM', null, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, boot, 'PLATFORM', null, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/bootstrap assurance/);
   });
 });
@@ -185,11 +212,11 @@ describe('2 — eye_app cannot mint another principal’s authority', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('3 — context replay and staleness', () => {
   it('a valid context string cannot be replayed in a new transaction (single-use nonce + backend binding)', async () => {
-    const captured = await withCtx(app, platformAdmin, 'PLATFORM', null, null, async (tx) =>
-      (await sql<{ c: string }>`select current_setting('eye.ctx2', true) c`.execute(tx)).rows[0]!.c);
+    const captured = await withCtx(commit, platformAdmin, 'PLATFORM', null, null, async (tx) =>
+      (await sql<{ c: string }>`select current_setting('eye.ctx3', true) c`.execute(tx)).rows[0]!.c);
     expect(captured).toBeTruthy();
-    const out = await app.transaction().execute(async (tx) => {
-      await sql`select set_config('eye.ctx2', ${captured}, true)`.execute(tx);
+    const out = await commit.transaction().execute(async (tx) => {
+      await sql`select set_config('eye.ctx3', ${captured}, true)`.execute(tx);
       const scope = (await sql<{ s: string }>`select public.eye_scope() s`.execute(tx)).rows[0]!.s;
       const rows = await sql`select * from tenancy.tenants`.execute(tx);
       return { scope, n: rows.rows.length };
@@ -202,48 +229,61 @@ describe('3 — context replay and staleness', () => {
 
   it('fails after session revocation', async () => {
     const victim = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-rev' });
-    await withSystemCtx(identity, 'test revocation', async (tx) => {
-      await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(tx);
-    });
+    await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(identity);
     await expect(
-      withCtx(app, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/session not active|authority epoch changed/);
   });
 
   it('fails after binding removal (revocation epoch bump)', async () => {
     const victim = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-bind' });
-    await withCtx(app, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)); // works first
+    await withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)); // works first
     await sql`update identity.role_bindings set revoked_at = now() where principal_id = ${victim.principalId}`.execute(su);
     await expect(
-      withCtx(app, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/authority epoch changed|no qualifying binding/);
   });
 
   it('fails after credential rotation', async () => {
     const victim = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-rot' });
     const credId = uuidv7();
-    await withSystemCtx(identity, 'test credential', async (tx) => {
+    await withIdentityOp(identity, 'identity.credential.rotate', victim.principalId, async (tx) => {
       await sql`select identity.credential_issue(${credId}::uuid, ${victim.principalId}::uuid, 'hash', 'active', null)`.execute(tx);
       await sql`select identity.credential_rotate_v2(${victim.principalId}::uuid, ${credId}::uuid, ${uuidv7()}::uuid, 'newhash')`.execute(tx);
     });
     await expect(
-      withCtx(app, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/session not active|authority epoch changed/);
   });
 
-  it('fails when expired', async () => {
+  it('a rewritten expiry is refused (the signature covers it)', async () => {
     const p = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-exp' });
-    const out = await app.transaction().execute(async (tx) => {
-      await sql`select ctx.issue(${p.sessionId}::uuid, ${p.contextKey}, 'TENANT', ${tenant}::uuid, null::uuid, 'x', 1)`.execute(tx);
-      // Force the expiry check by rewriting the exp field far into the past —
-      // the signature then fails too, which is the same fail-closed outcome.
-      const c = (await sql<{ c: string }>`select current_setting('eye.ctx2', true) c`.execute(tx)).rows[0]!.c;
+    const out = await withCtx(commit, p, 'TENANT', tenant, null, async (tx) => {
+      const c = (await sql<{ c: string }>`select current_setting('eye.ctx3', true) c`.execute(tx)).rows[0]!.c;
       const parts = c.split('|');
-      parts[9] = new Date(Date.now() - 60_000).toISOString();
-      await sql`select set_config('eye.ctx2', ${parts.join('|')}, true)`.execute(tx);
+      parts[9] = new Date(Date.now() + 86_400_000).toISOString(); // try to EXTEND it
+      await sql`select set_config('eye.ctx3', ${parts.join('|')}, true)`.execute(tx);
       return (await sql<{ s: string }>`select public.eye_scope() s`.execute(tx)).rows[0]!.s;
     });
     expect(out).toBe('NONE');
+  });
+
+  it('expiry is evaluated against clock_timestamp(), so it lapses INSIDE a transaction', async () => {
+    const p = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-clock' });
+    const out = await withCtx(
+      commit, p, 'TENANT', tenant, null,
+      async (tx) => {
+        const before = (await sql<{ s: string }>`select public.eye_scope() s`.execute(tx)).rows[0]!.s;
+        // now() is frozen at transaction start; clock_timestamp() is not. A
+        // long-running transaction must NOT keep a lapsed capability alive.
+        await sql`select pg_sleep(1.3)`.execute(tx);
+        const after = (await sql<{ s: string }>`select public.eye_scope() s`.execute(tx)).rows[0]!.s;
+        return { before, after };
+      },
+      { ttlSeconds: 1 },
+    );
+    expect(out.before).toBe('TENANT');
+    expect(out.after).toBe('NONE');
   });
 });
 
@@ -254,7 +294,7 @@ describe('4 — DOMAIN A write isolation', () => {
       withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
         sql`insert into tenancy.lifecycle_events (id, scope, tenant_id, domain_id, event, actor, details)
             values (${uuidv7()}, 'TENANT', ${tenant}, null, 'tenant.forged', 'a', '{}')`.execute(tx)),
-    ).rejects.toThrow(/row-level security|policy/i);
+    ).rejects.toThrow(/permission denied|row-level security/i);
   });
 
   it('cannot write a sibling domain’s rows', async () => {
@@ -262,14 +302,15 @@ describe('4 — DOMAIN A write isolation', () => {
       withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
         sql`insert into tenancy.lifecycle_events (id, scope, tenant_id, domain_id, event, actor, details)
             values (${uuidv7()}, 'DOMAIN', ${tenant}, ${domainB}, 'domain.forged', 'a', '{}')`.execute(tx)),
-    ).rejects.toThrow(/row-level security|policy/i);
+    ).rejects.toThrow(/permission denied|row-level security/i);
   });
 
   it('cannot create a tenant-scoped principal or a TENANT role binding', async () => {
     await expect(
       withCtx(identity, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
         sql`select identity.create_principal(${uuidv7()}::uuid, 'human', 'TENANT', ${tenant}::uuid, null::uuid,
-              'forged', ${'forged-' + uuidv7().slice(-8)}, null, 'tenant_admin')`.execute(tx)),
+              'forged', ${'forged-' + uuidv7().slice(-8)}, null, 'tenant_admin')`.execute(tx),
+        { action: 'identity.principal.create' }),
     ).rejects.toThrow(/not authorized|row-level security|binding rejected/i);
   });
 
@@ -288,26 +329,27 @@ describe('4 — DOMAIN A write isolation', () => {
   it('cannot create a domain (a TENANT-level act)', async () => {
     await expect(
       withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'forged', 'a')`.execute(tx)),
+        sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'forged', 'a')`.execute(tx),
+        { action: 'tenancy.domain.create' }),
     ).rejects.toThrow(/tenant-level authority required/);
   });
 
   it('cannot read tenant-global or sibling-domain audit metadata', async () => {
     // Tenant-level (domain_id NULL) audit row, written under tenant authority:
-    await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) => {
-      await sql`select audit.commit_event('test.tenant_level','test.action','success','OK',
-        null,null,null,null::uuid,null,${uuidv7()}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx);
+    await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx, cap) => {
+      await sql`select audit.commit_event('test.tenant_level',${cap.action},'success','OK',
+        null,null,null,null::uuid,null,${cap.correlationId}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx);
     });
-    const seen = await withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+    const seen = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
       sql`select * from audit.audit_events where event_type = 'test.tenant_level'`.execute(tx));
     expect(seen.rows).toHaveLength(0);
   });
 
   it('cannot read the tenants table, but CAN use the authorized read model', async () => {
-    const direct = await withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+    const direct = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
       sql`select * from tenancy.tenants`.execute(tx));
     expect(direct.rows).toHaveLength(0);
-    const model = await withCtx(app, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+    const model = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
       sql<{ id: string }>`select * from tenancy.my_tenant()`.execute(tx));
     expect(model.rows.map((r) => r.id)).toEqual([tenant]);
   });
@@ -352,18 +394,19 @@ describe('6 — fabricated POL/AUD evidence is rejected', () => {
     await expect(
       commit.transaction().execute(async (tx) =>
         sql`select audit.commit_event('forge','a','success','OK',null,null,null,null::uuid,null,${uuidv7()}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx)),
-    ).rejects.toThrow(/no valid authoritative context/);
+    ).rejects.toThrow(/authority or evidence context required \(context is none\)/);
     await expect(
       commit.transaction().execute(async (tx) =>
         sql`select policy.commit_decision(${uuidv7()}::uuid,'a','CLM',null::uuid,'C1','allow','[]'::jsonb,${'a'.repeat(64)},'bundle-v1',null,null,'none','r',${uuidv7()}::uuid,null,'{}'::jsonb)`.execute(tx)),
-    ).rejects.toThrow(/no valid authoritative context/);
+    ).rejects.toThrow(/context required|no valid authoritative context/);
   });
 
   it('the actor and scope are DERIVED — a caller cannot choose them', async () => {
-    const corr = uuidv7();
-    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
-      await sql`select audit.commit_event('test.derived','test.action','success','OK',
-        null,null,null,null::uuid,null,${corr}::uuid,null::uuid,null,null,null,
+    let corr = '';
+    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+      corr = cap.correlationId;
+      await sql`select audit.commit_event('test.derived',${cap.action},'success','OK',
+        null,null,null,null::uuid,null,${cap.correlationId}::uuid,null::uuid,null,null,null,
         ${JSON.stringify({ actor: 'principal:SOMEONE-ELSE', scope: 'PLATFORM' })}::jsonb)`.execute(tx);
     });
     const row = (
@@ -382,23 +425,23 @@ describe('6 — fabricated POL/AUD evidence is rejected', () => {
 describe('7 — malformed scope combinations and invalid descriptors are rejected', () => {
   it('rejects an invalid outcome and an invalid decision', async () => {
     await expect(
-      withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
-        sql`select audit.commit_event('x','a','totally-made-up','OK',null,null,null,null::uuid,null,${uuidv7()}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx)),
+      withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx, cap) =>
+        sql`select audit.commit_event('x',${cap.action},'totally-made-up','OK',null,null,null,null::uuid,null,${cap.correlationId}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx)),
     ).rejects.toThrow(/invalid outcome/);
     await expect(
-      withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
-        sql`select policy.commit_decision(${uuidv7()}::uuid,'a','CLM',null::uuid,'C1','maybe','[]'::jsonb,${'a'.repeat(64)},'bundle-v1',null,null,'none','r',${uuidv7()}::uuid,null,'{}'::jsonb)`.execute(tx)),
+      withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx, cap) =>
+        sql`select policy.commit_decision(${cap.policyDecisionId}::uuid,${cap.action},'CLM',null::uuid,'C1','maybe','[]'::jsonb,${'a'.repeat(64)},${cap.bundleVersion},null,null,'none','r',${cap.correlationId}::uuid,null,'{}'::jsonb)`.execute(tx)),
     ).rejects.toThrow(/invalid decision/);
   });
 
   it('rejects PLATFORM/TENANT/DOMAIN identifier combinations that cannot exist', async () => {
     // A DOMAIN context whose domain identifier is absent is unobtainable…
     await expect(
-      withCtx(app, aAdmin, 'DOMAIN', tenant, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/domain scope identifiers invalid/);
     // …and PLATFORM carrying identifiers is refused at issuance.
     await expect(
-      withCtx(app, platformAdmin, 'PLATFORM', tenant, null, async (tx) => sql`select 1`.execute(tx)),
+      withCtx(commit, platformAdmin, 'PLATFORM', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/platform scope carries identifiers/);
   });
 });
@@ -406,10 +449,11 @@ describe('7 — malformed scope combinations and invalid descriptors are rejecte
 // ─────────────────────────────────────────────────────────────────────────────
 describe('8 — stored audit bytes ARE the RFC 8785 JCS bytes that were hashed', () => {
   it('event_jcs equals the reference JCS of the stored event, and row_hash binds it', async () => {
-    const corr = uuidv7();
-    await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) => {
-      await sql`select audit.commit_event('test.jcs','test.action','success','OK',
-        'CLM', ${uuidv7()}, '1', null::uuid, null, ${corr}::uuid, null::uuid, 'trace',
+    let corr = '';
+    await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx, cap) => {
+      corr = cap.correlationId;
+      await sql`select audit.commit_event('test.jcs',${cap.action},'success','OK',
+        'CLM', ${uuidv7()}, '1', null::uuid, null, ${cap.correlationId}::uuid, null::uuid, 'trace',
         ${'d'.repeat(64)}, null,
         ${JSON.stringify({ n: 7, s: 'quote " and \\ backslash', arr: ['a', 'b'], nested: { t: true, z: null } })}::jsonb)`.execute(tx);
     });
@@ -449,15 +493,27 @@ describe('9 — audit heads, seals and incidents do not leak across scopes', () 
   });
 
   it('the scoped read model refuses a foreign partition', async () => {
-    const own = await withCtx(app, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
-      sql`select * from audit.my_partition_status(${'tenant:' + tenant})`.execute(tx));
+    // Gate-2.1 §5: audit.my_partition_status is GONE — it returned tenant-global
+    // head state to DOMAIN callers. Its replacement takes no partition argument
+    // from a DOMAIN caller and matches the partition EXACTLY for a tenant caller.
+    const own = await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
+      sql`select * from audit.my_partition_integrity(${'tenant:' + tenant})`.execute(tx));
     expect(own.rows.length).toBeGreaterThan(0);
-    const foreign = await withCtx(app, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
-      sql`select * from audit.my_partition_status(${'tenant:' + tenantOther})`.execute(tx));
+    const foreign = await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
+      sql`select * from audit.my_partition_integrity(${'tenant:' + tenantOther})`.execute(tx));
     expect(foreign.rows).toHaveLength(0);
-    const platform = await withCtx(app, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
-      sql`select * from audit.my_partition_status('platform')`.execute(tx));
+    const platform = await withCtx(commit, tenantAdmin, 'TENANT', tenant, null, async (tx) =>
+      sql`select * from audit.my_partition_integrity('platform')`.execute(tx));
     expect(platform.rows).toHaveLength(0);
+
+    // A DOMAIN caller gets its OWN domain's integrity view and cannot ask for a
+    // tenant-global one at all (no argument exists through which to ask).
+    const domainView = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+      sql`select * from audit.my_domain_integrity()`.execute(tx));
+    expect(domainView.rows.length).toBeGreaterThanOrEqual(0);
+    const domainAsksTenant = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
+      sql`select * from audit.my_partition_integrity(${'tenant:' + tenant})`.execute(tx));
+    expect(domainAsksTenant.rows).toHaveLength(0);
   });
 });
 
@@ -467,7 +523,7 @@ describe('13 — refresh replay of n-2 and older revokes the active family', () 
     const p = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-fam' });
     const gen1 = p.refreshToken;
     const rotate = async (token: string) =>
-      withSystemCtx(identity, 'family rotation test', async (tx) =>
+      withIdentityOp(identity, 'identity.session.refresh', null, async (tx) =>
         (
           await sql<{ outcome: string; generation: number }>`
             select outcome, generation from identity.refresh_rotate_family(
@@ -505,7 +561,7 @@ describe('13 — refresh replay of n-2 and older revokes the active family', () 
     const chain = [token];
     for (let i = 0; i < 10; i += 1) {
       const next = `g${i}-${token}`;
-      const r = await withSystemCtx(identity, 'deep family rotation', async (tx) =>
+      const r = await withIdentityOp(identity, 'identity.session.refresh', null, async (tx) =>
         (
           await sql<{ outcome: string }>`select outcome from identity.refresh_rotate_family(
             ${sha256(token)}, ${sha256(next)}, ${sha256('c' + next)})`.execute(tx)
@@ -515,7 +571,7 @@ describe('13 — refresh replay of n-2 and older revokes the active family', () 
       chain.push(next);
     }
     const oldest = chain[0]!;
-    const replay = await withSystemCtx(identity, 'deep replay', async (tx) =>
+    const replay = await withIdentityOp(identity, 'identity.session.refresh', null, async (tx) =>
       (
         await sql<{ outcome: string }>`select outcome from identity.refresh_rotate_family(
           ${sha256(oldest)}, ${sha256('x')}, ${sha256('y')})`.execute(tx)
@@ -560,7 +616,8 @@ describe('14 — canonical insertion with an invented digest is rejected', () =>
     const header = fullHeader(uuidv7(), tenant, domainA);
     await expect(
       withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify({ subject: 'a', predicate: 'b', object_value: 'c' })}::jsonb, ${'f'.repeat(64)})`.execute(tx)),
+        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify({ subject: 'a', predicate: 'b', object_value: 'c' })}::jsonb, ${'f'.repeat(64)})`.execute(tx),
+        { action: 'objects.create' }),
     ).rejects.toThrow(/does not bind the header and payload/);
   });
 
@@ -570,7 +627,8 @@ describe('14 — canonical insertion with an invented digest is rejected', () =>
     const payload = { subject: 'a', predicate: 'b', object_value: 'c' };
     await expect(
       withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${'f'.repeat(64)})`.execute(tx)),
+        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${'f'.repeat(64)})`.execute(tx),
+        { action: 'objects.create' }),
     ).rejects.toThrow(/missing required field/);
   });
 
@@ -580,7 +638,8 @@ describe('14 — canonical insertion with an invented digest is rejected', () =>
     const digest = canonicalHeaderDigest(header, payload);
     const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
       sql<{ content_digest: string }>`select content_digest from objects.admit_version(
-        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx));
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx),
+      { action: 'objects.create' });
     // The DB recomputed the same digest the contracts package computed.
     expect(out.rows[0]!.content_digest).toBe(digest);
   });
@@ -610,35 +669,77 @@ describe('15 — outbox rewriting and unauthorized publish acknowledgement', () 
     ).rejects.toThrow(/immutable/);
   });
 
-  it('the application and commit roles cannot acknowledge publication', async () => {
-    await expect(sql`select objects.outbox_ack(${eventId}::uuid, 'pending', 'published')`.execute(app))
-      .rejects.toThrow(/permission denied/);
-    await expect(sql`select objects.outbox_ack(${eventId}::uuid, 'pending', 'published')`.execute(commit))
-      .rejects.toThrow(/permission denied/);
+  it('the ungated acknowledgement port no longer exists, and no other role can ack', async () => {
+    // Gate-2.1 §6: objects.outbox_ack (status-only CAS, no lease) is GONE; the
+    // publisher's general UPDATE is gone too. Only a LEASE HOLDER can transition.
+    const gone = await sql<{ n: string }>`
+      select count(*) n from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+       where ns.nspname = 'objects' and p.proname in ('outbox_ack','outbox_claim')`.execute(su);
+    expect(Number(gone.rows[0]!.n)).toBe(0);
+
+    for (const [name, db] of [['app', app], ['commit', commit]] as const) {
+      await expect(
+        sql`select objects.outbox_ack_leased(${eventId}::uuid, ${uuidv7()}::uuid, 'pending', 'published')`.execute(db),
+        name,
+      ).rejects.toThrow(/permission denied/);
+    }
     await expect(sql`update objects.object_outbox set status = 'published' where id = ${eventId}`.execute(app))
+      .rejects.toThrow(/permission denied/);
+    await expect(sql`update objects.object_outbox set status = 'published' where id = ${eventId}`.execute(publisher))
       .rejects.toThrow(/permission denied/);
   });
 
-  it('the publisher may only perform the permitted compare-and-set transition', async () => {
+  it('acknowledgement requires the CURRENT lease — a stale or invented lease cannot publish', async () => {
+    // An invented lease id cannot acknowledge, even with the right transition and
+    // the publish capability.
+    const forged = await withPublishCtx(publisher, eventId, async (tx) =>
+      (await sql<{ ok: boolean }>`select objects.outbox_ack_leased(
+        ${eventId}::uuid, ${uuidv7()}::uuid, 'pending', 'published') as ok`.execute(tx)).rows[0]!.ok);
+    expect(forged).toBe(false);
+    const stillPending = await sql<{ status: string }>`
+      select status from objects.object_outbox where id = ${eventId}`.execute(su);
+    expect(stillPending.rows[0]!.status).toBe('pending');
+
+    // Take a real lease; the row is now claimed by THIS publisher.
+    const leased = await withPublishCtx(publisher, null, async (tx) =>
+      sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(50, 60)`.execute(tx));
+    const mine = leased.rows.find((r) => r.id === eventId);
+    expect(mine, 'the pending event must be leasable').toBeTruthy();
+
+    // A SECOND leaseholder cannot appear while the lease is live…
+    const contender = await withPublishCtx(publisher, null, async (tx) =>
+      sql<{ id: string }>`select id from objects.outbox_lease(50, 60)`.execute(tx));
+    expect(contender.rows.map((r) => r.id)).not.toContain(eventId);
+
+    // …a reverse transition is refused even WITH the correct lease…
     await expect(
-      withSystemCtx(publisher, 'ack test', async (tx) =>
-        sql`select objects.outbox_ack(${eventId}::uuid, 'published', 'pending')`.execute(tx)),
+      withPublishCtx(publisher, eventId, async (tx) =>
+        sql`select objects.outbox_ack_leased(${eventId}::uuid, ${mine!.lease_id}::uuid, 'published', 'pending')`.execute(tx)),
     ).rejects.toThrow(/not permitted/);
-    // Correct transition succeeds exactly once (compare-and-set).
-    const first = await withSystemCtx(publisher, 'ack test', async (tx) =>
-      (await sql<{ ok: boolean }>`select objects.outbox_ack(${eventId}::uuid, 'pending', 'published') as ok`.execute(tx)).rows[0]!.ok);
+
+    // …and the permitted transition succeeds exactly once.
+    const first = await withPublishCtx(publisher, eventId, async (tx) =>
+      (await sql<{ ok: boolean }>`select objects.outbox_ack_leased(
+        ${eventId}::uuid, ${mine!.lease_id}::uuid, 'pending', 'published') as ok`.execute(tx)).rows[0]!.ok);
     expect(first).toBe(true);
-    const second = await withSystemCtx(publisher, 'ack test', async (tx) =>
-      (await sql<{ ok: boolean }>`select objects.outbox_ack(${eventId}::uuid, 'pending', 'published') as ok`.execute(tx)).rows[0]!.ok);
+    const second = await withPublishCtx(publisher, eventId, async (tx) =>
+      (await sql<{ ok: boolean }>`select objects.outbox_ack_leased(
+        ${eventId}::uuid, ${mine!.lease_id}::uuid, 'pending', 'published') as ok`.execute(tx)).rows[0]!.ok);
     expect(second).toBe(false);
   });
 
-  it('the publisher cannot enqueue events or touch business state', async () => {
+  it('the publish capability cannot enqueue events or touch business state', async () => {
     await expect(
       sql`select objects.enqueue_event(${uuidv7()}::uuid, 'x', '{}'::jsonb, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(publisher),
     ).rejects.toThrow(/permission denied/);
     await expect(sql`select * from objects.canonical_objects limit 1`.execute(publisher))
       .rejects.toThrow(/permission denied/);
+    // And holding a publish capability does not make an audit write possible.
+    await expect(
+      withPublishCtx(publisher, eventId, async (tx) =>
+        sql`select audit.commit_event('forge','a','success','OK',null,null,null,null::uuid,null,
+          ${uuidv7()}::uuid,null::uuid,null,null,null,'{}'::jsonb)`.execute(tx)),
+    ).rejects.toThrow(/permission denied/);
   });
 });
 
@@ -652,7 +753,7 @@ describe('16 — concurrent bootstrap attempts', () => {
       identity
         .transaction()
         .execute(async (tx) => {
-          await sql`select ctx.issue_system('concurrent bootstrap probe')`.execute(tx);
+          await sql`select ctx.issue_bootstrap(${uuidv7()}::uuid)`.execute(tx);
           return (await sql<{ ok: boolean }>`select identity.claim_bootstrap() as ok`.execute(tx)).rows[0]!.ok;
         })
         .catch((e: Error) => e.message);
@@ -666,8 +767,10 @@ describe('16 — concurrent bootstrap attempts', () => {
 
     // Belt-and-braces: the platform-admin precheck blocks bootstrap independently
     // of the claim (this database already has an administrator).
-    const exists = await withSystemCtx(identity, 'admin-exists probe', async (tx) =>
-      (await sql<{ ok: boolean }>`select identity.platform_admin_exists() as ok`.execute(tx)).rows[0]!.ok);
+    const exists = await identity.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_bootstrap(${uuidv7()}::uuid)`.execute(tx);
+      return (await sql<{ ok: boolean }>`select identity.platform_admin_exists() as ok`.execute(tx)).rows[0]!.ok;
+    });
     expect(exists).toBe(true);
   });
 
@@ -675,10 +778,12 @@ describe('16 — concurrent bootstrap attempts', () => {
     await sql`update config.runtime_profile set profile = 'production' where id = 1`.execute(su);
     try {
       await sql`delete from identity.bootstrap_claim`.execute(su);
+      // The capability itself is refused outside local/test: the runtime profile
+      // is checked at ISSUANCE, before any bootstrap port can be reached.
       await expect(
-        withSystemCtx(identity, 'profile probe', async (tx) =>
-          sql`select identity.claim_bootstrap()`.execute(tx)),
-      ).rejects.toThrow(/not local\/test/);
+        identity.transaction().execute(async (tx) =>
+          sql`select ctx.issue_bootstrap(${uuidv7()}::uuid)`.execute(tx)),
+      ).rejects.toThrow(/runtime profile|not local\/test/);
     } finally {
       await sql`update config.runtime_profile set profile = 'local' where id = 1`.execute(su);
     }

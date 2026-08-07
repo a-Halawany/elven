@@ -63,7 +63,15 @@ jobs:
       # This step also asserts that no stale dist/.next/tsbuildinfo is present.
       - name: Clean-source typecheck + build (blocking, real CI order)
         run: bash scripts/verify-clean-typecheck.sh
-      - name: Unit + conformance tests (golden fixtures)
+      # Gate-2.1 §9: the supply-chain ARTIFACT gates assert the SBOM, licence
+      # inventories and bidirectional reconciliation report that were actually
+      # produced, so the generators run BEFORE the test step that checks them. The
+      # pure gate LOGIC (negative fixtures) needs no artifacts and runs regardless.
+      - name: Supply-chain gate inputs (licence inventory + SBOM with schema validation)
+        run: |
+          node scripts/license-inventory.mjs
+          node scripts/generate-sbom.mjs
+      - name: Unit + conformance + supply-chain gate tests (golden fixtures, negative fixtures, shipped artifacts)
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
         # Acceptance runs BEFORE integration: the acceptance beforeAll relies on
@@ -137,7 +145,9 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: SBOM generation (pinned tracked generator; FAILS on empty SBOM)
+      # FAILS on an empty SBOM, an invalid CycloneDX 1.6 document, or a
+      # reconciliation gap in EITHER direction (Gate-2.1 §9).
+      - name: SBOM generation (pinned tracked generator, schema-validated, bidirectional)
         run: node scripts/generate-sbom.mjs
       - name: Upload SBOM + reconciliation
         uses: actions/upload-artifact@v4
@@ -148,7 +158,7 @@ jobs:
             evidence/supply-chain/reconciliation.txt
       - name: Dependency vulnerability scan (blocking at high)
         run: pnpm audit --audit-level high
-      - name: License inventory (allowlist-checked, blocking)
+      - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
         run: node scripts/license-inventory.mjs
       - name: Repository FILESYSTEM scan (Trivy fs — labeled as such)
         uses: aquasecurity/trivy-action@0.28.0

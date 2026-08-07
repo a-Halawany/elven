@@ -16,10 +16,10 @@ import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
-import { uuidv7 } from 'uuidv7';
+
 import {
   appDb, superDb, commitDb, identityDb, verifierDb, recoveryDb,
-  seedTenant, createPrincipalWithSession, type AnyDb, type TestPrincipal,
+  seedTenant, createPrincipalWithSession, withCtx, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 import { appendAuditEvent } from '../../src/audit/internal/audit-append.port.js';
 import { AuditService } from '../../src/audit/audit.service.js';
@@ -47,21 +47,27 @@ async function freshPartition(label: string): Promise<Partitioned> {
   return { tenantId, partitionId: `tenant:${tenantId}`, principal };
 }
 
-/** Append through the REAL bound port under a REAL tenant authority context. */
+/**
+ * Append through the REAL bound port under a REAL tenant COMMIT capability
+ * (Gate-2.1 §2): the capability is bound to this exact action and correlation id,
+ * and audit.commit_event re-checks both, so the append cannot be retargeted.
+ */
 async function appendReal(p: Partitioned, action: string): Promise<number> {
-  return commit.transaction().execute(async (tx) => {
-    await sql`select ctx.issue(${p.principal.sessionId}::uuid, ${p.principal.contextKey},
-      'TENANT', ${p.tenantId}::uuid, null::uuid, 'audit-chain-test', 60)`.execute(tx);
-    const ref = await appendAuditEvent(tx as never, {
-      eventType: 'test.event',
-      action,
-      outcome: 'success',
-      resultCode: 'OK',
-      correlationId: uuidv7(),
-      metadata: {},
-    });
-    return ref.auditSeq;
-  });
+  return withCtx(
+    commit, p.principal, 'TENANT', p.tenantId, null,
+    async (tx, cap) => {
+      const ref = await appendAuditEvent(tx as never, {
+        eventType: 'test.event',
+        action: cap.action,
+        outcome: 'success',
+        resultCode: 'OK',
+        correlationId: cap.correlationId,
+        metadata: {},
+      });
+      return ref.auditSeq;
+    },
+    { action, purpose: 'audit-chain-test' },
+  );
 }
 
 beforeAll(() => {
@@ -124,13 +130,28 @@ describe('gap-free concurrent appends (ADR-P0-09)', () => {
   it('a rolled-back transaction leaves no gap', async () => {
     const p = await freshPartition('chain-roll');
     expect(await appendReal(p, 'pre')).toBe(1);
+
+    // Gate-2.1 §1 (F2): the allocator pair is no longer callable by the COMMIT
+    // authority at all, so the abort is driven through the REAL append port —
+    // a sequence is allocated inside the port, then the transaction fails.
     await expect(
-      commit.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_system('rollback test')`.execute(tx);
-        await sql`select * from audit.advance_chain_head(${p.partitionId})`.execute(tx);
-        throw new Error('simulated failure after allocation');
-      }),
+      sql`select * from audit.advance_chain_head(${p.partitionId})`.execute(commit),
+    ).rejects.toThrow(/permission denied/);
+
+    await expect(
+      withCtx(
+        commit, p.principal, 'TENANT', p.tenantId, null,
+        async (tx, cap) => {
+          await appendAuditEvent(tx as never, {
+            eventType: 'test.event', action: cap.action, outcome: 'success',
+            resultCode: 'OK', correlationId: cap.correlationId, metadata: {},
+          });
+          throw new Error('simulated failure after allocation');
+        },
+        { action: 'rollback.probe' },
+      ),
     ).rejects.toThrow('simulated failure');
+
     expect(await appendReal(p, 'post')).toBe(2); // no gap from the aborted allocation
   });
 });

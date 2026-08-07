@@ -32,13 +32,22 @@ export class ObjectsController {
     @Body() body: { payload?: CreateObjectInput },
   ) {
     const { envelope, principal } = ctx(req);
+    const route = {
+      scope: 'DOMAIN' as const, tenantId, domainId,
+      action: 'objects.create', objectType: body.payload?.objectType ?? null, objectId: null,
+    };
     const input = body.payload;
-    if (input === undefined) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id), 400);
-    const out = await this.pipeline.write(envelope, principal, {
-      scope: 'DOMAIN', tenantId, domainId,
-      action: 'objects.create', objectType: input.objectType ?? null, objectId: null,
-    }, async (tx, c) => {
-      const row = await this.objects.createObject(tx, c, `principal:${principal.principalId}`, envelope.correlation_id, input);
+    // Gate-2.1 §7: a controller edge never rejects an AUTHENTICATED request
+    // without durable sanitized evidence.
+    if (input === undefined) {
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'payload is required', 400,
+      );
+    }
+    const out = await this.pipeline.write(envelope, principal, route, async (tx, c) => {
+      const row = await this.objects.createObject(
+        tx, c, `principal:${principal.principalId}`, envelope.correlation_id, input as CreateObjectInput,
+      );
       return {
         result: row,
         targetType: row.object_type,
@@ -64,15 +73,19 @@ export class ObjectsController {
     const { envelope, principal } = ctx(req);
     const expectedVersion = body.payload?.expectedVersion;
     const correction = body.payload?.correction;
+    const route = {
+      scope: 'DOMAIN' as const, tenantId, domainId,
+      action: 'objects.correct', objectType: correction?.objectType ?? null, objectId,
+    };
     if (typeof expectedVersion !== 'number' || correction === undefined) {
-      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'expectedVersion + correction required'), 400);
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'expectedVersion + correction required', 400,
+      );
     }
-    const out = await this.pipeline.write(envelope, principal, {
-      scope: 'DOMAIN', tenantId, domainId,
-      action: 'objects.correct', objectType: correction.objectType ?? null, objectId,
-    }, async (tx, c) => {
+    const out = await this.pipeline.write(envelope, principal, route, async (tx, c) => {
       const row = await this.objects.correctObject(
-        tx, c, `principal:${principal.principalId}`, envelope.correlation_id, objectId, expectedVersion, correction,
+        tx, c, `principal:${principal.principalId}`, envelope.correlation_id, objectId,
+        expectedVersion as number, correction as CreateObjectInput,
       );
       return {
         result: row,

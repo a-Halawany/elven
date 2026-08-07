@@ -1,0 +1,384 @@
+{
+  "$comment": "RFC 8785 (JCS) conformance corpus. Executed against BOTH the TypeScript canonicalizer (packages/contracts/src/jcs.ts) and the authoritative in-database canonicalizer (canon.jcs, migration 0012). Expected strings are specified from RFC 8785 and the ECMAScript Number::toString rules — they are NOT captured from either implementation, so both are held to the same independent standard.",
+  "cases": [
+    {
+      "name": "primitive-null",
+      "value": null,
+      "expected": "null"
+    },
+    {
+      "name": "primitive-true",
+      "value": true,
+      "expected": "true"
+    },
+    {
+      "name": "primitive-false",
+      "value": false,
+      "expected": "false"
+    },
+    {
+      "name": "integer-zero",
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "name": "integer-one",
+      "value": 1,
+      "expected": "1"
+    },
+    {
+      "name": "integer-negative",
+      "value": -42,
+      "expected": "-42"
+    },
+    {
+      "name": "number-fraction-half",
+      "value": 0.5,
+      "expected": "0.5"
+    },
+    {
+      "name": "number-fraction-tenth",
+      "value": 0.1,
+      "expected": "0.1"
+    },
+    {
+      "name": "number-fraction-sum-artifact",
+      "value": 0.30000000000000004,
+      "expected": "0.30000000000000004"
+    },
+    {
+      "name": "number-negative-fraction",
+      "value": -1.5,
+      "expected": "-1.5"
+    },
+    {
+      "name": "number-many-digits",
+      "value": 1.2345678901234567,
+      "expected": "1.2345678901234567"
+    },
+    {
+      "name": "number-negative-zero-canonicalizes-to-zero",
+      "value": -0.0,
+      "expected": "0"
+    },
+    {
+      "name": "number-1e20-decimal-form",
+      "value": 1e+20,
+      "expected": "100000000000000000000"
+    },
+    {
+      "name": "number-1e21-exponent-form",
+      "value": 1e+21,
+      "expected": "1e+21"
+    },
+    {
+      "name": "number-1e-6-decimal-form",
+      "value": 1e-06,
+      "expected": "0.000001"
+    },
+    {
+      "name": "number-1e-7-exponent-form",
+      "value": 1e-07,
+      "expected": "1e-7"
+    },
+    {
+      "name": "number-large-exponent",
+      "value": 1.5e+300,
+      "expected": "1.5e+300"
+    },
+    {
+      "name": "number-small-exponent",
+      "value": 1.5e-300,
+      "expected": "1.5e-300"
+    },
+    {
+      "name": "number-max-safe-integer",
+      "value": 9007199254740991,
+      "expected": "9007199254740991"
+    },
+    {
+      "name": "number-epsilon",
+      "value": 2.220446049250313e-16,
+      "expected": "2.220446049250313e-16"
+    },
+    {
+      "name": "number-min-subnormal",
+      "value": 5e-324,
+      "expected": "5e-324"
+    },
+    {
+      "name": "number-max-double",
+      "value": 1.7976931348623157e+308,
+      "expected": "1.7976931348623157e+308"
+    },
+    {
+      "name": "number-thousandth",
+      "value": 0.001,
+      "expected": "0.001"
+    },
+    {
+      "name": "number-hundred",
+      "value": 100,
+      "expected": "100"
+    },
+    {
+      "name": "number-negative-exponent-mantissa",
+      "value": -3.25e-11,
+      "expected": "-3.25e-11"
+    },
+    {
+      "name": "number-integral-float-drops-point",
+      "value": 2.0,
+      "expected": "2"
+    },
+    {
+      "name": "string-plain",
+      "value": "hello",
+      "expected": "\"hello\""
+    },
+    {
+      "name": "string-empty",
+      "value": "",
+      "expected": "\"\""
+    },
+    {
+      "name": "string-quote-and-backslash",
+      "value": "a\"b\\c",
+      "expected": "\"a\\\"b\\\\c\""
+    },
+    {
+      "name": "string-control-shorthand",
+      "value": "\b\t\n\f\r",
+      "expected": "\"\\b\\t\\n\\f\\r\""
+    },
+    {
+      "name": "string-control-hex",
+      "value": "\u0001\u001f",
+      "expected": "\"\\u0001\\u001f\""
+    },
+    {
+      "name": "string-del-is-literal",
+      "value": "",
+      "expected": "\"\""
+    },
+    {
+      "name": "string-line-and-paragraph-separator-literal",
+      "value": "  ",
+      "expected": "\"  \""
+    },
+    {
+      "name": "string-arabic",
+      "value": "الرؤية",
+      "expected": "\"الرؤية\""
+    },
+    {
+      "name": "string-cjk",
+      "value": "漢字仮名",
+      "expected": "\"漢字仮名\""
+    },
+    {
+      "name": "string-cyrillic-greek",
+      "value": "Привет Ελλάδα",
+      "expected": "\"Привет Ελλάδα\""
+    },
+    {
+      "name": "string-supplementary-emoji",
+      "value": "👁",
+      "expected": "\"👁\""
+    },
+    {
+      "name": "string-combining-marks",
+      "value": "é vs é",
+      "expected": "\"é vs é\""
+    },
+    {
+      "name": "array-empty",
+      "value": [],
+      "expected": "[]"
+    },
+    {
+      "name": "array-mixed",
+      "value": [
+        1,
+        "a",
+        null,
+        true,
+        0.5
+      ],
+      "expected": "[1,\"a\",null,true,0.5]"
+    },
+    {
+      "name": "array-nested",
+      "value": [
+        [
+          1
+        ],
+        [
+          [
+            2
+          ]
+        ]
+      ],
+      "expected": "[[1],[[2]]]"
+    },
+    {
+      "name": "array-preserves-order",
+      "value": [
+        "z",
+        "a",
+        "m"
+      ],
+      "expected": "[\"z\",\"a\",\"m\"]"
+    },
+    {
+      "name": "object-empty",
+      "value": {},
+      "expected": "{}"
+    },
+    {
+      "name": "object-ascii-sorted",
+      "value": {
+        "b": 1,
+        "a": 2,
+        "c": 3
+      },
+      "expected": "{\"a\":2,\"b\":1,\"c\":3}"
+    },
+    {
+      "name": "object-case-order-uppercase-first",
+      "value": {
+        "a": 1,
+        "A": 2
+      },
+      "expected": "{\"A\":2,\"a\":1}"
+    },
+    {
+      "name": "object-digit-and-underscore-keys",
+      "value": {
+        "_x": 1,
+        "0y": 2,
+        "Zz": 3
+      },
+      "expected": "{\"0y\":2,\"Zz\":3,\"_x\":1}"
+    },
+    {
+      "name": "object-empty-key",
+      "value": {
+        "": 1,
+        "a": 2
+      },
+      "expected": "{\"\":1,\"a\":2}"
+    },
+    {
+      "name": "object-prefix-key-shorter-first",
+      "value": {
+        "ab": 1,
+        "a": 2
+      },
+      "expected": "{\"a\":2,\"ab\":1}"
+    },
+    {
+      "name": "object-unicode-keys",
+      "value": {
+        "é": 1,
+        "e": 2,
+        "z": 3
+      },
+      "expected": "{\"e\":2,\"z\":3,\"é\":1}"
+    },
+    {
+      "name": "object-cjk-keys",
+      "value": {
+        "漢": 1,
+        "あ": 2
+      },
+      "expected": "{\"あ\":2,\"漢\":1}"
+    },
+    {
+      "name": "object-utf16-surrogate-before-fffd",
+      "value": {
+        "😀": 1,
+        "�": 2
+      },
+      "expected": "{\"😀\":1,\"�\":2}",
+      "$comment": "RFC 8785 orders members by UTF-16 code units. U+1F600 is D83D DE00, so it sorts BEFORE U+FFFD even though its code point is larger. Byte-order and code-point-order implementations fail this case."
+    },
+    {
+      "name": "object-utf16-surrogate-before-e000",
+      "value": {
+        "": 1,
+        "😀": 2
+      },
+      "expected": "{\"😀\":2,\"\":1}",
+      "$comment": "U+E000 versus U+1F600: code-point order puts U+E000 first, UTF-16 code-unit order puts the surrogate pair first."
+    },
+    {
+      "name": "nested-realistic-confidence",
+      "value": {
+        "confidence": {
+          "method": "calibrated",
+          "scale": "unit",
+          "value": 0.8725
+        },
+        "uncertainty": {
+          "kind": "interval",
+          "lower": -0.125,
+          "upper": 0.125
+        },
+        "quality_state": {
+          "completeness": 0.999,
+          "checks": 12
+        }
+      },
+      "expected": "{\"confidence\":{\"method\":\"calibrated\",\"scale\":\"unit\",\"value\":0.8725},\"quality_state\":{\"checks\":12,\"completeness\":0.999},\"uncertainty\":{\"kind\":\"interval\",\"lower\":-0.125,\"upper\":0.125}}",
+      "$comment": "The shape that motivated the requirement: fractional confidence and uncertainty values inside a canonical header."
+    },
+    {
+      "name": "nested-multilingual-strategic",
+      "value": {
+        "ar": "تقييم",
+        "en": "strategic assessment",
+        "ja": "戦略評価",
+        "ru": "оценка"
+      },
+      "expected": "{\"ar\":\"تقييم\",\"en\":\"strategic assessment\",\"ja\":\"戦略評価\",\"ru\":\"оценка\"}"
+    },
+    {
+      "name": "nested-deep-mixed",
+      "value": {
+        "z": [
+          {
+            "b": 0.25,
+            "a": [
+              1,
+              2.5,
+              null
+            ]
+          }
+        ],
+        "a": {
+          "": true
+        }
+      },
+      "expected": "{\"a\":{\"\":true},\"z\":[{\"a\":[1,2.5,null],\"b\":0.25}]}"
+    }
+  ],
+  "reject": [
+    {
+      "name": "reject-nan",
+      "reason": "NaN is not a finite double and is not valid I-JSON"
+    },
+    {
+      "name": "reject-positive-infinity",
+      "reason": "Infinity is not valid I-JSON"
+    },
+    {
+      "name": "reject-negative-infinity",
+      "reason": "-Infinity is not valid I-JSON"
+    },
+    {
+      "name": "reject-overflow-exponent",
+      "reason": "1e400 exceeds the IEEE-754 double range"
+    }
+  ]
+}

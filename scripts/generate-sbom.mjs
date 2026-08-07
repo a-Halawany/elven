@@ -13,8 +13,15 @@
  *   evidence/supply-chain/reconciliation.txt   — SBOM↔lockfile↔license report
  */
 import { execSync } from 'node:child_process';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { reconcile, validateCycloneDx } from './lib/supply-chain.mjs';
+
+// ajv is a PINNED workspace dependency (apps/api, packages/contracts). Resolving
+// through that package keeps the validator on the same pinned version the runtime
+// schemas use, instead of introducing a second, drifting copy at the repo root.
+const require = createRequire(new URL('../apps/api/package.json', import.meta.url));
 
 function licenseList(flag) {
   const raw = execSync(`pnpm licenses list --json ${flag}`, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -70,12 +77,23 @@ const lockIdentities = new Set();
 for (const m of lock.matchAll(/^ {2}'?((?:@[^/']+\/)?[^@'\s]+)@([^'(:\s]+)/gm)) {
   lockIdentities.add(`${m[1]}@${m[2]}`);
 }
-const unmatched = [];
-for (const c of components) {
-  if (!lockIdentities.has(`${c.name}@${c.version}`)) unmatched.push(`${c.name}@${c.version}`);
-}
+/**
+ * BIDIRECTIONAL reconciliation with governed exclusions (Gate-2.1 §9). The
+ * forward direction alone (SBOM ⊆ lockfile) cannot detect a dependency the SBOM
+ * silently omits — which is exactly how an unlisted package reaches production.
+ */
+const exclusionsFile = 'supply-chain-exclusions.json';
+const exclusions = existsSync(exclusionsFile)
+  ? (JSON.parse(readFileSync(exclusionsFile, 'utf8')).exclusions ?? [])
+  : [];
+// The closure identities the SBOM is reconciled against are the ones pnpm
+// actually resolved (prod + dev), not every heading in the lockfile: the lockfile
+// also carries peer-dedup and link entries that are not installed components.
+const closureIdentities = new Set([...prod.keys(), ...all.keys()]);
+const recon = reconcile({ components, lockIdentities: closureIdentities, exclusions });
+const unmatched = recon.missingFromLock;
 
-// ---- R8 gates: never emit an empty or unreconciled SBOM --------------------
+// ---- R8/Gate-2.1 gates: never emit an empty, unreconciled or invalid SBOM ----
 const failures = [];
 if (components.length === 0) failures.push('SBOM would be EMPTY (0 components)');
 if (prod.size === 0) failures.push('production license inventory is empty');
@@ -86,12 +104,7 @@ if (components.length !== prod.size + dev.size) {
 if (components.length > lockPkgCount) {
   failures.push(`SBOM has more components (${components.length}) than lockfile entries (${lockPkgCount})`);
 }
-if (unmatched.length > 0) {
-  failures.push(
-    `${unmatched.length} SBOM component identit${unmatched.length === 1 ? 'y' : 'ies'} not found in pnpm-lock.yaml: ` +
-    unmatched.slice(0, 10).join(', ') + (unmatched.length > 10 ? ' …' : ''),
-  );
-}
+for (const f of recon.failures) failures.push(f);
 if (failures.length > 0) {
   console.error('SBOM GENERATION FAILED:');
   for (const f of failures) console.error('  - ' + f);
@@ -115,6 +128,23 @@ const bom = {
   },
   components,
 };
+// ---- CycloneDX 1.6 SCHEMA validation (Gate-2.1 §9) -------------------------
+// Offline, with the same ajv the contracts package pins: a gate that needs the
+// network to decide whether a build is releasable fails open when the network does.
+const Ajv = require('ajv');
+let addFormats;
+try {
+  addFormats = require('ajv-formats');
+} catch {
+  addFormats = undefined;
+}
+const schema = validateCycloneDx(bom, Ajv.default ?? Ajv, addFormats?.default ?? addFormats);
+if (!schema.ok) {
+  console.error('SBOM SCHEMA VALIDATION FAILED (CycloneDX 1.6):');
+  for (const e of schema.errors.slice(0, 20)) console.error('  - ' + e);
+  process.exit(1);
+}
+
 writeFileSync('evidence/supply-chain/sbom.cdx.json', JSON.stringify(bom, null, 2) + '\n');
 writeFileSync(
   'evidence/supply-chain/licenses-prod.json',
@@ -133,14 +163,18 @@ const report = [
   `lockfile resolution entries:   ${lockPkgCount} (heading match; superset incl. peer-dedup/link entries)`,
   `lockfile sha256:               ${createHash('sha256').update(lock).digest('hex')}`,
   `lockfile distinct identities:  ${lockIdentities.size}`,
-  `identity matches:              ${components.length}/${components.length} SBOM components found in the lockfile by name@version`,
-  `unmatched identities:          ${unmatched.length}`,
+  `closure identities (prod+dev): ${recon.counts.lock}`,
+  `forward  (sbom -> closure):    ${components.length - recon.missingFromLock.length}/${components.length} matched, ${recon.missingFromLock.length} unmatched`,
+  `reverse  (closure -> sbom):    ${recon.counts.lock - recon.missingFromSbom.length - recon.counts.excluded}/${recon.counts.lock} matched, ${recon.missingFromSbom.length} unmatched, ${recon.counts.excluded} governed exclusion(s)`,
+  `stale exclusions:              ${recon.staleExclusions.length}`,
+  `cyclonedx 1.6 schema:          VALID`,
   `source candidate sha:          ${execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim()}`,
-  `invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries; EVERY component identity present in the lockfile`,
+  `invariants checked:            non-empty SBOM; components == prod+dev; components <= lockfile entries; BIDIRECTIONAL identity reconciliation (sbom<->closure) with governed exclusions; CycloneDX 1.6 schema validity`,
   `result:                        RECONCILED`,
 ].join('\n') + '\n';
 writeFileSync('evidence/supply-chain/reconciliation.txt', report);
 
 console.log(`SBOM: ${components.length} components (${prod.size} production, ${dev.size} development-only)`);
 console.log(`lockfile package-entry count (approx heading match): ${lockPkgCount}`);
-console.log('reconciliation: RECONCILED (evidence/supply-chain/reconciliation.txt)');
+console.log(`reconciliation: RECONCILED bidirectionally (${recon.counts.excluded} governed exclusion(s))`);
+console.log('cyclonedx 1.6 schema: VALID');

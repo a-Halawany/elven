@@ -1,7 +1,0 @@
-# Tracked-source snapshot — cryptographically tied to SOURCE_CANDIDATE_SHA
-SOURCE_CANDIDATE_SHA:            2deded44904e5a4ec264938085c2aaa93d9636b6
-git-archive(SOURCE) tar sha256:  9514f300bd4e8f88052a448604a1c584f0398f0fd34637963295d49db6527199
-tracked-file-list sha256:        fd03cd2253e47fc6fa2906554ce51a17398728013c72bfae97baf7d211c8b1ef
-tracked-file count:              144
-
-# Reproduce: git archive 2deded44904e5a4ec264938085c2aaa93d9636b6 | shasum -a 256

@@ -19,11 +19,20 @@ echo "==> wiping volumes + local secret handoff (VIRGIN run)" | tee -a "$OUT"
 pkill -f "dist/main.js" 2>/dev/null || true
 pkill -f "next-server" 2>/dev/null || true
 pkill -f "next start" 2>/dev/null || true
+# ORDER MATTERS: container_name is pinned in compose, so a stack from another
+# checkout of this repo holds the same names — and while it does, `down -v` can
+# remove neither the containers nor the volumes, leaving a stale database. Release
+# the names first, then tear the project down with its volumes.
+docker rm -f eye-postgres eye-redis >> "$OUT" 2>&1 || true
 # Old env is sourced ONLY inside this subshell (compose interpolation needs the
 # variables to tear down) — it must never leak into the virgin demo run.
 ( set -a; [ -f .eye-local/env ] && source .eye-local/env; set +a
   docker compose down -v --remove-orphans ) >> "$OUT" 2>&1 || true
-rm -rf .eye-local
+# A VIRGIN run means no durable degraded state either: the audit-degradation
+# journal deliberately survives restarts (Gate-2.1 §7), so leaving it behind would
+# make the fresh API correctly report `degraded` and the demo would fail for the
+# right reason at the wrong time.
+rm -rf .eye-local apps/api/.eye-local
 
 echo "==> running ./scripts/demo.sh (full transcript captured)" | tee -a "$OUT"
 ./scripts/demo.sh >> "$OUT" 2>&1

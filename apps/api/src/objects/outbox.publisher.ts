@@ -5,8 +5,9 @@
  * id). Interval poller; at-least-once with idempotent job ids (outbox row id).
  *
  * Runs on the dedicated PUBLISHER authority (eye_publisher), whose entire
- * surface is two ports: objects.outbox_claim (read pending) and
- * objects.outbox_ack (compare-and-set on the permitted status transitions).
+ * surface is two ports: objects.outbox_lease (take a time-bounded lease on
+ * pending rows) and objects.outbox_ack_leased (compare-and-set tied to that
+ * lease). A publisher that lost its lease cannot acknowledge anything.
  * It cannot rewrite an event, and it cannot mark anything published outside a
  * pending → published/failed transition — so publication can neither forge nor
  * suppress delivery. Event identity and content are immutable by trigger.
@@ -21,6 +22,7 @@ import type { Db } from '../shared/db.js';
 
 interface PendingRow {
   id: string;
+  lease_id: string;
   event_type: string;
   payload: unknown;
   correlation_id: string;
@@ -61,8 +63,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     if (this.queue === null) return 0;
     const rows = (
       await this.db.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_system('outbox publication sweep')`.execute(tx);
-        return sql<PendingRow>`select * from objects.outbox_claim(50)`.execute(tx);
+        await sql`select ctx.issue_publish(null::uuid)`.execute(tx);
+        return sql<PendingRow>`select * from objects.outbox_lease(50, 60)`.execute(tx);
       })
     ).rows;
 
@@ -84,9 +86,12 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         );
         // Narrow compare-and-set acknowledgement — the only mutation available.
         const ok = await this.db.transaction().execute(async (tx) => {
-          await sql`select ctx.issue_system('outbox publication acknowledgement')`.execute(tx);
+          await sql`select ctx.issue_publish(${row.id}::uuid)`.execute(tx);
+          // Compare-and-set tied to the LEASE: without the lease id and the
+          // expected current status, nothing moves.
           return (
-            await sql<{ ok: boolean }>`select objects.outbox_ack(${row.id}::uuid, 'pending', 'published') as ok`.execute(tx)
+            await sql<{ ok: boolean }>`select objects.outbox_ack_leased(
+              ${row.id}::uuid, ${row.lease_id}::uuid, 'pending', 'published') as ok`.execute(tx)
           ).rows[0]?.ok === true;
         });
         if (ok) published += 1;

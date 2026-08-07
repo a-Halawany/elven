@@ -33,14 +33,20 @@ export class TenancyController {
   ) {
     const { envelope, principal } = ctx(req);
     const name = body.payload?.name;
-    if (typeof name !== 'string' || name.length < 2) {
-      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'tenant name required'), 400);
-    }
-    const out = await this.pipeline.write(envelope, principal, {
-      scope: 'PLATFORM', tenantId: null, domainId: null,
+    const route = {
+      scope: 'PLATFORM' as const, tenantId: null, domainId: null,
       action: 'tenancy.tenant.create', objectType: 'TEN', objectId: null,
-    }, async (tx) => {
-      const tenant = await this.tenancy.createTenant(tx, `principal:${principal.principalId}`, name, body.payload?.residency ?? 'local-dev');
+    };
+    // Gate-2.1 §7: durable sanitized evidence for every authenticated rejection.
+    if (typeof name !== 'string' || name.length < 2) {
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'tenant name required', 400,
+      );
+    }
+    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
+      const tenant = await this.tenancy.createTenant(
+        tx, `principal:${principal.principalId}`, name as string, body.payload?.residency ?? 'local-dev',
+      );
       return { result: tenant, targetType: 'TEN', targetId: tenant.id, targetVersion: '1', outboxEvent: null };
     });
     return { tenant: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
@@ -64,14 +70,19 @@ export class TenancyController {
   ) {
     const { envelope, principal } = ctx(req);
     const name = body.payload?.name;
-    if (typeof name !== 'string' || name.length < 2) {
-      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'domain name required'), 400);
-    }
-    const out = await this.pipeline.write(envelope, principal, {
-      scope: 'TENANT', tenantId, domainId: null,
+    const route = {
+      scope: 'TENANT' as const, tenantId, domainId: null,
       action: 'tenancy.domain.create', objectType: 'CID', objectId: null,
-    }, async (tx) => {
-      const domain = await this.tenancy.createDomain(tx, `principal:${principal.principalId}`, tenantId, name);
+    };
+    if (typeof name !== 'string' || name.length < 2) {
+      await this.pipeline.rejectAuthenticatedRequest(
+        envelope, principal, route, 'EYE-REQ-001', 'domain name required', 400,
+      );
+    }
+    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
+      const domain = await this.tenancy.createDomain(
+        tx, `principal:${principal.principalId}`, tenantId, name as string,
+      );
       return { result: domain, targetType: 'CID', targetId: domain.id, targetVersion: '1', outboxEvent: null };
     });
     return { domain: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };

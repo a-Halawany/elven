@@ -13,9 +13,8 @@
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { sql } from 'kysely';
 import { errorBody } from '@eye/contracts';
-import type { Tx } from '../shared/db.js';
+import type { BoundedCapability } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 import type { Scope } from '@eye/contracts';
 import { MIN_PASSWORD_LENGTH } from './identity.service.js';
@@ -34,7 +33,7 @@ export interface CreatePrincipalInput {
 
 @Injectable()
 export class PrincipalsService {
-  async createPrincipal(tx: Tx, input: CreatePrincipalInput): Promise<{ principalId: string }> {
+  async createPrincipal(cap: BoundedCapability, input: CreatePrincipalInput): Promise<{ principalId: string }> {
     if (input.password !== undefined) {
       if (input.kind !== 'human') {
         throw new HttpException(
@@ -59,18 +58,25 @@ export class PrincipalsService {
     const principalId = newId();
     const secretHash =
       input.password === undefined ? null : await argon2.hash(input.password, { type: argon2.argon2id });
-    await sql`select identity.create_principal(
-      ${principalId}::uuid, ${input.kind}, ${input.scope}, ${input.tenantId}::uuid, ${input.domainId}::uuid,
-      ${input.displayName}, ${input.loginName ?? null}, ${secretHash}, ${input.roleCode ?? null}
-    )`.execute(tx);
+    await cap.createPrincipal({
+      id: principalId,
+      kind: input.kind,
+      scope: input.scope,
+      tenantId: input.tenantId,
+      domainId: input.domainId,
+      displayName: input.displayName,
+      loginName: input.loginName ?? null,
+      secretHash,
+      roleCode: input.roleCode ?? null,
+    });
     return { principalId };
   }
 
-  async listPrincipals(tx: Tx): Promise<unknown[]> {
-    return tx
-      .selectFrom('identity.principals')
+  async listPrincipals(cap: BoundedCapability): Promise<unknown[]> {
+    return cap
+      .read('identity.principals')
       .select(['id', 'kind', 'scope', 'tenant_id', 'domain_id', 'display_name', 'login_name', 'status', 'created_at'])
-      .orderBy('created_at')
+      .orderBy('created_at' as never)
       .execute();
   }
 }

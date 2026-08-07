@@ -136,7 +136,10 @@ test.describe.serial('Phase 0 browser regression', () => {
     expect(c.status).toBe(201);
     objectId = c.body.object.object_id;
     tAfterV1 = new Date().toISOString();
-    await new Promise((res) => setTimeout(res, 1500));
+    // The as-of instant in test 6 is floor(tAfterV1 + 1s) because a datetime-local
+    // input has one-second granularity. The gap to v2 must therefore exceed that
+    // rounding by a margin that does not depend on machine load: 3s leaves ≥2s.
+    await new Promise((res) => setTimeout(res, 3000));
     const fix = await api(`/v1/tenants/${tenantId}/domains/${domainId}/objects/${objectId}/correct`,
       objOver('objects.correct'), { expectedVersion: 1, correction: mk('WidgetCo Inc. (corrected)') });
     expect(fix.status).toBe(201);
@@ -215,7 +218,10 @@ test.describe.serial('Phase 0 browser regression', () => {
     await page.locator('select').nth(1).selectOption({ label: 'e2e-domain' });
     await page.getByRole('cell', { name: /truth state asserted/ }).first().click();
     await expect(page.getByText(/Version history/)).toBeVisible();
-    const dt = new Date(new Date(tAfterV1).getTime() + 1000); // datetime-local floors to seconds
+    // datetime-local has second granularity, so the chosen instant is
+    // floor(tAfterV1 + 1s): strictly after v1 (proved by construction — tAfterV1 is
+    // captured after the v1 response) and at least 2s before v2 (see the gap above).
+    const dt = new Date(new Date(tAfterV1).getTime() + 1000);
     const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
     await page.locator('input[type="datetime-local"]').fill(local);
     await page.getByRole('button', { name: 'Query' }).click();

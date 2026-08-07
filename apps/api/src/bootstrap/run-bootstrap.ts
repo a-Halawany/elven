@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 
   try {
     await db.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_system('one-shot platform bootstrap')`.execute(tx);
+      await sql`select ctx.issue_bootstrap(${correlationId}::uuid)`.execute(tx);
 
       // Database-enforced single use + structural local/test eligibility.
       const claimed = (
@@ -75,9 +75,7 @@ async function main(): Promise<void> {
         ${await argon2.hash(password, { type: argon2.argon2id })}, 'platform_admin'
       )`.execute(tx);
       // One-time semantics: force rotation on first use, disable if unused 24h.
-      await sql`update identity.credentials
-                   set status = 'must_rotate', expires_at = now() + interval '24 hours'
-                 where principal_id = ${principalId}::uuid`.execute(tx);
+      await sql`select identity.bootstrap_mark_one_time(${principalId}::uuid)`.execute(tx);
       await sql`select identity.record_bootstrap_principal(${principalId}::uuid)`.execute(tx);
 
       await sql`select audit.commit_identity_event(

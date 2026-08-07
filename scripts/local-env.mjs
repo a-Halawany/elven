@@ -63,22 +63,44 @@ export function loadLocalEnv(root = ROOT) {
       if (m) stored[m[1]] = m[2];
     }
   }
+  // Precedence: caller environment > existing handoff file > freshly generated.
+  //
+  // Gate-2.1 §9: whatever wins is RECORDED. Persisting only the generated keys left
+  // an INCOMPLETE handoff whenever a caller's environment supplied some values —
+  // and a later process that merely sources the file (demo.sh, the browser gate,
+  // the migration runner) then failed on a key that was never written down. The
+  // file must always describe the material actually in use.
   let dirty = false;
-  for (const key of GENERATED_KEYS) {
-    if (process.env[key]) continue; // caller-supplied environment wins
-    if (stored[key] === undefined) {
-      stored[key] = gen();
+  const resolve = (key, fallback) => {
+    const value = process.env[key] ?? stored[key] ?? fallback();
+    if (stored[key] !== value) {
+      stored[key] = value;
       dirty = true;
     }
-    process.env[key] = stored[key];
+    process.env[key] = value;
+    return value;
+  };
+  for (const key of GENERATED_KEYS) resolve(key, gen);
+
+  // EYE_DB_MIGRATE_PASSWORD is DERIVED, not independent: the migrate role IS the
+  // compose superuser. A derived value must never be preserved once its source
+  // changes — keeping a stored copy let it silently diverge from EYE_DB_PASSWORD
+  // after a virgin run regenerated the superuser credential, and the only symptom
+  // was `password authentication failed for user "eye"` from the migration runner.
+  // Precedence is therefore: explicit caller value, otherwise ALWAYS the current
+  // superuser password. An inconsistent handoff file repairs itself here.
+  const migrate = process.env['EYE_DB_MIGRATE_PASSWORD'] ?? process.env['EYE_DB_PASSWORD'];
+  if (stored['EYE_DB_MIGRATE_PASSWORD'] !== migrate) {
+    stored['EYE_DB_MIGRATE_PASSWORD'] = migrate;
+    dirty = true;
   }
+  process.env['EYE_DB_MIGRATE_PASSWORD'] = migrate;
+
   if (dirty) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const body = Object.entries(stored).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
     writeFileSync(file, body, { mode: 0o600 });
     chmodSync(file, 0o600);
   }
-  // Migrate role uses the compose superuser password unless told otherwise.
-  process.env['EYE_DB_MIGRATE_PASSWORD'] ??= process.env['EYE_DB_PASSWORD'];
   return { ...process.env };
 }

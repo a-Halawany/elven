@@ -1,30 +1,19 @@
 /**
- * Authoritative request pipeline — ADR-P0-08 + Gate-2 §1/§2/§4/§6.
+ * Authoritative request pipeline — ADR-P0-08 + Gate-2 + Gate-2.1.
  *
- * Authority separation (§1): the pipeline reads through the APP pool
- * (RLS-governed SELECT only) and writes through the COMMIT pool. The ordinary
- * application role cannot write anything authoritative, so the commit boundary
- * is a real, independently enforced trust boundary rather than a convention.
- *
- * Bound context (§2): every transaction establishes context through
- * ctx.issue(session, contextKey, scope, tenant, domain, purpose, ttl). The
- * context is bound to session + principal + tenant + domain + scope + assurance
- * + purpose + issued-at + expiry + single-use nonce + revocation epoch + the
- * issuing backend, and requires proof of possession of the session's context
- * key (carried only inside the verified access token). It dies on session
- * revocation, binding removal, credential rotation, expiry or replay.
- *
- * Unforgeable evidence (§4): POL and AUD are never submitted as caller JSON.
- * The pipeline calls policy.commit_decision / audit.commit_event, which DERIVE
- * scope, tenant, domain, actor, session and purpose from the validated context,
- * build the record inside the trusted boundary, canonicalize it with the
- * in-database RFC 8785 implementation and compute the chain hash there.
- *
- * Complete coverage + fail-closed (§6): scope/route/envelope mismatches, policy
- * denials, handler failures and consequential-read failures all record durable
- * sanitized evidence. If authoritative audit persistence is unavailable the
- * request FAILS CLOSED and the fact is recorded through the independent
- * degraded-audit journal, which also drives degraded health.
+ * Gate-2.1 changes:
+ *  * The commit context is minted by ctx.issue_commit and BOUND to the action,
+ *    target, correlation id, policy-decision id, bundle version, consequence
+ *    class, session, principal, scope and purpose. The same context cannot
+ *    authorize a different operation inside the transaction, and every port
+ *    revalidates live authority (session, expiry, principal, epoch, binding) at
+ *    the write boundary using wall-clock time.
+ *  * Business handlers receive a BoundedCapability, never a transaction, so a
+ *    handler cannot reach an unrelated port or issue raw SQL.
+ *  * Denials are recorded through the capability-free evidence context, which is
+ *    validated against the attempted route and can only record denial/failure.
+ *  * Every authenticated validation failure goes through
+ *    rejectAuthenticatedRequest, which produces durable sanitized evidence.
  */
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -36,6 +25,7 @@ import { envelopeScopeMatches, resolveScope, type ScopeContext } from '../shared
 import { PdpService, type Obligation, type PolicyInput, type PolicyResult } from '../policy/pdp.service.js';
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
+import { BoundedCapability } from '../shared/capabilities.js';
 
 export interface RouteInfo {
   scope: Scope;
@@ -45,12 +35,7 @@ export interface RouteInfo {
   objectType: string | null;
   objectId: string | null;
   consequenceClass?: ConsequenceClass;
-  /**
-   * Which authoritative writer executes this route (Gate-2 §1). 'commit' is the
-   * default; identity-mutating routes MUST declare 'identity' so the commit role
-   * never holds identity capability and vice versa. Both roles can write bound
-   * POL/AUD evidence, so atomicity with the business effect is preserved.
-   */
+  /** Which authoritative writer executes this route (never broader). */
   authority?: 'commit' | 'identity';
 }
 
@@ -80,6 +65,50 @@ export class AuditUnavailableError extends Error {
   }
 }
 
+/**
+ * Raised when the DATABASE refuses to mint the capability for this request
+ * (Gate-2.1 §4/§7): the session lapsed, the authority epoch moved, the binding
+ * disappeared, or the assurance is not sufficient. This is an AUTHORIZATION
+ * outcome, not an internal error — it must leave durable sanitized evidence and
+ * answer 403, never 500.
+ */
+export class CapabilityDeniedError extends Error {
+  constructor(readonly denialClass: string) {
+    super(`capability denied: ${denialClass}`);
+  }
+}
+
+/**
+ * Classify a boundary refusal WITHOUT echoing database text to the caller or into
+ * evidence metadata. Anything unrecognized is reported as the generic class.
+ */
+function classifyDenial(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes('invalid session proof')) return 'session_proof_invalid';
+  if (m.includes('no such session')) return 'session_unknown';
+  if (m.includes('session not active')) return 'session_not_active';
+  if (m.includes('bootstrap assurance')) return 'bootstrap_assurance_incomplete';
+  if (m.includes('principal not active')) return 'principal_not_active';
+  if (m.includes('epoch changed')) return 'authority_epoch_changed';
+  if (m.includes('no qualifying binding')) return 'no_qualifying_binding';
+  if (m.includes('session is not active')) return 'session_not_active';
+  if (m.includes('session/principal mismatch')) return 'session_principal_mismatch';
+  if (m.includes('bootstrap assurance cannot act')) return 'bootstrap_assurance_incomplete';
+  if (m.includes('revocation epoch changed')) return 'authority_epoch_changed';
+  if (m.includes('carries no subject')) return 'context_without_subject';
+  if (m.includes('scope')) return 'scope_not_permitted';
+  return 'capability_refused';
+}
+
+/** True for a PostgreSQL insufficient_privilege raised by a capability minter. */
+function isCapabilityRefusal(e: unknown): e is Error {
+  return (
+    e instanceof Error &&
+    (e as { code?: string }).code === '42501' &&
+    /context denied|capability denied|capability refused|authority revoked|business write rejected/i.test(e.message)
+  );
+}
+
 @Injectable()
 export class PipelineService {
   constructor(
@@ -89,7 +118,6 @@ export class PipelineService {
     private readonly pdp: PdpService,
   ) {}
 
-  /** The writer authority for a route — never broader than the route declares. */
   private writer(route: RouteInfo): Db {
     return route.authority === 'identity' ? this.identityDb : this.commitDb;
   }
@@ -99,7 +127,7 @@ export class PipelineService {
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
-    handler: (tx: Tx, ctx: ScopeContext) => Promise<WriteEffect<T>>,
+    handler: (cap: BoundedCapability, ctx: ScopeContext) => Promise<WriteEffect<T>>,
   ): Promise<PipelineOutcome<T>> {
     const { ctx, policyInput, policyResult } = await this.resolveAndEvaluate(envelope, principal, route);
 
@@ -108,13 +136,14 @@ export class PipelineService {
       throw deny(policyResult.decision === 'deny' ? 'EYE_AUT_001' : 'EYE_AUT_002', envelope.correlation_id, policyResult.reason);
     }
 
+    const polId = newId();
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
-        await this.establishContext(tx, principal, ctx, envelope);
-        const effect = await handler(tx, ctx);
-        const polId = await this.commitPolicy(tx, envelope, route, policyInput, policyResult);
+        await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
+        const cap = BoundedCapability.forPipeline(tx, route.action);
+        const effect = await handler(cap, ctx);
+        await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
-          eventType: 'api.request',
           outcome: 'success',
           resultCode: 'OK',
           policyDecisionId: polId,
@@ -123,21 +152,16 @@ export class PipelineService {
           metadata: { assurance: principal.assurance },
         });
         if (effect.outboxEvent != null) {
-          await sql`select objects.enqueue_event(
-            ${newId()}::uuid, ${effect.outboxEvent.eventType},
-            ${JSON.stringify(effect.outboxEvent.payload)}::jsonb,
-            ${envelope.correlation_id}::uuid, ${envelope.message_id}::uuid
-          )`.execute(tx);
+          await cap.enqueueOutbox(
+            newId(), effect.outboxEvent.eventType, effect.outboxEvent.payload,
+            envelope.correlation_id, envelope.message_id,
+          );
         }
-        return {
-          result: effect.result,
-          policyDecisionId: polId,
-          auditSeq: aud.auditSeq,
-          obligations: policyResult.obligations,
-        };
+        return { result: effect.result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
       });
     } catch (e) {
       if (e instanceof AuditUnavailableError) throw this.failClosed(envelope, route, e);
+      if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
       await this.recordHandlerFailure(envelope, principal, ctx, route, policyInput, policyResult, e);
       throw e;
     }
@@ -148,7 +172,7 @@ export class PipelineService {
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
-    handler: (tx: Tx, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
+    handler: (cap: BoundedCapability, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
   ): Promise<PipelineOutcome<T>> {
     const { ctx, policyInput, policyResult } = await this.resolveAndEvaluate(envelope, principal, route);
 
@@ -157,12 +181,13 @@ export class PipelineService {
       throw deny(policyResult.decision === 'deny' ? 'EYE_AUT_001' : 'EYE_AUT_002', envelope.correlation_id, policyResult.reason);
     }
 
+    const polId = newId();
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
-        await this.establishContext(tx, principal, ctx, envelope);
-        const polId = await this.commitPolicy(tx, envelope, route, policyInput, policyResult);
+        await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
+        const cap = BoundedCapability.forPipeline(tx, route.action);
+        await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
-          eventType: 'api.request',
           outcome: 'success',
           resultCode: 'OK',
           policyDecisionId: polId,
@@ -170,21 +195,77 @@ export class PipelineService {
           target: { type: route.objectType, id: route.objectId, version: null },
           metadata: { assurance: principal.assurance },
         });
-        const result = await handler(tx, ctx, policyResult.obligations);
+        const result = await handler(cap, ctx, policyResult.obligations);
         return { result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
       });
     } catch (e) {
       if (e instanceof AuditUnavailableError) throw this.failClosed(envelope, route, e);
+      if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
       await this.recordHandlerFailure(envelope, principal, ctx, route, policyInput, policyResult, e);
       throw e;
     }
   }
 
   /**
-   * Centralized durable rejection path (§6) for failures detected BEFORE the
-   * governed pipeline runs — malformed bodies, missing parameters, unusable
-   * payloads on an authenticated request. Records sanitized evidence, then
-   * raises. Never silently swallows.
+   * A consequential read whose EVIDENCE DEPENDS ON ITS RESULT (Gate-2.1 §7).
+   *
+   * The ordinary consequentialRead writes its AUD before the handler runs, which
+   * is right when the handler cannot change the request's outcome. It is wrong for
+   * audit.verify: an unknown or damaged partition would then be recorded as a
+   * successful request merely because the HTTP handler completed. Here the handler
+   * runs first and the evidence — outcome, result code and detail — is derived
+   * from what it actually found. Everything is still ONE transaction, so nothing
+   * has left the boundary before its evidence is durable.
+   */
+  async consequentialReadEvidenced<T>(
+    envelope: Envelope,
+    principal: AuthenticatedPrincipal,
+    route: RouteInfo,
+    handler: (cap: BoundedCapability, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
+    evidenceOf: (result: T) => {
+      outcome: 'success' | 'failure' | 'indeterminate';
+      resultCode: string;
+      metadata: Record<string, unknown>;
+    },
+  ): Promise<PipelineOutcome<T>> {
+    const { ctx, policyInput, policyResult } = await this.resolveAndEvaluate(envelope, principal, route);
+
+    if (policyResult.decision === 'deny' || policyResult.decision === 'indeterminate') {
+      await this.recordDenial(envelope, principal, route, ctx, policyInput, policyResult);
+      throw deny(policyResult.decision === 'deny' ? 'EYE_AUT_001' : 'EYE_AUT_002', envelope.correlation_id, policyResult.reason);
+    }
+
+    const polId = newId();
+    try {
+      return await this.writer(route).transaction().execute(async (tx) => {
+        await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
+        const cap = BoundedCapability.forPipeline(tx, route.action);
+        const result = await handler(cap, ctx, policyResult.obligations);
+        const ev = evidenceOf(result);
+        await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
+        const aud = await this.commitAudit(tx, envelope, route, {
+          outcome: ev.outcome,
+          resultCode: ev.resultCode,
+          // A non-success outcome must not claim the allow decision authorized it.
+          policyDecisionId: ev.outcome === 'success' ? polId : null,
+          policyVersion: policyResult.bundleVersion,
+          target: { type: route.objectType, id: route.objectId, version: null },
+          metadata: { assurance: principal.assurance, decision: policyResult.decision, ...ev.metadata },
+        });
+        return { result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
+      });
+    } catch (e) {
+      if (e instanceof AuditUnavailableError) throw this.failClosed(envelope, route, e);
+      if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
+      await this.recordHandlerFailure(envelope, principal, ctx, route, policyInput, policyResult, e);
+      throw e;
+    }
+  }
+
+  /**
+   * Centralized durable rejection path (Gate-2.1 §7). EVERY authenticated
+   * validation failure goes through here, so no controller edge can reject a
+   * request without leaving sanitized evidence.
    */
   async rejectAuthenticatedRequest(
     envelope: Envelope,
@@ -205,7 +286,6 @@ export class PipelineService {
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
   ): Promise<{ ctx: ScopeContext; policyInput: PolicyInput; policyResult: PolicyResult }> {
-    // Step 3 — scope from authenticated principal + trusted routing (fail closed).
     const res = resolveScope(principal, route.scope, route.tenantId, route.domainId);
     if (!res.ok) {
       await this.recordScopeDenial(envelope, principal, route, `scope resolution failed: ${res.reason}`);
@@ -240,65 +320,80 @@ export class PipelineService {
     return { ctx: res.context, policyInput, policyResult };
   }
 
-  /** Gate-2 §2 — the ONLY way a transaction acquires authority. */
-  private async establishContext(
+  /** Gate-2.1 §2 — a commit capability bound to this request AND its PDP result. */
+  private async establishCommitContext(
     tx: Tx,
     principal: AuthenticatedPrincipal,
     ctx: ScopeContext,
     envelope: Envelope,
+    route: RouteInfo,
+    policyDecisionId: string,
+    policyResult: PolicyResult,
   ): Promise<void> {
-    await sql`select ctx.issue(
-      ${principal.sessionId}::uuid, ${principal.contextKey}, ${ctx.scope},
-      ${ctx.tenantId}::uuid, ${ctx.domainId}::uuid, ${envelope.purpose_id ?? null}, 60
-    )`.execute(tx);
+    try {
+      await sql`select ctx.issue_commit(
+        ${principal.sessionId}::uuid, ${principal.contextKey}, ${ctx.scope},
+        ${ctx.tenantId}::uuid, ${ctx.domainId}::uuid, ${envelope.purpose_id ?? null},
+        ${route.action}, ${route.objectId}, ${envelope.correlation_id}::uuid,
+        ${policyDecisionId}::uuid, ${policyResult.bundleVersion},
+        ${route.consequenceClass ?? envelope.consequence_class}, 60
+      )`.execute(tx);
+    } catch (e) {
+      if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
+      throw e;
+    }
   }
 
-  /**
-   * Evidence-only context: required when the DENIAL REASON is the principal's
-   * own assurance or missing binding — an authority context is (correctly)
-   * unobtainable then, but the denial must still be recorded against the real
-   * authenticated principal. Carries no capability: eye_row_writable() is false
-   * in this mode, so it can write evidence and nothing else.
-   */
+  /** Capability-free evidence context, validated against the attempted route. */
   private async establishEvidenceContext(
     tx: Tx,
     principal: AuthenticatedPrincipal,
     ctx: ScopeContext,
     envelope: Envelope,
+    route: RouteInfo,
   ): Promise<void> {
-    await sql`select ctx.issue_evidence(
-      ${principal.sessionId}::uuid, ${principal.contextKey}, ${ctx.scope},
-      ${ctx.tenantId}::uuid, ${ctx.domainId}::uuid, ${envelope.purpose_id ?? null}, 60
-    )`.execute(tx);
+    try {
+      await sql`select ctx.issue_evidence(
+        ${principal.sessionId}::uuid, ${principal.contextKey}, ${ctx.scope},
+        ${ctx.tenantId}::uuid, ${ctx.domainId}::uuid, ${envelope.purpose_id ?? null},
+        ${route.action}, ${route.scope}, ${route.tenantId}::uuid, ${route.domainId}::uuid,
+        ${envelope.correlation_id}::uuid, 60
+      )`.execute(tx);
+    } catch (e) {
+      if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
+      throw e;
+    }
   }
 
-  /** POL through the bound port: authority fields are derived, not supplied. */
   private async commitPolicy(
     tx: Tx,
     envelope: Envelope,
     route: RouteInfo,
     input: PolicyInput,
     result: PolicyResult,
+    id: string,
   ): Promise<string> {
-    const id = newId();
-    await sql`select policy.commit_decision(
-      ${id}::uuid, ${route.action}, ${route.objectType}, ${route.objectId}::uuid,
-      ${input.consequenceClass}, ${result.decision}, ${JSON.stringify(result.obligations)}::jsonb,
-      ${result.inputDigest}, ${result.bundleVersion}, ${result.exceptionRef},
-      ${result.expiresAt}, ${result.revocationState}, ${result.reason},
-      ${envelope.correlation_id}::uuid, ${envelope.delegation_id ?? null},
-      ${JSON.stringify(input.environment)}::jsonb
-    )`.execute(tx);
+    try {
+      await sql`select policy.commit_decision(
+        ${id}::uuid, ${route.action}, ${route.objectType}, ${route.objectId}::uuid,
+        ${input.consequenceClass}, ${result.decision}, ${JSON.stringify(result.obligations)}::jsonb,
+        ${result.inputDigest}, ${result.bundleVersion}, ${result.exceptionRef},
+        ${result.expiresAt}, ${result.revocationState}, ${result.reason},
+        ${envelope.correlation_id}::uuid, ${envelope.delegation_id ?? null},
+        ${JSON.stringify(input.environment)}::jsonb
+      )`.execute(tx);
+    } catch (e) {
+      if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
+      throw e;
+    }
     return id;
   }
 
-  /** AUD through the bound port; an unavailable ledger fails closed. */
   private async commitAudit(
     tx: Tx,
     envelope: Envelope,
     route: RouteInfo,
     o: {
-      eventType: string;
       outcome: 'success' | 'denied' | 'failure' | 'indeterminate';
       resultCode: string;
       policyDecisionId: string | null;
@@ -310,7 +405,7 @@ export class PipelineService {
     try {
       const r = (
         await sql<{ audit_seq: string }>`select audit_seq from audit.commit_event(
-          ${o.eventType}, ${route.action}, ${o.outcome}, ${o.resultCode},
+          'api.request', ${route.action}, ${o.outcome}, ${o.resultCode},
           ${o.target.type}, ${o.target.id}, ${o.target.version},
           ${o.policyDecisionId}::uuid, ${o.policyVersion},
           ${envelope.correlation_id}::uuid, ${envelope.causation_id ?? null}::uuid,
@@ -321,15 +416,14 @@ export class PipelineService {
       if (r === undefined) throw new Error('audit port returned no sequence');
       return { auditSeq: Number(r.audit_seq) };
     } catch (e) {
+      // An authority refusal is NOT an availability problem. Classifying it as
+      // one would answer 503 ("try again later") to a request that must never
+      // succeed, and would file an availability incident for a denial.
+      if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
       throw new AuditUnavailableError(e);
     }
   }
 
-  /**
-   * Fail-closed conversion: durable degraded-state evidence through the
-   * independent journal, then a non-disclosing 503. The failure is never
-   * swallowed and never downgraded to a success.
-   */
   private failClosed(envelope: Envelope, route: RouteInfo, e: AuditUnavailableError): HttpException {
     degradedAudit.record({
       kind: 'audit_unavailable',
@@ -340,11 +434,9 @@ export class PipelineService {
       detail: e.reason instanceof Error ? e.reason.message.slice(0, 300) : String(e.reason).slice(0, 300),
       suppressedCarried: 0,
     });
-    // Best-effort durable in-database incident as well (may itself be down).
     void this.commitDb
       .transaction()
       .execute(async (tx) => {
-        await sql`select ctx.issue_system('audit availability incident')`.execute(tx);
         await sql`select audit.record_availability_incident(
           ${newId()}::uuid, 'audit_unavailable', ${route.scope}, ${envelope.correlation_id}::uuid,
           ${JSON.stringify({ action: route.action })}::jsonb
@@ -357,7 +449,7 @@ export class PipelineService {
     );
   }
 
-  /** Denied/indeterminate policy path: POL + AUD atomically; no object, no outbox. */
+  /** Denied/indeterminate: POL + AUD under the evidence capability. */
   private async recordDenial(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
@@ -366,26 +458,36 @@ export class PipelineService {
     policyInput: PolicyInput,
     policyResult: PolicyResult,
   ): Promise<void> {
-    await this.writer(route).transaction().execute(async (tx) => {
-      await this.establishEvidenceContext(tx, principal, ctx, envelope);
-      const polId = await this.commitPolicy(tx, envelope, route, policyInput, policyResult);
-      await this.commitAudit(tx, envelope, route, {
-        eventType: 'api.request',
-        outcome: policyResult.decision === 'deny' ? 'denied' : 'indeterminate',
-        resultCode: policyResult.decision === 'deny' ? 'EYE-AUT-001' : 'EYE-AUT-002',
-        policyDecisionId: polId,
-        policyVersion: policyResult.bundleVersion,
-        target: { type: route.objectType, id: route.objectId, version: null },
-        metadata: { assurance: principal.assurance, reason: (policyResult.reason ?? '').slice(0, 200) },
+    const polId = newId();
+    try {
+      await this.writer(route).transaction().execute(async (tx) => {
+        await this.establishEvidenceContext(tx, principal, ctx, envelope, route);
+        await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
+        await this.commitAudit(tx, envelope, route, {
+          outcome: policyResult.decision === 'deny' ? 'denied' : 'indeterminate',
+          resultCode: policyResult.decision === 'deny' ? 'EYE-AUT-001' : 'EYE-AUT-002',
+          policyDecisionId: polId,
+          policyVersion: policyResult.bundleVersion,
+          target: { type: route.objectType, id: route.objectId, version: null },
+          metadata: { assurance: principal.assurance, reason: (policyResult.reason ?? '').slice(0, 200) },
+        });
       });
-    });
+    } catch (e) {
+      // If the caller's own authority is too weak even to carry its denial (a
+      // lapsed or bootstrap-assurance session), the denial is still recorded —
+      // under the identity capability, on the platform partition. A refused
+      // request never leaves the system without evidence.
+      if (e instanceof CapabilityDeniedError) {
+        throw await this.denyCapability(envelope, principal, route, e);
+      }
+      throw e;
+    }
   }
 
   /**
-   * Scope/route/envelope mismatches happen BEFORE any context for the requested
-   * scope can exist — durable sanitized denial evidence goes to the platform
-   * partition under system context. Evidence-path failure is NOT swallowed: it
-   * degrades the process and fails the request closed.
+   * Scope/route/envelope mismatch: no context for the requested scope can exist,
+   * so the denial is recorded under the identity capability on the platform
+   * partition. Evidence-path failure fails the request closed.
    */
   private async recordScopeDenial(
     envelope: Envelope,
@@ -394,21 +496,20 @@ export class PipelineService {
     reason: string,
   ): Promise<void> {
     try {
-      await this.commitDb.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_system('scope-denial evidence')`.execute(tx);
-        await sql`select audit.commit_event(
-          'request.scope_denied', ${route.action}, 'denied', 'EYE-TEN-001',
-          ${route.objectType}, ${route.objectId}, null, null::uuid, null,
-          ${envelope.correlation_id}::uuid, ${envelope.causation_id ?? null}::uuid,
-          ${envelope.trace_id}, ${envelope.payload_digest},
-          ${envelope.delegation_id ?? null},
+      await this.identityDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_identity_op('identity.security.intake', ${principal.principalId}::uuid,
+          ${envelope.correlation_id}::uuid, 60)`.execute(tx);
+        await sql`select audit.commit_intake_event(
+          'request.scope_denied', 'request.scope_denied', 'EYE-TEN-001',
+          ${envelope.correlation_id}::uuid, ${principal.principalId}::uuid,
           ${JSON.stringify({
+            failure_class: 'scope_invalid',
             reason: reason.slice(0, 200),
+            route_action: route.action,
             route_scope: route.scope,
             envelope_scope: envelope.scope,
             subject: `principal:${principal.principalId}`,
-          })}::jsonb
-        )`.execute(tx);
+          })}::jsonb)`.execute(tx);
       });
     } catch (e) {
       this.recordEvidenceFailure(envelope, route, 'scope_denial_evidence', e);
@@ -419,7 +520,45 @@ export class PipelineService {
     }
   }
 
-  /** Pre-handler rejection evidence (§6) for authenticated malformed requests. */
+  /**
+   * A capability refusal at the write boundary (Gate-2.1 §4/§7). The session that
+   * authenticated is no longer sufficient, so no session-bound context can be
+   * minted for the evidence either — the denial is recorded under the IDENTITY
+   * capability on the platform partition, exactly like a scope denial, and the
+   * caller receives 403 with no database text in it.
+   */
+  private async denyCapability(
+    envelope: Envelope,
+    principal: AuthenticatedPrincipal,
+    route: RouteInfo,
+    e: CapabilityDeniedError,
+  ): Promise<HttpException> {
+    try {
+      await this.identityDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_identity_op('identity.security.intake', ${principal.principalId}::uuid,
+          ${envelope.correlation_id}::uuid, 60)`.execute(tx);
+        await sql`select audit.commit_intake_event(
+          'request.capability_denied', 'request.capability_denied', 'EYE-AUT-001',
+          ${envelope.correlation_id}::uuid, ${principal.principalId}::uuid,
+          ${JSON.stringify({
+            failure_class: 'capability_denied',
+            denial_class: e.denialClass,
+            stage: 'write boundary',
+            route_action: route.action,
+            route_scope: route.scope,
+            subject: `principal:${principal.principalId}`,
+          })}::jsonb)`.execute(tx);
+      });
+    } catch (evidenceError) {
+      this.recordEvidenceFailure(envelope, route, 'capability_denial_evidence', evidenceError);
+      return new HttpException(
+        errorBody('EYE_INT_001', envelope.correlation_id, 'authoritative audit unavailable — request refused'),
+        503,
+      );
+    }
+    return deny('EYE_AUT_001', envelope.correlation_id, 'authority insufficient for this operation');
+  }
+
   private async recordPreHandlerRejection(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
@@ -428,20 +567,19 @@ export class PipelineService {
     reason: string,
   ): Promise<void> {
     try {
-      await this.commitDb.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_system('pre-handler rejection evidence')`.execute(tx);
-        await sql`select audit.commit_event(
-          'request.rejected', ${route.action}, 'failure', ${resultCode},
-          ${route.objectType}, ${route.objectId}, null, null::uuid, null,
-          ${envelope.correlation_id}::uuid, ${envelope.causation_id ?? null}::uuid,
-          ${envelope.trace_id}, ${envelope.payload_digest},
-          ${envelope.delegation_id ?? null},
+      await this.identityDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_identity_op('identity.security.intake', ${principal.principalId}::uuid,
+          ${envelope.correlation_id}::uuid, 60)`.execute(tx);
+        await sql`select audit.commit_intake_event(
+          'request.rejected', 'request.rejected', ${resultCode},
+          ${envelope.correlation_id}::uuid, ${principal.principalId}::uuid,
           ${JSON.stringify({
-            reason: reason.slice(0, 200),
+            failure_class: 'validation_failed',
             stage: 'pre-handler validation',
+            reason: reason.slice(0, 200),
+            route_action: route.action,
             subject: `principal:${principal.principalId}`,
-          })}::jsonb
-        )`.execute(tx);
+          })}::jsonb)`.execute(tx);
       });
     } catch (e) {
       this.recordEvidenceFailure(envelope, route, 'pre_handler_rejection_evidence', e);
@@ -452,7 +590,6 @@ export class PipelineService {
     }
   }
 
-  /** Sanitized failure evidence after a rolled-back handler. */
   private async recordHandlerFailure(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
@@ -468,10 +605,13 @@ export class PipelineService {
         : 'EYE-INT-001';
     try {
       await this.writer(route).transaction().execute(async (tx) => {
-        await this.establishContext(tx, principal, ctx, envelope);
-        const polId = await this.commitPolicy(tx, envelope, route, policyInput, policyResult);
+        await this.establishEvidenceContext(tx, principal, ctx, envelope, route);
+        // The rolled-back transaction took its POL with it, so the decision the
+        // request was allowed under is re-recorded here — marked evidence_only by
+        // the port, and therefore permanently unusable to authorize a success.
+        const polId = newId();
+        await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         await this.commitAudit(tx, envelope, route, {
-          eventType: 'api.request',
           outcome: 'failure',
           resultCode: code,
           policyDecisionId: polId,
@@ -481,8 +621,6 @@ export class PipelineService {
         });
       });
     } catch (e) {
-      // The original failure still propagates, but the LOST EVIDENCE is durable
-      // and the process is marked degraded — never a silent swallow.
       this.recordEvidenceFailure(envelope, route, 'handler_failure_evidence', e);
     }
   }

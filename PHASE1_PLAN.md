@@ -2,6 +2,13 @@
 
 > Status: **AWAITING FINAL APPROVAL** — no Phase 1 application code until approval.
 > Revision 5 is **cumulative and self-contained**, preserving Revision 4 in full (locked decisions, the complete P1-M1…M7 milestone table, corrections A–F and the prior review's F–K, complete-origin credential semantics, transactionally protected final contract revalidation) and adding the Gate-2 closure requirement: fault injection is enumerated **separately at every numbered acquisition step and every durable sub-boundary** — no grouped ranges such as "between steps 2 and 5" — covering POL/AUD-plus-`run.started` atomicity and every write, fsync, rename, verification, transaction, outbox and checkpoint boundary (§5.13). No architectural redesign; the frozen architecture, roadmap, and locked answers stand.
+>
+> **Gate-2.1 correction (§9).** The table now runs to **step 12** (idempotency vs.
+> evidence identity), and the step 8e commit is decomposed into **one row per
+> individual durable write** — manifest, OBS, EVD, custody, POL, AUD, outbox —
+> instead of a single generic "before commit" case that asserted the seven writes
+> only collectively. Rows F23a–F23g and F37–F46 are new; F01–F22, F24–F36 are
+> unchanged.
 > Honest scope: Phase 1 delivers the **first connector cohort** of L1 — see [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md). It does not complete L1 or the source universe.
 
 ---
@@ -39,7 +46,7 @@ P1-01 SRC/OBS/EVD as canonical objects via the existing commit pipeline · P1-02
 
 ## 4. Data model — event-sourced, scope-mandatory (correction A)
 
-**Universal scope rule:** every event row, projection row, checkpoint, queue job, scheduler record, blob manifest, quarantine case, correction case, coverage measurement, and outbox envelope carries **immutable, non-null `scope` + `tenant_id` + `domain_id` fields as applicable to its scope class** (NOT NULL enforced by CHECK constraints mirroring the Phase 0 scope-consistency constraints). Scope values are populated **only from the authenticated principal + trusted routing** at the pipeline boundary — never from client payloads. Scope context in the database is established exclusively through the Phase 0 BOUND-context ports (`ctx.issue` / `ctx.issue_system` / `ctx.issue_evidence`, migrations 0009–0010) — raw GUCs are inert, and a context is bound to session + principal + tenant + domain + scope + assurance + purpose + issued-at + expiry + single-use nonce + revocation epoch + issuing backend + issuing transaction.
+**Universal scope rule:** every event row, projection row, checkpoint, queue job, scheduler record, blob manifest, quarantine case, correction case, coverage measurement, and outbox envelope carries **immutable, non-null `scope` + `tenant_id` + `domain_id` fields as applicable to its scope class** (NOT NULL enforced by CHECK constraints mirroring the Phase 0 scope-consistency constraints). Scope values are populated **only from the authenticated principal + trusted routing** at the pipeline boundary — never from client payloads. Scope context in the database is established exclusively through the Phase 0 **operation-specific capability minters** (`ctx.issue_commit` / `ctx.issue_evidence` / `ctx.issue_publish` / `ctx.issue_verify` / `ctx.issue_identity_op` / `ctx.issue_bootstrap`, migrations 0009–0012) — raw GUCs are inert. `ctx.issue` and `ctx.issue_system` **no longer exist** (dropped in 0011: a universal system context granted unrestricted PLATFORM authority on the strength of free text), so no Phase 1 code may assume them. A capability is bound to session + principal + tenant + domain + scope + assurance + purpose + issued-at + wall-clock expiry (`clock_timestamp()`) + issuance nonce + revocation epoch + issuing backend + issuing transaction **and** to its permitted operation class, action, target, correlation id, policy-decision id, bundle version and consequence class; the mintable action set is additionally bound to the minting database role. Every Phase 1 authoritative port must therefore declare its action and revalidate live authority at its own write boundary, exactly as the Phase 0 ports do.
 
 **Isolation independent of PostgreSQL RLS:**
 - *Redis/BullMQ*: queue names and Job Scheduler ids are scope-prefixed (`obs:{tenant}:{domain}:…`); every job payload carries the scope triple, and **workers re-resolve and re-authorize scope from the job's agent principal + source-contract reference at execution time** — a replayed or tampered job whose payload scope disagrees with the contract's registered scope is rejected and quarantined (fail closed, audited). Queue payloads may carry **scoped opaque identifiers, the exact source-contract version, correlation id, idempotency key, and budgets — never credentials, secrets, or delegated authority** (credential references resolve server-side at execution under the agent's grant).
@@ -115,7 +122,14 @@ outbox insert, a queue add, or a checkpoint append.
 | F20 | step 8c, crash after opening the transaction, before 8d | transaction aborts; candidate orphaned (8g) |
 | F21 | step 8d, contract deactivated concurrently (lock contention resolved against us) | admission aborts inside the transaction; candidate orphaned; cancellation events appended |
 | F22 | step 8d, crash while holding the contract row lock | lock released by abort; admission aborts; candidate orphaned |
-| F23 | step 8e, crash BEFORE commit | atomic abort: no manifest, no OBS/EVD, no custody event, no POL, no AUD, no outbox row |
+| F23 | step 8e, crash after the BLOB MANIFEST insert, before the OBS insert | atomic abort: the manifest row is not observable; candidate orphaned (8g) |
+| F23a | step 8e, crash after the OBS canonical version insert, before the EVD insert | atomic abort: no OBS, no EVD; nothing references the candidate |
+| F23b | step 8e, crash after the EVD canonical version insert, before the custody event | atomic abort: no EVD; no custody chain entry |
+| F23c | step 8e, crash after the CUSTODY event append, before the POL insert | atomic abort: custody chain unchanged; no authorization record |
+| F23d | step 8e, crash after the POL insert, before the AUD insert | atomic abort: a decision may never be durable without its audit record |
+| F23e | step 8e, crash after the AUD insert, before the OUTBOX insert | atomic abort: no audit record survives without the effect it describes |
+| F23f | step 8e, crash after the OUTBOX insert, before commit | atomic abort: no outbox row, therefore no publication of an uncommitted effect |
+| F23g | step 8e, statement-level failure on ANY ONE of the seven writes (constraint/RLS/port rejection) | the whole transaction aborts; no partial subset is ever durable; the rejection is recorded on the retry path |
 | F24 | step 8e, crash AT commit | all-or-nothing across manifest + OBS/EVD + custody + POL + AUD + outbox |
 | F25 | step 8e, crash immediately AFTER commit, before 8f | manifest committed and authoritative; quarantine tombstone pending; sweeper completes it idempotently |
 | F26 | step 8f, crash after appending the finalized custody state, before the quarantine tombstone | sweeper completes the tombstone; no double-admission |
@@ -129,12 +143,34 @@ outbox insert, a queue add, or a checkpoint append.
 | F34 | step 11, crash DURING sweeper reconciliation of one item | sweeper operations are idempotent; the half-processed item is re-processed, never dropped |
 | F35 | step 11, sweeper fails on one item (poison item) | audited sweeper failure event; remaining items unaffected; item retried next sweep |
 | F36 | step 11, sweeper crashes between classifying and acting on an orphan | classification is re-derived on the next sweep; no orphan is silently deleted |
+| F37 | step 12, crash after computing the attempt key, before the idempotency lookup | nothing persisted; the retry recomputes the same key and behaves identically |
+| F38 | step 12, crash DURING the idempotency lookup (attempt key read) | read-only: nothing persisted; retry re-reads |
+| F39 | step 12, exact replay detected, crash BEFORE the audited no-op event is appended | no duplicate admission; the no-op is re-derived and appended on the retry |
+| F40 | step 12, exact replay detected, crash DURING the no-op event append | single-row append: present or absent, never torn; re-appended idempotently |
+| F41 | step 12, exact replay detected, crash AFTER the no-op event, before responding | the no-op is durable; the caller retries and observes the same no-op |
+| F42 | step 12, NEW observation of identical bytes at a later observation_time, crash before the new OBS insert | no new OBS; the earlier observation is untouched; retry creates the new observation |
+| F43 | step 12, new observation, crash after the new OBS insert, before its EVD link | atomic abort inside the 8e transaction: no OBS without its evidence link |
+| F44 | step 12, new observation, crash after the shared-digest vault reference is resolved, before commit | atomic abort: no manifest reference to shared bytes; the existing blob is untouched and never orphaned by the abort |
+| F45 | step 12, concurrent exact replay and new observation for the same natural key | serialized by the attempt key + contract lock: exactly one no-op and one new observation, never two admissions of the same attempt |
+| F46 | step 12, attempt-key uniqueness violation raised at commit | admission aborts; the no-op path is taken on the retry; no duplicate evidence identity |
 
 **Atomicity assertions carried by these tests:** (a) POL + AUD + `run.started`
 share ONE transaction (F05/F06); (b) manifest + OBS/EVD + custody + POL + AUD +
-outbox share ONE transaction (F23/F24); (c) no external I/O occurs inside any
-database transaction (structural assertion, A4); (d) the filesystem copy is
-never described as part of the database transaction (§5 8a–8b).
+outbox share ONE transaction — asserted **per individual write** (F23, F23a–F23g)
+rather than as a single generic "before commit" case, so a partial subset can be
+shown to be impossible at every one of the seven boundaries, and F24 covers the
+crash AT commit; (c) no external I/O occurs inside any database transaction
+(structural assertion, A4); (d) the filesystem copy is never described as part of
+the database transaction (§5 8a–8b); (e) idempotency and evidence identity are
+independently fault-injected through step 12 (F37–F46), including the distinction
+between an exact replay (audited no-op) and identical bytes observed later (a NEW
+observation).
+
+**Enumeration completeness:** the table covers numbered steps 1–12 with no gaps
+and no grouped ranges. Every row names one step (or one lettered sub-step) and one
+durable boundary within it: a write, an fsync, a rename/link, a digest
+verification, a transaction begin/commit/abort, an individual row insert, an
+outbox insert, a queue add, or a checkpoint append.
 
 ## 6. Executable coverage model (correction C)
 
@@ -205,13 +241,13 @@ Each agent identity is: **instance- and version-specific** (principal display na
 
 | M | Deliverable |
 |---|---|
-| P1-M1 | Migration 0011 (observation event tables + projections + RLS under the signed-context ports), SRC schema + registry + contract enforcement, `collection_manager` role, policy rules |
+| P1-M1 | Migration **0013** (observation event tables + projections + RLS under the capability ports; 0011/0012 are taken by the Gate-2.1 authority-boundary closure), SRC schema + registry + contract enforcement, `collection_manager` role, policy rules |
 | P1-M2 | Evidence vault (tenant-scoped, dual volumes, create-if-absent, digest verify) + quarantine lifecycle + upload connector + content controls (§8.2) |
 | P1-M3 | Adapter SDK + RSS (framing §10.1, parser isolation §8.3) + REST poller + network hardening (§8.1, complete-origin credential stripping) + Job Schedulers (60s floor) + agent contracts (§11) |
 | P1-M4 | Coverage model + health events/projection + `SourceHealthChanged` + sweeper/reconciliation (§5.11) |
 | P1-M5 | Correction intake (§10.2) + `CorrectionReceived` |
 | P1-M6 | WS-02 UI + **Playwright specs** (register source w/ review; health view; evidence browser + safe download; correction intake; quarantine queue) |
-| P1-M7 | Acceptance extension (§13 matrix incl. the §5.13 per-step fault-injection table F01–F36) + malicious-input corpus + Phase 0 regression (full API acceptance + Playwright 10) + Phase 1 Report |
+| P1-M7 | Acceptance extension (§13 matrix incl. the §5.13 per-step fault-injection table F01–F46 (incl. F23a–F23g)) + malicious-input corpus + Phase 0 regression (full API acceptance + Playwright 10) + Phase 1 Report |
 
 Estimate: **~2.5–3.5 weeks**.
 
@@ -222,7 +258,7 @@ Estimate: **~2.5–3.5 weeks**.
 | A1 | Source contract: full §7 field set; registrar ≠ approver; 3-point revalidation incl. the transactionally protected admission check (8d); **each §7 fail-closed case exercised** (expiry, revocation, version incompatibility, rights, purpose, residency, classification, invalid credentials, schema drift) | API + integration |
 | A2 | Chain of custody: source identity, method + connector version + agent identity/code digest, event/observation time, digest verified pre/post storage and on read; byte-identical retrieval; POL/AUD before retrieval | Integration + acceptance |
 | A3 | **Four-time SRC/OBS/EVD conformance**: event/observation/valid/record time populated per type rules; **known-at queries** over OBS/EVD reproduce pre-correction knowledge states | Integration + acceptance |
-| A4 | Acquisition lifecycle: no external I/O inside DB transactions (structural assertion); **fault injection at EVERY §5.13 numbered step and durable sub-boundary (F01–F36, incl. every write/fsync/rename/verification/transaction/outbox/checkpoint boundary and sweeper recovery)** leaves no partial canonical state; orphan sweeper recovers each case; exact-replay no-op vs. **new-observation-at-later-time distinction** | Fault-injection integration |
+| A4 | Acquisition lifecycle: no external I/O inside DB transactions (structural assertion); **fault injection at EVERY §5.13 numbered step and durable sub-boundary (F01–F46 (incl. F23a–F23g), incl. every write/fsync/rename/verification/transaction/outbox/checkpoint boundary and sweeper recovery)** leaves no partial canonical state; orphan sweeper recovers each case; exact-replay no-op vs. **new-observation-at-later-time distinction** | Fault-injection integration |
 | A5 | Isolation: cross-tenant/domain negatives across **API, direct SQL, worker execution with tampered job scope, replayed queue jobs, outbox events, blob retrieval, and existence/timing disclosure** | Isolation suite |
 | A6 | Coverage/health: all dimensions with stored `evaluated_at`/window/denominator/universe-version/calc-version/evidence refs; `unknown`/`not_applicable`(+approved reason)/`insufficient_evidence` states honored; unknown never healthy; **deterministic health replay** from stored events + measurements | Unit + integration + UI |
 | A7 | Vault: **missing-blob and corrupt-blob reads** fail closed with audited integrity errors; denied retrieval leaks nothing; quarantine/admitted separation | Integration |

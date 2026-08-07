@@ -13,12 +13,23 @@ import pg from 'pg';
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = join(here, '..', 'migrations');
 
+// Gate-2.1 C10: NO executable secret default. A missing migration credential
+// fails immediately, BEFORE any connection is attempted — a fallback literal
+// would silently connect a differently-credentialed database.
+if (!process.env.EYE_DB_MIGRATE_PASSWORD) {
+  console.error(
+    'migrate: EYE_DB_MIGRATE_PASSWORD is required and has no default — refusing to connect.\n' +
+    '         Supply it from the environment (see .env.example / scripts/local-env.mjs).',
+  );
+  process.exit(1);
+}
+
 const client = new pg.Client({
   host: process.env.EYE_DB_HOST ?? 'localhost',
   port: Number(process.env.EYE_DB_PORT ?? 5432),
   database: process.env.EYE_DB_NAME ?? 'eye',
   user: process.env.EYE_DB_MIGRATE_USER ?? 'eye',
-  password: process.env.EYE_DB_MIGRATE_PASSWORD ?? 'eye_local_dev',
+  password: process.env.EYE_DB_MIGRATE_PASSWORD,
 });
 
 const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex');

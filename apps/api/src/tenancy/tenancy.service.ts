@@ -1,15 +1,12 @@
 /**
- * Tenancy — CP-TEN-01 (ADR-P0-04; ES-08 governed domain lifecycle; Gate-2 §1/§3).
+ * Tenancy — CP-TEN-01 (ADR-P0-04; ES-08; Gate-2.1 C2).
  *
- * Tenant/domain creation is a governed workflow executed through SECURITY
- * DEFINER ports on the COMMIT authority: no runtime role holds INSERT on
- * tenancy tables. Domain creation is a TENANT-level act — the port refuses a
- * DOMAIN context outright, so a domain principal can never widen its reach.
- * Reads run under the bound context and the exact-match isolation matrix.
+ * Every method takes a BoundedCapability, never a transaction: the capability
+ * exposes only the ports this route declared, and the database additionally binds
+ * each port to the context's action. No raw SQL is reachable from here.
  */
 import { Injectable } from '@nestjs/common';
-import { sql } from 'kysely';
-import type { Tx } from '../shared/db.js';
+import type { BoundedCapability } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 
 export interface TenantRecord {
@@ -24,47 +21,32 @@ export interface TenantRecord {
 
 @Injectable()
 export class TenancyService {
-  // Scope context is established exclusively by the commit pipeline via the
-  // bound ctx.issue() port; every method here takes the pipeline transaction.
-
-  /** Governed creation: draft + activation in one reviewed admin action. */
-  async createTenant(tx: Tx, actor: string, name: string, residency: string): Promise<TenantRecord> {
+  async createTenant(cap: BoundedCapability, actor: string, name: string, residency: string): Promise<TenantRecord> {
     const id = newId();
-    await sql`select tenancy.create_tenant(${id}::uuid, ${name}, ${residency}, ${actor})`.execute(tx);
-    return (await tx
-      .selectFrom('tenancy.tenants')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirstOrThrow()) as TenantRecord;
+    await cap.createTenant(id, name, residency, actor);
+    return (await cap.read('tenancy.tenants').selectAll().where('id', '=', id as never)
+      .executeTakeFirstOrThrow()) as unknown as TenantRecord;
   }
 
   async createDomain(
-    tx: Tx,
-    actor: string,
-    tenantId: string,
-    name: string,
+    cap: BoundedCapability, actor: string, tenantId: string, name: string,
   ): Promise<{ id: string; name: string; status: string }> {
     const id = newId();
-    await sql`select tenancy.create_domain(${id}::uuid, ${tenantId}::uuid, ${name}, ${actor})`.execute(tx);
+    await cap.createDomain(id, tenantId, name, actor);
     return { id, name, status: 'active' };
   }
 
-  async listTenants(tx: Tx): Promise<TenantRecord[]> {
-    return (await tx.selectFrom('tenancy.tenants').selectAll().orderBy('created_at').execute()) as TenantRecord[];
+  async listTenants(cap: BoundedCapability): Promise<TenantRecord[]> {
+    return (await cap.read('tenancy.tenants').selectAll().orderBy('created_at' as never).execute()) as unknown as TenantRecord[];
   }
 
-  async listDomains(tx: Tx, tenantId: string): Promise<unknown[]> {
-    return tx.selectFrom('tenancy.domains').selectAll().where('tenant_id', '=', tenantId).orderBy('created_at').execute();
+  async listDomains(cap: BoundedCapability, tenantId: string): Promise<unknown[]> {
+    return cap.read('tenancy.domains').selectAll()
+      .where('tenant_id', '=', tenantId as never).orderBy('created_at' as never).execute();
   }
 
-  /**
-   * Explicitly authorized read model (Gate-2 §3): a DOMAIN principal's own
-   * tenant identity, exposed through a named port rather than through the
-   * general row-visibility predicate.
-   */
-  async myTenant(tx: Tx): Promise<{ id: string; name: string; status: string } | undefined> {
-    return (
-      await sql<{ id: string; name: string; status: string }>`select * from tenancy.my_tenant()`.execute(tx)
-    ).rows[0];
+  /** Explicitly authorized read model for a DOMAIN principal's own tenant. */
+  async myTenant(cap: BoundedCapability): Promise<{ id: string; name: string; status: string } | undefined> {
+    return cap.myTenant();
   }
 }

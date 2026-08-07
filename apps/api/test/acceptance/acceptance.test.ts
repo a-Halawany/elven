@@ -759,3 +759,262 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
     expect(exc).not.toMatch(/expiry_date:\s*(later|tbd|TBD)/);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GATE-2.1 tests 14–17: the four mandated cases that are only observable
+// end-to-end against the running API.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('G21-14 — a PDP-denied identity operation returns 403 with matching durable POL/AUD', () => {
+  it('is denied by policy, not by a missing permission, and both records match the request', async () => {
+    // A protected identity operation with NO purpose: the PDP denies it. The
+    // identity authority must be able to record its own denial evidence.
+    const r = await post(`/v1/tenants/${tenantId}/principals`, {
+      scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN',
+      purpose_id: null,
+    }, { kind: 'human', displayName: `Denied Principal ${run}` });
+
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('EYE-AUT-001');
+    // NOT a 503: the denial path must not fail because the identity authority
+    // lacks permission to establish an evidence context (Gate-2.1 §5).
+    expect(r.status).not.toBe(503);
+
+    const pol = await polRowsFor(r.correlationId);
+    expect(pol).toHaveLength(1);
+    expect(pol[0]!['decision']).toBe('deny');
+    expect(pol[0]!['action']).toBe('identity.principal.create');
+    expect(pol[0]!['scope']).toBe('TENANT');
+    expect(pol[0]!['tenant_id']).toBe(tenantId);
+
+    const rows = await auditRowsFor(r.correlationId);
+    const denial = rows.find((x) => x['outcome'] === 'denied');
+    expect(denial).toBeDefined();
+    expect(denial!['action']).toBe('identity.principal.create');
+    expect(denial!['result_code']).toBe('EYE-AUT-001');
+    // The AUD references exactly the POL that denied it (the linkage lives in the
+    // canonical event body, which is what the row hash covers).
+    const denialEvent = denial!['event'] as { policy_decision_id: string | null };
+    expect(denialEvent.policy_decision_id).toBe(pol[0]!['id']);
+
+    // And no principal was created.
+    const created = await sysRead(async (tx) =>
+      tx.selectFrom('identity.principals').selectAll()
+        .where('display_name', '=', `Denied Principal ${run}`).execute());
+    expect(created).toHaveLength(0);
+  });
+});
+
+describe('G21-15 — every malformed controller payload creates sanitized durable evidence', () => {
+  const SECRET = 'sup3r-s3cret-payload-value';
+
+  it('each authenticated controller edge leaves evidence and never echoes the payload', async () => {
+    const edges: Array<[string, string, Record<string, unknown>, Record<string, unknown>]> = [
+      ['tenant create', '/v1/platform/tenants',
+        { scope: 'PLATFORM', action: 'tenancy.tenant.create', object_type: 'TEN' },
+        { name: '', secret: SECRET }],
+      ['domain create', `/v1/tenants/${tenantId}/domains`,
+        { scope: 'TENANT', tenant_id: tenantId, action: 'tenancy.domain.create', object_type: 'CID' },
+        { name: 'x', secret: SECRET }],
+      ['principal create', `/v1/tenants/${tenantId}/principals`,
+        { scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN' },
+        { kind: 'human', secret: SECRET }],
+      ['object create', `/v1/tenants/${tenantId}/domains/${domainId}/objects`,
+        { scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.create', object_type: 'CLM', purpose_id: 'analysis' },
+        {}],
+      ['object correct', `/v1/tenants/${tenantId}/domains/${domainId}/objects/${uuidv7()}/correct`,
+        { scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId, action: 'objects.correct', object_type: 'CLM', purpose_id: 'analysis' },
+        { secret: SECRET }],
+      ['audit verify', '/v1/platform/audit/verify',
+        { scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none' },
+        { secret: SECRET }],
+    ];
+
+    for (const [label, path, over, payload] of edges) {
+      const r = await post(path, over as never, payload);
+      expect([400, 422], `${label} status`).toContain(r.status);
+
+      const rows = await auditRowsFor(r.correlationId);
+      expect(rows.length, `${label}: durable evidence`).toBeGreaterThanOrEqual(1);
+      const rejected = rows.find((x) => x['outcome'] === 'denied' || x['outcome'] === 'failure');
+      expect(rejected, `${label}: rejection recorded`).toBeDefined();
+
+      // Sanitization: no payload content, no secret, anywhere in the evidence.
+      const serialized = JSON.stringify(rows);
+      expect(serialized, `${label}: payload leak`).not.toContain(SECRET);
+      // And nothing leaked into the response body either.
+      expect(JSON.stringify(r.body), `${label}: response leak`).not.toContain(SECRET);
+    }
+  });
+
+  it('an authenticated rotation with a too-short new password is evidenced without the password', async () => {
+    const weak = 'short';
+    const r = await post('/v1/auth/rotate', {
+      scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'CRD',
+      purpose_id: 'authentication', side_effect_class: 'none',
+    }, { currentPassword: ROTATED_PW, newPassword: weak });
+    expect(r.status).toBe(400);
+    const rows = await auditRowsFor(r.correlationId);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const serialized = JSON.stringify(rows);
+    expect(serialized).not.toContain(weak);
+    expect(serialized).not.toContain(ROTATED_PW);
+  });
+});
+
+describe('G21-16 — degraded readiness survives a process restart', () => {
+  it('a restarted process reports degraded until governed reconciliation records recovery', async () => {
+    // 1. Drive the API into a genuinely degraded state: freeze the platform
+    //    partition so authoritative audit persistence fails, then make a request.
+    await setPartitionFrozen('platform', true);
+    try {
+      const failed = await loginAs('platform-admin', ROTATED_PW);
+      expect(failed.status).toBe(503);
+    } finally {
+      await setPartitionFrozen('platform', false);
+    }
+    const before = (await (await fetch(BASE + '/readyz')).json()) as { status: string; audit: string };
+    expect(before.audit).toBe('degraded');
+
+    // 2. The degradation is durable in BOTH places: the local journal and the
+    //    governed ledger.
+    const incidents = await sysRead(async (tx) =>
+      tx.selectFrom('audit.availability_incidents').selectAll().where('reconciled_at', 'is', null).execute());
+    expect(incidents.length).toBeGreaterThanOrEqual(1);
+
+    // 3. RESTART the process. A memory-only flag would come back "ok" here.
+    api?.kill();
+    await new Promise((res) => setTimeout(res, 500));
+    api = spawn('node', [join(ROOT, 'dist', 'main.js')], { env: ENV, stdio: 'pipe' });
+    for (let i = 0; i < 60; i += 1) {
+      try {
+        if ((await fetch(BASE + '/healthz')).ok) break;
+      } catch { /* not up yet */ }
+      await new Promise((res) => setTimeout(res, 250));
+    }
+
+    const after = (await (await fetch(BASE + '/readyz')).json()) as {
+      status: string; audit: string; degradedSince: string | null;
+    };
+    expect(after.audit).toBe('degraded');
+    expect(after.status).toBe('degraded');
+    expect(after.degradedSince).not.toBeNull();
+
+    // 4. Recovery is only possible through GOVERNED reconciliation.
+    for (const incident of incidents) {
+      const ok = await sysRead(async (tx) =>
+        sql<{ ok: boolean }>`select audit.reconcile_availability_incident(
+          ${incident['id'] as string}::uuid, 'acceptance-test', 'reconciled by the acceptance suite') as ok`
+          .execute(tx as never));
+      expect(ok.rows[0]!.ok).toBe(true);
+    }
+    const remaining = await sysRead(async (tx) =>
+      tx.selectFrom('audit.availability_incidents').selectAll().where('reconciled_at', 'is', null).execute());
+    expect(remaining).toHaveLength(0);
+  });
+});
+
+describe('G21-17 — audit.verify outcomes are evidenced accurately', () => {
+  it('a successful verification is evidenced as success with the verified head', async () => {
+    const r = await post('/v1/platform/audit/verify', {
+      scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
+    }, { partitionId: `tenant:${tenantId}` });
+    expect(r.status).toBe(201);
+    expect(r.body.report.ok).toBe(true);
+    expect(r.body.report.resultClass).toBe('verified');
+
+    const rows = await auditRowsFor(r.correlationId);
+    const ev = rows.find((x) => x['action'] === 'audit.verify');
+    expect(ev).toBeDefined();
+    expect(ev!['outcome']).toBe('success');
+    const meta = (ev!['event'] as { metadata: Record<string, unknown> }).metadata;
+    expect(meta['requested_partition']).toBe(`tenant:${tenantId}`);
+    expect(meta['result_class']).toBe('verified');
+    expect(meta['ok']).toBe(true);
+    expect(meta['head_matches']).toBe(true);
+    expect(meta['expected_head_hash']).toBe(meta['calculated_head_hash']);
+    expect(meta['verified_head_seq']).toEqual(expect.anything());
+    // audit.verify carries a sanitizing obligation, so the decision class is
+    // allow_with_obligations — recorded exactly as the PDP returned it.
+    expect(['allow', 'allow_with_obligations']).toContain(meta['decision']);
+  });
+
+  it('an UNKNOWN partition is evidenced as a failure, not a generic success', async () => {
+    const unknown = `tenant:${uuidv7()}`;
+    const r = await post('/v1/platform/audit/verify', {
+      scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
+    }, { partitionId: unknown });
+    expect(r.status).toBe(201);
+    expect(r.body.report.ok).toBe(false);
+    expect(r.body.report.resultClass).toBe('partition_unknown');
+
+    const rows = await auditRowsFor(r.correlationId);
+    const ev = rows.find((x) => x['action'] === 'audit.verify');
+    expect(ev).toBeDefined();
+    expect(ev!['outcome']).toBe('failure'); // NOT success
+    const meta = (ev!['event'] as { metadata: Record<string, unknown> }).metadata;
+    expect(meta['result_class']).toBe('partition_unknown');
+    expect(meta['requested_partition']).toBe(unknown);
+    expect(meta['checked']).toBe(0);
+    // A failed verification must not present the allow decision as authorization.
+    expect((ev!['event'] as { policy_decision_id: string | null }).policy_decision_id).toBeNull();
+  });
+
+  it('a malformed verify request is denied with durable evidence and no verification', async () => {
+    const r = await post('/v1/platform/audit/verify', {
+      scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
+    }, {});
+    expect(r.status).toBe(400);
+    const rows = await auditRowsFor(r.correlationId);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows.some((x) => x['outcome'] === 'denied' || x['outcome'] === 'failure')).toBe(true);
+    expect(rows.some((x) => x['outcome'] === 'success')).toBe(false);
+  });
+
+  it('a TAMPERED partition is evidenced as a failure with the mismatching heads', async () => {
+    // A dedicated tenant so the tamper cannot disturb the other assertions.
+    const t = await post('/v1/platform/tenants', {
+      scope: 'PLATFORM', action: 'tenancy.tenant.create', object_type: 'TEN',
+    }, { name: `tamper-${run}` });
+    expect(t.status).toBe(201);
+    const tamperTenant = t.body.tenant.id as string;
+    const partition = `tenant:${tamperTenant}`;
+
+    // Produce at least two rows in that partition through a governed route.
+    for (let i = 0; i < 2; i += 1) {
+      const d = await post(`/v1/tenants/${tamperTenant}/domains`, {
+        scope: 'TENANT', tenant_id: tamperTenant, action: 'tenancy.domain.create', object_type: 'CID',
+      }, { name: `tamper-dom-${i}-${run}` });
+      expect(d.status).toBe(201);
+    }
+
+    // Out-of-band tampering (superuser, guard trigger disabled) — the only way.
+    await sql`alter table audit.audit_events disable trigger audit_events_append_only`.execute(su);
+    await sql`update audit.audit_events
+                 set event_jcs = replace(event_jcs, '"success"', '"denied"')
+               where partition_id = ${partition} and audit_seq = 1`.execute(su);
+    await sql`alter table audit.audit_events enable trigger audit_events_append_only`.execute(su);
+
+    const r = await post('/v1/platform/audit/verify', {
+      scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
+    }, { partitionId: partition });
+    expect(r.status).toBe(201);
+    expect(r.body.report.ok).toBe(false);
+    expect(r.body.report.brokenAtSeq).toBe(1);
+    expect(r.body.report.incidentId).not.toBeNull();
+
+    const rows = await auditRowsFor(r.correlationId);
+    const ev = rows.find((x) => x['action'] === 'audit.verify');
+    expect(ev!['outcome']).toBe('failure');
+    const meta = (ev!['event'] as { metadata: Record<string, unknown> }).metadata;
+    expect(meta['result_class']).toBe('chain_broken');
+    expect(meta['broken_at_seq']).toBe(1);
+    expect(meta['incident_id']).not.toBeNull();
+    expect(meta['expected_head_hash']).not.toBe(meta['calculated_head_hash']);
+
+    // The partition is frozen and the incident is recorded in the ledger.
+    const head = await sysRead(async (tx) =>
+      tx.selectFrom('audit.audit_chain_heads').selectAll().where('partition_id', '=', partition).execute());
+    expect(head[0]!['frozen']).toBe(true);
+  });
+});

@@ -4,8 +4,11 @@
  * Everything here exercises the REAL least-privilege roles, the REAL bound
  * context and the REAL definer ports — never reimplemented production logic.
  * Principals, credentials and sessions are created through the identity
- * authority; scope context is established exactly as the pipeline does, via
- * ctx.issue() with proof of possession of the session's context key.
+ * authority; scope context is established exactly as the pipeline does, via the
+ * OPERATION-SPECIFIC capability minters (Gate-2.1 §2) with proof of possession
+ * of the session's context key. There is no universal system context to borrow:
+ * a test that wants to publish must mint a publish capability, and that
+ * capability cannot write business rows.
  * The migrate superuser is used ONLY to seed tenant/domain fixtures and to
  * simulate out-of-band tampering.
  */
@@ -119,7 +122,8 @@ export async function createPrincipalWithSession(
     })
     .execute();
   await identity.transaction().execute(async (tx) => {
-    await sql`select ctx.issue_system('integration-test session seeding')`.execute(tx);
+    await sql`select ctx.issue_identity_op('identity.session.create',
+      ${principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
     await sql`select identity.session_open(
       ${sessionId}::uuid, ${principalId}::uuid, ${opts.assurance ?? 'password'},
       ${sha256(refreshToken)}, ${sha256(contextKey)},
@@ -130,8 +134,39 @@ export async function createPrincipalWithSession(
 }
 
 /**
- * Run fn inside a transaction carrying a REAL bound context, issued exactly as
- * the pipeline issues it (proof of possession + live authority re-check).
+ * The capability a bound authority context carries (Gate-2.1 §2). Every field is
+ * signed into the context and re-checked by each port, so a test cannot commit
+ * evidence for one action while holding a capability for another.
+ */
+export interface CtxCapability {
+  action: string;
+  target: string;
+  correlationId: string;
+  policyDecisionId: string;
+  bundleVersion: string;
+  consequence: string;
+}
+
+export interface CtxOptions extends Partial<CtxCapability> {
+  purpose?: string;
+  ttlSeconds?: number;
+}
+
+export function capabilityFor(opts: CtxOptions = {}): CtxCapability {
+  return {
+    action: opts.action ?? 'test.action',
+    target: opts.target ?? 'test:target',
+    correlationId: opts.correlationId ?? uuidv7(),
+    policyDecisionId: opts.policyDecisionId ?? uuidv7(),
+    bundleVersion: opts.bundleVersion ?? 'bundle-v1', // the active bundle: POL rows carry a real FK
+    consequence: opts.consequence ?? 'C1',
+  };
+}
+
+/**
+ * Run fn inside a transaction carrying a REAL bound COMMIT capability, minted
+ * exactly as the pipeline mints it (proof of possession, live authority re-check,
+ * action/target/correlation/policy-decision/bundle all bound).
  */
 export async function withCtx<T>(
   db: AnyDb,
@@ -139,26 +174,97 @@ export async function withCtx<T>(
   scope: 'PLATFORM' | 'TENANT' | 'DOMAIN',
   tenantId: string | null,
   domainId: string | null,
-  fn: (tx: Kysely<never>) => Promise<T>,
-  purpose = 'integration-test',
+  fn: (tx: Kysely<never>, cap: CtxCapability) => Promise<T>,
+  opts: CtxOptions | string = {},
+): Promise<T> {
+  const o: CtxOptions = typeof opts === 'string' ? { purpose: opts } : opts;
+  const cap = capabilityFor(o);
+  return db.transaction().execute(async (tx) => {
+    await sql`select ctx.issue_commit(
+      ${p.sessionId}::uuid, ${p.contextKey}, ${scope}, ${tenantId}::uuid, ${domainId}::uuid,
+      ${o.purpose ?? 'integration-test'}, ${cap.action}, ${cap.target}, ${cap.correlationId}::uuid,
+      ${cap.policyDecisionId}::uuid, ${cap.bundleVersion}, ${cap.consequence}, ${o.ttlSeconds ?? 60}
+    )`.execute(tx);
+    return fn(tx as unknown as Kysely<never>, cap);
+  });
+}
+
+/**
+ * Run fn inside a transaction carrying a bound EVIDENCE capability. The route
+ * scope is passed separately from the requested scope: the minter validates one
+ * against the other and against the session's own subject.
+ */
+export async function withEvidenceCtx<T>(
+  db: AnyDb,
+  p: TestPrincipal,
+  requested: { scope: string; tenantId: string | null; domainId: string | null },
+  route: { scope: string; tenantId: string | null; domainId: string | null },
+  fn: (tx: Kysely<never>, cap: CtxCapability) => Promise<T>,
+  opts: CtxOptions = {},
+): Promise<T> {
+  const cap = capabilityFor(opts);
+  return db.transaction().execute(async (tx) => {
+    await sql`select ctx.issue_evidence(
+      ${p.sessionId}::uuid, ${p.contextKey}, ${requested.scope},
+      ${requested.tenantId}::uuid, ${requested.domainId}::uuid,
+      ${opts.purpose ?? 'integration-test-evidence'}, ${cap.action},
+      ${route.scope}, ${route.tenantId}::uuid, ${route.domainId}::uuid,
+      ${cap.correlationId}::uuid, ${opts.ttlSeconds ?? 60}
+    )`.execute(tx);
+    return fn(tx as unknown as Kysely<never>, cap);
+  });
+}
+
+/** One declared IDENTITY operation — cannot write business or canonical rows. */
+export async function withIdentityOp<T>(
+  db: AnyDb,
+  operation: string,
+  subject: string | null,
+  fn: (tx: Kysely<never>, correlationId: string) => Promise<T>,
+): Promise<T> {
+  const correlationId = uuidv7();
+  return db.transaction().execute(async (tx) => {
+    await sql`select ctx.issue_identity_op(${operation}, ${subject}::uuid, ${correlationId}::uuid, 60)`.execute(tx);
+    return fn(tx as unknown as Kysely<never>, correlationId);
+  });
+}
+
+/** PUBLISH capability — outbox lease/ack only. */
+export async function withPublishCtx<T>(
+  db: AnyDb, eventId: string | null, fn: (tx: Kysely<never>) => Promise<T>,
 ): Promise<T> {
   return db.transaction().execute(async (tx) => {
-    await sql`select ctx.issue(
-      ${p.sessionId}::uuid, ${p.contextKey}, ${scope},
-      ${tenantId}::uuid, ${domainId}::uuid, ${purpose}, 60
-    )`.execute(tx);
+    await sql`select ctx.issue_publish(${eventId}::uuid)`.execute(tx);
     return fn(tx as unknown as Kysely<never>);
   });
 }
 
-/** System context (bounded system paths). */
-export async function withSystemCtx<T>(
-  db: AnyDb,
-  reason: string,
-  fn: (tx: Kysely<never>) => Promise<T>,
+/** VERIFY capability — read/verify, or seal when explicitly requested. */
+export async function withVerifyCtx<T>(
+  db: AnyDb, partition: string, seal: boolean, fn: (tx: Kysely<never>) => Promise<T>,
 ): Promise<T> {
   return db.transaction().execute(async (tx) => {
-    await sql`select ctx.issue_system(${reason})`.execute(tx);
+    await sql`select ctx.issue_verify(${partition}, ${seal})`.execute(tx);
     return fn(tx as unknown as Kysely<never>);
   });
+}
+
+/**
+ * Commit the POLICY decision that an audit event must reference. Kept as a
+ * helper because the AUD↔POL linkage constraint (Gate-2.1 §3) makes an audit
+ * event with an unmatched decision impossible to write.
+ */
+export async function commitDecision(
+  tx: Kysely<never>,
+  cap: CtxCapability,
+  decision: 'allow' | 'allow_with_obligations' | 'deny' | 'indeterminate' = 'allow',
+  objectType = 'test.object',
+): Promise<string> {
+  await sql`select policy.commit_decision(
+    ${cap.policyDecisionId}::uuid, ${cap.action}, ${objectType}, ${uuidv7()}::uuid,
+    ${cap.consequence}, ${decision}, '[]'::jsonb, ${sha256('test-input')},
+    ${cap.bundleVersion}, null, null, 'none', 'integration test',
+    ${cap.correlationId}::uuid, null, '{}'::jsonb
+  )`.execute(tx);
+  return cap.policyDecisionId;
 }

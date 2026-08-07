@@ -10,48 +10,36 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # --- 0. Secret material (caller env wins; else generated once, 0600) --------
+#
+# Gate-2.1 §9: the CANONICAL loader (scripts/local-env.mjs) is the single writer of
+# the handoff file. This script used to keep its own bash copy of the generation
+# logic, and the copy had drifted: it exported EYE_DB_MIGRATE_PASSWORD into its own
+# process but never PERSISTED it, so any later process that merely sourced the file
+# could not run migrations. One writer, one key list, no drift.
 LOCAL_DIR=.eye-local
 ENV_FILE="$LOCAL_DIR/env"
-mkdir -p "$LOCAL_DIR" && chmod 700 "$LOCAL_DIR"
-# Gate-2 §8: repair an EXISTING handoff file's mode before use (a permissive mode
-# from an earlier run or a copy is corrected, never tolerated).
-[[ -f "$ENV_FILE" ]] && chmod 600 "$ENV_FILE"
 
-gen() { openssl rand -base64 24 | tr -d '/+=' ; }
+node -e "import('./scripts/local-env.mjs').then(m => m.loadLocalEnv()).catch(e => { console.error(String(e)); process.exit(1); })"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  # Caller-supplied values are recorded as-is so the handoff file always
-  # reflects the material actually in use; missing keys are generated.
-  umask 177
-  cat > "$ENV_FILE" << EOF
-EYE_DB_PASSWORD=${EYE_DB_PASSWORD:-$(gen)}
-EYE_DB_APP_PASSWORD=${EYE_DB_APP_PASSWORD:-$(gen)}
-EYE_DB_ALLOCATOR_PASSWORD=${EYE_DB_ALLOCATOR_PASSWORD:-$(gen)}
-EYE_DB_SYSTEM_PASSWORD=${EYE_DB_SYSTEM_PASSWORD:-$(gen)}
-EYE_DB_COMMIT_PASSWORD=${EYE_DB_COMMIT_PASSWORD:-$(gen)}
-EYE_DB_IDENTITY_PASSWORD=${EYE_DB_IDENTITY_PASSWORD:-$(gen)}
-EYE_DB_PUBLISHER_PASSWORD=${EYE_DB_PUBLISHER_PASSWORD:-$(gen)}
-EYE_DB_VERIFIER_PASSWORD=${EYE_DB_VERIFIER_PASSWORD:-$(gen)}
-EYE_DB_RECOVERY_PASSWORD=${EYE_DB_RECOVERY_PASSWORD:-$(gen)}
-EYE_REDIS_PASSWORD=${EYE_REDIS_PASSWORD:-$(gen)}
-EYE_IDENTITY_JWT_SECRET=${EYE_IDENTITY_JWT_SECRET:-$(gen)$(gen)}
-EYE_TEST_BOOTSTRAP_PASSWORD=${EYE_TEST_BOOTSTRAP_PASSWORD:-$(gen)}
-EYE_TEST_ADMIN_PASSWORD=${EYE_TEST_ADMIN_PASSWORD:-$(gen)}
-EOF
-  umask 022
-  echo "==> generated local secret material in $ENV_FILE (0600, gitignored)"
+  echo "demo: the canonical loader did not produce $ENV_FILE" >&2
+  exit 1
 fi
-# Caller-supplied environment values take precedence over the handoff file.
-while IFS='=' read -r k v; do
-  [[ -z "$k" || "$k" == \#* ]] && continue
-  if [[ -z "${!k:-}" ]]; then printf -v "$k" '%s' "$v"; export "$k"; fi
-done < "$ENV_FILE"
-export EYE_DB_PASSWORD EYE_DB_APP_PASSWORD EYE_DB_ALLOCATOR_PASSWORD \
-       EYE_DB_SYSTEM_PASSWORD EYE_DB_COMMIT_PASSWORD EYE_DB_IDENTITY_PASSWORD \
-       EYE_DB_PUBLISHER_PASSWORD EYE_DB_VERIFIER_PASSWORD EYE_DB_RECOVERY_PASSWORD \
-       EYE_REDIS_PASSWORD EYE_IDENTITY_JWT_SECRET \
-       EYE_TEST_BOOTSTRAP_PASSWORD EYE_TEST_ADMIN_PASSWORD
-export EYE_DB_MIGRATE_PASSWORD="${EYE_DB_MIGRATE_PASSWORD:-$EYE_DB_PASSWORD}"
+# Caller-supplied environment values already took precedence inside the loader;
+# everything it generated or preserved is read back here.
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+echo "==> local secret material ready in $ENV_FILE (0600, gitignored, canonical loader)"
+
+# Every runtime authority the API loads must be present before anything starts.
+for k in EYE_DB_PASSWORD EYE_DB_MIGRATE_PASSWORD EYE_DB_APP_PASSWORD EYE_DB_ALLOCATOR_PASSWORD \
+         EYE_DB_COMMIT_PASSWORD EYE_DB_IDENTITY_PASSWORD EYE_DB_PUBLISHER_PASSWORD \
+         EYE_DB_VERIFIER_PASSWORD EYE_DB_RECOVERY_PASSWORD EYE_REDIS_PASSWORD \
+         EYE_IDENTITY_JWT_SECRET EYE_TEST_BOOTSTRAP_PASSWORD EYE_TEST_ADMIN_PASSWORD; do
+  if [[ -z "${!k:-}" ]]; then echo "demo: $k missing from the secret handoff" >&2; exit 1; fi
+done
 
 echo "==> 1/6 docker compose up (postgres:18-alpine + redis:8-alpine, digest-pinned, loopback-only)"
 docker compose up -d --wait

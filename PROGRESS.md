@@ -2,7 +2,80 @@
 
 | Phase | Layers | Status | Notes |
 |---|---|---|---|
-| Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE + GATE-2 CLOSED 2026-08-06** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). Remediation: [PHASE0_INVARIANT_REMEDIATION_PLAN.md](PHASE0_INVARIANT_REMEDIATION_PLAN.md) (R1–R10) then [PHASE0_GATE2_CLOSURE_PLAN.md](PHASE0_GATE2_CLOSURE_PLAN.md) (G1–G10). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open P0 in-date; 2 P1 proposed). |
+| Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE + GATE-2.1 CLOSURE SUBMITTED 2026-08-07** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). Remediation: [PHASE0_INVARIANT_REMEDIATION_PLAN.md](PHASE0_INVARIANT_REMEDIATION_PLAN.md) (R1–R10) then [PHASE0_GATE2_CLOSURE_PLAN.md](PHASE0_GATE2_CLOSURE_PLAN.md) (G1–G10), then [GATE2_1_PLAN.md](GATE2_1_PLAN.md) (C1–C11). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open P0 in-date; 2 P1 proposed). |
+
+## Gate-2.1 closure — final authority-boundary closure (2026-08-07)
+
+Source candidate reviewed: `2deded44904e5a4ec264938085c2aaa93d9636b6` (evidence attestation
+`09ab1144d04ada7dcd3a159c3ba03a7f94751c18`, archive SHA-256 `b45025ad…1e81d`). An independent review
+identified ten executable attack paths that the green 70-test suite did not exercise. The bounded
+correction C1–C11 was authorized and executed as **governed forward migrations 0011 + 0012**
+(0001–0010 untouched, every previously applied digest still valid — **no rebaseline**). Migration
+range is now **0001–0012**.
+
+Delivered:
+
+* **No direct authoritative privilege anywhere.** Direct INSERT/UPDATE/DELETE on every governed
+  table is revoked from every runtime role; the chain-head allocator pair is callable by no request
+  authority; PUBLIC holds EXECUTE on nothing in the governed schemas. RLS is `ENABLE`d **and**
+  `FORCE`d on every table in those schemas (`FORCE` alone was inert where RLS had never been enabled),
+  with policies that state the boundary explicitly for allocator-owned and reference tables.
+* **The universal system context is gone.** `ctx.issue_system(reason)` — unrestricted PLATFORM
+  authority on the strength of free text — is dropped, replaced by six **operation-specific
+  capability minters** (`issue_commit`, `issue_evidence`, `issue_publish`, `issue_verify`,
+  `issue_identity_op`, `issue_bootstrap`). A capability binds action, target, correlation id,
+  policy-decision id, bundle version, operation class, session, principal, scope, purpose and
+  consequence class, and the **mintable action set is bound to the minting role** (identity.* to the
+  identity authority, everything else to the commit authority).
+* **Business handlers never receive a transaction.** They receive a `BoundedCapability` whose surface
+  is the ports their route declared; the Kysely transaction is a private field that is never exposed.
+* **Evidence mode cannot fabricate an allow or a success.** A decision records how it was written
+  (`evidence_only`), and a success may never reference such a decision — in that transaction or any
+  later one. Every request AUD is linked to its POL on principal, action, scope, tenant, domain,
+  correlation and bundle, and outcome class must agree with decision class.
+* **Expiry and revocation are wall-clock and re-checked at every port.** `clock_timestamp()` replaces
+  `now()`, so a capability lapses inside a long transaction; session, expiry, principal, epoch,
+  binding and rotation are revalidated at each authoritative boundary — a capability minted in one
+  transaction stops working the moment another revokes the authority behind it.
+* **Identity and metadata leakage closed.** `auth_principal`/`auth_bindings`/`session_get_active` are
+  withdrawn from the application role and replaced by caller-bound lookups requiring proof of
+  possession of that session; `audit.my_partition_status` (tenant-global head state for DOMAIN
+  callers) is dropped in favour of a domain-scoped projection; a PDP-denied identity operation now
+  returns the governed 403 with matching durable POL/AUD instead of failing 503.
+* **Outbox transitions are lease-tied compare-and-set only.** `outbox_ack`/`outbox_claim` are gone;
+  publication requires a live lease, the permitted transition and the expected current state.
+* **Complete request audit coverage.** Every authenticated controller edge routes through the
+  centralized durable rejection path; `audit.verify` records requested partition, verified head,
+  expected vs calculated head, ok/headMatches, broken sequence and incident — an unknown or damaged
+  partition is evidenced as a failure, never as a generic success; the degraded journal is reloaded on
+  startup and `/readyz` stays degraded across a restart until governed reconciliation records recovery.
+* **Real RFC 8785.** The in-database canonicalizer now implements ECMAScript `Number::toString`
+  (fractions, exponent forms, negative zero), UTF-16 code-unit key ordering, Unicode keys,
+  multilingual values, control-character escaping and IEEE-754/I-JSON validity. One conformance
+  corpus runs against both TypeScript and the database. Canonical admission enforces full header
+  **semantics** — enums, temporal constraints, structured confidence/quality, schema-reference shape
+  and authoritative `recorded_at` — not merely key presence and digest.
+* **Gate controls corrected.** No executable credential default in the migration runner; the licence
+  allowlist covers production **and** development closures; CycloneDX 1.6 schema validation;
+  bidirectional SBOM↔closure reconciliation with governed exclusions; the browser gate loads every
+  runtime authority through the canonical loader with permission repair.
+
+Suites at the Gate-2.1 candidate: contracts **181**, tokens **3**, api unit **14**, api gate
+**43** (supply-chain negative fixtures, shipped-artifact gates, loader/handoff invariants), integration **199** (Gate-2.1 adversarial
+matrix 52 + RFC 8785 cross-language 74 + domain isolation 16 + audit chain 8 + Gate-2 adversarial 49),
+acceptance **42** (15 criteria + §7.2 + R4/R10 + Gate-2.1 tests 14–17), Playwright **10** — **492
+tests**. All 22 mandated Gate-2.1 adversarial tests are present and green. Both database paths are
+proven: forward upgrade of an existing 0001–0010 database carrying real pre-upgrade data through
+0011/0012 with byte-identical audit hashes and no rebaseline, and a virgin install of 0001–0012 — the
+complete suites pass on **both**. Supply chain: CycloneDX 1.6 SBOM (280 components, schema-valid),
+bidirectional reconciliation with 0 unmatched identities, licence gate green over both scopes.
+
+Five real defects were found *by* this work and fixed: an RLS sweep that deny-alled the allocator's
+own tables and the schema-registry reference data; a live-authority check that demanded a session from
+the deliberately session-less identity capability (which silently disabled all intake evidence); an
+authority refusal misreported as a 503 availability incident instead of a 403 denial; an evidence-mode
+rule that erased the true decision of an allowed-then-failed request; and a role-binding check written
+against `current_user`, which is the owner inside a `SECURITY DEFINER` function and therefore vacuous.
 
 ## Gate-2 closure (2026-08-06)
 
@@ -14,7 +87,7 @@ Suites at the closure candidate: contracts **118**, tokens **3**, api unit **14*
 
 ## Invariant-remediation gate (2026-08-05)
 
-Candidate reviewed: `ce1ee0d`. Source inspection found invariant violations the green suite did not detect; the bounded remediation R1–R10 was authorized and executed. Final candidate: **`GATE_CANDIDATE_SHA`** (see `evidence/git-metadata.txt`). Migration range extended to **0001–0008** (0008 = signed request context + DOMAIN-aware FORCE-RLS matrix, PUBLIC-EXECUTE revocation + bounded append/seal/recovery ports, refresh-token rotation with reuse detection, identity integrity, temporal constraint). Suites at the final SHA: contracts **118**, tokens **3**, api unit **14**, integration **38** (domain-isolation, privileges, audit-chain incl. concurrent append-vs-verify/seal, refresh), acceptance **34** (15 criteria + §7.2 + R4/R10 #6/#7/#8), Playwright **10**. Supply chain: non-empty CycloneDX SBOM (280 components) + prod/dev license reconciliation; `pnpm audit` **0**; exact-image Trivy scans of the pinned postgres:18-alpine / redis:8-alpine digests **clean at HIGH/CRITICAL** under dated `.trivyignore` dispositions. No Phase 1/L1 application code written.
+Candidate reviewed: `ce1ee0d`. Source inspection found invariant violations the green suite did not detect; the bounded remediation R1–R10 was authorized and executed. Final candidate: **`75522e3`** (`75522e3` — the R1–R10 remediation commit; submitted for review as `562fffaf3d848dd730e7287771e3344b2e5b05b2` after the bundle-only metadata correction). See `evidence/git-metadata.txt` in that gate's package. Migration range extended to **0001–0008** (0008 = signed request context + DOMAIN-aware FORCE-RLS matrix, PUBLIC-EXECUTE revocation + bounded append/seal/recovery ports, refresh-token rotation with reuse detection, identity integrity, temporal constraint). Suites at the final SHA: contracts **118**, tokens **3**, api unit **14**, integration **38** (domain-isolation, privileges, audit-chain incl. concurrent append-vs-verify/seal, refresh), acceptance **34** (15 criteria + §7.2 + R4/R10 #6/#7/#8), Playwright **10**. Supply chain: non-empty CycloneDX SBOM (280 components) + prod/dev license reconciliation; `pnpm audit` **0**; exact-image Trivy scans of the pinned postgres:18-alpine / redis:8-alpine digests **clean at HIGH/CRITICAL** under dated `.trivyignore` dispositions. No Phase 1/L1 application code written.
 
 ## Milestone log
 
