@@ -21,7 +21,7 @@ import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import {
   appDb, commitDb, identityDb, superDb, seedTenant, seedDomain,
-  createPrincipalWithSession, withCtx, commitDecision, type AnyDb, type TestPrincipal,
+  createPrincipalWithSession, withCtx, closeOperation, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 
 let app: AnyDb;
@@ -67,7 +67,7 @@ beforeAll(async () => {
     await withCtx(commit, who, 'DOMAIN', t, d, async (tx, cap) => {
       await sql`select objects.enqueue_event(${uuidv7()}::uuid, 'test.event', '{}'::jsonb,
         ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
-      await commitDecision(tx, cap);
+      await closeOperation(tx, cap, { type: 'outbox' });
     });
     // lifecycle_events has no DOMAIN-scoped port (only tenant/domain creation
     // writes it), and no runtime role holds INSERT on it any more, so the read
@@ -160,6 +160,7 @@ describe('mandated 1 — domain A vs domain B in the SAME tenant', () => {
     await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
       await sql`select objects.enqueue_event(${eventId}::uuid, 'derived.event', '{}'::jsonb,
         ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+      await closeOperation(tx, cap, { type: 'outbox', id: eventId });
     });
     const row = await su
       .selectFrom('objects.object_outbox').selectAll().where('id', '=', eventId).executeTakeFirstOrThrow();
@@ -250,9 +251,10 @@ describe('mandated 2 — tenant and platform boundaries stay intact', () => {
     };
     const payload = { subject: 'S', predicate: 'p', object_value: 'V' };
     // Admission accepts ONLY a capability bound to a canonical-write action.
-    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
+    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
       await sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
         ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx);
+      await closeOperation(tx, cap, { type: 'CLM', id: objectId });
     }, { action: 'objects.create' });
     const fromB = await withCtx(commit, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
       sql`select * from objects.canonical_objects where domain_id = ${domainA}`.execute(tx));

@@ -268,3 +268,31 @@ export async function commitDecision(
   )`.execute(tx);
   return cap.policyDecisionId;
 }
+
+/**
+ * Gate-2.2 C1 — CLOSE the operation an authority context opened. When a fixture
+ * writes a real business effect (a canonical object, an outbox row, a tenant,
+ * …), the database now REQUIRES that effect to be inseparably linked to a
+ * persisted allow decision and a matching success audit event before the
+ * transaction may commit. This helper writes both, exactly as the request
+ * pipeline does, bound to the same capability the effect was written under.
+ *
+ * Call it inside a `withCtx(...)` callback AFTER the effect, e.g.
+ *   await withCtx(commit, p, 'DOMAIN', t, d, async (tx, cap) => {
+ *     await sql`select objects.enqueue_event(...)`.execute(tx);
+ *     await closeOperation(tx, cap);
+ *   }, { action: 'objects.create' });
+ */
+export async function closeOperation(
+  tx: Kysely<never>,
+  cap: CtxCapability,
+  target: { type?: string | null; id?: string | null; version?: string | null } = {},
+): Promise<void> {
+  await commitDecision(tx, cap);
+  await sql`select audit.commit_event(
+    'api.request', ${cap.action}, 'success', 'OK',
+    ${target.type ?? null}, ${target.id ?? null}, ${target.version ?? null},
+    ${cap.policyDecisionId}::uuid, ${cap.bundleVersion},
+    ${cap.correlationId}::uuid, null::uuid, null, null, null, '{}'::jsonb
+  )`.execute(tx);
+}

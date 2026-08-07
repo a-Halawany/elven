@@ -40,7 +40,7 @@ import { jcsCanonicalize, canonicalHeaderDigest, type CanonicalHeader } from '@e
 import {
   appDb, commitDb, identityDb, publisherDb, verifierDb, recoveryDb, superDb, allocatorDb,
   seedTenant, seedDomain, createPrincipalWithSession, withCtx, withIdentityOp,
-  withPublishCtx, sha256, type AnyDb, type TestPrincipal,
+  withPublishCtx, closeOperation, sha256, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 
 let app: AnyDb;
@@ -316,9 +316,11 @@ describe('4 — DOMAIN A write isolation', () => {
 
   it('cannot create a tenant-level canonical object or outbox message', async () => {
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.enqueue_event(${uuidv7()}::uuid, 'forged', '{}'::jsonb, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx)),
-    ).resolves.toBeDefined(); // its OWN domain event is fine…
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+        await sql`select objects.enqueue_event(${uuidv7()}::uuid, 'forged', '{}'::jsonb, ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+        await closeOperation(tx, cap, { type: 'outbox' });
+      }),
+    ).resolves.toBeUndefined(); // its OWN domain event is fine…
     // …but a tenant-level one is impossible: the port derives scope from context,
     // so there is no way to express "tenant-level" from a DOMAIN context.
     const rows = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
@@ -636,10 +638,12 @@ describe('14 — canonical insertion with an invented digest is rejected', () =>
     const header = fullHeader(uuidv7(), tenant, domainA);
     const payload = { subject: 'a', predicate: 'b', object_value: 'c' };
     const digest = canonicalHeaderDigest(header, payload);
-    const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-      sql<{ content_digest: string }>`select content_digest from objects.admit_version(
-        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx),
-      { action: 'objects.create' });
+    const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+      const r = await sql<{ content_digest: string }>`select content_digest from objects.admit_version(
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx);
+      await closeOperation(tx, cap, { type: 'CLM', id: header.object_id });
+      return r;
+    }, { action: 'objects.create' });
     // The DB recomputed the same digest the contracts package computed.
     expect(out.rows[0]!.content_digest).toBe(digest);
   });
@@ -651,9 +655,10 @@ describe('15 — outbox rewriting and unauthorized publish acknowledgement', () 
 
   beforeAll(async () => {
     eventId = uuidv7();
-    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
+    await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
       await sql`select objects.enqueue_event(${eventId}::uuid, 'adv.event',
-        ${JSON.stringify({ original: true })}::jsonb, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+        ${JSON.stringify({ original: true })}::jsonb, ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+      await closeOperation(tx, cap, { type: 'outbox', id: eventId });
     });
   });
 

@@ -38,7 +38,7 @@ import { canonicalHeaderDigest, type CanonicalHeader } from '@eye/contracts';
 import {
   appDb, commitDb, identityDb, publisherDb, verifierDb, recoveryDb, superDb, allocatorDb,
   seedTenant, seedDomain, createPrincipalWithSession, withCtx, withEvidenceCtx,
-  withPublishCtx, withVerifyCtx, commitDecision, type AnyDb, type TestPrincipal,
+  withPublishCtx, withVerifyCtx, commitDecision, closeOperation, type AnyDb, type TestPrincipal,
 } from './helpers.js';
 
 let app: AnyDb, commit: AnyDb, identity: AnyDb, publisher: AnyDb;
@@ -263,6 +263,7 @@ describe('G21-4/5 — outbox transitions are CAS-only and never pre-published', 
     await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
       await sql`select objects.enqueue_event(${eventId}::uuid, 'g21.event', '{"v":1}'::jsonb,
         ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+      await closeOperation(tx, cap, { type: 'outbox', id: eventId });
     });
   });
 
@@ -306,6 +307,7 @@ describe('G21-4/5 — outbox transitions are CAS-only and never pre-published', 
     await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
       await sql`select objects.enqueue_event(${id}::uuid, 'g21.forced', '{}'::jsonb,
         ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
+      await closeOperation(tx, cap, { type: 'outbox', id });
     });
     const row = await sql<{ status: string; published_at: string | null; lease_id: string | null }>`
       select status, published_at, lease_id from objects.object_outbox where id = ${id}`.execute(su);
@@ -733,10 +735,12 @@ describe('G21-19 — correctly digested but semantically invalid headers are rej
   it('the same header WITH valid semantics is admitted, proving the digest was right', async () => {
     const header = fullHeader();
     const digest = canonicalHeaderDigest(header, payload);
-    const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-      sql<{ content_digest: string }>`select content_digest from objects.admit_version(
-        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx),
-      { action: 'objects.create' });
+    const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+      const r = await sql<{ content_digest: string }>`select content_digest from objects.admit_version(
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx);
+      await closeOperation(tx, cap, { type: header.object_type, id: header.object_id });
+      return r;
+    }, { action: 'objects.create' });
     expect(out.rows[0]!.content_digest).toBe(digest);
   });
 });
