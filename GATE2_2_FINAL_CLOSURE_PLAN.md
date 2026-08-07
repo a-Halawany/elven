@@ -219,7 +219,7 @@ not inside the evidence commit.
 | C4 identity mutators | ⏳ |
 | C5 verifier/seal/availability | ⏳ |
 | C6 capability binding | ⏳ |
-| C7 outbox hardening | ⏳ |
+| C7 outbox hardening | ✅ **done & verified** — migration `0015_outbox_hardening.sql`: lease TTL clamped to [1,300]s (was unbounded → extreme-lease suppression); retry budget of 10 with automatic governed `dead_letter`; ack restricted to `published`/`dead_letter` terminal targets tied to the lease token; new `outbox_release` for bounded retryable release. Proven by `test/int/gate22-outbox-hardening.test.ts` (4 tests). 218 integration + 42 acceptance green. |
 | C8 action-specific capabilities | ⏳ |
 | C9 degraded recovery | ⏳ |
 | C10 audit.verify semantics | ⏳ |

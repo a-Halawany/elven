@@ -27,7 +27,7 @@ not a broken build.
 | C4 identity mutators | 0015 | ⏳ ports: `bump_epoch`, `session_open`, `refresh_rotate_family`, `credential_issue/revoke/rotate_v2`, `sessions_revoke_all_v2` |
 | C5 verifier/seal/availability | 0015 | ⏳ ports: `open_integrity_incident`, `lock_head_for_seal`, `append_seal`, `commit_integrity_event`, `record/reconcile_availability_incident` |
 | C6 capability binding | 0015 | ⏳ exact target/correlation at every port; server-derived actor |
-| C7 outbox hardening | 0015 | ⏳ lease TTL bound (`p_lease_seconds` currently unbounded), retry budget, dead-letter, stale-lease reclaim |
+| C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ done & verified — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
 | C8–C12 | — | ⏳ |
 | C13 catalog authority gate | `scripts/authority-inventory.mjs` | ⏳ |
 | C14 adversarial matrix | — | ⏳ |
@@ -39,8 +39,7 @@ not a broken build.
 **Environment notes for resumption:** virgin rebuild via
 `scratchpad/virgin.sh` (force-removes `eye-redis`/`eye-postgres`, `down -v`, `up`,
 `pnpm db:migrate`). Integration suite: `cd apps/api && node_modules/.bin/vitest run
---config vitest.int.config.ts`. Full integration currently **214/214**, acceptance
-**42/42**. Codex MCP is **not connected** in this environment (mandated cluster
+--config vitest.int.config.ts`. Full integration currently **218/218**, acceptance **42/42**. Codex MCP is **not connected** in this environment (mandated cluster
 reviews need it wired up); interactive MCP OAuth is unavailable in headless runs.
 The 52 MB `evidence/the-eye-source.bundle` is now **untracked** (kept on disk) and
 `evidence/*.bundle` + `*.zip` are gitignored per the approved packaging decision.
