@@ -584,7 +584,10 @@ describe('G21-10/11 — a capability minted in A dies when B revokes the authori
 
   it('G21-10: session revocation kills an already-minted capability', async () => {
     await mintThenRevokeThenWrite('sessrevoke', async (p) => {
-      await sql`select identity.sessions_revoke_all_v2(${p.principalId}::uuid)`.execute(identity);
+      await identity.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_identity_op('identity.credential.revoke', ${p.principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
+      await sql`select identity.sessions_revoke_all_v2(${p.principalId}::uuid)`.execute(tx);
+    });
     });
   });
 

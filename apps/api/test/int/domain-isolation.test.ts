@@ -303,7 +303,10 @@ describe('signed-context port authority checks', () => {
     });
     // Revocation is a definer port gated purely by the IDENTITY authority's
     // EXECUTE grant — it needs no context, so none is minted for it.
-    await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(identity);
+    await identity.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_identity_op('identity.credential.revoke', ${victim.principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
+      await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(tx);
+    });
     await expect(
       withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/session not active|authority epoch changed/);

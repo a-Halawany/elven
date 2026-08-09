@@ -24,7 +24,7 @@ not a broken build.
 | C1 operation closure | `0013_operation_closure.sql`, `test/int/gate22-operation-closure.test.ts` | ✅ done & verified, committed `bf9f039` |
 | C2 evidence de-authorization | `0014_evidence_deauthorization.sql`, `test/int/gate22-evidence-deauthorization.test.ts` | ✅ done & verified (RLS visibility gated on read-capable mode; `issue_evidence` PLATFORM-elevation bug fixed with authority-parity binding check) |
 | C3 single-use bootstrap | `0016_bootstrap_claim_binding.sql`, `test/int/gate22-bootstrap.test.ts` | ✅ done & verified — claim bound to bootstrap capability + correlation nonce; only the winning capability completes it; consumed-claim reuse refused (9 tests + real AC-1 flow) |
-| C4 identity mutators | 0015 | ⏳ ports: `bump_epoch`, `session_open`, `refresh_rotate_family`, `credential_issue/revoke/rotate_v2`, `sessions_revoke_all_v2` |
+| C4 identity mutators | `0017_identity_mutator_governance.sql`, `test/int/gate22-identity-mutators.test.ts` | ✅ done & verified — subject/action-bound capability on external mutators; victim-takeover blocked (rotate cap for A cannot rotate B); 6 tests + real auth flow |
 | C5 verifier/seal/availability | 0015 | ⏳ ports: `open_integrity_incident`, `lock_head_for_seal`, `append_seal`, `commit_integrity_event`, `record/reconcile_availability_incident` |
 | C6 capability binding | 0015 | ⏳ exact target/correlation at every port; server-derived actor |
 | C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ done & verified — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
@@ -39,7 +39,7 @@ not a broken build.
 **Environment notes for resumption:** virgin rebuild via
 `scratchpad/virgin.sh` (force-removes `eye-redis`/`eye-postgres`, `down -v`, `up`,
 `pnpm db:migrate`). Integration suite: `cd apps/api && node_modules/.bin/vitest run
---config vitest.int.config.ts`. Full integration currently **227/227**, acceptance **42/42** (a clean degraded-journal dir is required for AC-12 — see C9 isolation work). **External independent
+--config vitest.int.config.ts`. Full integration currently **233/233**, acceptance **42/42** (a clean degraded-journal dir is required for AC-12 — see C9 isolation work). Migrations now **0001–0017**. **External independent
 review is pending against the final frozen source and evidence package** — Claude's
 own in-place testing is verification, not independent review, and Phase 0 remains
 unapproved until that external final review. The 52 MB `evidence/the-eye-source.bundle`

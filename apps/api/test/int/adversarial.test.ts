@@ -229,7 +229,10 @@ describe('3 — context replay and staleness', () => {
 
   it('fails after session revocation', async () => {
     const victim = await createPrincipalWithSession(identity, su, { scope: 'TENANT', tenantId: tenant, roleCode: 'tenant_admin', label: 'adv-rev' });
-    await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(identity);
+    await identity.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_identity_op('identity.credential.revoke', ${victim.principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
+      await sql`select identity.sessions_revoke_all_v2(${victim.principalId}::uuid)`.execute(tx);
+    });
     await expect(
       withCtx(commit, victim, 'TENANT', tenant, null, async (tx) => sql`select 1`.execute(tx)),
     ).rejects.toThrow(/session not active|authority epoch changed/);
