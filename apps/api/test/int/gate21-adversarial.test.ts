@@ -110,7 +110,7 @@ describe('G21-1 — every runtime role is denied every other role’s operation'
     { port: 'identity.session_open(uuid,uuid,text,text,text,timestamptz,uuid)', owner: ['eye_identity'] },
     { port: 'identity.refresh_rotate_family(text,text,text)', owner: ['eye_identity'] },
     { port: 'identity.auth_lookup(text)', owner: ['eye_identity'] },
-    { port: 'tenancy.create_tenant(uuid,text,text,text)', owner: ['eye_commit'] },
+    { port: 'tenancy.create_tenant(uuid,text,text)', owner: ['eye_commit'] },       // C6: actor removed
     { port: 'ctx.issue_commit(uuid,text,text,uuid,uuid,text,text,text,uuid,uuid,text,text,integer)', owner: ['eye_commit', 'eye_identity'] },
     { port: 'ctx.issue_publish(uuid)', owner: ['eye_publisher'] },
     { port: 'ctx.issue_verify(text,boolean)', owner: ['eye_verifier'] },
@@ -153,7 +153,7 @@ describe('G21-1 — every runtime role is denied every other role’s operation'
       ['eye_verifier', 'admit_version', () => sql`select objects.admit_version('{}'::jsonb,'{}'::jsonb,'x')`.execute(verifier)],
       ['eye_commit', 'create_principal', () => sql`select identity.create_principal(${uuidv7()}::uuid,'human','PLATFORM',null,null,'x',null,null,null)`.execute(commit)],
       ['eye_app', 'auth_lookup', () => sql`select * from identity.auth_lookup('platform-admin')`.execute(app)],
-      ['eye_identity', 'create_tenant', () => sql`select tenancy.create_tenant(${uuidv7()}::uuid,'x','eu','a')`.execute(identity)],
+      ['eye_identity', 'create_tenant', () => sql`select tenancy.create_tenant(${uuidv7()}::uuid,'x','eu')`.execute(identity)],
       ['eye_verifier', 'issue_commit', () => sql`select ctx.issue_commit(${uuidv7()}::uuid,'k','PLATFORM',null::uuid,null::uuid,'p','a','t',${uuidv7()}::uuid,${uuidv7()}::uuid,'bundle-v1','C1',60)`.execute(verifier)],
       ['eye_commit', 'issue_publish', () => sql`select ctx.issue_publish(null::uuid)`.execute(commit)],
       ['eye_commit', 'issue_verify', () => sql`select ctx.issue_verify('platform', false)`.execute(commit)],
@@ -249,7 +249,7 @@ describe('G21-3 — the verifier cannot append audit events', () => {
     expect(Number(seq)).toBeGreaterThan(0);
     await expect(
       withVerifyCtx(verifier, `tenant:${tenant}`, false, async (tx) =>
-        sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu', 'a')`.execute(tx)),
+        sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu')`.execute(tx)),
     ).rejects.toThrow(/permission denied/);
   });
 });
@@ -336,8 +336,8 @@ describe('G21-6 — evidence mode cannot create business or canonical state', ()
 
   it('tenants, domains, principals and canonical objects are all refused', async () => {
     const attempts: Array<[string, (tx: never) => Promise<unknown>]> = [
-      ['create_tenant', (tx) => sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu', 'a')`.execute(tx)],
-      ['create_domain', (tx) => sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'x', 'a')`.execute(tx)],
+      ['create_tenant', (tx) => sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu')`.execute(tx)],
+      ['create_domain', (tx) => sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'x')`.execute(tx)],
       ['create_principal', (tx) => sql`select identity.create_principal(${uuidv7()}::uuid,'human','DOMAIN',
           ${tenant}::uuid, ${domainA}::uuid, 'x', null, null, null)`.execute(tx)],
       ['admit_version', (tx) => {
@@ -453,10 +453,10 @@ describe('G21-8 — a capability for action A cannot perform action B', () => {
   it('each business port refuses a capability bound to a different action', async () => {
     const cases: Array<[string, string, (tx: never) => Promise<unknown>, RegExp]> = [
       ['tenancy.tenant.create', 'create_domain',
-        (tx) => sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'x', 'a')`.execute(tx),
+        (tx) => sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'x')`.execute(tx),
         /bound to action tenancy.tenant.create, not tenancy.domain.create/],
       ['tenancy.domain.create', 'create_tenant',
-        (tx) => sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu', 'a')`.execute(tx),
+        (tx) => sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'x', 'eu')`.execute(tx),
         /bound to action tenancy.domain.create, not tenancy.tenant.create/],
       ['objects.read', 'admit_version', (tx) => {
         const h = fullHeader();
@@ -726,25 +726,31 @@ describe('G21-19 — correctly digested but semantically invalid headers are rej
   ];
 
   it.each(cases)('rejects: %s', async (_label, over, matcher) => {
-    const header = fullHeader(over);
-    const digest = canonicalHeaderDigest(header, payload); // genuinely correct
+    const objectId = uuidv7();
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
-          ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx), { action: 'objects.create' }),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+        // Gate-2.2 C6: object id = bound target, header correlation = operation's,
+        // so ONLY the semantic defect under test can reject the admission.
+        const header = { ...fullHeader(over), object_id: objectId, audit_correlation_id: cap.correlationId };
+        const digest = canonicalHeaderDigest(header, payload); // genuinely correct
+        return sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
+          ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx);
+      }, { action: 'objects.create', target: objectId }),
     ).rejects.toThrow(matcher);
   });
 
   it('the same header WITH valid semantics is admitted, proving the digest was right', async () => {
-    const header = fullHeader();
-    const digest = canonicalHeaderDigest(header, payload);
+    const objectId = uuidv7();
     const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+      const header = { ...fullHeader(), object_id: objectId, audit_correlation_id: cap.correlationId };
+      const digest = canonicalHeaderDigest(header, payload);
       const r = await sql<{ content_digest: string }>`select content_digest from objects.admit_version(
         ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx);
-      await closeOperation(tx, cap, { type: header.object_type, id: header.object_id });
+      await closeOperation(tx, cap, { type: header.object_type, id: objectId });
+      expect(r.rows[0]!.content_digest).toBe(digest);
       return r;
-    }, { action: 'objects.create' });
-    expect(out.rows[0]!.content_digest).toBe(digest);
+    }, { action: 'objects.create', target: objectId });
+    expect(out.rows[0]!.content_digest).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 

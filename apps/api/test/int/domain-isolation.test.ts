@@ -247,32 +247,35 @@ describe('mandated 2 — tenant and platform boundaries stay intact', () => {
       residency_profile: null, retention_profile: null, access_policy_ref: null,
       quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'CLM@v1',
       ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
-      audit_correlation_id: uuidv7(), content_ref: null,
+      audit_correlation_id: '', content_ref: null, // bound to the capability below
     };
     const payload = { subject: 'S', predicate: 'p', object_value: 'V' };
     // Admission accepts ONLY a capability bound to a canonical-write action.
     await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
-      await sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
-        ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx);
+      const h = { ...header, audit_correlation_id: cap.correlationId };
+      await sql`select objects.admit_version(${JSON.stringify(h)}::jsonb,
+        ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(h, payload)})`.execute(tx);
       await closeOperation(tx, cap, { type: 'CLM', id: objectId });
-    }, { action: 'objects.create' });
+    }, { action: 'objects.create', target: objectId });
     const fromB = await withCtx(commit, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
       sql`select * from objects.canonical_objects where domain_id = ${domainA}`.execute(tx));
     expect(fromB.rows).toHaveLength(0);
     await expect(
-      withCtx(commit, bAdmin, 'DOMAIN', tenant, domainB, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
-          ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx),
-        { action: 'objects.create' })
+      withCtx(commit, bAdmin, 'DOMAIN', tenant, domainB, async (tx, cap) => {
+        const h = { ...header, audit_correlation_id: cap.correlationId };
+        return sql`select objects.admit_version(${JSON.stringify(h)}::jsonb,
+          ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(h, payload)})`.execute(tx);
+      }, { action: 'objects.create', target: objectId })
     ).rejects.toThrow(/not authorized for the object scope/);
 
     // And a capability for a NON-canonical action cannot admit at all, even for
     // the principal's own domain (Gate-2.1 §1: bounded operation class).
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
-          ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx),
-        { action: 'objects.read' })
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+        const h = { ...header, audit_correlation_id: cap.correlationId };
+        return sql`select objects.admit_version(${JSON.stringify(h)}::jsonb,
+          ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(h, payload)})`.execute(tx);
+      }, { action: 'objects.read', target: objectId })
     ).rejects.toThrow(/not a canonical write/);
   });
 });

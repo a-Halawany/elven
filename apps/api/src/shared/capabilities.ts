@@ -54,12 +54,17 @@ export class BoundedCapability {
 
   // ===== governed ports (each is bound to the route's action in the database) =====
 
-  async createTenant(id: string, name: string, residency: string, actor: string): Promise<void> {
-    await sql`select tenancy.create_tenant(${id}::uuid, ${name}, ${residency}, ${actor})`.execute(this.#tx);
+  /**
+   * Gate-2.2 C6: no actor parameter exists. The lifecycle actor is DERIVED from
+   * the bound principal inside the port (ctx.bound_actor()), so a caller cannot
+   * express a false actor. The id must be the capability's bound target.
+   */
+  async createTenant(id: string, name: string, residency: string): Promise<void> {
+    await sql`select tenancy.create_tenant(${id}::uuid, ${name}, ${residency})`.execute(this.#tx);
   }
 
-  async createDomain(id: string, tenantId: string, name: string, actor: string): Promise<void> {
-    await sql`select tenancy.create_domain(${id}::uuid, ${tenantId}::uuid, ${name}, ${actor})`.execute(this.#tx);
+  async createDomain(id: string, tenantId: string, name: string): Promise<void> {
+    await sql`select tenancy.create_domain(${id}::uuid, ${tenantId}::uuid, ${name})`.execute(this.#tx);
   }
 
   async myTenant(): Promise<{ id: string; name: string; status: string } | undefined> {

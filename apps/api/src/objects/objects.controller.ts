@@ -5,6 +5,7 @@
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { PipelineService } from '../pipeline/pipeline.service.js';
+import { newId } from '../shared/ids.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { ObjectsService, type CreateObjectInput } from './objects.service.js';
 
@@ -32,9 +33,11 @@ export class ObjectsController {
     @Body() body: { payload?: CreateObjectInput },
   ) {
     const { envelope, principal } = ctx(req);
+    // Gate-2.2 C6: target id generated before the capability is minted.
+    const objectIdToCreate = newId();
     const route = {
       scope: 'DOMAIN' as const, tenantId, domainId,
-      action: 'objects.create', objectType: body.payload?.objectType ?? null, objectId: null,
+      action: 'objects.create', objectType: body.payload?.objectType ?? null, objectId: objectIdToCreate,
     };
     const input = body.payload;
     // Gate-2.1 §7: a controller edge never rejects an AUTHENTICATED request
@@ -46,7 +49,8 @@ export class ObjectsController {
     }
     const out = await this.pipeline.write(envelope, principal, route, async (tx, c) => {
       const row = await this.objects.createObject(
-        tx, c, `principal:${principal.principalId}`, envelope.correlation_id, input as CreateObjectInput,
+        tx, c, `principal:${principal.principalId}`, envelope.correlation_id,
+        input as CreateObjectInput, objectIdToCreate,
       );
       return {
         result: row,

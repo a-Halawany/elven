@@ -61,10 +61,11 @@ beforeAll(async () => {
   };
   const payload = { subject: 'a', predicate: 'b', object_value: 'c' };
   await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
-    await sql`select objects.admit_version(${JSON.stringify(header)}::jsonb,
-      ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(header, payload)})`.execute(tx);
-    await closeOperation(tx, cap, { type: 'CLM', id: header.object_id });
-  }, { action: 'objects.create' });
+    const h = { ...header, audit_correlation_id: cap.correlationId };
+    await sql`select objects.admit_version(${JSON.stringify(h)}::jsonb,
+      ${JSON.stringify(payload)}::jsonb, ${canonicalHeaderDigest(h, payload)})`.execute(tx);
+    await closeOperation(tx, cap, { type: 'CLM', id: h.object_id });
+  }, { action: 'objects.create', target: header.object_id });
 });
 
 afterAll(async () => {

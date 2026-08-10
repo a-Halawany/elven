@@ -7,6 +7,7 @@
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { PipelineService } from '../pipeline/pipeline.service.js';
+import { newId } from '../shared/ids.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { TenancyService } from './tenancy.service.js';
 
@@ -33,9 +34,12 @@ export class TenancyController {
   ) {
     const { envelope, principal } = ctx(req);
     const name = body.payload?.name;
+    // Gate-2.2 C6: the target id is generated BEFORE the capability is minted, so
+    // the capability names the exact object and the port enforces that binding.
+    const tenantIdToCreate = newId();
     const route = {
       scope: 'PLATFORM' as const, tenantId: null, domainId: null,
-      action: 'tenancy.tenant.create', objectType: 'TEN', objectId: null,
+      action: 'tenancy.tenant.create', objectType: 'TEN', objectId: tenantIdToCreate,
     };
     // Gate-2.1 §7: durable sanitized evidence for every authenticated rejection.
     if (typeof name !== 'string' || name.length < 2) {
@@ -45,7 +49,7 @@ export class TenancyController {
     }
     const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
       const tenant = await this.tenancy.createTenant(
-        tx, `principal:${principal.principalId}`, name as string, body.payload?.residency ?? 'local-dev',
+        tx, tenantIdToCreate, name as string, body.payload?.residency ?? 'local-dev',
       );
       return { result: tenant, targetType: 'TEN', targetId: tenant.id, targetVersion: '1', outboxEvent: null };
     });
@@ -70,9 +74,11 @@ export class TenancyController {
   ) {
     const { envelope, principal } = ctx(req);
     const name = body.payload?.name;
+    // Gate-2.2 C6: target id generated before the capability is minted.
+    const domainIdToCreate = newId();
     const route = {
       scope: 'TENANT' as const, tenantId, domainId: null,
-      action: 'tenancy.domain.create', objectType: 'CID', objectId: null,
+      action: 'tenancy.domain.create', objectType: 'CID', objectId: domainIdToCreate,
     };
     if (typeof name !== 'string' || name.length < 2) {
       await this.pipeline.rejectAuthenticatedRequest(
@@ -81,7 +87,7 @@ export class TenancyController {
     }
     const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
       const domain = await this.tenancy.createDomain(
-        tx, `principal:${principal.principalId}`, tenantId, name as string,
+        tx, domainIdToCreate, tenantId, name as string,
       );
       return { result: domain, targetType: 'CID', targetId: domain.id, targetVersion: '1', outboxEvent: null };
     });

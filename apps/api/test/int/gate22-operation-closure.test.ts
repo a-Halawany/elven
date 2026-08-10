@@ -55,9 +55,14 @@ const enqueue = (tx: never, cap: { correlationId: string }) =>
   sql`select objects.enqueue_event(${uuidv7()}::uuid, 'c1.effect', '{}'::jsonb,
     ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
 
-/** Admit a canonical effect under the current capability. */
-const admit = (tx: never) => {
-  const h = fullHeader(uuidv7(), tenant, domainA);
+
+/**
+ * Admit a canonical effect under the current capability. Gate-2.2 C6: the header's
+ * object id must be the capability's bound target and its audit correlation must be
+ * the operation's correlation, so both are threaded from the capability.
+ */
+const admit = (tx: never, cap: { correlationId: string; target: string }) => {
+  const h = { ...fullHeader(cap.target, tenant, domainA), audit_correlation_id: cap.correlationId };
   return sql`select objects.admit_version(${JSON.stringify(h)}::jsonb,
     ${JSON.stringify(PAYLOAD)}::jsonb, ${canonicalHeaderDigest(h, PAYLOAD)})`.execute(tx);
 };
@@ -84,18 +89,20 @@ describe('C1 — an effect with NO closure cannot commit', () => {
   });
 
   it('a canonical effect with neither POL nor AUD fails at commit', async () => {
+    const objectId = uuidv7();
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) => {
-        await admit(tx as never);
-      }, { action: 'objects.create' }),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+        await admit(tx as never, cap);
+      }, { action: 'objects.create', target: objectId }),
     ).rejects.toThrow(/operation closure/);
   });
 
   it('a platform tenant effect with no closure fails at commit', async () => {
+    const tenantId = uuidv7();
     await expect(
       withCtx(commit, platformAdmin, 'PLATFORM', null, null, async (tx) => {
-        await sql`select tenancy.create_tenant(${uuidv7()}::uuid, 'c1-forged', 'eu', 'a')`.execute(tx);
-      }, { action: 'tenancy.tenant.create' }),
+        await sql`select tenancy.create_tenant(${tenantId}::uuid, 'c1-forged', 'eu')`.execute(tx);
+      }, { action: 'tenancy.tenant.create', target: tenantId }),
     ).rejects.toThrow(/operation closure/);
   });
 

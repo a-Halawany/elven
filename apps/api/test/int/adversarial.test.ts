@@ -310,10 +310,10 @@ describe('4 — DOMAIN A write isolation', () => {
 
   it('cannot create a tenant-scoped principal or a TENANT role binding', async () => {
     await expect(
-      withCtx(identity, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select identity.create_principal(${uuidv7()}::uuid, 'human', 'TENANT', ${tenant}::uuid, null::uuid,
+      withCtx(identity, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) =>
+        sql`select identity.create_principal(${cap.target}::uuid, 'human', 'TENANT', ${tenant}::uuid, null::uuid,
               'forged', ${'forged-' + uuidv7().slice(-8)}, null, 'tenant_admin')`.execute(tx),
-        { action: 'identity.principal.create' }),
+        { action: 'identity.principal.create', target: uuidv7() }),
     ).rejects.toThrow(/not authorized|row-level security|binding rejected/i);
   });
 
@@ -333,9 +333,9 @@ describe('4 — DOMAIN A write isolation', () => {
 
   it('cannot create a domain (a TENANT-level act)', async () => {
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select tenancy.create_domain(${uuidv7()}::uuid, ${tenant}::uuid, 'forged', 'a')`.execute(tx),
-        { action: 'tenancy.domain.create' }),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) =>
+        sql`select tenancy.create_domain(${cap.target}::uuid, ${tenant}::uuid, 'forged')`.execute(tx),
+        { action: 'tenancy.domain.create', target: uuidv7() }),
     ).rejects.toThrow(/tenant-level authority required/);
   });
 
@@ -618,37 +618,41 @@ describe('14 — canonical insertion with an invented digest is rejected', () =>
   });
 
   it('admission refuses an invented digest', async () => {
-    const header = fullHeader(uuidv7(), tenant, domainA);
+    const objectId = uuidv7();
+    const header = fullHeader(objectId, tenant, domainA);
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify({ subject: 'a', predicate: 'b', object_value: 'c' })}::jsonb, ${'f'.repeat(64)})`.execute(tx),
-        { action: 'objects.create' }),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) =>
+        sql`select objects.admit_version(${JSON.stringify({ ...header, audit_correlation_id: cap.correlationId })}::jsonb, ${JSON.stringify({ subject: 'a', predicate: 'b', object_value: 'c' })}::jsonb, ${'f'.repeat(64)})`.execute(tx),
+        { action: 'objects.create', target: objectId }),
     ).rejects.toThrow(/does not bind the header and payload/);
   });
 
   it('admission refuses a header that is missing any registry field', async () => {
-    const header = fullHeader(uuidv7(), tenant, domainA) as unknown as Record<string, unknown>;
+    const objectId = uuidv7();
+    const header = fullHeader(objectId, tenant, domainA) as unknown as Record<string, unknown>;
     delete header['classification'];
     const payload = { subject: 'a', predicate: 'b', object_value: 'c' };
     await expect(
-      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx) =>
-        sql`select objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${'f'.repeat(64)})`.execute(tx),
-        { action: 'objects.create' }),
+      withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) =>
+        sql`select objects.admit_version(${JSON.stringify({ ...header, audit_correlation_id: cap.correlationId })}::jsonb, ${JSON.stringify(payload)}::jsonb, ${'f'.repeat(64)})`.execute(tx),
+        { action: 'objects.create', target: objectId }),
     ).rejects.toThrow(/missing required field/);
   });
 
   it('accepts the correct digest and stores exactly the recomputed value', async () => {
-    const header = fullHeader(uuidv7(), tenant, domainA);
+    const objectId = uuidv7();
     const payload = { subject: 'a', predicate: 'b', object_value: 'c' };
-    const digest = canonicalHeaderDigest(header, payload);
     const out = await withCtx(commit, aAdmin, 'DOMAIN', tenant, domainA, async (tx, cap) => {
+      const header = { ...fullHeader(objectId, tenant, domainA), audit_correlation_id: cap.correlationId };
+      const digest = canonicalHeaderDigest(header, payload);
       const r = await sql<{ content_digest: string }>`select content_digest from objects.admit_version(
         ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`.execute(tx);
-      await closeOperation(tx, cap, { type: 'CLM', id: header.object_id });
+      await closeOperation(tx, cap, { type: 'CLM', id: objectId });
+      expect(r.rows[0]!.content_digest).toBe(digest);
       return r;
-    }, { action: 'objects.create' });
-    // The DB recomputed the same digest the contracts package computed.
-    expect(out.rows[0]!.content_digest).toBe(digest);
+    }, { action: 'objects.create', target: objectId });
+    // The DB recomputed the same digest the contracts package computed (asserted inside).
+    expect(out.rows[0]!.content_digest).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 

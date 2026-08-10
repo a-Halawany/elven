@@ -8,6 +8,7 @@
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Scope } from '@eye/contracts';
 import { PipelineService } from './pipeline.service.js';
+import { newId } from '../shared/ids.js';
 import type { EyeRequest } from './http.js';
 import { PrincipalsService } from '../identity/principals.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -48,9 +49,11 @@ export class AdminControllers {
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
+    // Gate-2.2 C6: target id generated before the capability is minted.
+    const principalIdToCreate = newId();
     const route = {
       scope: 'TENANT' as const, tenantId, domainId: null,
-      action: 'identity.principal.create', objectType: 'PRN', objectId: null,
+      action: 'identity.principal.create', objectType: 'PRN', objectId: principalIdToCreate,
       authority: 'identity' as const,
     };
     // Gate-2.1 §7: durable sanitized evidence for every authenticated rejection.
@@ -62,6 +65,8 @@ export class AdminControllers {
     const scope: Scope = p.domainId !== undefined ? 'DOMAIN' : 'TENANT';
     const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
       const created = await this.principals.createPrincipal(tx, {
+        principalId: principalIdToCreate,
+        correlationId: envelope.correlation_id,
         kind: p.kind ?? 'human',
         scope,
         tenantId,

@@ -338,6 +338,12 @@ export class PipelineService {
         ${policyDecisionId}::uuid, ${policyResult.bundleVersion},
         ${route.consequenceClass ?? envelope.consequence_class}, 60
       )`.execute(tx);
+      // Gate-2.2 C6: bind the request's CAUSATION to the open operation. The C1
+      // closure trigger then requires the closing audit event to carry exactly
+      // this causation, so an effect cannot be closed under a different chain.
+      if (envelope.causation_id != null) {
+        await sql`select ctx.bind_operation_causation(${envelope.causation_id}::uuid)`.execute(tx);
+      }
     } catch (e) {
       if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
       throw e;
