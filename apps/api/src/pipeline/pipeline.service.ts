@@ -249,8 +249,18 @@ export class PipelineService {
         const aud = await this.commitAudit(tx, envelope, route, {
           outcome: ev.outcome,
           resultCode: ev.resultCode,
-          // A non-success outcome must not claim the allow decision authorized it.
-          policyDecisionId: ev.outcome === 'success' ? polId : null,
+          /**
+           * Gate-2.2 C10: EVERY result retains the exact policy decision that
+           * AUTHORIZED the operation — success, failure and indeterminate alike.
+           * Dropping the link on failure destroyed the audit trail precisely where
+           * it matters most: a reviewer could no longer tell which decision let a
+           * tamper verification run. This does not let a failure claim it was
+           * allowed to succeed: audit.commit_event independently enforces
+           * outcome/decision-class agreement (a success REQUIRES an allow, a denial
+           * REQUIRES a deny/indeterminate), so a failure carrying its authorizing
+           * allow decision is exactly the honest record.
+           */
+          policyDecisionId: polId,
           policyVersion: policyResult.bundleVersion,
           target: { type: route.objectType, id: route.objectId, version: null },
           metadata: { assurance: principal.assurance, decision: policyResult.decision, ...ev.metadata },

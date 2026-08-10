@@ -1101,8 +1101,28 @@ describe('G21-17 — audit.verify outcomes are evidenced accurately', () => {
     expect(meta['result_class']).toBe('partition_unknown');
     expect(meta['requested_partition']).toBe(unknown);
     expect(meta['checked']).toBe(0);
-    // A failed verification must not present the allow decision as authorization.
-    expect((ev!['event'] as { policy_decision_id: string | null }).policy_decision_id).toBeNull();
+    /**
+     * Gate-2.2 C10 SUPERSEDES the earlier Gate-2.1 rule here.
+     *
+     * Gate-2.1 dropped the decision link on a non-success outcome, so that a
+     * failure could not appear to have been authorized to succeed. C10 requires the
+     * opposite: EVERY result — success, tamper, unknown partition, malformed data —
+     * must RETAIN the exact policy decision that authorized the verification,
+     * because otherwise a reviewer cannot tell which decision permitted a failed
+     * verification to run at all.
+     *
+     * This is not a weakening: the outcome is still recorded as `failure` (asserted
+     * above), and audit.commit_event independently enforces outcome/decision-class
+     * agreement — a `success` REQUIRES an allow decision — so a failure carrying its
+     * authorizing allow decision is the honest record, not a forged success.
+     */
+    const decisionId = (ev!['event'] as { policy_decision_id: string | null }).policy_decision_id;
+    expect(decisionId).not.toBeNull();
+    expect(decisionId).toBe(r.body.receipt.policyDecisionId);   // the EXACT authorizing decision
+    const pol = await sysRead(async (tx) =>
+      tx.selectFrom('policy.policy_decisions').selectAll().where('id', '=', decisionId).execute());
+    expect(pol).toHaveLength(1);
+    expect(['allow', 'allow_with_obligations']).toContain((pol[0] as { decision: string }).decision);
   });
 
   it('a malformed verify request is denied with durable evidence and no verification', async () => {

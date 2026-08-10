@@ -170,6 +170,8 @@ export class AdminControllers {
         metadata: {
           requested_partition: partitionId,
           result_class: report.resultClass,
+          noncanonical_at_seq: report.noncanonicalAtSeq,
+          orphan_row_seqs: report.orphanRowSeqs,
           checked: report.checked,
           ok: report.ok,
           head_matches: report.headMatches,

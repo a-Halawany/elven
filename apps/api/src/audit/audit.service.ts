@@ -18,7 +18,7 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
-import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
+import { auditRowHash, jcsCanonicalize, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
 import { APP_DB, IDENTITY_DB, VERIFIER_DB } from '../shared/shared.module.js';
 import type { Db, Tx as KyselyTx } from '../shared/db.js';
 import type { AuditReads } from '../shared/capabilities.js';
@@ -41,8 +41,19 @@ export interface VerifyReport {
   calculatedHeadHash: string | null;
   expectedHeadSeq: number | null;
   calculatedHeadSeq: number | null;
+  /**
+   * Gate-2.2 C10: the first sequence whose STORED BYTES are not the canonical JCS
+   * of the event they encode. `event` is a GENERATED column (event_jcs::jsonb), so
+   * hashing the parsed value alone cannot see a byte-level rewrite that still
+   * parses to the same JSON — this check compares the stored bytes themselves.
+   */
+  noncanonicalAtSeq: number | null;
+  /** Gate-2.2 C10: rows present ABOVE the recorded chain head (injected rows). */
+  orphanRowSeqs: number[];
   /** Machine-readable outcome class, so evidence never has to be inferred. */
-  resultClass: 'verified' | 'partition_unknown' | 'chain_broken' | 'head_mismatch';
+  resultClass:
+    | 'verified' | 'partition_unknown' | 'chain_broken' | 'head_mismatch'
+    | 'noncanonical_bytes' | 'orphan_rows';
 }
 
 const SANITIZED_COLUMNS = [
@@ -142,6 +153,7 @@ export class AuditService {
         incidentId: null, verifiedHeadSeq: null, verifiedHeadHash: null,
         expectedHeadHash: null, calculatedHeadHash: null,
         expectedHeadSeq: null, calculatedHeadSeq: null,
+        noncanonicalAtSeq: null, orphanRowSeqs: [],
         resultClass: 'partition_unknown',
       };
     }
@@ -149,19 +161,43 @@ export class AuditService {
 
     const rows = (await tx
       .selectFrom('audit.audit_events')
-      .select(['audit_seq', 'event', 'previous_hash', 'row_hash'])
+      .select(['audit_seq', 'event', 'event_jcs', 'previous_hash', 'row_hash'])
       .where('partition_id', '=', partitionId)
       .where('audit_seq', '<=', headSeq)
       .orderBy('audit_seq')
-      .execute()) as Array<{ audit_seq: string; event: unknown; previous_hash: string; row_hash: string }>;
+      .execute()) as Array<{
+        audit_seq: string; event: unknown; event_jcs: string; previous_hash: string; row_hash: string;
+      }>;
+
+    // Gate-2.2 C10: ORPHAN ROWS. Anything above the recorded head is not part of
+    // the verified chain and must never be silently ignored — it is evidence of an
+    // injected row (or a head rolled backwards).
+    const orphanRowSeqs = (
+      (await tx
+        .selectFrom('audit.audit_events')
+        .select(['audit_seq'])
+        .where('partition_id', '=', partitionId)
+        .where('audit_seq', '>', headSeq)
+        .orderBy('audit_seq')
+        .execute()) as Array<{ audit_seq: string }>
+    ).map((r) => Number(r.audit_seq));
 
     let prev = GENESIS_HASH;
     let brokenAtSeq: number | null = null;
+    let noncanonicalAtSeq: number | null = null;
     let expectedSeq = 1;
     for (const r of rows) {
       const seq = Number(r.audit_seq);
       if (seq !== expectedSeq || r.previous_hash !== prev) {
         brokenAtSeq = seq;
+        break;
+      }
+      // The STORED BYTES must be exactly the canonical JCS of the event they
+      // encode. Without this, a rewrite that preserves the parsed value (key
+      // reordering, added whitespace, altered escaping) would leave the recomputed
+      // hash intact and pass verification.
+      if (r.event_jcs !== jcsCanonicalize(r.event)) {
+        noncanonicalAtSeq = seq;
         break;
       }
       const recomputed = auditRowHash({
@@ -178,25 +214,47 @@ export class AuditService {
       expectedSeq += 1;
     }
 
-    const headMatches = brokenAtSeq === null && expectedSeq === headSeq + 1 && head.head_hash === prev;
+    const headMatches =
+      brokenAtSeq === null && noncanonicalAtSeq === null && expectedSeq === headSeq + 1 && head.head_hash === prev;
 
-    if (brokenAtSeq !== null || !headMatches) {
+    if (brokenAtSeq !== null || noncanonicalAtSeq !== null || orphanRowSeqs.length > 0 || !headMatches) {
       const incidentId = newId();
       await sql`select audit.open_integrity_incident(
         ${incidentId}, ${partitionId}, ${brokenAtSeq ?? 0},
         ${rows.length > 0 ? Number(rows[rows.length - 1]!.audit_seq) : 0},
         ${JSON.stringify({
           broken_at_seq: brokenAtSeq,
+          noncanonical_at_seq: noncanonicalAtSeq,
+          orphan_row_seqs: orphanRowSeqs,
           head_matches: headMatches,
           note: 'partition frozen; range must not be re-sealed as trusted; recover through the governed procedure',
         })}::jsonb
       )`.execute(tx);
+      const resultClass =
+        brokenAtSeq !== null ? ('chain_broken' as const)
+        : noncanonicalAtSeq !== null ? ('noncanonical_bytes' as const)
+        : orphanRowSeqs.length > 0 ? ('orphan_rows' as const)
+        : ('head_mismatch' as const);
+      // Gate-2.2 C10: the integrity MUTATION (freeze + incident) carries its OWN
+      // inseparable governed evidence, written in THIS transaction on the verifier
+      // authority — so a frozen partition can never exist without the audit record
+      // that explains why, even though the request-level AUD is written by a
+      // different authority in a different transaction.
+      await sql`select audit.commit_integrity_event(
+        ${partitionId}, 'failure', 'EYE-AUD-001',
+        ${incidentId}::uuid,
+        ${JSON.stringify({
+          event: 'integrity.incident_opened', incident_id: incidentId, result_class: resultClass,
+          broken_at_seq: brokenAtSeq, noncanonical_at_seq: noncanonicalAtSeq,
+          orphan_row_seqs: orphanRowSeqs, expected_head_hash: head.head_hash, calculated_head_hash: prev,
+        })}::jsonb)`.execute(tx);
       return {
         partitionId, checked: rows.length, ok: false, brokenAtSeq, headMatches,
         incidentId, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
         expectedHeadHash: head.head_hash, calculatedHeadHash: prev,
         expectedHeadSeq: headSeq, calculatedHeadSeq: expectedSeq - 1,
-        resultClass: brokenAtSeq !== null ? 'chain_broken' : 'head_mismatch',
+        noncanonicalAtSeq, orphanRowSeqs,
+        resultClass,
       };
     }
     return {
@@ -204,6 +262,7 @@ export class AuditService {
       incidentId: null, verifiedHeadSeq: headSeq, verifiedHeadHash: head.head_hash,
       expectedHeadHash: head.head_hash, calculatedHeadHash: prev,
       expectedHeadSeq: headSeq, calculatedHeadSeq: expectedSeq - 1,
+      noncanonicalAtSeq: null, orphanRowSeqs: [],
       resultClass: 'verified',
     };
   }
