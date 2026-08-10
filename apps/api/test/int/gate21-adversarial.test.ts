@@ -652,14 +652,20 @@ describe('G21-12 — DOMAIN cannot read tenant-global partition state', () => {
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('G21-13 — application lookups cannot reach another tenant’s identity metadata', () => {
-  it('the unbounded lookups are withdrawn from the application role', async () => {
-    for (const call of [
-      `identity.auth_principal('${platformAdmin.principalId}'::uuid)`,
-      `identity.auth_bindings('${platformAdmin.principalId}'::uuid)`,
-      `identity.session_get_active('${platformAdmin.sessionId}'::uuid)`,
-    ]) {
-      await expect(sql`select * from ${sql.raw(call)}`.execute(app), call).rejects.toThrow(/permission denied/);
-    }
+  it('the unbounded lookups no longer EXIST (Gate-2.2 C13 strengthened this)', async () => {
+    /**
+     * Gate-2.1 withdrew these from the APPLICATION role. The Gate-2.2 catalog gate
+     * then discovered that the functions still existed and were still granted to
+     * eye_identity — an unbounded principal/binding/session lookup by arbitrary
+     * UUID. Nothing called them, so migration 0021 DROPPED them: this test now
+     * asserts absence rather than mere denial, which cannot be re-granted by
+     * mistake.
+     */
+    const remaining = await sql<{ n: string }>`
+      select count(*) n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'identity'
+         and p.proname in ('auth_principal', 'auth_bindings', 'session_get_active')`.execute(su);
+    expect(Number(remaining.rows[0]!.n)).toBe(0);
   });
 
   it('the caller-bound lookup requires proof of possession of THAT session', async () => {
