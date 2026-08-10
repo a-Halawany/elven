@@ -489,6 +489,14 @@ export class PipelineService {
       if (e instanceof CapabilityDeniedError) {
         throw await this.denyCapability(envelope, principal, route, e);
       }
+      // Gate-2.2 C9: a DENIAL whose evidence cannot be persisted must fail CLOSED
+      // through the SAME governed path as any other audit outage — a governed 503
+      // with a durable fsynced journal record and an availability incident, never
+      // a raw 500 and never a silent denial. The request performed no business
+      // effect: the deny branch runs before any effect port is reachable.
+      if (e instanceof AuditUnavailableError) {
+        throw this.failClosed(envelope, route, e);
+      }
       throw e;
     }
   }

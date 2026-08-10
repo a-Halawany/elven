@@ -1013,17 +1013,49 @@ describe('G21-16 — degraded readiness survives a process restart', () => {
     expect(after.status).toBe('degraded');
     expect(after.degradedSince).not.toBeNull();
 
-    // 4. Recovery is only possible through GOVERNED reconciliation.
-    for (const incident of incidents) {
-      const ok = await sysRead(async (tx) =>
-        sql<{ ok: boolean }>`select audit.reconcile_availability_incident(
-          ${incident['id'] as string}::uuid, 'acceptance-test', 'reconciled by the acceptance suite') as ok`
-          .execute(tx as never));
-      expect(ok.rows[0]!.ok).toBe(true);
-    }
+    // 4. UNGOVERNED clearing is impossible: the pre-Gate-2.2 port that allowed a
+    //    role grant alone to assert recovery no longer exists at all.
+    const ungoverned = await sysRead(async (tx) =>
+      sql<{ n: string }>`select count(*) n from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+         where ns.nspname = 'audit' and p.proname = 'reconcile_availability_incident'`.execute(tx as never));
+    expect(Number(ungoverned.rows[0]!.n)).toBe(0);
+
+    // 5. Recovery happens ONLY through the governed PRODUCTION caller, which mints
+    //    a recovery capability per incident, writes inseparable evidence, and
+    //    clears the local flag only on governed proof that the ledger agrees.
+    const recovery = execFileSync(
+      'node',
+      [join(ROOT, 'dist', 'audit', 'reconcile-degraded.js'), 'acceptance-operator', 'governed recovery under test'],
+      { env: ENV, encoding: 'utf8' },
+    );
+    expect(recovery).toContain('GOVERNED DEGRADED RECOVERY');
+    expect(recovery).toContain('remaining unreconciled:  0');
+
     const remaining = await sysRead(async (tx) =>
       tx.selectFrom('audit.availability_incidents').selectAll().where('reconciled_at', 'is', null).execute());
     expect(remaining).toHaveLength(0);
+
+    // Every reconciliation left its own inseparable integrity evidence.
+    const evidence = await sysRead(async (tx) =>
+      sql<{ n: string }>`select count(*) n from audit.audit_events
+         where event->'metadata'->>'event' = 'availability.reconciled'`.execute(tx as never));
+    expect(Number(evidence.rows[0]!.n)).toBeGreaterThanOrEqual(incidents.length);
+
+    // 6. RECOVERY SURVIVES ANOTHER RESTART: the journal records the governed
+    //    recovery, so a restarted process comes back HEALTHY — recovery is as
+    //    durable as the degradation was.
+    api?.kill();
+    await new Promise((res) => setTimeout(res, 500));
+    api = spawn('node', [join(ROOT, 'dist', 'main.js')], { env: ENV, stdio: 'pipe' });
+    for (let i = 0; i < 60; i += 1) {
+      try {
+        if ((await fetch(BASE + '/healthz')).ok) break;
+      } catch { /* not up yet */ }
+      await new Promise((res) => setTimeout(res, 250));
+    }
+    const healthy = (await (await fetch(BASE + '/readyz')).json()) as { status: string; audit: string };
+    expect(healthy.audit).toBe('ok');
+    expect(healthy.status).toBe('ok');
   });
 });
 

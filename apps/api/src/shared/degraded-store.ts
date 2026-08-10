@@ -97,12 +97,31 @@ class DegradedAuditStore {
     };
   }
 
-  markRecovered(detail: string): void {
+  /**
+   * Gate-2.2 C9: recovery is GOVERNED, never asserted locally.
+   *
+   * Clearing the degraded flag is what allows a degraded system to be presented as
+   * healthy again, so it may only happen as the LOCAL half of a reconciliation the
+   * DATABASE already accepted: the caller must pass the governed incident ids it
+   * reconciled and the ledger's remaining unreconciled count. An empty proof, or a
+   * ledger that still shows degradation, is refused — so no local action, and no
+   * ungoverned code path, can clear it.
+   */
+  markRecovered(proof: { reconciledIncidentIds: string[]; remainingUnreconciled: number; detail: string }): void {
+    if (proof.reconciledIncidentIds.length === 0) {
+      throw new Error('degraded recovery refused: no governed reconciliation was presented');
+    }
+    if (proof.remainingUnreconciled !== 0) {
+      throw new Error(
+        `degraded recovery refused: the ledger still shows ${proof.remainingUnreconciled} unreconciled incident(s)`,
+      );
+    }
     if (this.degradedSince === null) return;
     this.record({
       kind: 'degraded_recovered',
       correlationId: null, route: null, failureClass: null, scope: null,
-      detail, suppressedCarried: 0,
+      detail: `${proof.detail} [governed: ${proof.reconciledIncidentIds.join(',')}]`,
+      suppressedCarried: 0,
     });
   }
 

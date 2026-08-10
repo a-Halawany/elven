@@ -272,4 +272,47 @@ export class AuditService {
   degradedState(): { degraded: boolean; since: string | null; incidents: number; lastError: string | null } {
     return degradedAudit.state();
   }
+
+  /**
+   * GOVERNED DEGRADED RECOVERY (Gate-2.2 C9).
+   *
+   * The production path back to healthy. For every unreconciled availability
+   * incident it mints a RECOVERY capability bound to that exact incident and calls
+   * the governed port, which reconciles the row and writes its integrity evidence
+   * in the SAME transaction. Only when the ledger reports zero remaining
+   * unreconciled incidents is the local degraded flag cleared — and it is cleared
+   * by presenting that governed proof, so no local action can clear it alone.
+   */
+  async reconcileDegraded(reconciledBy: string, note: string): Promise<{
+    reconciled: string[]; remainingUnreconciled: number; healthy: boolean;
+  }> {
+    const open = (
+      await sql<{ id: string }>`select id from audit.unreconciled_incidents()`.execute(this.verifierDb)
+    ).rows;
+    const reconciled: string[] = [];
+    let remaining = open.length;
+    for (const incident of open) {
+      const r = await this.verifierDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_recovery(${incident.id}::uuid)`.execute(tx);
+        return (
+          await sql<{ reconciled: boolean; remaining_unreconciled: number }>`
+            select * from audit.reconcile_availability_incident_v2(
+              ${incident.id}::uuid, ${reconciledBy}, ${note})`.execute(tx)
+        ).rows[0];
+      });
+      if (r?.reconciled === true) {
+        reconciled.push(incident.id);
+        remaining = Number(r.remaining_unreconciled);
+      }
+    }
+    // The local flag clears ONLY on governed proof that the ledger agrees.
+    if (reconciled.length > 0 && remaining === 0) {
+      degradedAudit.markRecovered({
+        reconciledIncidentIds: reconciled,
+        remainingUnreconciled: remaining,
+        detail: `governed reconciliation by ${reconciledBy}`,
+      });
+    }
+    return { reconciled, remainingUnreconciled: remaining, healthy: remaining === 0 };
+  }
 }
