@@ -48,8 +48,25 @@ function required(name: string): string {
  */
 const DEGRADED_DIR = mkdtempSync(join(tmpdir(), 'eye-gate-degraded-'));
 
+/**
+ * Gate-2.2 (C9/C14) — DETERMINISTIC DATABASE ISOLATION.
+ *
+ * This suite bootstraps the platform administrator, which is a ONE-TIME,
+ * claim-guarded act that legitimately refuses to run twice. Sharing a database
+ * with the integration suite therefore made the gate ORDER-DEPENDENT: the
+ * integration suite creates platform_admin principals, so a later bootstrap here
+ * correctly refuses ("a platform administrator already exists") and every
+ * authenticated test then failed for a reason unrelated to the code under test.
+ *
+ * The acceptance suite now owns its OWN database, created fresh and dropped at
+ * teardown. The gate no longer depends on suite ordering, on which suite ran
+ * first, or on any manually prepared state.
+ */
+const ACCEPT_DB = `eye_accept_${process.pid}`;
+
 const ENV = {
   ...process.env,
+  EYE_DB_NAME: ACCEPT_DB,
   EYE_DEGRADED_DIR: DEGRADED_DIR,
   EYE_RUNTIME_PORT: String(PORT),
   EYE_DB_HOST: process.env['EYE_DB_HOST'] ?? 'localhost',
@@ -163,8 +180,40 @@ async function refreshWith(token: string) {
 }
 
 beforeAll(async () => {
+  // Deterministic isolation: create this run's OWN database first, so migrate and
+  // bootstrap always start from a genuinely pristine state.
+  const admin = new pg.Client({
+    host: ENV.EYE_DB_HOST, port: Number(process.env['EYE_DB_PORT'] ?? 5432),
+    database: 'postgres', user: process.env['EYE_DB_MIGRATE_USER'] ?? 'eye',
+    password: ENV.EYE_DB_MIGRATE_PASSWORD,
+  });
+  await admin.connect();
+  await admin.query(`drop database if exists ${ACCEPT_DB}`);
+  await admin.query(`create database ${ACCEPT_DB}`);
+  await admin.end();
+
   // Reproducible startup: migrate + bootstrap (honest exit codes) + spawn built API.
   execFileSync('node', [join(ROOT, 'scripts', 'migrate.mjs')], { env: ENV });
+
+  // PRECONDITION PROOF: the database this run bootstraps into is pristine — no
+  // platform administrator and no bootstrap claim. If this ever fails, the gate
+  // says so in one clear line instead of cascading confusing auth failures.
+  const pre = new pg.Client({
+    host: ENV.EYE_DB_HOST, port: Number(process.env['EYE_DB_PORT'] ?? 5432),
+    database: ACCEPT_DB, user: process.env['EYE_DB_MIGRATE_USER'] ?? 'eye',
+    password: ENV.EYE_DB_MIGRATE_PASSWORD,
+  });
+  await pre.connect();
+  const admins = await pre.query(
+    "select count(*)::int n from identity.role_bindings where role_code = 'platform_admin' and revoked_at is null");
+  const claims = await pre.query('select count(*)::int n from identity.bootstrap_claim');
+  await pre.end();
+  if (admins.rows[0].n !== 0 || claims.rows[0].n !== 0) {
+    throw new Error(
+      `acceptance precondition failed: database ${ACCEPT_DB} is not pristine ` +
+      `(platform_admin bindings=${admins.rows[0].n}, bootstrap claims=${claims.rows[0].n})`,
+    );
+  }
   try {
     execFileSync('node', [join(ROOT, 'dist', 'bootstrap', 'run-bootstrap.js')], {
       env: { ...ENV, EYE_BOOTSTRAP_ADMIN: 'platform-admin', EYE_BOOTSTRAP_PASSWORD: INITIAL_PW },
@@ -186,7 +235,8 @@ beforeAll(async () => {
   const mkPool = (user: string, password: string) =>
     new Kysely({
       dialect: new PostgresDialect({
-        pool: new pg.Pool({ host: ENV.EYE_DB_HOST, port: 5432, database: 'eye', user, password, max: 4 }),
+        // Gate-2.2: this run's OWN database, not the shared one.
+        pool: new pg.Pool({ host: ENV.EYE_DB_HOST, port: 5432, database: ACCEPT_DB, user, password, max: 4 }),
       }),
     });
   db = mkPool('eye_app', ENV.EYE_DB_APP_PASSWORD) as never;
@@ -209,6 +259,22 @@ afterAll(async () => {
   // eslint-disable-next-line no-console
   console.log(`[gate] degraded-journal teardown: ${records} record(s) in ${DEGRADED_DIR} (this run only)`);
   if (DEGRADED_DIR.includes('eye-gate-degraded-')) rmSync(DEGRADED_DIR, { recursive: true, force: true });
+  // Recorded teardown of this run's OWN database (never a shared or real one).
+  try {
+    const admin = new pg.Client({
+      host: ENV.EYE_DB_HOST, port: Number(process.env['EYE_DB_PORT'] ?? 5432),
+      database: 'postgres', user: process.env['EYE_DB_MIGRATE_USER'] ?? 'eye',
+      password: ENV.EYE_DB_MIGRATE_PASSWORD,
+    });
+    await admin.connect();
+    await admin.query(`drop database if exists ${ACCEPT_DB} with (force)`);
+    await admin.end();
+    // eslint-disable-next-line no-console
+    console.log(`[gate] acceptance database teardown: dropped ${ACCEPT_DB}`);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(`[gate] acceptance database ${ACCEPT_DB} left in place:`, (e as Error).message);
+  }
 });
 
 describe('Gate-2.2 C9/C14: execution-environment isolation of the degraded journal', () => {

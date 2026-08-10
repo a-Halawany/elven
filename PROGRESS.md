@@ -17,19 +17,27 @@ failure was a *leftover degraded journal* from earlier stale-DB runs, not a code
 regression — confirmed by a clean run at 42/42). So Gate-2.2 corrects architecture,
 not a broken build.
 
+**Status discipline:** C1–C7 are **CLOSED BY INTERNAL VERIFICATION** — that is
+implementation progress, *not* independent approval. C9 is **IN PROGRESS**: its
+execution-environment isolation is complete, but the substantive fail-closed and
+governed-recovery requirements remain open. Migrations **0001–0019 are IMMUTABLE**
+from this point; further database corrections use forward migrations **0020+**.
+
 **Resumption ledger (safe to resume across sessions):**
 
 | Area | Migration / files | State |
 |---|---|---|
-| C1 operation closure | `0013_operation_closure.sql`, `test/int/gate22-operation-closure.test.ts` | ✅ done & verified, committed `bf9f039` |
-| C2 evidence de-authorization | `0014_evidence_deauthorization.sql`, `test/int/gate22-evidence-deauthorization.test.ts` | ✅ done & verified (RLS visibility gated on read-capable mode; `issue_evidence` PLATFORM-elevation bug fixed with authority-parity binding check) |
-| C3 single-use bootstrap | `0016_bootstrap_claim_binding.sql`, `test/int/gate22-bootstrap.test.ts` | ✅ done & verified — claim bound to bootstrap capability + correlation nonce; only the winning capability completes it; consumed-claim reuse refused (9 tests + real AC-1 flow) |
-| C4 identity mutators | `0017_identity_mutator_governance.sql`, `test/int/gate22-identity-mutators.test.ts` | ✅ done & verified — subject/action-bound capability on external mutators; victim-takeover blocked (rotate cap for A cannot rotate B); 6 tests + real auth flow |
-| C5 verifier/seal/availability | `0018_verifier_seal_governance.sql`, `test/int/gate22-verifier-seal.test.ts` | ✅ done & verified — partition-bound verify/seal capabilities on all four seal/integrity ports (9 tests). `reconcile_availability_incident` governance folded into C9. |
-| C6 capability binding | `0019_capability_binding_enforcement.sql`, `test/int/gate22-capability-binding.test.ts` | ✅ done & verified — exact target binding at every business port, server-derived lifecycle actor (actor param removed), header↔operation correlation binding, causation bound + checked at closure (9 tests) |
-| C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ done & verified — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
-| C9 (part) execution-environment isolation | `test/acceptance/acceptance.test.ts` | ✅ done & verified — each isolated gate run gets its OWN controlled degraded-journal dir (`EYE_DEGRADED_DIR`, mkdtemp), initial state asserted empty, restart persistence still exercised explicitly (AC-11), recorded teardown that removes only this run's dir and never a real unreconciled journal. Acceptance now **44/44** with no manual cleanup. |
-| C8, C10, C11 | — | ⏳ |
+| C1 operation closure | `0013_operation_closure.sql`, `test/int/gate22-operation-closure.test.ts` | ✅ CLOSED (internal verification), committed `bf9f039` |
+| C2 evidence de-authorization | `0014_evidence_deauthorization.sql`, `test/int/gate22-evidence-deauthorization.test.ts` | ✅ CLOSED (internal verification) (RLS visibility gated on read-capable mode; `issue_evidence` PLATFORM-elevation bug fixed with authority-parity binding check) |
+| C3 single-use bootstrap | `0016_bootstrap_claim_binding.sql`, `test/int/gate22-bootstrap.test.ts` | ✅ CLOSED (internal verification) — claim bound to bootstrap capability + correlation nonce; only the winning capability completes it; consumed-claim reuse refused (9 tests + real AC-1 flow) |
+| C4 identity mutators | `0017_identity_mutator_governance.sql`, `test/int/gate22-identity-mutators.test.ts` | ✅ CLOSED (internal verification) — subject/action-bound capability on external mutators; victim-takeover blocked (rotate cap for A cannot rotate B); 6 tests + real auth flow |
+| C5 verifier/seal/availability | `0018_verifier_seal_governance.sql`, `test/int/gate22-verifier-seal.test.ts` | ✅ CLOSED (internal verification) — partition-bound verify/seal capabilities on all four seal/integrity ports (9 tests). `reconcile_availability_incident` governance folded into C9. |
+| C6 capability binding | `0019_capability_binding_enforcement.sql`, `test/int/gate22-capability-binding.test.ts` | ✅ CLOSED (internal verification) — exact target binding at every business port, server-derived lifecycle actor (actor param removed), header↔operation correlation binding, causation bound + checked at closure (9 tests) |
+| C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ CLOSED (internal verification) — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
+| C9 environment isolation (part of C9) | `test/acceptance/acceptance.test.ts` | 🟡 **C9 IN PROGRESS** — isolation done: each isolated gate run gets its OWN controlled degraded-journal dir (`EYE_DEGRADED_DIR`, mkdtemp), initial state asserted empty, restart persistence still exercised explicitly (AC-11), recorded teardown that removes only this run's dir and never a real unreconciled journal. Acceptance now **44/44** with no manual cleanup. **Substantive C9 (governed 503 on PDP-denial-during-outage, zero effects, fsynced journal, degraded /readyz, production reconciliation caller, restart-still-degraded, recovery-survives-restart, ungoverned-clearing-fails) REMAINS OPEN.** |
+| C8 action-specific capabilities | `shared/capabilities.ts` + all services/controllers | ✅ CLOSED (internal verification) — per-action capabilities; relation is not a parameter (compile-time restriction); outbox pipeline-private; no raw tx/SQL escape |
+| Deterministic suite isolation | `test/acceptance/acceptance.test.ts` | ✅ CLOSED — acceptance owns a per-run database (`eye_accept_<pid>`, created fresh, dropped at teardown) + pristine-state precondition proof + per-run journal dir. **Proven order-independent both ways** (integration→acceptance and acceptance→integration, no reset) with no leftover databases. Removes the manually-consumed-bootstrap and stale-journal classes of failure. |
+| C10, C11 | — | ⏳ |
 | C12 correlation traceability | `principals.service.ts` | 🟡 partly — envelope correlation used in downstream validation (3 sites); auth/workload sweep + equality tests remain |
 | C13 catalog authority gate | `scripts/authority-inventory.mjs` | ⏳ |
 | C14 adversarial matrix | — | ⏳ |

@@ -25,7 +25,7 @@ import { envelopeScopeMatches, resolveScope, type ScopeContext } from '../shared
 import { PdpService, type Obligation, type PolicyInput, type PolicyResult } from '../policy/pdp.service.js';
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
-import { BoundedCapability } from '../shared/capabilities.js';
+import { OutboxCapability, type CapabilityFactory } from '../shared/capabilities.js';
 
 export interface RouteInfo {
   scope: Scope;
@@ -123,11 +123,13 @@ export class PipelineService {
   }
 
   /** Allowed write path — business effect + POL + AUD + outbox in ONE transaction. */
-  async write<T>(
+  async write<T, C>(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
-    handler: (cap: BoundedCapability, ctx: ScopeContext) => Promise<WriteEffect<T>>,
+    /** Gate-2.2 C8: the route declares WHICH capability its handler receives. */
+    capability: CapabilityFactory<C>,
+    handler: (cap: C, ctx: ScopeContext) => Promise<WriteEffect<T>>,
   ): Promise<PipelineOutcome<T>> {
     const { ctx, policyInput, policyResult } = await this.resolveAndEvaluate(envelope, principal, route);
 
@@ -140,8 +142,7 @@ export class PipelineService {
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
         await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
-        const cap = BoundedCapability.forPipeline(tx, route.action);
-        const effect = await handler(cap, ctx);
+        const effect = await handler(capability(tx, route.action), ctx);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
           outcome: 'success',
@@ -152,7 +153,9 @@ export class PipelineService {
           metadata: { assurance: principal.assurance },
         });
         if (effect.outboxEvent != null) {
-          await cap.enqueueOutbox(
+          // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
+          // DESCRIBED the event; no business capability can reach this port.
+          await OutboxCapability.forPipeline(tx, route.action).enqueue(
             newId(), effect.outboxEvent.eventType, effect.outboxEvent.payload,
             envelope.correlation_id, envelope.message_id,
           );
@@ -168,11 +171,12 @@ export class PipelineService {
   }
 
   /** Allowed consequential read — POL+AUD durable before data leaves; no outbox. */
-  async consequentialRead<T>(
+  async consequentialRead<T, C>(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
-    handler: (cap: BoundedCapability, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
+    capability: CapabilityFactory<C>,
+    handler: (cap: C, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
   ): Promise<PipelineOutcome<T>> {
     const { ctx, policyInput, policyResult } = await this.resolveAndEvaluate(envelope, principal, route);
 
@@ -185,7 +189,6 @@ export class PipelineService {
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
         await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
-        const cap = BoundedCapability.forPipeline(tx, route.action);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
           outcome: 'success',
@@ -195,7 +198,7 @@ export class PipelineService {
           target: { type: route.objectType, id: route.objectId, version: null },
           metadata: { assurance: principal.assurance },
         });
-        const result = await handler(cap, ctx, policyResult.obligations);
+        const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
         return { result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
       });
     } catch (e) {
@@ -217,11 +220,12 @@ export class PipelineService {
    * from what it actually found. Everything is still ONE transaction, so nothing
    * has left the boundary before its evidence is durable.
    */
-  async consequentialReadEvidenced<T>(
+  async consequentialReadEvidenced<T, C>(
     envelope: Envelope,
     principal: AuthenticatedPrincipal,
     route: RouteInfo,
-    handler: (cap: BoundedCapability, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
+    capability: CapabilityFactory<C>,
+    handler: (cap: C, ctx: ScopeContext, obligations: Obligation[]) => Promise<T>,
     evidenceOf: (result: T) => {
       outcome: 'success' | 'failure' | 'indeterminate';
       resultCode: string;
@@ -239,8 +243,7 @@ export class PipelineService {
     try {
       return await this.writer(route).transaction().execute(async (tx) => {
         await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
-        const cap = BoundedCapability.forPipeline(tx, route.action);
-        const result = await handler(cap, ctx, policyResult.obligations);
+        const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
         const ev = evidenceOf(result);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {

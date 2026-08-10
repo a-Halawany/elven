@@ -8,6 +8,7 @@ import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/commo
 import { errorBody } from '@eye/contracts';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import { newId } from '../shared/ids.js';
+import { TenancyCapability } from '../shared/capabilities.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { TenancyService } from './tenancy.service.js';
 
@@ -47,7 +48,7 @@ export class TenancyController {
         envelope, principal, route, 'EYE-REQ-001', 'tenant name required', 400,
       );
     }
-    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
+    const out = await this.pipeline.write(envelope, principal, route, TenancyCapability.write, async (tx) => {
       const tenant = await this.tenancy.createTenant(
         tx, tenantIdToCreate, name as string, body.payload?.residency ?? 'local-dev',
       );
@@ -62,7 +63,7 @@ export class TenancyController {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'PLATFORM', tenantId: null, domainId: null,
       action: 'tenancy.tenant.list', objectType: 'TEN', objectId: null,
-    }, async (tx) => this.tenancy.listTenants(tx));
+    }, TenancyCapability.read, async (tx) => this.tenancy.listTenants(tx));
     return { tenants: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -85,7 +86,7 @@ export class TenancyController {
         envelope, principal, route, 'EYE-REQ-001', 'domain name required', 400,
       );
     }
-    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
+    const out = await this.pipeline.write(envelope, principal, route, TenancyCapability.write, async (tx) => {
       const domain = await this.tenancy.createDomain(
         tx, domainIdToCreate, tenantId, name as string,
       );
@@ -100,7 +101,7 @@ export class TenancyController {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'TENANT', tenantId, domainId: null,
       action: 'tenancy.domain.list', objectType: 'CID', objectId: null,
-    }, async (tx) => this.tenancy.listDomains(tx, tenantId));
+    }, TenancyCapability.read, async (tx) => this.tenancy.listDomains(tx, tenantId));
     return { domains: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 }

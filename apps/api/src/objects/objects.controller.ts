@@ -6,6 +6,7 @@ import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/commo
 import { errorBody } from '@eye/contracts';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import { newId } from '../shared/ids.js';
+import { ObjectsCapability } from '../shared/capabilities.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { ObjectsService, type CreateObjectInput } from './objects.service.js';
 
@@ -47,7 +48,7 @@ export class ObjectsController {
         envelope, principal, route, 'EYE-REQ-001', 'payload is required', 400,
       );
     }
-    const out = await this.pipeline.write(envelope, principal, route, async (tx, c) => {
+    const out = await this.pipeline.write(envelope, principal, route, ObjectsCapability.write, async (tx, c) => {
       const row = await this.objects.createObject(
         tx, c, `principal:${principal.principalId}`, envelope.correlation_id,
         input as CreateObjectInput, objectIdToCreate,
@@ -86,7 +87,7 @@ export class ObjectsController {
         envelope, principal, route, 'EYE-REQ-001', 'expectedVersion + correction required', 400,
       );
     }
-    const out = await this.pipeline.write(envelope, principal, route, async (tx, c) => {
+    const out = await this.pipeline.write(envelope, principal, route, ObjectsCapability.write, async (tx, c) => {
       const row = await this.objects.correctObject(
         tx, c, `principal:${principal.principalId}`, envelope.correlation_id, objectId,
         expectedVersion as number, correction as CreateObjectInput,
@@ -120,7 +121,7 @@ export class ObjectsController {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'DOMAIN', tenantId, domainId,
       action: 'objects.read', objectType: body.payload?.objectType ?? null, objectId: null,
-    }, async (tx) => this.objects.listObjects(tx, body.payload?.objectType ?? null, body.payload?.limit ?? 50));
+    }, ObjectsCapability.read, async (tx) => this.objects.listObjects(tx, body.payload?.objectType ?? null, body.payload?.limit ?? 50));
     return { objects: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -138,7 +139,7 @@ export class ObjectsController {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'DOMAIN', tenantId, domainId,
       action: 'objects.read', objectType: null, objectId,
-    }, async (tx) => {
+    }, ObjectsCapability.read, async (tx) => {
       if (wantHistory) return { history: await this.objects.versionHistory(tx, objectId) };
       if (knownAt !== undefined) {
         return { object: await this.objects.getKnownAt(tx, objectId, knownAt, envelope.correlation_id), as_of: knownAt };

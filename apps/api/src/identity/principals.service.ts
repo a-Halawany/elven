@@ -14,7 +14,7 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { errorBody } from '@eye/contracts';
-import type { BoundedCapability } from '../shared/capabilities.js';
+import type { PrincipalReads, PrincipalWrites } from '../shared/capabilities.js';
 import type { Scope } from '@eye/contracts';
 import { MIN_PASSWORD_LENGTH } from './identity.service.js';
 
@@ -40,7 +40,7 @@ export interface CreatePrincipalInput {
 
 @Injectable()
 export class PrincipalsService {
-  async createPrincipal(cap: BoundedCapability, input: CreatePrincipalInput): Promise<{ principalId: string }> {
+  async createPrincipal(cap: PrincipalWrites, input: CreatePrincipalInput): Promise<{ principalId: string }> {
     if (input.password !== undefined) {
       if (input.kind !== 'human') {
         throw new HttpException(
@@ -79,9 +79,9 @@ export class PrincipalsService {
     return { principalId };
   }
 
-  async listPrincipals(cap: BoundedCapability): Promise<unknown[]> {
+  async listPrincipals(cap: PrincipalReads): Promise<unknown[]> {
     return cap
-      .read('identity.principals')
+      .readPrincipals()
       .select(['id', 'kind', 'scope', 'tenant_id', 'domain_id', 'display_name', 'login_name', 'status', 'created_at'])
       .orderBy('created_at' as never)
       .execute();

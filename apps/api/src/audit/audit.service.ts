@@ -21,7 +21,7 @@ import { sql } from 'kysely';
 import { auditRowHash, GENESIS_HASH, type AuditEventBody } from '@eye/contracts';
 import { APP_DB, IDENTITY_DB, VERIFIER_DB } from '../shared/shared.module.js';
 import type { Db, Tx as KyselyTx } from '../shared/db.js';
-import type { BoundedCapability } from '../shared/capabilities.js';
+import type { AuditReads } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
 
@@ -60,9 +60,9 @@ export class AuditService {
   ) {}
 
   /** Obligation-aware query through the bounded capability. */
-  async query(cap: BoundedCapability, opts: { limit: number; mask: boolean; correlationId?: string }): Promise<unknown[]> {
+  async query(cap: AuditReads, opts: { limit: number; mask: boolean; correlationId?: string }): Promise<unknown[]> {
     let q = cap
-      .read('audit.audit_events')
+      .readAuditEvents()
       .orderBy('partition_id' as never)
       .orderBy('audit_seq' as never, 'desc')
       .limit(Math.min(opts.limit, 500));

@@ -23,7 +23,7 @@ import {
   type CanonicalHeader,
   type TruthState,
 } from '@eye/contracts';
-import type { BoundedCapability } from '../shared/capabilities.js';
+import type { ObjectReads, ObjectWrites } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
 import type { ScopeContext } from '../shared/scope.js';
 
@@ -71,7 +71,7 @@ function bad(code: 'EYE_REQ_001' | 'EYE_PRV_001' | 'EYE_TMP_001' | 'EYE_STA_001'
 export class ObjectsService {
   /** Validate + admit version 1 of a canonical object (step 5 + 6 of the commit path). */
   async createObject(
-    cap: BoundedCapability,
+    cap: ObjectWrites,
     ctx: ScopeContext,
     actor: string,
     correlationId: string,
@@ -89,7 +89,7 @@ export class ObjectsService {
 
   /** Non-destructive correction: new version linked via correction_of (ADR-0005, DADR-007). */
   async correctObject(
-    cap: BoundedCapability,
+    cap: ObjectWrites,
     ctx: ScopeContext,
     actor: string,
     correlationId: string,
@@ -98,7 +98,7 @@ export class ObjectsService {
     input: CreateObjectInput,
   ): Promise<ObjectRow> {
     const latest = (await cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .select(['object_id', 'object_version', 'object_type'])
       .where('object_id' as never, '=', objectId as never)
       .orderBy('object_version' as never, 'desc')
@@ -121,9 +121,9 @@ export class ObjectsService {
   }
 
   /** Current view (latest version per object). */
-  async getCurrent(cap: BoundedCapability, objectId: string, correlationId: string): Promise<ObjectRow> {
+  async getCurrent(cap: ObjectReads, objectId: string, correlationId: string): Promise<ObjectRow> {
     const row = (await cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', objectId as never)
       .orderBy('object_version' as never, 'desc')
@@ -138,11 +138,11 @@ export class ObjectsService {
    * without hindsight contamination (C-011): the latest version whose
    * recorded_at <= T; later corrections are invisible.
    */
-  async getKnownAt(cap: BoundedCapability, objectId: string, knownAt: string, correlationId: string): Promise<ObjectRow> {
+  async getKnownAt(cap: ObjectReads, objectId: string, knownAt: string, correlationId: string): Promise<ObjectRow> {
     const t = new Date(knownAt);
     if (Number.isNaN(t.getTime())) throw bad('EYE_TMP_001', correlationId, 'invalid known-at instant', 400);
     const row = (await cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', objectId as never)
       .where('recorded_at', '<=', t)
@@ -155,9 +155,9 @@ export class ObjectsService {
     return row;
   }
 
-  async listObjects(cap: BoundedCapability, objectType: string | null, limit: number): Promise<ObjectRow[]> {
+  async listObjects(cap: ObjectReads, objectType: string | null, limit: number): Promise<ObjectRow[]> {
     let q = cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .selectAll()
       .orderBy('recorded_at' as never, 'desc')
       .limit(Math.min(limit, 200));
@@ -165,9 +165,9 @@ export class ObjectsService {
     return (await q.execute()) as ObjectRow[];
   }
 
-  async versionHistory(cap: BoundedCapability, objectId: string): Promise<ObjectRow[]> {
+  async versionHistory(cap: ObjectReads, objectId: string): Promise<ObjectRow[]> {
     return (await cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', objectId as never)
       .orderBy('object_version' as never)
@@ -177,7 +177,7 @@ export class ObjectsService {
   // ===== internals =====
 
   private async insertVersion(
-    cap: BoundedCapability,
+    cap: ObjectWrites,
     ctx: ScopeContext,
     actor: string,
     correlationId: string,
@@ -216,7 +216,7 @@ export class ObjectsService {
     // Payload schema from the registry.
     const schemaVersion = input.schemaVersion ?? 'v1';
     const reg = (await cap
-      .read('objects.schema_registry')
+      .readSchemaRegistry()
       .select(['json_schema'])
       .where('object_type' as never, '=', input.objectType as never)
       .where('schema_version' as never, '=', schemaVersion as never)
@@ -295,7 +295,7 @@ export class ObjectsService {
     await cap.admitObject(header, input.payload, digest);
 
     const stored = (await cap
-      .read('objects.canonical_objects')
+      .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', v.objectId as never)
       .where('object_version' as never, '=', v.version as never)

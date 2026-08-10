@@ -9,6 +9,7 @@ import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/commo
 import { errorBody, type Scope } from '@eye/contracts';
 import { PipelineService } from './pipeline.service.js';
 import { newId } from '../shared/ids.js';
+import { AuditCapability, PrincipalsCapability } from '../shared/capabilities.js';
 import type { EyeRequest } from './http.js';
 import { PrincipalsService } from '../identity/principals.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -63,7 +64,7 @@ export class AdminControllers {
       );
     }
     const scope: Scope = p.domainId !== undefined ? 'DOMAIN' : 'TENANT';
-    const out = await this.pipeline.write(envelope, principal, route, async (tx) => {
+    const out = await this.pipeline.write(envelope, principal, route, PrincipalsCapability.write, async (tx) => {
       const created = await this.principals.createPrincipal(tx, {
         principalId: principalIdToCreate,
         correlationId: envelope.correlation_id,
@@ -87,7 +88,7 @@ export class AdminControllers {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'TENANT', tenantId, domainId: null,
       action: 'identity.principal.list', objectType: 'PRN', objectId: null,
-    }, async (tx) => this.principals.listPrincipals(tx));
+    }, PrincipalsCapability.read, async (tx) => this.principals.listPrincipals(tx));
     return { principals: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -102,7 +103,7 @@ export class AdminControllers {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'TENANT', tenantId, domainId: null,
       action: 'audit.read', objectType: 'AUD', objectId: null,
-    }, async (tx, _c, obligations) => {
+    }, AuditCapability.read, async (tx, _c, obligations) => {
       const mask = obligations.some((o) => o.type === 'mask_secret_metadata');
       const corr = body.payload?.correlationId;
       return this.audit.query(tx, {
@@ -120,7 +121,7 @@ export class AdminControllers {
     const out = await this.pipeline.consequentialRead(envelope, principal, {
       scope: 'PLATFORM', tenantId: null, domainId: null,
       action: 'audit.read', objectType: 'AUD', objectId: null,
-    }, async (tx, _c, obligations) => {
+    }, AuditCapability.read, async (tx, _c, obligations) => {
       const mask = obligations.some((o) => o.type === 'mask_secret_metadata');
       const corr = body.payload?.correlationId;
       return this.audit.query(tx, {
@@ -158,6 +159,10 @@ export class AdminControllers {
     // handler returned.
     const out = await this.pipeline.consequentialReadEvidenced(
       envelope, principal, route,
+      // audit.verify needs no read capability of its own: verification runs on the
+      // dedicated VERIFIER authority inside the audit service, under a
+      // partition-bound verify capability (C5).
+      AuditCapability.read,
       async () => this.audit.verifyPartition(partitionId as string),
       (report) => ({
         outcome: report.ok ? ('success' as const) : ('failure' as const),
