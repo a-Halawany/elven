@@ -1183,3 +1183,52 @@ describe('G21-17 — audit.verify outcomes are evidenced accurately', () => {
     expect(head[0]!['frozen']).toBe(true);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Gate-2.2 C12 — correlation equality across every authenticated failure path', () => {
+  /**
+   * The correlation a caller RECEIVES must be the one from its OWN envelope, and it
+   * must locate that failure's evidence. A downstream service minting a fresh id, or
+   * an error carrying a placeholder like 'unknown', both make the caller's evidence
+   * unfindable exactly when it is needed.
+   */
+  const failures: Array<[string, () => Promise<{ status: number; body: Record<string, any>; correlationId: string }>]> = [
+    ['invalid login (unknown user)', () => loginAs('no-such-principal', 'whatever-password-x')],
+    ['invalid login (wrong password)', () => loginAs('platform-admin', 'definitely-the-wrong-password')],
+    ['refresh with a garbage token', () => refreshWith('not-a-real-refresh-token')],
+    ['rotation with a too-short new password', () => post('/v1/auth/rotate', {
+      scope: 'PLATFORM', action: 'identity.credential.rotate', object_type: 'SES',
+      purpose_id: 'authentication',
+    }, { currentPassword: ROTATED_PW, newPassword: 'short' })],
+    ['principal payload validation (workload with a password)', () => post(
+      `/v1/tenants/${tenantId}/principals`,
+      { scope: 'TENANT', tenant_id: tenantId, action: 'identity.principal.create', object_type: 'PRN' },
+      { kind: 'workload', displayName: 'c12-workload', loginName: 'c12-wl', password: 'a-long-enough-password' },
+    )],
+    ['tenant name validation', () => post('/v1/platform/tenants', {
+      scope: 'PLATFORM', action: 'tenancy.tenant.create', object_type: 'TEN',
+    }, { name: 'x' })],
+    ['malformed verify request', () => post('/v1/platform/audit/verify', {
+      scope: 'PLATFORM', action: 'audit.verify', object_type: 'AUD', side_effect_class: 'none',
+    }, {})],
+  ];
+
+  it.each(failures)('%s: the returned correlation IS the envelope correlation', async (_label, call) => {
+    const r = await call();
+    expect(r.status, `unexpected body: ${JSON.stringify(r.body)}`).toBeGreaterThanOrEqual(400);
+    // The caller-visible correlation equals the one it sent…
+    expect(r.body.correlationId).toBe(r.correlationId);
+    // …and it is never a placeholder or a freshly minted id.
+    expect(r.body.correlationId).not.toBe('unknown');
+    expect(r.body.correlationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it.each(failures)('%s: that correlation LOCATES the durable evidence', async (_label, call) => {
+    const r = await call();
+    const rows = await auditRowsFor(r.body.correlationId as string);
+    expect(rows.length, 'the returned correlation must find its own evidence').toBeGreaterThanOrEqual(1);
+    // The evidence records a refusal, never a success.
+    expect(rows.some((x) => x['outcome'] === 'denied' || x['outcome'] === 'failure')).toBe(true);
+    expect(rows.some((x) => x['outcome'] === 'success')).toBe(false);
+  });
+});

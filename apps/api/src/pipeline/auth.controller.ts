@@ -17,6 +17,7 @@
  * database always presupposes a live token for that exact session.
  */
 import { Body, Controller, HttpException, Inject, Post, Req } from '@nestjs/common';
+import { requireCorrelation } from '../shared/correlation.js';
 import { sql } from 'kysely';
 import { errorBody } from '@eye/contracts';
 import { IdentityService, type TokenPair } from '../identity/identity.service.js';
@@ -91,7 +92,7 @@ export class AuthController {
     @Req() req: EyeRequest,
     @Body() body: { payload?: LoginPayload },
   ): Promise<{ principalId: string; tokens: TokenPair; rotationRequired: boolean }> {
-    const correlationId = req.eyeCorrelationId ?? req.eyeEnvelope?.correlation_id ?? 'unknown';
+    const correlationId = requireCorrelation(req);
     const username = body.payload?.username;
     const password = body.payload?.password;
     if (typeof username !== 'string' || typeof password !== 'string') {
@@ -150,7 +151,7 @@ export class AuthController {
     @Req() req: EyeRequest,
     @Body() body: { payload?: { currentPassword?: string; newPassword?: string } },
   ): Promise<{ rotated: true }> {
-    const correlationId = req.eyeCorrelationId ?? 'unknown';
+    const correlationId = requireCorrelation(req);
     const principal = req.eyePrincipal;
     if (principal === undefined) throw new HttpException(errorBody('EYE_IDN_001', correlationId), 401);
     const current = body.payload?.currentPassword;
@@ -197,7 +198,7 @@ export class AuthController {
   @Public()
   @Post('/refresh')
   async refresh(@Req() req: EyeRequest, @Body() body: { payload?: { refreshToken?: string } }): Promise<TokenPair> {
-    const correlationId = req.eyeCorrelationId ?? 'unknown';
+    const correlationId = requireCorrelation(req);
     const token = body.payload?.refreshToken;
     if (typeof token !== 'string') {
       await recordSecurityFailure(this.audit, req, 'validation_failed', 'EYE-REQ-001', correlationId, [

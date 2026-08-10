@@ -3,6 +3,7 @@
  * outbox event emitted atomically on create/correct (published after commit).
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
+import { requireCorrelation } from '../shared/correlation.js';
 import { errorBody } from '@eye/contracts';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import { newId } from '../shared/ids.js';
@@ -14,7 +15,7 @@ function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
   const principal = req.eyePrincipal;
   if (envelope === undefined || principal === undefined) {
-    throw new HttpException(errorBody('EYE_REQ_001', req.eyeCorrelationId ?? 'unknown'), 400);
+    throw new HttpException(errorBody('EYE_REQ_001', requireCorrelation(req)), 400);
   }
   return { envelope, principal };
 }
