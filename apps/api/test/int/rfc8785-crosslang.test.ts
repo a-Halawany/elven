@@ -150,3 +150,66 @@ describe('UTF-16 code-unit ordering in the database', () => {
     expect(r.rows[0]!.k).toBe('0061d83dde00');
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C11 — the DATABASE rejects the same non-I-JSON inputs TypeScript rejects', () => {
+  /**
+   * Cross-implementation parity for the REJECTION half of RFC 8785 / I-JSON. The
+   * TypeScript canonicalizer refuses these in code (see
+   * packages/contracts/test/rfc8785-rejection.test.ts); PostgreSQL refuses them at
+   * the jsonb TYPE BOUNDARY, so such a value can never even reach canon.jcs — the
+   * two implementations agree on what is inexpressible, not merely on bytes.
+   */
+  it('the \ud800 ESCAPE FORM is rejected by the jsonb parser', async () => {
+    // Note the doubled backslash: the JSON TEXT contains the escape sequence
+    // \ud800, which PostgreSQL refuses to accept into jsonb.
+    await expect(
+      sql`select canon.jcs(${'{"k":"\\ud800"}'}::jsonb)`.execute(su),
+    ).rejects.toThrow(/invalid input syntax for type json|unsupported Unicode escape/i);
+  });
+
+  it('the \ud800 escape form is rejected in a KEY as well', async () => {
+    await expect(
+      sql`select canon.jcs(${'{"bad\\ud800":1}'}::jsonb)`.execute(su),
+    ).rejects.toThrow(/invalid input syntax for type json|unsupported Unicode escape/i);
+  });
+
+  it('a RAW lone surrogate cannot even reach the database as a lone surrogate', async () => {
+    /**
+     * Measured behaviour, recorded honestly: a raw unpaired surrogate does not
+     * survive UTF-8 encoding on the wire — it arrives as U+FFFD REPLACEMENT
+     * CHARACTER. So the database never sees a lone surrogate, but the value has
+     * SILENTLY CHANGED MEANING in transit, which is exactly why the TypeScript
+     * canonicalizer must refuse it BEFORE that substitution can happen
+     * (packages/contracts/test/rfc8785-rejection.test.ts).
+     */
+    const raw = `{"k":"${String.fromCharCode(0xd800)}"}`;
+    const out = (
+      await sql<{ out: string }>`select canon.jcs(${raw}::jsonb) as out`.execute(su)
+    ).rows[0]!.out;
+    expect(out).toContain('�');                    // substituted, not preserved
+    expect(out).not.toContain(String.fromCharCode(0xd800));
+    // And the TypeScript boundary refuses the same input outright.
+    expect(() => jcsCanonicalize({ k: String.fromCharCode(0xd800) })).toThrow(/unpaired UTF-16 surrogate/);
+  });
+
+  it('NaN and Infinity cannot enter jsonb', async () => {
+    for (const bad of ['{"n":NaN}', '{"n":Infinity}', '{"n":-Infinity}']) {
+      await expect(sql`select canon.jcs(${bad}::jsonb)`.execute(su), bad)
+        .rejects.toThrow(/invalid input syntax for type json/i);
+    }
+  });
+
+  it('a number outside the IEEE-754 double range is refused by canon.number_es', async () => {
+    await expect(sql`select canon.number_es(('1e400')::numeric)`.execute(su))
+      .rejects.toThrow(/out of range for type double precision|I-JSON/i);
+  });
+
+  it('a WELL-FORMED surrogate pair is accepted by both implementations, byte-identically', async () => {
+    const value = { k: '\u{1F600}' };
+    const fromDb = (
+      await sql<{ out: string }>`select canon.jcs(${JSON.stringify(value)}::jsonb) as out`.execute(su)
+    ).rows[0]!.out;
+    expect(fromDb).toBe(jcsCanonicalize(value));
+  });
+});
