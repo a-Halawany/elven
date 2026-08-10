@@ -28,7 +28,8 @@ not a broken build.
 | C5 verifier/seal/availability | `0018_verifier_seal_governance.sql`, `test/int/gate22-verifier-seal.test.ts` | ✅ done & verified — partition-bound verify/seal capabilities on all four seal/integrity ports (9 tests). `reconcile_availability_incident` governance folded into C9. |
 | C6 capability binding | 0015 | ⏳ exact target/correlation at every port; server-derived actor |
 | C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ done & verified — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
-| C8–C12 | — | ⏳ |
+| C9 (part) execution-environment isolation | `test/acceptance/acceptance.test.ts` | ✅ done & verified — each isolated gate run gets its OWN controlled degraded-journal dir (`EYE_DEGRADED_DIR`, mkdtemp), initial state asserted empty, restart persistence still exercised explicitly (AC-11), recorded teardown that removes only this run's dir and never a real unreconciled journal. Acceptance now **44/44** with no manual cleanup. |
+| C8, C10–C12 | — | ⏳ |
 | C13 catalog authority gate | `scripts/authority-inventory.mjs` | ⏳ |
 | C14 adversarial matrix | — | ⏳ |
 | C15–C17 supply chain / SBOM / CycloneDX | — | ⏳ |
@@ -39,7 +40,7 @@ not a broken build.
 **Environment notes for resumption:** virgin rebuild via
 `scratchpad/virgin.sh` (force-removes `eye-redis`/`eye-postgres`, `down -v`, `up`,
 `pnpm db:migrate`). Integration suite: `cd apps/api && node_modules/.bin/vitest run
---config vitest.int.config.ts`. Full integration currently **242/242**, acceptance **42/42** (a clean degraded-journal dir is required for AC-12 — see C9 isolation work). Migrations now **0001–0018**. **External independent
+--config vitest.int.config.ts`. Full integration currently **242/242**, acceptance **44/44** (per-run journal isolation closed; no manual cleanup). Migrations now **0001–0018**. **External independent
 review is pending against the final frozen source and evidence package** — Claude's
 own in-place testing is verification, not independent review, and Phase 0 remains
 unapproved until that external final review. The 52 MB `evidence/the-eye-source.bundle`

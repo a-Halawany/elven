@@ -10,8 +10,10 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import pg from 'pg';
 import { Kysely, PostgresDialect, sql } from 'kysely';
 import { contentDigest } from '@eye/contracts';
@@ -28,8 +30,27 @@ function required(name: string): string {
   return v;
 }
 
+/**
+ * Gate-2.2 (C9/C14) — EXECUTION-ENVIRONMENT ISOLATION.
+ *
+ * A virgin database is not a virgin execution environment: the degraded journal is
+ * durable filesystem state that legitimately survives restarts, so a journal left
+ * by an EARLIER run would make this run start degraded and /readyz report
+ * `degraded` for reasons that have nothing to do with this run.
+ *
+ * Every isolated gate run therefore gets its OWN controlled journal directory,
+ * whose initial state is asserted empty below. Restart persistence is still
+ * exercised explicitly (AC-11 kills and respawns the API against this SAME
+ * directory), so isolation does not weaken the durability property — it only
+ * stops unrelated history from contaminating a clean run. A real unreconciled
+ * production journal is never touched: this directory is created fresh under the
+ * OS temp root and is only removed if it belongs to this run.
+ */
+const DEGRADED_DIR = mkdtempSync(join(tmpdir(), 'eye-gate-degraded-'));
+
 const ENV = {
   ...process.env,
+  EYE_DEGRADED_DIR: DEGRADED_DIR,
   EYE_RUNTIME_PORT: String(PORT),
   EYE_DB_HOST: process.env['EYE_DB_HOST'] ?? 'localhost',
   EYE_DB_APP_PASSWORD: required('EYE_DB_APP_PASSWORD'),
@@ -178,6 +199,32 @@ afterAll(async () => {
   await db?.destroy();
   await sysDb?.destroy();
   await su?.destroy();
+  // Recorded teardown (Gate-2.2 C9/C14): report what this run's journal held, then
+  // remove ONLY this run's own controlled directory. A journal outside this
+  // directory — i.e. any real unreconciled operational journal — is never touched.
+  const journal = join(DEGRADED_DIR, 'audit-degraded.jsonl');
+  const records = existsSync(journal)
+    ? readFileSync(journal, 'utf8').split('\n').filter((l) => l.trim() !== '').length
+    : 0;
+  // eslint-disable-next-line no-console
+  console.log(`[gate] degraded-journal teardown: ${records} record(s) in ${DEGRADED_DIR} (this run only)`);
+  if (DEGRADED_DIR.includes('eye-gate-degraded-')) rmSync(DEGRADED_DIR, { recursive: true, force: true });
+});
+
+describe('Gate-2.2 C9/C14: execution-environment isolation of the degraded journal', () => {
+  it('this run has its OWN controlled journal directory, proven empty at start', () => {
+    // A virgin database is not a virgin execution environment. This asserts the
+    // INITIAL STATE of the durable state that would otherwise leak between runs.
+    expect(DEGRADED_DIR).toContain('eye-gate-degraded-');
+    mkdirSync(DEGRADED_DIR, { recursive: true });
+    const entries = readdirSync(DEGRADED_DIR);
+    expect(entries, `journal dir must start empty, found: ${entries.join(', ')}`).toHaveLength(0);
+    expect(existsSync(join(DEGRADED_DIR, 'audit-degraded.jsonl'))).toBe(false);
+  });
+
+  it('the API under test is actually using that directory (not a shared default)', () => {
+    expect(ENV.EYE_DEGRADED_DIR).toBe(DEGRADED_DIR);
+  });
 });
 
 describe('AC-12: fully local reproducible startup', () => {
