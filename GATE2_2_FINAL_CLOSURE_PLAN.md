@@ -228,7 +228,7 @@ not inside the evidence commit.
 | C11 RFC 8785 strictness | ✅ **CLOSED (internal verification)** — undefined-array-element coercion, sparse arrays, lone surrogates and non-plain objects all now REJECTED; 22 rejection cases; SQL rejection parity measured and recorded. |
 | C12 correlation traceability | ✅ **CLOSED (internal verification)** — placeholder correlations removed; envelope correlation returned on every authenticated failure and proven to locate the evidence (7 paths × 2 assertions). Superseded note: was 🟡 partly done — `principals.service` no longer mints a fresh correlation in downstream validation; it uses the request envelope's correlation (3 sites). Remaining: sweep the auth/workload-secret paths and add the response↔evidence correlation-equality tests. |
 | C13 catalog authority gate | ✅ **CLOSED (internal verification)** — catalog-derived inventory + failing gate; found and closed 3 surviving unbounded identity lookups and 2 unnecessary role logins. 63 classified ports, 0 PUBLIC EXECUTE, 0 RLS gaps. |
-| C14 adversarial matrix | ⏳ |
+| C14 adversarial matrix | ✅ **CLOSED (internal verification)** — catalog-driven coverage gate + generic no-capability and cross-role probes + machine-classified non-mutators + inertness proofs for the 10 no-capability entrypoints + allocator/eye_system posture. Non-vacuity demonstrated by negative control. 15 tests. |
 | C15 supply-chain gate | ⏳ |
 | C16 target SBOM closure | ⏳ |
 | C17 CycloneDX + obligations | ⏳ |
