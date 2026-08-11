@@ -17,6 +17,8 @@
     "db:migrate": "pnpm --filter @eye/api db:migrate",
     "db:bootstrap": "pnpm --filter @eye/api db:bootstrap",
     "license:check": "node scripts/license-inventory.mjs",
+    "gate:supply-chain": "node scripts/gate/supply-chain.mjs",
+    "gate:closures": "node scripts/gate/generate-closures.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

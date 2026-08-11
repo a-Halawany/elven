@@ -1,0 +1,64 @@
+{
+  "$comment": [
+    "C16 TARGET DESCRIPTOR — the complete definition of the closure targets.",
+    "",
+    "PROVENANCE. Every field below is derived from a declaration that exists in this",
+    "repository, never from the machine that happens to run the gate:",
+    "  os/arch/libc  <- .github/workflows/ci.yml `runs-on: ubuntu-latest`, which is",
+    "                   the declared build and release runtime for Phase 0.",
+    "  node          <- package.json `engines.node` (>=24.0.0 <25) together with",
+    "                   .github/workflows/ci.yml `actions/setup-node node-version: 24`.",
+    "  pnpm          <- package.json `packageManager` (pnpm@11.9.0), matching",
+    "                   .github/workflows/ci.yml `pnpm/action-setup version: 11.9.0`.",
+    "  importers     <- pnpm-workspace.yaml `packages:` globs, resolved to the exact",
+    "                   importer roots present in pnpm-lock.yaml.",
+    "",
+    "HONEST LIMITATION, recorded rather than papered over: Phase 0 ships no container",
+    "or deployment artifact for the application itself (there is no Dockerfile for",
+    "apps/api or apps/web; docker-compose only provides Postgres and Redis for local",
+    "development). The production target below is therefore the DECLARED release",
+    "runtime, not an observed deployed image. When a deployment artifact exists, this",
+    "descriptor must be re-derived from it and the closures regenerated."
+  ],
+  "descriptor_version": "1.0.0",
+  "targets": {
+    "production": {
+      "id": "linux-x64-glibc-prod",
+      "os": "linux",
+      "arch": "x64",
+      "libc": "glibc",
+      "node": { "range": ">=24.0.0 <25", "pinned": "24.11.1" },
+      "pnpm": { "pinned": "11.9.0" },
+      "description": "Deployable runtime closure: the dependencies a running service needs.",
+      "importer_roots": ["apps/api", "apps/web", "packages/contracts", "packages/tokens"],
+      "dependency_scopes": ["dependencies", "optionalDependencies"],
+      "include_workspace_links": true
+    },
+    "development": {
+      "id": "linux-x64-glibc-dev",
+      "os": "linux",
+      "arch": "x64",
+      "libc": "glibc",
+      "node": { "range": ">=24.0.0 <25", "pinned": "24.11.1" },
+      "pnpm": { "pinned": "11.9.0" },
+      "description": "Complete build/test/tooling closure across every workspace importer.",
+      "importer_roots": [".", "apps/api", "apps/web", "packages/contracts", "packages/tokens"],
+      "dependency_scopes": ["dependencies", "devDependencies", "optionalDependencies"],
+      "include_workspace_links": true
+    }
+  },
+  "platform_filter_rules": {
+    "fields": ["os", "cpu", "libc"],
+    "semantics": "A package is EXCLUDED only when its own recorded os/cpu/libc conditions are incompatible with the target. Negations (!win32) are honoured. MISSING METADATA MEANS INCLUDE — absence of a constraint is not evidence of incompatibility.",
+    "source": "pnpm-lock.yaml `packages` entries only"
+  },
+  "closure_truth": {
+    "source": "pnpm-lock.yaml (importers + packages + snapshots)",
+    "forbidden_sources": [
+      "node_modules on disk",
+      "pnpm licenses list",
+      "the generated SBOM itself",
+      "host OS/architecture/libc"
+    ]
+  }
+}

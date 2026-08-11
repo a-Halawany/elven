@@ -21,8 +21,18 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  resolveImageIndex, platformPinnedRef, scannerBinaries, trivyDatabase, classifyStepPolicies,
+} from './lib/scanner-provenance.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/**
+ * The platform the deployable target actually runs on (CI is ubuntu-latest; the C16
+ * target descriptor resolves linux/x64/glibc). Container scans are pinned to the
+ * matching index child so the scan is not silently host-dependent.
+ */
+const SCAN_PLATFORM = 'linux/amd64';
 
 /**
  * PINNED TOOLCHAIN. `probe` extracts the version; `expect` is the exact required
@@ -211,25 +221,85 @@ function main() {
     console.error('no digest-pinned images found in docker-compose.yml');
     process.exit(1);
   }
-  images.forEach((image, i) => {
+
+  // The compose pins are OCI image INDEXES. Resolve each to the exact child manifest
+  // for the deployment platform, and scan THAT digest — otherwise the scan silently
+  // follows the host architecture and the evidence cannot say what it examined.
+  const imageResolutions = images.map((image) => {
+    const resolution = resolveImageIndex(image, SCAN_PLATFORM);
+    const scanRef = platformPinnedRef(image, resolution);
+    console.log(`  ${image}`);
+    if (!resolution.resolved) {
+      console.log(`    UNRESOLVED: ${resolution.error}`);
+    } else if (resolution.kind === 'index') {
+      console.log(`    index with ${resolution.child_count} children (${resolution.runnable_platform_count} runnable platforms)`);
+      console.log(`    ${SCAN_PLATFORM} child: ${resolution.target_digest ?? 'ABSENT'}`);
+    } else {
+      console.log(`    single-platform manifest; the pinned digest is the image`);
+    }
+    return { pinned_ref: image, scan_ref: scanRef, resolution };
+  });
+
+  const unresolvable = imageResolutions.filter((r) => r.scan_ref === null);
+  if (unresolvable.length > 0) {
+    console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
+    for (const r of unresolvable) {
+      console.error(
+        `  ${r.pinned_ref}: cannot resolve a ${SCAN_PLATFORM} child manifest ` +
+        `(${r.resolution.error ?? 'platform absent from the index'}).`,
+      );
+    }
+    console.error(`  A scan that cannot name the manifest it examined is not evidence.`);
+    process.exit(1);
+  }
+
+  imageResolutions.forEach((r, i) => {
     R(`trivy-image-${i}`, [
-      'trivy', 'image', '--severity', 'HIGH,CRITICAL', '--exit-code', '1',
-      '--no-progress', '--format', 'table', image,
+      'trivy', 'image', '--platform', SCAN_PLATFORM, '--severity', 'HIGH,CRITICAL',
+      '--exit-code', '1', '--no-progress', '--format', 'table', r.scan_ref,
     ], {
-      description: `trivy scan of DIGEST-PINNED image ${image}`,
+      description:
+        `trivy scan of the ${SCAN_PLATFORM} child manifest ${r.resolution.target_digest} ` +
+        `resolved from digest-pinned index ${r.pinned_ref}`,
       tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
     });
   });
 
   const failed = steps.filter((s) => s.failed);
+  const generatedAt = new Date().toISOString();
+  const policyAudit = classifyStepPolicies(steps);
+  if (!policyAudit.every_informational_step_duplicates_a_blocking_step) {
+    console.error('\n=== SUPPLY-CHAIN GATE FAILED: unenforced scan coverage ===');
+    for (const p of policyAudit.unblocked_coverage_problems) console.error(`  ${p}`);
+    process.exit(1);
+  }
+
   const manifest = {
     artifact: 'C15 supply-chain gate — raw execution evidence',
     source_sha: sourceSha,
     tree_clean_at_run: treeClean,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     host: { platform: process.platform, arch: process.arch, node: process.version },
     pinned_toolchain: versions,
+    // C15 carry-forward: identity of the binaries that produced the findings, and the
+    // vulnerability database they were matched against.
+    scanner_binaries: scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']),
+    trivy_database: trivyDatabase(generatedAt),
+    // C15 carry-forward: what "eight steps, six blocking" actually means.
+    step_policy_audit: {
+      ...policyAudit,
+      note:
+        'The two non-blocking steps are alternate-format captures (JSON) of scans that ' +
+        'already ran under a blocking policy with the same pinned tool. They exist so the ' +
+        'complete machine-readable finding set is preserved below the blocking severity ' +
+        'threshold; they add no coverage that is not also enforced. No scan is permitted ' +
+        'to fail.',
+    },
+    // C15 carry-forward: the compose pins are indexes; these are the exact child
+    // manifests that were scanned, and every sibling platform is enumerated.
+    scan_platform: SCAN_PLATFORM,
     digest_pinned_images: images,
+    image_platform_resolution: imageResolutions,
     governed_exclusions: {
       scanner: 'gitleaks',
       config: '.gitleaks.toml (extends upstream defaults; disables no rule)',
@@ -252,7 +322,13 @@ function main() {
   const manifestPath = join(outDir, 'supply-chain-manifest.json');
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
-  console.log(`\nsteps: ${steps.length} (blocking: ${manifest.summary.blocking_steps})`);
+  console.log(`\nsteps: ${steps.length} (blocking: ${manifest.summary.blocking_steps}, ` +
+    `non-blocking: ${policyAudit.informational_steps} — each an alternate output format of a blocking scan)`);
+  const db = manifest.trivy_database;
+  if (db.available) {
+    console.log(`trivy vuln DB: built ${db.vulnerability_db.built_at} ` +
+      `(${db.vulnerability_db.age_hours_at_scan}h old at scan, past-due=${db.vulnerability_db.past_next_update_at_scan})`);
+  }
   console.log(`raw outputs + manifest: ${outDir}`);
 
   if (failed.length > 0) {

@@ -1,0 +1,36 @@
+{
+  "$comment": [
+    "C16 GOVERNED CLOSURE EXCLUSIONS — fail-closed by construction.",
+    "",
+    "This file is NOT how platform-incompatible packages are removed. Those are",
+    "dropped by the closure engine from each package's OWN recorded os/cpu/libc",
+    "conditions in pnpm-lock.yaml, and every drop is reported as evidence.",
+    "",
+    "This file exists only for an exclusion a human must justify. Every entry must",
+    "bind ALL of: target, scope, the FULL resolution key (name@version with peer",
+    "suffix), the parent edge it hangs from, a reason, evidence, an owner, and a",
+    "review/expiry condition. The reconciler REJECTS:",
+    "  * wildcards or name-only entries (no version / no resolution key)",
+    "  * an entry whose resolution key is absent from the lock-derived closure (stale)",
+    "  * an entry that never actually suppressed anything during the run (unused)",
+    "  * an entry whose recorded version no longer matches the lock (changed version)",
+    "  * an exclusion of a MANDATORY dependency that is target-compatible",
+    "",
+    "The list is intentionally EMPTY: nothing in the current closure requires a",
+    "human-justified exclusion. An empty list is the honest state, and the reconciler",
+    "still runs every rejection rule against it."
+  ],
+  "schema_version": "1.0.0",
+  "required_fields": [
+    "target", "scope", "resolution_key", "parent_edge",
+    "reason", "evidence", "owner", "review"
+  ],
+  "rejection_rules": [
+    "wildcard_or_name_only",
+    "stale_not_in_closure",
+    "unused_never_applied",
+    "version_changed",
+    "excludes_compatible_mandatory_dependency"
+  ],
+  "exclusions": []
+}

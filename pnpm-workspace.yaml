@@ -16,8 +16,22 @@ allowBuilds:
 overrides:
   sharp: '>=0.35.0'
   postcss: '>=8.5.23'
-  # Gate-2.2 C15: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via an
-  # infinite loop when a custom generator is called with size 0). Reached only
+  # Gate-2.2 C15/C16: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via
+  # an infinite loop when a custom generator is called with size 0). Reached only
   # through build/test tooling (vite/postcss, next/postcss), but a HIGH advisory in
-  # the resolved closure is a HIGH advisory. Forced to the patched line.
-  nanoid: '>=3.3.17'
+  # the resolved closure is a HIGH advisory.
+  #
+  # C16 correction — EXACT REVIEWED VERSION, not a range. A range override is not a
+  # reviewed decision: '>=3.3.17' floated the resolution to nanoid@6.0.1, which is
+  #   * two majors above what the only consumer declares (postcss@8.5.25 requires
+  #     "nanoid": "^3.3.16", so 6.0.1 satisfies NO declared consumer range and was
+  #     reachable only because the override forced it), and
+  #   * engine-narrowed ("^22 || ^24 || >=26") against our own engines ">=24 <25".
+  # Reviewed selection: 3.3.18 — the highest patch on the 3.x line, therefore
+  #   * strictly above the <3.3.17 vulnerable boundary (carries the advisory fix),
+  #   * inside postcss's declared ^3.3.16 range (no forced semver-major break),
+  #   * same public surface postcss actually consumes: main "index.cjs" plus the
+  #     "./non-secure" subpath export that postcss/lib/input.js requires, and
+  #   * engines "^10 || ^12 || ^13.7 || ^14 || >=15.0.1", which admits node 24.11.1.
+  # Verified integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==
+  nanoid: 3.3.18

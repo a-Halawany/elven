@@ -229,10 +229,197 @@ not inside the evidence commit.
 | C12 correlation traceability | ✅ **CLOSED (internal verification)** — placeholder correlations removed; envelope correlation returned on every authenticated failure and proven to locate the evidence (7 paths × 2 assertions). Superseded note: was 🟡 partly done — `principals.service` no longer mints a fresh correlation in downstream validation; it uses the request envelope's correlation (3 sites). Remaining: sweep the auth/workload-secret paths and add the response↔evidence correlation-equality tests. |
 | C13 catalog authority gate | ✅ **CLOSED (internal verification)** — catalog-derived inventory + failing gate; found and closed 3 surviving unbounded identity lookups and 2 unnecessary role logins. 63 classified ports, 0 PUBLIC EXECUTE, 0 RLS gaps. |
 | C14 adversarial matrix | ✅ **CLOSED (internal verification)** — catalog-driven coverage gate + generic no-capability and cross-role probes + machine-classified non-mutators + inertness proofs for the 10 no-capability entrypoints + allocator/eye_system posture. Non-vacuity demonstrated by negative control. 15 tests. |
-| C15 supply-chain gate | ⏳ |
-| C16 target SBOM closure | ⏳ |
+| C15 supply-chain gate | ✅ **CLOSED (internal verification)** — `scripts/gate/supply-chain.mjs`: pinned toolchain verified before any scan (pnpm 11.9.0, node v24.11.1, gitleaks 8.30.1, trivy 0.73.0) and fail-closed on mismatch; 8 steps / 6 blocking, with raw stdout+stderr written to disk and SHA-256 digested per step alongside exact argv, tool version, timestamps, exit code and source SHA. Real finding: **nanoid <3.3.17 / CVE-2026-67213 (HIGH)**, flagged independently by pnpm audit and trivy. Governed gitleaks config narrows scope but disables no rule; both path allowlists are proven untracked+ignored. **Carry-forward items closed under C16** (see C16 row): per-platform container digests, step-policy taxonomy, scanner-binary and vuln-DB provenance. |
+| C16 target SBOM closure | ✅ **CLOSED (internal verification)** — see the C16 closure record below. Two deterministic target-resolved closures (linux/x64/glibc, prod and dev) built from `pnpm-lock.yaml` + `scripts/gate/target-descriptor.json`, reconciled **bidirectionally against the SBOM re-read from disk**. Production 195 components / 290 edges; development 292 / 443. Zero missing, zero extra, zero identity mismatches, zero dangling refs, zero orphans, in both targets and both directions. 31 non-vacuity controls + 16 C15 carry-forward controls. |
 | C17 CycloneDX + obligations | ⏳ |
 | C18 forward/virgin proof | ⏳ |
 | C19 docs + NOLOGIN | ⏳ |
 | Freeze + evidence + ZIP | ⏳ |
 | Independent review | External independent review **pending** against the final frozen source + evidence package. Claude's own testing is verification, not independent review; Phase 0 stays unapproved until that external review. |
+
+---
+
+## 5. C16 closure record
+
+### 5.1 The defect being corrected
+
+Gate-2.1 reconciled the SBOM against a structure derived **from that same SBOM**, and
+the licence inventory against the SBOM in turn. That is self-reconciliation: it cannot
+fail, so it evidenced nothing. Separately, the "closure" was resolved on the host
+(arm64 macOS), so it was not the closure of any deployable target.
+
+### 5.2 Exact target definitions
+
+Declared in `scripts/gate/target-descriptor.json`; neither target reads the host.
+
+| | `linux-x64-glibc-prod` | `linux-x64-glibc-dev` |
+|---|---|---|
+| os / arch / libc | linux / x64 / glibc | linux / x64 / glibc |
+| node | `>=24.0.0 <25`, pinned **24.11.1** | same |
+| pnpm | pinned **11.9.0** | same |
+| importer roots | `apps/api`, `apps/web`, `packages/contracts`, `packages/tokens` | the same four **plus** `.` (the workspace root) |
+| dependency scopes | `dependencies`, `optionalDependencies` | `dependencies`, `devDependencies`, `optionalDependencies` |
+
+Provenance for those values is recorded in the descriptor: CI `runs-on: ubuntu-latest`,
+the `engines` and `packageManager` fields, and the `pnpm-workspace.yaml` package globs.
+The descriptor also records honestly that **no Dockerfile or deployment artifact exists**
+for `apps/api` or `apps/web`, so the deployment platform is derived from CI and
+`engines` rather than from a runtime image.
+
+Closure truth is the **lockfile plus the descriptor**. `closure_truth.forbidden_sources`
+names what may never be used instead: node_modules on disk, `pnpm licenses list`, the
+generated SBOM itself, and the host OS/architecture/libc.
+
+Platform filtering follows the rule **missing metadata means include** — an
+`optionalDependencies` entry is only dropped when its own `os`/`cpu`/`libc` metadata
+positively excludes the target, and each drop records the field, the required value and
+the parent that made it reachable.
+
+### 5.3 Measured closures
+
+| | production | development |
+|---|---|---|
+| components | **195** | **292** |
+| edges | **290** | **443** |
+| workspace components | 4 | 5 |
+| registry components | 191 | 287 |
+| peer-variant components | 10 | 16 |
+| leaf components | 115 | 162 |
+| platform-excluded | 36 | 60 |
+| unresolved lockfile references | 0 | 0 |
+
+Peer-resolved instances keep the peer context in their identity
+(e.g. `@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)`), so two different
+resolutions of the same `name@version` remain two components rather than collapsing.
+
+### 5.4 Reconciliation (independent provenance, both directions)
+
+`scripts/gate/generate-closures.mjs` serializes each SBOM, **re-reads it from disk**,
+and compares the lockfile-derived graph against the parsed-from-bytes graph. Nothing
+from the in-memory document is consulted on the SBOM side.
+
+Result, both targets: **0 missing nodes, 0 extra nodes, 0 missing edges, 0 extra edges,
+0 identity mismatches, 0 dangling references, 0 components without a dependency entry,
+0 orphan components.** Node and edge counts agree on both sides (195/195 and 290/290;
+292/292 and 443/443) rather than merely having an empty difference. Missing and extra
+are reported separately per target, never as one symmetric-difference count.
+
+### 5.5 Determinism
+
+Repeated generation into **separate directories at different times** is byte-identical:
+`sbom-linux-x64-glibc-prod.cdx.json` → `ab2b38a5fff646bc74794a12524127ad613bb7c39e3c5e01a97c80466be9fb9f`,
+`sbom-linux-x64-glibc-dev.cdx.json` → `22fc88e1b48a6103505d036ab4f7aafac431f8b7a8954e896fc718dc315b64a7`.
+`metadata.timestamp` is deliberately omitted, the `serialNumber` is a SHA-256 of the
+content shaped into a UUID (identical across runs), and every collection is sorted.
+
+`node_modules` independence was proven three ways, not asserted: a ghost package
+injected into `node_modules` left the output byte-identical and absent from the SBOM;
+`node_modules` **deleted entirely** still produced byte-identical output and a passing
+gate; and `npm_config_arch=arm64 npm_config_platform=darwin` changed nothing.
+
+### 5.6 Governed exclusions
+
+`scripts/gate/closure-exclusions.json` is fail-closed with 8 required fields and 5
+rejection rules, all enforced in `scripts/gate/lib/reconcile.mjs` and each driven by a
+control. The three rules that would otherwise collapse into one are separated by the
+target-independent lockfile universe: `version_changed` (name present at another
+version), `unused_never_applied` (version exists in the lockfile but not in this
+target's closure), `stale_not_in_closure` (gone from the lockfile entirely). A rule that
+can never fire is not a rule.
+
+**The file declares zero exclusions.** Nothing is being suppressed, and that is the
+honest state rather than a placeholder.
+
+### 5.7 Exact override, replacing a floating range
+
+The C15 finding (nanoid <3.3.17, CVE-2026-67213, HIGH) was remediated in C15 with the
+**range** `nanoid: '>=3.3.17'`. A range is not a reviewed decision, and this one floated
+the resolution to **nanoid@6.0.1** — two majors above the only consumer's declared
+range (`postcss@8.5.25` requires `"nanoid": "^3.3.16"`, so 6.0.1 satisfied no declared
+consumer and was reachable only because the override forced it), and engine-narrowed
+(`^22 || ^24 || >=26`) against our own `>=24 <25`.
+
+Corrected to the exact reviewed version **`nanoid: 3.3.18`**: the highest patch on the
+3.x line, therefore above the `<3.3.17` vulnerable boundary; inside postcss's declared
+`^3.3.16` range, so no forced semver-major break; carrying the `main: index.cjs` entry
+and the `./non-secure` subpath export that `postcss/lib/input.js` actually requires; and
+with engines that admit node 24.11.1. Integrity
+`sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==`.
+
+Residual proof: both closures resolve **only** `nanoid@3.3.18`, and `pnpm audit` reports
+`{info: 0, low: 0, moderate: 0, high: 0, critical: 0}` for `--prod` and for the full dev
+closure. The residual check is part of the gate, so a future floated override fails.
+
+### 5.8 C15 carry-forward, closed here
+
+1. **Per-platform container digests.** Both compose pins are OCI image **indexes** with
+   16 children (8 runnable platforms, 8 buildkit attestations). "We scanned the
+   digest-pinned image" was therefore ambiguous: a scanner with no `--platform` follows
+   the **host**, so this arm64 workstation was scanning the arm64 child while CI and the
+   C16 target run linux/amd64 — different layers, different findings. The gate now
+   resolves each index to its exact `linux/amd64` child and scans **that** digest:
+   * `postgres@sha256:9a8afca5…` → `sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b`
+   * `redis@sha256:978f0e01…` → `sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a`
+   Every sibling platform is enumerated in the manifest, the SHA-256 of the raw index
+   bytes is recorded (and equals the pinned digest, which independently confirms the
+   bytes parsed were the pinned content), and a reference whose target-platform child
+   cannot be resolved **fails the gate closed**.
+2. **"Eight steps, six blocking" clarified and machine-checked.** The two non-blocking
+   steps are `pnpm-audit-json` and `trivy-fs-json` — alternate output **formats** of
+   `pnpm-audit-human` and `trivy-fs`, which already ran under a blocking policy with the
+   same pinned tool. They exist to preserve the complete machine-readable finding set
+   below the blocking severity threshold. No scan is permitted to fail. This is now
+   enforced rather than claimed: every informational step must name the blocking step
+   whose coverage it duplicates, and the gate fails if any non-blocking step introduces
+   coverage nothing blocking also enforces. Five controls drive the failure paths.
+3. **Scanner and database provenance.** A `--version` string is a claim a binary makes
+   about itself, so the manifest now records the resolved path and SHA-256 of each
+   scanner executable (pnpm, node, gitleaks, trivy, docker), plus trivy's vulnerability
+   database identity and freshness: schema version, build time, next-update-due,
+   download time, **computed** age at scan and a computed past-due flag (measured at
+   this run: built `2026-08-11T07:08:26Z`, 6.7h old, not past due), and the
+   misconfiguration check-bundle digest. Exact argv, per-step stdout/stderr digests,
+   timestamps, exit codes and source SHA were already captured and remain.
+
+### 5.9 Controls
+
+`apps/api/test/gate/c16-closure-controls.test.ts` — **31 tests**. Twelve control
+classes, each corrupting a real generated SBOM in one specific way and requiring the
+reconciler to report that exact corruption: remove a real component; add a ghost
+component; alter a recorded version; alter a PURL; rewrite the lock-key provenance
+property; remove a real edge; add a fake edge between two real components; point an edge
+at a nonexistent component; drop a component's dependency entry; collapse peer-context
+instances; omit a target-compatible optional dependency; inject a platform-incompatible
+dependency; ten exclusion-governance rejections; importer-roots and scope
+load-bearingness; and environment independence. The version/PURL/lock-key controls
+specifically leave the `bom-ref` set untouched, so a set-only comparison would call them
+clean — they fail only because identity is checked too.
+
+`apps/api/test/gate/c15-scanner-provenance.test.ts` — **16 tests** over the three
+carry-forward items, including five failure-path controls for the step-policy audit.
+
+### 5.10 Suites at C16
+
+typecheck **0**; build **0**; boundaries **clean** (93 modules, 250 dependencies);
+contracts **203/203**; tokens **3/3**; api gate+unit **109/109**; integration
+**297/297**; acceptance **58/58**. C16 closure gate **PASS**; C15 supply-chain gate
+**PASS** (8 steps, 6 blocking, 0 failures).
+
+### 5.11 Evidence sequencing
+
+All C16 outputs under `evidence/supply-chain/c16/` are **preliminary and untracked**
+(gitignored). Only the generators, the target descriptor, the exclusion governance and
+the controls are committed. Final outputs are regenerated from the future frozen SHA and
+committed in the evidence-only child. The report itself carries a `status` field saying
+so, so a stray copy cannot be mistaken for final evidence.
+
+### 5.12 Still open after C16
+
+C17 (vendored official CycloneDX 1.6 schema + referenced schemas with provenance and
+SHA-256, AJV as a direct pinned devDependency, offline validation, negative fixtures
+proving the old permissive subset cannot pass, licence inventory + third-party notices +
+obligations), C18, C19, the freeze protocol and external independent review all remain
+pending. The legacy `evidence/supply-chain/sbom.cdx.json` and `reconciliation.txt`
+artifacts and their assertions still ship; the reconciliation assertion is now labelled
+**superseded** in `supply-chain-artifacts.test.ts` because it was self-referential, and
+C17 replaces those artifacts.
