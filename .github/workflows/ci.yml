@@ -97,6 +97,25 @@ jobs:
           test -s "$C16_OUT/closure-reconciliation.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-prod.cdx.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-dev.cdx.json"
+      # The C15 BEHAVIOURAL controls under `pnpm test` SPAWN the real runner, so this job
+      # needs the pinned scanners too. Same tracked, checksum-verified installer as the
+      # supply-chain job — duplicating the shell is how two copies drift apart.
+      - name: Install PINNED scanner binaries, verified against tracked checksums
+        run: bash scripts/gate/install-scanners.sh gitleaks trivy
+      - name: Verify scanner versions are EXACTLY the pinned ones
+        run: |
+          set -euo pipefail
+          check() { [ "$2" = "$3" ] || { echo "::error::$1: got '$2', want '$3'"; exit 1; }; echo "$1 = $2"; }
+          check gitleaks "$(gitleaks version)" "${GITLEAKS_VERSION}"
+          check trivy    "$(trivy --version | sed -n 's/^Version: *//p' | head -1)" "${TRIVY_VERSION}"
+      - name: Warm an isolated trivy cache for the behavioural controls
+        run: |
+          set -euo pipefail
+          CACHE="$(mktemp -d)"
+          echo "TRIVY_CACHE_DIR=$CACHE" >> "$GITHUB_ENV"
+          trivy --cache-dir "$CACHE" --timeout 15m image --download-db-only --no-progress
+          PROBE="$(mktemp -d)"
+          trivy --cache-dir "$CACHE" fs --scanners misconfig --no-progress --format json "$PROBE" >/dev/null
       - name: Unit + conformance + gate tests (golden fixtures, negative fixtures, artifacts)
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
@@ -187,24 +206,7 @@ jobs:
       # scripts/gate/scanner-pins.json. An unauthenticated download is an unverified input
       # to the gate that exists to verify inputs.
       - name: Install PINNED scanner binaries, verified against tracked checksums
-        run: |
-          set -euo pipefail
-          field() { python3 -c "import json,sys;print(json.load(open('scripts/gate/scanner-pins.json'))['tools'][sys.argv[1]]['artifacts']['linux-x64'][sys.argv[2]])" "$1" "$2"; }
-          fetch() {
-            tool="$1"; url="$(field "$tool" url)"; want="$(field "$tool" sha256)"
-            echo "$tool <- $url"
-            curl -fsSL --retry 3 -o "/tmp/$tool.tar.gz" "$url"
-            got="$(sha256sum "/tmp/$tool.tar.gz" | cut -d' ' -f1)"
-            if [ "$got" != "$want" ]; then
-              echo "::error::$tool download digest $got does not match the tracked $want"
-              exit 1
-            fi
-            echo "$tool digest verified: $got"
-            sudo tar -xzf "/tmp/$tool.tar.gz" -C /usr/local/bin "$tool"
-            sudo chmod +x "/usr/local/bin/$tool"
-          }
-          fetch gitleaks
-          fetch trivy
+        run: bash scripts/gate/install-scanners.sh gitleaks trivy
       - name: Verify scanner + toolchain versions are EXACTLY the pinned ones
         run: |
           set -euo pipefail

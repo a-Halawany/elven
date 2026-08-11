@@ -82,6 +82,24 @@ function withReplacedFile<T>(rel: string, contents: string, fn: () => T): T {
 }
 
 beforeAll(() => {
+  // DECLARED PRECONDITION, stated rather than skipped: these controls execute the real
+  // runner, so the pinned scanners must be present. A skip here would make the whole
+  // suite vacuous exactly where it matters most.
+  for (const [tool, args, want] of [
+    ['gitleaks', ['version'], '8.30.1'],
+    ['trivy', ['--version'], '0.73.0'],
+  ] as Array<[string, string[], string]>) {
+    const probe = spawnSync(tool, args, { encoding: 'utf8' });
+    if (probe.error !== undefined || probe.status !== 0) {
+      throw new Error(
+        `${tool} is not on PATH, so the C15 behavioural controls cannot run. Install the ` +
+        'pinned scanners first: bash scripts/gate/install-scanners.sh gitleaks trivy ' +
+        `(expected ${tool} ${want}). These controls are not skippable — they are the only ` +
+        'proof the gate actually refuses a bad input.',
+      );
+    }
+  }
+
   // Warm one cache up front by asking trivy to populate it exactly as the runner does.
   cacheDir = mkdtempSync(join(tmpdir(), 'eye-c15-cache-'));
   scratch.push(cacheDir);
