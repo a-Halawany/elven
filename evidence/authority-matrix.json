@@ -1,0 +1,1084 @@
+{
+  "artifact": "C14 authority matrix — reconciled report",
+  "generated_at": "2026-08-11T10:31:15.040Z",
+  "source_sha": "092542c15a16ba92203de5b1bf3bcf2dea5f9bca",
+  "postgres_version": "PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "node_version": "v24.11.1",
+  "method": {
+    "discovery": "live pg_proc/pg_namespace/aclexplode — no handwritten port list",
+    "mutation_classification": [
+      "direct: write DML, TRUNCATE, DDL, dynamic EXECUTE, writable CTE, set_config",
+      "transitive: calls to any known mutator, resolved to fixpoint",
+      "fail closed: VOLATILE definer with no static evidence and no inertness proof"
+    ],
+    "fixpoint_rounds": 2
+  },
+  "arithmetic": {
+    "discovered_runtime_granted_ports": 63,
+    "mutators": 43,
+    "non_mutators": 20,
+    "reconciles_ports": true,
+    "capability_minters": 7,
+    "break_glass": 1,
+    "guarded_noops": 2,
+    "capability_required": 33,
+    "reconciles_mutators": true,
+    "no_capability_entrypoints_classified": 10,
+    "of_which_reject_null_argument_probe": 3,
+    "of_which_expected_to_succeed_null_probe": 7,
+    "probe_reconciliation": "10 classified = 7 expected-success + 3 null-arg-refusers",
+    "uncertain_classification": 0,
+    "proven_inert_at_runtime": 8
+  },
+  "seven_versus_ten_resolution": "The in-suite generic probe reported 7 successes while 10 entrypoints are classified. Both numbers are correct and now reconcile explicitly: 3 of the 10 (ctx.issue_commit, ctx.issue_evidence, ctx.issue_verify) reject the NULL-ARGUMENT probe through their own preconditions (context-key length, action+correlation, partition length), so they REFUSE the probe rather than succeeding. 10 classified = 7 expected-success + 3 null-arg refusers. No port changed behaviour; the earlier report simply did not publish the split.",
+  "runtime_inertness_proofs": [
+    {
+      "key": "ctx.assert_bound_target",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof over all governed tables"
+    },
+    {
+      "key": "ctx.assert_identity_capability",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "ctx.assert_identity_context",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "ctx.assert_integrity_evidence_capability",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "ctx.assert_recovery_capability",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "ctx.assert_seal_capability",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "ctx.assert_verify_capability",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    },
+    {
+      "key": "objects.assert_header_binding",
+      "proof_site": "gate22-authority-matrix: zero-row-delta proof"
+    }
+  ],
+  "no_capability_entrypoints": [
+    {
+      "key": "ctx.issue_commit",
+      "class": "minter",
+      "proof_site": "gate22-authority-matrix / adversarial: proof-of-possession + bindings",
+      "refuses_null_arg_probe": true,
+      "null_arg_refusal_reason": "requires a >=20 char context key (proof of possession) — NULL refused"
+    },
+    {
+      "key": "ctx.issue_evidence",
+      "class": "minter",
+      "proof_site": "gate22-evidence-deauthorization: route/subject/binding checks",
+      "refuses_null_arg_probe": true,
+      "null_arg_refusal_reason": "requires action + correlation — NULL refused"
+    },
+    {
+      "key": "ctx.issue_publish",
+      "class": "minter",
+      "proof_site": "gate22-authority-matrix: minted publish cap cannot enqueue",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "ctx.issue_verify",
+      "class": "minter",
+      "proof_site": "gate22-verifier-seal: partition-bound, verify≠seal",
+      "refuses_null_arg_probe": true,
+      "null_arg_refusal_reason": "requires a partition of length >= 3 — NULL refused"
+    },
+    {
+      "key": "ctx.issue_identity_op",
+      "class": "minter",
+      "proof_site": "gate22-identity-mutators: operation allowlist",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "ctx.issue_bootstrap",
+      "class": "minter",
+      "proof_site": "gate22-bootstrap: runtime profile must be local/test",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "ctx.issue_recovery",
+      "class": "minter",
+      "proof_site": "gate22-degraded-recovery: incident-bound",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "audit.rebuild_chain_heads",
+      "class": "break_glass",
+      "proof_site": "gate22-authority-matrix: unreachable by every app role",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "ctx.open_operation",
+      "class": "guarded_noop",
+      "proof_site": "gate22-authority-matrix: returns NULL, records nothing",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    },
+    {
+      "key": "ctx.mark_obligations_executed",
+      "class": "guarded_noop",
+      "proof_site": "gate22-authority-matrix: updates zero rows",
+      "refuses_null_arg_probe": false,
+      "null_arg_refusal_reason": null
+    }
+  ],
+  "ports": [
+    {
+      "key": "audit.append_seal",
+      "signature": "audit.append_seal(p_id uuid, p_partition text, p_start bigint, p_end bigint, p_head text, p_sealer text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml",
+        "row_lock"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.bump_suppression",
+      "signature": "audit.bump_suppression(p_bucket text, p_admitted boolean)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml",
+        "row_lock"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.commit_event",
+      "signature": "audit.commit_event(p_event_type text, p_action text, p_outcome text, p_result_code text, p_target_type text, p_target_id text, p_target_version text, p_policy_decision_id uuid, p_policy_version text, p_correlation uuid, p_causation uuid, p_trace text, p_request_digest text, p_delegation text, p_metadata jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.commit_identity_event",
+      "signature": "audit.commit_identity_event(p_principal uuid, p_session uuid, p_event_type text, p_action text, p_outcome text, p_result_code text, p_correlation uuid, p_metadata jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.commit_intake_event",
+      "signature": "audit.commit_intake_event(p_event_type text, p_action text, p_result_code text, p_correlation uuid, p_subject uuid, p_metadata jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.commit_integrity_event",
+      "signature": "audit.commit_integrity_event(p_partition text, p_outcome text, p_result_code text, p_correlation uuid, p_detail jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.lock_head_for_seal",
+      "signature": "audit.lock_head_for_seal(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "row_lock"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.my_domain_integrity",
+      "signature": "audit.my_domain_integrity()",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.my_partition_integrity",
+      "signature": "audit.my_partition_integrity(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_verifier"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.open_availability_incidents",
+      "signature": "audit.open_availability_incidents()",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_commit",
+        "eye_identity",
+        "eye_verifier"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.open_integrity_incident",
+      "signature": "audit.open_integrity_incident(p_id uuid, p_partition text, p_start bigint, p_end bigint, p_details jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.read_head",
+      "signature": "audit.read_head(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.rebuild_chain_heads",
+      "signature": "audit.rebuild_chain_heads()",
+      "owner": "eye",
+      "grantees": [
+        "eye_recovery"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:break_glass"
+    },
+    {
+      "key": "audit.reconcile_availability_incident_v2",
+      "signature": "audit.reconcile_availability_incident_v2(p_id uuid, p_by text, p_note text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.record_availability_incident",
+      "signature": "audit.record_availability_incident(p_id uuid, p_kind text, p_partition_hint text, p_correlation uuid, p_details jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity",
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "audit.unreconciled_incidents",
+      "signature": "audit.unreconciled_incidents()",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_commit",
+        "eye_verifier"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_bound_target",
+      "signature": "ctx.assert_bound_target(p_target text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_business_authority",
+      "signature": "ctx.assert_business_authority(p_action text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [
+        "ctx.assert_live_authority"
+      ],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_capability",
+      "signature": "ctx.assert_capability(p_mode text, p_op_class text, p_action text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_commit",
+        "eye_identity",
+        "eye_publisher",
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [
+        "ctx.assert_live_authority"
+      ],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_identity_capability",
+      "signature": "ctx.assert_identity_capability(p_action text, p_subject uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_identity_context",
+      "signature": "ctx.assert_identity_context()",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_integrity_evidence_capability",
+      "signature": "ctx.assert_integrity_evidence_capability(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_live_authority",
+      "signature": "ctx.assert_live_authority()",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_commit",
+        "eye_identity",
+        "eye_publisher",
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "row_lock"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_recovery_capability",
+      "signature": "ctx.assert_recovery_capability(p_incident uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_seal_capability",
+      "signature": "ctx.assert_seal_capability(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.assert_verify_capability",
+      "signature": "ctx.assert_verify_capability(p_partition text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.bind_operation_causation",
+      "signature": "ctx.bind_operation_causation(p_causation uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.bound_actor",
+      "signature": "ctx.bound_actor()",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "ctx.issue_bootstrap",
+      "signature": "ctx.issue_bootstrap(p_correlation uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_commit",
+      "signature": "ctx.issue_commit(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_target text, p_correlation uuid, p_policy_decision uuid, p_bundle text, p_consequence text, p_ttl_seconds integer)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_evidence",
+      "signature": "ctx.issue_evidence(p_session uuid, p_context_key text, p_scope text, p_tenant uuid, p_domain uuid, p_purpose text, p_action text, p_route_scope text, p_route_tenant uuid, p_route_domain uuid, p_correlation uuid, p_ttl_seconds integer)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_identity_op",
+      "signature": "ctx.issue_identity_op(p_operation text, p_subject uuid, p_correlation uuid, p_ttl_seconds integer)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "ddl",
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_publish",
+      "signature": "ctx.issue_publish(p_event_id uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_publisher"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_recovery",
+      "signature": "ctx.issue_recovery(p_incident uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.issue_verify",
+      "signature": "ctx.issue_verify(p_partition text, p_seal boolean)",
+      "owner": "eye",
+      "grantees": [
+        "eye_verifier"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:minter"
+    },
+    {
+      "key": "ctx.mark_obligations_executed",
+      "signature": "ctx.mark_obligations_executed()",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:guarded_noop"
+    },
+    {
+      "key": "ctx.open_operation",
+      "signature": "ctx.open_operation(p_consequence text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml",
+        "set_config"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "no_capability:guarded_noop"
+    },
+    {
+      "key": "identity.auth_lookup",
+      "signature": "identity.auth_lookup(p_login text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.bootstrap_mark_one_time",
+      "signature": "identity.bootstrap_mark_one_time(p_principal uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.bump_epoch",
+      "signature": "identity.bump_epoch(p_principal uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.claim_bootstrap",
+      "signature": "identity.claim_bootstrap()",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.create_principal",
+      "signature": "identity.create_principal(p_id uuid, p_kind text, p_scope text, p_tenant uuid, p_domain uuid, p_display_name text, p_login_name text, p_secret_hash text, p_role_code text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.credential_get_active",
+      "signature": "identity.credential_get_active(p_principal uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.credential_issue",
+      "signature": "identity.credential_issue(p_id uuid, p_principal uuid, p_hash text, p_status text, p_expires timestamp with time zone)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.credential_revoke",
+      "signature": "identity.credential_revoke(p_id uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.credential_rotate_v2",
+      "signature": "identity.credential_rotate_v2(p_principal uuid, p_old_id uuid, p_new_id uuid, p_new_hash text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.platform_admin_exists",
+      "signature": "identity.platform_admin_exists()",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.record_bootstrap_principal",
+      "signature": "identity.record_bootstrap_principal(p_principal uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.refresh_rotate_family",
+      "signature": "identity.refresh_rotate_family(p_old_hash text, p_new_hash text, p_new_ctx_key_hash text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml",
+        "row_lock"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.session_bindings",
+      "signature": "identity.session_bindings(p_session uuid, p_context_key text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.session_open",
+      "signature": "identity.session_open(p_session uuid, p_principal uuid, p_assurance text, p_refresh_hash text, p_ctx_key_hash text, p_expires timestamp with time zone, p_family uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.session_subject",
+      "signature": "identity.session_subject(p_session uuid, p_context_key text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_identity"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "identity.sessions_revoke_all_v2",
+      "signature": "identity.sessions_revoke_all_v2(p_principal uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.admit_version",
+      "signature": "objects.admit_version(p_header jsonb, p_payload jsonb, p_digest text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.assert_header_binding",
+      "signature": "objects.assert_header_binding(p_header jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "v",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.enqueue_event",
+      "signature": "objects.enqueue_event(p_id uuid, p_event_type text, p_payload jsonb, p_correlation uuid, p_causation uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.outbox_ack_leased",
+      "signature": "objects.outbox_ack_leased(p_id uuid, p_lease_id uuid, p_from text, p_to text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_publisher"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.outbox_lease",
+      "signature": "objects.outbox_lease(p_limit integer, p_lease_seconds integer)",
+      "owner": "eye",
+      "grantees": [
+        "eye_publisher"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml",
+        "row_lock",
+        "writable_cte"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "objects.outbox_release",
+      "signature": "objects.outbox_release(p_id uuid, p_lease_id uuid)",
+      "owner": "eye",
+      "grantees": [
+        "eye_publisher"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "policy.commit_decision",
+      "signature": "policy.commit_decision(p_id uuid, p_action text, p_object_type text, p_object_id uuid, p_consequence_class text, p_decision text, p_obligations jsonb, p_input_digest text, p_bundle_version text, p_exception_ref text, p_expires_at timestamp with time zone, p_revocation_state text, p_reason text, p_correlation uuid, p_delegation text, p_environment jsonb)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit",
+        "eye_identity"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "tenancy.create_domain",
+      "signature": "tenancy.create_domain(p_id uuid, p_tenant uuid, p_name text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "tenancy.create_tenant",
+      "signature": "tenancy.create_tenant(p_id uuid, p_name text, p_residency text)",
+      "owner": "eye",
+      "grantees": [
+        "eye_commit"
+      ],
+      "volatility": "v",
+      "classification": "mutator",
+      "direct_mutation_evidence": [
+        "write_dml"
+      ],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    },
+    {
+      "key": "tenancy.my_tenant",
+      "signature": "tenancy.my_tenant()",
+      "owner": "eye",
+      "grantees": [
+        "eye_app",
+        "eye_commit"
+      ],
+      "volatility": "s",
+      "classification": "non_mutator",
+      "direct_mutation_evidence": [],
+      "transitive_mutation_via": [],
+      "capability_requirement": "capability_required"
+    }
+  ],
+  "failures": []
+}

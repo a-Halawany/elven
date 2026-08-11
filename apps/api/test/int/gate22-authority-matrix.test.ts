@@ -295,6 +295,61 @@ describe('C14 — the no-capability entrypoints are classified AND proven inert'
   });
 });
 
+describe('C14 — EXECUTABLE inertness proof for statically-uncertain guards', () => {
+  /**
+   * "Contains no write statement" is weaker than "cannot write". For every guard
+   * whose inertness cannot be established statically, this proves it AT RUNTIME:
+   * snapshot the row count of every governed table, invoke the guard with NULL
+   * arguments on each granted role, and require a ZERO DELTA everywhere.
+   */
+  const GUARDS = [
+    'ctx.assert_bound_target', 'ctx.assert_identity_capability', 'ctx.assert_identity_context',
+    'ctx.assert_integrity_evidence_capability', 'ctx.assert_recovery_capability',
+    'ctx.assert_seal_capability', 'ctx.assert_verify_capability', 'objects.assert_header_binding',
+  ];
+
+  async function snapshot(): Promise<Record<string, string>> {
+    const rows = (
+      await sql<{ relation: string; n: string }>`
+        select n.nspname || '.' || c.relname as relation,
+               (xpath('/row/c/text()',
+                 query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname),
+                              false, true, '')))[1]::text as n
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where c.relkind = 'r' and n.nspname = any(${GOVERNED_SCHEMAS})
+         order by relation`.execute(su)
+    ).rows;
+    return Object.fromEntries(rows.map((r) => [r.relation, r.n]));
+  }
+
+  it('every registered guard is actually present in the discovered surface', () => {
+    const discovered = new Set(ports.map((p) => p.key));
+    const missing = GUARDS.filter((g) => !discovered.has(g));
+    expect(missing, `guard registered but not discovered: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('invoking every guard changes NO row in ANY governed table (zero delta)', async () => {
+    const before = await snapshot();
+    for (const guard of GUARDS) {
+      const port = ports.find((p) => p.key === guard);
+      if (port === undefined) continue;
+      for (const role of port.grantees) {
+        const pool = pools[role];
+        if (pool === undefined) continue;
+        try {
+          await pool.transaction().execute(async (tx) =>
+            sql`select ${sql.raw(`${guard}(${nullArgs(port.argTypes)})`)}`.execute(tx));
+        } catch {
+          /* raising is the expected, inert behaviour of a guard */
+        }
+      }
+    }
+    const after = await snapshot();
+    const drift = Object.keys(before).filter((k) => before[k] !== after[k]);
+    expect(drift, `guards mutated: ${drift.map((k) => `${k} ${before[k]}->${after[k]}`).join(', ')}`).toEqual([]);
+  });
+});
+
 describe('C14 — cross-role probe: a port refuses roles it was never granted to', () => {
   it('no port succeeds on a role outside its grantee set', async () => {
     const leaks: string[] = [];
