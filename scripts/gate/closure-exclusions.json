@@ -1,36 +1,44 @@
 {
-  "$comment": [
-    "C16 GOVERNED CLOSURE EXCLUSIONS — fail-closed by construction.",
-    "",
-    "This file is NOT how platform-incompatible packages are removed. Those are",
-    "dropped by the closure engine from each package's OWN recorded os/cpu/libc",
-    "conditions in pnpm-lock.yaml, and every drop is reported as evidence.",
-    "",
-    "This file exists only for an exclusion a human must justify. Every entry must",
-    "bind ALL of: target, scope, the FULL resolution key (name@version with peer",
-    "suffix), the parent edge it hangs from, a reason, evidence, an owner, and a",
-    "review/expiry condition. The reconciler REJECTS:",
-    "  * wildcards or name-only entries (no version / no resolution key)",
-    "  * an entry whose resolution key is absent from the lock-derived closure (stale)",
-    "  * an entry that never actually suppressed anything during the run (unused)",
-    "  * an entry whose recorded version no longer matches the lock (changed version)",
-    "  * an exclusion of a MANDATORY dependency that is target-compatible",
-    "",
-    "The list is intentionally EMPTY: nothing in the current closure requires a",
-    "human-justified exclusion. An empty list is the honest state, and the reconciler",
-    "still runs every rejection rule against it."
-  ],
-  "schema_version": "1.0.0",
+  "schema_version": "2.0.0",
+  "purpose": "Governed exclusions from a target-resolved dependency closure. An exclusion is a REVIEWED, APPROVED, DATED decision about one exact resolved package in one exact target — never a pattern, never a silent suppression.",
+  "semantic": "A valid exclusion REMOVES the exact governed node and every edge incident to it from the reconciled closure, and records it in a separate `excluded` set carried by the reconciliation report. Reconciliation then runs against the reduced closure, so an applied exclusion is observable as a smaller graph plus an explicit governed record. It never leaves a component quietly matching as though nothing happened.",
   "required_fields": [
-    "target", "scope", "resolution_key", "parent_edge",
-    "reason", "evidence", "owner", "review"
+    "target",
+    "scope",
+    "resolution_key",
+    "parent_edge",
+    "reason",
+    "evidence",
+    "evidence_sha256",
+    "owner",
+    "approver",
+    "approved_on",
+    "expires_on"
   ],
-  "rejection_rules": [
-    "wildcard_or_name_only",
-    "stale_not_in_closure",
-    "unused_never_applied",
-    "version_changed",
-    "excludes_compatible_mandatory_dependency"
-  ],
+  "field_contract": {
+    "target": "Exact target name from scripts/gate/target-descriptor.json.",
+    "scope": "One of that target's declared dependency_scopes.",
+    "resolution_key": "Exact lockfile resolution key including any peer context. No wildcards, no name-only values.",
+    "parent_edge": "An edge that genuinely exists in that target's closure, in '<from> -> <to>' form.",
+    "reason": "Why this exact resolution is excluded, in terms a reviewer can check.",
+    "evidence": "Repo-relative path to the evidence supporting the decision.",
+    "evidence_sha256": "SHA-256 hex digest of that evidence file, so the approval is bound to exact bytes.",
+    "owner": "The party responsible for the excluded dependency.",
+    "approver": "The party who approved the exclusion. MUST differ from owner — an exclusion cannot approve itself.",
+    "approved_on": "ISO YYYY-MM-DD date the approval was granted.",
+    "expires_on": "ISO YYYY-MM-DD date after which the exclusion is rejected and must be re-reviewed."
+  },
+  "rejection_rules": {
+    "wildcard_or_name_only": "resolution_key containing '*' or '?', or lacking an exact version, is rejected.",
+    "stale_not_in_closure": "resolution_key not resolved anywhere in pnpm-lock.yaml is rejected: the reviewed subject no longer exists.",
+    "unused_never_applied": "resolution_key resolved by the lockfile but absent from the declared target's closure is rejected: the entry excluded nothing.",
+    "version_changed": "The package name is in the closure at a different version than the one reviewed; the approval does not carry over.",
+    "wrong_target": "Unknown target, or a scope that is not one of that target's declared dependency_scopes.",
+    "wrong_parent": "parent_edge is not an actual edge of that target's closure.",
+    "expired": "expires_on is before the run date.",
+    "unapproved": "Missing or malformed evidence_sha256, a non-ISO approval/expiry date, or approver identical to owner.",
+    "excludes_compatible_mandatory_dependency": "A target-compatible MANDATORY (non-optional) dependency can never be excluded — the closure would misrepresent what is actually installed."
+  },
+  "enforcement": "scripts/gate/lib/reconcile.mjs governExclusions() + applyExclusions(). Every rule above is driven by a control in apps/api/test/gate/c16-closure-controls.test.ts, including a positive fixture proving a valid exclusion is applied exactly once.",
   "exclusions": []
 }

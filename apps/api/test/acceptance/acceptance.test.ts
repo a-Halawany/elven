@@ -821,14 +821,26 @@ describe('AC-11: cross-tenant negatives without metadata leakage', () => {
 describe('AC-13/14/15: repo-level conformance evidence', () => {
   it('CI enforces boundaries, schemas, scans, and tests (workflow present with blocking steps)', () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    // Executable lines only: several of these strings also appear in the comments that
+    // explain the Gate-2.2 supersession.
+    const active = ci.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
     for (const needle of [
-      'pnpm boundaries', 'gitleaks', 'generate-sbom', 'trivy', 'license-inventory',
-      'pnpm audit', 'test:int',
-      'scan-type: image', // R8: EXACT image scans, not a mislabeled fs scan
-      'scan-type: fs',    // the filesystem scan is present AND labeled as such
+      'pnpm boundaries', 'license-inventory', 'test:int',
+      // Gate-2.2 C15/C16: scanning is performed by the TRACKED pinned runners, which
+      // verify every tool version before scanning, enforce the vulnerability database's
+      // freshness, and resolve each multi-arch image index to its linux/amd64 child.
+      'scripts/gate/supply-chain.mjs',
+      'scripts/gate/generate-closures.mjs',
+      // …and the scanners those runners require are installed at exact versions.
+      'gitleaks', 'trivy', 'GITLEAKS_VERSION=8.30.1', 'TRIVY_VERSION=0.73.0',
+      'node --version', 'v24.11.1',
     ]) {
-      expect(ci.toLowerCase()).toContain(needle.toLowerCase());
+      expect(active.toLowerCase(), needle).toContain(needle.toLowerCase());
     }
+    // The Gate-2.1 SBOM generator is SUPERSEDED: its "bidirectional" reconciliation
+    // compared two structures derived from the same generated SBOM, so it could not
+    // fail. It must not be part of the active gate.
+    expect(active).not.toContain('node scripts/generate-sbom.mjs');
   });
 
   it('compose images are digest-pinned and recorded in the conformance manifest (R7)', () => {

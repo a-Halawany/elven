@@ -23,6 +23,7 @@ import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveImageIndex, platformPinnedRef, scannerBinaries, trivyDatabase, classifyStepPolicies,
+  enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS,
 } from './lib/scanner-provenance.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -132,9 +133,21 @@ function main() {
   const treeClean =
     execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() === '';
 
+  const finalMode = process.argv.includes('--final');
+
   console.log('=== C15 SUPPLY-CHAIN GATE ===');
+  console.log(`mode:        ${finalMode ? 'FINAL (clean worktree required)' : 'preliminary'}`);
   console.log(`source SHA:  ${sourceSha}`);
   console.log(`tree clean:  ${treeClean}`);
+
+  // Final evidence must be reproducible from a committed SHA. A scan of uncommitted
+  // source cannot be re-run by a reviewer, so it is not evidence.
+  if (finalMode && !treeClean) {
+    console.error('\n=== SUPPLY-CHAIN GATE FAILED: --final requires a clean worktree ===');
+    const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
+    for (const line of dirty.split('\n').slice(0, 20)) console.error(`  ${line}`);
+    process.exit(1);
+  }
 
   const { versions, mismatches } = toolVersions();
   for (const [n, v] of Object.entries(versions)) {
@@ -144,6 +157,24 @@ function main() {
     console.error('\n=== SUPPLY-CHAIN GATE FAILED: toolchain is not pinned ===');
     for (const m of mismatches) console.error(`  ${m}`);
     console.error('A scan from an unknown scanner version is not evidence.');
+    process.exit(1);
+  }
+
+  // ENFORCE the vulnerability-database contract BEFORE scanning. Recording DB identity
+  // without acting on it means a scan against an absent or stale database still reports
+  // "ok" -- it simply finds nothing.
+  const scanStartedAt = new Date().toISOString();
+  const vulnDb = trivyDatabase(scanStartedAt);
+  const dbProblems = enforceTrivyDatabase(vulnDb, MAX_VULN_DB_AGE_HOURS);
+  if (vulnDb.available) {
+    console.log(`  vuln DB     built ${vulnDb.vulnerability_db.built_at}, ` +
+      `${vulnDb.vulnerability_db.age_hours_at_scan}h old (limit ${MAX_VULN_DB_AGE_HOURS}h), ` +
+      `past-due=${vulnDb.vulnerability_db.past_next_update_at_scan}`);
+  }
+  if (dbProblems.length > 0) {
+    console.error('\n=== SUPPLY-CHAIN GATE FAILED: vulnerability database rejected ===');
+    for (const p of dbProblems) console.error(`  ${p}`);
+    console.error('  Run `trivy image --download-db-only` and re-run the gate.');
     process.exit(1);
   }
 
@@ -278,13 +309,20 @@ function main() {
     artifact: 'C15 supply-chain gate — raw execution evidence',
     source_sha: sourceSha,
     tree_clean_at_run: treeClean,
+    final_mode: finalMode,
     generated_at: generatedAt,
     host: { platform: process.platform, arch: process.arch, node: process.version },
     pinned_toolchain: versions,
     // C15 carry-forward: identity of the binaries that produced the findings, and the
     // vulnerability database they were matched against.
     scanner_binaries: scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']),
-    trivy_database: trivyDatabase(generatedAt),
+    trivy_database: vulnDb,
+    trivy_database_enforcement: {
+      max_age_hours: MAX_VULN_DB_AGE_HOURS,
+      probed_at: scanStartedAt,
+      problems: dbProblems,
+      enforced_before_first_scan: true,
+    },
     // C15 carry-forward: what "eight steps, six blocking" actually means.
     step_policy_audit: {
       ...policyAudit,

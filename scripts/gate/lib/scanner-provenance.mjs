@@ -173,6 +173,60 @@ export function trivyDatabase(nowIso) {
 }
 
 /**
+ * The maximum age a vulnerability database may have and still be treated as evidence.
+ * Trivy publishes roughly every 6 hours; 24h is a deliberately generous ceiling that
+ * still rejects a database stale enough to miss a day of advisories.
+ */
+export const MAX_VULN_DB_AGE_HOURS = 24;
+
+/**
+ * ENFORCE the vulnerability-database contract. Recording DB identity without acting on
+ * it means a scan against an absent, malformed or stale database still reports "ok" —
+ * the scanner simply finds nothing. Returns the list of blocking problems; empty means
+ * the database is acceptable.
+ */
+export function enforceTrivyDatabase(db, maxAgeHours = MAX_VULN_DB_AGE_HOURS) {
+  const problems = [];
+  if (db === null || db === undefined || db.available !== true) {
+    problems.push(
+      `trivy vulnerability database is UNAVAILABLE (${db?.error ?? 'no metadata returned'}); ` +
+      'a scan against no database finds nothing and is not evidence',
+    );
+    return problems;
+  }
+  const v = db.vulnerability_db ?? {};
+  if (v.schema_version === null || v.schema_version === undefined) {
+    problems.push('trivy vulnerability database reports no schema version (malformed metadata)');
+  }
+  if (typeof v.built_at !== 'string' || Number.isNaN(Date.parse(v.built_at))) {
+    problems.push(`trivy vulnerability database build time is malformed: ${JSON.stringify(v.built_at)}`);
+  }
+  if (typeof v.age_hours_at_scan !== 'number' || Number.isNaN(v.age_hours_at_scan)) {
+    problems.push('trivy vulnerability database age could not be computed');
+  } else if (v.age_hours_at_scan > maxAgeHours) {
+    problems.push(
+      `trivy vulnerability database is ${v.age_hours_at_scan}h old, beyond the permitted ` +
+      `${maxAgeHours}h freshness window`,
+    );
+  } else if (v.age_hours_at_scan < 0) {
+    problems.push(
+      `trivy vulnerability database reports a negative age (${v.age_hours_at_scan}h); ` +
+      'the host clock and the database disagree, so freshness cannot be established',
+    );
+  }
+  if (v.past_next_update_at_scan === true) {
+    problems.push(
+      `trivy vulnerability database is past its next-update time (${v.next_update_due}); ` +
+      'a newer database was expected before this scan',
+    );
+  }
+  if (db.misconfig_check_bundle?.digest === null || db.misconfig_check_bundle?.digest === undefined) {
+    problems.push('trivy misconfiguration check bundle reports no digest (malformed metadata)');
+  }
+  return problems;
+}
+
+/**
  * The step-policy taxonomy. Every informational step MUST name the blocking step
  * whose coverage it duplicates; a step that adds unblocked coverage is a hole.
  *

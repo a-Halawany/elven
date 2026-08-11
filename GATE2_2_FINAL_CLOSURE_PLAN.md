@@ -229,8 +229,8 @@ not inside the evidence commit.
 | C12 correlation traceability | ✅ **CLOSED (internal verification)** — placeholder correlations removed; envelope correlation returned on every authenticated failure and proven to locate the evidence (7 paths × 2 assertions). Superseded note: was 🟡 partly done — `principals.service` no longer mints a fresh correlation in downstream validation; it uses the request envelope's correlation (3 sites). Remaining: sweep the auth/workload-secret paths and add the response↔evidence correlation-equality tests. |
 | C13 catalog authority gate | ✅ **CLOSED (internal verification)** — catalog-derived inventory + failing gate; found and closed 3 surviving unbounded identity lookups and 2 unnecessary role logins. 63 classified ports, 0 PUBLIC EXECUTE, 0 RLS gaps. |
 | C14 adversarial matrix | ✅ **CLOSED (internal verification)** — catalog-driven coverage gate + generic no-capability and cross-role probes + machine-classified non-mutators + inertness proofs for the 10 no-capability entrypoints + allocator/eye_system posture. Non-vacuity demonstrated by negative control. 15 tests. |
-| C15 supply-chain gate | ✅ **CLOSED (internal verification)** — `scripts/gate/supply-chain.mjs`: pinned toolchain verified before any scan (pnpm 11.9.0, node v24.11.1, gitleaks 8.30.1, trivy 0.73.0) and fail-closed on mismatch; 8 steps / 6 blocking, with raw stdout+stderr written to disk and SHA-256 digested per step alongside exact argv, tool version, timestamps, exit code and source SHA. Real finding: **nanoid <3.3.17 / CVE-2026-67213 (HIGH)**, flagged independently by pnpm audit and trivy. Governed gitleaks config narrows scope but disables no rule; both path allowlists are proven untracked+ignored. **Carry-forward items closed under C16** (see C16 row): per-platform container digests, step-policy taxonomy, scanner-binary and vuln-DB provenance. |
-| C16 target SBOM closure | ✅ **CLOSED (internal verification)** — see the C16 closure record below. Two deterministic target-resolved closures (linux/x64/glibc, prod and dev) built from `pnpm-lock.yaml` + `scripts/gate/target-descriptor.json`, reconciled **bidirectionally against the SBOM re-read from disk**. Production 195 components / 290 edges; development 292 / 443. Zero missing, zero extra, zero identity mismatches, zero dangling refs, zero orphans, in both targets and both directions. 31 non-vacuity controls + 16 C15 carry-forward controls. |
+| C15 supply-chain gate | ✅ **CLOSED (internal verification)** — `scripts/gate/supply-chain.mjs`: pinned toolchain verified before any scan (pnpm 11.9.0, node v24.11.1, gitleaks 8.30.1, trivy 0.73.0) and fail-closed on mismatch; 8 steps / 6 blocking, with raw stdout+stderr written to disk and SHA-256 digested per step alongside exact argv, tool version, timestamps, exit code and source SHA. Real finding: **nanoid <3.3.17 / CVE-2026-67213 (HIGH)**, flagged independently by pnpm audit and trivy. Governed gitleaks config narrows scope but disables no rule; both path allowlists are proven untracked+ignored. **Carry-forward items closed under C16** (see C16 row): per-platform container digests, step-policy taxonomy, scanner-binary and vuln-DB provenance. **After independent review**, DB provenance is now ENFORCED rather than merely recorded (fail-closed on unavailable / malformed / stale / past-due, 24h ceiling), and a `--final` mode refuses to produce evidence from a dirty worktree. |
+| C16 target SBOM closure | ✅ **CLOSED (internal verification) — REMEDIATED after independent source review of `e3a0b1f`.** The first C16 pass reproduced its component counts but could still certify semantically incorrect SBOMs; twelve defects were found and corrected. See §5 and the §6 remediation record. Now: canonical PURLs from the exact-pinned reference implementation, real first-party workspace identities, an exact-pinned YAML parser, recursive cycle-safe link traversal, fail-closed unresolved references, fixed-point scope membership, correct mixed platform constraints, subject-to-root edges, **full-field multiset** reconciliation, and exclusions that are actually applied. Production **195 components / 290 + 4 subject edges**; development **294 / 446 + 5**. Clean over all 16 failure dimensions in both directions. **180 gate tests** across 5 files (75 reconciler controls + 33 lockfile/traversal fixtures + 23 C15 provenance + 10 artifact + 39 pre-existing supply-chain), all driving production code. |
 | C17 CycloneDX + obligations | ⏳ |
 | C18 forward/virgin proof | ⏳ |
 | C19 docs + NOLOGIN | ⏳ |
@@ -413,6 +413,12 @@ the controls are committed. Final outputs are regenerated from the future frozen
 committed in the evidence-only child. The report itself carries a `status` field saying
 so, so a stray copy cannot be mistaken for final evidence.
 
+### 5.13 SUPERSEDED NUMBERS
+
+The counts in §5.3–§5.5 above are those measured at `e3a0b1f`, before the independent
+review. They are retained as the historical record. The authoritative post-remediation
+figures are in §6.3.
+
 ### 5.12 Still open after C16
 
 C17 (vendored official CycloneDX 1.6 schema + referenced schemas with provenance and
@@ -423,3 +429,170 @@ pending. The legacy `evidence/supply-chain/sbom.cdx.json` and `reconciliation.tx
 artifacts and their assertions still ship; the reconciliation assertion is now labelled
 **superseded** in `supply-chain-artifacts.test.ts` because it was self-referential, and
 C17 replaces those artifacts.
+
+---
+
+## 6. C16 REMEDIATION RECORD — after independent source review of `e3a0b1f`
+
+`e3a0b1f` was independently reviewed. The finding: **the component counts reproduced,
+but the gate could still certify semantically incorrect or incomplete SBOMs.** C16 was
+returned to PENDING REMEDIATION. Twelve defects were identified and all are corrected
+below. This section is authoritative where it conflicts with §5.
+
+### 6.1 What was actually wrong
+
+| # | Defect at `e3a0b1f` | Why it mattered |
+|---|---|---|
+| 1 | Scoped PURLs emitted as `pkg:npm/%40scope%2Fname@version` | Not a spelling variant. That string parses as a **namespace-less** package literally named `@scope/name`; the canonical `%40scope/name` carries namespace `@scope` + name `name`. Every consumer matching on namespace saw a different package. |
+| 2 | Workspace components used path basenames and a hardcoded `0.0.0` | `packages/contracts` was reported as `contracts@0.0.0` when the package is `@eye/contracts@0.0.1`. First-party identity was fabricated. |
+| 3 | Bespoke partial YAML reader | Silently mishandled constructs it did not model; each was a way to lose real closure data with no error. |
+| 4a | `link:` resolved by fuzzy `endsWith` matching | Not resolution. A link could bind to the wrong importer. |
+| 4b | A linked workspace was never expanded unless separately a target root | Its transitive runtime dependencies were **absent from the closure while genuinely required**. |
+| 4c | Unresolved OPTIONAL references `continue`d silently | An incomplete closure could certify itself complete. |
+| 4d | `visit()` returned early on an already-seen node | Scope membership never reached a fixed point: **61 of 289 development components carried incomplete scope provenance**, and which one was measured depended on traversal order. |
+| 4e | Platform check evaluated negations **or** positives | Mixed metadata such as `os: ['!win32','darwin']` was mis-evaluated. |
+| 5 | Metadata subject `eye:target:<id>` had no dependency entry | The declared subject was attached to nothing: a consumer walking from the subject reached **zero** components. |
+| 6 | Reconciliation compared Maps/Sets over four fields | Duplicates collapsed on read; name, type, integrity, patch hash, peer context, target id, scope, os/cpu/libc, workspace identity and subject edges could all be removed or rewritten and still reconcile "clean". |
+| 7 | Exclusions were validated and then never applied | A "valid" exclusion had no effect and could never be observed to work. |
+| 8 | Controls asserted source strings | Proves a line exists, not that it works. |
+| 9 | CI ran the legacy Gate-2.1 generator; tests read a gitignored path | A local run passed on leftover preliminary files while a clean checkout failed. |
+| 10 | Trivy DB identity recorded but not enforced | A scan against an absent or stale database still reports "ok" — it simply finds nothing. |
+| 11 | SBOMs bound no source SHA or generator digest | A serialized SBOM could be separated from the inputs that produced it. |
+
+### 6.2 Corrections
+
+**Canonical Package URLs.** `packageurl-js@2.0.1` is now an **exact-pinned direct
+devDependency** and is the only producer of a PURL; the bespoke encoder is gone. The
+runner verifies the pin before generating and fails closed on a mismatch — a canonical
+PURL from an unknown encoder is not canonical. Positive vectors cover scoped, unscoped
+and escape-requiring names with round-trip parsing; negatives prove the old form parses
+to a different identity and that malformed values throw.
+
+**First-party identity.** `workspaceIdentity()` reads each importer's own
+`package.json`, refuses a missing manifest or a manifest with no name/version, and binds
+the identity to the manifest's SHA-256. The manifest supplies **identity only**: a
+control feeds two repos differing solely in their manifests' dependency lists and
+requires identical node sets, so identity metadata can never alter membership.
+
+**Lockfile parsing.** `yaml@2.9.0`, exact-pinned and verified. Synthetic fixtures cover
+importers/packages/snapshots, flow mappings, quoted keys, block sequences, aliases,
+workspace/link references, patch hashes, peer suffixes and optional dependencies.
+
+**Traversal.** Rewritten as two explicit phases. Phase 1 discovers structure via a
+cycle-safe worklist and **fails closed on every unresolved reference, required or
+optional**, and on a platform-incompatible *required* dependency. Links resolve with
+`posix.normalize` relative to the importing workspace, and a linked workspace is
+expanded recursively through its **runtime** scopes even when it is not a declared root
+(its devDependencies are not consumed through a link). Phase 2 propagates scope to a
+**fixed point** with one narrowing rule: a `devDependencies` edge out of a workspace
+never inherits an inbound runtime scope — without it, `apps/api --dependencies-->
+@eye/contracts` marks contracts' dev toolchain (typescript, vitest) as production. A
+declared root carries the target's declared scopes directly and never propagates them.
+Platform constraints now apply negations **and** positives: an explicit negation always
+excludes, and positives act as an allowlist when present.
+
+**Subject connectivity.** The subject carries a dependency entry naming every declared
+importer root. The reconciler **requires** those edges — roots are not exempt from the
+orphan check, because exempting them is what hid the disconnected graph.
+
+**Full-field multiset reconciliation.** `extractFromSbom` returns multiplicity counts,
+never deduplicating Sets. The reconciler rejects duplicate components, duplicate
+dependency entries, repeated `dependsOn` values and duplicate required properties, and
+compares name, version, type, canonical PURL (including namespace/name/version parts),
+lock key, integrity hashes, patch hash, peer context, target id, scope membership,
+os/cpu/libc, workspace identity + manifest digest, subject identity and every provenance
+binding, in both directions.
+
+**Operational exclusions.** One documented semantic: a valid exclusion **removes** the
+exact node and every incident edge and records it in a separate `excluded` set;
+reconciliation then runs against the reduced closure. Schema v2.0.0 requires eleven
+fields including `approver` (which must differ from `owner`), `evidence_sha256`,
+`approved_on` and `expires_on`. Nine rejection rules are enforced, including `expired`,
+`unapproved`, `wrong_target` and `wrong_parent`. The file declares **zero** exclusions.
+
+**C15 enforcement.** `enforceTrivyDatabase()` fails the gate closed when the database is
+unavailable, malformed, beyond a 24h freshness ceiling, past its next-update time, or
+reports a negative age — checked **before the first scan**. A `--final` mode on both
+runners refuses to produce evidence from a dirty worktree.
+
+**Provenance binding.** Every SBOM binds `eye:source-sha`, `eye:lockfile-sha256`,
+`eye:descriptor-sha256`, `eye:generator-sha256` (a digest over the runner and all three
+libraries), `eye:target-id`, and the pinned PURL/YAML implementation versions. The
+report binds each serialized SBOM's exact SHA-256.
+
+**CI.** Node pinned to exactly `24.11.1` in all three jobs. The legacy self-reconciling
+generator is removed from the active gate. gitleaks 8.30.1 and trivy 0.73.0 are
+installed and version-verified, the vulnerability DB is downloaded, and both tracked
+runners are **blocking**, writing into explicit per-run temporary directories. The C16
+artifact gate now **invokes the runner itself** into a fresh temp dir, so it depends on
+no ignored state.
+
+### 6.3 Authoritative post-remediation measurements
+
+| | production | development |
+|---|---|---|
+| components | **195** | **294** |
+| graph edges | **290** | **446** |
+| subject → root edges | **4** | **5** |
+| total edges reconciled | **294** | **451** |
+| workspace / registry | 4 / 191 | 5 / 289 |
+| peer-variant | 10 | 16 |
+| leaves | 115 | 164 |
+| platform-excluded | 36 | 60 |
+| unresolved references | 0 | 0 |
+| components with no scope | 0 | 0 |
+
+Workspace identities, read from manifests: `@eye/api@0.0.1`, `@eye/web@0.0.1`,
+`@eye/contracts@0.0.1`, `@eye/tokens@0.0.1`, plus `the-eye@0.0.1` for the dev root.
+
+Scope membership — production `{dependencies+optionalDependencies: 4, dependencies: 191}`;
+development `{dependencies+devDependencies+optionalDependencies: 5,
+dependencies+devDependencies: 23, dependencies: 168, devDependencies: 98}`. The fixed
+point moved 61 components' provenance and raised genuinely-shared components from 11
+to 23.
+
+Reconciliation is clean over all **16** failure dimensions in both directions for both
+targets, with node and edge counts agreeing on both sides (195/195, 294/294; 294/294,
+451/451).
+
+Determinism: byte-identical across separate directories at different times —
+prod `94651e12ae6aa8afea0192950204ee976e7151304034f4f8bd727f6ec4b15783`,
+dev `718b666534c271de96d664720d39ccdaa4367889adaf111e1b08061d2031f90b`.
+
+### 6.4 Controls
+
+| Suite | Tests | What it drives |
+|---|---|---|
+| `c16-closure-controls.test.ts` | **75** | Corrupts real generated SBOMs; every reconciler dimension including duplicates, hashes, subject edges, bindings, and a POSITIVE valid-exclusion-applied fixture |
+| `c16-lockfile-fixtures.test.ts` | **33** | Synthetic lockfiles: PURL vectors, flow maps, quoted keys, aliases, patch hashes, peer suffixes, recursive/relative/cyclic links, fail-closed unresolved refs, scope fixed point, mixed platform constraints, identity-vs-membership |
+| `c15-scanner-provenance.test.ts` | **23** | Multi-arch resolution, step-policy taxonomy failure paths, and behavioural `enforceTrivyDatabase` controls |
+| `supply-chain-artifacts.test.ts` | **10** | Invokes the shipped runner into a temp dir and asserts the produced report |
+
+None of the C16 controls asserts a source string.
+
+### 6.5 Clean-checkout equivalence
+
+A pristine tree was exported from the staged index (no `.git`, no `node_modules`, no
+preliminary C16 outputs), then `pnpm install --frozen-lockfile`, `node
+scripts/license-inventory.mjs` and `node scripts/gate/generate-closures.mjs --out
+$(mktemp -d)` were run exactly as CI does. Result: licence gate PASS (282 packages,
+192 prod / 90 dev-only), C16 closure gate **PASS** with the same component and edge
+counts, and `pnpm test` **400/400** (contracts 203, tokens 3, api 194). The SBOM digests
+differ from the working-tree run **because** `eye:source-sha` binds and a `.git`-less
+export has no commit — the binding demonstrating itself.
+
+### 6.6 Verification at this commit
+
+Migrations `0001`–`0021` byte-identical to `e3a0b1f` (0 files changed; tree digest
+`fee665027eaa0dbfc7553ff326f1cab2305771d93377a87c92ae267fb3aa2e4b` on both). Clean-source
+typecheck **0**; build **0**; boundaries clean (93 modules, 250 dependencies); contracts
+**203/203**; tokens **3/3**; api gate+unit **194/194**; integration **297/297**;
+acceptance **58/58**; C15 gate **PASS** (8 steps, 6 blocking, DB 13.1h old within the
+24h ceiling); C16 gate **PASS**.
+
+### 6.7 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. The
+tracked Gate-2.1 artifacts under `evidence/supply-chain/` (`sbom.cdx.json`,
+`reconciliation.txt`, `licenses-*.json`) are now **inert** — no gate step and no test
+reads them — and C17 replaces them. Phase 0 remains unapproved.

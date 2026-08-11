@@ -32,7 +32,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 11.9.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: '24', cache: pnpm }
+        with: { node-version: 24.11.1, cache: pnpm }
       - name: Generate ephemeral run secrets (R7 — no fixed credentials)
         run: |
           gen() { openssl rand -hex 24; }
@@ -67,10 +67,24 @@ jobs:
       # inventories and bidirectional reconciliation report that were actually
       # produced, so the generators run BEFORE the test step that checks them. The
       # pure gate LOGIC (negative fixtures) needs no artifacts and runs regardless.
-      - name: Supply-chain gate inputs (licence inventory + SBOM with schema validation)
+      # Gate-2.2 C16: the licence inventory is still a declared precondition of the
+      # G21-21 artifact gate. The Gate-2.1 SBOM generator is NOT run: its
+      # "bidirectional" reconciliation compared two structures derived from the same
+      # generated SBOM, so it could not fail. It is superseded by the C16 runner below,
+      # which the artifact gate invokes itself into a temporary directory.
+      - name: Supply-chain gate input (licence inventory)
+        run: node scripts/license-inventory.mjs
+      # C16 closure gate, BLOCKING, into an explicit per-run temporary directory. The
+      # generated artifacts are never read from a gitignored path, so a clean checkout
+      # and a developer machine with leftover outputs behave identically.
+      - name: C16 target-resolved closure gate (blocking)
         run: |
-          node scripts/license-inventory.mjs
-          node scripts/generate-sbom.mjs
+          C16_OUT="$(mktemp -d)"
+          echo "C16 run directory: $C16_OUT"
+          node scripts/gate/generate-closures.mjs --out "$C16_OUT"
+          test -s "$C16_OUT/closure-reconciliation.json"
+          test -s "$C16_OUT/sbom-linux-x64-glibc-prod.cdx.json"
+          test -s "$C16_OUT/sbom-linux-x64-glibc-dev.cdx.json"
       - name: Unit + conformance + supply-chain gate tests (golden fixtures, negative fixtures, shipped artifacts)
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
@@ -97,7 +111,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 11.9.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: '24', cache: pnpm }
+        with: { node-version: 24.11.1, cache: pnpm }
       - name: Generate ephemeral run secrets (R7 — no fixed credentials)
         run: |
           gen() { openssl rand -hex 24; }
@@ -139,56 +153,66 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 11.9.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: '24', cache: pnpm }
+        with: { node-version: 24.11.1, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Secret scanning (gitleaks, blocking)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # FAILS on an empty SBOM, an invalid CycloneDX 1.6 document, or a
-      # reconciliation gap in EITHER direction (Gate-2.1 §9).
-      - name: SBOM generation (pinned tracked generator, schema-validated, bidirectional)
-        run: node scripts/generate-sbom.mjs
-      - name: Upload SBOM + reconciliation
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: |
-            evidence/supply-chain/sbom.cdx.json
-            evidence/supply-chain/reconciliation.txt
-      - name: Dependency vulnerability scan (blocking at high)
-        run: pnpm audit --audit-level high
-      - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
-        run: node scripts/license-inventory.mjs
-      - name: Repository FILESYSTEM scan (Trivy fs — labeled as such)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
-      - name: Pinned-digest consistency (compose == manifest == scan targets)
+      # Gate-2.2 C15/C16: the supply-chain gate is the TRACKED runner in
+      # scripts/gate/, not a set of marketplace actions. The runner verifies every tool
+      # pin BEFORE scanning and fails closed on a mismatch, enforces the vulnerability
+      # database's identity and freshness, resolves each multi-arch image index to its
+      # exact linux/amd64 child, and records raw stdout/stderr digests per step. A scan
+      # from an unknown scanner version, or against a stale database, is not evidence.
+      - name: Install PINNED scanner binaries (exact versions the runner requires)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          TRIVY_VERSION=0.73.0
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin trivy
+          sudo chmod +x /usr/local/bin/gitleaks /usr/local/bin/trivy
+      - name: Verify scanner + toolchain versions are EXACTLY the pinned ones
+        run: |
+          set -euo pipefail
+          check() { got="$2"; want="$3"; [ "$got" = "$want" ] || { echo "$1: got '$got', want '$want'"; exit 1; }; echo "$1 = $got"; }
+          check node     "$(node --version)"    "v24.11.1"
+          check pnpm     "$(pnpm --version)"    "11.9.0"
+          check gitleaks "$(gitleaks version)"  "8.30.1"
+          check trivy    "$(trivy --version | sed -n 's/^Version: *//p' | head -1)" "0.73.0"
+      - name: Download the trivy vulnerability database (the runner enforces its freshness)
+        run: |
+          trivy image --download-db-only
+          trivy --version --format json
+      - name: Pinned-digest consistency (compose == manifest)
         run: |
           PG_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['postgres']['digest'])")
           REDIS_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['redis']['digest'])")
           grep -qF "image: $PG_DIGEST" docker-compose.yml || { echo "compose postgres digest != manifest"; exit 1; }
           grep -qF "image: $REDIS_DIGEST" docker-compose.yml || { echo "compose redis digest != manifest"; exit 1; }
-          echo "PG_DIGEST=$PG_DIGEST" >> "$GITHUB_ENV"
-          echo "REDIS_DIGEST=$REDIS_DIGEST" >> "$GITHUB_ENV"
-      - name: EXACT container IMAGE scan — postgres (Trivy image, blocking HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+      # BLOCKING. 8 steps, 6 blocking; the 2 non-blocking steps are alternate output
+      # FORMATS of scans that already ran blocking with the same pinned tool, and the
+      # runner fails if any non-blocking step adds coverage nothing blocking enforces.
+      - name: C15 supply-chain gate (tracked pinned runner, blocking)
+        run: |
+          C15_OUT="$(mktemp -d)"
+          echo "C15_OUT=$C15_OUT" >> "$GITHUB_ENV"
+          node scripts/gate/supply-chain.mjs --out "$C15_OUT"
+      # BLOCKING. Generated into an explicit per-run temporary directory: no test and no
+      # step reads a gitignored path, so a clean checkout behaves identically to a
+      # developer machine that has leftover preliminary outputs.
+      - name: C16 target-resolved closure gate (tracked runner, blocking)
+        run: |
+          C16_OUT="$(mktemp -d)"
+          echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
+          node scripts/gate/generate-closures.mjs --out "$C16_OUT"
+      - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
+        run: node scripts/license-inventory.mjs
+      - name: Upload C15 + C16 raw gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          scan-type: image
-          image-ref: ${{ env.PG_DIGEST }}
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          trivyignores: .trivyignore
-      - name: EXACT container IMAGE scan — redis (Trivy image, blocking HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: image
-          image-ref: ${{ env.REDIS_DIGEST }}
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          trivyignores: .trivyignore
+          name: supply-chain-gate-evidence
+          path: |
+            ${{ env.C15_OUT }}
+            ${{ env.C16_OUT }}
+          if-no-files-found: error

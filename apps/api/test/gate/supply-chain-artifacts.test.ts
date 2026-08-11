@@ -1,17 +1,27 @@
 /**
- * GATE-2.1 §9 — the supply-chain ARTIFACTS the gate actually shipped.
+ * SUPPLY-CHAIN ARTIFACT GATES.
  *
- * Separate from supply-chain.test.ts because these assertions have a stated
- * precondition: the generators must have run. That ordering is real (a clean
- * checkout has no SBOM yet), so it is declared here and encoded in CI rather than
- * hidden behind a skip — a gate that quietly skips is not a gate.
+ * Two blocks with deliberately different dependency models.
  *
- *   1. node scripts/license-inventory.mjs   → sbom/license-inventory.json
- *   2. node scripts/generate-sbom.mjs       → evidence/supply-chain/*
- *   3. pnpm --filter @eye/api test          → this file
+ * G21-21 (licence inventory) still has a stated precondition — `node
+ * scripts/license-inventory.mjs` must have run — declared here and encoded in CI
+ * rather than hidden behind a skip, because a gate that quietly skips is not a gate.
+ *
+ * C16 (target-resolved closures) has NO precondition: it INVOKES the shipped runner
+ * into a fresh temporary directory and asserts what that run produced. Remediation
+ * after independent review of e3a0b1f — the previous version read a gitignored path,
+ * so a local run could pass on leftover preliminary files while a clean checkout
+ * failed. An artifact gate that depends on ignored state is not reproducible.
+ *
+ * The Gate-2.1 legacy SBOM artifacts (evidence/supply-chain/sbom.cdx.json and
+ * reconciliation.txt) are SUPERSEDED and no longer part of the active gate: their
+ * "bidirectional" reconciliation compared two structures derived from the same
+ * generated SBOM, so it could not fail. See the supersession assertion below.
  */
-import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -44,87 +54,126 @@ describe('G21-22 artifacts — the shipped SBOM, inventories and reconciliation 
     expect(inventory.development.length).toBeGreaterThan(0);
   });
 
-  it('the shipped SBOM passes the same CycloneDX 1.6 gate as the negative fixtures', () => {
-    const bom = JSON.parse(
-      required('evidence/supply-chain/sbom.cdx.json', 'node scripts/generate-sbom.mjs'),
-    ) as Record<string, unknown>;
-    const r = validateCycloneDx(bom, Ajv, addFormats);
-    expect(r.errors.slice(0, 5)).toEqual([]);
-    expect(r.ok).toBe(true);
-    expect((bom['components'] as unknown[]).length).toBeGreaterThan(0);
-  });
-
-  it('the legacy reconciliation report shows both of its directions clean', () => {
-    // SUPERSEDED BY C16. Gate-2.2 found this report to be SELF-reconciliation: both
-    // "directions" were derived from the same generated SBOM, so the check could not
-    // fail. It is still asserted here because the artifact still ships, but it is no
-    // longer the evidence of closure correctness — that is the C16 report below,
-    // which compares the lockfile-derived graph against an SBOM re-read from disk.
-    const report = required('evidence/supply-chain/reconciliation.txt', 'node scripts/generate-sbom.mjs');
-    expect(report).toMatch(/forward\s+\(sbom -> closure\):\s+\d+\/\d+ matched, 0 unmatched/);
-    expect(report).toMatch(/reverse\s+\(closure -> sbom\):\s+\d+\/\d+ matched, 0 unmatched/);
-    expect(report).toContain('cyclonedx 1.6 schema:          VALID');
-    expect(report).toContain('result:                        RECONCILED');
-    expect(report).toMatch(/stale exclusions:\s+0/);
-  });
-
-  it('the production and development inventories agree with the SBOM component scopes', () => {
-    const prod = JSON.parse(
-      required('evidence/supply-chain/licenses-prod.json', 'node scripts/generate-sbom.mjs'),
-    ) as unknown[];
-    const dev = JSON.parse(
-      required('evidence/supply-chain/licenses-dev.json', 'node scripts/generate-sbom.mjs'),
-    ) as unknown[];
-    const bom = JSON.parse(
-      required('evidence/supply-chain/sbom.cdx.json', 'node scripts/generate-sbom.mjs'),
-    ) as { components: Array<{ properties?: Array<{ name: string; value: string }> }> };
-    const scopeOf = (c: { properties?: Array<{ name: string; value: string }> }): string =>
-      c.properties?.find((x) => x.name === 'eye:dependency-scope')?.value ?? 'unknown';
-    const counted = bom.components.reduce<Record<string, number>>((acc, c) => {
-      const s = scopeOf(c);
-      acc[s] = (acc[s] ?? 0) + 1;
-      return acc;
-    }, {});
-    expect(counted['production']).toBe(prod.length);
-    expect(counted['development']).toBe(dev.length);
-    expect(bom.components.length).toBe(prod.length + dev.length);
+  it('the legacy self-reconciling SBOM artifacts are NOT part of the active gate', () => {
+    // The Gate-2.1 generator and its reconciliation.txt are superseded by C16. They are
+    // deliberately no longer generated or asserted: comparing an SBOM against a
+    // structure derived from that same SBOM cannot fail, so it evidenced nothing.
+    // C17 replaces the schema-validation and licence-obligation halves.
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const active = ci.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+    expect(active, 'the legacy generator must not run in the active gate')
+      .not.toContain('node scripts/generate-sbom.mjs');
+    // …and the runners that DO gate supply-chain correctness are wired and blocking.
+    expect(active).toContain('scripts/gate/supply-chain.mjs');
+    expect(active).toContain('scripts/gate/generate-closures.mjs');
   });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C16 artifacts — the target-resolved closures and their real reconciliation', () => {
-  const C16 = 'node scripts/gate/generate-closures.mjs';
+  /**
+   * Generate into a FRESH temporary directory by invoking the shipped runner, so this
+   * gate is identical on a clean checkout and on a developer machine with leftover
+   * preliminary outputs. Nothing here reads a gitignored path.
+   */
+  let outDir: string;
+  let raw: string;
+
+  beforeAll(() => {
+    outDir = mkdtempSync(join(tmpdir(), 'eye-c16-artifacts-'));
+    execFileSync('node', [join(REPO, 'scripts/gate/generate-closures.mjs'), '--out', outDir], {
+      cwd: REPO, encoding: 'utf8', stdio: 'pipe',
+    });
+    raw = readFileSync(join(outDir, 'closure-reconciliation.json'), 'utf8');
+  });
+  afterAll(() => rmSync(outDir, { recursive: true, force: true }));
+
+  const generated = (relative: string): string => {
+    const path = join(outDir, relative);
+    if (!existsSync(path)) throw new Error(`${relative} was not produced by the C16 runner`);
+    return readFileSync(path, 'utf8');
+  };
 
   const report = (): {
     targets: Record<string, {
       target: { id: string; os: string; arch: string; libc: string; importer_roots: string[]; dependency_scopes: string[] };
-      counts: { nodes: number; edges: number; platform_excluded: number; peer_variant_nodes: number };
+      counts: { nodes: number; edges: number; platform_excluded: number; peer_variant_nodes: number; subject_root_edges: number };
       reconciliation: Record<string, unknown> & { clean: boolean };
+      workspace_identities: Array<{ importer_root: string; name: string; version: string; purl: string; manifest_sha256: string }>;
+      scope_distribution: Record<string, number>;
       sbom_sha256: string;
       sbom_file: string;
+      subject_ref: string;
     }>;
     determinism_contract: Record<string, unknown>;
-    governed_exclusions: { problems: string[] };
+    generated_from: Record<string, unknown>;
+    governed_exclusions: { rejected: string[]; applied_per_target: Record<string, { applied_count: number }> };
     vulnerable_residuals: string[];
     override_residual_proof: Array<{ package: string; pinned_exact: string; resolved_per_target: Record<string, string[]> }>;
-  } => JSON.parse(required('evidence/supply-chain/c16/closure-reconciliation.json', C16));
+  } => JSON.parse(raw);
 
-  it('both targets reconcile with zero missing AND zero extra, reported separately', () => {
+  it('both targets reconcile clean over EVERY failure dimension, reported separately', () => {
     const r = report();
     expect(Object.keys(r.targets).sort()).toEqual(['development', 'production']);
     for (const [name, t] of Object.entries(r.targets)) {
-      for (const key of ['missing_nodes', 'extra_nodes', 'missing_edges', 'extra_edges',
-        'identity_mismatches', 'dangling_references', 'components_without_dependency_entry',
-        'orphan_components']) {
+      for (const key of [
+        'missing_nodes', 'extra_nodes', 'missing_edges', 'extra_edges',
+        'edge_multiplicity_mismatches', 'missing_subject_root_edges', 'extra_subject_edges',
+        'field_mismatches', 'duplicate_components', 'duplicate_dependency_entries',
+        'duplicate_depends_on', 'duplicate_properties', 'dangling_references',
+        'components_without_dependency_entry', 'orphan_components',
+        'subject_and_binding_problems',
+      ]) {
         expect(t.reconciliation[key], `${name}.${key}`).toEqual([]);
       }
       // Counts must agree on both sides, not merely have an empty difference.
       expect(t.reconciliation['lock_nodes'], `${name} node counts`).toBe(t.reconciliation['sbom_nodes']);
       expect(t.reconciliation['lock_edges'], `${name} edge counts`).toBe(t.reconciliation['sbom_edges']);
+      expect(t.reconciliation['subject_root_edges_present'], `${name} subject edges`)
+        .toBe(t.reconciliation['subject_root_edges_expected']);
       expect(t.reconciliation.clean, `${name} clean`).toBe(true);
       expect(t.counts.nodes).toBeGreaterThan(0);
-      expect(t.counts.edges).toBeGreaterThan(0);
+      expect(t.counts.subject_root_edges).toBe(t.target.importer_roots.length);
     }
+  });
+
+  it('the report records REAL first-party workspace identities, never path basenames', () => {
+    const r = report();
+    for (const [name, t] of Object.entries(r.targets)) {
+      expect(t.workspace_identities.length, `${name} workspace identities`).toBeGreaterThan(0);
+      for (const w of t.workspace_identities) {
+        expect(w.version, `${name} ${w.importer_root} version`).not.toBe('0.0.0');
+        expect(w.manifest_sha256, `${name} ${w.importer_root} manifest digest`).toMatch(/^[a-f0-9]{64}$/);
+        // Canonical scoped PURL: namespace separated by '/', not '%2F'.
+        if (w.name.startsWith('@')) expect(w.purl).toMatch(/^pkg:npm\/%40[^%]+\//);
+      }
+      const names = t.workspace_identities.map((w) => `${w.name}@${w.version}`);
+      expect(names).toContain('@eye/api@0.0.1');
+      expect(names).toContain('@eye/contracts@0.0.1');
+    }
+  });
+
+  it('every component carries scope provenance', () => {
+    const r = report();
+    for (const [name, t] of Object.entries(r.targets)) {
+      expect(t.scope_distribution['(none)'], `${name} components with no scope`).toBeUndefined();
+      const total = Object.values(t.scope_distribution).reduce((a, b) => a + b, 0);
+      expect(total, `${name} scope distribution must cover every component`).toBe(t.counts.nodes);
+    }
+  });
+
+  it('the report binds the source SHA, lockfile, descriptor and generator digests', () => {
+    const r = report();
+    expect(r.generated_from['lockfile_sha256']).toMatch(/^[a-f0-9]{64}$/);
+    expect(r.generated_from['descriptor_sha256']).toMatch(/^[a-f0-9]{64}$/);
+    expect(r.generated_from['generator_sha256']).toMatch(/^[a-f0-9]{64}$/);
+    expect(r.generated_from['exclusions_sha256']).toMatch(/^[a-f0-9]{64}$/);
+    expect(r.generated_from['source_sha']).toMatch(/^[a-f0-9]{40}$|^\(not a git worktree\)$/);
+    const pinned = r.generated_from['pinned_implementations'] as Record<string, { installed: string; expected: string }>;
+    expect(pinned['packageurl-js'].installed).toBe(pinned['packageurl-js'].expected);
+    expect(pinned['yaml'].installed).toBe(pinned['yaml'].expected);
+    // And each serialized SBOM is bound by its exact digest.
+    for (const t of Object.values(r.targets)) expect(t.sbom_sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('the two targets are resolved for linux/x64/glibc and are genuinely distinct', () => {
@@ -156,22 +205,27 @@ describe('C16 artifacts — the target-resolved closures and their real reconcil
   it('the shipped SBOMs carry no timestamp, so they are byte-comparable across runs', () => {
     const r = report();
     for (const t of Object.values(r.targets)) {
-      const doc = JSON.parse(required(`evidence/supply-chain/c16/${t.sbom_file}`, C16)) as {
+      const doc = JSON.parse(generated(t.sbom_file)) as {
         metadata: Record<string, unknown>; specVersion: string; serialNumber: string;
         components: unknown[]; dependencies: unknown[];
       };
       expect(doc.metadata['timestamp']).toBeUndefined();
       expect(doc.specVersion).toBe('1.6');
       expect(doc.serialNumber).toMatch(/^urn:uuid:/);
-      // Every component has a dependency entry, leaves included.
-      expect(doc.dependencies.length).toBe(doc.components.length);
+      // Every component has a dependency entry, leaves included, PLUS the metadata
+      // subject's own entry naming the declared importer roots.
+      expect(doc.dependencies.length).toBe(doc.components.length + 1);
     }
   });
 
   it('no exclusion is suppressing anything, and the exact override left no residual', () => {
     const r = report();
-    expect(r.governed_exclusions.problems).toEqual([]);
+    expect(r.governed_exclusions.rejected).toEqual([]);
     expect(r.vulnerable_residuals).toEqual([]);
+    // Nothing declared means nothing applied — stated, not assumed.
+    for (const [name, a] of Object.entries(r.governed_exclusions.applied_per_target)) {
+      expect(a.applied_count, `${name} applied exclusions`).toBe(0);
+    }
     const nanoid = r.override_residual_proof.find((p) => p.package === 'nanoid');
     expect(nanoid, 'the nanoid override must be proven, not assumed').toBeDefined();
     expect(nanoid!.pinned_exact).toBe('3.3.18');

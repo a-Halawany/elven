@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs gate library shared with the CI scripts (no types)
-import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES } from '../../../../scripts/gate/lib/scanner-provenance.mjs';
+import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS } from '../../../../scripts/gate/lib/scanner-provenance.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 'supply-chain.mjs'), 'utf8');
@@ -165,16 +165,80 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
     expect(lib).toContain('resolved_path');
   });
 
-  it('the runner records the vulnerability DB identity, build time and computed age', () => {
+  it('the runner probes and ENFORCES the database before the first scan', () => {
     const src = runnerSource();
-    expect(src).toContain('trivyDatabase(generatedAt)');
-    const lib = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'scanner-provenance.mjs'), 'utf8');
-    for (const field of ['schema_version', 'built_at', 'next_update_due', 'downloaded_at',
-      'age_hours_at_scan', 'past_next_update_at_scan', 'misconfig_check_bundle']) {
-      expect(lib, field).toContain(field);
-    }
-    // Freshness is COMPUTED against the scan time, not copied from the tool.
-    expect(lib).toContain('now > new Date(nextUpdate)');
+    expect(src).toContain('enforceTrivyDatabase(vulnDb, MAX_VULN_DB_AGE_HOURS)');
+    expect(src).toContain('SUPPLY-CHAIN GATE FAILED: vulnerability database rejected');
+    // The enforcement precedes the first scan, so a stale DB can never produce findings.
+    expect(src.indexOf('vulnerability database rejected'))
+      .toBeLessThan(src.indexOf("R('pnpm-audit-human'"));
+  });
+
+  /**
+   * BEHAVIOURAL controls for the enforcement itself. Recording DB metadata without
+   * acting on it means a scan against an absent or stale database still reports "ok" —
+   * it simply finds nothing. These drive the production function with real inputs.
+   */
+  describe('enforceTrivyDatabase', () => {
+    const fresh = (over: Record<string, unknown> = {}) => ({
+      available: true,
+      vulnerability_db: {
+        schema_version: 2,
+        built_at: '2026-08-11T07:08:26Z',
+        next_update_due: '2026-08-12T07:08:26Z',
+        downloaded_at: '2026-08-11T12:37:10Z',
+        age_hours_at_scan: 6.7,
+        past_next_update_at_scan: false,
+        ...over,
+      },
+      misconfig_check_bundle: { digest: `sha256:${'1'.repeat(64)}`, downloaded_at: '2026-08-11T12:37:10Z' },
+    });
+
+    it('accepts a fresh, complete database (positive control)', () => {
+      expect(enforceTrivyDatabase(fresh())).toEqual([]);
+    });
+
+    it('rejects an UNAVAILABLE database', () => {
+      const problems = enforceTrivyDatabase({ available: false, error: 'trivy not found' }) as string[];
+      expect(problems.join(' ')).toMatch(/UNAVAILABLE/);
+      expect(enforceTrivyDatabase(null).length).toBeGreaterThan(0);
+      expect(enforceTrivyDatabase(undefined).length).toBeGreaterThan(0);
+    });
+
+    it('rejects MALFORMED metadata', () => {
+      expect((enforceTrivyDatabase(fresh({ schema_version: null })) as string[]).join(' '))
+        .toMatch(/no schema version/);
+      expect((enforceTrivyDatabase(fresh({ built_at: 'yesterday' })) as string[]).join(' '))
+        .toMatch(/build time is malformed/);
+      expect((enforceTrivyDatabase(fresh({ age_hours_at_scan: null })) as string[]).join(' '))
+        .toMatch(/age could not be computed/);
+      const noBundle = fresh();
+      (noBundle as { misconfig_check_bundle: { digest: string | null } }).misconfig_check_bundle.digest = null;
+      expect((enforceTrivyDatabase(noBundle) as string[]).join(' ')).toMatch(/check bundle reports no digest/);
+    });
+
+    it('rejects a database BEYOND the freshness window', () => {
+      const problems = enforceTrivyDatabase(fresh({ age_hours_at_scan: MAX_VULN_DB_AGE_HOURS + 0.1 })) as string[];
+      expect(problems.join(' ')).toMatch(/beyond the permitted/);
+      // …and accepts one exactly at the boundary.
+      expect(enforceTrivyDatabase(fresh({ age_hours_at_scan: MAX_VULN_DB_AGE_HOURS }))).toEqual([]);
+    });
+
+    it('rejects a database PAST its next-update time', () => {
+      const problems = enforceTrivyDatabase(fresh({ past_next_update_at_scan: true })) as string[];
+      expect(problems.join(' ')).toMatch(/past its next-update time/);
+    });
+
+    it('rejects a NEGATIVE age, where the host clock and the database disagree', () => {
+      const problems = enforceTrivyDatabase(fresh({ age_hours_at_scan: -3 })) as string[];
+      expect(problems.join(' ')).toMatch(/negative age/);
+    });
+  });
+
+  it('the runner refuses --final on a dirty worktree', () => {
+    const src = runnerSource();
+    expect(src).toContain('--final requires a clean worktree');
+    expect(src).toContain("process.argv.includes('--final')");
   });
 
   it('every step already records the exact command and a digest of its raw output', () => {
