@@ -20,6 +20,8 @@
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -30,7 +32,10 @@ import { buildAllClosures, countsOf } from '../../../../scripts/gate/generate-cl
 import { buildSbom, serialize, extractFromSbom, subjectRef } from '../../../../scripts/gate/lib/sbom.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { reconcile, governExclusions, applyExclusions, FAILURE_KEYS } from '../../../../scripts/gate/lib/reconcile.mjs';
+import {
+  reconcile, governExclusions, applyExclusions, checkExclusionCardinality,
+  EXCLUSION_REQUIRED_FIELDS, FAILURE_KEYS,
+} from '../../../../scripts/gate/lib/reconcile.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 
@@ -617,32 +622,43 @@ describe('C16 control — platform resolution is target-driven', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-describe('C16 control — exclusion governance is enforced AND applied', () => {
-  const RUN_DATE = '2026-08-11';
+describe('C16 control — exclusion governance is code-owned, enforced AND applied', () => {
+  const RUN_DATE = '2026-08-12';
   const FUTURE = '2027-01-01';
+  const EVIDENCE = 'PHASE0_EVIDENCE.md';
+  const evidenceDigest = createHash('sha256')
+    .update(readFileSync(join(REPO, EVIDENCE))).digest('hex');
 
-  /** A base entry that satisfies every field contract; each test breaks one thing. */
+  const isTracked = (rel: string) =>
+    spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO, encoding: 'utf8' }).status === 0;
+  const readEvidence = (rel: string) => {
+    try { return readFileSync(join(REPO, rel)); } catch { return null; }
+  };
+
+  /** An entry satisfying every field contract; each test breaks exactly one thing. */
   const base = {
+    id: 'CX-TEST-0001',
     target: 'production',
     scope: 'optionalDependencies',
     reason: 'control fixture for the C16 exclusion governance rules',
-    evidence: 'apps/api/test/gate/c16-closure-controls.test.ts',
-    evidence_sha256: 'a'.repeat(64),
+    evidence: EVIDENCE,
+    evidence_sha256: evidenceDigest,
     owner: 'platform-team',
     approver: 'security-review',
     approved_on: '2026-08-01',
     expires_on: FUTURE,
   };
-  const doc = (exclusions: unknown[]) => ({
-    schema_version: '2.0.0',
-    required_fields: ['target', 'scope', 'resolution_key', 'parent_edge', 'reason', 'evidence',
-      'evidence_sha256', 'owner', 'approver', 'approved_on', 'expires_on'],
+  const doc = (exclusions: unknown[], over: Record<string, unknown> = {}) => ({
+    schema_version: '3.0.0',
+    required_fields: [...EXCLUSION_REQUIRED_FIELDS],
     rejection_rules: {},
     exclusions,
+    ...over,
   });
-  const govern = (exclusions: unknown[]) =>
-    governExclusions(doc(exclusions), closures, lockUniverse, RUN_DATE) as
-      { problems: string[]; valid: unknown[] };
+  const govern = (exclusions: unknown[], over: Record<string, unknown> = {}) =>
+    governExclusions(doc(exclusions, over), closures, lockUniverse, RUN_DATE,
+      { root: REPO, isTracked, readEvidence }) as
+      { problems: string[]; valid: unknown[]; declared: number };
 
   /** A node reachable ONLY through optional edges, so excluding it is permissible. */
   const optionalOnlyNode = () => {
@@ -656,53 +672,79 @@ describe('C16 control — exclusion governance is enforced AND applied', () => {
     }
     throw new Error('no optional-only node in the production closure');
   };
+  const validEntry = () => {
+    const { node, parent } = optionalOnlyNode();
+    return {
+      ...base,
+      resolution_key: node.lockKey,
+      scope: [...node.scopes].includes('optionalDependencies') ? 'optionalDependencies' : [...node.scopes][0]!,
+      parent_edge: `${parent.from} -> ${parent.to}`,
+    };
+  };
 
-  it('the committed exclusion file is empty, so nothing is being suppressed today', () => {
+  it('the committed exclusion file is empty and passes its own code-owned validation', () => {
     const committed = JSON.parse(
       readFileSync(join(REPO, 'scripts/gate/closure-exclusions.json'), 'utf8'),
-    ) as { exclusions: unknown[]; required_fields: string[] };
+    ) as { exclusions: unknown[]; required_fields: string[]; schema_version: string };
     expect(committed.exclusions).toEqual([]);
-    const r = governExclusions(committed, closures, lockUniverse, RUN_DATE) as { problems: string[] };
+    expect(committed.schema_version).toBe('3.0.0');
+    const r = governExclusions(committed, closures, lockUniverse, RUN_DATE,
+      { root: REPO, isTracked, readEvidence }) as { problems: string[] };
     expect(r.problems).toEqual([]);
   });
 
-  it('POSITIVE: a fully valid exclusion is accepted and APPLIED exactly once', () => {
-    const { node, parent } = optionalOnlyNode();
-    const entry = {
-      ...base,
-      resolution_key: node.lockKey,
-      parent_edge: `${parent.from} -> ${parent.to}`,
-    };
+  it('the document CANNOT redefine the required-field set', () => {
+    // A document that declares its own policy could weaken its own validation.
+    const tampered = govern([], { required_fields: ['id', 'target'] });
+    expect(tampered.problems.join('\n')).toContain('differs from the code-owned');
+    const wrongSchema = govern([], { schema_version: '99.0.0' });
+    expect(wrongSchema.problems.join('\n')).toContain('not one of the code-owned supported versions');
+  });
+
+  it('POSITIVE: a fully valid exclusion is accepted, APPLIED once, and cascades deterministically', () => {
+    const entry = validEntry();
     const r = govern([entry]);
     expect(r.problems, 'a valid exclusion must be accepted').toEqual([]);
     expect(r.valid).toHaveLength(1);
 
-    // …and applying it must actually change the closure.
     const before = closures.production!.nodes.size;
-    const { closure: reduced, applied, excluded } = applyExclusions(closures.production!, r.valid) as
-      { closure: Closure; applied: Array<{ resolution_key: string; removed_edges: string[] }>; excluded: LockNode[] };
-    expect(applied).toHaveLength(1);
-    expect(applied[0]!.resolution_key).toBe(node.lockKey);
-    expect(excluded.map((n) => n.bomRef)).toEqual([node.bomRef]);
-    expect(reduced.nodes.size).toBe(before - 1);
-    expect(reduced.nodes.has(node.bomRef)).toBe(false);
-    // Every edge incident to it is gone, and recorded.
-    expect(reduced.edges.some((e) => e.from === node.bomRef || e.to === node.bomRef)).toBe(false);
-    expect(applied[0]!.removed_edges.length).toBeGreaterThan(0);
+    const applied = applyExclusions(closures.production!, r.valid) as {
+      closure: Closure;
+      applied: Array<{ id: string; bom_ref: string; removed_edges: string[] }>;
+      excluded: LockNode[];
+      cascaded: Array<{ bom_ref: string; reason: string }>;
+    };
+    expect(applied.applied).toHaveLength(1);
+    expect(applied.applied[0]!.id).toBe(entry.id);
+    expect(applied.closure.nodes.has(applied.applied[0]!.bom_ref)).toBe(false);
+    expect(applied.applied[0]!.removed_edges.length).toBeGreaterThan(0);
 
-    // The reduced closure must itself reconcile clean — an applied exclusion produces a
-    // smaller consistent graph, not a broken one.
-    const rec = reconcileFromDisk(reduced);
+    // Cardinalities must agree exactly.
+    const removed = before - applied.closure.nodes.size;
+    expect(removed).toBe(applied.applied.length + applied.cascaded.length);
+    expect(checkExclusionCardinality({
+      declared: 1, rejected: 0, valid: 1,
+      applied: applied.applied.length, removedNodes: removed, cascaded: applied.cascaded.length,
+    })).toEqual([]);
+
+    // Every cascaded removal is individually recorded with a reason.
+    for (const c of applied.cascaded) {
+      expect(c.bom_ref).toBeTruthy();
+      expect(c.reason).toMatch(/unreachable/);
+    }
+
+    // The reduced graph must have NO orphan and NO dangling reference.
+    const rec = reconcileFromDisk(applied.closure);
     expect(failures(rec), 'reduced closure must reconcile clean').toEqual([]);
-    expect(rec.sbom_nodes).toBe(before - 1);
+    expect(rec.orphan_components).toEqual([]);
+    expect(rec.dangling_references).toEqual([]);
   });
 
   it('applying zero exclusions leaves the closure identical', () => {
-    const { closure: same, applied } = applyExclusions(closures.production!, []) as
-      { closure: Closure; applied: unknown[] };
-    expect(applied).toEqual([]);
-    expect(same.nodes.size).toBe(closures.production!.nodes.size);
-    expect(same.edges.length).toBe(closures.production!.edges.length);
+    const same = applyExclusions(closures.production!, []) as { closure: Closure; applied: unknown[]; cascaded: unknown[] };
+    expect(same.applied).toEqual([]);
+    expect(same.cascaded).toEqual([]);
+    expect(same.closure.nodes.size).toBe(closures.production!.nodes.size);
   });
 
   it.each([
@@ -732,61 +774,87 @@ describe('C16 control — exclusion governance is enforced AND applied', () => {
       parent_edge: `${mandatory.from} -> ${mandatory.to}`,
     }]);
     expect(r.problems.join('\n')).toContain("rejected by 'excludes_compatible_mandatory_dependency'");
+  });
+
+  it('rejects a wrong target, and a scope the NODE does not actually hold', () => {
+    const e = validEntry();
+    expect(govern([{ ...e, target: 'staging' }]).problems.join('\n'))
+      .toContain("rejected by 'wrong_target'");
+    expect(govern([{ ...e, scope: 'devDependencies' }]).problems.join('\n'))
+      .toContain("rejected by 'wrong_target'");
+  });
+
+  it('rejects a parent_edge that is not real, and one that terminates ELSEWHERE', () => {
+    const e = validEntry();
+    expect(govern([{ ...e, parent_edge: 'not -> an-edge' }]).problems.join('\n'))
+      .toContain("rejected by 'wrong_parent'");
+    // A REAL edge that does not terminate at the excluded component must not justify it.
+    const unrelated = closures.production!.edges.find(
+      (x) => x.to !== e.resolution_key && !e.parent_edge.endsWith(x.to),
+    )!;
+    const r = govern([{ ...e, parent_edge: `${unrelated.from} -> ${unrelated.to}` }]);
+    expect(r.problems.join('\n')).toContain('terminates at');
     expect(r.valid).toHaveLength(0);
   });
 
-  it('rejects a wrong target and a wrong scope', () => {
-    const { node, parent } = optionalOnlyNode();
-    const key = node.lockKey;
-    const edge = `${parent.from} -> ${parent.to}`;
-    expect(govern([{ ...base, target: 'staging', resolution_key: key, parent_edge: edge }])
-      .problems.join('\n')).toContain("rejected by 'wrong_target'");
-    expect(govern([{ ...base, scope: 'devDependencies', resolution_key: key, parent_edge: edge }])
-      .problems.join('\n')).toContain("rejected by 'wrong_target'");
+  it('rejects an EXPIRED exclusion and a FUTURE approval', () => {
+    const e = validEntry();
+    expect(govern([{ ...e, expires_on: '2026-08-11' }]).problems.join('\n'))
+      .toContain("rejected by 'expired'");
+    expect(govern([{ ...e, approved_on: '2027-06-01', expires_on: '2027-12-01' }]).problems.join('\n'))
+      .toContain("rejected by 'future_approval'");
+    // expiry must be strictly after approval
+    expect(govern([{ ...e, approved_on: '2026-08-01', expires_on: '2026-08-01' }]).problems.join('\n'))
+      .toContain('is not after approved_on');
   });
 
-  it('rejects a parent_edge that is not a real edge', () => {
-    const { node } = optionalOnlyNode();
-    const r = govern([{ ...base, resolution_key: node.lockKey, parent_edge: 'not -> an-edge' }]);
-    expect(r.problems.join('\n')).toContain("rejected by 'wrong_parent'");
+  it('rejects self-approval, a malformed digest and a non-ISO date', () => {
+    const e = validEntry();
+    expect(govern([{ ...e, approver: e.owner }]).problems.join('\n')).toContain("rejected by 'unapproved'");
+    expect(govern([{ ...e, evidence_sha256: 'not-a-digest' }]).problems.join('\n')).toContain("rejected by 'unapproved'");
+    expect(govern([{ ...e, approved_on: 'last tuesday' }]).problems.join('\n')).toContain('approved_on');
   });
 
-  it('rejects an EXPIRED exclusion', () => {
-    const { node, parent } = optionalOnlyNode();
-    const r = govern([{
-      ...base, resolution_key: node.lockKey, parent_edge: `${parent.from} -> ${parent.to}`,
-      expires_on: '2026-08-10',   // the day before RUN_DATE
-    }]);
-    expect(r.problems.join('\n')).toContain("rejected by 'expired'");
+  it('rejects FAKE evidence, an untracked path and a WRONG evidence digest', () => {
+    const e = validEntry();
+    expect(govern([{ ...e, evidence: 'does/not/exist.md' }]).problems.join('\n'))
+      .toContain('does not exist');
+    expect(govern([{ ...e, evidence: '/etc/passwd' }]).problems.join('\n'))
+      .toContain('repository-relative');
+    expect(govern([{ ...e, evidence: '../outside.md' }]).problems.join('\n'))
+      .toContain('repository-relative');
+    // Right file, wrong digest: the approval is not bound to these bytes.
+    const r = govern([{ ...e, evidence_sha256: 'b'.repeat(64) }]);
+    expect(r.problems.join('\n')).toContain('evidence digest mismatch');
     expect(r.valid).toHaveLength(0);
   });
 
-  it('rejects self-approval and a malformed evidence digest', () => {
-    const { node, parent } = optionalOnlyNode();
-    const good = { ...base, resolution_key: node.lockKey, parent_edge: `${parent.from} -> ${parent.to}` };
-    expect(govern([{ ...good, approver: good.owner }]).problems.join('\n'))
-      .toContain("rejected by 'unapproved'");
-    expect(govern([{ ...good, evidence_sha256: 'not-a-digest' }]).problems.join('\n'))
-      .toContain("rejected by 'unapproved'");
+  it('rejects DUPLICATE ids and duplicate entries even when one node would be removed', () => {
+    const e = validEntry();
+    const dupId = govern([e, { ...e, resolution_key: 'nanoid@3.3.18', parent_edge: 'x -> y' }]);
+    expect(dupId.problems.join('\n')).toContain('duplicate exclusion id');
+
+    const dupEntry = govern([e, { ...e, id: 'CX-TEST-0002' }]);
+    expect(dupEntry.problems.join('\n')).toContain('duplicate entry');
+    expect(dupEntry.valid, 'neither duplicate may be applied').toHaveLength(1);
   });
 
-  it('rejects a non-ISO approval or expiry date', () => {
-    const { node, parent } = optionalOnlyNode();
-    const good = { ...base, resolution_key: node.lockKey, parent_edge: `${parent.from} -> ${parent.to}` };
-    expect(govern([{ ...good, approved_on: 'last tuesday' }]).problems.join('\n')).toContain('approved_on');
-    expect(govern([{ ...good, expires_on: '2027/01/01' }]).problems.join('\n')).toContain('expires_on');
-  });
-
-  it.each(['owner', 'approver', 'evidence_sha256', 'approved_on', 'expires_on', 'parent_edge'])(
+  it.each(EXCLUSION_REQUIRED_FIELDS as unknown as string[])(
     'rejects an entry missing the required field %s', (field) => {
-      const { node, parent } = optionalOnlyNode();
-      const entry: Record<string, unknown> = {
-        ...base, resolution_key: node.lockKey, parent_edge: `${parent.from} -> ${parent.to}`,
-      };
+      const entry: Record<string, unknown> = { ...validEntry() };
       entry[field] = '';
       expect(govern([entry]).problems.join('\n')).toContain(`missing required field '${field}'`);
     },
   );
+
+  it('cardinality disagreement is itself a failure', () => {
+    expect(checkExclusionCardinality({
+      declared: 2, rejected: 0, valid: 2, applied: 1, removedNodes: 1, cascaded: 0,
+    }).join(' ')).toContain('2 valid entries but 1 applied');
+    expect(checkExclusionCardinality({
+      declared: 1, rejected: 0, valid: 1, applied: 1, removedNodes: 5, cascaded: 0,
+    }).join(' ')).toContain('5 nodes removed but 1 applied + 0 cascaded');
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -799,7 +867,14 @@ describe('C16 control — the target definition is load-bearing', () => {
       buildClosure: (l: unknown, t: unknown, o: unknown) => Closure; loadLock: (p: string) => unknown;
     };
     const lock = loadLock(join(REPO, 'pnpm-lock.yaml'));
-    const one = buildClosure(lock, { ...narrowed.closures.production!.target, importer_roots: ['packages/tokens'] }, { root: REPO });
+    const descriptor = JSON.parse(
+      readFileSync(join(REPO, 'scripts/gate/target-descriptor.json'), 'utf8'),
+    ) as { first_party_component_types: { by_importer_root: Record<string, string> } };
+    const one = buildClosure(
+      lock,
+      { ...narrowed.closures.production!.target, importer_roots: ['packages/tokens'], integrity_rules: [] },
+      { root: REPO, firstPartyTypes: descriptor.first_party_component_types.by_importer_root },
+    );
     expect(one.nodes.size).toBeLessThan(closures.production!.nodes.size);
     expect(one.roots).toEqual(['workspace:packages/tokens']);
   });

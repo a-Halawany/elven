@@ -1,44 +1,68 @@
 /**
  * C15 — REPRODUCIBLE SUPPLY-CHAIN RUNNER.
  *
- * Executes the real scanners and captures, for EVERY execution: the exact argv, the
- * tool and its version, start/finish timestamps, the source SHA, the exit code and
- * the complete raw stdout/stderr. Nothing here is summarised — the raw bytes are
- * written to disk and digested, so the evidence can be re-read rather than trusted.
+ * Executes the real scanners and captures, for EVERY execution: the exact argv, the tool
+ * and its version, start/finish timestamps, the source SHA, the exit code and the
+ * complete raw stdout/stderr. Nothing is summarised — the raw bytes are written to disk
+ * and digested, so the evidence can be re-read rather than trusted.
  *
- * TOOLS ARE PINNED. Each tool's version is verified BEFORE any scan runs and the
- * whole gate fails closed on a mismatch: a scan from an unknown scanner version is
- * not evidence, because the finding set is version-dependent.
- *
- * Exit code is non-zero if any tool is mis-pinned, any required scan fails its
- * policy, or any expected artifact is missing.
+ * ── C16-R2 CORRECTIONS (hosted run 31532067899 was RED here) ─────────────────────
+ *  1. ISOLATED TRIVY CACHE. Every trivy invocation, including the provenance probe, uses
+ *     one explicit `--cache-dir`. Previously the probe read the DEFAULT cache while CI
+ *     prefetched into it partially, so the gate described a cache that was not the one
+ *     the scans used.
+ *  2. BOTH ARTIFACTS ACQUIRED. trivy 0.73 has no `--download-check-only`; the
+ *     misconfiguration checks bundle is fetched lazily by the first misconfig scan. The
+ *     runner now acquires the vulnerability DB *and* the checks bundle up front, then
+ *     runs every authoritative scan with `--skip-db-update --skip-check-update`, and
+ *     proves the cache fingerprint is unchanged afterwards.
+ *  3. GOVERNED DISPOSITIONS. Image scans run with NO suppression and are reconciled
+ *     against machine-governed, target-specific records. The global `.trivyignore` is
+ *     gone: a bare CVE id suppresses that advisory in every image and package.
+ *  4. NORMALISED COVERAGE. A non-blocking step must be an alternate FORMAT of a blocking
+ *     scan, so the JSON captures now carry identical severity, scanner, target, ignore
+ *     and cache semantics. Previously the JSON filesystem scan silently added LOW/MEDIUM
+ *     coverage that nothing enforced.
+ *  5. AUDITABLE FAILURE. A failure manifest and raw diagnostics are ALWAYS written before
+ *     exiting, so a red CI run is still inspectable.
  *
  * Usage:
- *   node scripts/gate/supply-chain.mjs [--out evidence/supply-chain]
+ *   node scripts/gate/supply-chain.mjs [--out DIR] [--final] [--expected-sha SHA]
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname, isAbsolute } from 'node:path';
+import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  resolveImageIndex, platformPinnedRef, scannerBinaries, trivyDatabase, classifyStepPolicies,
-  enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS,
+  resolveImageIndex, platformPinnedRef, scannerBinaries, classifyStepPolicies,
 } from './lib/scanner-provenance.mjs';
+import {
+  acquire, capture, enforce, fingerprint, frozenCacheArgs, loadPins, cachePaths,
+} from './lib/trivy-cache.mjs';
+import {
+  loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
+} from './lib/scanner-exclusions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/** Recorded when the tree carries no git metadata (a source archive). */
+const NOT_A_WORKTREE = '(not a git worktree)';
+
+/** git, but tolerant of a gitless export: returns null instead of throwing. */
+function safeGit(args) {
+  const res = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+  return res.status === 0 ? res.stdout : null;
+}
+
 /**
  * The platform the deployable target actually runs on (CI is ubuntu-latest; the C16
- * target descriptor resolves linux/x64/glibc). Container scans are pinned to the
- * matching index child so the scan is not silently host-dependent.
+ * target descriptor resolves linux/x64/glibc). Container scans are pinned to the matching
+ * index child so a scan is never silently host-dependent.
  */
 const SCAN_PLATFORM = 'linux/amd64';
 
-/**
- * PINNED TOOLCHAIN. `probe` extracts the version; `expect` is the exact required
- * value. Update deliberately — never to make a run pass.
- */
+/** PINNED TOOLCHAIN. Update deliberately — never to make a run pass. */
 const PINNED_TOOLS = {
   pnpm: { argv: ['pnpm', '--version'], extract: (s) => s.trim(), expect: '11.9.0' },
   node: { argv: ['node', '--version'], extract: (s) => s.trim(), expect: 'v24.11.1' },
@@ -74,22 +98,30 @@ function pinnedImages() {
   return [...compose.matchAll(/image:\s*(\S+@sha256:[a-f0-9]{64})/g)].map((m) => m[1]);
 }
 
+/**
+ * Is a path tracked? In a gitless export there is no index to consult, so tracking cannot
+ * be established and is not asserted — the path's existence is still required.
+ */
+const gitAvailable = () => safeGit(['rev-parse', '--git-dir']) !== null;
+const isTracked = (rel) => {
+  if (!gitAvailable()) return true;
+  return spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: ROOT, encoding: 'utf8' }).status === 0;
+};
+
 function run(steps, outDir, sourceSha, id, argv, opts = {}) {
   const started = new Date().toISOString();
   const t0 = Date.now();
   const res = spawnSync(argv[0], argv.slice(1), {
     cwd: opts.cwd ?? ROOT,
     encoding: 'utf8',
-    maxBuffer: 128 * 1024 * 1024,
+    maxBuffer: 256 * 1024 * 1024,
     env: { ...process.env, ...(opts.env ?? {}) },
   });
   const finished = new Date().toISOString();
   const stdout = res.stdout ?? '';
   const stderr = res.stderr ?? '';
-  const outFile = join(outDir, `${id}.stdout.txt`);
-  const errFile = join(outDir, `${id}.stderr.txt`);
-  writeFileSync(outFile, stdout);
-  writeFileSync(errFile, stderr);
+  writeFileSync(join(outDir, `${id}.stdout.txt`), stdout);
+  writeFileSync(join(outDir, `${id}.stderr.txt`), stderr);
 
   const record = {
     id,
@@ -99,6 +131,7 @@ function run(steps, outDir, sourceSha, id, argv, opts = {}) {
     cwd: opts.cwd ?? '<repo root>',
     tool: opts.tool ?? argv[0],
     tool_version: opts.toolVersion ?? null,
+    coverage: opts.coverage ?? null,
     source_sha: sourceSha,
     started_at: started,
     finished_at: finished,
@@ -112,96 +145,222 @@ function run(steps, outDir, sourceSha, id, argv, opts = {}) {
     stdout_file: `${id}.stdout.txt`,
     stderr_file: `${id}.stderr.txt`,
     policy: opts.policy ?? 'informational',
-    // A step is a gate FAILURE only when its policy says the exit code matters.
     failed: opts.policy === 'blocking' ? res.status !== 0 : false,
   };
   steps.push(record);
   const verdict = record.failed ? 'FAIL' : record.exit_code === 0 ? 'ok' : `exit ${record.exit_code} (non-blocking)`;
-  console.log(`  [${verdict}] ${id} — ${record.command}`);
+  console.log(`  [${verdict}] ${id}`);
   return record;
 }
 
 function main() {
-  const outIdx = process.argv.indexOf('--out');
-  // An ABSOLUTE --out must not be re-rooted under the repo (join('/repo','/tmp/x')
-  // yields '/repo/tmp/x', which silently wrote gate output INTO the working tree).
-  const outArg = outIdx !== -1 ? process.argv[outIdx + 1] : 'evidence/supply-chain';
-  const outDir = isAbsolute(outArg) ? outArg : join(ROOT, outArg);
+  const argv = process.argv;
+  const outIdx = argv.indexOf('--out');
+  // An ABSOLUTE --out must not be re-rooted under the repo (join('/repo','/tmp/x') yields
+  // '/repo/tmp/x', which silently wrote gate output INTO the working tree).
+  const outArg = outIdx !== -1 ? argv[outIdx + 1] : 'evidence/supply-chain';
+  const outDir = isAbsolute(outArg) ? resolve(outArg) : join(ROOT, outArg);
   mkdirSync(outDir, { recursive: true });
 
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-  const treeClean =
-    execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() === '';
+  const finalMode = argv.includes('--final');
+  const shaIdx = argv.indexOf('--expected-sha');
+  const expectedSha = shaIdx !== -1 ? argv[shaIdx + 1] : null;
+  const cacheIdx = argv.indexOf('--trivy-cache');
+  const cacheDir = cacheIdx !== -1
+    ? resolve(argv[cacheIdx + 1])
+    : join(outDir, '.trivy-cache');
 
-  const finalMode = process.argv.includes('--final');
+  const startedAt = new Date().toISOString();
+  const runDate = startedAt.slice(0, 10);
+  const steps = [];
+  const failures = [];
+  /** Everything known so far, so a failure manifest is always writable. */
+  const state = {
+    artifact: 'C15 supply-chain gate — raw execution evidence',
+    started_at: startedAt,
+    mode: finalMode ? 'final' : 'preliminary',
+    outcome: 'INCOMPLETE',
+    scan_platform: SCAN_PLATFORM,
+    trivy_cache_dir: cacheDir,
+    steps,
+    failures,
+  };
+
+  /** ALWAYS write the manifest, then exit. A red run must remain auditable. */
+  const finish = (code, extra = {}) => {
+    Object.assign(state, extra);
+    state.finished_at = new Date().toISOString();
+    state.outcome = code === 0 ? 'PASS' : 'FAIL';
+    state.summary = {
+      total_steps: steps.length,
+      blocking_steps: steps.filter((s) => s.policy === 'blocking').length,
+      failed_steps: steps.filter((s) => s.failed).length,
+      failed_ids: steps.filter((s) => s.failed).map((s) => s.id),
+      blocking_problems: failures.length,
+    };
+    const text = `${JSON.stringify(state, null, 2)}\n`;
+    writeFileSync(join(outDir, 'supply-chain-manifest.json'), text);
+    writeFileSync(
+      join(outDir, code === 0 ? 'RESULT-PASS.txt' : 'RESULT-FAIL.txt'),
+      [
+        `outcome: ${state.outcome}`,
+        `source_sha: ${state.source_sha ?? '(unknown)'}`,
+        `mode: ${state.mode}`,
+        `steps: ${steps.length}`,
+        '',
+        ...failures.map((f) => `PROBLEM: ${f}`),
+        '',
+        ...steps.map((s) => `${s.failed ? 'FAIL' : 'ok  '} ${s.id} (exit ${s.exit_code}) ${s.command}`),
+        '',
+      ].join('\n'),
+    );
+    if (code !== 0) {
+      console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
+      for (const f of failures) console.error(`  ${f}`);
+      console.error(`  failure manifest: ${join(outDir, 'supply-chain-manifest.json')}`);
+      console.error(`  raw diagnostics:  ${outDir}`);
+    }
+    process.exit(code);
+  };
+
+  // A source ARCHIVE has no .git. That is a legitimate preliminary-equivalence input, so
+  // it must not crash the runner — and above all must not crash it BEFORE the failure
+  // manifest is written, which is what an unguarded `git rev-parse` did.
+  const sourceSha = safeGit(['rev-parse', 'HEAD']) ?? NOT_A_WORKTREE;
+  const dirty = safeGit(['status', '--porcelain']);
+  const haveGit = dirty !== null;
+  state.source_sha = sourceSha;
+  state.is_git_worktree = haveGit;
+  state.tree_clean_at_run = dirty === null ? null : dirty === '';
 
   console.log('=== C15 SUPPLY-CHAIN GATE ===');
-  console.log(`mode:        ${finalMode ? 'FINAL (clean worktree required)' : 'preliminary'}`);
+  console.log(`mode:        ${finalMode ? 'FINAL' : 'preliminary'}`);
   console.log(`source SHA:  ${sourceSha}`);
-  console.log(`tree clean:  ${treeClean}`);
+  console.log(`tree clean:  ${state.tree_clean_at_run}`);
+  console.log(`trivy cache: ${cacheDir}`);
 
-  // Final evidence must be reproducible from a committed SHA. A scan of uncommitted
-  // source cannot be re-run by a reviewer, so it is not evidence.
-  if (finalMode && !treeClean) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED: --final requires a clean worktree ===');
-    const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
-    for (const line of dirty.split('\n').slice(0, 20)) console.error(`  ${line}`);
-    process.exit(1);
+  // ── final-source binding ───────────────────────────────────────────────────────
+  // FINAL-SOURCE BINDING. A gitless export names no commit, so it is preliminary
+  // equivalence evidence only — never final source binding.
+  if (finalMode) {
+    if (expectedSha === null || expectedSha === undefined) {
+      failures.push('--final requires --expected-sha <SHA>: final evidence must name the source it describes');
+    }
+    if (sourceSha === NOT_A_WORKTREE) {
+      failures.push(
+        'this tree is not a git worktree, so no commit can be bound; a gitless export is ' +
+        'preliminary equivalence evidence only',
+      );
+    } else if (expectedSha !== null && expectedSha !== sourceSha) {
+      failures.push(`--expected-sha ${expectedSha} does not match HEAD ${sourceSha}`);
+    }
+    if (dirty === null) {
+      failures.push('git status could not be read; a clean worktree cannot be established');
+    } else if (dirty !== '') {
+      failures.push(`--final requires a clean worktree; ${dirty.split('\n').length} path(s) are dirty`);
+      state.dirty_paths = dirty.split('\n').slice(0, 40);
+    }
+    if (failures.length > 0) finish(1);
   }
 
+  // ── pinned toolchain, before any scan ──────────────────────────────────────────
   const { versions, mismatches } = toolVersions();
+  state.pinned_toolchain = versions;
   for (const [n, v] of Object.entries(versions)) {
     console.log(`  ${v.pinned_ok ? 'pinned' : 'MISPINNED'}  ${n} = ${v.actual} (expected ${v.expected})`);
   }
   if (mismatches.length > 0) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED: toolchain is not pinned ===');
-    for (const m of mismatches) console.error(`  ${m}`);
-    console.error('A scan from an unknown scanner version is not evidence.');
-    process.exit(1);
+    for (const m of mismatches) failures.push(`toolchain not pinned — ${m}`);
+    failures.push('A scan from an unknown scanner version is not evidence.');
+    finish(1);
+  }
+  state.scanner_binaries = scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']);
+
+  // ── trivy cache: acquire BOTH artifacts, then capture and enforce provenance ────
+  const pins = loadPins(ROOT);
+  state.scanner_pins = { file: 'scripts/gate/scanner-pins.json', sha256: sha256(readFileSync(join(ROOT, 'scripts/gate/scanner-pins.json'))) };
+
+  console.log('\n-- trivy cache acquisition (vulnerability DB + checks bundle) --');
+  const acquisition = acquire({ cacheDir, log: (m) => console.log(m) });
+  state.trivy_cache_acquisition = acquisition;
+
+  const provenance = capture({
+    cacheDir, nowIso: new Date().toISOString(), platform: SCAN_PLATFORM, pins,
+  });
+  state.trivy_provenance = provenance;
+  const provProblems = enforce(provenance, { expectedVersion: PINNED_TOOLS.trivy.expect });
+  state.trivy_provenance_problems = provProblems;
+
+  if (provenance.vulnerability_db.metadata_present) {
+    console.log(`  vuln DB      built ${provenance.vulnerability_db.built_at}, ` +
+      `${provenance.vulnerability_db.age_hours_at_scan}h old (limit ${provenance.freshness_window_hours}h)`);
+  }
+  if (provenance.checks_bundle.metadata_present) {
+    console.log(`  checks       ${provenance.checks_bundle.oci_digest} (major ${provenance.checks_bundle.major_version})`);
+  }
+  if (provProblems.length > 0) {
+    for (const p of provProblems) failures.push(`trivy provenance — ${p}`);
+    finish(1);
   }
 
-  // ENFORCE the vulnerability-database contract BEFORE scanning. Recording DB identity
-  // without acting on it means a scan against an absent or stale database still reports
-  // "ok" -- it simply finds nothing.
-  const scanStartedAt = new Date().toISOString();
-  const vulnDb = trivyDatabase(scanStartedAt);
-  const dbProblems = enforceTrivyDatabase(vulnDb, MAX_VULN_DB_AGE_HOURS);
-  if (vulnDb.available) {
-    console.log(`  vuln DB     built ${vulnDb.vulnerability_db.built_at}, ` +
-      `${vulnDb.vulnerability_db.age_hours_at_scan}h old (limit ${MAX_VULN_DB_AGE_HOURS}h), ` +
-      `past-due=${vulnDb.vulnerability_db.past_next_update_at_scan}`);
+  const fpBefore = fingerprint(cacheDir);
+  state.trivy_cache_fingerprint_before = fpBefore;
+  console.log(`  cache digest ${fpBefore.digest}`);
+
+  const FROZEN = frozenCacheArgs(cacheDir);
+  const trivyEnv = { TRIVY_CACHE_DIR: cacheDir };
+
+  // ── governed dispositions: validate BEFORE scanning ────────────────────────────
+  const { doc: exclusionDoc, raw: exclusionRaw, path: exclusionPath } = loadScannerExclusions(ROOT);
+  state.scanner_exclusions = {
+    file: exclusionPath,
+    sha256: sha256(exclusionRaw),
+    schema_version: exclusionDoc.schema_version,
+    declared: (exclusionDoc.records ?? []).length,
+  };
+  const recordProblems = validateRecords(exclusionDoc, { runDate, root: ROOT, isTracked });
+  state.scanner_exclusion_problems = recordProblems;
+  console.log(`\n-- governed scan dispositions: ${state.scanner_exclusions.declared} records, ${recordProblems.length} rejected --`);
+  if (recordProblems.length > 0) {
+    for (const p of recordProblems) failures.push(`scan disposition — ${p}`);
+    finish(1);
   }
-  if (dbProblems.length > 0) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED: vulnerability database rejected ===');
-    for (const p of dbProblems) console.error(`  ${p}`);
-    console.error('  Run `trivy image --download-db-only` and re-run the gate.');
-    process.exit(1);
+  // The legacy global ignore file must not exist: a bare CVE id is unscoped suppression.
+  if (existsSync(join(ROOT, '.trivyignore'))) {
+    failures.push(
+      '.trivyignore still exists. A bare CVE id suppresses that advisory in EVERY image and ' +
+      'package; dispositions must live in scripts/gate/scanner-exclusions.json.',
+    );
+    finish(1);
   }
 
-  const steps = [];
-  const R = (id, argv, opts) => run(steps, outDir, sourceSha, id, argv, opts);
-
+  // ── dependency vulnerabilities ────────────────────────────────────────────────
+  // Identical audit level in both steps, so the JSON capture is an alternate FORMAT of
+  // the blocking scan rather than extra unenforced coverage.
   console.log('\n-- dependency vulnerabilities --');
-  R('pnpm-audit-human', ['pnpm', 'audit', '--audit-level', 'high'], {
+  const AUDIT_LEVEL = ['--audit-level', 'high'];
+  run(steps, outDir, sourceSha, 'pnpm-audit-human', ['pnpm', 'audit', ...AUDIT_LEVEL], {
     description: 'pnpm audit, human-readable, blocking at high/critical',
     tool: 'pnpm', toolVersion: versions.pnpm.actual, policy: 'blocking',
+    coverage: { audit_level: 'high' },
   });
-  R('pnpm-audit-json', ['pnpm', 'audit', '--json'], {
-    description: 'pnpm audit, machine-readable full advisory set',
+  run(steps, outDir, sourceSha, 'pnpm-audit-json', ['pnpm', 'audit', '--json', ...AUDIT_LEVEL], {
+    description: 'pnpm audit, machine-readable, SAME audit level as the blocking step',
     tool: 'pnpm', toolVersion: versions.pnpm.actual, policy: 'informational',
+    coverage: { audit_level: 'high' },
   });
 
+  // ── secret scanning ───────────────────────────────────────────────────────────
   console.log('\n-- secret scanning --');
-  // The governed config NARROWS scope (see .gitleaks.toml); it disables no rule.
   const gitleaksConfig = join(ROOT, '.gitleaks.toml');
-  R('gitleaks-worktree', [
+  run(steps, outDir, sourceSha, 'gitleaks-worktree', [
     'gitleaks', 'detect', '--source', ROOT, '--no-git', '--redact', '--config', gitleaksConfig,
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-worktree.json'),
   ], {
     description: 'gitleaks over the WORKING TREE (files as they exist)',
     tool: 'gitleaks', toolVersion: versions.gitleaks.actual, policy: 'blocking',
   });
-  R('gitleaks-history', [
+  if (haveGit) run(steps, outDir, sourceSha, 'gitleaks-history', [
     'gitleaks', 'detect', '--source', ROOT, '--redact', '--config', gitleaksConfig,
     '--log-opts', '--all --full-history',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-history.json'),
@@ -209,174 +368,192 @@ function main() {
     description: 'gitleaks over the COMPLETE git history (all refs, full history)',
     tool: 'gitleaks', toolVersion: versions.gitleaks.actual, policy: 'blocking',
   });
+  else console.log('  [skip] gitleaks-history — no git metadata in this tree (preliminary export)');
+  state.history_scan_performed = haveGit;
 
-  // A path may only be allowlisted if git genuinely cannot carry it. Proven here,
-  // so the exclusion can never conceal a COMMITTED secret.
   const EXCLUDED_PATHS = ['.eye-local', 'apps/web/.next'];
   const exclusionProofs = EXCLUDED_PATHS.map((p) => {
+    if (!haveGit) {
+      // Stated honestly: a gitless export cannot prove tracked/ignored status. The
+      // allowlist proof is a git-worktree assertion and is skipped, not faked.
+      console.log(`  allowlisted path ${p}: NOT PROVABLE (no git metadata in this tree)`);
+      return { path: p, tracked: null, ignored: null, governed: null, reason: 'no git metadata' };
+    }
     const tracked = spawnSync('git', ['ls-files', '--error-unmatch', p], { cwd: ROOT, encoding: 'utf8' });
     const ignored = spawnSync('git', ['check-ignore', '-q', p], { cwd: ROOT, encoding: 'utf8' });
     const ok = tracked.status !== 0 && ignored.status === 0;
     console.log(`  allowlisted path ${p}: tracked=${tracked.status === 0} ignored=${ignored.status === 0} ${ok ? 'GOVERNED' : 'UNGOVERNED'}`);
     return { path: p, tracked: tracked.status === 0, ignored: ignored.status === 0, governed: ok };
   });
-  const ungoverned = exclusionProofs.filter((p) => !p.governed);
+  state.governed_exclusions = {
+    scanner: 'gitleaks',
+    config: '.gitleaks.toml (extends upstream defaults; disables no rule)',
+    path_exclusions: exclusionProofs,
+    match_exclusions: [{
+      scope: 'apps/api/migrations/*.sql',
+      match: 'context_key_hash',
+      reason: 'SQL COLUMN NAME in SELECT lists, not a credential; the stored value is a SHA-256 hash of a context key',
+      condition: 'AND (file must be a migration AND match must be that identifier)',
+    }],
+  };
+  const ungoverned = exclusionProofs.filter((p) => p.governed === false);
   if (ungoverned.length > 0) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
     for (const p of ungoverned) {
-      console.error(`  ${p.path} is allowlisted for secret scanning but is TRACKED or NOT IGNORED.`);
+      failures.push(`${p.path} is allowlisted for secret scanning but is TRACKED or NOT IGNORED`);
     }
-    console.error('  A path allowlist may only cover a path git cannot carry.');
-    process.exit(1);
+    finish(1);
   }
 
+  // ── filesystem vulnerabilities ────────────────────────────────────────────────
+  // Both steps share severity, scanners, target, ignore semantics and cache; only
+  // --format differs, so the JSON capture adds no unenforced coverage.
   console.log('\n-- filesystem vulnerabilities --');
-  R('trivy-fs', [
-    'trivy', 'fs', '--scanners', 'vuln,secret,misconfig', '--severity', 'HIGH,CRITICAL',
-    '--exit-code', '1', '--no-progress', '--format', 'table', ROOT,
-  ], {
+  const FS_COVERAGE = {
+    scanners: 'vuln,secret,misconfig', severity: 'HIGH,CRITICAL',
+    target: '<repo root>', ignorefile: 'none', cache: 'captured',
+  };
+  const FS_ARGS = [
+    'fs', '--scanners', 'vuln,secret,misconfig', '--severity', 'HIGH,CRITICAL',
+    '--ignorefile', '/dev/null', ...FROZEN, '--no-progress',
+  ];
+  run(steps, outDir, sourceSha, 'trivy-fs', ['trivy', ...FS_ARGS, '--exit-code', '1', '--format', 'table', ROOT], {
     description: 'trivy filesystem scan, blocking at HIGH/CRITICAL',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
+    coverage: FS_COVERAGE, env: trivyEnv,
   });
-  R('trivy-fs-json', [
-    'trivy', 'fs', '--scanners', 'vuln,secret,misconfig', '--no-progress',
-    '--format', 'json', ROOT,
-  ], {
-    description: 'trivy filesystem scan, complete machine-readable findings',
+  run(steps, outDir, sourceSha, 'trivy-fs-json', ['trivy', ...FS_ARGS, '--format', 'json', ROOT], {
+    description: 'trivy filesystem scan, machine-readable, IDENTICAL coverage to the blocking step',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'informational',
+    coverage: FS_COVERAGE, env: trivyEnv,
   });
 
+  // ── pinned image vulnerabilities, reconciled against governed dispositions ─────
   console.log('\n-- pinned image vulnerabilities --');
   const images = pinnedImages();
   if (images.length === 0) {
-    console.error('no digest-pinned images found in docker-compose.yml');
-    process.exit(1);
+    failures.push('no digest-pinned images found in docker-compose.yml');
+    finish(1);
   }
 
-  // The compose pins are OCI image INDEXES. Resolve each to the exact child manifest
-  // for the deployment platform, and scan THAT digest — otherwise the scan silently
-  // follows the host architecture and the evidence cannot say what it examined.
   const imageResolutions = images.map((image) => {
     const resolution = resolveImageIndex(image, SCAN_PLATFORM);
     const scanRef = platformPinnedRef(image, resolution);
     console.log(`  ${image}`);
-    if (!resolution.resolved) {
-      console.log(`    UNRESOLVED: ${resolution.error}`);
-    } else if (resolution.kind === 'index') {
-      console.log(`    index with ${resolution.child_count} children (${resolution.runnable_platform_count} runnable platforms)`);
+    if (!resolution.resolved) console.log(`    UNRESOLVED: ${resolution.error}`);
+    else if (resolution.kind === 'index') {
+      console.log(`    index with ${resolution.child_count} children (${resolution.runnable_platform_count} runnable)`);
       console.log(`    ${SCAN_PLATFORM} child: ${resolution.target_digest ?? 'ABSENT'}`);
-    } else {
-      console.log(`    single-platform manifest; the pinned digest is the image`);
-    }
+    } else console.log('    single-platform manifest; the pinned digest is the image');
     return { pinned_ref: image, scan_ref: scanRef, resolution };
   });
+  state.image_platform_resolution = imageResolutions;
+  state.digest_pinned_images = images;
 
   const unresolvable = imageResolutions.filter((r) => r.scan_ref === null);
   if (unresolvable.length > 0) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
     for (const r of unresolvable) {
-      console.error(
-        `  ${r.pinned_ref}: cannot resolve a ${SCAN_PLATFORM} child manifest ` +
-        `(${r.resolution.error ?? 'platform absent from the index'}).`,
+      failures.push(
+        `${r.pinned_ref}: cannot resolve a ${SCAN_PLATFORM} child manifest ` +
+        `(${r.resolution.error ?? 'platform absent from the index'})`,
       );
     }
-    console.error(`  A scan that cannot name the manifest it examined is not evidence.`);
-    process.exit(1);
+    failures.push('A scan that cannot name the manifest it examined is not evidence.');
+    finish(1);
   }
 
+  const allFindings = [];
   imageResolutions.forEach((r, i) => {
-    R(`trivy-image-${i}`, [
+    // UNSUPPRESSED scan: the complete finding set, reconciled below against governed
+    // records. Trivy's own ignore mechanism is never relied upon.
+    const rec = run(steps, outDir, sourceSha, `trivy-image-${i}`, [
       'trivy', 'image', '--platform', SCAN_PLATFORM, '--severity', 'HIGH,CRITICAL',
-      '--exit-code', '1', '--no-progress', '--format', 'table', r.scan_ref,
+      '--ignorefile', '/dev/null', ...FROZEN, '--no-progress', '--format', 'json', r.scan_ref,
     ], {
       description:
         `trivy scan of the ${SCAN_PLATFORM} child manifest ${r.resolution.target_digest} ` +
-        `resolved from digest-pinned index ${r.pinned_ref}`,
+        `resolved from digest-pinned index ${r.pinned_ref}, with NO suppression`,
       tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
+      coverage: { severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform: SCAN_PLATFORM },
+      env: trivyEnv,
     });
+    // Exit code is not the verdict here: findings are expected and governed. Only a
+    // scanner ERROR is a step failure.
+    rec.failed = false;
+    rec.policy_note = 'findings are reconciled against governed dispositions, not suppressed';
+    try {
+      const text = readFileSync(join(outDir, `${rec.id}.stdout.txt`), 'utf8');
+      allFindings.push(...findingsFromTrivyJson(text, r.pinned_ref));
+    } catch (e) {
+      failures.push(`${rec.id}: could not parse the trivy JSON report (${e instanceof Error ? e.message.slice(0, 120) : e})`);
+    }
   });
+  if (failures.length > 0) finish(1);
 
-  const failed = steps.filter((s) => s.failed);
-  const generatedAt = new Date().toISOString();
+  const disposition = reconcileFindings(exclusionDoc, allFindings);
+  state.image_finding_reconciliation = disposition;
+  writeFileSync(join(outDir, 'image-findings.json'), `${JSON.stringify(allFindings, null, 2)}\n`);
+  console.log(`  findings ${disposition.total_findings}, governed ${disposition.matched.length} record(s), ` +
+    `unmatched ${disposition.unmatched.length}, unused ${disposition.unused_records.length}`);
+
+  for (const f of disposition.unmatched) {
+    failures.push(`UNGOVERNED image finding: ${f}`);
+  }
+  for (const id of disposition.unused_records) {
+    failures.push(`UNUSED scan disposition '${id}': it matched no finding, so it is stale`);
+  }
+  for (const s of disposition.stale_advisory_ids) {
+    failures.push(`STALE advisory id in a disposition (matched nothing): ${s}`);
+  }
+
+  // ── cache equality: the authoritative scans updated nothing ────────────────────
+  const fpAfter = fingerprint(cacheDir);
+  state.trivy_cache_fingerprint_after = fpAfter;
+  state.trivy_cache_unchanged = fpAfter.digest === fpBefore.digest;
+  console.log(`\ntrivy cache after scans: ${fpAfter.digest} (${state.trivy_cache_unchanged ? 'UNCHANGED' : 'CHANGED'})`);
+  if (!state.trivy_cache_unchanged) {
+    failures.push(
+      `trivy cache changed during the authoritative scans (${fpBefore.digest} -> ${fpAfter.digest}); ` +
+      'the scans must run with --skip-db-update --skip-check-update against the captured cache',
+    );
+  }
+
+  // ── step-policy audit ─────────────────────────────────────────────────────────
   const policyAudit = classifyStepPolicies(steps);
-  if (!policyAudit.every_informational_step_duplicates_a_blocking_step) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED: unenforced scan coverage ===');
-    for (const p of policyAudit.unblocked_coverage_problems) console.error(`  ${p}`);
-    process.exit(1);
-  }
-
-  const manifest = {
-    artifact: 'C15 supply-chain gate — raw execution evidence',
-    source_sha: sourceSha,
-    tree_clean_at_run: treeClean,
-    final_mode: finalMode,
-    generated_at: generatedAt,
-    host: { platform: process.platform, arch: process.arch, node: process.version },
-    pinned_toolchain: versions,
-    // C15 carry-forward: identity of the binaries that produced the findings, and the
-    // vulnerability database they were matched against.
-    scanner_binaries: scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']),
-    trivy_database: vulnDb,
-    trivy_database_enforcement: {
-      max_age_hours: MAX_VULN_DB_AGE_HOURS,
-      probed_at: scanStartedAt,
-      problems: dbProblems,
-      enforced_before_first_scan: true,
-    },
-    // C15 carry-forward: what "eight steps, six blocking" actually means.
-    step_policy_audit: {
-      ...policyAudit,
-      note:
-        'The two non-blocking steps are alternate-format captures (JSON) of scans that ' +
-        'already ran under a blocking policy with the same pinned tool. They exist so the ' +
-        'complete machine-readable finding set is preserved below the blocking severity ' +
-        'threshold; they add no coverage that is not also enforced. No scan is permitted ' +
-        'to fail.',
-    },
-    // C15 carry-forward: the compose pins are indexes; these are the exact child
-    // manifests that were scanned, and every sibling platform is enumerated.
-    scan_platform: SCAN_PLATFORM,
-    digest_pinned_images: images,
-    image_platform_resolution: imageResolutions,
-    governed_exclusions: {
-      scanner: 'gitleaks',
-      config: '.gitleaks.toml (extends upstream defaults; disables no rule)',
-      path_exclusions: exclusionProofs,
-      match_exclusions: [{
-        scope: 'apps/api/migrations/*.sql',
-        match: 'context_key_hash',
-        reason: 'SQL COLUMN NAME in SELECT lists, not a credential; the stored value is a SHA-256 hash of a context key',
-        condition: 'AND (file must be a migration AND match must be that identifier)',
-      }],
-    },
-    steps,
-    summary: {
-      total_steps: steps.length,
-      blocking_steps: steps.filter((s) => s.policy === 'blocking').length,
-      failed_steps: failed.length,
-      failed_ids: failed.map((s) => s.id),
-    },
+  state.step_policy_audit = {
+    ...policyAudit,
+    note:
+      'The two non-blocking steps are alternate-FORMAT captures of scans that already ran ' +
+      'under a blocking policy with the same pinned tool AND identical severity, scanner, ' +
+      'target, ignore and cache semantics. They add no coverage that is not also enforced.',
   };
-  const manifestPath = join(outDir, 'supply-chain-manifest.json');
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-
-  console.log(`\nsteps: ${steps.length} (blocking: ${manifest.summary.blocking_steps}, ` +
-    `non-blocking: ${policyAudit.informational_steps} — each an alternate output format of a blocking scan)`);
-  const db = manifest.trivy_database;
-  if (db.available) {
-    console.log(`trivy vuln DB: built ${db.vulnerability_db.built_at} ` +
-      `(${db.vulnerability_db.age_hours_at_scan}h old at scan, past-due=${db.vulnerability_db.past_next_update_at_scan})`);
+  if (!policyAudit.every_informational_step_duplicates_a_blocking_step) {
+    for (const p of policyAudit.unblocked_coverage_problems) failures.push(`step policy — ${p}`);
   }
+  // Coverage equivalence must be literal, not asserted.
+  for (const c of policyAudit.informational_classification) {
+    const a = steps.find((s) => s.id === c.id);
+    const b = steps.find((s) => s.id === c.duplicates_blocking_step);
+    if (a?.coverage !== null && b?.coverage !== null &&
+        JSON.stringify(a?.coverage) !== JSON.stringify(b?.coverage)) {
+      failures.push(
+        `step '${c.id}' claims to duplicate '${c.duplicates_blocking_step}' but their coverage ` +
+        `differs: ${JSON.stringify(a?.coverage)} vs ${JSON.stringify(b?.coverage)}`,
+      );
+    }
+  }
+
+  const failedSteps = steps.filter((s) => s.failed);
+  for (const s of failedSteps) {
+    failures.push(`${s.id} exited ${s.exit_code} — see ${s.stdout_file} / ${s.stderr_file}`);
+  }
+
+  console.log(`\nsteps: ${steps.length} (blocking: ${steps.filter((s) => s.policy === 'blocking').length}, ` +
+    `non-blocking: ${policyAudit.informational_steps} — each an alternate output format with identical coverage)`);
   console.log(`raw outputs + manifest: ${outDir}`);
 
-  if (failed.length > 0) {
-    console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
-    for (const s of failed) {
-      console.error(`  ${s.id} exited ${s.exit_code} — see ${s.stdout_file} / ${s.stderr_file}`);
-    }
-    process.exit(1);
-  }
+  if (failures.length > 0) finish(1);
   console.log('\nsupply-chain gate: PASS');
+  finish(0);
 }
 
 main();

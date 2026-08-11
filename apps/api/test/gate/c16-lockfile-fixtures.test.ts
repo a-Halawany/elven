@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs gate library shared with the CI scripts (no types)
-import { buildClosure, loadLock, splitKey, npmPurl, parsePurl, platformCompatible, resolveLinkPath } from '../../../../scripts/gate/lib/lock-closure.mjs';
+import { buildClosure, loadLock, splitKey, npmPurl, parsePurl, platformCompatible, resolveLinkPath, validateIntegrity, SUPPORTED_LOCKFILE_VERSIONS } from '../../../../scripts/gate/lib/lock-closure.mjs';
 
 type Node = {
   bomRef: string; name: string; version: string; kind: string; version_: string;
@@ -55,6 +55,21 @@ function synthRepo(files: Record<string, string>): string {
 const manifest = (name: string, version = '1.0.0', extra: Record<string, unknown> = {}): string =>
   JSON.stringify({ name, version, private: true, ...extra }, null, 2);
 
+/**
+ * Every fixture importer needs a GOVERNED CycloneDX type; an unmapped importer is an
+ * error by design, which a dedicated control below exercises.
+ */
+const FIXTURE_TYPES: Record<string, string> = {
+  '.': 'application',
+  'packages/linked': 'library',
+  'packages/deeper': 'library',
+  'packages/a': 'library',
+  'packages/b': 'library',
+  'packages/lib': 'library',
+  'packages/bad': 'library',
+  'packages/ghost': 'library',
+};
+
 const TARGET = {
   id: 'fixture-linux-x64',
   description: 'synthetic fixture target',
@@ -67,8 +82,12 @@ const TARGET = {
   dependency_scopes: ['dependencies', 'optionalDependencies'],
 };
 
-const build = (root: string, overrides: Partial<typeof TARGET> = {}): Closure =>
-  buildClosure(loadLock(join(root, 'pnpm-lock.yaml')), { ...TARGET, ...overrides }, { root }) as Closure;
+const build = (root: string, overrides: Partial<typeof TARGET> = {}, types = FIXTURE_TYPES): Closure =>
+  buildClosure(
+    loadLock(join(root, 'pnpm-lock.yaml')),
+    { ...TARGET, ...overrides, integrity_rules: [] },
+    { root, firstPartyTypes: types },
+  ) as Closure;
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C16 fixture — canonical Package URLs come from the pinned reference implementation', () => {
@@ -702,5 +721,374 @@ describe('C16 fixture — workspace identity is read, never fabricated', () => {
     // The manifest digest differs, so the identity binding still reflects the bytes.
     expect(b.nodes.get('workspace:.')!.manifestSha256)
       .not.toBe(a.nodes.get('workspace:.')!.manifestSha256);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R2 fixture — patch hash is NOT peer context', () => {
+  const repo = () => synthRepo({
+    'package.json': manifest('@fixture/root', '0.0.1'),
+    'pnpm-lock.yaml': [
+      "lockfileVersion: '9.0'",
+      'importers:',
+      '  .:',
+      '    dependencies:',
+      '      patched-only:',
+      '        specifier: 1.0.0',
+      '        version: 1.0.0(patch_hash=deadbeef)',
+      '      peered-only:',
+      '        specifier: 2.0.0',
+      '        version: 2.0.0(host@9.0.0)',
+      '      both:',
+      '        specifier: 3.0.0',
+      '        version: 3.0.0(host@9.0.0)(patch_hash=cafe1234)',
+      'packages:',
+      '  patched-only@1.0.0:',
+      `    resolution: {integrity: ${sri('po')}}`,
+      '  peered-only@2.0.0:',
+      `    resolution: {integrity: ${sri('peo')}}`,
+      '  both@3.0.0:',
+      `    resolution: {integrity: ${sri('both')}}`,
+      '  host@9.0.0:',
+      `    resolution: {integrity: ${sri('host9')}}`,
+      'snapshots:',
+      '  patched-only@1.0.0(patch_hash=deadbeef): {}',
+      '  peered-only@2.0.0(host@9.0.0):',
+      '    dependencies:',
+      '      host: 9.0.0',
+      '  both@3.0.0(host@9.0.0)(patch_hash=cafe1234):',
+      '    dependencies:',
+      '      host: 9.0.0',
+      '  host@9.0.0: {}',
+      '',
+    ].join('\n'),
+  });
+
+  it('splitKey separates peer resolutions from patch markers', () => {
+    const patchOnly = splitKey('patched-only@1.0.0(patch_hash=deadbeef)') as
+      { peerContext: string; patchHash: string | null; peers: string[]; version: string };
+    expect(patchOnly.patchHash).toBe('deadbeef');
+    expect(patchOnly.peerContext, 'a patched-only key has NO peer context').toBe('');
+    expect(patchOnly.peers).toEqual([]);
+
+    const peerOnly = splitKey('peered-only@2.0.0(host@9.0.0)') as
+      { peerContext: string; patchHash: string | null; peers: string[] };
+    expect(peerOnly.patchHash).toBeNull();
+    expect(peerOnly.peerContext).toBe('(host@9.0.0)');
+
+    const both = splitKey('both@3.0.0(host@9.0.0)(patch_hash=cafe1234)') as
+      { peerContext: string; patchHash: string | null; peers: string[] };
+    expect(both.patchHash).toBe('cafe1234');
+    expect(both.peerContext, 'the patch marker must not appear in peer context').toBe('(host@9.0.0)');
+    expect(both.peers).toEqual(['host@9.0.0']);
+  });
+
+  it('a patched-only component is NOT counted as a peer variant', () => {
+    const c = build(repo());
+    expect(c.unresolved).toEqual([]);
+    const patched = c.nodes.get('patched-only@1.0.0(patch_hash=deadbeef)')!;
+    expect(patched.patchHash).toBe('deadbeef');
+    // The whole point: the previous implementation labelled this a peer variant.
+    expect((patched as unknown as { peerContext: string }).peerContext).toBe('');
+    expect(patched.peerSuffix).toBe('');
+
+    const peered = c.nodes.get('peered-only@2.0.0(host@9.0.0)')!;
+    expect(peered.peerSuffix).toBe('(host@9.0.0)');
+    expect(peered.patchHash).toBeNull();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R2 fixture — one package+version under TWO distinct peer contexts', () => {
+  const repo = () => synthRepo({
+    'package.json': manifest('@fixture/root', '0.0.1'),
+    'pnpm-lock.yaml': [
+      "lockfileVersion: '9.0'",
+      'importers:',
+      '  .:',
+      '    dependencies:',
+      '      consumer-a:',
+      '        specifier: 1.0.0',
+      '        version: 1.0.0',
+      '      consumer-b:',
+      '        specifier: 1.0.0',
+      '        version: 1.0.0',
+      'packages:',
+      '  consumer-a@1.0.0:',
+      `    resolution: {integrity: ${sri('ca')}}`,
+      '  consumer-b@1.0.0:',
+      `    resolution: {integrity: ${sri('cb')}}`,
+      '  shared-plugin@2.0.0:',
+      `    resolution: {integrity: ${sri('sp')}}`,
+      '  host-x@1.0.0:',
+      `    resolution: {integrity: ${sri('hx')}}`,
+      '  host-y@1.0.0:',
+      `    resolution: {integrity: ${sri('hy')}}`,
+      'snapshots:',
+      '  consumer-a@1.0.0:',
+      '    dependencies:',
+      '      shared-plugin: 2.0.0(host-x@1.0.0)',
+      '  consumer-b@1.0.0:',
+      '    dependencies:',
+      '      shared-plugin: 2.0.0(host-y@1.0.0)',
+      '  shared-plugin@2.0.0(host-x@1.0.0):',
+      '    dependencies:',
+      '      host-x: 1.0.0',
+      '  shared-plugin@2.0.0(host-y@1.0.0):',
+      '    dependencies:',
+      '      host-y: 1.0.0',
+      '  host-x@1.0.0: {}',
+      '  host-y@1.0.0: {}',
+      '',
+    ].join('\n'),
+  });
+
+  it('keeps the two peer resolutions as SEPARATE identities with separate edges', () => {
+    const c = build(repo());
+    expect(c.unresolved).toEqual([]);
+
+    const x = 'shared-plugin@2.0.0(host-x@1.0.0)';
+    const y = 'shared-plugin@2.0.0(host-y@1.0.0)';
+    expect(c.nodes.has(x), 'peer resolution against host-x').toBe(true);
+    expect(c.nodes.has(y), 'peer resolution against host-y').toBe(true);
+    // Same name AND same version, two distinct components — flattening to name@version
+    // would merge them and lose one subtree.
+    expect(c.nodes.get(x)!.name).toBe(c.nodes.get(y)!.name);
+    expect(c.nodes.get(x)!.version).toBe(c.nodes.get(y)!.version);
+    expect(c.nodes.get(x)!.peerSuffix).not.toBe(c.nodes.get(y)!.peerSuffix);
+    expect(c.nodes.has('shared-plugin@2.0.0'), 'the flattened form must NOT exist').toBe(false);
+
+    // Each consumer reaches its OWN resolution, and each resolution its own peer.
+    const edge = (from: string, to: string) => c.edges.some((e) => e.from === from && e.to === to);
+    expect(edge('consumer-a@1.0.0', x)).toBe(true);
+    expect(edge('consumer-b@1.0.0', y)).toBe(true);
+    expect(edge('consumer-a@1.0.0', y), 'no cross-wiring between peer resolutions').toBe(false);
+    expect(edge('consumer-b@1.0.0', x)).toBe(false);
+    expect(edge(x, 'host-x@1.0.0')).toBe(true);
+    expect(edge(y, 'host-y@1.0.0')).toBe(true);
+    expect(edge(x, 'host-y@1.0.0')).toBe(false);
+
+    // …and both PURLs are the same package coordinate, which is correct: the peer
+    // context is not part of the npm identity, only of the installed-node identity.
+    expect(c.nodes.get(x)!.purl).toBe(c.nodes.get(y)!.purl);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R2 fixture — integrity is required and validated', () => {
+  const withResolution = (body: string) => synthRepo({
+    'package.json': manifest('@fixture/root', '0.0.1'),
+    'pnpm-lock.yaml': [
+      "lockfileVersion: '9.0'",
+      'importers:',
+      '  .:',
+      '    dependencies:',
+      '      subject:',
+      '        specifier: 1.0.0',
+      '        version: 1.0.0',
+      'packages:',
+      '  subject@1.0.0:',
+      `    ${body}`,
+      'snapshots:',
+      '  subject@1.0.0: {}',
+      '',
+    ].join('\n'),
+  });
+
+  it('accepts a valid sha512 SRI (positive control)', () => {
+    const c = build(withResolution(`resolution: {integrity: ${sri('ok')}}`));
+    expect(c.unresolved).toEqual([]);
+    expect(c.nodes.get('subject@1.0.0')!.integrity).toBe(sri('ok'));
+  });
+
+  it('rejects a MISSING integrity value', () => {
+    const c = build(withResolution('resolution: {tarball: https://example.invalid/x.tgz}'));
+    expect(c.unresolved.join('\n')).toMatch(/integrity is absent/);
+  });
+
+  it('rejects a MALFORMED SRI', () => {
+    const c = build(withResolution('resolution: {integrity: not-an-sri-value}'));
+    expect(c.unresolved.join('\n')).toMatch(/integrity is/);
+  });
+
+  it('rejects an UNSUPPORTED algorithm and a truncated digest', () => {
+    expect(validateIntegrity('md5-YWJj')).toMatchObject({ ok: false });
+    expect((validateIntegrity('md5-YWJj') as { problem: string }).problem).toMatch(/unsupported SRI algorithm/);
+    expect((validateIntegrity('sha512-YWJj') as { problem: string }).problem).toMatch(/digest is 3 bytes/);
+    expect((validateIntegrity('sha256-!!!!') as { problem: string }).problem).toMatch(/not valid base64/);
+    expect(validateIntegrity('sha256-' + Buffer.alloc(32).toString('base64'))).toMatchObject({ ok: true });
+  });
+
+  it('rejects a snapshot with NO packages metadata entry at all', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      undescribed:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages: {}',
+        'snapshots:',
+        '  undescribed@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved.join('\n')).toMatch(/no 'packages:' metadata entry/);
+  });
+
+  it('a governed integrity_rule can admit a resolution class, and is recorded', () => {
+    const root = withResolution('resolution: {tarball: https://example.invalid/x.tgz}');
+    const c = buildClosure(
+      loadLock(join(root, 'pnpm-lock.yaml')),
+      {
+        ...TARGET,
+        integrity_rules: [{ id: 'IR-TEST', resolution_type: 'tarball', reason: 'fixture' }],
+      },
+      { root, firstPartyTypes: FIXTURE_TYPES },
+    ) as Closure & { integrityExempted: Array<{ bomRef: string; rule: string }> };
+    expect(c.unresolved).toEqual([]);
+    expect(c.integrityExempted).toHaveLength(1);
+    expect(c.integrityExempted[0]!.rule).toBe('IR-TEST');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R2 fixture — lockfile format and governed types are validated', () => {
+  const lockWithVersion = (v: string) => synthRepo({
+    'package.json': manifest('@fixture/root', '0.0.1'),
+    'pnpm-lock.yaml': [
+      `lockfileVersion: '${v}'`,
+      'importers:',
+      '  .: {}',
+      'packages: {}',
+      'snapshots: {}',
+      '',
+    ].join('\n'),
+  });
+
+  it('accepts exactly the supported lockfileVersion', () => {
+    expect(SUPPORTED_LOCKFILE_VERSIONS).toEqual(['9.0']);
+    expect(() => build(lockWithVersion('9.0'))).not.toThrow();
+  });
+
+  it('rejects a FUTURE or unsupported lockfileVersion rather than guessing', () => {
+    for (const v of ['10.0', '8.0', '9.1', 'banana']) {
+      expect(() => build(lockWithVersion(v)), v).toThrow(/does not support/);
+    }
+  });
+
+  it('rejects a lockfile with no lockfileVersion at all', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': 'importers:\n  .: {}\npackages: {}\nsnapshots: {}\n',
+    });
+    expect(() => build(root)).toThrow(/does not support/);
+  });
+
+  it('rejects an importer with NO governed component type', () => {
+    const root = lockWithVersion('9.0');
+    expect(() => build(root, {}, {})).toThrow(/no governed CycloneDX component type/);
+  });
+
+  it('applies the governed type per importer rather than one type for all', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'packages/lib/package.json': manifest('@fixture/lib', '1.0.0'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .: {}',
+        '  packages/lib: {}',
+        'packages: {}',
+        'snapshots: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root, { importer_roots: ['.', 'packages/lib'] });
+    expect((c.nodes.get('workspace:.') as unknown as { componentType: string }).componentType).toBe('application');
+    expect((c.nodes.get('workspace:packages/lib') as unknown as { componentType: string }).componentType).toBe('library');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R2 fixture — optional ancestry and dev-reached workspaces', () => {
+  it('a component reached only through an optional edge is OPTIONAL, not a plain dependency', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      required-parent:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  required-parent@1.0.0:',
+        `    resolution: {integrity: ${sri('rp')}}`,
+        '  optional-child@1.0.0:',
+        `    resolution: {integrity: ${sri('oc')}}`,
+        '  grandchild@1.0.0:',
+        `    resolution: {integrity: ${sri('gc')}}`,
+        'snapshots:',
+        '  required-parent@1.0.0:',
+        '    optionalDependencies:',
+        '      optional-child: 1.0.0',
+        '  optional-child@1.0.0:',
+        '    dependencies:',
+        '      grandchild: 1.0.0',
+        '  grandchild@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    const scopes = (r: string) => [...c.nodes.get(r)!.scopes].sort();
+    expect(scopes('required-parent@1.0.0')).toEqual(['dependencies']);
+    // Reached ONLY through an optional edge, so optional ancestry must be recorded…
+    expect(scopes('optional-child@1.0.0')).toContain('optionalDependencies');
+    // …and it must carry down to the descendant, which is only reachable that way.
+    expect(scopes('grandchild@1.0.0')).toContain('optionalDependencies');
+  });
+
+  it('a workspace reached only through a DEV edge keeps its runtime deps in dev scope', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'packages/lib/package.json': manifest('@fixture/lib', '1.0.0'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    devDependencies:',
+        '      \'@fixture/lib\':',
+        '        specifier: link:packages/lib',
+        '        version: link:packages/lib',
+        '  packages/lib:',
+        '    dependencies:',
+        '      lib-runtime:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  lib-runtime@1.0.0:',
+        `    resolution: {integrity: ${sri('lr2')}}`,
+        'snapshots:',
+        '  lib-runtime@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    // Only '.' is a root, and it depends on the workspace as a DEV dependency.
+    const c = build(root, {
+      importer_roots: ['.'],
+      dependency_scopes: ['dependencies', 'devDependencies'],
+    });
+    expect(c.unresolved).toEqual([]);
+    expect([...c.nodes.get('workspace:packages/lib')!.scopes].sort()).toEqual(['devDependencies']);
+    // The transitive RUNTIME dependency of a dev-only workspace is still development
+    // scope overall — it is not part of the production closure.
+    expect([...c.nodes.get('lib-runtime@1.0.0')!.scopes].sort()).toEqual(['devDependencies']);
   });
 });

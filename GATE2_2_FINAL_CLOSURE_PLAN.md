@@ -339,7 +339,7 @@ range (`postcss@8.5.25` requires `"nanoid": "^3.3.16"`, so 6.0.1 satisfied no de
 consumer and was reachable only because the override forced it), and engine-narrowed
 (`^22 || ^24 || >=26`) against our own `>=24 <25`.
 
-Corrected to the exact reviewed version **`nanoid: 3.3.18`**: the highest patch on the
+Corrected to the exact reviewed version **`nanoid: 3.3.18`** — the governed version is exactly 3.3.18, and every reference to 6.0.1 in this document describes only the superseded range behaviour: the highest patch on the
 3.x line, therefore above the `<3.3.17` vulnerable boundary; inside postcss's declared
 `^3.3.16` range, so no forced semver-major break; carrying the `main: index.cjs` entry
 and the `./non-secure` subpath export that `postcss/lib/input.js` actually requires; and
@@ -596,3 +596,194 @@ C17, C18, C19, the freeze protocol and external independent review remain pendin
 tracked Gate-2.1 artifacts under `evidence/supply-chain/` (`sbom.cdx.json`,
 `reconciliation.txt`, `licenses-*.json`) are now **inert** — no gate step and no test
 reads them — and C17 replaces them. Phase 0 remains unapproved.
+
+
+---
+
+## 7. C16-R2 REMEDIATION RECORD — after hosted-CI verification of `e120b21`
+
+`e120b21` was independently reviewed against the **hosted** Actions run. C16 was returned
+to PENDING REMEDIATION a second time. This section is authoritative where it conflicts
+with §5 or §6.
+
+### 7.1 The finding that mattered most
+
+**No hosted CI run in this repository had ever been green.** All four runs in the
+repository's history are red, back to the Gate-2.1 evidence attestation. Every previous
+"CI enforces…" claim in these controlled documents rested on local-equivalent execution
+only. Run `31532067899` was the first one actually read end to end.
+
+### 7.2 Diagnosed root causes (from the logs, not guessed)
+
+| Job | Failure | Root cause |
+|---|---|---|
+| `supply-chain` | `trivy misconfiguration check bundle reports no digest (malformed metadata)` | CI prefetched only the vulnerability DB. trivy 0.73 has **no `--download-check-only`**; the misconfiguration checks bundle is fetched lazily by the first misconfig scan. My own enforcement therefore demanded an input the workflow never acquired. It passed locally only because an earlier `trivy fs --scanners misconfig` had warmed the **default** cache — and the provenance probe read that default cache rather than the one the scans used. |
+| `browser-regression` | `password authentication failed for user "eye_publisher"` | The job **never ran `pnpm db:migrate`**, so the least-privilege roles were never created with the run's ephemeral passwords. Pre-existing since the original monorepo scaffold; unrelated to C16. |
+| `supply-chain` artifact upload | `No files were found with the provided path` | The runner exited before writing anything, so a red run left nothing auditable. |
+
+Neither failure is environmental. Both have executable corrections below.
+
+### 7.3 Trivy cold-cache, provenance capture and enforcement
+
+`scripts/gate/lib/trivy-cache.mjs`. Facts established by probe, not assumption:
+`trivy version --format json` reports a section **only** when that artifact exists in the
+cache it reads — with an empty `--cache-dir` it prints `{"Version":"…"}` and nothing else.
+The vuln DB lands in `<cache>/db/{metadata.json,trivy.db}`, the checks bundle in
+`<cache>/policy/metadata.json`.
+
+The runner now: acquires **both** artifacts into one explicit isolated cache (the bundle
+via a single throwaway misconfig scan over an empty directory, the only supported way);
+captures the trivy path + SHA-256, version + installation provenance, DB metadata + byte
+digests, checks-bundle **OCI digest**, download timestamps, computed freshness and the
+exact target platform, all from **that same cache**; enforces fail-closed on missing
+NextUpdate, missing digest, malformed or absent bundle metadata, absent cache files,
+staleness beyond 24h, past-due, negative age, version mismatch, and cache-vs-tool digest
+disagreement; runs every authoritative scan with `--skip-db-update --skip-check-update`;
+and proves the cache **fingerprint is unchanged** afterwards.
+
+trivy 0.73 records no OCI digest for the vulnerability DB, so the DB is bound by the byte
+digests of its cache artifacts. That is an upstream limitation, recorded rather than
+papered over.
+
+### 7.4 Scanner policy and target-specific dispositions
+
+`.trivyignore` is **deleted**. It listed 16 bare CVE ids with prose governance: a bare id
+suppresses that advisory in **every** image and package, so a genuinely new occurrence
+elsewhere would be hidden, and expiry lived in a comment that nothing enforced.
+
+Replaced by `scripts/gate/scanner-exclusions.json` + `lib/scanner-exclusions.mjs`. The
+gate scans with **no suppression** (`--ignorefile /dev/null`), obtains the complete
+finding set, and reconciles it against governed records. Trivy's ignore mechanism is never
+relied upon, so suppression cannot occur without a matching record. An **unmatched**
+finding fails the gate; an **unused** record fails it as stale. Each record names the exact
+image digest, scan platform, package and PURL prefix, plus owner, approver (≠ owner),
+reason, evidence, approval/expiry dates and compensating controls. Measured: **16 findings
+on the linux/amd64 postgres child — 1 c-ares (apk) + 15 golang stdlib (gosu) — all
+governed by 2 records, 0 unmatched, 0 unused.**
+
+**Coverage normalisation.** The JSON filesystem capture previously omitted `--severity`,
+silently adding LOW/MEDIUM coverage nothing enforced. Both filesystem steps now share one
+argument list, and both `pnpm audit` steps one audit level, so only `--format` differs —
+and the runner **compares the coverage descriptors** of any step pair claiming
+equivalence, failing if they diverge.
+
+### 7.5 Exclusion governance is code-owned
+
+`EXCLUSION_REQUIRED_FIELDS` and `EXCLUSION_SCHEMA_VERSIONS` live in
+`lib/reconcile.mjs`; the document's own `required_fields` list is **cross-checked against
+the code-owned set and rejected on any disagreement**, so the data cannot weaken its own
+validation. Now enforced: unique ids, duplicate entries (rejected even when only one node
+would be removed), owner ≠ approver, date chronology including future approval,
+repository-relative + tracked + existing evidence whose **SHA-256 must match the actual
+bytes**, `parent_edge` that is a real edge **and terminates at the excluded component**, a
+scope the node **actually holds**, and exact cardinality agreement
+(`declared == valid + rejected`, `valid == applied`, `removed == applied + cascaded`).
+
+**Descendant semantics, chosen and documented:** a valid exclusion removes the node, every
+incident edge, and every descendant the removal makes **unreachable from the subject
+roots** — each cascade recorded individually. Deterministic, because reachability from a
+fixed root set is a function of the graph. The reduced graph must contain no orphan and no
+dangling reference, verified independently by the reconciler.
+
+### 7.6 Reconciliation is now literal
+
+Component properties are compared as an **exact set** — missing, unknown, duplicated or
+altered all fail; previously a subset check let a rewritten scope or an invented property
+pass. Integrity is an **exact multiset** of alg:digest pairs, so a fabricated extra hash
+fails as a missing one does, and a registry component with no verifiable digest is
+rejected outright. The metadata subject is reconciled field by field (bom-ref, name,
+version, type, PURL). All sixteen metadata bindings are required, and
+`requireExactBindings` rejects any unknown metadata property. A dependency entry for a
+reference that is not a component fails **even when its `dependsOn` is empty**.
+
+**Governed first-party types.** `apps/api` and `apps/web` are `application`;
+`packages/contracts` and `packages/tokens` are `library`. An unmapped importer is an error,
+not a default — mapping every workspace to `application` misrepresents libraries as
+deployable units.
+
+### 7.7 Traversal corrections
+
+* **Optional ancestry** propagates: crossing an `optionalDependencies` edge adds that
+  scope to the subtree. Production membership changed from a flat
+  `dependencies: 191` to `dependencies+optionalDependencies: 146, dependencies: 49` —
+  the previous labelling overstated what is mandatory.
+* **A defect found in my own C16 fix:** `expandImporter` seeded non-link children
+  unconditionally, so a linked workspace's runtime dependencies were seeded as production
+  regardless of how the workspace was reached. Only a declared root seeds scope now; a
+  dev-only linked workspace keeps its transitive runtime deps in development scope.
+* **Patch hash is not peer context.** The suffix is split into balanced groups and
+  classified, so `foo@1.0.0(patch_hash=...)` is no longer labelled a peer variant.
+* **Integrity required and validated** for registry packages (algorithm, base64, digest
+  length), with missing `packages:` metadata rejected and a governed `integrity_rules`
+  escape hatch that records every use.
+* **lockfileVersion is validated exactly** (`9.0`); a future or unknown format is a hard
+  failure rather than a confident mis-parse.
+
+### 7.8 Final-source semantics
+
+Both runners now require, in `--final` mode: an explicit `--expected-sha`, HEAD equal to
+it, a clean worktree, and a real git worktree. A gitless export stamped
+`(not a git worktree)` is **preliminary equivalence evidence only**. The C15 runner also
+records which git-dependent proofs it could not perform in such a tree rather than faking
+them.
+
+### 7.9 Defects found during this remediation
+
+1. `enforceTrivyDatabase` demanded a checks-bundle digest that CI never acquired — my own
+   defect, and the direct cause of the red hosted run.
+2. The provenance probe read the **default** trivy cache, not the scans' cache.
+3. `scripts/gate/lib/sbom.mjs` contained two **literal NUL bytes** in the property
+   comparator; replaced with an escaped U+0000 representation.
+4. The C15 runner crashed on a gitless export via an unguarded `git rev-parse` **before**
+   writing any manifest. Fixed, plus a top-level handler so even an unexpected exception
+   leaves a `CRASH` manifest and raw diagnostic.
+5. `haveGit` was used before initialisation after the first fix — caught by the pristine
+   run, not by reasoning.
+6. My own scope-seeding bug (§7.7).
+7. The behavioural negative-control test embedded a **literal PEM private key**, which the
+   real gate correctly flagged as a planted secret in tracked source. The fixture is now
+   synthesised at runtime, so no secret-shaped literal exists in the repository.
+8. Local Playwright failed on shared-database contamination from the suites run before it;
+   10/10 on a virgin database. CI always has virgin containers, so the correction is the
+   missing `db:migrate`, not a test change.
+
+### 7.10 Measurements at this commit
+
+| | production | development |
+|---|---|---|
+| components | **195** | **294** |
+| graph edges | **290** | **446** |
+| subject to root edges | **4** | **5** |
+| total edges reconciled | **294** | **451** |
+| peer-variant / patched | 10 / 0 | 16 / 0 |
+| platform-excluded | 36 | 60 |
+| unresolved references | 0 | 0 |
+
+Scope membership — production
+`{dependencies+optionalDependencies: 146, dependencies: 49}`; development
+`{dependencies+devDependencies+optionalDependencies: 28, dependencies+optionalDependencies: 123, dependencies: 45, devDependencies+optionalDependencies: 17, devDependencies: 81}`.
+
+C15: 8 steps / 6 blocking in a git worktree, 16 image findings all governed, 0 unmatched,
+0 unused, trivy cache **unchanged** across the authoritative scans.
+
+### 7.11 Controls
+
+| Suite | Tests |
+|---|---|
+| `c16-closure-controls.test.ts` | **84** |
+| `c16-lockfile-fixtures.test.ts` | **49** |
+| `c15-runner-behaviour.test.ts` | **12** (each SPAWNS the real runner) |
+| `c15-scanner-provenance.test.ts` | **34** |
+| `supply-chain-artifacts.test.ts` | **10** |
+| `supply-chain.test.ts` | **39** |
+
+The behavioural suite executes the gate against a planted secret, a bad tool pin, an
+expired disposition, a widened disposition, fake evidence, a self-approved disposition, a
+removed disposition (ungoverned finding), an unused disposition, a resurrected
+`.trivyignore`, and both final-source violations — plus a positive run asserting 8 steps,
+6 blocking, cache unchanged.
+
+### 7.12 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
+remains unapproved. No independent approval, frozen status or final readiness is claimed.

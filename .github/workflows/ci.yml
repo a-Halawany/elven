@@ -1,20 +1,33 @@
 # The Eye — CI (ADR-P0-16: supply-chain baseline is Phase 0 scope, not deferred)
 #
-# Remediation R7/R8 notes:
-#  - Infrastructure comes up via docker-compose.yml, so CI exercises the SAME
-#    digest-pinned images (postgres:18-alpine / redis:8-alpine by sha256) and
-#    the SAME loopback + Redis-auth profile as local runs.
-#  - Every secret is generated per run (ephemeral) — no fixed reusable
-#    credentials anywhere in the pipeline.
-#  - The supply-chain job scans BOTH the repository filesystem (labeled as a
-#    filesystem scan) AND the exact pinned container images (labeled as image
-#    scans, blocking at HIGH/CRITICAL; .trivyignore holds the dated CVE-level
-#    dispositions). A digest-consistency step proves the scanned digests are
-#    the ones in docker-compose.yml and conformance.manifest.json.
-#  - This workflow defines the gate pipeline. For the local-only Phase 0 gate,
-#    local-equivalent evidence (same commands, raw logs) is what is presented;
-#    no hosted-CI execution is claimed. Jobs: 3 (build-test,
-#    browser-regression, supply-chain).
+# Infrastructure comes up via docker-compose.yml, so CI exercises the SAME digest-pinned
+# images and the SAME loopback + Redis-auth profile as local runs. Every secret is
+# generated per run — no fixed reusable credentials anywhere in the pipeline.
+#
+# ── C16-R2 CORRECTIONS (hosted run 31532067899 was RED) ───────────────────────────
+#  * supply-chain failed during C15: CI prefetched only the trivy vulnerability DB while
+#    the runner requires a misconfiguration CHECKS-BUNDLE digest before the first scan.
+#    trivy 0.73 has no --download-check-only; the bundle is fetched lazily by the first
+#    misconfig scan. The tracked runner now acquires BOTH artifacts into one explicit
+#    isolated cache, enforces their provenance, and runs every authoritative scan with
+#    updates disabled — proving the cache is unchanged afterwards.
+#  * browser-regression failed with `password authentication failed for user
+#    "eye_publisher"`: the job never ran `pnpm db:migrate`, so the least-privilege roles
+#    were never created with the ephemeral run passwords. Pre-existing since the original
+#    monorepo scaffold — no hosted run in this repository had ever been green.
+#  * Every action is pinned to an immutable commit SHA. Every scanner download is
+#    authenticated against the tracked upstream checksums in scripts/gate/scanner-pins.json.
+#  * Node is pinned to exactly 24.11.1, not a floating major.
+#  * The legacy Gate-2.1 SBOM generator is removed from the active gate: its
+#    "bidirectional" reconciliation compared two structures derived from the same
+#    generated SBOM, so it could not fail. Superseded by the C16 runner.
+#  * Container dispositions are machine-governed and target-specific
+#    (scripts/gate/scanner-exclusions.json); the bare global .trivyignore is gone,
+#    because a bare CVE id suppresses that advisory in EVERY image and package.
+#  * Gate artifacts go to explicit per-run temporary directories and are uploaded even on
+#    failure, so a red run stays auditable. No step and no test reads a gitignored path.
+#
+# Jobs: 3 (build-test, browser-regression, supply-chain).
 name: ci
 on:
   push:
@@ -24,14 +37,20 @@ on:
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: 24.11.1
+  PNPM_VERSION: 11.9.0
+  GITLEAKS_VERSION: 8.30.1
+  TRIVY_VERSION: 0.73.0
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 11.9.0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 24.11.1, cache: pnpm }
       - name: Generate ephemeral run secrets (R7 — no fixed credentials)
         run: |
@@ -53,45 +72,38 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Compose up (digest-pinned postgres/redis, loopback, redis auth)
         run: docker compose up -d --wait
-      - name: Install (frozen lockfile — pinned dependency closure)
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Module boundaries (ES-65-003, blocking)
+      - name: Module boundaries (dependency-cruiser, blocking)
         run: pnpm boundaries
-      # Gate-2 §10: typecheck runs BEFORE build and must pass from a genuinely
-      # clean checkout. Workspace packages expose their sources through the
-      # "development" export condition, so no pre-built dist is required.
-      # This step also asserts that no stale dist/.next/tsbuildinfo is present.
+      # Gate-2 §10: typecheck runs BEFORE build and must pass from a genuinely clean
+      # checkout. Workspace packages expose their sources through the "development"
+      # export condition, so no pre-built dist is required. This step also asserts that
+      # no stale dist/.next/tsbuildinfo is present.
       - name: Clean-source typecheck + build (blocking, real CI order)
         run: bash scripts/verify-clean-typecheck.sh
-      # Gate-2.1 §9: the supply-chain ARTIFACT gates assert the SBOM, licence
-      # inventories and bidirectional reconciliation report that were actually
-      # produced, so the generators run BEFORE the test step that checks them. The
-      # pure gate LOGIC (negative fixtures) needs no artifacts and runs regardless.
-      # Gate-2.2 C16: the licence inventory is still a declared precondition of the
-      # G21-21 artifact gate. The Gate-2.1 SBOM generator is NOT run: its
-      # "bidirectional" reconciliation compared two structures derived from the same
-      # generated SBOM, so it could not fail. It is superseded by the C16 runner below,
-      # which the artifact gate invokes itself into a temporary directory.
-      - name: Supply-chain gate input (licence inventory)
+      # The licence inventory is a declared precondition of the G21-21 artifact gate. The
+      # Gate-2.1 SBOM generator is deliberately NOT run — see the header.
+      - name: Supply-chain gate input (licence inventory, blocking)
         run: node scripts/license-inventory.mjs
-      # C16 closure gate, BLOCKING, into an explicit per-run temporary directory. The
-      # generated artifacts are never read from a gitignored path, so a clean checkout
-      # and a developer machine with leftover outputs behave identically.
-      - name: C16 target-resolved closure gate (blocking)
+      # C16 closure gate, BLOCKING, into an explicit per-run temporary directory so no
+      # step and no test depends on gitignored state.
+      - name: C16 target-resolved closure gate (tracked runner, blocking)
         run: |
+          set -euo pipefail
           C16_OUT="$(mktemp -d)"
-          echo "C16 run directory: $C16_OUT"
+          echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
           node scripts/gate/generate-closures.mjs --out "$C16_OUT"
           test -s "$C16_OUT/closure-reconciliation.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-prod.cdx.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-dev.cdx.json"
-      - name: Unit + conformance + supply-chain gate tests (golden fixtures, negative fixtures, shipped artifacts)
+      - name: Unit + conformance + gate tests (golden fixtures, negative fixtures, artifacts)
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
-        # Acceptance runs BEFORE integration: the acceptance beforeAll relies on
-        # the one-shot bootstrap creating the reserved `platform-admin`; the
-        # integration suites intentionally create additional platform_admin
-        # principals, which would make the (correct) one-shot bootstrap refuse.
+        # Acceptance runs BEFORE integration: the acceptance beforeAll relies on the
+        # one-shot bootstrap creating the reserved `platform-admin`; the integration
+        # suites intentionally create additional platform_admin principals, which would
+        # make the (correct) one-shot bootstrap refuse.
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
@@ -103,14 +115,21 @@ jobs:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: pnpm --filter @eye/api test:int
+      - name: Upload C16 gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c16-closure-evidence
+          path: ${{ env.C16_OUT }}
+          if-no-files-found: warn
 
   browser-regression:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 11.9.0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 24.11.1, cache: pnpm }
       - name: Generate ephemeral run secrets (R7 — no fixed credentials)
         run: |
@@ -134,6 +153,15 @@ jobs:
         run: docker compose up -d --wait
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # C16-R2: THE MISSING STEP. Without it the least-privilege roles never exist with
+      # this run's ephemeral passwords, and the API's outbox publisher dies with
+      # `password authentication failed for user "eye_publisher"` before the first
+      # scenario can run. Pre-existing defect since the original monorepo scaffold.
+      - name: Migrate the database (creates the least-privilege roles for this run)
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
+        run: pnpm db:migrate
       - name: Install Chrome (stable channel)
         run: pnpm exec playwright install chrome
       - name: Phase 0 browser regression gate (10 scenarios, blocking)
@@ -141,78 +169,86 @@ jobs:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: pnpm exec playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
-        with: { name: playwright-traces, path: test-results/ }
+        with: { name: playwright-traces, path: test-results/, if-no-files-found: warn }
 
   supply-chain:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 11.9.0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 24.11.1, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      # Gate-2.2 C15/C16: the supply-chain gate is the TRACKED runner in
-      # scripts/gate/, not a set of marketplace actions. The runner verifies every tool
-      # pin BEFORE scanning and fails closed on a mismatch, enforces the vulnerability
-      # database's identity and freshness, resolves each multi-arch image index to its
-      # exact linux/amd64 child, and records raw stdout/stderr digests per step. A scan
-      # from an unknown scanner version, or against a stale database, is not evidence.
-      - name: Install PINNED scanner binaries (exact versions the runner requires)
+      # Downloads are AUTHENTICATED against the tracked upstream checksums in
+      # scripts/gate/scanner-pins.json. An unauthenticated download is an unverified input
+      # to the gate that exists to verify inputs.
+      - name: Install PINNED scanner binaries, verified against tracked checksums
         run: |
           set -euo pipefail
-          GITLEAKS_VERSION=8.30.1
-          TRIVY_VERSION=0.73.0
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin trivy
-          sudo chmod +x /usr/local/bin/gitleaks /usr/local/bin/trivy
+          field() { python3 -c "import json,sys;print(json.load(open('scripts/gate/scanner-pins.json'))['tools'][sys.argv[1]]['artifacts']['linux-x64'][sys.argv[2]])" "$1" "$2"; }
+          fetch() {
+            tool="$1"; url="$(field "$tool" url)"; want="$(field "$tool" sha256)"
+            echo "$tool <- $url"
+            curl -fsSL --retry 3 -o "/tmp/$tool.tar.gz" "$url"
+            got="$(sha256sum "/tmp/$tool.tar.gz" | cut -d' ' -f1)"
+            if [ "$got" != "$want" ]; then
+              echo "::error::$tool download digest $got does not match the tracked $want"
+              exit 1
+            fi
+            echo "$tool digest verified: $got"
+            sudo tar -xzf "/tmp/$tool.tar.gz" -C /usr/local/bin "$tool"
+            sudo chmod +x "/usr/local/bin/$tool"
+          }
+          fetch gitleaks
+          fetch trivy
       - name: Verify scanner + toolchain versions are EXACTLY the pinned ones
         run: |
           set -euo pipefail
-          check() { got="$2"; want="$3"; [ "$got" = "$want" ] || { echo "$1: got '$got', want '$want'"; exit 1; }; echo "$1 = $got"; }
-          check node     "$(node --version)"    "v24.11.1"
-          check pnpm     "$(pnpm --version)"    "11.9.0"
-          check gitleaks "$(gitleaks version)"  "8.30.1"
-          check trivy    "$(trivy --version | sed -n 's/^Version: *//p' | head -1)" "0.73.0"
-      - name: Download the trivy vulnerability database (the runner enforces its freshness)
+          check() { [ "$2" = "$3" ] || { echo "::error::$1: got '$2', want '$3'"; exit 1; }; echo "$1 = $2"; }
+          check node     "$(node --version)"   "v${NODE_VERSION}"
+          check pnpm     "$(pnpm --version)"   "${PNPM_VERSION}"
+          check gitleaks "$(gitleaks version)" "${GITLEAKS_VERSION}"
+          check trivy    "$(trivy --version | sed -n 's/^Version: *//p' | head -1)" "${TRIVY_VERSION}"
+      - name: Pinned-digest consistency (compose == conformance manifest)
         run: |
-          trivy image --download-db-only
-          trivy --version --format json
-      - name: Pinned-digest consistency (compose == manifest)
-        run: |
+          set -euo pipefail
           PG_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['postgres']['digest'])")
           REDIS_DIGEST=$(python3 -c "import json;print(json.load(open('conformance.manifest.json'))['pinned_images']['redis']['digest'])")
-          grep -qF "image: $PG_DIGEST" docker-compose.yml || { echo "compose postgres digest != manifest"; exit 1; }
-          grep -qF "image: $REDIS_DIGEST" docker-compose.yml || { echo "compose redis digest != manifest"; exit 1; }
-      # BLOCKING. 8 steps, 6 blocking; the 2 non-blocking steps are alternate output
-      # FORMATS of scans that already ran blocking with the same pinned tool, and the
-      # runner fails if any non-blocking step adds coverage nothing blocking enforces.
+          grep -qF "image: $PG_DIGEST" docker-compose.yml || { echo "::error::compose postgres digest != manifest"; exit 1; }
+          grep -qF "image: $REDIS_DIGEST" docker-compose.yml || { echo "::error::compose redis digest != manifest"; exit 1; }
+      # BLOCKING. The runner acquires the vulnerability DB *and* the checks bundle into the
+      # isolated cache below, captures and enforces their provenance, then runs every
+      # authoritative scan with --skip-db-update --skip-check-update and proves the cache
+      # fingerprint is unchanged. 8 steps, 6 blocking; the 2 non-blocking steps are
+      # alternate output FORMATS with byte-identical coverage descriptors.
       - name: C15 supply-chain gate (tracked pinned runner, blocking)
         run: |
+          set -euo pipefail
           C15_OUT="$(mktemp -d)"
+          C15_CACHE="$(mktemp -d)"
           echo "C15_OUT=$C15_OUT" >> "$GITHUB_ENV"
-          node scripts/gate/supply-chain.mjs --out "$C15_OUT"
-      # BLOCKING. Generated into an explicit per-run temporary directory: no test and no
-      # step reads a gitignored path, so a clean checkout behaves identically to a
-      # developer machine that has leftover preliminary outputs.
+          echo "C15_CACHE=$C15_CACHE" >> "$GITHUB_ENV"
+          node scripts/gate/supply-chain.mjs --out "$C15_OUT" --trivy-cache "$C15_CACHE"
       - name: C16 target-resolved closure gate (tracked runner, blocking)
         run: |
+          set -euo pipefail
           C16_OUT="$(mktemp -d)"
           echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
           node scripts/gate/generate-closures.mjs --out "$C16_OUT"
       - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
         run: node scripts/license-inventory.mjs
+      # ALWAYS upload: a red run must remain auditable. The runner writes a failure
+      # manifest and RESULT-FAIL.txt before exiting, so these paths exist either way.
       - name: Upload C15 + C16 raw gate evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: supply-chain-gate-evidence
           path: |
             ${{ env.C15_OUT }}
             ${{ env.C16_OUT }}
-          if-no-files-found: error
+          if-no-files-found: warn

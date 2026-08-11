@@ -28,6 +28,9 @@ import { join } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs gate library shared with the CI scripts (no types)
 import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS } from '../../../../scripts/gate/lib/scanner-provenance.mjs';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import { enforce, frozenCacheArgs } from '../../../../scripts/gate/lib/trivy-cache.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 'supply-chain.mjs'), 'utf8');
@@ -150,8 +153,8 @@ describe('C15-B — "eight steps, six blocking" is machine-checked, not asserted
 
   it('the runner fails closed on unenforced coverage rather than warning', () => {
     const src = runnerSource();
-    expect(src).toContain('SUPPLY-CHAIN GATE FAILED: unenforced scan coverage');
     expect(src).toContain('every_informational_step_duplicates_a_blocking_step');
+    expect(src).toContain('step policy —');
   });
 });
 
@@ -165,13 +168,14 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
     expect(lib).toContain('resolved_path');
   });
 
-  it('the runner probes and ENFORCES the database before the first scan', () => {
+  it('the runner captures and ENFORCES cache provenance before the first scan', () => {
     const src = runnerSource();
-    expect(src).toContain('enforceTrivyDatabase(vulnDb, MAX_VULN_DB_AGE_HOURS)');
-    expect(src).toContain('SUPPLY-CHAIN GATE FAILED: vulnerability database rejected');
-    // The enforcement precedes the first scan, so a stale DB can never produce findings.
-    expect(src.indexOf('vulnerability database rejected'))
-      .toBeLessThan(src.indexOf("R('pnpm-audit-human'"));
+    expect(src).toContain('acquire({ cacheDir');
+    expect(src).toContain('enforce(provenance,');
+    // Enforcement precedes the first scan, so stale or absent data can never silently
+    // produce an empty finding set. Behaviour is proven in c15-runner-behaviour.test.ts.
+    expect(src.indexOf('enforce(provenance,'))
+      .toBeLessThan(src.indexOf("'pnpm-audit-human'"));
   });
 
   /**
@@ -235,10 +239,11 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
     });
   });
 
-  it('the runner refuses --final on a dirty worktree', () => {
+  it('the runner requires an expected SHA and a clean worktree in --final mode', () => {
     const src = runnerSource();
+    expect(src).toContain('--final requires --expected-sha');
     expect(src).toContain('--final requires a clean worktree');
-    expect(src).toContain("process.argv.includes('--final')");
+    expect(src).toContain("argv.includes('--final')");
   });
 
   it('every step already records the exact command and a digest of its raw output', () => {
@@ -251,9 +256,141 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
 
   it('the pinned toolchain is verified before any scan runs, and fails closed', () => {
     const src = runnerSource();
-    expect(src).toContain('SUPPLY-CHAIN GATE FAILED: toolchain is not pinned');
+    expect(src).toContain('toolchain not pinned');
     expect(src).toContain('A scan from an unknown scanner version is not evidence.');
     // The pin check precedes the first scan.
-    expect(src.indexOf('toolchain is not pinned')).toBeLessThan(src.indexOf("R('pnpm-audit-human'"));
+    expect(src.indexOf('toolchain not pinned')).toBeLessThan(src.indexOf("'pnpm-audit-human'"));
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C15-R2 — trivy cache provenance is captured from the SAME cache and enforced', () => {
+  /** A fully-populated provenance record; each test breaks exactly one thing. */
+  const good = (over: Record<string, unknown> = {}) => ({
+    captured_at: '2026-08-12T00:00:00.000Z',
+    target_platform: 'linux/amd64',
+    cache_dir: '/tmp/cache',
+    executable: { name: 'trivy', resolved_path: '/usr/local/bin/trivy', sha256: 'a'.repeat(64), bytes: 100 },
+    reported_version: '0.73.0',
+    version_probe_error: null,
+    freshness_window_hours: 24,
+    vulnerability_db: {
+      metadata_present: true, metadata_error: null, metadata_byte_sha256: 'b'.repeat(64),
+      schema_version: 2, built_at: '2026-08-11T19:13:09Z', next_update_due: '2026-08-12T19:13:09Z',
+      downloaded_at: '2026-08-11T20:00:00Z', age_hours_at_scan: 5, past_next_update_at_scan: false,
+      artifact: { present: true, bytes: 1, sha256: 'c'.repeat(64) },
+    },
+    checks_bundle: {
+      metadata_present: true, metadata_error: null, metadata_byte_sha256: 'd'.repeat(64),
+      oci_digest: `sha256:${'1'.repeat(64)}`, major_version: 2,
+      downloaded_at: '2026-08-11T20:00:00Z', age_hours_at_scan: 4,
+      reported_by_tool: `sha256:${'1'.repeat(64)}`,
+    },
+    ...over,
+  });
+  const enforceIt = (p: unknown) => enforce(p, { expectedVersion: '0.73.0' }) as string[];
+
+  it('accepts a complete, fresh capture (positive control)', () => {
+    expect(enforceIt(good())).toEqual([]);
+  });
+
+  it('rejects an ABSENT checks bundle — the exact hosted-CI failure', () => {
+    // Run 31532067899 failed here: CI prefetched only the vulnerability DB, and trivy has
+    // no --download-check-only, so the bundle was never acquired.
+    const p = good({
+      checks_bundle: { ...good().checks_bundle, metadata_present: false, oci_digest: null, reported_by_tool: null },
+    });
+    const problems = enforceIt(p);
+    expect(problems.join(' ')).toMatch(/checks-bundle metadata is absent/);
+    expect(problems.join(' ')).toMatch(/no --download-check-only/);
+  });
+
+  it('rejects an ABSENT vulnerability database and a missing DB artifact', () => {
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, metadata_present: false },
+    })).join(' ')).toMatch(/vulnerability database metadata is absent/);
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, artifact: { present: false } },
+    })).join(' ')).toMatch(/artifact is missing from the cache/);
+  });
+
+  it('rejects a MISSING NextUpdate, a stale DB and a past-due DB', () => {
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, next_update_due: null },
+    })).join(' ')).toMatch(/no NextUpdate/);
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, age_hours_at_scan: 25 },
+    })).join(' ')).toMatch(/beyond the permitted 24h window/);
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, past_next_update_at_scan: true },
+    })).join(' ')).toMatch(/past its next-update time/);
+    expect(enforceIt(good({
+      vulnerability_db: { ...good().vulnerability_db, age_hours_at_scan: -2 },
+    })).join(' ')).toMatch(/negative age/);
+  });
+
+  it('rejects a DIGEST DISAGREEMENT between the cache file and the tool', () => {
+    const p = good({
+      checks_bundle: { ...good().checks_bundle, reported_by_tool: `sha256:${'9'.repeat(64)}` },
+    });
+    expect(enforceIt(p).join(' ')).toMatch(/checks-bundle digest disagreement/);
+  });
+
+  it('rejects a version mismatch and an unresolvable or untrusted executable', () => {
+    expect(enforceIt(good({ reported_version: '0.72.0' })).join(' ')).toMatch(/expected 0\.73\.0/);
+    expect(enforceIt(good({
+      executable: { ...good().executable, resolved_path: null },
+    })).join(' ')).toMatch(/could not be resolved on PATH/);
+    const untrusted = enforce(good(), {
+      expectedVersion: '0.73.0', expectedBinarySha256: 'f'.repeat(64),
+    }) as string[];
+    expect(untrusted.join(' ')).toMatch(/does not match the trusted value/);
+  });
+
+  it('the authoritative scan flags disable BOTH updates and use the captured cache', () => {
+    expect(frozenCacheArgs('/tmp/c')).toEqual([
+      '--cache-dir', '/tmp/c', '--skip-db-update', '--skip-check-update',
+    ]);
+  });
+
+  it('the tracked scanner pins carry real upstream checksums for the CI platform', () => {
+    const pins = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-pins.json'), 'utf8')) as {
+      tools: Record<string, { version: string; artifacts: Record<string, { url: string; sha256: string }> }>;
+      checksum_sources: Record<string, string>;
+    };
+    expect(pins.tools.trivy.version).toBe('0.73.0');
+    expect(pins.tools.gitleaks.version).toBe('8.30.1');
+    for (const tool of ['trivy', 'gitleaks']) {
+      const linux = pins.tools[tool]!.artifacts['linux-x64']!;
+      expect(linux.sha256, `${tool} linux-x64 checksum`).toMatch(/^[a-f0-9]{64}$/);
+      expect(linux.url).toContain(pins.tools[tool]!.version);
+      expect(pins.checksum_sources[tool]).toMatch(/^https:\/\/github\.com\//);
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C15-R2 — coverage equivalence is literal, not asserted', () => {
+  it('the runner compares the coverage descriptors of duplicated steps', () => {
+    const src = runnerSource();
+    expect(src).toContain('JSON.stringify(a?.coverage) !== JSON.stringify(b?.coverage)');
+    expect(src).toContain('their coverage');
+  });
+
+  it('both filesystem steps share severity, scanners, ignore and cache semantics', () => {
+    const src = runnerSource();
+    // One argument list is built once and reused, so the two steps cannot drift.
+    expect(src).toContain('const FS_ARGS = [');
+    expect(src).toMatch(/trivy-fs',\s*\['trivy', \.\.\.FS_ARGS/);
+    expect(src).toMatch(/trivy-fs-json',\s*\['trivy', \.\.\.FS_ARGS/);
+    // The JSON capture previously omitted --severity, silently adding LOW/MEDIUM coverage.
+    expect(src).toContain("'--severity', 'HIGH,CRITICAL'");
+  });
+
+  it('both pnpm audit steps share the same audit level', () => {
+    const src = runnerSource();
+    expect(src).toContain("const AUDIT_LEVEL = ['--audit-level', 'high']");
+    expect(src).toMatch(/'pnpm', 'audit', \.\.\.AUDIT_LEVEL/);
+    expect(src).toMatch(/'pnpm', 'audit', '--json', \.\.\.AUDIT_LEVEL/);
   });
 });

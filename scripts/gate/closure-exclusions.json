@@ -1,8 +1,10 @@
 {
-  "schema_version": "2.0.0",
-  "purpose": "Governed exclusions from a target-resolved dependency closure. An exclusion is a REVIEWED, APPROVED, DATED decision about one exact resolved package in one exact target — never a pattern, never a silent suppression.",
-  "semantic": "A valid exclusion REMOVES the exact governed node and every edge incident to it from the reconciled closure, and records it in a separate `excluded` set carried by the reconciliation report. Reconciliation then runs against the reduced closure, so an applied exclusion is observable as a smaller graph plus an explicit governed record. It never leaves a component quietly matching as though nothing happened.",
+  "schema_version": "3.0.0",
+  "purpose": "Governed exclusions from a target-resolved dependency closure. An exclusion is a REVIEWED, APPROVED, DATED, EVIDENCE-BOUND decision about one exact resolved package in one exact target — never a pattern, never a silent suppression.",
+  "policy_ownership": "The required-field set, the supported schema versions and every rejection rule live in CODE (scripts/gate/lib/reconcile.mjs: EXCLUSION_REQUIRED_FIELDS, EXCLUSION_SCHEMA_VERSIONS, governExclusions). This document is DATA. The `required_fields` list below is a readable copy that the gate cross-checks against the code-owned set and REJECTS on any disagreement, so this file cannot weaken its own validation by editing itself.",
+  "semantic": "A valid exclusion REMOVES the exact governed node, every edge incident to it, and every descendant the removal makes unreachable from the subject roots — each cascaded removal recorded individually. Reconciliation then runs against the reduced closure, which must contain no orphan and no dangling reference. Cascading is deterministic because reachability from a fixed root set is a function of the graph.",
   "required_fields": [
+    "id",
     "target",
     "scope",
     "resolution_key",
@@ -16,29 +18,35 @@
     "expires_on"
   ],
   "field_contract": {
+    "id": "Unique, stable identifier for this exclusion. Duplicated ids are rejected.",
     "target": "Exact target name from scripts/gate/target-descriptor.json.",
-    "scope": "One of that target's declared dependency_scopes.",
+    "scope": "A scope the excluded node ACTUALLY holds in that target's closure, not merely one the target declares.",
     "resolution_key": "Exact lockfile resolution key including any peer context. No wildcards, no name-only values.",
-    "parent_edge": "An edge that genuinely exists in that target's closure, in '<from> -> <to>' form.",
+    "parent_edge": "A real edge of that target's closure, in '<from> -> <to>' form, whose TO endpoint is the excluded component. An edge that terminates elsewhere does not justify this exclusion.",
     "reason": "Why this exact resolution is excluded, in terms a reviewer can check.",
-    "evidence": "Repo-relative path to the evidence supporting the decision.",
-    "evidence_sha256": "SHA-256 hex digest of that evidence file, so the approval is bound to exact bytes.",
+    "evidence": "Repository-relative path to the supporting evidence. Must be tracked and exist.",
+    "evidence_sha256": "SHA-256 of that file's actual bytes. The gate recomputes it and rejects a mismatch, so the approval is bound to exact content.",
     "owner": "The party responsible for the excluded dependency.",
-    "approver": "The party who approved the exclusion. MUST differ from owner — an exclusion cannot approve itself.",
-    "approved_on": "ISO YYYY-MM-DD date the approval was granted.",
-    "expires_on": "ISO YYYY-MM-DD date after which the exclusion is rejected and must be re-reviewed."
+    "approver": "The party who approved the exclusion. MUST differ from owner.",
+    "approved_on": "ISO YYYY-MM-DD, not in the future.",
+    "expires_on": "ISO YYYY-MM-DD, strictly after approved_on and not in the past."
   },
   "rejection_rules": {
-    "wildcard_or_name_only": "resolution_key containing '*' or '?', or lacking an exact version, is rejected.",
-    "stale_not_in_closure": "resolution_key not resolved anywhere in pnpm-lock.yaml is rejected: the reviewed subject no longer exists.",
-    "unused_never_applied": "resolution_key resolved by the lockfile but absent from the declared target's closure is rejected: the entry excluded nothing.",
-    "version_changed": "The package name is in the closure at a different version than the one reviewed; the approval does not carry over.",
-    "wrong_target": "Unknown target, or a scope that is not one of that target's declared dependency_scopes.",
-    "wrong_parent": "parent_edge is not an actual edge of that target's closure.",
-    "expired": "expires_on is before the run date.",
-    "unapproved": "Missing or malformed evidence_sha256, a non-ISO approval/expiry date, or approver identical to owner.",
-    "excludes_compatible_mandatory_dependency": "A target-compatible MANDATORY (non-optional) dependency can never be excluded — the closure would misrepresent what is actually installed."
+    "wildcard_or_name_only": "resolution_key containing '*' or '?', or lacking an exact version.",
+    "duplicate_id": "Two entries sharing an id.",
+    "duplicate_entry": "Two entries excluding the same resolution_key from the same target, even if only one node would be removed — the applied cardinality would be ambiguous.",
+    "stale_not_in_closure": "resolution_key not resolved anywhere in pnpm-lock.yaml.",
+    "unused_never_applied": "resolution_key resolved by the lockfile but absent from the declared target's closure.",
+    "version_changed": "The package name is in the closure at a different version than the one reviewed.",
+    "wrong_target": "Unknown target, a scope the target does not declare, or a scope the node does not actually hold.",
+    "wrong_parent": "parent_edge is not a real edge, or does not terminate at the excluded component.",
+    "future_approval": "approved_on is after the run date.",
+    "expired": "expires_on is before the run date, or not after approved_on.",
+    "unapproved": "Malformed evidence_sha256, a non-ISO date, or approver identical to owner.",
+    "untracked_or_missing_evidence": "evidence is absolute, path-traversing, untracked, absent, or its digest does not match the recorded value.",
+    "excludes_compatible_mandatory_dependency": "A target-compatible MANDATORY (non-optional) dependency can never be excluded."
   },
-  "enforcement": "scripts/gate/lib/reconcile.mjs governExclusions() + applyExclusions(). Every rule above is driven by a control in apps/api/test/gate/c16-closure-controls.test.ts, including a positive fixture proving a valid exclusion is applied exactly once.",
+  "cardinality_contract": "declared == valid + rejected; valid == applied; removed_nodes == applied + cascaded. Any disagreement fails the gate, because it means the applied set is not the governed set.",
+  "enforcement": "scripts/gate/lib/reconcile.mjs governExclusions() + applyExclusions() + checkExclusionCardinality(). Every rule is driven by a control in apps/api/test/gate/c16-closure-controls.test.ts, including a positive fixture proving a valid exclusion is applied exactly once and the reduced closure still reconciles clean.",
   "exclusions": []
 }

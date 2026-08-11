@@ -831,9 +831,11 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
       // freshness, and resolve each multi-arch image index to its linux/amd64 child.
       'scripts/gate/supply-chain.mjs',
       'scripts/gate/generate-closures.mjs',
-      // …and the scanners those runners require are installed at exact versions.
-      'gitleaks', 'trivy', 'GITLEAKS_VERSION=8.30.1', 'TRIVY_VERSION=0.73.0',
-      'node --version', 'v24.11.1',
+      // …and the scanners those runners require are installed at exact versions, with
+      // downloads authenticated against tracked checksums.
+      'gitleaks', 'trivy', 'GITLEAKS_VERSION: 8.30.1', 'TRIVY_VERSION: 0.73.0',
+      'node --version', '24.11.1',
+      'scripts/gate/scanner-pins.json', 'does not match the tracked',
     ]) {
       expect(active.toLowerCase(), needle).toContain(needle.toLowerCase());
     }
@@ -841,6 +843,19 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
     // compared two structures derived from the same generated SBOM, so it could not
     // fail. It must not be part of the active gate.
     expect(active).not.toContain('node scripts/generate-sbom.mjs');
+    // The bare global ignore file is gone: a bare CVE id suppresses that advisory in
+    // EVERY image and package.
+    expect(existsSync(join(REPO, '.trivyignore')), '.trivyignore must not exist').toBe(false);
+    // Every action is pinned to an immutable commit SHA, not a mutable tag.
+    const uses = [...active.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]!);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) {
+      expect(u, `${u} must be pinned to a 40-char commit SHA`).toMatch(/@[0-9a-f]{40}$/);
+    }
+    // browser-regression must migrate before driving the app, or the least-privilege
+    // roles never exist with this run's ephemeral passwords.
+    const browserJob = active.slice(active.indexOf('browser-regression:'), active.indexOf('supply-chain:'));
+    expect(browserJob, 'browser-regression must run db:migrate').toContain('pnpm db:migrate');
   });
 
   it('compose images are digest-pinned and recorded in the conformance manifest (R7)', () => {

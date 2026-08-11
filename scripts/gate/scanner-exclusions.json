@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Target-specific, machine-governed dispositions for container-image vulnerability findings. Replaces the bare global .trivyignore, whose entries were CVE IDs with prose governance: a bare ID suppresses that CVE EVERYWHERE, in every image and every package, so it could silently hide a genuinely new occurrence of the same CVE in a different component.",
+  "enforcement_model": "The gate scans with NO suppression (--ignorefile /dev/null) to obtain the complete finding set, then reconciles that set against the records below. An unmatched finding fails the gate. A record that matches nothing fails the gate as unused. Trivy's own ignore mechanism is never relied upon, so suppression cannot happen without a matching governed record.",
+  "records": [
+    {
+      "id": "SCX-0001",
+      "advisory_id": "CVE-2026-33630",
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "c-ares",
+      "package_purl_prefix": "pkg:apk/alpine/c-ares@1.34.6-r0",
+      "severity": "HIGH",
+      "reason": "c-ares 1.34.6-r0 is an OS package in postgres:18-alpine. The fix (1.34.8-r0) is not present in any published postgres:18-alpine build, so no patched official image exists to re-pin to. The finding is DoS-class against DNS resolution.",
+      "compensating_controls": [
+        "PostgreSQL is bound to 127.0.0.1 only (docker-compose.yml publishes 127.0.0.1:5432:5432), so the resolver is not reachable from off-host.",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; external or customer-data use is prohibited.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "PHASE0_EVIDENCE.md",
+      "approved_on": "2026-08-05",
+      "expires_on": "2026-11-05"
+    },
+    {
+      "id": "SCX-0002",
+      "advisory_ids": [
+        "CVE-2025-61726",
+        "CVE-2025-61729",
+        "CVE-2025-68121",
+        "CVE-2026-25679",
+        "CVE-2026-27145",
+        "CVE-2026-32280",
+        "CVE-2026-32281",
+        "CVE-2026-32283",
+        "CVE-2026-33811",
+        "CVE-2026-33814",
+        "CVE-2026-39820",
+        "CVE-2026-39822",
+        "CVE-2026-39836",
+        "CVE-2026-42499",
+        "CVE-2026-42504"
+      ],
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "stdlib",
+      "package_purl_prefix": "pkg:golang/stdlib@v1.24.6",
+      "file_path": "usr/local/bin/gosu",
+      "severity": "HIGH_AND_CRITICAL",
+      "reason": "Go standard-library CVEs compiled into the upstream gosu 1.19 binary shipped by EVERY current official postgres image variant. gosu executes once at container start to drop root privileges and then exits; the affected surfaces (net/http, net/mail, crypto DoS classes) are not exercised by that use. No patched official postgres build exists.",
+      "compensating_controls": [
+        "gosu runs once at container start and is not a long-lived process or network listener.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "PHASE0_EVIDENCE.md",
+      "approved_on": "2026-08-05",
+      "expires_on": "2026-11-05"
+    }
+  ]
+}

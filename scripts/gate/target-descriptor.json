@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "C16 TARGET DESCRIPTOR — the complete definition of the closure targets.",
+    "C16 TARGET DESCRIPTOR \u2014 the complete definition of the closure targets.",
     "",
     "PROVENANCE. Every field below is derived from a declaration that exists in this",
     "repository, never from the machine that happens to run the gate:",
@@ -27,11 +27,24 @@
       "os": "linux",
       "arch": "x64",
       "libc": "glibc",
-      "node": { "range": ">=24.0.0 <25", "pinned": "24.11.1" },
-      "pnpm": { "pinned": "11.9.0" },
+      "node": {
+        "range": ">=24.0.0 <25",
+        "pinned": "24.11.1"
+      },
+      "pnpm": {
+        "pinned": "11.9.0"
+      },
       "description": "Deployable runtime closure: the dependencies a running service needs.",
-      "importer_roots": ["apps/api", "apps/web", "packages/contracts", "packages/tokens"],
-      "dependency_scopes": ["dependencies", "optionalDependencies"],
+      "importer_roots": [
+        "apps/api",
+        "apps/web",
+        "packages/contracts",
+        "packages/tokens"
+      ],
+      "dependency_scopes": [
+        "dependencies",
+        "optionalDependencies"
+      ],
       "include_workspace_links": true
     },
     "development": {
@@ -39,17 +52,36 @@
       "os": "linux",
       "arch": "x64",
       "libc": "glibc",
-      "node": { "range": ">=24.0.0 <25", "pinned": "24.11.1" },
-      "pnpm": { "pinned": "11.9.0" },
+      "node": {
+        "range": ">=24.0.0 <25",
+        "pinned": "24.11.1"
+      },
+      "pnpm": {
+        "pinned": "11.9.0"
+      },
       "description": "Complete build/test/tooling closure across every workspace importer.",
-      "importer_roots": [".", "apps/api", "apps/web", "packages/contracts", "packages/tokens"],
-      "dependency_scopes": ["dependencies", "devDependencies", "optionalDependencies"],
+      "importer_roots": [
+        ".",
+        "apps/api",
+        "apps/web",
+        "packages/contracts",
+        "packages/tokens"
+      ],
+      "dependency_scopes": [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies"
+      ],
       "include_workspace_links": true
     }
   },
   "platform_filter_rules": {
-    "fields": ["os", "cpu", "libc"],
-    "semantics": "A package is EXCLUDED only when its own recorded os/cpu/libc conditions are incompatible with the target. Negations (!win32) are honoured. MISSING METADATA MEANS INCLUDE — absence of a constraint is not evidence of incompatibility.",
+    "fields": [
+      "os",
+      "cpu",
+      "libc"
+    ],
+    "semantics": "A package is EXCLUDED only when its own recorded os/cpu/libc conditions are incompatible with the target. Negations (!win32) are honoured. MISSING METADATA MEANS INCLUDE \u2014 absence of a constraint is not evidence of incompatibility.",
     "source": "pnpm-lock.yaml `packages` entries only"
   },
   "closure_truth": {
@@ -60,5 +92,26 @@
       "the generated SBOM itself",
       "host OS/architecture/libc"
     ]
+  },
+  "first_party_component_types": {
+    "$comment": "GOVERNED CycloneDX component type per first-party importer. Mapping every workspace to \"application\" is wrong: apps/api and apps/web are deployable applications, while packages/contracts and packages/tokens are libraries consumed by them. A consumer filtering the BOM for deployable units must not receive libraries.",
+    "by_importer_root": {
+      ".": "application",
+      "apps/api": "application",
+      "apps/web": "application",
+      "packages/contracts": "library",
+      "packages/tokens": "library"
+    },
+    "unmapped_importer_is_an_error": true,
+    "allowed_types": [
+      "application",
+      "library",
+      "framework"
+    ]
+  },
+  "integrity_rules": {
+    "$comment": "A REGISTRY package with no verifiable SRI digest is an unverified input to a gate whose purpose is verifying inputs, so it is rejected unless an explicit rule below states why integrity is unavailable for that resolution class. First-party workspace components are built from tracked source rather than fetched as artifacts, so they are outside this requirement by construction, not by exemption.",
+    "rules": [],
+    "note": "Empty: every registry resolution in the current lockfile carries a valid sha512 SRI."
   }
 }

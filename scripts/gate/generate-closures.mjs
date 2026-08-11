@@ -22,16 +22,20 @@
  *   --final   evidence mode: additionally require a clean git worktree, so a
  *             final artifact can never be produced from uncommitted source.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { loadLock, buildClosure } from './lib/lock-closure.mjs';
-import { buildSbom, serialize, extractFromSbom, subjectRef } from './lib/sbom.mjs';
+import { buildSbom, serialize, extractFromSbom, subjectRef, SUBJECT_NAME } from './lib/sbom.mjs';
+import { npmPurl } from './lib/lock-closure.mjs';
+
+const subjectPurl = (version) => npmPurl(SUBJECT_NAME, version);
 import {
-  reconcile, governExclusions, applyExclusions, findVulnerableResiduals,
-  lockPackageUniverse, FORBIDDEN_RESIDUALS, FAILURE_KEYS,
+  reconcile, governExclusions, applyExclusions, checkExclusionCardinality,
+  findVulnerableResiduals, lockPackageUniverse, FORBIDDEN_RESIDUALS, FAILURE_KEYS,
+  EXCLUSION_REQUIRED_FIELDS,
 } from './lib/reconcile.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -45,6 +49,15 @@ const PINNED_LIBS = { 'packageurl-js': '2.0.1', yaml: '2.9.0' };
  * generator produces a different binding, so an SBOM can never be attributed to code
  * that did not produce it.
  */
+/** git, but tolerant of a non-worktree export. */
+function safeGit(args) {
+  try {
+    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+  } catch {
+    return null;
+  }
+}
+
 export function generatorDigest(root = ROOT) {
   const files = [
     'scripts/gate/generate-closures.mjs',
@@ -88,9 +101,14 @@ export function buildAllClosures(root = ROOT) {
   const descriptorText = readFileSync(join(root, 'scripts/gate/target-descriptor.json'), 'utf8');
   const lock = loadLock(join(root, 'pnpm-lock.yaml'));
   const descriptor = JSON.parse(descriptorText);
+  const firstPartyTypes = descriptor.first_party_component_types?.by_importer_root ?? {};
   const closures = {};
   for (const [name, target] of Object.entries(descriptor.targets)) {
-    closures[name] = buildClosure(lock, target, { root });
+    closures[name] = buildClosure(
+      lock,
+      { ...target, integrity_rules: descriptor.integrity_rules?.rules ?? [] },
+      { root, firstPartyTypes },
+    );
   }
   let sourceSha = '(not a git worktree)';
   try {
@@ -134,6 +152,9 @@ export function main(argv = process.argv) {
   const outArg = outIdx !== -1 ? argv[outIdx + 1] : 'evidence/supply-chain/c16';
   const outDir = isAbsolute(outArg) ? resolve(outArg) : join(ROOT, outArg);
   const finalMode = argv.includes('--final');
+  const shaIdx = argv.indexOf('--expected-sha');
+  const expectedSha = shaIdx !== -1 ? argv[shaIdx + 1] : null;
+  let state_finalPosture = null;
   mkdirSync(outDir, { recursive: true });
 
   const runDate = new Date().toISOString().slice(0, 10);
@@ -143,7 +164,7 @@ export function main(argv = process.argv) {
   const { descriptor, lockUniverse, meta, generator } = built;
 
   console.log('=== C16 TARGET-RESOLVED CLOSURES ===');
-  console.log(`mode:              ${finalMode ? 'FINAL (clean worktree required)' : 'preliminary'}`);
+  console.log(`mode:              ${finalMode ? 'FINAL (expected SHA + clean worktree required)' : 'preliminary'}`);
   console.log('closure truth:     pnpm-lock.yaml + scripts/gate/target-descriptor.json');
   console.log(`forbidden sources: ${descriptor.closure_truth.forbidden_sources.join(', ')}`);
   console.log(`source SHA:        ${meta.sourceSha}`);
@@ -162,32 +183,103 @@ export function main(argv = process.argv) {
     process.exit(1);
   }
 
+  // ── FINAL-SOURCE BINDING ───────────────────────────────────────────────────────
+  // A gitless export stamped "(not a git worktree)" is acceptable only as PRELIMINARY
+  // equivalence evidence — it names no commit, so nothing binds the artifact to a
+  // reviewable source. Final mode therefore requires an EXPLICIT expected SHA, verifies
+  // HEAD equals it, requires a clean worktree, and rejects unmanaged ignored inputs that
+  // could affect the closure.
   if (finalMode) {
-    const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
-    if (dirty !== '') {
-      console.error('\n=== C16 CLOSURE GATE FAILED: --final requires a clean worktree ===');
-      for (const line of dirty.split('\n').slice(0, 20)) console.error(`  ${line}`);
-      console.error('  Final evidence must be reproducible from a committed source SHA.');
+    const problems = [];
+    if (expectedSha === null || expectedSha === undefined) {
+      problems.push('--final requires --expected-sha <SHA>: final evidence must name the source it describes');
+    }
+    if (meta.sourceSha === '(not a git worktree)') {
+      problems.push(
+        'this tree is not a git worktree, so no commit can be bound. A gitless export is ' +
+        'preliminary equivalence evidence only, never final source binding.',
+      );
+    } else if (expectedSha !== null && expectedSha !== meta.sourceSha) {
+      problems.push(`--expected-sha ${expectedSha} does not match HEAD ${meta.sourceSha}`);
+    }
+    const dirty = safeGit(['status', '--porcelain']);
+    if (dirty === null) {
+      problems.push('git status could not be read; a clean worktree cannot be established');
+    } else if (dirty.trim() !== '') {
+      problems.push(`--final requires a clean worktree; ${dirty.trim().split('\n').length} path(s) are dirty`);
+    }
+    // Ignored-but-present inputs that would change the closure if read. The generator
+    // never reads them, which is exactly why their presence must be stated rather than
+    // assumed harmless.
+    const ignoredInputs = ['node_modules', 'evidence/supply-chain/c16']
+      .filter((rel) => existsSync(join(ROOT, rel)));
+    state_finalPosture = {
+      expected_sha: expectedSha,
+      head_sha: meta.sourceSha,
+      worktree_clean: dirty !== null && dirty.trim() === '',
+      ignored_inputs_present: ignoredInputs,
+      ignored_inputs_are_not_closure_truth: true,
+    };
+    if (problems.length > 0) {
+      console.error('\n=== C16 CLOSURE GATE FAILED: final-source binding ===');
+      for (const p of problems) console.error(`  ${p}`);
       process.exit(1);
     }
   }
 
   // Exclusion governance runs BEFORE reconciliation, because a valid exclusion changes
   // the closure that gets reconciled.
-  const gov = governExclusions(exclusionDoc, built.closures, lockUniverse, runDate);
+  const isTracked = (rel) =>
+    spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: ROOT, encoding: 'utf8' }).status === 0;
+  const readEvidence = (rel) => {
+    try {
+      return readFileSync(join(ROOT, rel));
+    } catch {
+      return null;
+    }
+  };
+
+  const gov = governExclusions(exclusionDoc, built.closures, lockUniverse, runDate, {
+    root: ROOT, isTracked, readEvidence,
+  });
   const closures = {};
   const exclusionApplication = {};
+  const cardinalityProblems = [];
   for (const [name, closure] of Object.entries(built.closures)) {
     const forTarget = gov.valid.filter((ex) => ex.target === name);
-    const { closure: reduced, applied, excluded } = applyExclusions(closure, forTarget);
+    const before = closure.nodes.size;
+    const { closure: reduced, applied, excluded, cascaded } = applyExclusions(closure, forTarget);
     closures[name] = reduced;
     exclusionApplication[name] = {
-      declared_for_target: forTarget.length,
+      valid_for_target: forTarget.length,
       applied_count: applied.length,
+      cascaded_count: cascaded.length,
+      nodes_before: before,
+      nodes_after: reduced.nodes.size,
+      removed_nodes: before - reduced.nodes.size,
       applied,
+      cascaded,
       excluded_refs: excluded.map((n) => n.bomRef).sort(),
     };
+    // Cardinalities must agree exactly, or the applied set is not the governed set.
+    cardinalityProblems.push(...checkExclusionCardinality({
+      declared: forTarget.length,
+      rejected: 0,
+      valid: forTarget.length,
+      applied: applied.length,
+      removedNodes: before - reduced.nodes.size,
+      cascaded: cascaded.length,
+    }).map((p) => `${name}: ${p}`));
   }
+  // Whole-document cardinality: nothing may be silently dropped between stages.
+  cardinalityProblems.push(...checkExclusionCardinality({
+    declared: gov.declared,
+    rejected: gov.problems.length > 0 ? gov.declared - gov.valid.length : 0,
+    valid: gov.valid.length,
+    applied: Object.values(exclusionApplication).reduce((a, x) => a + x.applied_count, 0),
+    removedNodes: Object.values(exclusionApplication).reduce((a, x) => a + x.removed_nodes, 0),
+    cascaded: Object.values(exclusionApplication).reduce((a, x) => a + x.cascaded_count, 0),
+  }).map((p) => `document: ${p}`));
 
   const reports = {};
   for (const [name, closure] of Object.entries(closures)) {
@@ -207,13 +299,29 @@ export function main(argv = process.argv) {
     // RE-READ FROM DISK. Reconciliation never touches the in-memory document.
     const onDiskText = readFileSync(file, 'utf8');
     const onDisk = extractFromSbom(onDiskText);
+    // The COMPLETE governed binding set. `requireExactBindings` additionally rejects any
+    // metadata property that is not in this set, so a binding cannot be quietly added.
     const rec = reconcile(closure, onDisk, {
+      requireExactBindings: true,
+      expectedSubjectVersion: meta.projectVersion,
+      expectedSubjectPurl: subjectPurl(meta.projectVersion),
       expectedBindings: {
         'eye:target-id': target.id,
+        'eye:target-os': target.os,
+        'eye:target-arch': target.arch,
+        'eye:target-libc': target.libc,
+        'eye:target-node': target.node.pinned,
+        'eye:target-pnpm': target.pnpm.pinned,
+        'eye:importer-roots': target.importer_roots.join(','),
+        'eye:dependency-scopes': target.dependency_scopes.join(','),
+        'eye:closure-source': 'pnpm-lock.yaml (importers+packages+snapshots)',
         'eye:source-sha': meta.sourceSha,
         'eye:lockfile-sha256': meta.lockfileSha256,
         'eye:descriptor-sha256': meta.descriptorSha256,
+        'eye:generator': 'scripts/gate/generate-closures.mjs',
         'eye:generator-sha256': meta.generatorSha256,
+        'eye:purl-implementation': meta.purlImplementation,
+        'eye:yaml-implementation': meta.yamlImplementation,
       },
     });
 
@@ -285,8 +393,9 @@ export function main(argv = process.argv) {
   const report = {
     artifact: 'C16 target-resolved dependency closures + full-field bidirectional reconciliation',
     status: finalMode
-      ? 'FINAL — produced in --final mode from a clean worktree'
-      : 'PRELIMINARY — regenerate with --final from the frozen source SHA and commit in the evidence-only child',
+      ? 'FINAL — produced in --final mode from a clean worktree at an explicitly expected source SHA'
+      : 'PRELIMINARY — regenerate with --final --expected-sha <SHA> from the frozen source and commit in the evidence-only child',
+    final_source_posture: state_finalPosture,
     remediation:
       'Remediated after independent source review of e3a0b1f: canonical PURLs via the ' +
       'exact-pinned reference implementation, real workspace identities, exact-pinned YAML ' +
@@ -321,8 +430,10 @@ export function main(argv = process.argv) {
       semantic: exclusionDoc.semantic,
       required_fields: exclusionDoc.required_fields,
       rejection_rules: exclusionDoc.rejection_rules,
+      code_owned_required_fields: EXCLUSION_REQUIRED_FIELDS,
       declared: exclusionDoc.exclusions ?? [],
       rejected: gov.problems,
+      cardinality_problems: cardinalityProblems,
       applied_per_target: exclusionApplication,
     },
     override_residual_proof: overrideProof,
@@ -337,11 +448,12 @@ export function main(argv = process.argv) {
 
   const failed =
     Object.values(reports).some((r) => !r.reconciliation.clean) ||
-    gov.problems.length > 0 || residuals.length > 0;
+    gov.problems.length > 0 || cardinalityProblems.length > 0 || residuals.length > 0;
   if (failed) {
     console.error('\n=== C16 CLOSURE GATE FAILED ===');
-    for (const p of gov.problems) console.error(`  exclusion: ${p}`);
-    for (const r of residuals) console.error(`  residual:  ${r}`);
+    for (const p of gov.problems) console.error(`  exclusion:   ${p}`);
+    for (const p of cardinalityProblems) console.error(`  cardinality: ${p}`);
+    for (const r of residuals) console.error(`  residual:    ${r}`);
     process.exitCode = 1;
     return report;
   }

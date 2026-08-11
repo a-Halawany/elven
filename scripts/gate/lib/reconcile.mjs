@@ -18,8 +18,9 @@
  * This version compares MULTIPLICITY and EVERY required field in both directions, and
  * treats the subject-to-root edges as mandatory rather than exempting roots.
  */
+import { createHash } from 'node:crypto';
 import { splitKey } from './lock-closure.mjs';
-import { subjectRef } from './sbom.mjs';
+import { subjectRef, expectedProperties, SUBJECT_NAME } from './sbom.mjs';
 
 /** Fields on a component that must agree exactly with the lockfile-derived node. */
 const REQUIRED_PROPERTIES = ['eye:target', 'eye:lock-key', 'eye:scopes'];
@@ -71,7 +72,7 @@ export function reconcile(closure, onDisk, options = {}) {
     if (b.name !== a.name) say('name', a.name, b.name);
     if (b.version !== a.version) say('version', a.version, b.version);
 
-    const expectedType = a.kind === 'workspace' ? 'application' : 'library';
+    const expectedType = a.componentType;
     if (b.type !== expectedType) say('type', expectedType, b.type);
 
     if (b.purlError !== null) {
@@ -92,60 +93,44 @@ export function reconcile(closure, onDisk, options = {}) {
       if (b.purlParts.version !== a.version) say('purl version', a.version, b.purlParts.version);
     }
 
-    for (const prop of REQUIRED_PROPERTIES) {
-      if (b.properties[prop] === undefined) {
-        fieldMismatches.push(`${ref}: required property '${prop}' is absent`);
+    // ── EXACT property set: no missing, no unknown, no duplicate, no altered value ──
+    // Subset checking is what let a rewritten scope, a removed platform constraint or an
+    // invented property reconcile "clean".
+    const want = new Map(
+      expectedProperties(a, targetId).map((p) => [p.name, String(p.value)]),
+    );
+    const have = new Map(Object.entries(b.properties).map(([k, v]) => [k, String(v)]));
+    for (const [name, value] of want) {
+      if (!have.has(name)) {
+        fieldMismatches.push(`${ref}: required property '${name}' is absent`);
+      } else if (have.get(name) !== value) {
+        say(`property ${name}`, value, have.get(name));
       }
     }
-    if (b.properties['eye:target'] !== undefined && b.properties['eye:target'] !== targetId) {
-      say('eye:target', targetId, b.properties['eye:target']);
-    }
-    if (b.properties['eye:lock-key'] !== undefined && b.properties['eye:lock-key'] !== a.lockKey) {
-      say('eye:lock-key', a.lockKey, b.properties['eye:lock-key']);
-    }
-    const expectedScopes = [...a.scopes].sort().join(',');
-    if (b.properties['eye:scopes'] !== undefined && b.properties['eye:scopes'] !== expectedScopes) {
-      say('eye:scopes', expectedScopes, b.properties['eye:scopes']);
-    }
-
-    // Peer context and patch hash are part of the installed identity.
-    const expectedPeer = a.peerSuffix === '' ? undefined : a.peerSuffix;
-    if ((b.properties['eye:peer-context'] ?? undefined) !== expectedPeer) {
-      say('eye:peer-context', expectedPeer ?? null, b.properties['eye:peer-context'] ?? null);
-    }
-    const expectedPatch = a.patchHash ? String(a.patchHash) : undefined;
-    if ((b.properties['eye:patch-hash'] ?? undefined) !== expectedPatch) {
-      say('eye:patch-hash', expectedPatch ?? null, b.properties['eye:patch-hash'] ?? null);
-    }
-
-    // Platform metadata must be carried through verbatim.
-    for (const [prop, value] of [['eye:os', a.os], ['eye:cpu', a.cpu], ['eye:libc', a.libc]]) {
-      const expected = listOf(value).length > 0 ? listOf(value).join(',') : undefined;
-      if ((b.properties[prop] ?? undefined) !== expected) {
-        say(prop, expected ?? null, b.properties[prop] ?? null);
+    for (const name of have.keys()) {
+      if (!want.has(name)) {
+        fieldMismatches.push(`${ref}: UNKNOWN property '${name}' is not part of the governed set`);
       }
     }
 
-    // Integrity: every SRI hash the lockfile recorded must be present.
-    const expectedHashes = expectedHashSet(a.integrity);
-    if (expectedHashes.length > 0) {
-      const have = new Set(b.hashes);
-      for (const h of expectedHashes) {
-        if (!have.has(h)) fieldMismatches.push(`${ref}: integrity hash ${h} is absent from the SBOM`);
+    // Integrity: EXACT multiset of alg:digest pairs in both directions, so a fabricated
+    // or extra hash fails just as a missing one does. Workspace identity (importer root,
+    // manifest path, manifest digest) is already covered by the exact property set above.
+    const wantHashes = expectedHashSet(a.integrity).sort();
+    const haveHashes = [...b.hashes].sort();
+    if (JSON.stringify(wantHashes) !== JSON.stringify(haveHashes)) {
+      const missing = wantHashes.filter((h) => !haveHashes.includes(h));
+      const extra = haveHashes.filter((h) => !wantHashes.includes(h));
+      for (const h of missing) fieldMismatches.push(`${ref}: integrity hash ${h} is absent from the SBOM`);
+      for (const h of extra) fieldMismatches.push(`${ref}: integrity hash ${h} is NOT recorded by the lockfile`);
+      if (missing.length === 0 && extra.length === 0) {
+        fieldMismatches.push(`${ref}: integrity hash multiplicity differs from the lockfile`);
       }
-    } else if (a.kind !== 'workspace' && b.hashes.length === 0 && a.integrity !== null) {
-      fieldMismatches.push(`${ref}: lockfile records integrity but the SBOM has no hashes`);
     }
-
-    // Workspace identity, bound to the manifest bytes.
-    if (a.kind === 'workspace') {
-      for (const [prop, expected] of [
-        ['eye:importer-root', a.importerPath],
-        ['eye:workspace-manifest', a.manifestPath],
-        ['eye:workspace-manifest-sha256', a.manifestSha256],
-      ]) {
-        if (b.properties[prop] !== expected) say(prop, expected, b.properties[prop] ?? null);
-      }
+    // A registry artifact with no verifiable digest is an unverified input. Only
+    // first-party workspace components are built from tracked source rather than fetched.
+    if (a.kind !== 'workspace' && wantHashes.length === 0 && a.integrityValid !== true) {
+      fieldMismatches.push(`${ref}: a REGISTRY component carries no verifiable integrity digest`);
     }
   }
 
@@ -198,13 +183,41 @@ export function reconcile(closure, onDisk, options = {}) {
   const inbound = new Set([...onDisk.edgeCounts.keys()].map((e) => e.split(' ')[1]));
   const orphans = [...sbomSet].filter((n) => !inbound.has(n)).sort();
 
-  // ── subject and provenance binding ────────────────────────────────────────────
-  if (onDisk.subjectRef !== subject) {
-    problems.push(`metadata subject is ${JSON.stringify(onDisk.subjectRef)}, expected ${subject}`);
+  // ── dependency entries for references that are not components at all ──────────
+  // An entry for an unknown ref is a defect even when its dependsOn is empty: it asserts
+  // the existence of something the BOM never declares.
+  const unknownDependencyEntries = [...onDisk.declaredRefCounts.keys()]
+    .filter((ref) => ref !== subject && !sbomSet.has(ref))
+    .sort();
+
+  // ── subject IDENTITY, field by field ──────────────────────────────────────────
+  // The subject is a component identity, not just a label, so every field is compared.
+  const expectedSubject = {
+    bomRef: subject,
+    name: SUBJECT_NAME,
+    version: options.expectedSubjectVersion ?? null,
+    type: 'application',
+    purl: options.expectedSubjectPurl ?? null,
+  };
+  if (onDisk.subject === null) {
+    problems.push('the SBOM declares no metadata.component subject at all');
+  } else {
+    for (const field of ['bomRef', 'name', 'type', 'version', 'purl']) {
+      const want = expectedSubject[field];
+      if (want === null) continue;   // not asserted by this caller
+      if (onDisk.subject[field] !== want) {
+        problems.push(
+          `metadata subject ${field} is ${JSON.stringify(onDisk.subject[field])}, ` +
+          `expected ${JSON.stringify(want)}`,
+        );
+      }
+    }
   }
   if (!onDisk.declaredRefs.has(subject)) {
     problems.push(`metadata subject ${subject} has NO dependency entry — the BOM graph is disconnected`);
   }
+
+  // ── metadata bindings: EXACT set, no missing and no unknown ────────────────────
   const bindings = options.expectedBindings ?? {};
   for (const [prop, expected] of Object.entries(bindings)) {
     if (onDisk.metadataProperties[prop] !== expected) {
@@ -212,6 +225,13 @@ export function reconcile(closure, onDisk, options = {}) {
         `metadata property '${prop}' is ${JSON.stringify(onDisk.metadataProperties[prop] ?? null)}, ` +
         `expected ${JSON.stringify(expected)}`,
       );
+    }
+  }
+  if (options.requireExactBindings === true) {
+    for (const prop of Object.keys(onDisk.metadataProperties)) {
+      if (!(prop in bindings)) {
+        problems.push(`UNKNOWN metadata property '${prop}' is not part of the governed binding set`);
+      }
     }
   }
 
@@ -236,6 +256,7 @@ export function reconcile(closure, onDisk, options = {}) {
     duplicate_properties: duplicateProperties,
     dangling_references: dangling,
     components_without_dependency_entry: missingDependencyEntries,
+    dependency_entries_for_unknown_refs: unknownDependencyEntries,
     orphan_components: orphans,
     subject_and_binding_problems: problems.sort(),
   };
@@ -250,8 +271,8 @@ export const FAILURE_KEYS = [
   'edge_multiplicity_mismatches', 'missing_subject_root_edges', 'extra_subject_edges',
   'field_mismatches', 'duplicate_components', 'duplicate_dependency_entries',
   'duplicate_depends_on', 'duplicate_properties', 'dangling_references',
-  'components_without_dependency_entry', 'orphan_components',
-  'subject_and_binding_problems',
+  'components_without_dependency_entry', 'dependency_entries_for_unknown_refs',
+  'orphan_components', 'subject_and_binding_problems',
 ];
 
 function expectedHashSet(integrity) {
@@ -271,26 +292,45 @@ function expectedHashSet(integrity) {
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 /**
+ * CODE-OWNED exclusion contract. Deliberately NOT read from the governance document: a
+ * document that declares its own required fields can weaken its own validation by editing
+ * itself. The document is DATA; this is the policy.
+ */
+export const EXCLUSION_SCHEMA_VERSIONS = Object.freeze(['3.0.0']);
+export const EXCLUSION_REQUIRED_FIELDS = Object.freeze([
+  'id', 'target', 'scope', 'resolution_key', 'parent_edge', 'reason',
+  'evidence', 'evidence_sha256', 'owner', 'approver', 'approved_on', 'expires_on',
+]);
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/**
  * ONE EXPLICIT SEMANTIC, chosen and documented: a valid exclusion REMOVES the exact
- * governed node and every edge incident to it from the reconciled closure, and moves
- * it into a separate `excluded` set that the report carries. Reconciliation then runs
- * against the reduced closure, so an applied exclusion is visible as a smaller graph
- * plus an explicit governed record — never as a component that quietly still matches.
+ * governed node, every edge incident to it, and every descendant that the removal makes
+ * UNREACHABLE from the subject/roots — each cascaded removal recorded individually. The
+ * result is a graph with no orphan and no dangling reference, which the reconciler then
+ * verifies independently.
  *
- * The previous implementation validated entries and then did nothing with them, so a
- * "valid" exclusion had no effect and could never be observed to work.
+ * Cascading rather than rejecting is deterministic: reachability from a fixed root set is
+ * a function of the graph, so the same exclusion always removes the same set. Leaving a
+ * stranded descendant behind would produce exactly the orphan the reconciler must reject.
  */
 export function applyExclusions(closure, entries) {
-  const applied = [];
-  const removedRefs = new Set();
+  if (entries.length === 0) {
+    return { closure, applied: [], excluded: [], cascaded: [] };
+  }
 
+  const directRefs = new Set();
+  const applied = [];
   for (const ex of entries) {
     const node = [...closure.nodes.values()].find(
       (n) => n.lockKey === ex.resolution_key || n.bomRef === ex.resolution_key,
     );
     if (node === undefined) continue;
-    removedRefs.add(node.bomRef);
+    directRefs.add(node.bomRef);
     applied.push({
+      id: ex.id,
       resolution_key: ex.resolution_key,
       bom_ref: node.bomRef,
       target: ex.target,
@@ -308,49 +348,93 @@ export function applyExclusions(closure, entries) {
         .sort(),
     });
   }
+  if (directRefs.size === 0) return { closure, applied: [], excluded: [], cascaded: [] };
 
-  if (removedRefs.size === 0) return { closure, applied: [], excluded: [] };
+  // Reachability from the surviving roots, over edges that do not touch a removed node.
+  const surviving = closure.edges.filter((e) => !directRefs.has(e.from) && !directRefs.has(e.to));
+  const adjacency = new Map();
+  for (const e of surviving) {
+    if (!adjacency.has(e.from)) adjacency.set(e.from, []);
+    adjacency.get(e.from).push(e.to);
+  }
+  const reachable = new Set();
+  const stack = closure.roots.filter((r) => !directRefs.has(r));
+  while (stack.length > 0) {
+    const ref = stack.pop();
+    if (reachable.has(ref)) continue;
+    reachable.add(ref);
+    for (const to of adjacency.get(ref) ?? []) stack.push(to);
+  }
 
-  const nodes = new Map([...closure.nodes.entries()].filter(([ref]) => !removedRefs.has(ref)));
-  const edges = closure.edges.filter((e) => !removedRefs.has(e.from) && !removedRefs.has(e.to));
+  const cascaded = [...closure.nodes.keys()]
+    .filter((ref) => !directRefs.has(ref) && !reachable.has(ref))
+    .sort();
+  const removed = new Set([...directRefs, ...cascaded]);
+
+  const nodes = new Map([...closure.nodes.entries()].filter(([ref]) => !removed.has(ref)));
+  const edges = closure.edges.filter((e) => !removed.has(e.from) && !removed.has(e.to));
   const excluded = [...closure.nodes.entries()]
-    .filter(([ref]) => removedRefs.has(ref))
+    .filter(([ref]) => removed.has(ref))
     .map(([, n]) => n);
 
   return {
-    closure: { ...closure, nodes, edges, roots: closure.roots.filter((r) => !removedRefs.has(r)) },
-    applied: applied.sort((a, b) => (a.resolution_key < b.resolution_key ? -1 : 1)),
+    closure: { ...closure, nodes, edges, roots: closure.roots.filter((r) => !removed.has(r)) },
+    applied: applied.sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1)),
     excluded,
+    cascaded: cascaded.map((ref) => ({
+      bom_ref: ref,
+      reason: 'became unreachable from the subject roots once the governed node was removed',
+    })),
   };
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const SHA256_HEX = /^[a-f0-9]{64}$/;
-
 /**
- * Validate governed exclusions FAIL-CLOSED. Every rejection rule is enforced here and
- * any problem is a gate failure, not a warning: an unenforced exclusion schema is a
- * suppression mechanism wearing a governance label.
+ * Validate governed exclusions FAIL-CLOSED against the CODE-OWNED contract.
  *
- * `lockUniverse` is the set of every `name@version` the lockfile resolves ANYWHERE,
- * target-independent. It is what keeps three rules from collapsing into one — and a
- * rule that can never fire is not a rule:
+ * `lockUniverse` is every `name@version` the lockfile resolves ANYWHERE, target-independent.
+ * It keeps three rules from collapsing into one — and a rule that can never fire is not a
+ * rule:
  *   version_changed      — the name IS in this closure, at a different version;
- *   unused_never_applied — the exact version is in the lockfile but not in THIS
- *                          target's closure, so the entry excluded nothing here;
+ *   unused_never_applied — the exact version is in the lockfile but not in THIS target's
+ *                          closure, so the entry excluded nothing here;
  *   stale_not_in_closure — the exact version is gone from the lockfile entirely.
  */
-export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(), nowIso = null) {
+export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(), nowIso = null, opts = {}) {
   const problems = [];
   const valid = [];
   const entries = exclusionDoc.exclusions ?? [];
   const today = nowIso ?? '1970-01-01';
+  const root = opts.root ?? null;
+  const isTracked = opts.isTracked;
+  const readEvidence = opts.readEvidence;
+
+  // ── the document may not redefine its own policy ──
+  if (!EXCLUSION_SCHEMA_VERSIONS.includes(exclusionDoc.schema_version)) {
+    problems.push(
+      `closure-exclusions schema_version ${JSON.stringify(exclusionDoc.schema_version)} is not one ` +
+      `of the code-owned supported versions (${EXCLUSION_SCHEMA_VERSIONS.join(', ')})`,
+    );
+  }
+  if (Array.isArray(exclusionDoc.required_fields)) {
+    const declared = [...exclusionDoc.required_fields].sort().join(',');
+    const owned = [...EXCLUSION_REQUIRED_FIELDS].sort().join(',');
+    if (declared !== owned) {
+      problems.push(
+        'closure-exclusions declares a required_fields list that differs from the code-owned ' +
+        `set. Declared: ${declared}. Code-owned: ${owned}. A document cannot weaken its own ` +
+        'validation.',
+      );
+    }
+  }
+
+  const seenIds = new Set();
+  const seenEntries = new Map();
 
   for (const [i, ex] of entries.entries()) {
-    const where = `exclusions[${i}]`;
+    const where = `exclusions[${i}]${typeof ex.id === 'string' ? ` (${ex.id})` : ''}`;
     let fatal = false;
 
-    for (const field of exclusionDoc.required_fields) {
+    for (const field of EXCLUSION_REQUIRED_FIELDS) {
       const value = ex[field];
       const empty = value === undefined || value === null ||
         (typeof value === 'string' && value.trim() === '') ||
@@ -359,6 +443,14 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
         problems.push(`${where}: missing required field '${field}'`);
         fatal = true;
       }
+    }
+
+    if (typeof ex.id === 'string') {
+      if (seenIds.has(ex.id)) {
+        problems.push(`${where}: duplicate exclusion id '${ex.id}'`);
+        fatal = true;
+      }
+      seenIds.add(ex.id);
     }
 
     const key = typeof ex.resolution_key === 'string' ? ex.resolution_key : '';
@@ -372,7 +464,18 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
       fatal = true;
     }
 
-    // Approval must be a real, checkable record, not a free-text gesture.
+    // DUPLICATE ENTRY: same target + resolution key, even if it would remove one node.
+    const entryKey = `${ex.target}|${key}`;
+    if (seenEntries.has(entryKey)) {
+      problems.push(
+        `${where}: duplicate entry — ${seenEntries.get(entryKey)} already excludes '${key}' from ` +
+        `target '${ex.target}'. Two records for one removal make the applied cardinality ambiguous.`,
+      );
+      fatal = true;
+    } else {
+      seenEntries.set(entryKey, where);
+    }
+
     if (typeof ex.evidence_sha256 === 'string' && !SHA256_HEX.test(ex.evidence_sha256)) {
       problems.push(`${where}: rejected by 'unapproved' — evidence_sha256 is not a SHA-256 hex digest`);
       fatal = true;
@@ -385,16 +488,54 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
     }
     if (typeof ex.approver === 'string' && ex.approver === ex.owner) {
       problems.push(
-        `${where}: rejected by 'unapproved' — approver '${ex.approver}' is the same party as the owner; ` +
-        'an exclusion cannot approve itself',
+        `${where}: rejected by 'unapproved' — approver '${ex.approver}' is the same party as the ` +
+        'owner; an exclusion cannot approve itself',
       );
       fatal = true;
     }
-    if (typeof ex.expires_on === 'string' && ISO_DATE.test(ex.expires_on) && ex.expires_on < today) {
-      problems.push(
-        `${where}: rejected by 'expired' — expires_on ${ex.expires_on} is before the run date ${today}`,
-      );
-      fatal = true;
+    // Chronology: approved in the past, expiring after approval, not yet expired.
+    if (ISO_DATE.test(String(ex.approved_on)) && ISO_DATE.test(String(ex.expires_on))) {
+      if (ex.approved_on > today) {
+        problems.push(`${where}: rejected by 'future_approval' — approved_on ${ex.approved_on} is after the run date ${today}`);
+        fatal = true;
+      }
+      if (ex.expires_on <= ex.approved_on) {
+        problems.push(`${where}: expires_on ${ex.expires_on} is not after approved_on ${ex.approved_on}`);
+        fatal = true;
+      }
+      if (ex.expires_on < today) {
+        problems.push(`${where}: rejected by 'expired' — expires_on ${ex.expires_on} is before the run date ${today}`);
+        fatal = true;
+      }
+    }
+
+    // EVIDENCE must be repository-relative, tracked, present, and digest-matched.
+    if (typeof ex.evidence === 'string' && ex.evidence !== '') {
+      if (ex.evidence.startsWith('/') || ex.evidence.includes('..')) {
+        problems.push(`${where}: evidence '${ex.evidence}' must be a repository-relative path`);
+        fatal = true;
+      } else {
+        if (isTracked !== undefined && !isTracked(ex.evidence)) {
+          problems.push(`${where}: evidence '${ex.evidence}' is not tracked in version control`);
+          fatal = true;
+        }
+        if (readEvidence !== undefined) {
+          const bytes = readEvidence(ex.evidence);
+          if (bytes === null) {
+            problems.push(`${where}: evidence '${ex.evidence}' does not exist`);
+            fatal = true;
+          } else if (SHA256_HEX.test(String(ex.evidence_sha256))) {
+            const actual = createHash('sha256').update(bytes).digest('hex');
+            if (actual !== ex.evidence_sha256) {
+              problems.push(
+                `${where}: evidence digest mismatch — '${ex.evidence}' hashes to ${actual}, ` +
+                `the record claims ${ex.evidence_sha256}`,
+              );
+              fatal = true;
+            }
+          }
+        }
+      }
     }
 
     if (fatal) continue;
@@ -413,9 +554,7 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
     }
 
     const { name, version: declared } = splitKey(key);
-    const node = [...closure.nodes.values()].find(
-      (n) => n.lockKey === key || n.bomRef === key,
-    );
+    const node = [...closure.nodes.values()].find((n) => n.lockKey === key || n.bomRef === key);
 
     if (node === undefined) {
       const sameName = [...closure.nodes.values()].filter((n) => n.name === name);
@@ -439,13 +578,30 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
       continue;
     }
 
-    const parentOk = closure.edges.some(
-      (e) => `${e.from} -> ${e.to}` === ex.parent_edge || `${e.from} ${e.to}` === ex.parent_edge,
-    );
-    if (!parentOk) {
+    // The declared scope must be one the node actually holds, not merely a target scope.
+    if (!node.scopes.has(ex.scope)) {
       problems.push(
-        `${where}: rejected by 'wrong_parent' — parent_edge '${ex.parent_edge}' is not an edge of ` +
-        `the ${ex.target} closure`,
+        `${where}: rejected by 'wrong_target' — '${key}' holds scopes ` +
+        `[${[...node.scopes].sort().join(', ')}] in ${ex.target}, not '${ex.scope}'`,
+      );
+      continue;
+    }
+
+    // PARENT EDGE must be a real edge AND must terminate at the excluded component.
+    const parentEdge = String(ex.parent_edge);
+    const normalized = parentEdge.replace(' -> ', ' ');
+    const realEdge = closure.edges.find((e) => `${e.from} ${e.to}` === normalized);
+    if (realEdge === undefined) {
+      problems.push(
+        `${where}: rejected by 'wrong_parent' — parent_edge '${parentEdge}' is not an edge of the ` +
+        `${ex.target} closure`,
+      );
+      continue;
+    }
+    if (realEdge.to !== node.bomRef) {
+      problems.push(
+        `${where}: rejected by 'wrong_parent' — parent_edge '${parentEdge}' terminates at ` +
+        `'${realEdge.to}', not at the excluded component '${node.bomRef}'`,
       );
       continue;
     }
@@ -462,7 +618,30 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
     valid.push(ex);
   }
 
-  return { problems, valid };
+  return { problems, valid, declared: entries.length };
+}
+
+/** Cardinalities that must agree exactly, or the applied set is not the governed set. */
+export function checkExclusionCardinality({ declared, rejected, valid, applied, removedNodes, cascaded }) {
+  const problems = [];
+  if (declared !== valid + rejected) {
+    problems.push(
+      `exclusion cardinality: ${declared} declared but ${valid} valid + ${rejected} rejected`,
+    );
+  }
+  if (valid !== applied) {
+    problems.push(
+      `exclusion cardinality: ${valid} valid entries but ${applied} applied; every valid ` +
+      'exclusion must remove exactly one governed node',
+    );
+  }
+  if (removedNodes !== applied + cascaded) {
+    problems.push(
+      `exclusion cardinality: ${removedNodes} nodes removed but ${applied} applied + ` +
+      `${cascaded} cascaded`,
+    );
+  }
+  return problems;
 }
 
 /** Every `name@version` the lockfile resolves, target-independent. */

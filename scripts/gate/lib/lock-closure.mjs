@@ -34,6 +34,14 @@ import { PackageURL } from 'packageurl-js';
 export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
 /**
+ * Lockfile formats this gate is written against. A future or unknown format must be a
+ * hard failure: the closure semantics (snapshot keys, peer suffixes, importer shape) are
+ * format-specific, so silently parsing an unsupported version would produce a
+ * confidently wrong closure.
+ */
+export const SUPPORTED_LOCKFILE_VERSIONS = Object.freeze(['9.0']);
+
+/**
  * Parse the lockfile with an EXACT-PINNED YAML parser (yaml@2.9.0).
  *
  * The previous bespoke reader silently mishandled flow mappings, quoted keys,
@@ -49,6 +57,15 @@ export function parseLockfile(text) {
   if (doc === null || typeof doc !== 'object') {
     throw new Error('pnpm-lock.yaml did not parse to a mapping');
   }
+  const version = String(doc.lockfileVersion ?? '');
+  if (!SUPPORTED_LOCKFILE_VERSIONS.includes(version)) {
+    throw new Error(
+      `pnpm-lock.yaml declares lockfileVersion ${JSON.stringify(doc.lockfileVersion)}, which this ` +
+      `gate does not support (supported: ${SUPPORTED_LOCKFILE_VERSIONS.join(', ')}). Closure ` +
+      'semantics are format-specific; parsing an unknown format would produce a confidently ' +
+      'wrong closure.',
+    );
+  }
   return doc;
 }
 
@@ -59,26 +76,88 @@ export function loadLock(path) {
 /**
  * Split a snapshot/package key into its parts.
  *
- * Handles unscoped and scoped names, the peer-resolution suffix, and the
- * `(patch_hash=…)` marker pnpm records for patched packages.
+ * PATCH HASH IS NOT PEER CONTEXT. pnpm packs both into the same parenthesised suffix:
+ * `foo@1.0.0(bar@2.0.0)` is a peer resolution, `foo@1.0.0(patch_hash=abc)` is a patched
+ * build with NO peer context at all, and the two can co-occur. Treating the whole suffix
+ * as "peer context" labelled every patched-only package as a peer variant, which
+ * misstates why two resolutions of one version exist. `peerContext` therefore excludes
+ * patch markers, while `suffix` keeps the full key text (the installed identity).
  */
 export function splitKey(key) {
   const s = String(key);
   const at = s.startsWith('@') ? s.indexOf('@', 1) : s.indexOf('@');
-  if (at <= 0) return { name: s, version: '', peerSuffix: '', baseKey: s, patchHash: null };
+  if (at <= 0) {
+    return {
+      name: s, version: '', suffix: '', peerContext: '', peerSuffix: '',
+      baseKey: s, patchHash: null, peers: [],
+    };
+  }
   const name = s.slice(0, at);
   const rest = s.slice(at + 1);
   const paren = rest.indexOf('(');
   const version = paren === -1 ? rest : rest.slice(0, paren);
-  const peerSuffix = paren === -1 ? '' : rest.slice(paren);
-  const patch = /\(patch_hash=([^)]+)\)/.exec(peerSuffix);
+  const suffix = paren === -1 ? '' : rest.slice(paren);
+
+  // Split the suffix into balanced top-level groups, then classify each.
+  const groups = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of suffix) {
+    if (ch === '(') { depth += 1; if (depth === 1) { current = ''; continue; } }
+    if (ch === ')') { depth -= 1; if (depth === 0) { groups.push(current); continue; } }
+    if (depth >= 1) current += ch;
+  }
+  const patchGroups = groups.filter((g) => g.startsWith('patch_hash='));
+  const peers = groups.filter((g) => !g.startsWith('patch_hash='));
+
   return {
     name,
     version,
-    peerSuffix,
+    suffix,
+    // Only genuine peer resolutions, re-rendered canonically.
+    peerContext: peers.length > 0 ? peers.map((p) => `(${p})`).join('') : '',
+    // Retained under the historical name so nothing silently reads a renamed field.
+    peerSuffix: peers.length > 0 ? peers.map((p) => `(${p})`).join('') : '',
+    peers,
     baseKey: `${name}@${version}`,
-    patchHash: patch === null ? null : patch[1],
+    patchHash: patchGroups.length > 0 ? patchGroups[0].slice('patch_hash='.length) : null,
   };
+}
+
+/**
+ * Validate an npm SRI integrity string.
+ * Returns { ok, algorithms, problem } — a malformed or weak digest must never be
+ * silently carried into an SBOM as though the artifact were verified.
+ */
+export const SUPPORTED_SRI_ALGORITHMS = Object.freeze(['sha256', 'sha384', 'sha512']);
+export const SRI_DIGEST_BYTES = Object.freeze({ sha256: 32, sha384: 48, sha512: 64 });
+
+export function validateIntegrity(integrity) {
+  if (typeof integrity !== 'string' || integrity.trim() === '') {
+    return { ok: false, algorithms: [], problem: 'absent' };
+  }
+  const algorithms = [];
+  for (const token of integrity.trim().split(/\s+/)) {
+    const m = /^([a-z0-9]+)-(.+)$/.exec(token);
+    if (m === null) return { ok: false, algorithms, problem: `malformed SRI token '${token}'` };
+    const [, alg, b64] = m;
+    if (!SUPPORTED_SRI_ALGORITHMS.includes(alg)) {
+      return { ok: false, algorithms, problem: `unsupported SRI algorithm '${alg}'` };
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) {
+      return { ok: false, algorithms, problem: `SRI digest for '${alg}' is not valid base64` };
+    }
+    const bytes = Buffer.from(b64, 'base64').byteLength;
+    if (bytes !== SRI_DIGEST_BYTES[alg]) {
+      return {
+        ok: false, algorithms,
+        problem: `SRI '${alg}' digest is ${bytes} bytes, expected ${SRI_DIGEST_BYTES[alg]}`,
+      };
+    }
+    algorithms.push(alg);
+  }
+  if (algorithms.length === 0) return { ok: false, algorithms, problem: 'no SRI tokens' };
+  return { ok: true, algorithms, problem: null };
 }
 
 /**
@@ -214,10 +293,30 @@ export function buildClosure(lock, target, opts = {}) {
   const childrenOf = new Map();      // ref -> [{ to, kind }]
   const excludedByPlatform = [];
   const unresolved = [];
+  const integrityExempted = [];
   const workspaceManifests = {};
 
   const workspaceRef = (path) => `workspace:${path}`;
   const RUNTIME_SCOPES = ['dependencies', 'optionalDependencies'];
+
+  /**
+   * GOVERNED first-party component type. Mapping every workspace to "application" is
+   * wrong: apps/* are deployable applications, packages/* are libraries consumed by
+   * them, and a consumer filtering the BOM for deployable units must not receive
+   * libraries. An unmapped importer is an error rather than a silent default.
+   */
+  const typeMap = opts.firstPartyTypes ?? {};
+  const componentTypeFor = (path) => {
+    const t = typeMap[path];
+    if (t === undefined) {
+      throw new Error(
+        `importer '${path}' has no governed CycloneDX component type in ` +
+        "target-descriptor.json first_party_component_types.by_importer_root; " +
+        'the type must be declared, not defaulted',
+      );
+    }
+    return t;
+  };
 
   const addWorkspaceNode = (path) => {
     const ref = workspaceRef(path);
@@ -227,6 +326,7 @@ export function buildClosure(lock, target, opts = {}) {
     nodes.set(ref, {
       bomRef: ref,
       kind: 'workspace',
+      componentType: componentTypeFor(path),
       name: id.name,
       version: id.version,
       importerPath: path,
@@ -236,9 +336,16 @@ export function buildClosure(lock, target, opts = {}) {
       // coordinates, but a canonical PURL is still the correct component identity.
       purl: npmPurl(id.name, id.version),
       lockKey: `importer:${path}`,
+      peerContext: '',
       peerSuffix: '',
+      peers: [],
       patchHash: null,
       integrity: null,
+      integrityAlgorithms: [],
+      // A first-party workspace is built from tracked source, not fetched as an
+      // artifact, so there is no registry digest to verify. That is why integrity is
+      // required for REGISTRY packages only.
+      integrityValid: true,
       os: null, cpu: null, libc: null,
       deprecated: null,
       scopes: new Set(),
@@ -299,20 +406,65 @@ export function buildClosure(lock, target, opts = {}) {
     return null;
   };
 
+  /**
+   * Governed exemptions from the integrity requirement. A registry package with no
+   * verifiable digest is an unverified input, so it may only be admitted by an explicit
+   * rule that states WHY integrity is unavailable for that resolution class.
+   */
+  const integrityRules = target.integrity_rules ?? [];
+  const integrityExemption = (ref, meta) => integrityRules.find((rule) => {
+    if (typeof rule.resolution_type === 'string') {
+      const type = meta?.resolution?.type ?? (meta?.resolution?.tarball !== undefined ? 'tarball' : 'registry');
+      if (type !== rule.resolution_type) return false;
+    }
+    if (typeof rule.key_prefix === 'string' && !ref.startsWith(rule.key_prefix)) return false;
+    return true;
+  });
+
   const materializePackage = (ref) => {
     if (nodes.has(ref)) return nodes.get(ref);
-    const { name, version, peerSuffix, baseKey, patchHash } = splitKey(ref);
-    const meta = packages[baseKey] ?? {};
+    const { name, version, peerContext, baseKey, patchHash, peers } = splitKey(ref);
+    const meta = packages[baseKey];
+
+    // A snapshot key with no `packages:` entry has no metadata at all — no integrity, no
+    // platform constraints, no engines. Admitting it would put a component in the SBOM
+    // that the lockfile never described.
+    if (meta === undefined) {
+      unresolved.push(
+        `${ref}: no 'packages:' metadata entry for ${baseKey}; the resolution is undescribed`,
+      );
+    }
+
+    const integrity = meta?.resolution?.integrity ?? null;
+    const sri = validateIntegrity(integrity);
+    if (!sri.ok) {
+      const exemption = integrityExemption(ref, meta ?? {});
+      if (exemption === undefined) {
+        unresolved.push(
+          `${ref}: integrity is ${sri.problem} and no governed integrity_rule admits it; ` +
+          'an unverifiable artifact cannot enter the closure',
+        );
+      } else {
+        integrityExempted.push({ bomRef: ref, problem: sri.problem, rule: exemption.id ?? '(unnamed)' });
+      }
+    }
+
     nodes.set(ref, {
       bomRef: ref,
       kind: 'npm',
+      componentType: 'library',
       name,
       version,
       purl: npmPurl(name, version),
       lockKey: ref,
-      peerSuffix,
-      patchHash: patchHash ?? (meta.patched === true ? 'declared' : null),
-      integrity: meta?.resolution?.integrity ?? null,
+      // Peer context EXCLUDES patch markers, so a patched-only key is not a peer variant.
+      peerContext,
+      peerSuffix: peerContext,
+      peers,
+      patchHash: patchHash ?? (meta?.patched === true ? 'declared' : null),
+      integrity,
+      integrityAlgorithms: sri.algorithms,
+      integrityValid: sri.ok,
       deprecated: meta?.deprecated ?? null,
       hasBin: meta?.hasBin ?? false,
       engines: meta?.engines ?? null,
@@ -320,7 +472,7 @@ export function buildClosure(lock, target, opts = {}) {
       cpu: meta?.cpu ?? null,
       libc: meta?.libc ?? null,
       scopes: new Set(),
-      platform: platformCompatible(meta, target),
+      platform: platformCompatible(meta ?? {}, target),
     });
     childrenOf.set(ref, []);
     return nodes.get(ref);
@@ -383,7 +535,11 @@ export function buildClosure(lock, target, opts = {}) {
         }
         childrenOf.get(from).push({ to: resolved.ref, kind: scope, aliasOf: resolved.aliasOf ?? null });
         queue.push(resolved.ref);
-        seeds.push({ ref: resolved.ref, scope });
+        // ONLY a declared target root seeds scope membership. A workspace reached through
+        // a link is not a root: its dependencies inherit whatever scope the CONSUMER was
+        // reached under, via propagation. Seeding here unconditionally made a dev-only
+        // workspace's runtime dependencies look like production members.
+        if (isRoot) seeds.push({ ref: resolved.ref, scope });
       }
     }
     return from;
@@ -460,7 +616,14 @@ export function buildClosure(lock, target, opts = {}) {
   // Those dev edges get their own seed from the root declaration that created them.
   // Edges out of a registry package come from `snapshots` and are runtime by
   // construction, so they always inherit.
+  //
+  // OPTIONAL ANCESTRY. A component reached through an `optionalDependencies` edge is
+  // itself optional, and so is everything only reachable beneath it. Propagating just the
+  // root declaration scope labelled every production registry component a plain
+  // `dependencies` member, which overstates what is mandatory. Crossing an optional edge
+  // therefore ADDS `optionalDependencies` to what flows onward.
   const isWorkspace = (ref) => nodes.get(ref)?.kind === 'workspace';
+  const OPTIONAL = 'optionalDependencies';
   const work = seeds.filter((s) => nodes.has(s.ref));
   while (work.length > 0) {
     const { ref, scope } = work.pop();
@@ -469,8 +632,16 @@ export function buildClosure(lock, target, opts = {}) {
     node.scopes.add(scope);
     for (const child of childrenOf.get(ref) ?? []) {
       if (!nodes.has(child.to)) continue;
+      // A workspace's own dev declarations are not consumed by its consumers.
       if (isWorkspace(ref) && child.kind === 'devDependencies') continue;
-      work.push({ ref: child.to, scope });
+      // Crossing an optional edge makes the subtree optional as well as whatever it
+      // already was, so both scopes propagate.
+      if (child.kind === OPTIONAL) {
+        work.push({ ref: child.to, scope: OPTIONAL });
+        if (scope !== OPTIONAL) work.push({ ref: child.to, scope });
+      } else {
+        work.push({ ref: child.to, scope });
+      }
     }
   }
 
@@ -507,6 +678,7 @@ export function buildClosure(lock, target, opts = {}) {
     workspaceManifests,
     excludedByPlatform: excludedByPlatform
       .sort((a, b) => (`${a.parent} ${a.bomRef}` < `${b.parent} ${b.bomRef}` ? -1 : 1)),
+    integrityExempted: integrityExempted.sort((a, b) => (a.bomRef < b.bomRef ? -1 : 1)),
     // Retained under the historical name so existing callers keep working; this is
     // now every unresolved reference, required or optional.
     missingSnapshots: [...new Set(unresolved)].sort(),
