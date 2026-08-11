@@ -831,14 +831,23 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
       // freshness, and resolve each multi-arch image index to its linux/amd64 child.
       'scripts/gate/supply-chain.mjs',
       'scripts/gate/generate-closures.mjs',
-      // …and the scanners those runners require are installed at exact versions, with
-      // downloads authenticated against tracked checksums.
+      // …and the scanners those runners require are installed at exact versions.
       'gitleaks', 'trivy', 'GITLEAKS_VERSION: 8.30.1', 'TRIVY_VERSION: 0.73.0',
       'node --version', '24.11.1',
-      'scripts/gate/scanner-pins.json', 'does not match the tracked',
+      // The installer is a single tracked script shared by both jobs.
+      'scripts/gate/install-scanners.sh',
     ]) {
       expect(active.toLowerCase(), needle).toContain(needle.toLowerCase());
     }
+    // The download AUTHENTICATION lives in that installer, so assert it where it is
+    // implemented rather than where it is invoked.
+    const installer = readFileSync(join(REPO, 'scripts', 'gate', 'install-scanners.sh'), 'utf8');
+    expect(installer).toContain('scripts/gate/scanner-pins.json');
+    expect(installer).toContain('sha256sum');
+    expect(installer).toContain('does not match the tracked');
+    // Both jobs that need scanners must use it — not an inline copy that can drift.
+    expect((active.match(/scripts\/gate\/install-scanners\.sh/g) ?? []).length)
+      .toBeGreaterThanOrEqual(2);
     // The Gate-2.1 SBOM generator is SUPERSEDED: its "bidirectional" reconciliation
     // compared two structures derived from the same generated SBOM, so it could not
     // fail. It must not be part of the active gate.
