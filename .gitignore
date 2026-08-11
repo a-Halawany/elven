@@ -32,5 +32,10 @@ THE_EYE_PHASE0_GATE*_*.zip
 # FROZEN source during the isolated run and committed only in the evidence-only
 # attestation child commit. The GENERATORS live in source; their outputs do not.
 evidence/authority-matrix.json
-evidence/supply-chain/
 evidence/db-paths/
+# C15 runner outputs (regenerated from the frozen SHA at the isolated run):
+evidence/supply-chain/supply-chain-manifest.json
+evidence/supply-chain/*.stdout.txt
+evidence/supply-chain/*.stderr.txt
+evidence/supply-chain/gitleaks-worktree.json
+evidence/supply-chain/gitleaks-history.json

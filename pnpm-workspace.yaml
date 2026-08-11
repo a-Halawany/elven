@@ -16,3 +16,8 @@ allowBuilds:
 overrides:
   sharp: '>=0.35.0'
   postcss: '>=8.5.23'
+  # Gate-2.2 C15: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via an
+  # infinite loop when a custom generator is called with size 0). Reached only
+  # through build/test tooling (vite/postcss, next/postcss), but a HIGH advisory in
+  # the resolved closure is a HIGH advisory. Forced to the patched line.
+  nanoid: '>=3.3.17'
