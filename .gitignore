@@ -27,3 +27,10 @@ playwright-report/
 evidence/*.bundle
 *.zip
 THE_EYE_PHASE0_GATE*_*.zip
+
+# Gate-2.2 evidence sequencing: generated gate OUTPUTS are regenerated from the
+# FROZEN source during the isolated run and committed only in the evidence-only
+# attestation child commit. The GENERATORS live in source; their outputs do not.
+evidence/authority-matrix.json
+evidence/supply-chain/
+evidence/db-paths/
