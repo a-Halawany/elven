@@ -380,7 +380,12 @@ function main() {
       return { path: p, tracked: null, ignored: null, governed: null, reason: 'no git metadata' };
     }
     const tracked = spawnSync('git', ['ls-files', '--error-unmatch', p], { cwd: ROOT, encoding: 'utf8' });
-    const ignored = spawnSync('git', ['check-ignore', '-q', p], { cwd: ROOT, encoding: 'utf8' });
+    // The trailing slash matters. Both rules are DIRECTORY patterns (`.eye-local/`,
+    // `.next/`), so `git check-ignore` cannot match them for a path that does not
+    // currently exist unless it is told the path is a directory. Without it this proof
+    // failed in any fresh checkout where the directories had not been created yet —
+    // which is exactly the state of CI's supply-chain job.
+    const ignored = spawnSync('git', ['check-ignore', '-q', `${p}/`], { cwd: ROOT, encoding: 'utf8' });
     const ok = tracked.status !== 0 && ignored.status === 0;
     console.log(`  allowlisted path ${p}: tracked=${tracked.status === 0} ignored=${ignored.status === 0} ${ok ? 'GOVERNED' : 'UNGOVERNED'}`);
     return { path: p, tracked: tracked.status === 0, ignored: ignored.status === 0, governed: ok };
