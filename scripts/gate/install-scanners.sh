@@ -56,11 +56,17 @@ install_tool() {
   #
   # This changes nothing about trust: whatever arrives is still verified against the tracked
   # archive AND executable digests below, and a mismatch still fails the run.
-  local attempt=0 delay=5
+  # The window matters as much as the retry. Run 31644806581 exhausted a ~60s window against
+  # a burst of GitHub Releases 503s and failed build-test — while the supply-chain job in the
+  # SAME run downloaded and verified the identical asset 23 seconds earlier. The asset was
+  # never unavailable; the burst simply outlasted the backoff. Six whole-transfer attempts
+  # with doubling backoff covers roughly five and a half minutes, and remains bounded so a
+  # genuine outage still fails rather than hanging.
+  local attempt=0 delay=10
   until curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
              --max-time 600 -o "$work/archive.tar.gz" "$url"; do
     attempt=$((attempt + 1))
-    if [ "$attempt" -ge 4 ]; then
+    if [ "$attempt" -ge 6 ]; then
       echo "::error::${tool} download failed after $attempt whole-transfer attempts: $url"
       exit 1
     fi
