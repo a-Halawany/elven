@@ -1057,9 +1057,20 @@ Full C19 document reconciliation remains in C19.
 ### 9.5 Suites at this commit
 
 typecheck **0**; build **0**; boundaries clean (93 modules, 250 dependencies); contracts
-**203/203**; tokens **3/3**; api gate+unit **354/354** (gate suites alone **340**);
+**203/203**; tokens **3/3**; api gate+unit **357/357** (gate suites alone **343**);
 integration **297/297**; acceptance **58/58**; Playwright **10/10** on a virgin database.
-Migrations `0001`–`0021` byte-identical.
+
+Migrations `0001`–`0021` byte-identical to `e3a0b1f`, proven directly rather than by a
+digest whose construction a reviewer would have to guess:
+`git diff --name-only e3a0b1f HEAD -- apps/api/migrations` returns **0** files over all 21.
+The earlier sections quote a "tree digest" without stating how it was built; where a digest
+is wanted, the reproducible form is
+`git ls-tree -r HEAD apps/api/migrations | shasum -a 256` =
+`47a651c95228429a5f10c497dfbd5b4a3588bce7256af65f0c90554bf3b5baca`.
+
+C15 and C16 were then re-run in `--final --expected-sha` mode from a fresh clone with all
+outputs written **outside** the repository, against a cold trivy cache; the clone's worktree
+was clean afterwards and `assert-final-manifests.mjs` accepted both manifests.
 
 ### 9.6 Still open
 
