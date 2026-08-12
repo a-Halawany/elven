@@ -19,7 +19,8 @@
  * generated SBOM, so it could not fail. See the supersession assertion below.
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -232,5 +233,143 @@ describe('C16 artifacts — the target-resolved closures and their real reconcil
     for (const [target, versions] of Object.entries(nanoid!.resolved_per_target)) {
       expect(versions, `${target} nanoid versions`).toEqual(['3.3.18']);
     }
+  });
+});
+
+/**
+ * C16-R3.1: the published evidence package must be verifiable by the reviewer who
+ * downloads it.
+ *
+ * The hosted run at `2abd959` produced a ZIP whose own `SHA256SUMS.txt` listed itself:
+ * the manifest was created by redirecting into the bundle, so `find` saw the empty file
+ * and recorded ITS digest, and every reviewer running `sha256sum -c` got
+ * `SHA256SUMS.txt: FAILED`. An evidence manifest that always fails cannot be told apart
+ * from corrupted evidence.
+ *
+ * These controls EXECUTE `scripts/gate/package-evidence.sh` — the same tracked script the
+ * workflow calls — rather than asserting anything about the workflow YAML.
+ */
+describe('C16-R3.1 evidence packaging — the published manifest verifies', () => {
+  const SCRIPT = join(REPO, 'scripts', 'gate', 'package-evidence.sh');
+  const SHA = 'a'.repeat(40);
+  let work: string;
+  let zip: string;
+  let digest: string;
+  let unpacked: string;
+
+  beforeAll(() => {
+    work = mkdtempSync(join(tmpdir(), 'eye-pkg-'));
+    const c15 = join(work, 'c15');
+    const c16 = join(work, 'c16');
+    const dest = join(work, 'dest');
+    for (const d of [c15, c16, dest]) mkdirSync(d, { recursive: true });
+    // A representative C15 output: reports, raw scanner streams, a result receipt, plus
+    // the two trees the script must EXCLUDE by design.
+    writeFileSync(join(c15, 'supply-chain-manifest.json'), JSON.stringify({ outcome: 'PASS' }));
+    writeFileSync(join(c15, 'RESULT-PASS.txt'), 'PASS\n');
+    writeFileSync(join(c15, 'trivy-fs.stdout.txt'), 'x'.repeat(4096));
+    writeFileSync(join(c15, 'gitleaks-worktree.json'), '[]');
+    mkdirSync(join(c15, '.trivy-cache', 'db'), { recursive: true });
+    writeFileSync(join(c15, '.trivy-cache', 'db', 'trivy.db'), 'huge');
+    mkdirSync(join(c15, '.staged-scanners'), { recursive: true });
+    writeFileSync(join(c15, '.staged-scanners', 'trivy'), 'binary');
+    writeFileSync(join(c16, 'closure-reconciliation.json'), JSON.stringify({ status: 'ok' }));
+    writeFileSync(join(c16, 'sbom-linux-x64-glibc-prod.cdx.json'), '{}');
+
+    const out = execFileSync('bash', [SCRIPT, c15, c16, SHA, dest], { encoding: 'utf8' })
+      .trim().split('\n');
+    zip = out[0]!;
+    digest = out[1]!;
+    unpacked = join(work, 'unpacked');
+    mkdirSync(unpacked, { recursive: true });
+    execFileSync('unzip', ['-q', zip], { cwd: unpacked });
+  });
+
+  afterAll(() => { rmSync(work, { recursive: true, force: true }); });
+
+  it('the ZIP is named for the source SHA and the reported digest is the archive it wrote', () => {
+    expect(zip.endsWith(`c16-r31-final-evidence-${SHA}.zip`)).toBe(true);
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    const actual = createHash('sha256').update(readFileSync(zip)).digest('hex');
+    expect(digest, 'the printed digest must describe the ZIP on disk').toBe(actual);
+  });
+
+  it('SHA256SUMS.txt does NOT list itself — a self-entry can never verify', () => {
+    const manifest = readFileSync(join(unpacked, 'SHA256SUMS.txt'), 'utf8');
+    const names = manifest.trim().split('\n').map((l) => l.split(/\s+/).slice(1).join(' '));
+    expect(names.length).toBeGreaterThan(0);
+    expect(names, 'the manifest must not contain an entry for itself').not.toContain('./SHA256SUMS.txt');
+    expect(names.some((n) => n.endsWith('SHA256SUMS.txt'))).toBe(false);
+  });
+
+  it('every recorded digest matches the unpacked bytes, and every packaged file is recorded', () => {
+    const manifest = readFileSync(join(unpacked, 'SHA256SUMS.txt'), 'utf8').trim().split('\n');
+    const recorded = new Map<string, string>();
+    for (const line of manifest) {
+      const [d, ...rest] = line.split(/\s+/);
+      recorded.set(rest.join(' '), d!);
+    }
+    for (const [rel, expected] of recorded) {
+      const bytes = readFileSync(join(unpacked, rel));
+      expect(createHash('sha256').update(bytes).digest('hex'), rel).toBe(expected);
+    }
+    // Bidirectional: an unrecorded file is unverifiable evidence just as a wrong digest is.
+    const walk = (dir: string, prefix: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? walk(join(dir, e.name), `${prefix}${e.name}/`)
+          : [`${prefix}${e.name}`]);
+    const present = walk(unpacked, './').filter((f) => !f.endsWith('SHA256SUMS.txt')).sort();
+    expect(present).toEqual([...recorded.keys()].sort());
+  });
+
+  it('`sha256sum -c` / `shasum -c` over the manifest reports NO failures', () => {
+    const tool = (() => {
+      try { execFileSync('sha256sum', ['--version'], { stdio: 'ignore' }); return 'sha256sum'; }
+      catch { return null; }
+    })();
+    const out = tool
+      ? execFileSync('sha256sum', ['-c', 'SHA256SUMS.txt'], { cwd: unpacked, encoding: 'utf8' })
+      : execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS.txt'], { cwd: unpacked, encoding: 'utf8' });
+    // execFileSync throws on a nonzero exit, so reaching here already means it verified.
+    expect(out).not.toMatch(/FAILED/);
+    expect(out.trim().split('\n').every((l) => l.endsWith(': OK'))).toBe(true);
+  });
+
+  it('the isolated cache and the staged binaries are excluded, and the reports are included', () => {
+    const files = readFileSync(join(unpacked, 'SHA256SUMS.txt'), 'utf8');
+    expect(files).not.toMatch(/\.trivy-cache/);
+    expect(files).not.toMatch(/\.staged-scanners/);
+    expect(files).toMatch(/c15\/supply-chain-manifest\.json/);
+    expect(files).toMatch(/c15\/RESULT-PASS\.txt/);
+    expect(files).toMatch(/c16\/closure-reconciliation\.json/);
+  });
+
+  it('a one-byte edit to a packaged file makes the manifest FAIL — it is not decorative', () => {
+    const target = join(unpacked, 'c15', 'RESULT-PASS.txt');
+    writeFileSync(target, 'FAIL\n');
+    let threw = false;
+    let combined = '';
+    try {
+      execFileSync('sh', ['-c', '(sha256sum -c SHA256SUMS.txt 2>&1 || shasum -a 256 -c SHA256SUMS.txt 2>&1)'],
+        { cwd: unpacked, encoding: 'utf8' });
+    } catch (err) {
+      threw = true;
+      combined = String((err as { stdout?: string }).stdout ?? '');
+    }
+    expect(threw || /FAILED/.test(combined), 'a tampered member must not verify').toBe(true);
+  });
+
+  it('a malformed source SHA is refused rather than packaged under a wrong name', () => {
+    const dest = mkdtempSync(join(tmpdir(), 'eye-pkg-bad-'));
+    for (const bad of ['', 'not-hex', 'ABCDEF'.repeat(6) + 'abcd', 'a'.repeat(39)]) {
+      let threw = false;
+      try {
+        execFileSync('bash', [SCRIPT, join(work, 'c15'), join(work, 'c16'), bad, dest],
+          { encoding: 'utf8', stdio: 'pipe' });
+      } catch { threw = true; }
+      expect(threw, `SHA '${bad}' must be refused`).toBe(true);
+    }
+    rmSync(dest, { recursive: true, force: true });
   });
 });

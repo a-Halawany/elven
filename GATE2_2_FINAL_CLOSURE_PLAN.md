@@ -1057,7 +1057,7 @@ Full C19 document reconciliation remains in C19.
 ### 9.5 Suites at this commit
 
 typecheck **0**; build **0**; boundaries clean (93 modules, 250 dependencies); contracts
-**203/203**; tokens **3/3**; api gate+unit **357/357** (gate suites alone **343**);
+**203/203**; tokens **3/3**; api gate+unit **364/364** (gate suites alone **350**);
 integration **297/297**; acceptance **58/58**; Playwright **10/10** on a virgin database.
 
 Migrations `0001`–`0021` byte-identical to `e3a0b1f`, proven directly rather than by a
@@ -1072,7 +1072,31 @@ C15 and C16 were then re-run in `--final --expected-sha` mode from a fresh clone
 outputs written **outside** the repository, against a cold trivy cache; the clone's worktree
 was clean afterwards and `assert-final-manifests.mjs` accepted both manifests.
 
-### 9.6 Still open
+### 9.6 The evidence package had to verify before it could be evidence
+
+The first fully green hosted run at `2abd959` published a ZIP whose own `SHA256SUMS.txt`
+listed **itself**. The manifest was produced by redirecting `find` output straight into the
+bundle, so the empty file existed before `find` walked the tree and the manifest recorded
+the digest of its own zero-byte self. Every reviewer running `sha256sum -c SHA256SUMS.txt`
+therefore got `SHA256SUMS.txt: FAILED`, and an evidence manifest that always fails cannot
+be distinguished from corrupted evidence — which defeats the only purpose the package has.
+
+The packaging logic moved out of the workflow into the tracked
+`scripts/gate/package-evidence.sh`, for the same reason `install-scanners.sh` did: shell
+that only ever executes on a hosted runner cannot be exercised by a behavioural control,
+and asserting anything about the YAML would have been a source-string assertion. The script
+builds the manifest outside the bundle, excludes it from its own listing, and **refuses to
+produce a ZIP whose manifest does not verify**. The workflow additionally unpacks the exact
+archive it is about to upload and re-verifies it, so the digest in the run summary describes
+an archive a reviewer can check rather than one that merely got written.
+
+Seven controls in `supply-chain-artifacts.test.ts` execute that script directly: name and
+digest binding, no self-entry, bidirectional manifest completeness, a real `sha256sum -c`
+run with no `FAILED` line, cache/staged-binary exclusion, a one-byte tamper that must fail,
+and refusal of a malformed source SHA. Reverting the script to the defective form turns
+three of them red, so they reproduce the actual defect rather than describing it.
+
+### 9.7 Still open
 
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
 remains unapproved; the source is not frozen; no independent approval is claimed.

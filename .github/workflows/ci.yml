@@ -259,25 +259,24 @@ jobs:
       # unsigned public reviewer can download it and verify the bytes they received.
       - name: Package final C15 + C16 evidence as an inspectable ZIP
         if: always()
+        # The packaging logic lives in the tracked `scripts/gate/package-evidence.sh` so a
+        # behavioural control can execute it. Inline runner shell cannot be tested, and the
+        # self-referential-manifest defect it now guards against was invisible to any
+        # assertion made by reading this file.
         run: |
           set -euo pipefail
-          PKG="$(mktemp -d)"
-          mkdir -p "$PKG/bundle/c15" "$PKG/bundle/c16"
-          # The isolated cache and staged binaries are excluded by design: the cache is
-          # bound by its byte-level fingerprint and the binaries by their authenticated
-          # digests, and both are far too large to ship.
-          if [ -d "${C15_OUT:-}" ]; then
-            rsync -a --exclude '.trivy-cache' --exclude '.staged-scanners' "$C15_OUT/" "$PKG/bundle/c15/"
-          fi
-          if [ -d "${C16_OUT:-}" ]; then rsync -a "$C16_OUT/" "$PKG/bundle/c16/"; fi
-          # A per-file manifest so the ZIP's contents are individually verifiable.
-          ( cd "$PKG/bundle" && find . -type f | sort | xargs -I{} sh -c 'printf "%s  %s\n" "$(sha256sum "{}" | cut -d" " -f1)" "{}"' ) \
-            > "$PKG/bundle/SHA256SUMS.txt"
-          ZIP="$PKG/c16-r31-final-evidence-${GITHUB_SHA}.zip"
-          ( cd "$PKG/bundle" && zip -qr "$ZIP" . )
-          DIGEST="$(sha256sum "$ZIP" | cut -d' ' -f1)"
+          DEST="$(mktemp -d)"
+          OUT="$(bash scripts/gate/package-evidence.sh \
+                   "${C15_OUT:-/nonexistent}" "${C16_OUT:-/nonexistent}" "$GITHUB_SHA" "$DEST")"
+          ZIP="$(printf '%s\n' "$OUT" | sed -n 1p)"
+          DIGEST="$(printf '%s\n' "$OUT" | sed -n 2p)"
           echo "EVIDENCE_ZIP=$ZIP" >> "$GITHUB_ENV"
           echo "EVIDENCE_ZIP_SHA256=$DIGEST" >> "$GITHUB_ENV"
+          # Independently re-verify the published bytes: unpack the ZIP that will actually
+          # be uploaded and check its manifest, so the digest in the summary describes an
+          # archive a reviewer can verify rather than one that merely got written.
+          CHECK="$(mktemp -d)"
+          ( cd "$CHECK" && unzip -q "$ZIP" && sha256sum -c --quiet SHA256SUMS.txt )
           {
             echo "### C16-R3.1 final evidence package"
             echo
@@ -286,7 +285,8 @@ jobs:
             echo "| source SHA | \`${GITHUB_SHA}\` |"
             echo "| ZIP name | \`$(basename "$ZIP")\` |"
             echo "| ZIP SHA-256 | \`${DIGEST}\` |"
-            echo "| files | $(find "$PKG/bundle" -type f | wc -l | tr -d ' ') |"
+            echo "| files | $(find "$CHECK" -type f | wc -l | tr -d ' ') |"
+            echo "| manifest | \`sha256sum -c SHA256SUMS.txt\` verified after unpacking |"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "evidence ZIP sha256: $DIGEST"
       # ALWAYS upload: a red run must remain auditable. The runner writes a failure
