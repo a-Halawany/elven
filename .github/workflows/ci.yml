@@ -278,7 +278,7 @@ jobs:
           CHECK="$(mktemp -d)"
           ( cd "$CHECK" && unzip -q "$ZIP" && sha256sum -c --quiet SHA256SUMS.txt )
           {
-            echo "### C16-R3.1 final evidence package"
+            echo "### C16-R3.3 final evidence package"
             echo
             echo "| item | value |"
             echo "|---|---|"
@@ -304,6 +304,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c16-r31-final-evidence-zip
+          name: c16-r33-final-evidence-zip
           path: ${{ env.EVIDENCE_ZIP }}
           if-no-files-found: warn

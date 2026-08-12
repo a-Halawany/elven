@@ -34,162 +34,28 @@ import {
   descriptorTargetIds,
 } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR31Defective } from './fixtures/assert-final-manifests.r31-frozen.mjs';
+import {
+  buildPassingEvidence, editManifest, FIXTURE_SHA,
+} from './helpers/evidence-fixture';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
-const SHA = '1'.repeat(40);
+const SHA = FIXTURE_SHA;
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
-
-type Pins = {
-  tools: Record<string, { artifacts: Record<string, { executable_sha256: string }> }>;
-};
-
-/**
- * A complete evidence pair that the CORRECTED verifier accepts, written to a scratch root
- * whose layout mirrors a real run. Everything is generated from the bytes actually written,
- * so the fixture cannot drift into claiming something untrue.
- */
-function buildPassingEvidence(root: string, options: { fakeRepo?: string } = {}) {
-  const c15 = join(root, 'c15');
-  const c16 = join(root, 'c16');
-  mkdirSync(c15, { recursive: true });
-  mkdirSync(c16, { recursive: true });
-
-  const pinsRoot = options.fakeRepo ?? REPO;
-  const pins = JSON.parse(
-    readFileSync(join(pinsRoot, 'scripts/gate/scanner-pins.json'), 'utf8'),
-  ) as Pins;
-  const tools = Object.keys(pins.tools);
-  // Any platform the pins cover works; the fixture only needs the manifest and the pins to
-  // agree on one, exactly as a real run does for its own host.
-  const hostKey = Object.keys(pins.tools[tools[0]!]!.artifacts).find((k) =>
-    tools.every((t) => pins.tools[t]!.artifacts[k] !== undefined),
-  )!;
-
-  // C15 raw outputs. Contents are arbitrary; the digests below come from these bytes.
-  const c15Files: Record<string, string> = {};
-  for (const name of REQUIRED_C15_ARTIFACTS) {
-    c15Files[name] = `${name}: representative output for the verifier controls\n`;
-  }
-  c15Files['trivy-fs.stderr.txt'] = 'a bound raw stream that is not on the required list\n';
-  for (const [name, body] of Object.entries(c15Files)) {
-    writeFileSync(join(c15, name), body);
-  }
-  const bind = (dir: string, names: string[]) =>
-    names.map((name) => {
-      const bytes = readFileSync(join(dir, name));
-      return { path: name, bytes: bytes.length, sha256: sha256(bytes) };
-    });
-
-  // The isolated cache and the staged binaries: present on disk, excluded from binding by
-  // documented design. A control below proves the exclusion list is not open-ended.
-  mkdirSync(join(c15, '.trivy-cache', 'db'), { recursive: true });
-  writeFileSync(join(c15, '.trivy-cache', 'db', 'trivy.db'), 'cache bytes');
-  mkdirSync(join(c15, '.staged-scanners'), { recursive: true });
-  for (const t of tools) writeFileSync(join(c15, '.staged-scanners', t), `${t} staged bytes`);
-
-  const cacheDigest = sha256('cache fingerprint');
-  const verified: Record<string, unknown> = {};
-  const stagedAfter: Record<string, unknown> = {};
-  for (const t of tools) {
-    const digest = pins.tools[t]!.artifacts[hostKey]!.executable_sha256;
-    verified[t] = {
-      resolved_path: `/usr/local/bin/${t}`,
-      actual_sha256: digest,
-      expected_sha256: digest,
-      match: true,
-      authenticated_before_first_execution: true,
-      staged_path: join(c15, '.staged-scanners', t),
-      staged_sha256: digest,
-    };
-    stagedAfter[t] = {
-      staged_path: join(c15, '.staged-scanners', t),
-      sha256_after: digest,
-      expected: digest,
-      match: true,
-    };
-  }
-
-  const c15Manifest = {
-    mode: 'final',
-    outcome: 'PASS',
-    source_sha: SHA,
-    host_platform_key: hostKey,
-    tree_clean_at_run: true,
-    tree_clean_after_scanning: true,
-    worktree_unchanged_by_scanning: true,
-    trivy_cache_unchanged: true,
-    trivy_cache_fingerprint_before: { digest: cacheDigest, entries: [] },
-    trivy_cache_fingerprint_after: { digest: cacheDigest, entries: [] },
-    failures: [],
-    executed_binary_authentication: { verified },
-    staged_tools_after_scanning: stagedAfter,
-    evidence_artifacts: bind(c15, Object.keys(c15Files)),
-    image_finding_reconciliation: {
-      total_findings: 16,
-      matched: 3,
-      unmatched: [],
-      unused_records: [],
-      stale_advisory_ids: [],
-    },
-    step_policy_audit: { every_informational_step_duplicates_a_blocking_step: true },
-  };
-
-  // C16 outputs: a receipt plus one SBOM per target.
-  writeFileSync(join(c16, 'RESULT-PASS.txt'), 'C16 PASS\n');
-  const targets: Record<string, unknown> = {};
-  const c16Names = ['RESULT-PASS.txt'];
-  for (const name of PHASE0_TARGET_IDS) {
-    const file = `sbom-linux-x64-glibc-${name}.cdx.json`;
-    const body = JSON.stringify({ bomFormat: 'CycloneDX', specVersion: '1.6', target: name });
-    writeFileSync(join(c16, file), body);
-    c16Names.push(file);
-    const bytes = readFileSync(join(c16, file));
-    targets[name] = {
-      target: name,
-      sbom_file: file,
-      sbom_bytes: bytes.length,
-      sbom_sha256: sha256(bytes),
-      counts: { nodes: 195, subject_root_edges: 4 },
-      reconciliation: { clean: true, subject_root_edges_present: 4 },
-    };
-  }
-
-  const c16Manifest = {
-    status:
-      'FINAL — produced in --final mode from a clean worktree at an explicitly expected source SHA',
-    generated_from: { source_sha: SHA },
-    final_source_posture: { expected_sha: SHA, head_sha: SHA, worktree_clean: true },
-    targets,
-    vulnerable_residuals: [],
-    governed_exclusions: { rejected: [], cardinality_problems: [] },
-    evidence_artifacts: bind(c16, c16Names),
-  };
-
-  writeFileSync(join(c15, 'supply-chain-manifest.json'), JSON.stringify(c15Manifest, null, 2));
-  writeFileSync(join(c16, 'closure-reconciliation.json'), JSON.stringify(c16Manifest, null, 2));
-  return { c15Dir: c15, c16Dir: c16, hostKey, tools };
-}
-
-/** Read, mutate and rewrite a manifest in place. */
-function editManifest(dir: string, name: string, mutate: (m: Record<string, any>) => void) {
-  const path = join(dir, name);
-  const m = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
-  mutate(m);
-  writeFileSync(path, JSON.stringify(m, null, 2));
-}
 
 describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the claims about them', () => {
   let root: string;
   let c15Dir: string;
   let c16Dir: string;
   let hostKey: string;
+  let sbomFileFor: (t: string) => string;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-verifier-'));
-    const built = buildPassingEvidence(root);
+    const built = buildPassingEvidence(root, REPO);
     c15Dir = built.c15Dir;
     c16Dir = built.c16Dir;
     hostKey = built.hostKey;
+    sbomFileFor = built.sbomFileFor;
   });
 
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
@@ -209,7 +75,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
     // digests and byte counts in the manifests, and add an unbound extra output.
     for (const name of REQUIRED_C15_ARTIFACTS) writeFileSync(join(c15Dir, name), 'TAMPERED');
     for (const t of PHASE0_TARGET_IDS) {
-      writeFileSync(join(c16Dir, `sbom-linux-x64-glibc-${t}.cdx.json`), 'TAMPERED');
+      writeFileSync(join(c16Dir, sbomFileFor(t)), 'TAMPERED');
     }
     writeFileSync(join(c15Dir, 'EXTRA-UNBOUND.txt'), 'nobody checked these bytes');
 
@@ -260,7 +126,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
 
   it('MODIFIED C16 SBOM BYTES are rejected against sbom_sha256 AND the binding', () => {
     const target = PHASE0_TARGET_IDS[0]!;
-    writeFileSync(join(c16Dir, `sbom-linux-x64-glibc-${target}.cdx.json`), 'TAMPERED');
+    writeFileSync(join(c16Dir, sbomFileFor(target)), 'TAMPERED');
     const problems = check();
     expect(problems.some((p) => p.includes(`target ${target}`) && /hashes to/.test(p))).toBe(true);
     expect(problems.some((p) => /binding claims/.test(p))).toBe(true);
@@ -362,7 +228,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
   it('a TRAVERSING binding path is rejected in every form', () => {
     for (const bad of ['../escape.txt', 'a/../../escape.txt', '/etc/passwd', './trivy-fs.stdout.txt']) {
       const fresh = mkdtempSync(join(tmpdir(), 'eye-trav-'));
-      const built = buildPassingEvidence(fresh);
+      const built = buildPassingEvidence(fresh, REPO);
       editManifest(built.c15Dir, 'supply-chain-manifest.json', (m) => {
         m.evidence_artifacts.push({ path: bad, bytes: 1, sha256: 'c'.repeat(64) });
       });
@@ -405,10 +271,10 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
     editManifest(c16Dir, 'closure-reconciliation.json', (m) => {
       delete m.targets[dropped];
       m.evidence_artifacts = m.evidence_artifacts.filter(
-        (a: any) => a.path !== `sbom-linux-x64-glibc-${dropped}.cdx.json`,
+        (a: any) => a.path !== sbomFileFor(dropped),
       );
     });
-    rmSync(join(c16Dir, `sbom-linux-x64-glibc-${dropped}.cdx.json`));
+    rmSync(join(c16Dir, sbomFileFor(dropped)));
     expect(check().some((p) => /C16 target set is \[/.test(p))).toBe(true);
   });
 
@@ -504,7 +370,9 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.staged_tools_after_scanning.trivy.sha256_after = 'e'.repeat(64);
       m.staged_tools_after_scanning.trivy.match = false;
     });
-    expect(check().some((p) => /staged trivy binary changed during scanning/.test(p))).toBe(true);
+    // R3.3 reports this as a broken link in the chain back to the tracked pin, which is
+    // strictly more specific than R3.2's standalone message.
+    expect(check().some((p) => /trivy chain BROKEN: staged post-scan actual digest/.test(p))).toBe(true);
     expect(checkDefective()).toEqual([]);
   });
 
@@ -513,7 +381,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.trivy_cache_fingerprint_after.digest = sha256('a different cache');
       m.trivy_cache_unchanged = true;   // the boolean lies; the digests do not
     });
-    expect(check().some((p) => /cache digest changed across scanning/.test(p))).toBe(true);
+    expect(check().some((p) => /after cache fingerprint digest is .*; recomputes to/.test(p))).toBe(true);
     expect(checkDefective(), 'R3.1 trusted the boolean').toEqual([]);
   });
 
@@ -522,14 +390,14 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.evidence_artifacts = m.evidence_artifacts.filter((a: any) => a.path !== 'RESULT-PASS.txt');
     });
     const problems = check();
-    expect(problems.some((p) => /C16 did not bind the required artifact 'RESULT-PASS\.txt'/.test(p))).toBe(true);
+    expect(problems.some((p) => /C16 did not bind the required output 'RESULT-PASS\.txt'/.test(p))).toBe(true);
     expect(problems.some((p) => /RESULT-PASS\.txt.*UNBOUND/.test(p))).toBe(true);
     expect(checkDefective(), 'R3.1 required no C16 bindings at all').toEqual([]);
   });
 
   it('an SBOM present and correct but NOT bound fails', () => {
     const target = PHASE0_TARGET_IDS[0]!;
-    const file = `sbom-linux-x64-glibc-${target}.cdx.json`;
+    const file = sbomFileFor(target);
     editManifest(c16Dir, 'closure-reconciliation.json', (m) => {
       m.evidence_artifacts = m.evidence_artifacts.filter((a: any) => a.path !== file);
     });

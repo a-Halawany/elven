@@ -1164,6 +1164,106 @@ not the quoted one.
 Migrations `0001`–`0021` byte-identical to `e3a0b1f`:
 `git diff --name-only e3a0b1f HEAD -- apps/api/migrations` returns 0 files.
 
+## 11. C16-R3.3 REMEDIATION RECORD — FINAL ASSERTION CLOSURE
+
+Independent review confirmed the R3.2 evidence package at `32adf4f` is healthy: outer digest
+matches, ZIP structure safe, internal checksums 29/29, all delivered artifacts verify, hosted
+CI green at the exact SHA, migrations `0001`–`0021` unchanged. Items 1, 2 and 4–8 of R3.1 are
+not reopened.
+
+Six coordinated false passes remained in the verifier. All six shared one shape: R3.2
+verified the bytes behind every *binding* and then trusted every *other* statement the
+manifest made about itself.
+
+### 11.1 Closure map
+
+| # | False pass R3.2 permitted | Correction | Where |
+|---|---|---|---|
+| 1 | Step receipts were never read. A raw file and its binding could both be deleted while a step still referenced it; a tampered file whose binding was updated left a stale step hash nobody looked at; the step set was unconstrained, so a step could be missing, duplicated, renamed, demoted or added | exact normal-step set (6 named + one `trivy-image-<i>` per pinned image, validated as `name@sha256:<64hex>`), exact acquisition set, multiset comparison so a duplicate is distinct from an extra, per-step tool/policy/exit/signal/source-SHA, and a **three-way** stream check: bytes on disk = step receipt = artifact binding | `verifyStepClosure`, `verifyStepStreams` |
+| 2 | The required inventory was ten hardcoded names, so any output not on that list could vanish | inventory **derived** from the step contract × 2 streams + acquisition contract × 2 streams + the image set + the governed reports — 24 entries for a 2-image run, matching the 24 a real run binds | `expectedC15Inventory` in `lib/final-assertion-contracts.mjs` |
+| 3 | Scanner digests were compared pairwise, so forging `sha256_after` and `expected` together passed | one six-link chain — tracked pin → authenticated actual → authenticated expected → staged pre-execution → staged post-scan expected → staged post-scan actual — with **every link compared to the tracked pin**, never to its neighbour | `verifyScannerChain` |
+| 4 | `trivy_cache_unchanged` and a caller-supplied top digest decided the cache question, so corrupt entry data behind an untouched digest passed | the fingerprint is **recomputed** exactly as `trivy-cache.mjs fingerprint()` builds it: per-entry validity, `checks_content.files`/`bytes`/`manifest_sha256`, the top-level digest, and canonical before/after identity | `recomputeFingerprint`, `verifyCacheProvenance` |
+| 5 | Each SBOM was digested but never parsed or tied to the descriptor, so swapping the production and development records, or pointing both targets at the production SBOM, passed | target map key must own the descriptor identity; every declared field compared canonically; SBOM filenames unique per target; the SBOM is **parsed** and its `serialNumber`, subject `bom-ref`, description and nine `eye:*` properties checked against the descriptor and the expected source SHA | `verifyTargetIdentity` |
+| 6 | Nothing lstat-ed the output roots or the two root manifests, so the whole package could be a symlink | `rootPathProblems` runs **first** and returns immediately; `readMember` lstats every intermediate directory inside the package and requires the resolved real path to stay within the resolved root | `rootPathProblems`, `readMember` |
+
+### 11.2 What the controls actually prove — exact numbers
+
+Two frozen byte copies of previous verifiers are tracked as fixtures, each with only its CLI
+guard removed: `assert-final-manifests.r31-frozen.mjs` and `assert-final-manifests.r32-frozen.mjs`.
+Both are given the real repository root explicitly, because their own `ROOT` resolves relative
+to the fixtures directory and they would otherwise throw `ENOENT` and appear to reject
+everything — which would have made every control look successful while proving nothing.
+
+| suite | cases | exercise a frozen verifier | corrected-verifier only |
+|---|---|---|---|
+| `final-assertion-closure.test.ts` (R3.3) | 43 | **37** | 6 |
+| `final-manifest-verifier.test.ts` (R3.2) | 29 | **22** | 7 |
+
+Of the 37 in the R3.3 suite, **34 assert the frozen R3.2 accepted the mutation**. The other
+three are recorded honestly rather than counted as fresh catches:
+
+* the extra-unbound-output control — R3.2 already caught it;
+* the before/after cache-difference control — R3.2 already compared the two *claimed* digests
+  (the mutation it genuinely missed is the corrupted-entry case, where the claimed digests
+  still agreed);
+* the symlinked-intermediate-directory control — R3.2 rejects it for the **wrong reason** and
+  with a misleading message (`reports is present but UNBOUND`), never identifying the symlink;
+  the control asserts R3.2 does *not* mention SYMLINK, which is the gap being closed.
+
+The 6 + 7 corrected-only cases assert properties of the contracts themselves (the derived
+inventory's contents, malformed pinned-image lists, the code-owned Phase 0 set, pin-set
+requirements) where there is no meaningful "frozen accepted it" claim to make.
+
+### 11.3 Two fixtures that were themselves untrue
+
+`c16-closure-controls.test.ts` and `final-manifest-verifier.test.ts` each built their own
+partial manifests — no steps, no cache fingerprint, no descriptor identity — because the
+verifier of the day looked at none of those. Both now mutate one **shared** fixture
+(`test/gate/helpers/evidence-fixture.ts`) that satisfies the full R3.3 contract with every
+digest computed from bytes it writes and every identity read from the real tracked descriptor
+and pins. This is the same defect class as R3.2's `sha256: 'cccc…'` fixture, found in two more
+places.
+
+### 11.4 Honest limits, stated not hidden
+
+* **Cache bytes are not shipped.** The trivy DB alone exceeds a gigabyte, so per-entry hashes
+  cannot be recomputed from cache bytes inside the evidence package. Every aggregate the
+  manifest derives from those entries *is* recomputed, which is what closes the false pass.
+* **Ancestors above the output root are not symlink-checked.** The caller names the root, and
+  on macOS `/tmp` and `/var` are themselves symlinks, so walking to the filesystem root would
+  reject every legitimate run. Containment is enforced instead: each artifact's resolved real
+  path must lie inside the root's resolved real path.
+* **One target-record key is allowed without being declared per target.**
+  `generate-closures.mjs` legitimately merges the descriptor's top-level `integrity_rules`
+  into each record; `TARGET_RECORD_MERGED_KEYS` names it and nothing else, and an undeclared
+  field is refused.
+
+### 11.5 Suites at this commit
+
+typecheck **0**; build **0**; boundaries clean (96 modules, 260 dependencies); contracts
+**203/203**; tokens **3/3**; api gate+unit **436/436** (gate suites alone **422**);
+integration **297/297**; acceptance **58/58**; Playwright **10/10** on a virgin database.
+
+Migrations `0001`–`0021` byte-identical to `e3a0b1f`:
+`git diff --name-only e3a0b1f HEAD -- apps/api/migrations` returns 0 files.
+
+The evidence archive is now named `c16-r33-final-evidence-<sha>.zip` — R3.2's archive was
+still named `r31`, which misdescribed what it certified.
+
+### 11.6 Deferred to the C19 / freeze ledger
+
+Recorded here so they are not lost, and explicitly NOT part of this patch: protecting `main`
+with required checks; a signed immutable release tag or signed provenance attestation;
+publishing final evidence at a durable, anonymously downloadable location; and removing the
+dependency on expiring authenticated GitHub Actions artifact downloads.
+
+### 11.7 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
+remains unapproved; the source is not frozen; no independent approval is claimed.
+
+---
+
 ### 10.5 Still open
 
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0

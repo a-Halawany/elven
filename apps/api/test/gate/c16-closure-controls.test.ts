@@ -18,7 +18,7 @@
  * rewritten scope, a false workspace version, a broken subject edge or a non-canonical
  * PURL all reconciled "clean". Those are the controls added here.
  */
-import { describe, expect, it, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -42,6 +42,7 @@ import {
   assertFinalManifests, expectedTargetIds, C15_FINAL_MODE, C15_PASS_OUTCOME,
   C16_FINAL_STATUS, REQUIRED_C15_ARTIFACTS,
 } from '../../../../scripts/gate/assert-final-manifests.mjs';
+import { buildPassingEvidence, editManifest, FIXTURE_SHA } from './helpers/evidence-fixture';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 
@@ -1269,208 +1270,93 @@ describe('C16-R3.1 control — closure-exclusion evidence digest is strict', () 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
-  const SHA = 'a'.repeat(40);
-  let base: { c15: Record<string, unknown>; c16: Record<string, unknown> };
-  let workDir: string;
-
+describe('C16-R3.1/R3.3 control — the final-manifest assertion is exact', () => {
   /**
-   * C16-R3.2: the bytes on disk are now DETERMINISTIC AND REAL, and the base manifest's
-   * digests are computed from them.
-   *
-   * This fixture previously claimed `sha256: 'cccc…'` for every artifact and wrote the
-   * single byte `x`, and the R3.1 assertion called that "a fully correct pair" — which is
-   * exactly the defect the reviewer reproduced. The content functions below are the single
-   * source of truth for what gets written, so a control that mutates a claim is mutating it
-   * away from bytes that genuinely exist.
+   * C16-R3.3: this block previously built its own partial manifests — no steps, no cache
+   * fingerprint, no descriptor identity — because the R3.1 verifier looked at none of those.
+   * It now mutates the SHARED passing fixture, so there is one definition of a healthy
+   * package and each control changes exactly one thing about a genuinely correct one.
    */
-  const c15Body = (path: string) => `${path}: deterministic control content\n`;
-  const sbomBody = (target: string) =>
-    JSON.stringify({ bomFormat: 'CycloneDX', specVersion: '1.6', target });
-  const C16_RECEIPT = 'C16 PASS\n';
-  const digestOf = (body: string) => createHash('sha256').update(body).digest('hex');
+  let work: string;
+  let dirs: { c15Dir: string; c16Dir: string; sbomFileFor: (t: string) => string };
 
-  const write = (c15: unknown, c16: unknown) => {
-    const c15Dir = join(workDir, `c15-${Math.random().toString(36).slice(2)}`);
-    const c16Dir = join(workDir, `c16-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(c15Dir, { recursive: true });
-    mkdirSync(c16Dir, { recursive: true });
-    writeFileSync(join(c15Dir, 'supply-chain-manifest.json'), JSON.stringify(c15));
-    writeFileSync(join(c16Dir, 'closure-reconciliation.json'), JSON.stringify(c16));
-    for (const a of (c15 as { evidence_artifacts?: Array<{ path: string }> }).evidence_artifacts ?? []) {
-      // Phantom-binding controls point at paths that must NOT be created.
-      if (a.path.includes('..') || a.path.startsWith('/')) continue;
-      writeFileSync(join(c15Dir, a.path), c15Body(a.path));
-    }
-    const targets = (c16 as { targets?: Record<string, { sbom_file?: string; target?: string }> }).targets ?? {};
-    for (const [key, t] of Object.entries(targets)) {
-      if (typeof t.sbom_file === 'string') {
-        writeFileSync(join(c16Dir, t.sbom_file), sbomBody(t.target ?? key));
-      }
-    }
-    for (const a of (c16 as { evidence_artifacts?: Array<{ path: string }> }).evidence_artifacts ?? []) {
-      if (a.path === 'RESULT-PASS.txt') writeFileSync(join(c16Dir, a.path), C16_RECEIPT);
-    }
-    return { c15Dir, c16Dir };
-  };
-  const check = (c15: unknown, c16: unknown): string[] => {
-    const { c15Dir, c16Dir } = write(c15, c16);
-    return assertFinalManifests({ c15Dir, c16Dir, expectedSha: SHA, root: REPO }) as string[];
-  };
-
-  beforeAll(() => {
-    workDir = mkdtempSync(join(tmpdir(), 'eye-r31-assert-'));
-    const pins = JSON.parse(readFileSync(join(REPO, 'scripts/gate/scanner-pins.json'), 'utf8')) as {
-      tools: Record<string, { artifacts: Record<string, { executable_sha256: string }> }>;
-    };
-    const hostKey = `${process.platform}-${process.arch}`;
-    const digest = (tool: string) => pins.tools[tool]!.artifacts[hostKey]!.executable_sha256;
-    const cacheDigest = digestOf('an unchanged isolated cache');
-    const authFor = (tool: string) => ({
-      match: true,
-      actual_sha256: digest(tool),
-      authenticated_before_first_execution: true,
-    });
-    const stagedFor = (tool: string) => ({
-      sha256_after: digest(tool), expected: digest(tool), match: true,
-    });
-    const c16Targets = Object.fromEntries(expectedTargetIds(REPO).map((name: string) => {
-      const file = `sbom-${name}.json`;
-      const body = sbomBody(name);
-      return [name, {
-        target: name,
-        sbom_file: file,
-        sbom_bytes: Buffer.byteLength(body),
-        sbom_sha256: digestOf(body),
-        counts: { nodes: 10, subject_root_edges: 4 },
-        reconciliation: { clean: true, subject_root_edges_present: 4 },
-      }];
-    }));
-    base = {
-      c15: {
-        mode: C15_FINAL_MODE, outcome: C15_PASS_OUTCOME, source_sha: SHA,
-        tree_clean_at_run: true, trivy_cache_unchanged: true, failures: [],
-        // C16-R3.2 post-scan posture: scanning altered neither the tree nor the cache, and
-        // the staged binaries are still the authenticated ones.
-        tree_clean_after_scanning: true,
-        worktree_unchanged_by_scanning: true,
-        trivy_cache_fingerprint_before: { digest: cacheDigest },
-        trivy_cache_fingerprint_after: { digest: cacheDigest },
-        host_platform_key: hostKey,
-        executed_binary_authentication: {
-          verified: { trivy: authFor('trivy'), gitleaks: authFor('gitleaks') },
-        },
-        staged_tools_after_scanning: { trivy: stagedFor('trivy'), gitleaks: stagedFor('gitleaks') },
-        evidence_artifacts: REQUIRED_C15_ARTIFACTS.map((p: string) => ({
-          path: p, bytes: Buffer.byteLength(c15Body(p)), sha256: digestOf(c15Body(p)),
-        })),
-        image_finding_reconciliation: {
-          total_findings: 16, unmatched: [], unused_records: [], stale_advisory_ids: [],
-        },
-        step_policy_audit: { every_informational_step_duplicates_a_blocking_step: true },
-      },
-      c16: {
-        status: C16_FINAL_STATUS,
-        generated_from: { source_sha: SHA },
-        final_source_posture: { expected_sha: SHA, head_sha: SHA, worktree_clean: true },
-        targets: c16Targets,
-        vulnerable_residuals: [],
-        governed_exclusions: { rejected: [], cardinality_problems: [] },
-        evidence_artifacts: [
-          { path: 'RESULT-PASS.txt', bytes: Buffer.byteLength(C16_RECEIPT), sha256: digestOf(C16_RECEIPT) },
-          ...Object.values(c16Targets).map((t: any) => ({
-            path: t.sbom_file, bytes: t.sbom_bytes, sha256: t.sbom_sha256,
-          })),
-        ],
-      },
-    };
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'eye-r31-assert-'));
+    dirs = buildPassingEvidence(work, REPO);
   });
-  afterAll(() => rmSync(workDir, { recursive: true, force: true }));
+  afterEach(() => rmSync(work, { recursive: true, force: true }));
 
-  const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+  const run = () => assertFinalManifests({
+    c15Dir: dirs.c15Dir, c16Dir: dirs.c16Dir, expectedSha: FIXTURE_SHA, root: REPO,
+  }) as string[];
+  const mutateC15 = (fn: (m: Record<string, any>) => void) => {
+    editManifest(dirs.c15Dir, 'supply-chain-manifest.json', fn); return run().join('\n');
+  };
+  const mutateC16 = (fn: (m: Record<string, any>) => void) => {
+    editManifest(dirs.c16Dir, 'closure-reconciliation.json', fn); return run().join('\n');
+  };
 
   it('POSITIVE: a fully correct pair passes', () => {
-    expect(check(base.c15, base.c16)).toEqual([]);
+    expect(run()).toEqual([]);
   });
 
   it('a FORGED status that merely begins with FINAL is rejected', () => {
-    const c16 = clone(base.c16);
-    c16.status = 'FINAL — but actually not, forged by hand';
-    const problems = check(base.c15, c16);
-    expect(problems.join('\n')).toMatch(/C16 status is .* expected exactly/);
+    expect(mutateC16((m) => { m.status = 'FINAL — but actually not, forged by hand'; }))
+      .toMatch(/C16 status is .* expected exactly/);
   });
 
   it('a forged C15 mode is rejected', () => {
-    const c15 = clone(base.c15);
-    c15.mode = 'final-ish';
-    expect(check(c15, base.c16).join('\n')).toMatch(/C15 mode is .* expected exactly/);
+    expect(mutateC15((m) => { m.mode = 'final-ish'; })).toMatch(/C15 mode is .* expected exactly/);
   });
 
   it('an EMPTY C16 target set is rejected', () => {
-    const c16 = clone(base.c16);
-    c16.targets = {};
-    expect(check(base.c15, c16).join('\n')).toMatch(/C16 target set is \[\], expected exactly/);
+    expect(mutateC16((m) => { m.targets = {}; })).toMatch(/C16 target set is \[\], expected exactly/);
   });
 
   it('a MISSING C16 target is rejected', () => {
-    const c16 = clone(base.c16);
-    delete (c16.targets as Record<string, unknown>).development;
-    expect(check(base.c15, c16).join('\n')).toMatch(/C16 target set is \[production\]/);
+    expect(mutateC16((m) => { delete m.targets.development; }))
+      .toMatch(/C16 target set is \[production\]/);
   });
 
   it('an EXTRA C16 target is rejected', () => {
-    const c16 = clone(base.c16);
-    (c16.targets as Record<string, unknown>)['staging'] = {
-      sbom_sha256: 'e'.repeat(64), sbom_file: 'sbom-staging.json',
-      counts: { nodes: 1, subject_root_edges: 1 },
-      reconciliation: { clean: true, subject_root_edges_present: 1 },
-    };
-    expect(check(base.c15, c16).join('\n')).toMatch(/expected exactly \[development, production\]/);
+    expect(mutateC16((m) => {
+      m.targets.staging = JSON.parse(JSON.stringify(m.targets.production));
+    })).toMatch(/expected exactly \[development, production\]/);
   });
 
   it('an EMPTY authenticated-tool set is rejected', () => {
-    const c15 = clone(base.c15);
-    (c15.executed_binary_authentication as { verified: unknown }).verified = {};
-    expect(check(c15, base.c16).join('\n')).toMatch(/authenticated tool set is \[\], expected exactly/);
+    expect(mutateC15((m) => { m.executed_binary_authentication.verified = {}; }))
+      .toMatch(/authenticated tool set is \[\], expected exactly/);
   });
 
   it('a PARTIAL authenticated-tool set is rejected', () => {
-    const c15 = clone(base.c15);
-    delete (c15.executed_binary_authentication as { verified: Record<string, unknown> }).verified.gitleaks;
-    expect(check(c15, base.c16).join('\n')).toMatch(/authenticated tool set is \[trivy\]/);
+    expect(mutateC15((m) => { delete m.executed_binary_authentication.verified.gitleaks; }))
+      .toMatch(/authenticated tool set is \[trivy\]/);
   });
 
   it('a MISSING required artifact is rejected', () => {
-    const c15 = clone(base.c15);
-    c15.evidence_artifacts = (c15.evidence_artifacts as Array<{ path: string }>)
-      .filter((a) => a.path !== 'RESULT-PASS.txt');
-    expect(check(c15, base.c16).join('\n')).toMatch(/did not bind the required artifact 'RESULT-PASS.txt'/);
+    expect(mutateC15((m) => {
+      m.evidence_artifacts = m.evidence_artifacts.filter((a: any) => a.path !== 'RESULT-PASS.txt');
+    })).toMatch(/did not bind the required output 'RESULT-PASS\.txt'/);
   });
 
   it('an EMPTY artifact binding list is rejected', () => {
-    const c15 = clone(base.c15);
-    c15.evidence_artifacts = [];
-    expect(check(c15, base.c16).join('\n')).toMatch(/bound no evidence artifacts/);
+    expect(mutateC15((m) => { m.evidence_artifacts = []; })).toMatch(/bound no evidence artifacts/);
   });
 
   it('a NAMED C16 SBOM that is not present is rejected', () => {
-    const { c15Dir, c16Dir } = write(base.c15, base.c16);
-    rmSync(join(c16Dir, 'sbom-production.json'));
-    const problems = assertFinalManifests({ c15Dir, c16Dir, expectedSha: SHA, root: REPO }) as string[];
-    expect(problems.join('\n')).toMatch(/names sbom-production\.json, which is not present/);
+    rmSync(join(dirs.c16Dir, dirs.sbomFileFor('production')));
+    expect(run().join('\n')).toMatch(/SBOM '.*' does not exist/);
   });
 
   it('a wrong source SHA on either side is rejected', () => {
-    const c15 = clone(base.c15); c15.source_sha = 'b'.repeat(40);
-    expect(check(c15, base.c16).join('\n')).toMatch(/C15 source_sha/);
-    const c16 = clone(base.c16);
-    (c16.generated_from as { source_sha: string }).source_sha = 'b'.repeat(40);
-    expect(check(base.c15, c16).join('\n')).toMatch(/C16 source_sha/);
+    expect(mutateC15((m) => { m.source_sha = 'b'.repeat(40); })).toMatch(/C15 source_sha/);
+    dirs = buildPassingEvidence(mkdtempSync(join(tmpdir(), 'eye-r31-sha-')), REPO);
+    expect(mutateC16((m) => { m.generated_from.source_sha = 'b'.repeat(40); })).toMatch(/C16 source_sha/);
   });
 
   it('an ungoverned image finding or a stale record is rejected', () => {
-    const c15 = clone(base.c15);
-    (c15.image_finding_reconciliation as { unmatched: string[] }).unmatched = ['CVE-X'];
-    expect(check(c15, base.c16).join('\n')).toMatch(/non-empty 'unmatched'/);
+    expect(mutateC15((m) => { m.image_finding_reconciliation.unmatched = ['CVE-X']; }))
+      .toMatch(/non-empty 'unmatched'/);
   });
 });
