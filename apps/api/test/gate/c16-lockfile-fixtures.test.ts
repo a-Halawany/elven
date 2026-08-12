@@ -1274,3 +1274,153 @@ describe('C16-R3 fixture — the governed component type must be an ALLOWED type
     }
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 fixture — DIRECT importer dependencies respect snapshot optionality', () => {
+  /**
+   * A direct importer dependency declared under `dependencies:` whose SNAPSHOT carries
+   * `optional: true` was seeded as MANDATORY, because snapshot optionality was only
+   * consulted for transitive edges. Worse, if such a dependency was platform-incompatible
+   * it failed the gate as a required dependency instead of being recorded as a governed
+   * optional exclusion. Optionality is now determined BEFORE both scope seeding and
+   * platform handling.
+   */
+  const scopesOf = (c: Closure, ref: string) => [...c.nodes.get(ref)!.scopes].sort();
+
+  it('a COMPATIBLE direct dependency flagged optional gets the exact optional scope', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      direct-flagged:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        '      direct-mandatory:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  direct-flagged@1.0.0:',
+        `    resolution: {integrity: ${sri('df')}}`,
+        '    os:',
+        '      - linux',
+        '    cpu:',
+        '      - x64',
+        '  direct-mandatory@1.0.0:',
+        `    resolution: {integrity: ${sri('dm')}}`,
+        '  under-direct@1.0.0:',
+        `    resolution: {integrity: ${sri('ud')}}`,
+        'snapshots:',
+        '  direct-flagged@1.0.0:',
+        '    optional: true',
+        '    dependencies:',
+        '      under-direct: 1.0.0',
+        '  direct-mandatory@1.0.0: {}',
+        '  under-direct@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    // The EDGE is a plain `dependencies` declaration on the ROOT importer; only the
+    // snapshot marks it optional. It must not claim `dependencies`.
+    expect(scopesOf(c, 'direct-flagged@1.0.0')).toEqual(['optionalDependencies']);
+    // …and optional ancestry carries to its subtree.
+    expect(scopesOf(c, 'under-direct@1.0.0')).toEqual(['optionalDependencies']);
+    // A genuinely mandatory sibling is unaffected.
+    expect(scopesOf(c, 'direct-mandatory@1.0.0')).toEqual(['dependencies']);
+  });
+
+  it('an INCOMPATIBLE direct dependency flagged optional is a governed exclusion, not a failure', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      direct-darwin-optional:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  direct-darwin-optional@1.0.0:',
+        `    resolution: {integrity: ${sri('ddo')}}`,
+        '    os:',
+        '      - darwin',
+        'snapshots:',
+        '  direct-darwin-optional@1.0.0:',
+        '    optional: true',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    // NOT a failure: it is optional, so an incompatible platform is a governed exclusion.
+    expect(c.unresolved, 'an optional incompatible dep must not fail as mandatory').toEqual([]);
+    expect(c.nodes.has('direct-darwin-optional@1.0.0')).toBe(false);
+    expect(c.excludedByPlatform).toHaveLength(1);
+    const ex = c.excludedByPlatform[0]! as unknown as {
+      bomRef: string; field: string; reason: string; optional: boolean; optional_source: string;
+    };
+    expect(ex.bomRef).toBe('direct-darwin-optional@1.0.0');
+    expect(ex.field).toBe('os');
+    expect(ex.reason).toBe('requires darwin');
+    expect(ex.optional).toBe(true);
+    // The RECORD says WHY it was treated as optional — the snapshot flag, not the edge.
+    expect(ex.optional_source).toBe('snapshot optional: true');
+  });
+
+  it('an INCOMPATIBLE direct dependency that is NOT optional still fails as mandatory', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      direct-darwin-required:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  direct-darwin-required@1.0.0:',
+        `    resolution: {integrity: ${sri('ddr')}}`,
+        '    os:',
+        '      - darwin',
+        'snapshots:',
+        '  direct-darwin-required@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved.join('\n')).toMatch(/is NOT optional/);
+    expect(c.excludedByPlatform).toEqual([]);
+  });
+
+  it('a direct dependency under optionalDependencies records the EDGE as the source', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    optionalDependencies:',
+        '      edge-optional-darwin:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  edge-optional-darwin@1.0.0:',
+        `    resolution: {integrity: ${sri('eod')}}`,
+        '    os:',
+        '      - darwin',
+        'snapshots:',
+        '  edge-optional-darwin@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    const ex = c.excludedByPlatform[0]! as unknown as { optional_source: string };
+    expect(ex.optional_source).toBe('optionalDependencies edge');
+  });
+});

@@ -19,7 +19,7 @@
  * download.
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -189,8 +189,11 @@ describe('C15 behavioural control — a BAD TOOL PIN fails before any scan', () 
     expect(r.manifest).not.toBeNull();
     expect(r.manifest!.outcome).toBe('FAIL');
     const text = r.manifest!.failures.join('\n');
-    expect(text).toMatch(/toolchain not pinned/);
-    expect(text).toMatch(/gitleaks: expected 8\.30\.1, found 0\.0\.0-not-the-pin/);
+    // Since C16-R3.1 the EXECUTABLE DIGEST is checked before the version is ever probed,
+    // so a wrong binary is refused by its bytes rather than by its self-reported version.
+    // That ordering is the point: no code from an unauthenticated binary runs first.
+    expect(text).toMatch(/gitleaks EXECUTABLE at/);
+    expect(text).toMatch(/is not authenticated/);
     // Nothing may have been scanned: the refusal precedes every step.
     expect(r.stdout).not.toContain('pnpm-audit-human');
     expect((r.manifest as unknown as { steps: unknown[] }).steps).toEqual([]);
@@ -616,4 +619,260 @@ describe('C16-R3 — evidence completeness', () => {
       expect(f.path.startsWith('policy/content/')).toBe(true);
     }
   }, 25 * 60_000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 — scanner dispositions: types, digests and unconditional matching', () => {
+  const governed = 'scripts/gate/scanner-exclusions.json';
+  const current = () => JSON.parse(readFileSync(join(REPO, governed), 'utf8')) as {
+    records: Array<Record<string, unknown>>;
+  };
+  const replaceDoc = (mutate: (d: { records: Array<Record<string, unknown>> }) => void) => {
+    const d = current();
+    mutate(d);
+    return withReplacedFile(governed, `${JSON.stringify(d, null, 2)}\n`, () => runGate());
+  };
+
+  it('POSITIVE: the committed dispositions pass with a byte-matched evidence digest', () => {
+    const r = runGate();
+    expect(r.status, `${JSON.stringify(r.manifest?.failures)}`).toBe(0);
+    const m = r.manifest as unknown as {
+      scanner_exclusions: { declared: number };
+      image_finding_reconciliation: { total_findings: number; unmatched: string[]; unused_records: string[] };
+    };
+    expect(m.scanner_exclusions.declared).toBe(3);
+    expect(m.image_finding_reconciliation.unmatched).toEqual([]);
+    expect(m.image_finding_reconciliation.unused_records).toEqual([]);
+  }, 25 * 60_000);
+
+  it('a MISSING evidence_sha256 is rejected', () => {
+    const r = replaceDoc((d) => { delete d.records[0]!.evidence_sha256; });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/missing required field 'evidence_sha256'/);
+  }, 15 * 60_000);
+
+  it('a NUMERIC evidence_sha256 is rejected by the type contract', () => {
+    const r = replaceDoc((d) => { d.records[0]!.evidence_sha256 = 123; });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/'evidence_sha256' must be a string, got number/);
+  }, 15 * 60_000);
+
+  it('a WRONG evidence digest is rejected by recomputation', () => {
+    const r = replaceDoc((d) => { d.records[0]!.evidence_sha256 = 'b'.repeat(64); });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/evidence digest mismatch/);
+  }, 15 * 60_000);
+
+  it('a ONE-BYTE change to the evidence document invalidates every record', () => {
+    const doc = 'docs/SCANNER_DISPOSITIONS.md';
+    const original = readFileSync(join(REPO, doc), 'utf8');
+    // Append a single byte; the tracked digests no longer match.
+    const r = withReplacedFile(doc, `${original}\n`, () => runGate());
+    expect(r.status).not.toBe(0);
+    const text = r.manifest!.failures.join('\n');
+    expect(text).toMatch(/evidence digest mismatch/);
+    // All three records cite the same document, so all three must fail.
+    expect((text.match(/evidence digest mismatch/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  }, 15 * 60_000);
+
+  it('a STRING severities (wrong type) does NOT bypass severity matching', () => {
+    // Previously the matcher was type-gated (`Array.isArray(r.severities) && …`), so a
+    // string silently skipped severity comparison and the record governed findings it was
+    // never approved for.
+    const r = replaceDoc((d) => { d.records[0]!.severities = 'HIGH'; });
+    expect(r.status).not.toBe(0);
+    const text = r.manifest!.failures.join('\n');
+    expect(text).toMatch(/'severities' must be an array of strings, got string/);
+    // The record is marked structurally FATAL, so it is removed from the matching set
+    // entirely and cannot govern anything. The gate stops before scanning rather than
+    // scanning with a governance document it knows is invalid; the unit control in
+    // c15-scanner-provenance.test.ts proves the matcher itself no longer skips the field.
+    const m = r.manifest as unknown as { scanner_exclusion_fatal_indices?: number[] };
+    expect(m.scanner_exclusion_fatal_indices).toContain(0);
+  }, 25 * 60_000);
+
+  it('a NUMERIC result_target (wrong type) does NOT bypass target matching', () => {
+    const r = replaceDoc((d) => { d.records[1]!.result_target = 12345; });
+    expect(r.status).not.toBe(0);
+    const text = r.manifest!.failures.join('\n');
+    expect(text).toMatch(/'result_target' must be a string, got number/);
+    const m = r.manifest as unknown as { scanner_exclusion_fatal_indices?: number[] };
+    expect(m.scanner_exclusion_fatal_indices).toContain(1);
+  }, 25 * 60_000);
+
+  it('a composite severity label is rejected and governs nothing', () => {
+    const r = replaceDoc((d) => {
+      delete d.records[0]!.severities;
+      d.records[0]!.severity = 'HIGH_AND_CRITICAL';
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/missing required field 'severities'/);
+  }, 15 * 60_000);
+
+  it('a STALE approval date (future) is rejected', () => {
+    const r = replaceDoc((d) => {
+      d.records[0]!.approved_on = '2099-01-01';
+      d.records[0]!.expires_on = '2099-12-31';
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/approved_on 2099-01-01 is in the future/);
+  }, 15 * 60_000);
+
+  it('a WRONG result target is not governed', () => {
+    const r = replaceDoc((d) => { d.records[1]!.result_target = 'usr/local/bin/elsewhere'; });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding/);
+  }, 25 * 60_000);
+
+  it('the CRITICAL record cannot be replaced by a HIGH-only record (escalation)', () => {
+    const r = replaceDoc((d) => {
+      const critical = d.records.find((x) => x.id === 'SCX-0003')!;
+      critical.severities = ['HIGH'];
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2025-68121 CRITICAL/);
+  }, 25 * 60_000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 — authentication happens BEFORE any scanner code executes', () => {
+  it('a same-version WRONG binary is rejected before it can run anything', () => {
+    // A stub that reports the correct version and, if ever executed for real work, would
+    // write a marker file. The marker must NOT exist: the gate must reject on digest
+    // before invoking it for anything beyond the (pre-authentication) resolution.
+    const binDir = mkdtempSync(join(tmpdir(), 'eye-r31-wrongbin-'));
+    scratch.push(binDir);
+    const marker = join(binDir, 'EXECUTED');
+    const stub = join(binDir, 'trivy');
+    writeFileSync(stub, [
+      '#!/bin/sh',
+      `printf '' >> ${JSON.stringify(marker)}`,
+      'case "$1" in',
+      '  --version|version) echo "Version: 0.73.0" ;;',
+      '  *) echo "{}" ;;',
+      'esac',
+      '',
+    ].join('\n'));
+    spawnSync('chmod', ['+x', stub]);
+
+    const r = runGate([], { PATH: `${binDir}:${process.env.PATH ?? ''}` });
+    expect(r.status).not.toBe(0);
+    const text = r.manifest!.failures.join('\n');
+    expect(text).toMatch(/trivy EXECUTABLE at/);
+    expect(text).toMatch(/Refused BEFORE any executable code from it ran/);
+    // The decisive assertion: the stub never ran.
+    expect(existsSync(marker), 'the wrong binary must not have been executed').toBe(false);
+    // And the run recorded that authentication preceded execution.
+    const m = r.manifest as unknown as {
+      executed_binary_authentication: { verified: Record<string, { authenticated_before_first_execution: boolean; match: boolean }> };
+      steps: unknown[];
+    };
+    expect(m.executed_binary_authentication.verified.trivy.match).toBe(false);
+    expect(m.executed_binary_authentication.verified.trivy.authenticated_before_first_execution).toBe(true);
+    expect(m.steps, 'no scan step may have run').toEqual([]);
+  }, 15 * 60_000);
+
+  it('a PASSING run stages the authenticated binaries and re-verifies them afterwards', () => {
+    const r = runGate();
+    expect(r.status).toBe(0);
+    const m = r.manifest as unknown as {
+      executed_binary_authentication: {
+        staged_dir: string;
+        verified: Record<string, { staged_path: string; staged_sha256: string; match: boolean }>;
+      };
+      staged_tools_after_scanning: Record<string, { match: boolean; sha256_after: string }>;
+      worktree_unchanged_by_scanning: boolean;
+      steps: Array<{ command: string }>;
+    };
+    for (const tool of ['trivy', 'gitleaks']) {
+      const v = m.executed_binary_authentication.verified[tool]!;
+      expect(v.match).toBe(true);
+      expect(v.staged_path).toContain('.staged-scanners');
+      expect(v.staged_sha256).toMatch(/^[a-f0-9]{64}$/);
+      // Re-verified AFTER all scanning.
+      expect(m.staged_tools_after_scanning[tool]!.match).toBe(true);
+    }
+    // Every scan command invoked the staged ABSOLUTE path, never a bare tool name.
+    const scans = m.steps.filter((s) => /trivy|gitleaks/.test(s.command));
+    expect(scans.length).toBeGreaterThan(0);
+    for (const s of scans) {
+      expect(s.command.startsWith('/'), `not an absolute path: ${s.command.slice(0, 60)}`).toBe(true);
+      expect(s.command).toContain('.staged-scanners');
+    }
+    // Scanning did not modify the source it examined.
+    expect(m.worktree_unchanged_by_scanning).toBe(true);
+  }, 25 * 60_000);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 — every output except the manifest is bound, on every path', () => {
+  /** Files present in a directory, excluding the by-design exclusions. */
+  const filesIn = (dir: string): string[] => {
+    const out: string[] = [];
+    const walk = (d: string, rel: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (e.name === '.trivy-cache' || e.name === '.staged-scanners') continue;
+          walk(join(d, e.name), rel === '' ? e.name : `${rel}/${e.name}`);
+          continue;
+        }
+        out.push(rel === '' ? e.name : `${rel}/${e.name}`);
+      }
+    };
+    walk(dir, '');
+    return out.sort();
+  };
+  /** Run and return the output directory alongside the parsed manifest. */
+  const runIn = (args: string[] = [], env: Record<string, string> = {}) => {
+    const out = mkdtempSync(join(tmpdir(), 'eye-r31-bind-'));
+    scratch.push(out);
+    const res = spawnSync('node', [RUNNER, '--out', out, '--trivy-cache', cacheDir, ...args], {
+      cwd: REPO, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
+      env: { ...process.env, ...env }, timeout: 25 * 60_000,
+    });
+    const manifest = JSON.parse(readFileSync(join(out, 'supply-chain-manifest.json'), 'utf8')) as {
+      outcome: string; evidence_artifacts: Array<{ path: string; sha256: string }>;
+      evidence_binding_note: string;
+    };
+    return { out, status: res.status, manifest };
+  };
+  const assertOnlyManifestUnbound = (out: string, manifest: { evidence_artifacts: Array<{ path: string }> }) => {
+    const bound = new Set(manifest.evidence_artifacts.map((a) => a.path));
+    const unbound = filesIn(out).filter((f) => !bound.has(f));
+    // The root manifest is the ONE unavoidable self-exclusion: writing its own digest
+    // would change the bytes being digested.
+    expect(unbound, 'only supply-chain-manifest.json may be unbound').toEqual(['supply-chain-manifest.json']);
+  };
+
+  it('SUCCESS path: only the manifest is unbound, and the receipt IS bound', () => {
+    const r = runIn();
+    expect(r.status).toBe(0);
+    expect(r.manifest.outcome).toBe('PASS');
+    assertOnlyManifestUnbound(r.out, r.manifest);
+    expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-PASS.txt');
+    expect(r.manifest.evidence_binding_note).toMatch(/unavoidable self-exclusion|cannot contain its own digest/);
+  }, 25 * 60_000);
+
+  it('GOVERNED FAILURE path: only the manifest is unbound, and RESULT-FAIL IS bound', () => {
+    const legacy = join(REPO, '.trivyignore');
+    writeFileSync(legacy, 'CVE-2026-33630\n');
+    try {
+      const r = runIn();
+      expect(r.status).not.toBe(0);
+      expect(r.manifest.outcome).toBe('FAIL');
+      assertOnlyManifestUnbound(r.out, r.manifest);
+      expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-FAIL.txt');
+    } finally {
+      rmSync(legacy, { force: true });
+    }
+  }, 25 * 60_000);
+
+  it('USAGE/CRASH path: the receipt is written first and is bound', () => {
+    const r = runIn(['--not-a-real-flag']);
+    expect(r.status).not.toBe(0);
+    expect(r.manifest.outcome).toBe('USAGE-ERROR');
+    assertOnlyManifestUnbound(r.out, r.manifest);
+    expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-FAIL.txt');
+    expect(r.manifest.evidence_artifacts.length).toBeGreaterThan(0);
+  }, 15 * 60_000);
 });

@@ -36,6 +36,12 @@ import {
   reconcile, governExclusions, applyExclusions, checkExclusionCardinality,
   EXCLUSION_REQUIRED_FIELDS, FAILURE_KEYS,
 } from '../../../../scripts/gate/lib/reconcile.mjs';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import {
+  assertFinalManifests, expectedTargetIds, C15_FINAL_MODE, C15_PASS_OUTCOME,
+  C16_FINAL_STATUS, REQUIRED_C15_ARTIFACTS,
+} from '../../../../scripts/gate/assert-final-manifests.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 
@@ -1096,4 +1102,325 @@ describe('C16-R3 control — top-level document identity', () => {
       expect(rec.subject_and_binding_problems.join('\n')).toContain(`metadata subject ${field === 'purl' ? 'purl' : field}`);
     },
   );
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 control — prototype properties are not governed metadata', () => {
+  /**
+   * `name in bindings` consults the PROTOTYPE CHAIN, so `toString`, `constructor` and
+   * `__proto__` all answered true and would have passed the unknown-property check. Own-
+   * property semantics against a null-prototype map remove the class of bypass.
+   */
+  const bind = (closure: Closure) => ({
+    requireExactBindings: true,
+    expectedSubjectVersion: meta.projectVersion,
+    expectedBindings: {
+      'eye:target-id': (closure.target as unknown as { id: string }).id,
+      'eye:target-os': (closure.target as unknown as { os: string }).os,
+      'eye:target-arch': (closure.target as unknown as { arch: string }).arch,
+      'eye:target-libc': (closure.target as unknown as { libc: string }).libc,
+      'eye:target-node': (closure.target as unknown as { node: { pinned: string } }).node.pinned,
+      'eye:target-pnpm': (closure.target as unknown as { pnpm: { pinned: string } }).pnpm.pinned,
+      'eye:importer-roots': closure.target.importer_roots.join(','),
+      'eye:dependency-scopes': closure.target.dependency_scopes.join(','),
+      'eye:closure-source': 'pnpm-lock.yaml (importers+packages+snapshots)',
+      'eye:source-sha': meta.sourceSha,
+      'eye:lockfile-sha256': meta.lockfileSha256,
+      'eye:descriptor-sha256': meta.descriptorSha256,
+      'eye:generator': 'scripts/gate/generate-closures.mjs',
+      'eye:generator-sha256': meta.generatorSha256,
+      'eye:purl-implementation': meta.purlImplementation,
+      'eye:yaml-implementation': meta.yamlImplementation,
+    },
+  });
+  const run = (closure: Closure, mutate?: (doc: Doc) => void): Rec => {
+    const doc = buildSbom(closure, meta) as unknown as Doc;
+    if (mutate !== undefined) mutate(doc);
+    const file = join(dir, `sbom-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(file, serialize(doc));
+    const onDisk = extractFromSbom(readFileSync(file, 'utf8'));
+    rmSync(file);
+    return reconcile(closure, onDisk, bind(closure)) as Rec;
+  };
+
+  it('the unmutated document still reconciles clean', () => {
+    expect(failures(run(closures.production!))).toEqual([]);
+  });
+
+  it.each(['toString', 'constructor', '__proto__'])(
+    'a metadata property named %s is rejected as UNKNOWN', (name) => {
+      const rec = run(closures.production!, (doc) => {
+        doc.metadata.properties.push({ name, value: 'injected' });
+      });
+      expect(rec.clean, `${name} must not pass as governed metadata`).toBe(false);
+      expect(rec.subject_and_binding_problems.join('\n'))
+        .toContain(`UNKNOWN metadata property '${name}'`);
+    },
+  );
+
+  it.each(['toString', 'constructor', '__proto__'])(
+    'a COMPONENT property named %s is rejected as UNKNOWN', (name) => {
+      const rec = run(closures.production!, (doc) => {
+        pickRegistryComponent(doc).properties.push({ name, value: 'injected' });
+      });
+      expect(rec.clean).toBe(false);
+      expect(rec.field_mismatches.join('\n')).toContain(`UNKNOWN property '${name}'`);
+    },
+  );
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 control — closure-exclusion evidence digest is strict', () => {
+  const RUN_DATE = '2026-08-12';
+  const EVIDENCE = 'docs/SCANNER_DISPOSITIONS.md';
+  const realDigest = () =>
+    createHash('sha256').update(readFileSync(join(REPO, EVIDENCE))).digest('hex');
+  const isTracked = (rel: string) =>
+    spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO, encoding: 'utf8' }).status === 0;
+  const readEvidence = (rel: string) => {
+    try { return readFileSync(join(REPO, rel)); } catch { return null; }
+  };
+  const optionalOnlyNode = () => {
+    const c = closures.production!;
+    for (const n of c.nodes.values()) {
+      if (n.kind === 'workspace') continue;
+      const inbound = c.edges.filter((e) => e.to === n.bomRef);
+      if (inbound.length > 0 && inbound.every((e) => e.kind === 'optionalDependencies')) {
+        return { node: n, parent: inbound[0]! };
+      }
+    }
+    throw new Error('no optional-only node');
+  };
+  const entry = (over: Record<string, unknown> = {}) => {
+    const { node, parent } = optionalOnlyNode();
+    return {
+      id: 'CX-R31', target: 'production',
+      scope: [...node.scopes].includes('optionalDependencies') ? 'optionalDependencies' : [...node.scopes][0]!,
+      resolution_key: node.lockKey,
+      parent_edge: `${parent.from} -> ${parent.to}`,
+      reason: 'control fixture', evidence: EVIDENCE, evidence_sha256: realDigest(),
+      owner: 'platform-team', approver: 'security-review',
+      approved_on: '2026-08-01', expires_on: '2027-01-01',
+      ...over,
+    };
+  };
+  const govern = (exclusions: unknown[]) => governExclusions(
+    {
+      schema_version: '3.0.0',
+      required_fields: [...EXCLUSION_REQUIRED_FIELDS],
+      rejection_rules: {},
+      exclusions,
+    },
+    closures, lockUniverse, RUN_DATE, { root: REPO, isTracked, readEvidence },
+  ) as { problems: string[]; valid: unknown[] };
+
+  it('POSITIVE: the correct digest is accepted', () => {
+    const r = govern([entry()]);
+    expect(r.problems).toEqual([]);
+    expect(r.valid).toHaveLength(1);
+  });
+
+  it('a MISSING evidence_sha256 is rejected', () => {
+    const e = entry(); delete (e as Record<string, unknown>).evidence_sha256;
+    expect(govern([e]).problems.join('\n')).toMatch(/missing required field 'evidence_sha256'/);
+  });
+
+  it('a NUMERIC evidence_sha256 is rejected, not silently skipped', () => {
+    // `evidence_sha256: 123` previously skipped both the format check and the recompute,
+    // so the approval was bound to nothing at all.
+    const r = govern([entry({ evidence_sha256: 123 })]);
+    expect(r.problems.join('\n')).toMatch(/evidence_sha256 must be a string, got number/);
+    expect(r.valid).toHaveLength(0);
+  });
+
+  it.each([
+    ['uppercase hex', 'A'.repeat(64)],
+    ['too short', 'a'.repeat(63)],
+    ['not hex', 'z'.repeat(64)],
+  ])('a MALFORMED digest (%s) is rejected', (_label, value) => {
+    const r = govern([entry({ evidence_sha256: value })]);
+    expect(r.problems.join('\n')).toMatch(/lowercase 64-character hex/);
+    expect(r.valid).toHaveLength(0);
+  });
+
+  it('a WRONG digest is rejected by recomputation', () => {
+    const r = govern([entry({ evidence_sha256: 'b'.repeat(64) })]);
+    expect(r.problems.join('\n')).toMatch(/evidence digest mismatch/);
+  });
+
+  it('a ONE-BYTE change to the evidence invalidates the record', () => {
+    const original = readFileSync(join(REPO, EVIDENCE));
+    const e = entry();   // digest of the ORIGINAL bytes
+    // Serve one modified byte without touching the tracked file.
+    const modified = Buffer.from(original);
+    modified[modified.length - 1] = modified[modified.length - 1]! ^ 0x01;
+    const r = governExclusions(
+      {
+        schema_version: '3.0.0',
+        required_fields: [...EXCLUSION_REQUIRED_FIELDS],
+        rejection_rules: {}, exclusions: [e],
+      },
+      closures, lockUniverse, RUN_DATE,
+      { root: REPO, isTracked, readEvidence: () => modified },
+    ) as { problems: string[]; valid: unknown[] };
+    expect(r.problems.join('\n')).toMatch(/evidence digest mismatch/);
+    expect(r.valid).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
+  const SHA = 'a'.repeat(40);
+  let base: { c15: Record<string, unknown>; c16: Record<string, unknown> };
+  let workDir: string;
+
+  const write = (c15: unknown, c16: unknown) => {
+    const c15Dir = join(workDir, `c15-${Math.random().toString(36).slice(2)}`);
+    const c16Dir = join(workDir, `c16-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(c15Dir, { recursive: true });
+    mkdirSync(c16Dir, { recursive: true });
+    writeFileSync(join(c15Dir, 'supply-chain-manifest.json'), JSON.stringify(c15));
+    writeFileSync(join(c16Dir, 'closure-reconciliation.json'), JSON.stringify(c16));
+    // The SBOM files the C16 manifest names must exist beside it.
+    for (const t of Object.values((c16 as { targets?: Record<string, { sbom_file?: string }> }).targets ?? {})) {
+      if (typeof t.sbom_file === 'string') writeFileSync(join(c16Dir, t.sbom_file), '{}');
+    }
+    for (const a of (c15 as { evidence_artifacts?: Array<{ path: string }> }).evidence_artifacts ?? []) {
+      writeFileSync(join(c15Dir, a.path), 'x');
+    }
+    return { c15Dir, c16Dir };
+  };
+  const check = (c15: unknown, c16: unknown): string[] => {
+    const { c15Dir, c16Dir } = write(c15, c16);
+    return assertFinalManifests({ c15Dir, c16Dir, expectedSha: SHA, root: REPO }) as string[];
+  };
+
+  beforeAll(() => {
+    workDir = mkdtempSync(join(tmpdir(), 'eye-r31-assert-'));
+    const pins = JSON.parse(readFileSync(join(REPO, 'scripts/gate/scanner-pins.json'), 'utf8')) as {
+      tools: Record<string, { artifacts: Record<string, { executable_sha256: string }> }>;
+    };
+    const hostKey = `${process.platform}-${process.arch}`;
+    const digest = (tool: string) => pins.tools[tool]!.artifacts[hostKey]!.executable_sha256;
+    base = {
+      c15: {
+        mode: C15_FINAL_MODE, outcome: C15_PASS_OUTCOME, source_sha: SHA,
+        tree_clean_at_run: true, trivy_cache_unchanged: true, failures: [],
+        host_platform_key: hostKey,
+        executed_binary_authentication: {
+          verified: {
+            trivy: { match: true, actual_sha256: digest('trivy') },
+            gitleaks: { match: true, actual_sha256: digest('gitleaks') },
+          },
+        },
+        evidence_artifacts: REQUIRED_C15_ARTIFACTS.map((p: string) => ({
+          path: p, bytes: 1, sha256: 'c'.repeat(64),
+        })),
+        image_finding_reconciliation: {
+          total_findings: 16, unmatched: [], unused_records: [], stale_advisory_ids: [],
+        },
+        step_policy_audit: { every_informational_step_duplicates_a_blocking_step: true },
+      },
+      c16: {
+        status: C16_FINAL_STATUS,
+        generated_from: { source_sha: SHA },
+        final_source_posture: { expected_sha: SHA, head_sha: SHA, worktree_clean: true },
+        targets: Object.fromEntries(expectedTargetIds(REPO).map((name: string) => [name, {
+          sbom_sha256: 'd'.repeat(64), sbom_file: `sbom-${name}.json`,
+          counts: { nodes: 10, subject_root_edges: 4 },
+          reconciliation: { clean: true, subject_root_edges_present: 4 },
+        }])),
+        vulnerable_residuals: [],
+        governed_exclusions: { rejected: [], cardinality_problems: [] },
+      },
+    };
+  });
+  afterAll(() => rmSync(workDir, { recursive: true, force: true }));
+
+  const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+  it('POSITIVE: a fully correct pair passes', () => {
+    expect(check(base.c15, base.c16)).toEqual([]);
+  });
+
+  it('a FORGED status that merely begins with FINAL is rejected', () => {
+    const c16 = clone(base.c16);
+    c16.status = 'FINAL — but actually not, forged by hand';
+    const problems = check(base.c15, c16);
+    expect(problems.join('\n')).toMatch(/C16 status is .* expected exactly/);
+  });
+
+  it('a forged C15 mode is rejected', () => {
+    const c15 = clone(base.c15);
+    c15.mode = 'final-ish';
+    expect(check(c15, base.c16).join('\n')).toMatch(/C15 mode is .* expected exactly/);
+  });
+
+  it('an EMPTY C16 target set is rejected', () => {
+    const c16 = clone(base.c16);
+    c16.targets = {};
+    expect(check(base.c15, c16).join('\n')).toMatch(/C16 target set is \[\], expected exactly/);
+  });
+
+  it('a MISSING C16 target is rejected', () => {
+    const c16 = clone(base.c16);
+    delete (c16.targets as Record<string, unknown>).development;
+    expect(check(base.c15, c16).join('\n')).toMatch(/C16 target set is \[production\]/);
+  });
+
+  it('an EXTRA C16 target is rejected', () => {
+    const c16 = clone(base.c16);
+    (c16.targets as Record<string, unknown>)['staging'] = {
+      sbom_sha256: 'e'.repeat(64), sbom_file: 'sbom-staging.json',
+      counts: { nodes: 1, subject_root_edges: 1 },
+      reconciliation: { clean: true, subject_root_edges_present: 1 },
+    };
+    expect(check(base.c15, c16).join('\n')).toMatch(/expected exactly \[development, production\]/);
+  });
+
+  it('an EMPTY authenticated-tool set is rejected', () => {
+    const c15 = clone(base.c15);
+    (c15.executed_binary_authentication as { verified: unknown }).verified = {};
+    expect(check(c15, base.c16).join('\n')).toMatch(/authenticated tool set is \[\], expected exactly/);
+  });
+
+  it('a PARTIAL authenticated-tool set is rejected', () => {
+    const c15 = clone(base.c15);
+    delete (c15.executed_binary_authentication as { verified: Record<string, unknown> }).verified.gitleaks;
+    expect(check(c15, base.c16).join('\n')).toMatch(/authenticated tool set is \[trivy\]/);
+  });
+
+  it('a MISSING required artifact is rejected', () => {
+    const c15 = clone(base.c15);
+    c15.evidence_artifacts = (c15.evidence_artifacts as Array<{ path: string }>)
+      .filter((a) => a.path !== 'RESULT-PASS.txt');
+    expect(check(c15, base.c16).join('\n')).toMatch(/did not bind the required artifact 'RESULT-PASS.txt'/);
+  });
+
+  it('an EMPTY artifact binding list is rejected', () => {
+    const c15 = clone(base.c15);
+    c15.evidence_artifacts = [];
+    expect(check(c15, base.c16).join('\n')).toMatch(/bound no evidence artifacts/);
+  });
+
+  it('a NAMED C16 SBOM that is not present is rejected', () => {
+    const { c15Dir, c16Dir } = write(base.c15, base.c16);
+    rmSync(join(c16Dir, 'sbom-production.json'));
+    const problems = assertFinalManifests({ c15Dir, c16Dir, expectedSha: SHA, root: REPO }) as string[];
+    expect(problems.join('\n')).toMatch(/names sbom-production\.json, which is not present/);
+  });
+
+  it('a wrong source SHA on either side is rejected', () => {
+    const c15 = clone(base.c15); c15.source_sha = 'b'.repeat(40);
+    expect(check(c15, base.c16).join('\n')).toMatch(/C15 source_sha/);
+    const c16 = clone(base.c16);
+    (c16.generated_from as { source_sha: string }).source_sha = 'b'.repeat(40);
+    expect(check(base.c15, c16).join('\n')).toMatch(/C16 source_sha/);
+  });
+
+  it('an ungoverned image finding or a stale record is rejected', () => {
+    const c15 = clone(base.c15);
+    (c15.image_finding_reconciliation as { unmatched: string[] }).unmatched = ['CVE-X'];
+    expect(check(c15, base.c16).join('\n')).toMatch(/non-empty 'unmatched'/);
+  });
 });

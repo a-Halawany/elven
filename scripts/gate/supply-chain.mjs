@@ -30,7 +30,7 @@
  *   node scripts/gate/supply-chain.mjs [--out DIR] [--final] [--expected-sha SHA]
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, copyFileSync, chmodSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,7 +154,8 @@ function bindArtifacts(outDir) {
       // The isolated trivy cache is fingerprinted separately and is far too large to
       // digest file-by-file here; its identity is already bound by the cache fingerprint.
       if (e.isDirectory()) {
-        if (e.name === '.trivy-cache') continue;
+        // Excluded by design and documented in evidence_binding_note.
+        if (e.name === '.trivy-cache' || e.name === '.staged-scanners') continue;
         walk(full, relPath);
         continue;
       }
@@ -167,6 +168,139 @@ function bindArtifacts(outDir) {
   };
   walk(outDir, '');
   return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+
+/**
+ * Resolve, AUTHENTICATE and STAGE each scanner before it is ever executed.
+ *
+ * Order matters and was previously wrong: the runner probed `--version` and warmed the
+ * cache — both of which EXECUTE the binary — before digesting it. Code from an unverified
+ * executable had therefore already run by the time the check happened.
+ *
+ * Staging closes the check-then-use window: the authenticated bytes are copied into a
+ * private per-run directory and every later invocation uses that absolute path, so a PATH
+ * change or an on-disk swap between verification and use cannot substitute a different
+ * binary. The staged copy is re-digested AFTER all scanning as well, so tampering during
+ * the run is also detected.
+ */
+function stageAuthenticatedTools(tools, pins, hostPlatformKey, outDir, failures) {
+  const stageDir = join(outDir, '.staged-scanners');
+  mkdirSync(stageDir, { recursive: true });
+  const paths = {};
+  const verified = {};
+  const expected = {};
+
+  for (const tool of tools) {
+    const art = pins.tools?.[tool]?.artifacts?.[hostPlatformKey] ?? null;
+    const want = art?.executable_sha256 ?? null;
+    expected[tool] = want;
+
+    const which = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' });
+    const resolved = which.status === 0 ? which.stdout.trim() : null;
+
+    let actual = null;
+    let bytes = null;
+    if (resolved !== null) {
+      try {
+        const buf = readFileSync(resolved);
+        actual = sha256(buf);
+        bytes = buf.byteLength;
+      } catch (e) {
+        actual = null;
+      }
+    }
+
+    verified[tool] = {
+      resolved_path: resolved,
+      actual_sha256: actual,
+      actual_bytes: bytes,
+      expected_sha256: want,
+      expected_bytes: art?.executable_bytes ?? null,
+      match: want !== null && actual === want,
+      staged_path: null,
+      authenticated_before_first_execution: true,
+    };
+
+    if (resolved === null) {
+      failures.push(`${tool} could not be resolved on PATH; it cannot be authenticated or executed`);
+      continue;
+    }
+    if (want === null) {
+      failures.push(
+        `no tracked executable digest for ${tool} on host platform '${hostPlatformKey}'; add it ` +
+        'to scripts/gate/scanner-pins.json before running the gate on this platform',
+      );
+      continue;
+    }
+    if (actual !== want) {
+      failures.push(
+        `${tool} EXECUTABLE at ${resolved} digests to ${actual ?? '(unreadable)'}, which does not ` +
+        `match the tracked ${want}. A binary that merely reports the right version is not ` +
+        'authenticated — install via scripts/gate/install-scanners.sh. Refused BEFORE any ' +
+        'executable code from it ran.',
+      );
+      continue;
+    }
+
+    // Only an AUTHENTICATED binary is staged, and only the staged copy is executed.
+    const target = join(stageDir, tool);
+    copyFileSync(resolved, target);
+    chmodSync(target, 0o755);
+    const stagedDigest = sha256(readFileSync(target));
+    if (stagedDigest !== want) {
+      failures.push(`${tool}: the staged copy digests to ${stagedDigest}, not ${want}`);
+      continue;
+    }
+    paths[tool] = target;
+    verified[tool].staged_path = target;
+    verified[tool].staged_sha256 = stagedDigest;
+  }
+
+  return {
+    paths,
+    stageDir,
+    record: {
+      host_platform: hostPlatformKey,
+      expected,
+      verified,
+      staged_dir: stageDir,
+      note:
+        'Each scanner was resolved, digested and compared against the tracked executable ' +
+        'digest BEFORE its first invocation, then staged into a private per-run directory. ' +
+        'Every scan executes the staged absolute path, and the staged bytes are re-verified ' +
+        'after all scanning completes.',
+    },
+  };
+}
+
+/** Re-verify the staged binaries after all scanner activity. */
+function reverifyStagedTools(staged, failures) {
+  const after = {};
+  for (const [tool, path] of Object.entries(staged.paths)) {
+    let digest = null;
+    try {
+      digest = sha256(readFileSync(path));
+    } catch { /* recorded as null below */ }
+    const want = staged.record.expected[tool];
+    after[tool] = { staged_path: path, sha256_after: digest, expected: want, match: digest === want };
+    if (digest !== want) {
+      failures.push(
+        `${tool}: the staged executable changed during the run (now ${digest ?? '(unreadable)'}, ` +
+        `expected ${want})`,
+      );
+    }
+  }
+  return after;
+}
+
+/** Read tracked evidence bytes, or null when the path is unreadable. */
+function readEvidenceBytes(relative) {
+  try {
+    return readFileSync(join(ROOT, relative));
+  } catch {
+    return null;
+  }
 }
 
 /** Read a governed JSON document with a precise, catchable failure. */
@@ -187,13 +321,15 @@ function readGovernedJson(relative) {
   }
 }
 
-function toolVersions() {
+function toolVersions(stagedPaths = {}) {
   const out = {};
   const mismatches = [];
   for (const [name, spec] of Object.entries(PINNED_TOOLS)) {
     let actual = '(not installed)';
+    // Execute the AUTHENTICATED staged binary when one exists for this tool.
+    const exe = stagedPaths[name] ?? spec.argv[0];
     try {
-      actual = spec.extract(execFileSync(spec.argv[0], spec.argv.slice(1), { encoding: 'utf8' }));
+      actual = spec.extract(execFileSync(exe, spec.argv.slice(1), { encoding: 'utf8' }));
     } catch (e) {
       actual = `(failed: ${e instanceof Error ? e.message.slice(0, 60) : String(e)})`;
     }
@@ -298,10 +434,6 @@ function main(parsed) {
     Object.assign(state, extra);
     state.finished_at = new Date().toISOString();
     state.outcome = code === 0 ? 'PASS' : 'FAIL';
-    // EVERY raw artifact this run produced, bound by path, size and SHA-256. A manifest
-    // that names outputs without digesting them cannot show that the bytes a reviewer
-    // reads are the bytes the gate produced.
-    state.evidence_artifacts = bindArtifacts(outDir);
     state.summary = {
       total_steps: steps.length,
       blocking_steps: steps.filter((s) => s.policy === 'blocking').length,
@@ -309,8 +441,9 @@ function main(parsed) {
       failed_ids: steps.filter((s) => s.failed).map((s) => s.id),
       blocking_problems: failures.length,
     };
-    const text = `${JSON.stringify(state, null, 2)}\n`;
-    writeFileSync(join(outDir, 'supply-chain-manifest.json'), text);
+    // ORDER MATTERS. The result receipt is written FIRST, then the artifact inventory is
+    // calculated, then the manifest is written. Binding before writing the receipt meant
+    // RESULT-PASS/FAIL.txt was never itself bound — the one file a reviewer opens first.
     writeFileSync(
       join(outDir, code === 0 ? 'RESULT-PASS.txt' : 'RESULT-FAIL.txt'),
       [
@@ -325,6 +458,19 @@ function main(parsed) {
         '',
       ].join('\n'),
     );
+    // EVERY raw output AND the result receipt, bound by path, size and SHA-256. The root
+    // manifest is the ONE unavoidable self-exclusion: it cannot contain its own digest,
+    // because writing the digest changes the bytes being digested. That exclusion is
+    // explicit here and asserted by a control, so it can never quietly widen.
+    state.evidence_artifacts = bindArtifacts(outDir);
+    state.evidence_binding_note =
+      'Every file in the output directory is bound by path, size and SHA-256, EXCEPT ' +
+      'supply-chain-manifest.json itself: a manifest cannot contain its own digest. The ' +
+      'isolated trivy cache and the private staged-scanner directory are also excluded — ' +
+      'the cache is bound by its byte-level fingerprint and the staged binaries by their ' +
+      'authenticated digests.';
+    const text = `${JSON.stringify(state, null, 2)}\n`;
+    writeFileSync(join(outDir, 'supply-chain-manifest.json'), text);
     if (code !== 0) {
       console.error('\n=== SUPPLY-CHAIN GATE FAILED ===');
       for (const f of failures) console.error(`  ${f}`);
@@ -375,8 +521,24 @@ function main(parsed) {
     if (failures.length > 0) finish(1);
   }
 
-  // ── pinned toolchain, before any scan ──────────────────────────────────────────
-  const { versions, mismatches } = toolVersions();
+  // ── EXECUTED-BINARY AUTHENTICATION, BEFORE THE FIRST INVOCATION ────────────────
+  // Previously the runner ran `trivy --version` and the cache acquisition BEFORE
+  // authenticating the bytes, so code from an unverified binary had already executed by
+  // the time the digest was checked. Now: resolve, digest, compare, STAGE a private copy,
+  // and from then on execute that staged absolute path — so a later PATH change or a
+  // swapped file on disk cannot substitute a different binary between check and use.
+  const pinsRead = readGovernedJson('scripts/gate/scanner-pins.json');
+  const pins = pinsRead.doc;
+  state.scanner_pins = { file: 'scripts/gate/scanner-pins.json', sha256: sha256(pinsRead.raw) };
+
+  const hostPlatformKey = hostPlatform();
+  state.host_platform_key = hostPlatformKey;
+  const staged = stageAuthenticatedTools(['trivy', 'gitleaks'], pins, hostPlatformKey, outDir, failures);
+  state.executed_binary_authentication = staged.record;
+  if (failures.length > 0) finish(1);
+
+  // ── pinned toolchain, using the AUTHENTICATED staged binaries ──────────────────
+  const { versions, mismatches } = toolVersions(staged.paths);
   state.pinned_toolchain = versions;
   for (const [n, v] of Object.entries(versions)) {
     console.log(`  ${v.pinned_ok ? 'pinned' : 'MISPINNED'}  ${n} = ${v.actual} (expected ${v.expected})`);
@@ -386,15 +548,13 @@ function main(parsed) {
     failures.push('A scan from an unknown scanner version is not evidence.');
     finish(1);
   }
-  state.scanner_binaries = scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']);
+  state.scanner_binaries = scannerBinaries(['pnpm', 'node', 'docker']);
+  state.staged_scanner_binaries = staged.record.verified;
 
   // ── trivy cache: acquire BOTH artifacts, then capture and enforce provenance ────
-  const pinsRead = readGovernedJson('scripts/gate/scanner-pins.json');
-  const pins = pinsRead.doc;
-  state.scanner_pins = { file: 'scripts/gate/scanner-pins.json', sha256: sha256(pinsRead.raw) };
-
+  const TRIVY_FOR_CACHE = staged.paths.trivy;
   console.log('\n-- trivy cache acquisition (vulnerability DB + checks bundle) --');
-  const acquisition = acquire({ cacheDir, log: (m) => console.log(m), outDir });
+  const acquisition = acquire({ cacheDir, log: (m) => console.log(m), outDir, trivyPath: TRIVY_FOR_CACHE });
   state.trivy_cache_acquisition = acquisition;
   // A failed refresh must not be papered over by an older cache that happens to exist.
   for (const p of acquisition.problems ?? []) failures.push(`trivy cache acquisition — ${p}`);
@@ -402,54 +562,12 @@ function main(parsed) {
 
   const provenance = capture({
     cacheDir, nowIso: new Date().toISOString(), platform: SCAN_PLATFORM, pins,
+    trivyPath: TRIVY_FOR_CACHE,
   });
   state.trivy_provenance = provenance;
-  // EXECUTED-BINARY AUTHENTICATION. A --version string is a claim the binary makes about
-  // itself, so the bytes actually resolved on PATH are digested and compared against the
-  // tracked executable digest for this host platform. A different executable that reports
-  // the correct version is therefore still rejected.
-  const hostPlatformKey = hostPlatform();
-  state.host_platform_key = hostPlatformKey;
-  const binaryExpectations = {};
-  for (const tool of ['trivy', 'gitleaks']) {
-    const art = pins.tools?.[tool]?.artifacts?.[hostPlatformKey];
-    binaryExpectations[tool] = art?.executable_sha256 ?? null;
-  }
-  state.executed_binary_authentication = { host_platform: hostPlatformKey, expected: binaryExpectations, verified: {} };
-  for (const tool of ['trivy', 'gitleaks']) {
-    const want = binaryExpectations[tool];
-    const actual = state.scanner_binaries?.[tool] ?? null;
-    // NOTE the field name: scannerBinaries() returns `binary_sha256`, not `sha256`.
-    // Reading the wrong key made this check always report "(unreadable)" and always fail —
-    // a false FAIL that would have blocked every run.
-    const actualSha = actual?.binary_sha256 ?? null;
-    state.executed_binary_authentication.verified[tool] = {
-      resolved_path: actual?.resolved_path ?? null,
-      actual_sha256: actualSha,
-      actual_bytes: actual?.binary_bytes ?? null,
-      expected_sha256: want,
-      expected_bytes: pins.tools?.[tool]?.artifacts?.[hostPlatformKey]?.executable_bytes ?? null,
-      match: want !== null && actualSha === want,
-    };
-    if (want === null) {
-      failures.push(
-        `no tracked executable digest for ${tool} on host platform '${hostPlatformKey}'; add it ` +
-        'to scripts/gate/scanner-pins.json before running the gate on this platform',
-      );
-    } else if (actualSha !== want) {
-      failures.push(
-        `${tool} EXECUTABLE at ${actual?.resolved_path ?? '(unresolved)'} digests to ` +
-        `${actualSha ?? '(unreadable)'}, which does not match the tracked ` +
-        `${want}. A binary that merely reports the right version is not authenticated — ` +
-        'install via scripts/gate/install-scanners.sh.',
-      );
-    }
-  }
-  if (failures.length > 0) finish(1);
-
   const provProblems = enforce(provenance, {
     expectedVersion: PINNED_TOOLS.trivy.expect,
-    expectedBinarySha256: binaryExpectations.trivy,
+    expectedBinarySha256: staged.record.expected.trivy,
   });
   state.trivy_provenance_problems = provProblems;
 
@@ -471,6 +589,9 @@ function main(parsed) {
 
   const FROZEN = frozenCacheArgs(cacheDir);
   const trivyEnv = { TRIVY_CACHE_DIR: cacheDir };
+  /** The authenticated staged executables. Never a bare name, never a PATH lookup. */
+  const TRIVY = staged.paths.trivy;
+  const GITLEAKS = staged.paths.gitleaks;
 
   // ── governed dispositions: validate BEFORE scanning ────────────────────────────
   const exclusionRead = readGovernedJson('scripts/gate/scanner-exclusions.json');
@@ -483,8 +604,12 @@ function main(parsed) {
     schema_version: exclusionDoc.schema_version,
     declared: (exclusionDoc.records ?? []).length,
   };
-  const recordProblems = validateRecords(exclusionDoc, { runDate, root: ROOT, isTracked });
+  const recordValidation = validateRecords(exclusionDoc, {
+    runDate, root: ROOT, isTracked, readEvidence: (rel) => readEvidenceBytes(rel),
+  });
+  const recordProblems = recordValidation.problems;
   state.scanner_exclusion_problems = recordProblems;
+  state.scanner_exclusion_fatal_indices = recordValidation.fatalIndices;
   console.log(`\n-- governed scan dispositions: ${state.scanner_exclusions.declared} records, ${recordProblems.length} rejected --`);
   if (recordProblems.length > 0) {
     for (const p of recordProblems) failures.push(`scan disposition — ${p}`);
@@ -519,14 +644,14 @@ function main(parsed) {
   console.log('\n-- secret scanning --');
   const gitleaksConfig = join(ROOT, '.gitleaks.toml');
   run(steps, outDir, sourceSha, 'gitleaks-worktree', [
-    'gitleaks', 'detect', '--source', ROOT, '--no-git', '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', ROOT, '--no-git', '--redact', '--config', gitleaksConfig,
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-worktree.json'),
   ], {
     description: 'gitleaks over the WORKING TREE (files as they exist)',
     tool: 'gitleaks', toolVersion: versions.gitleaks.actual, policy: 'blocking',
   });
   if (haveGit) run(steps, outDir, sourceSha, 'gitleaks-history', [
-    'gitleaks', 'detect', '--source', ROOT, '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', ROOT, '--redact', '--config', gitleaksConfig,
     '--log-opts', '--all --full-history',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-history.json'),
   ], {
@@ -586,12 +711,12 @@ function main(parsed) {
     'fs', '--scanners', 'vuln,secret,misconfig', '--severity', 'HIGH,CRITICAL',
     '--ignorefile', '/dev/null', ...FROZEN, '--no-progress',
   ];
-  run(steps, outDir, sourceSha, 'trivy-fs', ['trivy', ...FS_ARGS, '--exit-code', '1', '--format', 'table', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs', [TRIVY, ...FS_ARGS, '--exit-code', '1', '--format', 'table', ROOT], {
     description: 'trivy filesystem scan, blocking at HIGH/CRITICAL',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
     coverage: FS_COVERAGE, env: trivyEnv,
   });
-  run(steps, outDir, sourceSha, 'trivy-fs-json', ['trivy', ...FS_ARGS, '--format', 'json', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs-json', [TRIVY, ...FS_ARGS, '--format', 'json', ROOT], {
     description: 'trivy filesystem scan, machine-readable, IDENTICAL coverage to the blocking step',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'informational',
     coverage: FS_COVERAGE, env: trivyEnv,
@@ -663,7 +788,7 @@ function main(parsed) {
     // UNSUPPRESSED scan: the complete finding set, reconciled below against governed
     // records. Trivy's own ignore mechanism is never relied upon.
     const rec = run(steps, outDir, sourceSha, `trivy-image-${i}`, [
-      'trivy', 'image', '--platform', SCAN_PLATFORM, '--severity', 'HIGH,CRITICAL',
+      TRIVY, 'image', '--platform', SCAN_PLATFORM, '--severity', 'HIGH,CRITICAL',
       '--ignorefile', '/dev/null', ...FROZEN, '--no-progress', '--format', 'json', r.scan_ref,
     ], {
       description:
@@ -699,7 +824,9 @@ function main(parsed) {
   });
   if (failures.length > 0) finish(1);
 
-  const disposition = reconcileFindings(exclusionDoc, allFindings, { scanPlatform: SCAN_PLATFORM });
+  const disposition = reconcileFindings(exclusionDoc, allFindings, {
+    scanPlatform: SCAN_PLATFORM, fatalIndices: recordValidation.fatalIndices,
+  });
   state.image_finding_reconciliation = disposition;
   writeFileSync(join(outDir, 'image-findings.json'), `${JSON.stringify(allFindings, null, 2)}\n`);
   console.log(`  findings ${disposition.total_findings}, governed ${disposition.matched.length} record(s), ` +
@@ -729,6 +856,29 @@ function main(parsed) {
     failures.push(
       `trivy cache changed during the authoritative scans (${fpBefore.digest} -> ${fpAfter.digest}); ` +
       'the scans must run with --skip-db-update --skip-check-update against the captured cache',
+    );
+  }
+
+  // ── post-scan integrity: staged binaries unchanged, worktree still clean ───────
+  state.staged_tools_after_scanning = reverifyStagedTools(staged, failures);
+  // The scanners must not MODIFY the source they examine, so the comparison is a DELTA
+  // against the state recorded before scanning — not absolute cleanliness. In preliminary
+  // mode the tree may legitimately start dirty (uncommitted work); what must not happen is
+  // that scanning changes it, because then the evidence would not describe the tree that
+  // was scanned. Final mode separately requires the tree to start clean.
+  const dirtyAfter = safeGit(['status', '--porcelain']);
+  const beforeSet = (dirty ?? '').trim();
+  const afterSet = (dirtyAfter ?? '').trim();
+  state.tree_clean_after_scanning = dirtyAfter === null ? null : afterSet === '';
+  state.worktree_unchanged_by_scanning = dirtyAfter === null ? null : afterSet === beforeSet;
+  if (haveGit && dirtyAfter !== null && afterSet !== beforeSet) {
+    const before = new Set(beforeSet === '' ? [] : beforeSet.split('\n'));
+    const appeared = (afterSet === '' ? [] : afterSet.split('\n')).filter((l) => !before.has(l));
+    state.paths_changed_by_scanning = appeared.slice(0, 40);
+    failures.push(
+      `scanning CHANGED the worktree (${appeared.length} path(s) appeared or changed, e.g. ` +
+      `${appeared.slice(0, 3).join(' | ')}); the evidence would not describe the source that ` +
+      'was scanned',
     );
   }
 
@@ -804,6 +954,9 @@ function emergencyManifest(outArg, parsedOrNull, error) {
   const record = {
     artifact: 'C15 supply-chain gate — raw execution evidence',
     outcome: kind === 'USAGE' ? 'USAGE-ERROR' : 'CRASH',
+    evidence_binding_note:
+      'Every file present in the output directory is bound, EXCEPT ' +
+      'supply-chain-manifest.json itself (a manifest cannot contain its own digest).',
     exception: { type: kind, name: error?.constructor?.name ?? 'Error', message: message.slice(0, 800) },
     source_sha: sourceSha,
     arguments: process.argv.slice(2),
@@ -813,9 +966,8 @@ function emergencyManifest(outArg, parsedOrNull, error) {
     evidence_artifacts: [],
   };
   if (outDir !== null) {
-    try { record.evidence_artifacts = bindArtifacts(outDir); } catch { /* best effort */ }
+    // Receipt FIRST, then bind, so the receipt itself is inventoried even on the crash path.
     try {
-      writeFileSync(join(outDir, 'supply-chain-manifest.json'), `${JSON.stringify(record, null, 2)}\n`);
       writeFileSync(join(outDir, 'RESULT-FAIL.txt'), [
         `outcome: ${record.outcome}`,
         `exception: ${kind} ${record.exception.name}`,
@@ -827,6 +979,10 @@ function emergencyManifest(outArg, parsedOrNull, error) {
         stack,
         '',
       ].join('\n'));
+    } catch { /* nothing further can be recorded */ }
+    try { record.evidence_artifacts = bindArtifacts(outDir); } catch { /* best effort */ }
+    try {
+      writeFileSync(join(outDir, 'supply-chain-manifest.json'), `${JSON.stringify(record, null, 2)}\n`);
     } catch { /* nothing further can be recorded */ }
   }
   console.error(`\n=== SUPPLY-CHAIN GATE ${record.outcome} ===`);

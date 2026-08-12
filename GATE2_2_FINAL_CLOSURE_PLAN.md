@@ -659,7 +659,7 @@ finding fails the gate; an **unused** record fails it as stale. Each record name
 image digest, scan platform, package and PURL prefix, plus owner, approver (≠ owner),
 reason, evidence, approval/expiry dates and compensating controls. Measured: **16 findings
 on the linux/amd64 postgres child — 1 c-ares (apk) + 15 golang stdlib (gosu) — all
-governed by 2 records, 0 unmatched, 0 unused.**
+governed by 2 records (SUPERSEDED: 3 records since C16-R3.1 — see §9.3), 0 unmatched, 0 unused.**
 
 **Coverage normalisation.** The JSON filesystem capture previously omitted `--severity`,
 silently adding LOW/MEDIUM coverage nothing enforced. Both filesystem steps now share one
@@ -997,3 +997,71 @@ scanners, trivy cache unchanged across the authoritative scans, 641 checks files
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
 remains unapproved. No independent approval, frozen-product status or Phase 0 completion is
 claimed, and C17 does not begin until this correction has been independently reviewed.
+
+
+---
+
+## 9. C16-R3.1 REMEDIATION RECORD — bounded fail-closed corrections
+
+Hosted run `31578753090` (3/3 green, both runners in final mode) is retained as valid
+preliminary evidence. Independent adversarial testing then found the remaining bypasses
+below. This section is authoritative where it conflicts with §5–§8.
+
+### 9.1 Closure map
+
+| # | Finding | Correction | Proof |
+|---|---|---|---|
+| 1 | `name in bindings` consults the PROTOTYPE CHAIN, so `toString`, `constructor` and `__proto__` all answered true and passed as governed metadata | null-prototype governed map + `Object.hasOwn()` for metadata AND component properties | 6 mutation controls (3 names × metadata/component) |
+| 2 | A DIRECT importer dependency whose snapshot carries `optional: true` was seeded MANDATORY, and if platform-incompatible failed as required | optionality is determined BEFORE scope seeding and platform handling; `optional_source` records whether the edge or the snapshot flag applied | 4 fixtures: compatible, incompatible-optional, incompatible-required, edge-declared |
+| 3 | The final-manifest assertion accepted any status *beginning* with `FINAL`, an EMPTY C16 target set and an EMPTY authenticated-tool set | exact code-owned constants; target set DERIVED from the descriptor; tool set DERIVED from the pins; every required report/artifact/reconciliation/binding required by name | 13 controls incl. forged status, missing/extra/empty target, empty/partial tool set, missing artifact |
+| 4 | Dispositions had no byte-level evidence binding, and the matcher was TYPE-GATED so a string `severities` or numeric `result_target` skipped matching | mandatory `evidence_sha256` (lowercase 64-hex, recomputed from tracked bytes); code-owned `FIELD_TYPES` for all 17 fields, wrong type is FATAL; matching is unconditional and FAILS CLOSED on a wrong type | 11 behavioural + 7 unit controls |
+| 5 | `evidence_sha256: 123` skipped both format validation and the recompute | strict `typeof === 'string'` + lowercase-hex format + UNCONDITIONAL recompute | 6 controls incl. one-byte change |
+| 6 | C16 could fail before writing ANY evidence — gitless final mode left the output directory empty | validated argument parsing + outermost boundary; every failure path writes a structured manifest and `RESULT-FAIL.txt` with source/expected SHA, mode, phase, error category, timestamp and bound artifacts | verified for gitless final mode, wrong SHA, dirty tree, malformed args |
+| 7 | The runner probed `--version` and warmed the cache — both of which EXECUTE the binary — BEFORE authenticating its bytes | resolve → digest → compare → STAGE a private per-run copy; every later invocation uses that absolute path; re-verified after all scanning; worktree cleanliness re-checked as a DELTA | a same-version wrong binary is rejected with its execution marker absent and `steps: []` |
+| 8 | Artifact bindings were computed BEFORE the result receipt was written, so `RESULT-PASS/FAIL.txt` was never bound | receipt FIRST, then inventory, then manifest — on the success, governed-failure and crash paths | 3 controls asserting only `supply-chain-manifest.json` is unbound |
+
+### 9.2 The severity bypass that survived the first fix
+
+Removing the `Array.isArray` guard was not enough. `'HIGH'.includes('HIGH')` is **true** for
+a string, so a wrong-typed `severities` still matched. The comparison now fails closed on a
+non-array rather than coercing — caught by running the unit control, not by reading the
+diff.
+
+### 9.3 Dedicated disposition evidence
+
+`docs/SCANNER_DISPOSITIONS.md` replaces the generic `PHASE0_EVIDENCE.md` citations. It
+identifies, for every governed finding: the configured reference, the index kind and child
+count, the resolved platform, the scanned child digest, the index-integrity check, the
+scanner and vulnerability-database identity with freshness ceiling, the checks-bundle OCI
+digest, the scan mode, and per-record advisory ids, package, PURL, installed version,
+severity, result target, reason, compensating controls, owner, approver, approval and
+expiry — plus an explicit prohibited-exposure section. Every record binds it by SHA-256 and
+the gate recomputes that digest from the tracked bytes on each run.
+
+The three records are now `SCX-0001` (c-ares HIGH), `SCX-0002` (14 Go stdlib HIGH) and
+`SCX-0003` (the single Go stdlib CRITICAL, held separately so a HIGH approval cannot absorb
+a CRITICAL). Earlier sections state **two** records; three is correct.
+
+### 9.4 Corrected stale statements
+
+* `.trivyignore` is deleted; §7.4 already says so, and the acceptance gate asserts its
+  absence.
+* "governed by 2 records (SUPERSEDED: 3 records since C16-R3.1 — see §9.3)" in §7.4 and §8.4 → **3 records** (the CRITICAL was split out).
+* Scope counts in §5.3/§6.3/§7.10 are superseded by §8.12; C16-R3.1 leaves them unchanged
+  (production 195/290+4, development 294/446+5; production membership
+  `{dependencies+optionalDependencies: 131, dependencies: 49, optionalDependencies: 15}`).
+* Disposition evidence references `PHASE0_EVIDENCE.md` → `docs/SCANNER_DISPOSITIONS.md`.
+
+Full C19 document reconciliation remains in C19.
+
+### 9.5 Suites at this commit
+
+typecheck **0**; build **0**; boundaries clean (93 modules, 250 dependencies); contracts
+**203/203**; tokens **3/3**; api gate+unit **354/354** (gate suites alone **340**);
+integration **297/297**; acceptance **58/58**; Playwright **10/10** on a virgin database.
+Migrations `0001`–`0021` byte-identical.
+
+### 9.6 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
+remains unapproved; the source is not frozen; no independent approval is claimed.

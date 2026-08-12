@@ -22,7 +22,7 @@
  *   --final   evidence mode: additionally require a clean git worktree, so a
  *             final artifact can never be produced from uncommitted source.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +74,136 @@ export function generatorDigest(root = ROOT) {
   ];
   const parts = files.map((f) => `${f}:${sha256(readFileSync(join(root, f), 'utf8'))}`);
   return { digest: sha256(parts.join('\n')), files: parts };
+}
+
+
+/** A caller mistake, distinguished from an internal fault so the message can be precise. */
+class UsageError extends Error {}
+
+const C16_FLAGS_WITH_VALUES = ['--out', '--expected-sha'];
+const C16_BOOLEAN_FLAGS = ['--final'];
+
+/**
+ * VALIDATED argument parsing. C16 previously used bare `indexOf` scans, so a valueless
+ * `--out` or an unknown flag produced a confusing downstream error — or, in final mode,
+ * exited before any evidence was written at all.
+ */
+export function parseC16Args(argv) {
+  const args = argv.slice(2);
+  const out = { out: 'evidence/supply-chain/c16', expectedSha: null, final: false, raw: args };
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (C16_BOOLEAN_FLAGS.includes(a)) { out.final = true; continue; }
+    if (C16_FLAGS_WITH_VALUES.includes(a)) {
+      const v = args[i + 1];
+      if (v === undefined || v.startsWith('--')) throw new UsageError(`${a} requires a value`);
+      if (a === '--out') out.out = v;
+      if (a === '--expected-sha') out.expectedSha = v;
+      i += 1;
+      continue;
+    }
+    throw new UsageError(
+      `unrecognised argument ${JSON.stringify(a)}. Supported: ` +
+      `${[...C16_FLAGS_WITH_VALUES, ...C16_BOOLEAN_FLAGS].join(' ')}`,
+    );
+  }
+  if (out.expectedSha !== null && !/^[0-9a-f]{40}$/.test(out.expectedSha)) {
+    throw new UsageError(
+      `--expected-sha ${JSON.stringify(out.expectedSha)} is not a 40-character git object id`,
+    );
+  }
+  return out;
+}
+
+/** Bind every file in the output directory except the report itself. */
+function bindC16Artifacts(outDir) {
+  const out = [];
+  const walk = (dir, rel) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const full = join(dir, e.name);
+      const relPath = rel === '' ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) { walk(full, relPath); continue; }
+      if (relPath === 'closure-reconciliation.json') continue;
+      try {
+        const buf = readFileSync(full);
+        out.push({ path: relPath, bytes: buf.byteLength, sha256: sha256(buf) });
+      } catch { /* unreadable artifacts are simply not bound */ }
+    }
+  };
+  walk(outDir, '');
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+/**
+ * ALWAYS-WRITTEN FAILURE EVIDENCE.
+ *
+ * C16 could previously fail before writing anything — a gitless final-mode refusal left the
+ * output directory completely empty, so a red gate produced no evidence of why. Every
+ * failure path now writes a structured manifest and RESULT-FAIL.txt when a writable output
+ * directory is available, and emits structured stderr otherwise.
+ */
+function writeC16Failure({ outArg, phase, category, message, stack, parsed, sourceSha }) {
+  const record = {
+    artifact: 'C16 target-resolved dependency closures — failure evidence',
+    outcome: category === 'USAGE' ? 'USAGE-ERROR' : category === 'GATE' ? 'FAIL' : 'CRASH',
+    phase,
+    error_category: category,
+    exception: { message: String(message).slice(0, 800) },
+    mode: parsed?.final === true ? 'final' : 'preliminary',
+    expected_sha: parsed?.expectedSha ?? null,
+    source_sha: sourceSha ?? '(unavailable)',
+    arguments: process.argv.slice(2),
+    finished_at: new Date().toISOString(),
+    evidence_artifacts: [],
+    evidence_binding_note:
+      'Every file present in the output directory is bound, EXCEPT ' +
+      'closure-reconciliation.json itself (a report cannot contain its own digest).',
+  };
+
+  let outDir = null;
+  try {
+    const candidate = outArg ?? 'evidence/supply-chain/c16';
+    outDir = isAbsolute(candidate) ? resolve(candidate) : join(ROOT, candidate);
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    outDir = null;
+  }
+
+  if (outDir === null) {
+    // No writable location: structured stderr is the only remaining record.
+    console.error(JSON.stringify({ ...record, note: 'no writable output directory' }, null, 2));
+    return;
+  }
+  try {
+    writeFileSync(join(outDir, 'RESULT-FAIL.txt'), [
+      `outcome: ${record.outcome}`,
+      `phase: ${phase}`,
+      `error_category: ${category}`,
+      `mode: ${record.mode}`,
+      `expected_sha: ${record.expected_sha ?? '(none)'}`,
+      `source_sha: ${record.source_sha}`,
+      `arguments: ${record.arguments.join(' ')}`,
+      `timestamp: ${record.finished_at}`,
+      '',
+      String(message),
+      '',
+      stack ?? '',
+      '',
+    ].join('\n'));
+  } catch { /* nothing further can be recorded */ }
+  try { record.evidence_artifacts = bindC16Artifacts(outDir); } catch { /* best effort */ }
+  try {
+    writeFileSync(join(outDir, 'closure-reconciliation.json'), `${JSON.stringify(record, null, 2)}\n`);
+  } catch { /* nothing further can be recorded */ }
+  console.error(`\n=== C16 CLOSURE GATE ${record.outcome} (${phase}) ===`);
+  console.error(`  ${message}`);
+  console.error(`  failure evidence: ${join(outDir, 'closure-reconciliation.json')}`);
 }
 
 /** Verify the pinned libraries resolve to their exact expected versions. */
@@ -154,13 +284,11 @@ export function countsOf(closure) {
   };
 }
 
-export function main(argv = process.argv) {
-  const outIdx = argv.indexOf('--out');
-  const outArg = outIdx !== -1 ? argv[outIdx + 1] : 'evidence/supply-chain/c16';
+export function main(parsed) {
+  const outArg = parsed.out;
   const outDir = isAbsolute(outArg) ? resolve(outArg) : join(ROOT, outArg);
-  const finalMode = argv.includes('--final');
-  const shaIdx = argv.indexOf('--expected-sha');
-  const expectedSha = shaIdx !== -1 ? argv[shaIdx + 1] : null;
+  const finalMode = parsed.final;
+  const expectedSha = parsed.expectedSha;
   let state_finalPosture = null;
   mkdirSync(outDir, { recursive: true });
 
@@ -185,8 +313,10 @@ export function main(argv = process.argv) {
     console.log(`  ${r.installed === r.expected ? 'pinned' : 'MISPINNED'}  ${name} = ${r.installed} (expected ${r.expected})`);
   }
   if (libs.problems.length > 0) {
-    console.error('\n=== C16 CLOSURE GATE FAILED: implementation not pinned ===');
-    for (const p of libs.problems) console.error(`  ${p}`);
+    writeC16Failure({
+      outArg, phase: 'pinned-implementations', category: 'GATE',
+      message: libs.problems.join('\n'), parsed, sourceSha: meta.sourceSha,
+    });
     process.exit(1);
   }
 
@@ -228,8 +358,10 @@ export function main(argv = process.argv) {
       ignored_inputs_are_not_closure_truth: true,
     };
     if (problems.length > 0) {
-      console.error('\n=== C16 CLOSURE GATE FAILED: final-source binding ===');
-      for (const p of problems) console.error(`  ${p}`);
+      writeC16Failure({
+        outArg, phase: 'final-source-binding', category: 'GATE',
+        message: problems.join('\n'), parsed, sourceSha: meta.sourceSha,
+      });
       process.exit(1);
     }
   }
@@ -292,9 +424,15 @@ export function main(argv = process.argv) {
   for (const [name, closure] of Object.entries(closures)) {
     const target = closure.target;
     if (closure.unresolved.length > 0) {
-      console.error(`\n${name}: UNRESOLVED lockfile references (closure is incomplete):`);
-      for (const m of closure.unresolved.slice(0, 20)) console.error(`  ${m}`);
-      console.error('  Every required AND optional reference must resolve; the gate fails closed.');
+      writeC16Failure({
+        outArg, phase: `closure-resolution:${name}`, category: 'GATE',
+        message: [
+          `${name}: UNRESOLVED lockfile references (closure is incomplete):`,
+          ...closure.unresolved.slice(0, 40),
+          'Every required AND optional reference must resolve; the gate fails closed.',
+        ].join('\n'),
+        parsed, sourceSha: meta.sourceSha,
+      });
       process.exit(1);
     }
 
@@ -454,6 +592,28 @@ export function main(argv = process.argv) {
     override_residual_proof: overrideProof,
     vulnerable_residuals: residuals,
   };
+  const failed =
+    Object.values(reports).some((r) => !r.reconciliation.clean) ||
+    gov.problems.length > 0 || cardinalityProblems.length > 0 || residuals.length > 0;
+
+  // Receipt FIRST, then bind, then the report — so the receipt is itself inventoried.
+  writeFileSync(join(outDir, failed ? 'RESULT-FAIL.txt' : 'RESULT-PASS.txt'), [
+    `outcome: ${failed ? 'FAIL' : 'PASS'}`,
+    `mode: ${finalMode ? 'final' : 'preliminary'}`,
+    `source_sha: ${meta.sourceSha}`,
+    `expected_sha: ${expectedSha ?? '(none)'}`,
+    `targets: ${Object.keys(reports).join(', ')}`,
+    `timestamp: ${new Date().toISOString()}`,
+    '',
+    ...gov.problems.map((p) => `PROBLEM exclusion: ${p}`),
+    ...cardinalityProblems.map((p) => `PROBLEM cardinality: ${p}`),
+    ...residuals.map((r) => `PROBLEM residual: ${r}`),
+    '',
+  ].join('\n'));
+  report.evidence_artifacts = bindC16Artifacts(outDir);
+  report.evidence_binding_note =
+    'Every file in the output directory is bound by path, size and SHA-256, EXCEPT ' +
+    'closure-reconciliation.json itself: a report cannot contain its own digest.';
   const reportText = `${JSON.stringify(report, null, 2)}\n`;
   writeFileSync(join(outDir, 'closure-reconciliation.json'), reportText);
   console.log(`\nreport: ${join(outDir, 'closure-reconciliation.json')}`);
@@ -461,9 +621,6 @@ export function main(argv = process.argv) {
     console.log(`  ${name} sbom sha256: ${r.sbom_sha256}`);
   }
 
-  const failed =
-    Object.values(reports).some((r) => !r.reconciliation.clean) ||
-    gov.problems.length > 0 || cardinalityProblems.length > 0 || residuals.length > 0;
   if (failed) {
     console.error('\n=== C16 CLOSURE GATE FAILED ===');
     for (const p of gov.problems) console.error(`  exclusion:   ${p}`);
@@ -486,7 +643,32 @@ function scopeDistribution(closure) {
 }
 
 // Only run when invoked as a script — the negative controls import this module.
+//
+// OUTERMOST BOUNDARY. Expected gate failures are handled inside main() by
+// writeC16Failure(); this covers the unexpected ones (malformed arguments, an unreadable
+// or malformed descriptor, an internal fault) so a red run always leaves evidence.
 if (process.argv[1] !== undefined &&
     resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main();
+  let parsed = null;
+  try {
+    parsed = parseC16Args(process.argv);
+    main(parsed);
+  } catch (e) {
+    const i = process.argv.indexOf('--out');
+    const outArg = i !== -1 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--')
+      ? process.argv[i + 1]
+      : null;
+    let sourceSha = '(unavailable)';
+    try { sourceSha = safeGit(['rev-parse', 'HEAD']) ?? '(not a git worktree)'; } catch { /* noted */ }
+    writeC16Failure({
+      outArg,
+      phase: parsed === null ? 'argument-parsing' : 'unexpected',
+      category: e instanceof UsageError ? 'USAGE' : 'INTERNAL',
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : '',
+      parsed,
+      sourceSha,
+    });
+    process.exit(1);
+  }
 }

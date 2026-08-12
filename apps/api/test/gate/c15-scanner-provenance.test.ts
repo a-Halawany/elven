@@ -32,6 +32,9 @@ import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enfo
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import { enforce, frozenCacheArgs, fingerprint } from '../../../../scripts/gate/lib/trivy-cache.mjs';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import { reconcileFindings, REQUIRED_FIELDS, FIELD_TYPES } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 'supply-chain.mjs'), 'utf8');
@@ -163,7 +166,10 @@ describe('C15-B — "eight steps, six blocking" is machine-checked, not asserted
 describe('C15-C — scanner identity and vulnerability-database freshness are recorded', () => {
   it('the runner records binary paths and digests for every scanner it invokes', () => {
     const src = runnerSource();
-    expect(src).toContain("scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker'])");
+    // Since C16-R3.1 the scanners are STAGED and authenticated separately, so the
+    // generic binary inventory covers the remaining tools only.
+    expect(src).toContain("scannerBinaries(['pnpm', 'node', 'docker'])");
+    expect(src).toContain('stageAuthenticatedTools');
     const lib = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'scanner-provenance.mjs'), 'utf8');
     expect(lib).toContain('binary_sha256');
     expect(lib).toContain('resolved_path');
@@ -385,8 +391,9 @@ describe('C15-R2 — coverage equivalence is literal, not asserted', () => {
     const src = runnerSource();
     // One argument list is built once and reused, so the two steps cannot drift.
     expect(src).toContain('const FS_ARGS = [');
-    expect(src).toMatch(/trivy-fs',\s*\['trivy', \.\.\.FS_ARGS/);
-    expect(src).toMatch(/trivy-fs-json',\s*\['trivy', \.\.\.FS_ARGS/);
+    // Both invoke the AUTHENTICATED staged binary, never a bare name.
+    expect(src).toMatch(/trivy-fs',\s*\[TRIVY, \.\.\.FS_ARGS/);
+    expect(src).toMatch(/trivy-fs-json',\s*\[TRIVY, \.\.\.FS_ARGS/);
     // The JSON capture previously omitted --severity, silently adding LOW/MEDIUM coverage.
     expect(src).toContain("'--severity', 'HIGH,CRITICAL'");
   });
@@ -538,19 +545,108 @@ describe('C16-R3 — acquisition failure and tracked executable digests', () => 
     expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('the runner verifies the bytes of the executable it resolves on PATH', () => {
+  it('the runner authenticates and STAGES the executable before its first invocation', () => {
     const runner = runnerSource();
     expect(runner).toContain('executed_binary_authentication');
-    expect(runner).toContain('binary_sha256');
-    expect(runner).toContain('is not authenticated');
-    // …before any scan runs.
-    expect(runner.indexOf('executed_binary_authentication'))
-      .toBeLessThan(runner.indexOf("'pnpm-audit-human'"));
+    expect(runner).toContain('authenticated — install via scripts/gate/install-scanners.sh');
+    expect(runner).toContain('Refused BEFORE any ');
+    expect(runner).toContain('stageAuthenticatedTools');
+    // Authentication precedes even the VERSION probe, which itself executes the binary.
+    expect(runner.indexOf('stageAuthenticatedTools('))
+      .toBeLessThan(runner.indexOf('toolVersions(staged.paths)'));
+    // …and every later use goes through the staged absolute path.
+    expect(runner).toContain('const TRIVY = staged.paths.trivy');
+    expect(runner).toContain('reverifyStagedTools');
   });
 
   it('the raw index manifest digest is checked against the configured reference', () => {
     const runner = runnerSource();
     expect(runner).toContain('raw_index_digest_matches_reference');
     expect(runner).toContain('No child digest from');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 — the disposition matcher never skips a field because of its type', () => {
+  /**
+   * The matcher was type-gated: `Array.isArray(r.severities) && …` and
+   * `typeof r.result_target === 'string' && …`. A string `severities` or a numeric
+   * `result_target` therefore SKIPPED that comparison entirely, and the record governed a
+   * finding it was never approved for. These controls call the matcher DIRECTLY with
+   * wrong-typed records and require the finding to remain UNGOVERNED.
+   */
+  const finding = {
+    advisory_id: 'CVE-2026-33630',
+    image: 'postgres@sha256:' + '9'.repeat(64),
+    package_name: 'c-ares',
+    purl: 'pkg:apk/alpine/c-ares@1.34.6-r0',
+    installed_version: '1.34.6-r0',
+    severity: 'HIGH',
+    target: 'postgres (alpine 3.24.1)',
+  };
+  const record = (over: Record<string, unknown> = {}) => ({
+    id: 'R', advisory_ids: [finding.advisory_id], image: finding.image,
+    scan_platform: 'linux/amd64', package_name: finding.package_name,
+    package_purl: finding.purl, installed_version: finding.installed_version,
+    severities: ['HIGH'], result_target: finding.target,
+    ...over,
+  });
+  const match = (r: Record<string, unknown>, opts: Record<string, unknown> = {}) =>
+    reconcileFindings({ records: [r] }, [finding], { scanPlatform: 'linux/amd64', ...opts }) as {
+      matched: unknown[]; unmatched: string[]; unused_records: string[]; near_miss_detail: string[];
+    };
+
+  it('POSITIVE: a fully matching record governs the finding', () => {
+    const r = match(record());
+    expect(r.unmatched).toEqual([]);
+    expect(r.matched).toHaveLength(1);
+  });
+
+  it('a STRING severities does not govern — the field is compared, not skipped', () => {
+    const r = match(record({ severities: 'HIGH' }));
+    expect(r.unmatched).toHaveLength(1);
+    expect(r.near_miss_detail.join('\n')).toMatch(/severities is string, not an array/);
+  });
+
+  it('a NUMERIC result_target does not govern', () => {
+    const r = match(record({ result_target: 12345 }));
+    expect(r.unmatched).toHaveLength(1);
+    expect(r.near_miss_detail.join('\n')).toMatch(/result_target 12345 !=/);
+  });
+
+  it('a MISSING severities or result_target does not govern', () => {
+    const noSev = record(); delete (noSev as Record<string, unknown>).severities;
+    expect(match(noSev).unmatched).toHaveLength(1);
+    const noTarget = record(); delete (noTarget as Record<string, unknown>).result_target;
+    expect(match(noTarget).unmatched).toHaveLength(1);
+  });
+
+  it('a record marked structurally FATAL governs nothing at all', () => {
+    // Even a perfectly matching record cannot govern once validation marked it invalid.
+    const r = match(record(), { fatalIndices: [0] });
+    expect(r.unmatched).toHaveLength(1);
+    expect(r.matched).toHaveLength(0);
+  });
+
+  it('platform, image, package, purl and installed-version mismatches each block matching', () => {
+    for (const [field, value] of [
+      ['scan_platform', 'linux/arm64'],
+      ['image', 'postgres@sha256:' + '1'.repeat(64)],
+      ['package_name', 'other'],
+      ['package_purl', 'pkg:apk/alpine/other@1.0.0'],
+      ['installed_version', '9.9.9'],
+    ] as Array<[string, string]>) {
+      const r = match(record({ [field]: value }));
+      expect(r.unmatched, `${field} mismatch must block`).toHaveLength(1);
+    }
+  });
+
+  it('the code-owned type contract covers every required field', () => {
+    for (const field of REQUIRED_FIELDS as unknown as string[]) {
+      expect(Object.hasOwn(FIELD_TYPES as object, field), `${field} needs a declared type`).toBe(true);
+    }
+    expect((FIELD_TYPES as Record<string, string>)['severities']).toBe('string[]');
+    expect((FIELD_TYPES as Record<string, string>)['result_target']).toBe('string');
+    expect((FIELD_TYPES as Record<string, string>)['evidence_sha256']).toBe('string');
   });
 });

@@ -60,7 +60,7 @@ export const frozenCacheArgs = (cacheDir) => [
  * populate it, and doing it here — once, explicitly — is what makes the authoritative
  * scans able to run with updates disabled.
  */
-export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = null }) {
+export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = null, trivyPath = 'trivy' }) {
   mkdirSync(cacheDir, { recursive: true });
   const steps = [];
 
@@ -101,7 +101,7 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = nu
   };
 
   const db = run('acquire vulnerability database', [
-    'trivy', '--cache-dir', cacheDir, '--timeout', timeout,
+    trivyPath, '--cache-dir', cacheDir, '--timeout', timeout,
     'image', '--download-db-only', '--no-progress',
   ], 'trivy-acquire-db');
 
@@ -109,7 +109,7 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = nu
   // bundle download.
   const probeDir = mkdtempSync(join(tmpdir(), 'eye-trivy-checkwarm-'));
   const checks = run('acquire misconfiguration checks bundle', [
-    'trivy', '--cache-dir', cacheDir, '--timeout', timeout,
+    trivyPath, '--cache-dir', cacheDir, '--timeout', timeout,
     'fs', '--scanners', 'misconfig', '--no-progress', '--format', 'json', probeDir,
   ], 'trivy-acquire-checks');
 
@@ -154,8 +154,14 @@ function readMetadata(path) {
 
 /** Resolved path plus SHA-256 of an executable on PATH. */
 export function binaryProvenance(name) {
-  const which = spawnSync('sh', ['-c', `command -v ${name}`], { encoding: 'utf8' });
-  const path = which.status === 0 ? which.stdout.trim() : null;
+  // An absolute path is used as given — the point of staging is that no PATH lookup
+  // happens between authentication and use.
+  const path = name.startsWith('/')
+    ? name
+    : (() => {
+      const which = spawnSync('sh', ['-c', `command -v ${name}`], { encoding: 'utf8' });
+      return which.status === 0 ? which.stdout.trim() : null;
+    })();
   if (path === null) return { name, resolved_path: null, sha256: null, bytes: null };
   try {
     const buf = readFileSync(path);
@@ -173,7 +179,7 @@ export function binaryProvenance(name) {
  * Read from the SAME cache the scans will use — reading a different cache describes a
  * different scan.
  */
-export function capture({ cacheDir, nowIso, platform, pins }) {
+export function capture({ cacheDir, nowIso, platform, pins, trivyPath = 'trivy' }) {
   const p = cachePaths(cacheDir);
   const now = new Date(nowIso);
 
@@ -181,7 +187,7 @@ export function capture({ cacheDir, nowIso, platform, pins }) {
   let versionParsed = null;
   let versionError = null;
   try {
-    versionRaw = execFileSync('trivy', ['--cache-dir', cacheDir, 'version', '--format', 'json'], {
+    versionRaw = execFileSync(trivyPath, ['--cache-dir', cacheDir, 'version', '--format', 'json'], {
       encoding: 'utf8', env: { ...process.env, TRIVY_CACHE_DIR: cacheDir },
     });
     versionParsed = JSON.parse(versionRaw);
@@ -212,7 +218,7 @@ export function capture({ cacheDir, nowIso, platform, pins }) {
     target_platform: platform,
     cache_dir: cacheDir,
     // What executed the scan.
-    executable: binaryProvenance('trivy'),
+    executable: binaryProvenance(trivyPath),
     installation_provenance: {
       expected_version: pins?.tools?.trivy?.version ?? null,
       artifact_url: pins?.tools?.trivy?.artifacts?.[platformKey(platform)]?.url ?? null,

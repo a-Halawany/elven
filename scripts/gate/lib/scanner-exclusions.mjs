@@ -24,6 +24,7 @@
  * rejected — that is precisely what a bare CVE ID was.
  */
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 /**
@@ -33,9 +34,40 @@ import { join } from 'node:path';
 export const REQUIRED_FIELDS = Object.freeze([
   'id', 'advisory_ids', 'image', 'scan_platform', 'package_name', 'package_purl',
   'installed_version', 'severities', 'result_target',
-  'reason', 'compensating_controls', 'owner', 'approver', 'evidence',
+  'reason', 'compensating_controls', 'owner', 'approver',
+  'evidence', 'evidence_sha256',
   'approved_on', 'expires_on',
 ]);
+
+/**
+ * CODE-OWNED type and format contract for every required field.
+ *
+ * Types are validated UP FRONT and a wrong type is FATAL for the record. Previously the
+ * matcher itself was type-gated — `Array.isArray(r.severities) && …` and
+ * `typeof r.result_target === 'string' && …` — so a string `severities` or a numeric
+ * `result_target` silently SKIPPED severity or target matching and the record governed
+ * findings it was never approved for.
+ */
+export const FIELD_TYPES = Object.freeze({
+  id: 'string',
+  advisory_ids: 'string[]',
+  image: 'string',
+  scan_platform: 'string',
+  package_name: 'string',
+  package_purl: 'string',
+  installed_version: 'string',
+  severities: 'string[]',
+  result_target: 'string',
+  reason: 'string',
+  compensating_controls: 'string[]',
+  owner: 'string',
+  approver: 'string',
+  evidence: 'string',
+  evidence_sha256: 'string',
+  approved_on: 'string',
+  expires_on: 'string',
+});
+const SHA256_HEX = /^[a-f0-9]{64}$/;
 export const SUPPORTED_SCHEMA_VERSIONS = Object.freeze(['2.0.0']);
 /** The only severities a governed record may name. */
 export const ALLOWED_SEVERITIES = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
@@ -61,7 +93,7 @@ export function advisoryIdsOf(record) {
  * `runDate` is an ISO YYYY-MM-DD string; `tracked` decides whether an evidence path is
  * under version control.
  */
-export function validateRecords(doc, { runDate, root, isTracked }) {
+export function validateRecords(doc, { runDate, root, isTracked, readEvidence }) {
   const problems = [];
 
   if (!SUPPORTED_SCHEMA_VERSIONS.includes(doc.schema_version)) {
@@ -73,16 +105,68 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
 
   const seenIds = new Set();
   const seenScopes = new Map();
+  /** Indices whose records are structurally invalid and must never govern anything. */
+  const recordFatal = new Set();
 
   for (const [i, r] of (doc.records ?? []).entries()) {
     const where = `records[${i}]${typeof r.id === 'string' ? ` (${r.id})` : ''}`;
 
+    // PRESENCE, then TYPE. A record whose types are wrong is structurally invalid and is
+    // marked fatal, so it can never reach consequence matching with a field the matcher
+    // would have skipped.
+    let typeFatal = false;
     for (const field of REQUIRED_FIELDS) {
       const v = r[field];
       const empty = v === undefined || v === null ||
         (typeof v === 'string' && v.trim() === '') ||
         (Array.isArray(v) && v.length === 0);
-      if (empty) problems.push(`${where}: missing required field '${field}'`);
+      if (empty) {
+        problems.push(`${where}: missing required field '${field}'`);
+        typeFatal = true;
+        continue;
+      }
+      const want = FIELD_TYPES[field];
+      if (want === 'string' && typeof v !== 'string') {
+        problems.push(`${where}: field '${field}' must be a string, got ${describeType(v)}`);
+        typeFatal = true;
+      } else if (want === 'string[]') {
+        if (!Array.isArray(v)) {
+          problems.push(`${where}: field '${field}' must be an array of strings, got ${describeType(v)}`);
+          typeFatal = true;
+        } else if (v.some((x) => typeof x !== 'string')) {
+          problems.push(`${where}: field '${field}' contains a non-string element`);
+          typeFatal = true;
+        }
+      }
+    }
+    if (typeFatal) {
+      // Do not evaluate semantics on a structurally invalid record: every later check
+      // would be reasoning about values whose types it cannot rely on.
+      recordFatal.add(i);
+      continue;
+    }
+
+    // EVIDENCE DIGEST: lowercase 64-hex, recomputed from the exact tracked bytes.
+    if (!SHA256_HEX.test(r.evidence_sha256)) {
+      problems.push(
+        `${where}: evidence_sha256 must be a lowercase 64-character hex SHA-256 digest`,
+      );
+      recordFatal.add(i);
+    } else if (readEvidence !== undefined) {
+      const bytes = readEvidence(r.evidence);
+      if (bytes === null) {
+        problems.push(`${where}: evidence '${r.evidence}' does not exist`);
+        recordFatal.add(i);
+      } else {
+        const actual = createHash('sha256').update(bytes).digest('hex');
+        if (actual !== r.evidence_sha256) {
+          problems.push(
+            `${where}: evidence digest mismatch — '${r.evidence}' hashes to ${actual}, the ` +
+            `record claims ${r.evidence_sha256}`,
+          );
+          recordFatal.add(i);
+        }
+      }
     }
 
     const ids = advisoryIdsOf(r);
@@ -187,7 +271,14 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
     }
   }
 
-  return problems;
+  return { problems, fatalIndices: [...recordFatal].sort((a, b) => a - b) };
+}
+
+/** A readable type name for a diagnostic, distinguishing null and arrays from objects. */
+function describeType(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v;
 }
 
 /**
@@ -196,7 +287,11 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
  * `findings` is a flat list of { advisory_id, image, package_name, purl, severity, target }.
  */
 export function reconcileFindings(doc, findings, opts = {}) {
-  const records = doc.records ?? [];
+  // A structurally invalid record cannot govern anything, so it is removed from the
+  // matching set entirely — otherwise it could still absorb a finding on the strength of
+  // its advisory id alone.
+  const fatal = new Set(opts.fatalIndices ?? []);
+  const records = (doc.records ?? []).filter((_, i) => !fatal.has(i));
   const matchedBy = new Map();
   const unmatched = [];
   const mismatchDetail = [];
@@ -221,11 +316,20 @@ export function reconcileFindings(doc, findings, opts = {}) {
       if (r.installed_version !== f.installed_version) {
         why.push(`installed_version ${r.installed_version} != ${f.installed_version}`);
       }
-      if (Array.isArray(r.severities) && !r.severities.includes(f.severity)) {
-        why.push(`severity ${f.severity} not in [${r.severities.join(', ')}]`);
+      // UNCONDITIONAL. Every consequence-relevant field is compared without a type guard:
+      // a record that reached this point has already passed the code-owned type contract,
+      // and a wrong type must never buy an exemption from matching.
+      // FAIL CLOSED on a wrong type rather than coercing. `'HIGH'.includes('HIGH')` is
+      // TRUE for a STRING, so comparing without an array check would let a string
+      // `severities` match anyway — the very bypass this correction exists to remove.
+      const severities = Array.isArray(r.severities) ? r.severities : null;
+      if (severities === null) {
+        why.push(`severities is ${describeType(r.severities)}, not an array of severities`);
+      } else if (!severities.includes(f.severity)) {
+        why.push(`severity ${f.severity} not in [${severities.join(', ')}]`);
       }
-      if (typeof r.result_target === 'string' && r.result_target !== f.target) {
-        why.push(`result_target ${r.result_target} != ${f.target}`);
+      if (r.result_target !== f.target) {
+        why.push(`result_target ${JSON.stringify(r.result_target)} != ${JSON.stringify(f.target)}`);
       }
       if (why.length > 0) {
         reasons.push(`${r.id ?? '(unnamed)'}: ${why.join('; ')}`);

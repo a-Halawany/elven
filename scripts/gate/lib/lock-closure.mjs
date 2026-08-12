@@ -339,10 +339,10 @@ export function buildClosure(lock, target, opts = {}) {
    * optional, so it seeds (prod, optional) rather than a scope literally named
    * "optionalDependencies".
    */
-  const seedToken = (declaredScope) => {
-    if (declaredScope === 'devDependencies') return token(CHANNEL.dev, false);
+  const seedToken = (declaredScope, snapshotOptional = false) => {
+    if (declaredScope === 'devDependencies') return token(CHANNEL.dev, snapshotOptional);
     if (declaredScope === 'optionalDependencies') return token(CHANNEL.prod, true);
-    return token(CHANNEL.prod, false);
+    return token(CHANNEL.prod, snapshotOptional);
   };
 
   /**
@@ -573,12 +573,22 @@ export function buildClosure(lock, target, opts = {}) {
           continue;
         }
 
+        // OPTIONALITY IS DETERMINED FIRST, before both scope seeding and platform
+        // handling. A DIRECT importer dependency declared under `dependencies:` whose
+        // snapshot carries `optional: true` is optional — and previously it was seeded as
+        // MANDATORY and, if platform-incompatible, failed the gate as a required
+        // dependency instead of being recorded as a governed optional exclusion.
+        const declaredOptional = scope === 'optionalDependencies';
+        const snapshotOptional = snapshots[resolved.ref]?.optional === true;
+        const effectivelyOptional = declaredOptional || snapshotOptional;
+
         const node = materializePackage(resolved.ref);
         if (!node.platform.compatible) {
-          if (scope === 'optionalDependencies') {
+          if (effectivelyOptional) {
             excludedByPlatform.push({
               bomRef: resolved.ref, parent: from, field: node.platform.field,
               reason: node.platform.reason, optional: true,
+              optional_source: declaredOptional ? 'optionalDependencies edge' : 'snapshot optional: true',
             });
             nodes.delete(resolved.ref);
             childrenOf.delete(resolved.ref);
@@ -594,14 +604,17 @@ export function buildClosure(lock, target, opts = {}) {
         }
         childrenOf.get(from).push({
           to: resolved.ref, kind: scope, aliasOf: resolved.aliasOf ?? null,
-          optional: scope === 'optionalDependencies' || snapshots[resolved.ref]?.optional === true,
+          optional: effectivelyOptional,
         });
         queue.push(resolved.ref);
         // ONLY a declared target root seeds scope membership. A workspace reached through
         // a link is not a root: its dependencies inherit whatever scope the CONSUMER was
         // reached under, via propagation. Seeding here unconditionally made a dev-only
         // workspace's runtime dependencies look like production members.
-        if (isRoot) seeds.push({ ref: resolved.ref, scope: seedToken(scope) });
+        //
+        // The seed carries the EFFECTIVE optionality, so a snapshot-optional direct
+        // dependency receives the exact optional scope rather than a mandatory one.
+        if (isRoot) seeds.push({ ref: resolved.ref, scope: seedToken(scope, snapshotOptional) });
       }
     }
     return from;

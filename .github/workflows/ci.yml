@@ -255,6 +255,40 @@ jobs:
         run: node scripts/gate/assert-final-manifests.mjs "$C15_OUT" "$C16_OUT" "$GITHUB_SHA"
       - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
         run: node scripts/license-inventory.mjs
+      # Package the final evidence as ONE inspectable ZIP with its own SHA-256, so an
+      # unsigned public reviewer can download it and verify the bytes they received.
+      - name: Package final C15 + C16 evidence as an inspectable ZIP
+        if: always()
+        run: |
+          set -euo pipefail
+          PKG="$(mktemp -d)"
+          mkdir -p "$PKG/bundle/c15" "$PKG/bundle/c16"
+          # The isolated cache and staged binaries are excluded by design: the cache is
+          # bound by its byte-level fingerprint and the binaries by their authenticated
+          # digests, and both are far too large to ship.
+          if [ -d "${C15_OUT:-}" ]; then
+            rsync -a --exclude '.trivy-cache' --exclude '.staged-scanners' "$C15_OUT/" "$PKG/bundle/c15/"
+          fi
+          if [ -d "${C16_OUT:-}" ]; then rsync -a "$C16_OUT/" "$PKG/bundle/c16/"; fi
+          # A per-file manifest so the ZIP's contents are individually verifiable.
+          ( cd "$PKG/bundle" && find . -type f | sort | xargs -I{} sh -c 'printf "%s  %s\n" "$(sha256sum "{}" | cut -d" " -f1)" "{}"' ) \
+            > "$PKG/bundle/SHA256SUMS.txt"
+          ZIP="$PKG/c16-r31-final-evidence-${GITHUB_SHA}.zip"
+          ( cd "$PKG/bundle" && zip -qr "$ZIP" . )
+          DIGEST="$(sha256sum "$ZIP" | cut -d' ' -f1)"
+          echo "EVIDENCE_ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "EVIDENCE_ZIP_SHA256=$DIGEST" >> "$GITHUB_ENV"
+          {
+            echo "### C16-R3.1 final evidence package"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| source SHA | \`${GITHUB_SHA}\` |"
+            echo "| ZIP name | \`$(basename "$ZIP")\` |"
+            echo "| ZIP SHA-256 | \`${DIGEST}\` |"
+            echo "| files | $(find "$PKG/bundle" -type f | wc -l | tr -d ' ') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "evidence ZIP sha256: $DIGEST"
       # ALWAYS upload: a red run must remain auditable. The runner writes a failure
       # manifest and RESULT-FAIL.txt before exiting, so these paths exist either way.
       - name: Upload C15 + C16 raw gate evidence
@@ -265,4 +299,11 @@ jobs:
           path: |
             ${{ env.C15_OUT }}
             ${{ env.C16_OUT }}
+          if-no-files-found: warn
+      - name: Upload the inspectable final-evidence ZIP
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c16-r31-final-evidence-zip
+          path: ${{ env.EVIDENCE_ZIP }}
           if-no-files-found: warn

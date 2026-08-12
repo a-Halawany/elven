@@ -99,7 +99,13 @@ export function reconcile(closure, onDisk, options = {}) {
     const want = new Map(
       expectedProperties(a, targetId).map((p) => [p.name, String(p.value)]),
     );
-    const have = new Map(Object.entries(b.properties).map(([k, v]) => [k, String(v)]));
+    // Own enumerable entries only, so a prototype-derived name cannot masquerade as a
+    // declared component property.
+    const have = new Map(
+      Object.entries(b.properties)
+        .filter(([k]) => Object.hasOwn(b.properties, k))
+        .map(([k, v]) => [k, String(v)]),
+    );
     for (const [name, value] of want) {
       if (!have.has(name)) {
         fieldMismatches.push(`${ref}: required property '${name}' is absent`);
@@ -238,7 +244,12 @@ export function reconcile(closure, onDisk, options = {}) {
   // ── metadata bindings: EXACT MULTISET — no missing, no unknown, no duplicates ───
   // A duplicate binding is not a cosmetic defect: two eye:source-sha entries let a reader
   // pick either value, so the artifact would no longer name one source unambiguously.
-  const bindings = options.expectedBindings ?? {};
+  // NULL-PROTOTYPE governed set. `name in bindings` consults the PROTOTYPE CHAIN, so
+  // `toString`, `constructor`, `__proto__` and `hasOwnProperty` all answered true and would
+  // have passed as governed metadata properties. Own-property checks against a
+  // null-prototype map remove the class of bypass rather than blacklisting names.
+  const bindings = Object.assign(Object.create(null), options.expectedBindings ?? {});
+  const isGoverned = (name) => Object.hasOwn(bindings, name);
   const duplicateBindings = [...onDisk.metadataPropertyCounts.entries()]
     .filter(([, n]) => n > 1)
     .map(([name, n]) => `${name} x${n}`)
@@ -265,7 +276,7 @@ export function reconcile(closure, onDisk, options = {}) {
   }
   if (options.requireExactBindings === true) {
     for (const name of onDisk.metadataPropertyCounts.keys()) {
-      if (!(name in bindings)) {
+      if (!isGoverned(name)) {
         problems.push(`UNKNOWN metadata property '${name}' is not part of the governed binding set`);
       }
     }
@@ -339,7 +350,7 @@ export const EXCLUSION_REQUIRED_FIELDS = Object.freeze([
 ]);
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const SHA256_HEX = /^[a-f0-9]{64}$/;
+const SHA256_HEX = /^[a-f0-9]{64}$/;   // lowercase hex only
 
 /**
  * ONE EXPLICIT SEMANTIC, chosen and documented: a valid exclusion REMOVES the exact
@@ -512,8 +523,19 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
       seenEntries.set(entryKey, where);
     }
 
-    if (typeof ex.evidence_sha256 === 'string' && !SHA256_HEX.test(ex.evidence_sha256)) {
-      problems.push(`${where}: rejected by 'unapproved' — evidence_sha256 is not a SHA-256 hex digest`);
+    // STRICT TYPE. A non-string such as `evidence_sha256: 123` previously skipped both the
+    // format check and the recompute, so the approval was never bound to any bytes.
+    if (typeof ex.evidence_sha256 !== 'string') {
+      problems.push(
+        `${where}: rejected by 'unapproved' — evidence_sha256 must be a string, got ` +
+        `${typeof ex.evidence_sha256}`,
+      );
+      fatal = true;
+    } else if (!SHA256_HEX.test(ex.evidence_sha256)) {
+      problems.push(
+        `${where}: rejected by 'unapproved' — evidence_sha256 is not a lowercase 64-character ` +
+        'hex SHA-256 digest',
+      );
       fatal = true;
     }
     for (const dateField of ['approved_on', 'expires_on']) {
@@ -560,12 +582,14 @@ export function governExclusions(exclusionDoc, closures, lockUniverse = new Set(
           if (bytes === null) {
             problems.push(`${where}: evidence '${ex.evidence}' does not exist`);
             fatal = true;
-          } else if (SHA256_HEX.test(String(ex.evidence_sha256))) {
+          } else {
+            // ALWAYS recompute. Gating this on the digest's own format meant a malformed
+            // digest silently skipped verification instead of failing it.
             const actual = createHash('sha256').update(bytes).digest('hex');
             if (actual !== ex.evidence_sha256) {
               problems.push(
                 `${where}: evidence digest mismatch — '${ex.evidence}' hashes to ${actual}, ` +
-                `the record claims ${ex.evidence_sha256}`,
+                `the record claims ${JSON.stringify(ex.evidence_sha256)}`,
               );
               fatal = true;
             }
