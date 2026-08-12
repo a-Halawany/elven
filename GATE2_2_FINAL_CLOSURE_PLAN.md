@@ -1096,6 +1096,81 @@ run with no `FAILED` line, cache/staged-binary exclusion, a one-byte tamper that
 and refusal of a malformed source SHA. Reverting the script to the defective form turns
 three of them red, so they reproduce the actual defect rather than describing it.
 
+## 10. C16-R3.2 REMEDIATION RECORD — the verifier had to read the bytes
+
+Items 1, 2 and 4–8 of C16-R3.1 independently pass and are not reopened. One defect
+remained, and it was in the verifier itself.
+
+### 10.1 The defect
+
+`assert-final-manifests.mjs` validated CLAIMS ABOUT hashes without ever opening the files
+those claims describe. An independent reviewer replaced every required C15 artifact and both
+C16 SBOMs with the word `TAMPERED`, left the fabricated 64-character digests and byte counts
+in the manifests, added an extra unbound output, and `assertFinalManifests()` returned **no
+problems**. A verifier that trusts the manifest it is verifying is a transcription check.
+
+Two further vacuous passes came from deriving an expectation from a source the same party
+controls: the expected target set was read from the descriptor and compared to the report, so
+a descriptor with **zero** targets matched a report with zero targets; and the
+authenticated-scanner set was a hardcoded pair rather than the pinned set, so a third scanner
+could be pinned — and therefore executed — with no authentication evidence at all.
+
+### 10.2 Closure map
+
+| # | Required | Correction | Proof |
+|---|---|---|---|
+| 1 | Re-read every bound C15/C16 artifact from disk | `verifyBindings()` opens each binding and recomputes it | 29 controls; the untampered fixture still passes both verifiers |
+| 2 | Path safety, regular file, exists, length, digest | 5 checks per binding: `pathProblem()` (relative, normalized, no `..`, no absolute, no `~`, no NUL), `lstat` symlink and regular-file test, existence, exact byte length, recomputed SHA-256 | symlink, 4 traversal forms, missing file, wrong size, wrong digest, same-length tamper |
+| 3 | Reject duplicates, phantoms, missing, extra unbound, altered receipts / raw outputs / SBOMs | duplicate-path set; phantom detection via `lstat`; `walkFiles()` inventory comparison including nested directories | one control each, plus the reviewer's combined scenario |
+| 3 | Only the documented root manifest, cache and staged-scanner dir may be excluded | `C15_UNBOUND_ALLOWED` / `C16_UNBOUND_ALLOWED` as frozen code-owned lists | a file added inside the cache dir stays excluded while a nested output is caught |
+| 4 | Per target: recompute the SBOM digest, require equality with `sbom_sha256` **and** its binding, require receipt and SBOM bound | three independent comparisons against the same recomputed digest | modified SBOM bytes reported against both claims; a correct-but-unbound SBOM fails |
+| 5 | Exact nonempty `{production, development}` in descriptor **and** report | `PHASE0_TARGET_IDS` owned by the verifier; the descriptor is checked against it, not used as it | empty descriptor, partial set, additional target |
+| 6 | Scanner set from `Object.keys(pins.tools)`, nonempty, includes gitleaks and trivy, all authenticated-before-execution | `pinnedScannerNames()` + `MANDATORY_SCANNERS` + per-tool `authenticated_before_first_execution` | added unauthenticated pin, dropped mandatory scanner, empty pin set, authentication-after-execution |
+| 7 | `tree_clean_after_scanning`, `worktree_unchanged_by_scanning`, staged post-scan digests, before/after cache digests agree | four explicit requirements; the cache digests are compared directly rather than trusting `trivy_cache_unchanged` | one control each, including a manifest whose boolean claims unchanged while the digests disagree |
+| 8 | Executable mutation controls, each failing against the defective behaviour | `apps/api/test/gate/final-manifest-verifier.test.ts`, 29 controls | see 10.3 |
+| 9 | `PROGRESS.md` api gate+unit count | corrected to the measured figure | 10.4 |
+
+### 10.3 Why the controls are not decorative
+
+Every mutation control executes **two** verifiers: the corrected one, and
+`apps/api/test/gate/fixtures/assert-final-manifests.r31-frozen.mjs` — a byte copy of the
+R3.1 verifier with only its CLI guard removed. Each control asserts that the corrected
+verifier rejects the mutation *and* that the frozen defective verifier accepts it. A control
+that only showed the new code rejecting something could not distinguish a closed defect from
+a check that already existed.
+
+One control reproduces the reviewer's scenario in full — every required artifact and both
+SBOMs replaced with `TAMPERED`, fabricated claims retained, an extra unbound output added —
+and asserts the frozen verifier returns `[]` before asserting the corrected one names every
+tampered file individually.
+
+The R3.1 control suite's own "POSITIVE: a fully correct pair passes" fixture claimed
+`sha256: 'cccc…'` for every artifact while writing the single byte `x`, and the old assertion
+called that fully correct. That fixture now generates its bytes first and derives every
+digest and length from them, so a control that mutates a claim mutates it away from bytes
+that genuinely exist.
+
+### 10.4 Suites at this commit
+
+typecheck **0**; build **0**; boundaries clean (94 modules, 253 dependencies); contracts
+**203/203**; tokens **3/3**; api gate+unit **393/393** (gate suites alone **379**);
+integration **297/297**; acceptance **58/58**; Playwright **10/10** on a virgin database.
+
+`PROGRESS.md` said api gate+unit **354/354**. The review named 364/364, which was the
+verified figure at `28b60e8`; this correction adds 29 verifier controls, so the count measured
+at this commit is **393/393** and that is what the document now records — the measured number,
+not the quoted one.
+
+Migrations `0001`–`0021` byte-identical to `e3a0b1f`:
+`git diff --name-only e3a0b1f HEAD -- apps/api/migrations` returns 0 files.
+
+### 10.5 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
+remains unapproved; the source is not frozen; no independent approval is claimed.
+
+---
+
 ### 9.7 Still open
 
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0

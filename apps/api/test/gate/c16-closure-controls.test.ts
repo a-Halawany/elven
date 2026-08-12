@@ -1274,6 +1274,22 @@ describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
   let base: { c15: Record<string, unknown>; c16: Record<string, unknown> };
   let workDir: string;
 
+  /**
+   * C16-R3.2: the bytes on disk are now DETERMINISTIC AND REAL, and the base manifest's
+   * digests are computed from them.
+   *
+   * This fixture previously claimed `sha256: 'cccc…'` for every artifact and wrote the
+   * single byte `x`, and the R3.1 assertion called that "a fully correct pair" — which is
+   * exactly the defect the reviewer reproduced. The content functions below are the single
+   * source of truth for what gets written, so a control that mutates a claim is mutating it
+   * away from bytes that genuinely exist.
+   */
+  const c15Body = (path: string) => `${path}: deterministic control content\n`;
+  const sbomBody = (target: string) =>
+    JSON.stringify({ bomFormat: 'CycloneDX', specVersion: '1.6', target });
+  const C16_RECEIPT = 'C16 PASS\n';
+  const digestOf = (body: string) => createHash('sha256').update(body).digest('hex');
+
   const write = (c15: unknown, c16: unknown) => {
     const c15Dir = join(workDir, `c15-${Math.random().toString(36).slice(2)}`);
     const c16Dir = join(workDir, `c16-${Math.random().toString(36).slice(2)}`);
@@ -1281,12 +1297,19 @@ describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
     mkdirSync(c16Dir, { recursive: true });
     writeFileSync(join(c15Dir, 'supply-chain-manifest.json'), JSON.stringify(c15));
     writeFileSync(join(c16Dir, 'closure-reconciliation.json'), JSON.stringify(c16));
-    // The SBOM files the C16 manifest names must exist beside it.
-    for (const t of Object.values((c16 as { targets?: Record<string, { sbom_file?: string }> }).targets ?? {})) {
-      if (typeof t.sbom_file === 'string') writeFileSync(join(c16Dir, t.sbom_file), '{}');
-    }
     for (const a of (c15 as { evidence_artifacts?: Array<{ path: string }> }).evidence_artifacts ?? []) {
-      writeFileSync(join(c15Dir, a.path), 'x');
+      // Phantom-binding controls point at paths that must NOT be created.
+      if (a.path.includes('..') || a.path.startsWith('/')) continue;
+      writeFileSync(join(c15Dir, a.path), c15Body(a.path));
+    }
+    const targets = (c16 as { targets?: Record<string, { sbom_file?: string; target?: string }> }).targets ?? {};
+    for (const [key, t] of Object.entries(targets)) {
+      if (typeof t.sbom_file === 'string') {
+        writeFileSync(join(c16Dir, t.sbom_file), sbomBody(t.target ?? key));
+      }
+    }
+    for (const a of (c16 as { evidence_artifacts?: Array<{ path: string }> }).evidence_artifacts ?? []) {
+      if (a.path === 'RESULT-PASS.txt') writeFileSync(join(c16Dir, a.path), C16_RECEIPT);
     }
     return { c15Dir, c16Dir };
   };
@@ -1302,19 +1325,44 @@ describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
     };
     const hostKey = `${process.platform}-${process.arch}`;
     const digest = (tool: string) => pins.tools[tool]!.artifacts[hostKey]!.executable_sha256;
+    const cacheDigest = digestOf('an unchanged isolated cache');
+    const authFor = (tool: string) => ({
+      match: true,
+      actual_sha256: digest(tool),
+      authenticated_before_first_execution: true,
+    });
+    const stagedFor = (tool: string) => ({
+      sha256_after: digest(tool), expected: digest(tool), match: true,
+    });
+    const c16Targets = Object.fromEntries(expectedTargetIds(REPO).map((name: string) => {
+      const file = `sbom-${name}.json`;
+      const body = sbomBody(name);
+      return [name, {
+        target: name,
+        sbom_file: file,
+        sbom_bytes: Buffer.byteLength(body),
+        sbom_sha256: digestOf(body),
+        counts: { nodes: 10, subject_root_edges: 4 },
+        reconciliation: { clean: true, subject_root_edges_present: 4 },
+      }];
+    }));
     base = {
       c15: {
         mode: C15_FINAL_MODE, outcome: C15_PASS_OUTCOME, source_sha: SHA,
         tree_clean_at_run: true, trivy_cache_unchanged: true, failures: [],
+        // C16-R3.2 post-scan posture: scanning altered neither the tree nor the cache, and
+        // the staged binaries are still the authenticated ones.
+        tree_clean_after_scanning: true,
+        worktree_unchanged_by_scanning: true,
+        trivy_cache_fingerprint_before: { digest: cacheDigest },
+        trivy_cache_fingerprint_after: { digest: cacheDigest },
         host_platform_key: hostKey,
         executed_binary_authentication: {
-          verified: {
-            trivy: { match: true, actual_sha256: digest('trivy') },
-            gitleaks: { match: true, actual_sha256: digest('gitleaks') },
-          },
+          verified: { trivy: authFor('trivy'), gitleaks: authFor('gitleaks') },
         },
+        staged_tools_after_scanning: { trivy: stagedFor('trivy'), gitleaks: stagedFor('gitleaks') },
         evidence_artifacts: REQUIRED_C15_ARTIFACTS.map((p: string) => ({
-          path: p, bytes: 1, sha256: 'c'.repeat(64),
+          path: p, bytes: Buffer.byteLength(c15Body(p)), sha256: digestOf(c15Body(p)),
         })),
         image_finding_reconciliation: {
           total_findings: 16, unmatched: [], unused_records: [], stale_advisory_ids: [],
@@ -1325,13 +1373,15 @@ describe('C16-R3.1 control — the final-manifest assertion is exact', () => {
         status: C16_FINAL_STATUS,
         generated_from: { source_sha: SHA },
         final_source_posture: { expected_sha: SHA, head_sha: SHA, worktree_clean: true },
-        targets: Object.fromEntries(expectedTargetIds(REPO).map((name: string) => [name, {
-          sbom_sha256: 'd'.repeat(64), sbom_file: `sbom-${name}.json`,
-          counts: { nodes: 10, subject_root_edges: 4 },
-          reconciliation: { clean: true, subject_root_edges_present: 4 },
-        }])),
+        targets: c16Targets,
         vulnerable_residuals: [],
         governed_exclusions: { rejected: [], cardinality_problems: [] },
+        evidence_artifacts: [
+          { path: 'RESULT-PASS.txt', bytes: Buffer.byteLength(C16_RECEIPT), sha256: digestOf(C16_RECEIPT) },
+          ...Object.values(c16Targets).map((t: any) => ({
+            path: t.sbom_file, bytes: t.sbom_bytes, sha256: t.sbom_sha256,
+          })),
+        ],
       },
     };
   });
