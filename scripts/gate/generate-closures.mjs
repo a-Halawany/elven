@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { loadLock, buildClosure } from './lib/lock-closure.mjs';
+import { loadLock, buildClosure, ALLOWED_COMPONENT_TYPES } from './lib/lock-closure.mjs';
 import { buildSbom, serialize, extractFromSbom, subjectRef, SUBJECT_NAME } from './lib/sbom.mjs';
 import { npmPurl } from './lib/lock-closure.mjs';
 
@@ -49,10 +49,17 @@ const PINNED_LIBS = { 'packageurl-js': '2.0.1', yaml: '2.9.0' };
  * generator produces a different binding, so an SBOM can never be attributed to code
  * that did not produce it.
  */
-/** git, but tolerant of a non-worktree export. */
+/**
+ * git, but tolerant of a non-worktree export AND newline-normalised.
+ *
+ * `execFileSync` returns stdout verbatim, so `git rev-parse HEAD` ends with a newline.
+ * Comparing that against an --expected-sha argument made the correct SHA compare unequal
+ * to itself, so final mode could never succeed. Normalising at the single point where git
+ * output enters the program is the fix; trimming at each call site is how one gets missed.
+ */
 function safeGit(args) {
   try {
-    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).replace(/\s+$/, '');
   } catch {
     return null;
   }
@@ -107,7 +114,7 @@ export function buildAllClosures(root = ROOT) {
     closures[name] = buildClosure(
       lock,
       { ...target, integrity_rules: descriptor.integrity_rules?.rules ?? [] },
-      { root, firstPartyTypes },
+      { root, firstPartyTypes, allowedComponentTypes: ALLOWED_COMPONENT_TYPES },
     );
   }
   let sourceSha = '(not a git worktree)';
@@ -303,8 +310,16 @@ export function main(argv = process.argv) {
     // metadata property that is not in this set, so a binding cannot be quietly added.
     const rec = reconcile(closure, onDisk, {
       requireExactBindings: true,
+      expectedDocument: {
+        bomFormat: 'CycloneDX',
+        specVersion: '1.6',
+        version: 1,
+        serialNumber: doc.serialNumber,
+      },
       expectedSubjectVersion: meta.projectVersion,
+      expectedSubjectType: 'application',
       expectedSubjectPurl: subjectPurl(meta.projectVersion),
+      expectedSubjectDescription: target.description,
       expectedBindings: {
         'eye:target-id': target.id,
         'eye:target-os': target.os,

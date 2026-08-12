@@ -34,6 +34,40 @@ import { PackageURL } from 'packageurl-js';
 export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
 /**
+ * CODE-OWNED set of CycloneDX component types this gate will emit. The descriptor may
+ * choose among these per importer; it may not invent new ones.
+ */
+export const ALLOWED_COMPONENT_TYPES = Object.freeze(['application', 'library', 'framework']);
+
+/**
+ * Scope propagation tokens. A scope is a CHANNEL (production or development) plus an
+ * OPTIONALITY bit — not a single flat string. Conflating them is why a component reachable
+ * only through an optional edge still claimed `dependencies`, which overstates it as a
+ * mandatory production member.
+ */
+const CHANNEL = { prod: 'dependencies', dev: 'devDependencies' };
+const token = (channel, optional) => `${optional ? 'optional:' : ''}${channel}`;
+const parseToken = (t) => ({
+  optional: t.startsWith('optional:'),
+  channel: t.startsWith('optional:') ? t.slice('optional:'.length) : t,
+});
+
+/**
+ * The CycloneDX/pnpm scope names a token contributes.
+ *   production + mandatory -> dependencies
+ *   production + optional  -> optionalDependencies ONLY (never `dependencies`)
+ *   development + mandatory -> devDependencies
+ *   development + optional  -> devDependencies + optionalDependencies (it is still dev-only)
+ */
+export function scopesForToken(t) {
+  const { channel, optional } = parseToken(t);
+  if (!optional) return [channel];
+  return channel === CHANNEL.dev
+    ? [CHANNEL.dev, 'optionalDependencies']
+    : ['optionalDependencies'];
+}
+
+/**
  * Lockfile formats this gate is written against. A future or unknown format must be a
  * hard failure: the closure semantics (snapshot keys, peer suffixes, importer shape) are
  * format-specific, so silently parsing an unsupported version would produce a
@@ -300,12 +334,28 @@ export function buildClosure(lock, target, opts = {}) {
   const RUNTIME_SCOPES = ['dependencies', 'optionalDependencies'];
 
   /**
+   * An importer declaration becomes a propagation token. An importer's
+   * `optionalDependencies` entry is a PRODUCTION-channel dependency that happens to be
+   * optional, so it seeds (prod, optional) rather than a scope literally named
+   * "optionalDependencies".
+   */
+  const seedToken = (declaredScope) => {
+    if (declaredScope === 'devDependencies') return token(CHANNEL.dev, false);
+    if (declaredScope === 'optionalDependencies') return token(CHANNEL.prod, true);
+    return token(CHANNEL.prod, false);
+  };
+
+  /**
    * GOVERNED first-party component type. Mapping every workspace to "application" is
    * wrong: apps/* are deployable applications, packages/* are libraries consumed by
    * them, and a consumer filtering the BOM for deployable units must not receive
    * libraries. An unmapped importer is an error rather than a silent default.
    */
   const typeMap = opts.firstPartyTypes ?? {};
+  // The ALLOWED SET is code-owned and passed in. Validating only that a mapping *exists*
+  // let the descriptor declare any string, so a typo or an invented type would reach the
+  // SBOM and fail schema validation far downstream instead of failing here.
+  const allowedTypes = opts.allowedComponentTypes ?? ALLOWED_COMPONENT_TYPES;
   const componentTypeFor = (path) => {
     const t = typeMap[path];
     if (t === undefined) {
@@ -313,6 +363,12 @@ export function buildClosure(lock, target, opts = {}) {
         `importer '${path}' has no governed CycloneDX component type in ` +
         "target-descriptor.json first_party_component_types.by_importer_root; " +
         'the type must be declared, not defaulted',
+      );
+    }
+    if (!allowedTypes.includes(t)) {
+      throw new Error(
+        `importer '${path}' declares CycloneDX component type ${JSON.stringify(t)}, which is ` +
+        `not one of the code-owned allowed types (${allowedTypes.join(', ')})`,
       );
     }
     return t;
@@ -349,6 +405,7 @@ export function buildClosure(lock, target, opts = {}) {
       os: null, cpu: null, libc: null,
       deprecated: null,
       scopes: new Set(),
+      tokens: new Set(),
       platform: { compatible: true, field: null, reason: null },
     });
     childrenOf.set(ref, []);
@@ -472,6 +529,8 @@ export function buildClosure(lock, target, opts = {}) {
       cpu: meta?.cpu ?? null,
       libc: meta?.libc ?? null,
       scopes: new Set(),
+      tokens: new Set(),
+      snapshotOptional: snapshots[ref]?.optional === true,
       platform: platformCompatible(meta ?? {}, target),
     });
     childrenOf.set(ref, []);
@@ -510,7 +569,7 @@ export function buildClosure(lock, target, opts = {}) {
           // package's runtime closure. Its devDependencies are not consumed through
           // the link, so only the runtime scopes follow.
           expandImporter(resolved.workspaceLink, RUNTIME_SCOPES, false);
-          if (isRoot) seeds.push({ ref: to, scope });
+          if (isRoot) seeds.push({ ref: to, scope: seedToken(scope) });
           continue;
         }
 
@@ -533,13 +592,16 @@ export function buildClosure(lock, target, opts = {}) {
           );
           continue;
         }
-        childrenOf.get(from).push({ to: resolved.ref, kind: scope, aliasOf: resolved.aliasOf ?? null });
+        childrenOf.get(from).push({
+          to: resolved.ref, kind: scope, aliasOf: resolved.aliasOf ?? null,
+          optional: scope === 'optionalDependencies' || snapshots[resolved.ref]?.optional === true,
+        });
         queue.push(resolved.ref);
         // ONLY a declared target root seeds scope membership. A workspace reached through
         // a link is not a root: its dependencies inherit whatever scope the CONSUMER was
         // reached under, via propagation. Seeding here unconditionally made a dev-only
         // workspace's runtime dependencies look like production members.
-        if (isRoot) seeds.push({ ref: resolved.ref, scope });
+        if (isRoot) seeds.push({ ref: resolved.ref, scope: seedToken(scope) });
       }
     }
     return from;
@@ -597,7 +659,10 @@ export function buildClosure(lock, target, opts = {}) {
           );
           continue;
         }
-        childrenOf.get(ref).push({ to: resolved.ref, kind, aliasOf: resolved.aliasOf ?? null });
+        childrenOf.get(ref).push({
+          to: resolved.ref, kind, aliasOf: resolved.aliasOf ?? null,
+          optional: optional || snapshots[resolved.ref]?.optional === true,
+        });
         queue.push(resolved.ref);
       }
     }
@@ -623,26 +688,32 @@ export function buildClosure(lock, target, opts = {}) {
   // `dependencies` member, which overstates what is mandatory. Crossing an optional edge
   // therefore ADDS `optionalDependencies` to what flows onward.
   const isWorkspace = (ref) => nodes.get(ref)?.kind === 'workspace';
-  const OPTIONAL = 'optionalDependencies';
   const work = seeds.filter((s) => nodes.has(s.ref));
   while (work.length > 0) {
     const { ref, scope } = work.pop();
     const node = nodes.get(ref);
-    if (node === undefined || node.scopes.has(scope)) continue;
-    node.scopes.add(scope);
+    if (node === undefined || node.tokens.has(scope)) continue;
+    node.tokens.add(scope);
+    const { channel, optional } = parseToken(scope);
     for (const child of childrenOf.get(ref) ?? []) {
       if (!nodes.has(child.to)) continue;
-      // A workspace's own dev declarations are not consumed by its consumers.
+      // A workspace's own dev declarations are not consumed by its consumers; those edges
+      // get their own seed from the root declaration that created them.
       if (isWorkspace(ref) && child.kind === 'devDependencies') continue;
-      // Crossing an optional edge makes the subtree optional as well as whatever it
-      // already was, so both scopes propagate.
-      if (child.kind === OPTIONAL) {
-        work.push({ ref: child.to, scope: OPTIONAL });
-        if (scope !== OPTIONAL) work.push({ ref: child.to, scope });
-      } else {
-        work.push({ ref: child.to, scope });
-      }
+      // Optionality is STICKY and is contributed by the edge OR by the child snapshot's
+      // own `optional: true` marker — 79 snapshots in this lockfile carry that flag, and
+      // ignoring it understated how much of the graph is optional.
+      const edgeOptional = child.kind === 'optionalDependencies' || child.optional === true;
+      work.push({ ref: child.to, scope: token(channel, optional || edgeOptional) });
     }
+  }
+
+  // Collapse propagated tokens into the recorded scope set.
+  for (const node of nodes.values()) {
+    if (node.kind === 'workspace' && roots.includes(node.bomRef)) continue;
+    const scopes = new Set();
+    for (const t of node.tokens) for (const s of scopesForToken(t)) scopes.add(s);
+    node.scopes = scopes;
   }
 
   // A declared target root is the SUBJECT of the closure rather than a member of one

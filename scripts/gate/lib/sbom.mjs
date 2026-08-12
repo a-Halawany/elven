@@ -260,8 +260,34 @@ export function extractFromSbom(text) {
   }
 
   const subjectComponent = doc.metadata?.component ?? null;
+
+  // METADATA PROPERTIES AS A MULTISET. `Object.fromEntries` silently kept the LAST
+  // occurrence, so a duplicate binding — an attacker-inserted second eye:source-sha, or a
+  // conflicting generator digest placed before or after the legitimate one — simply
+  // disappeared. The raw list and per-name counts are preserved instead.
+  const metadataPropertyList = (doc.metadata?.properties ?? []).map((p) => ({
+    name: p?.name ?? null, value: p?.value ?? null,
+  }));
+  const metadataPropertyCounts = new Map();
+  for (const p of metadataPropertyList) {
+    metadataPropertyCounts.set(p.name, (metadataPropertyCounts.get(p.name) ?? 0) + 1);
+  }
+  // First occurrence wins for convenience lookups; duplicates are reported separately.
+  const metadataProperties = {};
+  for (const p of metadataPropertyList) {
+    if (!(p.name in metadataProperties)) metadataProperties[p.name] = p.value;
+  }
+
   return {
     doc,
+    // Top-level document identity, so a rewritten format/spec/version cannot pass.
+    document: {
+      bomFormat: doc.bomFormat ?? null,
+      specVersion: doc.specVersion ?? null,
+      version: doc.version ?? null,
+      serialNumber: doc.serialNumber ?? null,
+      hasTimestamp: doc.metadata?.timestamp !== undefined,
+    },
     subjectRef: subjectComponent?.['bom-ref'] ?? null,
     subject: subjectComponent === null ? null : {
       bomRef: subjectComponent['bom-ref'] ?? null,
@@ -269,10 +295,11 @@ export function extractFromSbom(text) {
       version: subjectComponent.version ?? null,
       type: subjectComponent.type ?? null,
       purl: subjectComponent.purl ?? null,
+      description: subjectComponent.description ?? null,
     },
-    metadataProperties: Object.fromEntries(
-      (doc.metadata?.properties ?? []).map((p) => [p.name, p.value]),
-    ),
+    metadataPropertyList,
+    metadataPropertyCounts,
+    metadataProperties,
     componentList,
     nodes,
     componentRefCounts,

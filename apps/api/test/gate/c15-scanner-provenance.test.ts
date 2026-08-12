@@ -22,15 +22,16 @@
  * The controls below use FIXTURES for the index-resolution logic (no daemon, no
  * network), and assert against the real runner source for the wiring.
  */
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, expect, it, afterAll } from 'vitest';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs gate library shared with the CI scripts (no types)
 import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS } from '../../../../scripts/gate/lib/scanner-provenance.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { enforce, frozenCacheArgs } from '../../../../scripts/gate/lib/trivy-cache.mjs';
+import { enforce, frozenCacheArgs, fingerprint } from '../../../../scripts/gate/lib/trivy-cache.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 'supply-chain.mjs'), 'utf8');
@@ -243,7 +244,10 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
     const src = runnerSource();
     expect(src).toContain('--final requires --expected-sha');
     expect(src).toContain('--final requires a clean worktree');
-    expect(src).toContain("argv.includes('--final')");
+    // Arguments are VALIDATED up front now, so the flag is parsed rather than scanned.
+    expect(src).toContain('BOOLEAN_FLAGS');
+    expect(src).toContain('requires a value');
+    // Behaviour is proven in c15-runner-behaviour.test.ts, which spawns the runner.
   });
 
   it('every step already records the exact command and a digest of its raw output', () => {
@@ -392,5 +396,161 @@ describe('C15-R2 — coverage equivalence is literal, not asserted', () => {
     expect(src).toContain("const AUDIT_LEVEL = ['--audit-level', 'high']");
     expect(src).toMatch(/'pnpm', 'audit', \.\.\.AUDIT_LEVEL/);
     expect(src).toMatch(/'pnpm', 'audit', '--json', \.\.\.AUDIT_LEVEL/);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3 — the checks-bundle fingerprint is byte-level, not count-and-size', () => {
+  /**
+   * The previous fingerprint hashed only the checks-bundle FILE COUNT and TOTAL BYTES, so
+   * replacing a rego check with different bytes of the SAME LENGTH was invisible: the
+   * before/after equality check would still pass while the policy content had changed.
+   * These controls build a synthetic cache and prove an equal-length edit is detected.
+   */
+  const made: string[] = [];
+  afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
+
+  /** A minimal cache tree with the three artifacts the fingerprint covers. */
+  const synthCache = (): string => {
+    const cache = mkdtempSync(join(tmpdir(), 'eye-c16r3-cache-'));
+    made.push(cache);
+    mkdirSync(join(cache, 'db'), { recursive: true });
+    mkdirSync(join(cache, 'policy', 'content', 'policies'), { recursive: true });
+    writeFileSync(join(cache, 'db', 'metadata.json'), JSON.stringify({
+      Version: 2, NextUpdate: '2026-08-13T00:00:00Z',
+      UpdatedAt: '2026-08-12T00:00:00Z', DownloadedAt: '2026-08-12T01:00:00Z',
+    }));
+    writeFileSync(join(cache, 'db', 'trivy.db'), 'synthetic-db-bytes');
+    writeFileSync(join(cache, 'policy', 'metadata.json'), JSON.stringify({
+      Digest: `sha256:${'1'.repeat(64)}`, DownloadedAt: '2026-08-12T01:00:00Z', MajorVersion: 2,
+    }));
+    // Two checks files whose contents will be swapped for equal-length bytes.
+    writeFileSync(join(cache, 'policy', 'content', 'policies', 'a.rego'), 'deny { input.x == 1 }\n');
+    writeFileSync(join(cache, 'policy', 'content', 'policies', 'b.rego'), 'deny { input.y == 2 }\n');
+    return cache;
+  };
+
+  it('digests every checks file individually, with cache-relative paths', () => {
+    const cache = synthCache();
+    const fp = fingerprint(cache) as {
+      digest: string;
+      checks_content: { files: number; bytes: number; manifest_sha256: string };
+      checks_manifest: Array<{ path: string; bytes: number; sha256: string }>;
+    };
+    expect(fp.checks_content.files).toBe(2);
+    expect(fp.checks_manifest).toHaveLength(2);
+    for (const f of fp.checks_manifest) {
+      expect(f.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(f.path.startsWith('policy/content/')).toBe(true);
+    }
+    // Sorted by path, so the manifest never depends on directory-read order.
+    expect(fp.checks_manifest.map((f) => f.path))
+      .toEqual([...fp.checks_manifest.map((f) => f.path)].sort());
+  });
+
+  it('an EQUAL-LENGTH modification changes the fingerprint and fails equality', () => {
+    const cache = synthCache();
+    const before = fingerprint(cache) as { digest: string; checks_content: { files: number; bytes: number } };
+
+    const victim = join(cache, 'policy', 'content', 'policies', 'a.rego');
+    const original = readFileSync(victim, 'utf8');
+    // Same byte length, different content — invisible to a count-and-size fingerprint.
+    const tampered = 'deny { input.z == 9 }\n';
+    expect(Buffer.byteLength(tampered), 'the control requires an equal-length edit')
+      .toBe(Buffer.byteLength(original));
+    writeFileSync(victim, tampered);
+
+    const after = fingerprint(cache) as { digest: string; checks_content: { files: number; bytes: number } };
+    // File count and total bytes are IDENTICAL — the old fingerprint would have matched.
+    expect(after.checks_content.files).toBe(before.checks_content.files);
+    expect(after.checks_content.bytes).toBe(before.checks_content.bytes);
+    // …but the byte-level fingerprint differs, so before/after equality fails.
+    expect(after.digest).not.toBe(before.digest);
+  });
+
+  it('swapping two checks files with each other is also detected', () => {
+    const cache = synthCache();
+    const before = fingerprint(cache) as { digest: string };
+    const a = join(cache, 'policy', 'content', 'policies', 'a.rego');
+    const b = join(cache, 'policy', 'content', 'policies', 'b.rego');
+    const av = readFileSync(a);
+    writeFileSync(a, readFileSync(b));
+    writeFileSync(b, av);
+    const after = fingerprint(cache) as { digest: string };
+    // Total bytes and count are unchanged; only per-path content moved.
+    expect(after.digest).not.toBe(before.digest);
+  });
+
+  it('an unmodified cache fingerprints identically twice (positive control)', () => {
+    const cache = synthCache();
+    expect((fingerprint(cache) as { digest: string }).digest)
+      .toBe((fingerprint(cache) as { digest: string }).digest);
+  });
+
+  it('a modified vulnerability-DB artifact is detected', () => {
+    const cache = synthCache();
+    const before = fingerprint(cache) as { digest: string };
+    const db = join(cache, 'db', 'trivy.db');
+    writeFileSync(db, 'synthetic-db-byteS');   // same length, different content
+    const after = fingerprint(cache) as { digest: string };
+    expect(after.digest).not.toBe(before.digest);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3 — acquisition failure and tracked executable digests', () => {
+  it('the runner treats a nonzero acquisition as fatal, even with an existing cache', () => {
+    const src = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'trivy-cache.mjs'), 'utf8');
+    expect(src).toContain('acquisition exited');
+    expect(src).toContain('even if an older cache is present');
+    const runner = runnerSource();
+    expect(runner).toContain('trivy cache acquisition —');
+  });
+
+  it('acquisition records COMPLETE stdout/stderr with digests, not a tail', () => {
+    const src = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'trivy-cache.mjs'), 'utf8');
+    for (const field of ['stdout_sha256', 'stderr_sha256', 'stdout_bytes', 'stderr_bytes', 'stdout_file']) {
+      expect(src, field).toContain(field);
+    }
+  });
+
+  it('every pinned artifact carries BOTH an archive and an executable digest', () => {
+    const pins = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-pins.json'), 'utf8')) as {
+      tools: Record<string, { artifacts: Record<string, { sha256: string; executable_sha256: string; executable_bytes: number }> }>;
+    };
+    for (const [tool, spec] of Object.entries(pins.tools)) {
+      for (const [plat, art] of Object.entries(spec.artifacts)) {
+        expect(art.sha256, `${tool}/${plat} archive digest`).toMatch(/^[a-f0-9]{64}$/);
+        expect(art.executable_sha256, `${tool}/${plat} executable digest`).toMatch(/^[a-f0-9]{64}$/);
+        expect(art.executable_bytes, `${tool}/${plat} executable size`).toBeGreaterThan(0);
+        // The two must differ: an archive is not its own extracted member.
+        expect(art.executable_sha256).not.toBe(art.sha256);
+      }
+    }
+  });
+
+  it('the installer verifies BOTH digests and refuses either mismatch', () => {
+    const sh = readFileSync(join(REPO, 'scripts', 'gate', 'install-scanners.sh'), 'utf8');
+    expect(sh).toContain('ARCHIVE digest');
+    expect(sh).toContain('EXECUTABLE digest');
+    expect(sh).toContain('executable_sha256');
+    // Both checks must exit non-zero.
+    expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('the runner verifies the bytes of the executable it resolves on PATH', () => {
+    const runner = runnerSource();
+    expect(runner).toContain('executed_binary_authentication');
+    expect(runner).toContain('binary_sha256');
+    expect(runner).toContain('is not authenticated');
+    // …before any scan runs.
+    expect(runner.indexOf('executed_binary_authentication'))
+      .toBeLessThan(runner.indexOf("'pnpm-audit-human'"));
+  });
+
+  it('the raw index manifest digest is checked against the configured reference', () => {
+    const runner = runnerSource();
+    expect(runner).toContain('raw_index_digest_matches_reference');
+    expect(runner).toContain('No child digest from');
   });
 });

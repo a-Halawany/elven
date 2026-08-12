@@ -9,38 +9,54 @@
   "tools": {
     "gitleaks": {
       "version": "8.30.1",
-      "version_probe": ["gitleaks", "version"],
+      "version_probe": [
+        "gitleaks",
+        "version"
+      ],
       "artifacts": {
         "linux-x64": {
           "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
           "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
-          "member": "gitleaks"
+          "member": "gitleaks",
+          "executable_sha256": "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+          "executable_bytes": 21958840
         },
         "linux-arm64": {
           "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
           "sha256": "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080",
-          "member": "gitleaks"
+          "member": "gitleaks",
+          "executable_sha256": "00e91bbe655bd7c47753e8cfe61cb76ea1a5d7e7702fe161ee40102b46b3823b",
+          "executable_bytes": 20775096
         },
         "darwin-arm64": {
           "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
           "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
-          "member": "gitleaks"
+          "member": "gitleaks",
+          "executable_sha256": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
+          "executable_bytes": 21324882
         }
       }
     },
     "trivy": {
       "version": "0.73.0",
-      "version_probe": ["trivy", "--version"],
+      "version_probe": [
+        "trivy",
+        "--version"
+      ],
       "artifacts": {
         "linux-x64": {
           "url": "https://github.com/aquasecurity/trivy/releases/download/v0.73.0/trivy_0.73.0_Linux-64bit.tar.gz",
           "sha256": "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b",
-          "member": "trivy"
+          "member": "trivy",
+          "executable_sha256": "5b3ebab0f98d95196c85efc3a9d31a01520c96fa342e4e611f56db64c516df1d",
+          "executable_bytes": 166486178
         },
         "darwin-arm64": {
           "url": "https://github.com/aquasecurity/trivy/releases/download/v0.73.0/trivy_0.73.0_macOS-ARM64.tar.gz",
           "sha256": "80cc25faaf6378e37701202d0b4f9f43d9e413d198d594ba60fdf559fe44a683",
-          "member": "trivy"
+          "member": "trivy",
+          "executable_sha256": "6b61392e1798f42a66fc78ddf4829b5d26500d259439bb00ae10ed93217ff38f",
+          "executable_bytes": 159460466
         }
       }
     }
@@ -50,7 +66,25 @@
     "db_repository": "mirror.gcr.io/aquasec/trivy-db:2",
     "checks_bundle_repository": "mirror.gcr.io/aquasec/trivy-checks:2",
     "max_age_hours": 24,
-    "required_db_metadata_fields": ["Version", "NextUpdate", "UpdatedAt", "DownloadedAt"],
-    "required_checks_metadata_fields": ["Digest", "DownloadedAt", "MajorVersion"]
+    "required_db_metadata_fields": [
+      "Version",
+      "NextUpdate",
+      "UpdatedAt",
+      "DownloadedAt"
+    ],
+    "required_checks_metadata_fields": [
+      "Digest",
+      "DownloadedAt",
+      "MajorVersion"
+    ]
+  },
+  "executed_binary_authentication": {
+    "$comment": "A --version string is a claim a binary makes about itself, so it is not authentication. The installer verifies the release ARCHIVE digest and then the EXTRACTED EXECUTABLE digest; the runner independently re-verifies the bytes of the executable it actually resolves on PATH and refuses to scan on any mismatch. A different binary that reports the correct version is therefore still rejected.",
+    "note": "These executable digests are the upstream RELEASE builds. Distribution rebuilds (for example Homebrew) produce different bytes for the same version and are correctly rejected: install via scripts/gate/install-scanners.sh so the gate runs the exact audited artifacts.",
+    "host_platform_map": {
+      "linux-x64": "linux/x64",
+      "linux-arm64": "linux/arm64",
+      "darwin-arm64": "darwin/arm64"
+    }
   }
 }

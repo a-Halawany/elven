@@ -1015,8 +1015,16 @@ describe('C16-R2 fixture — lockfile format and governed types are validated', 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-describe('C16-R2 fixture — optional ancestry and dev-reached workspaces', () => {
-  it('a component reached only through an optional edge is OPTIONAL, not a plain dependency', () => {
+describe('C16-R3 fixture — optional ancestry is EXACT, not merely present', () => {
+  /**
+   * The previous control asserted `toContain('optionalDependencies')`, which passes even
+   * when the component also wrongly claims `dependencies`. A component reachable ONLY
+   * through optional ancestry is not a mandatory production member, so its scope set must
+   * be exactly {optionalDependencies}. Every assertion below is exact set equality.
+   */
+  const scopesOf = (c: Closure, ref: string) => [...c.nodes.get(ref)!.scopes].sort();
+
+  it('optional-only child AND grandchild are optional, never plain dependencies', () => {
     const root = synthRepo({
       'package.json': manifest('@fixture/root', '0.0.1'),
       'pnpm-lock.yaml': [
@@ -1047,15 +1055,53 @@ describe('C16-R2 fixture — optional ancestry and dev-reached workspaces', () =
     });
     const c = build(root);
     expect(c.unresolved).toEqual([]);
-    const scopes = (r: string) => [...c.nodes.get(r)!.scopes].sort();
-    expect(scopes('required-parent@1.0.0')).toEqual(['dependencies']);
-    // Reached ONLY through an optional edge, so optional ancestry must be recorded…
-    expect(scopes('optional-child@1.0.0')).toContain('optionalDependencies');
-    // …and it must carry down to the descendant, which is only reachable that way.
-    expect(scopes('grandchild@1.0.0')).toContain('optionalDependencies');
+    expect(scopesOf(c, 'required-parent@1.0.0')).toEqual(['dependencies']);
+    // EXACT: optional-only means optional-only. `dependencies` here would be a false
+    // claim that the component is mandatory.
+    expect(scopesOf(c, 'optional-child@1.0.0')).toEqual(['optionalDependencies']);
+    expect(scopesOf(c, 'grandchild@1.0.0')).toEqual(['optionalDependencies']);
   });
 
-  it('a workspace reached only through a DEV edge keeps its runtime deps in dev scope', () => {
+  it('a DUAL path (mandatory + optional) correctly carries both', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      mandatory-parent:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        '      optional-parent:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  mandatory-parent@1.0.0:',
+        `    resolution: {integrity: ${sri('mp')}}`,
+        '  optional-parent@1.0.0:',
+        `    resolution: {integrity: ${sri('op')}}`,
+        '  shared@1.0.0:',
+        `    resolution: {integrity: ${sri('sh2')}}`,
+        'snapshots:',
+        '  mandatory-parent@1.0.0:',
+        '    dependencies:',
+        '      shared: 1.0.0',
+        '  optional-parent@1.0.0:',
+        '    optionalDependencies:',
+        '      shared: 1.0.0',
+        '  shared@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    // Two genuine paths, unioned deterministically.
+    expect(scopesOf(c, 'shared@1.0.0')).toEqual(['dependencies', 'optionalDependencies']);
+    expect(scopesOf(c, 'mandatory-parent@1.0.0')).toEqual(['dependencies']);
+  });
+
+  it('a DEVELOPMENT-only linked workspace stays development-only, exactly', () => {
     const root = synthRepo({
       'package.json': manifest('@fixture/root', '0.0.1'),
       'packages/lib/package.json': manifest('@fixture/lib', '1.0.0'),
@@ -1064,7 +1110,7 @@ describe('C16-R2 fixture — optional ancestry and dev-reached workspaces', () =
         'importers:',
         '  .:',
         '    devDependencies:',
-        '      \'@fixture/lib\':',
+        "      '@fixture/lib':",
         '        specifier: link:packages/lib',
         '        version: link:packages/lib',
         '  packages/lib:',
@@ -1072,23 +1118,159 @@ describe('C16-R2 fixture — optional ancestry and dev-reached workspaces', () =
         '      lib-runtime:',
         '        specifier: 1.0.0',
         '        version: 1.0.0',
+        '    optionalDependencies:',
+        '      lib-optional:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
         'packages:',
         '  lib-runtime@1.0.0:',
-        `    resolution: {integrity: ${sri('lr2')}}`,
+        `    resolution: {integrity: ${sri('lr3')}}`,
+        '  lib-optional@1.0.0:',
+        `    resolution: {integrity: ${sri('lo3')}}`,
         'snapshots:',
         '  lib-runtime@1.0.0: {}',
+        '  lib-optional@1.0.0: {}',
         '',
       ].join('\n'),
     });
-    // Only '.' is a root, and it depends on the workspace as a DEV dependency.
     const c = build(root, {
       importer_roots: ['.'],
       dependency_scopes: ['dependencies', 'devDependencies'],
     });
     expect(c.unresolved).toEqual([]);
-    expect([...c.nodes.get('workspace:packages/lib')!.scopes].sort()).toEqual(['devDependencies']);
-    // The transitive RUNTIME dependency of a dev-only workspace is still development
-    // scope overall — it is not part of the production closure.
-    expect([...c.nodes.get('lib-runtime@1.0.0')!.scopes].sort()).toEqual(['devDependencies']);
+    expect(scopesOf(c, 'workspace:packages/lib')).toEqual(['devDependencies']);
+    // The dev-only workspace's RUNTIME dep is development scope — and NOT production.
+    expect(scopesOf(c, 'lib-runtime@1.0.0')).toEqual(['devDependencies']);
+    // Its OPTIONAL dep is development AND optional, but still never `dependencies`.
+    expect(scopesOf(c, 'lib-optional@1.0.0')).toEqual(['devDependencies', 'optionalDependencies']);
+  });
+
+  it('a snapshot marked `optional: true` is optional even on a NON-optional edge', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      parent:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  parent@1.0.0:',
+        `    resolution: {integrity: ${sri('par')}}`,
+        '  flagged-optional@1.0.0:',
+        `    resolution: {integrity: ${sri('fo')}}`,
+        '  under-flagged@1.0.0:',
+        `    resolution: {integrity: ${sri('uf')}}`,
+        'snapshots:',
+        '  parent@1.0.0:',
+        '    dependencies:',
+        '      flagged-optional: 1.0.0',
+        '  flagged-optional@1.0.0:',
+        '    optional: true',
+        '    dependencies:',
+        '      under-flagged: 1.0.0',
+        '  under-flagged@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    // The EDGE is a plain `dependencies` edge; only the snapshot's own `optional: true`
+    // marks it. 79 snapshots in the real lockfile carry that flag, and ignoring it
+    // understated how much of the graph is optional.
+    expect(scopesOf(c, 'flagged-optional@1.0.0')).toEqual(['optionalDependencies']);
+    expect(scopesOf(c, 'under-flagged@1.0.0')).toEqual(['optionalDependencies']);
+    expect(scopesOf(c, 'parent@1.0.0')).toEqual(['dependencies']);
+  });
+
+  it('an optional NATIVE subtree is optional throughout', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      image-lib:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  image-lib@1.0.0:',
+        `    resolution: {integrity: ${sri('il')}}`,
+        '  native-linux-x64@1.0.0:',
+        `    resolution: {integrity: ${sri('nlx')}}`,
+        '    os:',
+        '      - linux',
+        '    cpu:',
+        '      - x64',
+        '  native-helper@1.0.0:',
+        `    resolution: {integrity: ${sri('nh')}}`,
+        'snapshots:',
+        '  image-lib@1.0.0:',
+        '    optionalDependencies:',
+        '      native-linux-x64: 1.0.0',
+        '  native-linux-x64@1.0.0:',
+        '    dependencies:',
+        '      native-helper: 1.0.0',
+        '  native-helper@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root);
+    expect(c.unresolved).toEqual([]);
+    expect(scopesOf(c, 'native-linux-x64@1.0.0')).toEqual(['optionalDependencies']);
+    expect(scopesOf(c, 'native-helper@1.0.0')).toEqual(['optionalDependencies']);
+  });
+
+  it('every node carries at least one scope, and roots carry the declared scopes', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      a:',
+        '        specifier: 1.0.0',
+        '        version: 1.0.0',
+        'packages:',
+        '  a@1.0.0:',
+        `    resolution: {integrity: ${sri('a')}}`,
+        'snapshots:',
+        '  a@1.0.0: {}',
+        '',
+      ].join('\n'),
+    });
+    const c = build(root, { dependency_scopes: ['dependencies', 'optionalDependencies'] });
+    for (const [ref, n] of c.nodes) {
+      expect(n.scopes.size, `${ref} has no scope provenance`).toBeGreaterThan(0);
+    }
+    expect(scopesOf(c, 'workspace:.')).toEqual(['dependencies', 'optionalDependencies']);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3 fixture — the governed component type must be an ALLOWED type', () => {
+  it('rejects a mapped type outside the code-owned allowed set, before serialization', () => {
+    const root = synthRepo({
+      'package.json': manifest('@fixture/root', '0.0.1'),
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .: {}',
+        'packages: {}',
+        'snapshots: {}',
+        '',
+      ].join('\n'),
+    });
+    // Declaring a mapping is not enough: the value must be a real CycloneDX type.
+    expect(() => build(root, {}, { '.': 'not-a-cyclonedx-type' }))
+      .toThrow(/not one of the code-owned allowed types/);
+    // …and the allowed ones still work.
+    for (const t of ['application', 'library', 'framework']) {
+      expect(() => build(root, {}, { '.': t }), t).not.toThrow();
+    }
   });
 });

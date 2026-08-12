@@ -31,7 +31,7 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync, statSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -60,20 +60,40 @@ export const frozenCacheArgs = (cacheDir) => [
  * populate it, and doing it here — once, explicitly — is what makes the authoritative
  * scans able to run with updates disabled.
  */
-export function acquire({ cacheDir, timeout = '15m', log = () => {} }) {
+export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = null }) {
   mkdirSync(cacheDir, { recursive: true });
   const steps = [];
 
-  const run = (label, argv) => {
+  // COMPLETE capture, not a four-line tail: an acquisition that half-failed is exactly
+  // the case a reviewer needs the raw bytes for. Written to disk when an output directory
+  // is supplied, and digested either way.
+  const run = (label, argv, id) => {
     const started = new Date().toISOString();
     const res = spawnSync(argv[0], argv.slice(1), {
-      encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+      encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
       env: { ...process.env, TRIVY_CACHE_DIR: cacheDir },
     });
+    const stdout = res.stdout ?? '';
+    const stderr = res.stderr ?? '';
+    if (outDir !== null) {
+      writeFileSync(join(outDir, `${id}.stdout.txt`), stdout);
+      writeFileSync(join(outDir, `${id}.stderr.txt`), stderr);
+    }
     const record = {
-      label, argv, started_at: started, finished_at: new Date().toISOString(),
+      label,
+      id,
+      argv,
+      started_at: started,
+      finished_at: new Date().toISOString(),
       exit_code: res.status,
-      stderr_tail: (res.stderr ?? '').split('\n').filter((l) => l.trim() !== '').slice(-4),
+      signal: res.signal ?? null,
+      stdout_bytes: Buffer.byteLength(stdout),
+      stderr_bytes: Buffer.byteLength(stderr),
+      stdout_sha256: sha256(stdout),
+      stderr_sha256: sha256(stderr),
+      stdout_file: outDir === null ? null : `${id}.stdout.txt`,
+      stderr_file: outDir === null ? null : `${id}.stderr.txt`,
+      stderr_tail: stderr.split('\n').filter((l) => l.trim() !== '').slice(-4),
     };
     steps.push(record);
     log(`  [${res.status === 0 ? 'ok' : `exit ${res.status}`}] ${label}`);
@@ -83,7 +103,7 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {} }) {
   const db = run('acquire vulnerability database', [
     'trivy', '--cache-dir', cacheDir, '--timeout', timeout,
     'image', '--download-db-only', '--no-progress',
-  ]);
+  ], 'trivy-acquire-db');
 
   // Empty directory: the scan itself must find nothing, so the only effect is the
   // bundle download.
@@ -91,9 +111,28 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {} }) {
   const checks = run('acquire misconfiguration checks bundle', [
     'trivy', '--cache-dir', cacheDir, '--timeout', timeout,
     'fs', '--scanners', 'misconfig', '--no-progress', '--format', 'json', probeDir,
-  ]);
+  ], 'trivy-acquire-checks');
 
-  return { cacheDir, steps, db_exit: db.exit_code, checks_exit: checks.exit_code };
+  // A NONZERO acquisition must fail even when an older cache already exists: silently
+  // continuing would scan against whatever stale data happened to be present, which is
+  // precisely the condition the freshness enforcement exists to prevent.
+  const problems = [];
+  if (db.exit_code !== 0) {
+    problems.push(
+      `vulnerability-database acquisition exited ${db.exit_code}; a scan must not proceed ` +
+      'against a cache whose refresh failed, even if an older cache is present',
+    );
+  }
+  if (checks.exit_code !== 0) {
+    problems.push(
+      `checks-bundle acquisition exited ${checks.exit_code}; a scan must not proceed against ` +
+      'a cache whose refresh failed, even if an older cache is present',
+    );
+  }
+  return {
+    cacheDir, steps, problems,
+    db_exit: db.exit_code, checks_exit: checks.exit_code,
+  };
 }
 
 /** Read a JSON cache metadata file, returning its parsed content AND byte digest. */
@@ -345,26 +384,47 @@ export function fingerprint(cacheDir) {
     const st = statSync(path);
     entries.push({ path: label, present: true, bytes: st.size, sha256: sha256(readFileSync(path)) });
   }
-  const checksContent = existsSync(p.checksDir)
-    ? countTree(join(p.checksDir, 'content'))
-    : { files: 0, bytes: 0 };
-  const combined = sha256(JSON.stringify({ entries, checksContent }));
-  return { digest: combined, entries, checks_content: checksContent };
+
+  // BYTE-LEVEL checks-bundle manifest. Counting files and summing sizes made an
+  // equal-length modification invisible: swap one rego check for different bytes of the
+  // same length and the old fingerprint was identical. Every file is now digested
+  // individually and the sorted manifest is hashed.
+  const checksManifest = fileManifest(join(p.checksDir, 'content'), 'policy/content');
+  const combined = sha256(JSON.stringify({ entries, checksManifest: checksManifest.files }));
+  return {
+    digest: combined,
+    entries,
+    checks_content: {
+      files: checksManifest.files.length,
+      bytes: checksManifest.files.reduce((a, f) => a + f.bytes, 0),
+      manifest_sha256: sha256(JSON.stringify(checksManifest.files)),
+    },
+    // Retained in full so a reviewer can diff two runs file by file.
+    checks_manifest: checksManifest.files,
+  };
 }
 
-function countTree(dir) {
-  if (!existsSync(dir)) return { files: 0, bytes: 0 };
-  let files = 0;
-  let bytes = 0;
-  const walk = (d) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
+/**
+ * A deterministic recursive manifest: every file's cache-relative path, size and SHA-256,
+ * sorted by path so the result never depends on directory-read order.
+ */
+export function fileManifest(dir, prefix) {
+  const files = [];
+  if (!existsSync(dir)) return { files };
+  const walk = (d, rel) => {
+    for (const e of readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const full = join(d, e.name);
-      if (e.isDirectory()) walk(full);
-      else { files += 1; bytes += statSync(full).size; }
+      const relPath = rel === '' ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(full, relPath);
+      else if (e.isFile()) {
+        const buf = readFileSync(full);
+        files.push({ path: `${prefix}/${relPath}`, bytes: buf.byteLength, sha256: sha256(buf) });
+      }
     }
   };
-  walk(dir);
-  return { files, bytes };
+  walk(dir, '');
+  files.sort((a, b) => (a.path < b.path ? -1 : 1));
+  return { files };
 }
 
 /** Load the tracked scanner pins. */

@@ -100,7 +100,7 @@ jobs:
       # The C15 BEHAVIOURAL controls under `pnpm test` SPAWN the real runner, so this job
       # needs the pinned scanners too. Same tracked, checksum-verified installer as the
       # supply-chain job — duplicating the shell is how two copies drift apart.
-      - name: Install PINNED scanner binaries, verified against tracked checksums
+      - name: Install PINNED scanner binaries (archive AND executable digests verified)
         run: bash scripts/gate/install-scanners.sh gitleaks trivy
       - name: Verify scanner versions are EXACTLY the pinned ones
         run: |
@@ -205,7 +205,7 @@ jobs:
       # Downloads are AUTHENTICATED against the tracked upstream checksums in
       # scripts/gate/scanner-pins.json. An unauthenticated download is an unverified input
       # to the gate that exists to verify inputs.
-      - name: Install PINNED scanner binaries, verified against tracked checksums
+      - name: Install PINNED scanner binaries (archive AND executable digests verified)
         run: bash scripts/gate/install-scanners.sh gitleaks trivy
       - name: Verify scanner + toolchain versions are EXACTLY the pinned ones
         run: |
@@ -227,20 +227,32 @@ jobs:
       # authoritative scan with --skip-db-update --skip-check-update and proves the cache
       # fingerprint is unchanged. 8 steps, 6 blocking; the 2 non-blocking steps are
       # alternate output FORMATS with byte-identical coverage descriptors.
-      - name: C15 supply-chain gate (tracked pinned runner, blocking)
+      # FINAL MODE, bound to the Actions head SHA. Final mode requires an explicit expected
+      # SHA, HEAD equal to it, a real git worktree and a clean tree — so the uploaded
+      # manifests state `final` and carry the exact commit this run describes.
+      - name: C15 supply-chain gate (tracked pinned runner, FINAL, blocking)
         run: |
           set -euo pipefail
           C15_OUT="$(mktemp -d)"
           C15_CACHE="$(mktemp -d)"
           echo "C15_OUT=$C15_OUT" >> "$GITHUB_ENV"
           echo "C15_CACHE=$C15_CACHE" >> "$GITHUB_ENV"
-          node scripts/gate/supply-chain.mjs --out "$C15_OUT" --trivy-cache "$C15_CACHE"
-      - name: C16 target-resolved closure gate (tracked runner, blocking)
+          node scripts/gate/supply-chain.mjs \
+            --out "$C15_OUT" \
+            --trivy-cache "$C15_CACHE" \
+            --final \
+            --expected-sha "$GITHUB_SHA"
+      - name: C16 target-resolved closure gate (tracked runner, FINAL, blocking)
         run: |
           set -euo pipefail
           C16_OUT="$(mktemp -d)"
           echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
-          node scripts/gate/generate-closures.mjs --out "$C16_OUT"
+          node scripts/gate/generate-closures.mjs \
+            --out "$C16_OUT" \
+            --final \
+            --expected-sha "$GITHUB_SHA"
+      - name: Assert the manifests state FINAL mode and the exact Actions head SHA
+        run: node scripts/gate/assert-final-manifests.mjs "$C15_OUT" "$C16_OUT" "$GITHUB_SHA"
       - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
         run: node scripts/license-inventory.mjs
       # ALWAYS upload: a red run must remain auditable. The runner writes a failure

@@ -787,3 +787,213 @@ removed disposition (ungoverned finding), an unused disposition, a resurrected
 
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
 remains unapproved. No independent approval, frozen status or final readiness is claimed.
+
+
+---
+
+## 8. C16-R3 REMEDIATION RECORD — final fail-closed C15/C16 closure
+
+Hosted run `31544091029` (all three jobs green) is retained as valid preliminary evidence
+and none of its fixes were discarded. Independent adversarial testing then found remaining
+**false-PASS and false-FAIL paths**. This section is authoritative where it conflicts with
+§5, §6 or §7.
+
+### 8.1 The defect that made final evidence impossible
+
+`safeGit()` returned `git rev-parse HEAD` **including its trailing newline**, so the
+recorded source SHA was `"<sha>\n"` while `--expected-sha` was `"<sha>"`. The correct SHA
+therefore compared **unequal to itself** and final mode could never succeed — a false FAIL
+that silently blocked every final-evidence run while looking like a legitimate refusal:
+
+```
+--expected-sha 6324d0a99cf353a19bd6cb40f875c859e9cca511 does not match HEAD 6324d0a99cf353a19bd6cb40f875c859e9cca511
+```
+
+Both runners now normalise git output at the single point where it enters the program.
+Trimming per call site is how one gets missed.
+
+### 8.2 A nonzero scanner exit always blocks
+
+The image step carried an unconditional `rec.failed = false`, justified as "findings are
+expected". But the image command deliberately omits `--exit-code`, so findings alone return
+zero — which means **every** nonzero status was a scanner failure, and all of them were
+being discarded. A crashed or partially-written scan looked like a clean pass as long as
+its stdout happened to parse. Parseable output is not evidence that a scan completed.
+
+Now: any nonzero exit is a blocking failure, findings from that run are **not ingested**,
+and the raw stdout, stderr and exit status are preserved and digested. Proven by a fake
+trivy that reports the correct version, emits syntactically valid JSON and exits 3.
+
+### 8.3 Checks-bundle byte integrity
+
+The fingerprint hashed only the checks-bundle **file count and total bytes**, so replacing
+a rego check with different bytes of the same length was invisible. It is now a
+deterministic recursive manifest — cache-relative path, size and SHA-256 for every file,
+sorted, then hashed. Measured on the real cache: **641 files individually digested**.
+
+Controls prove an equal-length edit, a swap of two files, and an equal-length
+vulnerability-DB edit each change the fingerprint and fail before/after equality.
+
+Acquisition also hardened: a nonzero vulnerability-DB or checks-bundle acquisition is now
+fatal **even when an older cache exists** (otherwise the scan runs against whatever stale
+data happens to be present), and complete stdout/stderr are written and digested rather
+than a four-line tail.
+
+### 8.4 Exact governed dispositions
+
+A record must now match **every** consequence-relevant field: advisory id, exact configured
+image digest, exact resolved platform, package name, exact canonical PURL, installed
+version, severity and trivy result target. `package_purl_prefix` is rejected outright — a
+prefix can match a different installed version, which is a different finding.
+
+`HIGH_AND_CRITICAL` is gone. `severities` is an explicit governed array, and the single
+CRITICAL advisory (`CVE-2025-68121`) now carries **its own record** (`SCX-0003`) so a
+disposition approved for HIGH cannot absorb a CRITICAL. Measured: **16 findings governed by
+3 records, 0 unmatched, 0 unused.** Near-miss detail is recorded so a reviewer sees *why* a
+record failed to govern a finding.
+
+Controls prove rejection of: platform mismatch (a `linux/arm64` record cannot govern a
+`linux/amd64` finding), severity escalation, result-target mismatch, installed-version
+mismatch, an ambiguous composite severity label, missing/changed evidence, and unknown,
+duplicate, expired, stale, unused or overbroad records.
+
+### 8.5 Always-written failure evidence
+
+There was **no** working top-level handler: the R2 edit's anchor silently failed to match,
+leaving a bare `main();`. So `--trivy-cache` with no value threw `ERR_INVALID_ARG_TYPE`
+before any output directory existed and the run produced **nothing at all**.
+
+Now: validated argument parsing (`parseArgs`) rejects unknown flags, valueless flags and a
+malformed `--expected-sha`; governed JSON is read through a precise, catchable reader; and
+an outermost boundary always attempts to write `supply-chain-manifest.json` and
+`RESULT-FAIL.txt` carrying the sanitized exception type and message, the available source
+SHA, the exact arguments, a timestamp and any diagnostics already collected. Every step on
+that path is individually guarded so a secondary fault cannot destroy the primary
+diagnosis.
+
+### 8.6 Executed-binary authentication
+
+A `--version` string is a claim a binary makes about itself. The pins now carry, per tool
+and platform, both the release **archive** digest and the **extracted executable** digest;
+the installer verifies both; and the runner independently digests the executable it
+actually resolves on PATH and refuses to scan on any mismatch.
+
+This is not theoretical: the Homebrew builds of trivy and gitleaks report the correct
+versions with **different bytes** and are correctly rejected. Running the gate requires the
+authenticated upstream artifacts (`scripts/gate/install-scanners.sh`).
+
+For OCI resolution, the SHA-256 of the raw returned index manifest is verified to equal the
+digest in the configured reference **before any child digest is trusted**. Confirmed on
+both images: `raw index digest MATCHES the pinned reference`.
+
+### 8.7 Exact metadata reconciliation
+
+`Object.fromEntries` collapsed `metadata.properties`, keeping only the last occurrence — so
+a duplicate binding simply disappeared. Properties are now preserved as a **multiset**:
+identical duplicates, conflicting duplicates inserted before *or* after the legitimate
+value, missing bindings and unknown bindings are all rejected, with dedicated controls for
+duplicate `eye:source-sha`, `eye:lockfile-sha256`, `eye:descriptor-sha256` and
+`eye:generator-sha256`.
+
+Top-level document identity is now reconciled too: `bomFormat`, `specVersion`, document
+`version`, the deterministic `serialNumber`, the absence of `metadata.timestamp`, and the
+subject's `bom-ref`, name, version, type, PURL and description.
+
+### 8.8 Governed component types are validated
+
+The descriptor declared an `allowed_types` list that nothing enforced; the builder checked
+only that a mapping existed. The allowed set is now **code-owned**
+(`ALLOWED_COMPONENT_TYPES`) and passed into closure construction, so a mapped value outside
+it fails **before serialization**. A control uses `not-a-cyclonedx-type`.
+
+### 8.9 Optional-dependency accuracy — and a corrected count
+
+The previous control asserted `toContain('optionalDependencies')`, which passes even when
+the component *also* wrongly claims `dependencies`. Scope is now modelled as a **channel**
+(production or development) plus an **optionality bit**, propagated as a token to a fixed
+point:
+
+| path | scope set |
+|---|---|
+| production, mandatory | `dependencies` |
+| production, optional | `optionalDependencies` **only** |
+| development, mandatory | `devDependencies` |
+| development, optional | `devDependencies` + `optionalDependencies` |
+
+Optionality is contributed by an `optionalDependencies` edge **or** by the child snapshot's
+own `optional: true` marker — **79 snapshots in this lockfile carry that flag** and it was
+being ignored entirely. Every assertion is now exact set equality, with fixtures for
+optional-only child and grandchild, a mandatory+optional dual path, a development-only
+linked workspace, a snapshot marked `optional: true`, and an optional native subtree.
+
+**Truthfully changed counts.** Production scope membership went from
+`{dependencies+optionalDependencies: 146, dependencies: 49}` to
+`{dependencies+optionalDependencies: 131, dependencies: 49, optionalDependencies: 15}` —
+15 production components were previously mislabelled as mandatory. Development gained
+9 optional-only components. Component and edge totals are unchanged.
+
+### 8.10 Evidence completeness
+
+Every raw artifact is bound into the manifest by relative path, size and SHA-256: gitleaks
+JSON reports, trivy table/JSON reports, scanner-acquisition logs, image findings, and the
+result files. Measured: **23 artifacts bound** in a local run. The isolated trivy cache is
+excluded by design — its identity is already bound by the byte-level cache fingerprint.
+
+### 8.11 Defects discovered during this correction
+
+1. `safeGit()` newline — final mode could never succeed (§8.1).
+2. Unconditional `rec.failed = false` discarded every image-scan failure (§8.2).
+3. The checks-bundle fingerprint was count-and-size, blind to equal-length edits (§8.3).
+4. `HIGH_AND_CRITICAL` let a HIGH approval absorb a CRITICAL (§8.4).
+5. **The R2 top-level handler never existed**: the string anchor silently failed to match,
+   leaving a bare `main();`. A lesson about unasserted replacements — the R2 pass used
+   `str.replace` without verifying the anchor.
+6. Executable digests were parameterised but never supplied, so binary authentication was
+   dead code (§8.6).
+7. `Object.fromEntries` collapsed duplicate metadata bindings (§8.7).
+8. `allowed_types` was declared but unenforced (§8.8).
+9. Snapshot-level `optional: true` was ignored on 79 snapshots (§8.9).
+10. **My own new bug, caught by running it:** the binary-authentication check read
+    `actual.sha256` while `scannerBinaries()` returns `binary_sha256`, so it always
+    reported "(unreadable)" and always failed — a false FAIL that would have blocked every
+    run. Found by executing the gate, not by reading the diff.
+11. Local Playwright fails when the DB suites run first and consume the one-shot bootstrap;
+    10/10 on a virgin database. CI always has virgin containers.
+
+### 8.12 Measurements at this commit
+
+| | production | development |
+|---|---|---|
+| components | **195** | **294** |
+| graph edges | **290** | **446** |
+| subject to root edges | **4** | **5** |
+| total edges reconciled | **294** | **451** |
+| platform-excluded | 36 | 60 |
+| unresolved references | 0 | 0 |
+
+Scope membership — production
+`{dependencies+optionalDependencies: 131, dependencies: 49, optionalDependencies: 15}`;
+development `{dependencies+devDependencies+optionalDependencies: 22,
+dependencies+optionalDependencies: 114, dependencies: 45,
+devDependencies+optionalDependencies: 23, devDependencies: 81, optionalDependencies: 9}`.
+
+C15: 8 steps / 6 blocking, 16 findings governed by 3 records (0 unmatched, 0 unused), raw
+index digests match both pinned references, executable bytes authenticated for both
+scanners, trivy cache unchanged across the authoritative scans, 641 checks files digested.
+
+### 8.13 Controls
+
+| Suite | Tests |
+|---|---|
+| `c16-closure-controls.test.ts` | **109** |
+| `c16-lockfile-fixtures.test.ts` | **54** |
+| `c15-runner-behaviour.test.ts` | **28** (each SPAWNS the real runner) |
+| `c15-scanner-provenance.test.ts` | **45** |
+| `supply-chain-artifacts.test.ts` | **10** |
+| `supply-chain.test.ts` | **39** |
+
+### 8.14 Still open
+
+C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
+remains unapproved. No independent approval, frozen-product status or Phase 0 completion is
+claimed, and C17 does not begin until this correction has been independently reviewed.

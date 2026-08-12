@@ -196,13 +196,14 @@ export function reconcile(closure, onDisk, options = {}) {
     bomRef: subject,
     name: SUBJECT_NAME,
     version: options.expectedSubjectVersion ?? null,
-    type: 'application',
+    type: options.expectedSubjectType ?? 'application',
     purl: options.expectedSubjectPurl ?? null,
+    description: options.expectedSubjectDescription ?? null,
   };
   if (onDisk.subject === null) {
     problems.push('the SBOM declares no metadata.component subject at all');
   } else {
-    for (const field of ['bomRef', 'name', 'type', 'version', 'purl']) {
+    for (const field of ['bomRef', 'name', 'type', 'version', 'purl', 'description']) {
       const want = expectedSubject[field];
       if (want === null) continue;   // not asserted by this caller
       if (onDisk.subject[field] !== want) {
@@ -217,20 +218,55 @@ export function reconcile(closure, onDisk, options = {}) {
     problems.push(`metadata subject ${subject} has NO dependency entry — the BOM graph is disconnected`);
   }
 
-  // ── metadata bindings: EXACT set, no missing and no unknown ────────────────────
+  // ── top-level document identity ────────────────────────────────────────────────
+  const expectedDoc = options.expectedDocument ?? null;
+  if (expectedDoc !== null) {
+    for (const field of ['bomFormat', 'specVersion', 'version', 'serialNumber']) {
+      if (expectedDoc[field] === undefined) continue;
+      if (onDisk.document[field] !== expectedDoc[field]) {
+        problems.push(
+          `document ${field} is ${JSON.stringify(onDisk.document[field])}, ` +
+          `expected ${JSON.stringify(expectedDoc[field])}`,
+        );
+      }
+    }
+    if (onDisk.document.hasTimestamp) {
+      problems.push('metadata.timestamp is present; it must be omitted for byte-comparability');
+    }
+  }
+
+  // ── metadata bindings: EXACT MULTISET — no missing, no unknown, no duplicates ───
+  // A duplicate binding is not a cosmetic defect: two eye:source-sha entries let a reader
+  // pick either value, so the artifact would no longer name one source unambiguously.
   const bindings = options.expectedBindings ?? {};
+  const duplicateBindings = [...onDisk.metadataPropertyCounts.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([name, n]) => `${name} x${n}`)
+    .sort();
+  for (const d of duplicateBindings) {
+    problems.push(`DUPLICATE metadata property ${d}; governed bindings must appear exactly once`);
+  }
+  // Compare against the FIRST occurrence and, independently, require every occurrence to
+  // carry the expected value — so a conflicting duplicate is caught whichever side it is on.
   for (const [prop, expected] of Object.entries(bindings)) {
-    if (onDisk.metadataProperties[prop] !== expected) {
-      problems.push(
-        `metadata property '${prop}' is ${JSON.stringify(onDisk.metadataProperties[prop] ?? null)}, ` +
-        `expected ${JSON.stringify(expected)}`,
-      );
+    const occurrences = onDisk.metadataPropertyList.filter((p) => p.name === prop);
+    if (occurrences.length === 0) {
+      problems.push(`metadata property '${prop}' is absent, expected ${JSON.stringify(expected)}`);
+      continue;
+    }
+    for (const occ of occurrences) {
+      if (occ.value !== expected) {
+        problems.push(
+          `metadata property '${prop}' is ${JSON.stringify(occ.value)}, ` +
+          `expected ${JSON.stringify(expected)}`,
+        );
+      }
     }
   }
   if (options.requireExactBindings === true) {
-    for (const prop of Object.keys(onDisk.metadataProperties)) {
-      if (!(prop in bindings)) {
-        problems.push(`UNKNOWN metadata property '${prop}' is not part of the governed binding set`);
+    for (const name of onDisk.metadataPropertyCounts.keys()) {
+      if (!(name in bindings)) {
+        problems.push(`UNKNOWN metadata property '${name}' is not part of the governed binding set`);
       }
     }
   }

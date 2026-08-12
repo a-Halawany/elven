@@ -932,3 +932,168 @@ describe('C16 control — output is a function of the lockfile, not the environm
     }
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3 control — metadata bindings are an exact MULTISET', () => {
+  /**
+   * `Object.fromEntries` kept only the LAST occurrence of a repeated property, so a
+   * duplicate binding simply disappeared. A second `eye:source-sha` would let a reader
+   * pick either value, so the artifact would no longer name one source unambiguously.
+   */
+  const bind = (closure: Closure) => ({
+    requireExactBindings: true,
+    expectedSubjectVersion: meta.projectVersion,
+    expectedBindings: governedBindings(closure),
+  });
+
+  const governedBindings = (closure: Closure): Record<string, string> => {
+    const t = closure.target as unknown as {
+      id: string; os: string; arch: string; libc: string;
+      node: { pinned: string }; pnpm: { pinned: string };
+      importer_roots: string[]; dependency_scopes: string[];
+    };
+    return {
+      'eye:target-id': t.id,
+      'eye:target-os': t.os,
+      'eye:target-arch': t.arch,
+      'eye:target-libc': t.libc,
+      'eye:target-node': t.node.pinned,
+      'eye:target-pnpm': t.pnpm.pinned,
+      'eye:importer-roots': t.importer_roots.join(','),
+      'eye:dependency-scopes': t.dependency_scopes.join(','),
+      'eye:closure-source': 'pnpm-lock.yaml (importers+packages+snapshots)',
+      'eye:source-sha': meta.sourceSha,
+      'eye:lockfile-sha256': meta.lockfileSha256,
+      'eye:descriptor-sha256': meta.descriptorSha256,
+      'eye:generator': 'scripts/gate/generate-closures.mjs',
+      'eye:generator-sha256': meta.generatorSha256,
+      'eye:purl-implementation': meta.purlImplementation,
+      'eye:yaml-implementation': meta.yamlImplementation,
+    };
+  };
+
+  /** Reconcile with the full governed binding set, optionally mutating the document. */
+  const reconcileBound = (closure: Closure, mutate?: (doc: Doc) => void): Rec => {
+    const doc = buildSbom(closure, meta) as unknown as Doc;
+    if (mutate !== undefined) mutate(doc);
+    const file = join(dir, `sbom-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(file, serialize(doc));
+    const onDisk = extractFromSbom(readFileSync(file, 'utf8'));
+    rmSync(file);
+    return reconcile(closure, onDisk, bind(closure)) as Rec;
+  };
+
+  it('the unmutated document reconciles clean under the full governed binding set', () => {
+    const rec = reconcileBound(closures.production!);
+    expect(failures(rec)).toEqual([]);
+  });
+
+  it.each([
+    'eye:source-sha', 'eye:lockfile-sha256', 'eye:generator-sha256', 'eye:descriptor-sha256',
+  ])('an IDENTICAL duplicate of %s is rejected', (prop) => {
+    const rec = reconcileBound(closures.production!, (doc) => {
+      const original = doc.metadata.properties.find((p) => p.name === prop)!;
+      doc.metadata.properties.push({ name: prop, value: original.value });
+    });
+    expect(rec.clean).toBe(false);
+    expect(rec.subject_and_binding_problems.join('\n')).toMatch(new RegExp(`DUPLICATE metadata property ${prop} x2`));
+  });
+
+  it.each([
+    ['before', 'unshift'],
+    ['after', 'push'],
+  ])('a CONFLICTING duplicate inserted %s the legitimate value is rejected', (_where, method) => {
+    const rec = reconcileBound(closures.production!, (doc) => {
+      const fake = { name: 'eye:source-sha', value: 'f'.repeat(40) };
+      if (method === 'unshift') doc.metadata.properties.unshift(fake);
+      else doc.metadata.properties.push(fake);
+    });
+    expect(rec.clean).toBe(false);
+    const text = rec.subject_and_binding_problems.join('\n');
+    expect(text).toMatch(/DUPLICATE metadata property eye:source-sha/);
+    // …and the conflicting VALUE is reported too, whichever position it took.
+    expect(text).toMatch(/eye:source-sha' is "f{40}"/);
+  });
+
+  it('a REMOVED binding is rejected', () => {
+    const rec = reconcileBound(closures.production!, (doc) => {
+      doc.metadata.properties = doc.metadata.properties.filter((p) => p.name !== 'eye:generator-sha256');
+    });
+    expect(rec.clean).toBe(false);
+    expect(rec.subject_and_binding_problems.join('\n')).toMatch(/eye:generator-sha256' is absent/);
+  });
+
+  it('an UNKNOWN binding is rejected', () => {
+    const rec = reconcileBound(closures.production!, (doc) => {
+      doc.metadata.properties.push({ name: 'eye:not-governed', value: 'x' });
+    });
+    expect(rec.clean).toBe(false);
+    expect(rec.subject_and_binding_problems.join('\n')).toMatch(/UNKNOWN metadata property 'eye:not-governed'/);
+  });
+
+  it.each([
+    'eye:target-node', 'eye:target-pnpm', 'eye:importer-roots', 'eye:target-arch', 'eye:target-libc',
+  ])('tampering with %s is rejected', (prop) => {
+    const rec = reconcileBound(closures.production!, (doc) => {
+      doc.metadata.properties.find((p) => p.name === prop)!.value = 'tampered';
+    });
+    expect(rec.clean).toBe(false);
+    expect(rec.subject_and_binding_problems.join('\n')).toContain(prop);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3 control — top-level document identity', () => {
+  const withDocument = (closure: Closure, mutate?: (doc: Doc) => void): Rec => {
+    const built = buildSbom(closure, meta) as unknown as Doc & { serialNumber: string };
+    const expectedSerial = built.serialNumber;
+    // Capture the subject's legitimate PURL BEFORE mutating, so the expectation is the
+    // generator's own canonical value rather than a value restated by the test.
+    const expectedPurl = (built.metadata.component as unknown as { purl?: string }).purl ?? null;
+    if (mutate !== undefined) mutate(built);
+    const file = join(dir, `sbom-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(file, serialize(built));
+    const onDisk = extractFromSbom(readFileSync(file, 'utf8'));
+    rmSync(file);
+    return reconcile(closure, onDisk, {
+      expectedDocument: {
+        bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, serialNumber: expectedSerial,
+      },
+      expectedSubjectVersion: meta.projectVersion,
+      expectedSubjectType: 'application',
+      expectedSubjectPurl: expectedPurl,
+      expectedSubjectDescription: (closure.target as unknown as { description: string }).description,
+    }) as Rec;
+  };
+
+  it('the unmutated document satisfies its declared identity', () => {
+    const rec = withDocument(closures.production!);
+    expect(rec.subject_and_binding_problems).toEqual([]);
+  });
+
+  it.each([
+    ['bomFormat', (d: Doc) => { (d as unknown as { bomFormat: string }).bomFormat = 'SPDX'; }],
+    ['specVersion', (d: Doc) => { (d as unknown as { specVersion: string }).specVersion = '1.4'; }],
+    ['version', (d: Doc) => { (d as unknown as { version: number }).version = 7; }],
+    ['serialNumber', (d: Doc) => { (d as unknown as { serialNumber: string }).serialNumber = 'urn:uuid:00000000-0000-5000-8000-000000000000'; }],
+  ])('a rewritten %s is rejected', (field, mutate) => {
+    const rec = withDocument(closures.production!, mutate);
+    expect(rec.subject_and_binding_problems.join('\n')).toContain(`document ${field}`);
+  });
+
+  it('an ADDED metadata.timestamp is rejected (it breaks byte-comparability)', () => {
+    const rec = withDocument(closures.production!, (d) => {
+      (d.metadata as unknown as { timestamp: string }).timestamp = '2026-08-12T00:00:00Z';
+    });
+    expect(rec.subject_and_binding_problems.join('\n')).toMatch(/metadata\.timestamp is present/);
+  });
+
+  it.each(['name', 'version', 'type', 'purl', 'description'])(
+    'a rewritten subject %s is rejected', (field) => {
+      const rec = withDocument(closures.production!, (d) => {
+        (d.metadata.component as unknown as Record<string, unknown>)[field] = 'tampered-value';
+      });
+      expect(rec.subject_and_binding_problems.join('\n')).toContain(`metadata subject ${field === 'purl' ? 'purl' : field}`);
+    },
+  );
+});

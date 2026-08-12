@@ -30,7 +30,7 @@
  *   node scripts/gate/supply-chain.mjs [--out DIR] [--final] [--expected-sha SHA]
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,10 +49,18 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** Recorded when the tree carries no git metadata (a source archive). */
 const NOT_A_WORKTREE = '(not a git worktree)';
 
-/** git, but tolerant of a gitless export: returns null instead of throwing. */
+/**
+ * git, but tolerant of a gitless export AND newline-normalised.
+ *
+ * `spawnSync().stdout` is verbatim, so `git rev-parse HEAD` ends with a newline. Comparing
+ * that against an --expected-sha argument made the correct SHA compare UNEQUAL TO ITSELF,
+ * so final mode could never succeed — a false FAIL that would have blocked every final
+ * evidence run. Normalising at the single point where git output enters the program is the
+ * fix; trimming at each call site is how one gets missed.
+ */
 function safeGit(args) {
   const res = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
-  return res.status === 0 ? res.stdout : null;
+  return res.status === 0 ? (res.stdout ?? '').replace(/\s+$/, '') : null;
 }
 
 /**
@@ -75,6 +83,109 @@ const PINNED_TOOLS = {
 };
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+/** The pins key for the platform whose binaries this process will execute. */
+function hostPlatform() {
+  const key = `${process.platform}-${process.arch}`;
+  const map = { 'linux-x64': 'linux-x64', 'linux-arm64': 'linux-arm64', 'darwin-arm64': 'darwin-arm64' };
+  const resolved = map[key];
+  if (resolved === undefined) {
+    throw new UsageError(`unsupported host platform '${key}'; add it to scripts/gate/scanner-pins.json`);
+  }
+  return resolved;
+}
+
+/** A caller mistake, distinguished from an internal fault so the message can be precise. */
+class UsageError extends Error {}
+
+const FLAGS_WITH_VALUES = ['--out', '--trivy-cache', '--expected-sha'];
+const BOOLEAN_FLAGS = ['--final'];
+
+/**
+ * VALIDATED argument parsing. `--trivy-cache` with no value previously reached
+ * `resolve(undefined)`, which threw a TypeError deep inside main() before any output
+ * directory existed — so the run produced NO manifest at all. Arguments are now validated
+ * up front, and an unknown or valueless flag is a precise usage failure.
+ */
+export function parseArgs(argv) {
+  const args = argv.slice(2);
+  const out = { out: 'evidence/supply-chain', trivyCache: null, expectedSha: null, final: false, raw: args };
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (BOOLEAN_FLAGS.includes(a)) { out.final = true; continue; }
+    if (FLAGS_WITH_VALUES.includes(a)) {
+      const v = args[i + 1];
+      if (v === undefined || v.startsWith('--')) {
+        throw new UsageError(`${a} requires a value`);
+      }
+      if (a === '--out') out.out = v;
+      if (a === '--trivy-cache') out.trivyCache = v;
+      if (a === '--expected-sha') out.expectedSha = v;
+      i += 1;
+      continue;
+    }
+    throw new UsageError(
+      `unrecognised argument ${JSON.stringify(a)}. Supported: ${[...FLAGS_WITH_VALUES, ...BOOLEAN_FLAGS].join(' ')}`,
+    );
+  }
+  if (out.expectedSha !== null && !/^[0-9a-f]{40}$/.test(out.expectedSha)) {
+    throw new UsageError(`--expected-sha ${JSON.stringify(out.expectedSha)} is not a 40-character git object id`);
+  }
+  return out;
+}
+
+/**
+ * Bind every file in the output directory by relative path, size and SHA-256 — gitleaks
+ * reports, trivy reports, acquisition logs, cache manifests, image-resolution output and
+ * the manifest's own siblings. The manifest itself is excluded (it is being written).
+ */
+function bindArtifacts(outDir) {
+  const out = [];
+  const walk = (dir, rel) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const full = join(dir, e.name);
+      const relPath = rel === '' ? e.name : `${rel}/${e.name}`;
+      // The isolated trivy cache is fingerprinted separately and is far too large to
+      // digest file-by-file here; its identity is already bound by the cache fingerprint.
+      if (e.isDirectory()) {
+        if (e.name === '.trivy-cache') continue;
+        walk(full, relPath);
+        continue;
+      }
+      if (relPath === 'supply-chain-manifest.json') continue;
+      try {
+        const buf = readFileSync(full);
+        out.push({ path: relPath, bytes: buf.byteLength, sha256: sha256(buf) });
+      } catch { /* unreadable artifacts are simply not bound */ }
+    }
+  };
+  walk(outDir, '');
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+/** Read a governed JSON document with a precise, catchable failure. */
+function readGovernedJson(relative) {
+  const abs = join(ROOT, relative);
+  let raw;
+  try {
+    raw = readFileSync(abs, 'utf8');
+  } catch (e) {
+    throw new UsageError(`${relative} could not be read: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+  }
+  try {
+    return { doc: JSON.parse(raw), raw };
+  } catch (e) {
+    throw new UsageError(
+      `${relative} is not valid JSON: ${e instanceof Error ? e.message.slice(0, 200) : e}`,
+    );
+  }
+}
 
 function toolVersions() {
   const out = {};
@@ -153,21 +264,17 @@ function run(steps, outDir, sourceSha, id, argv, opts = {}) {
   return record;
 }
 
-function main() {
-  const argv = process.argv;
-  const outIdx = argv.indexOf('--out');
+function main(parsed) {
+  const opts = parsed;
   // An ABSOLUTE --out must not be re-rooted under the repo (join('/repo','/tmp/x') yields
   // '/repo/tmp/x', which silently wrote gate output INTO the working tree).
-  const outArg = outIdx !== -1 ? argv[outIdx + 1] : 'evidence/supply-chain';
-  const outDir = isAbsolute(outArg) ? resolve(outArg) : join(ROOT, outArg);
+  const outDir = isAbsolute(opts.out) ? resolve(opts.out) : join(ROOT, opts.out);
   mkdirSync(outDir, { recursive: true });
 
-  const finalMode = argv.includes('--final');
-  const shaIdx = argv.indexOf('--expected-sha');
-  const expectedSha = shaIdx !== -1 ? argv[shaIdx + 1] : null;
-  const cacheIdx = argv.indexOf('--trivy-cache');
-  const cacheDir = cacheIdx !== -1
-    ? resolve(argv[cacheIdx + 1])
+  const finalMode = opts.final;
+  const expectedSha = opts.expectedSha;
+  const cacheDir = opts.trivyCache !== null
+    ? resolve(opts.trivyCache)
     : join(outDir, '.trivy-cache');
 
   const startedAt = new Date().toISOString();
@@ -191,6 +298,10 @@ function main() {
     Object.assign(state, extra);
     state.finished_at = new Date().toISOString();
     state.outcome = code === 0 ? 'PASS' : 'FAIL';
+    // EVERY raw artifact this run produced, bound by path, size and SHA-256. A manifest
+    // that names outputs without digesting them cannot show that the bytes a reviewer
+    // reads are the bytes the gate produced.
+    state.evidence_artifacts = bindArtifacts(outDir);
     state.summary = {
       total_steps: steps.length,
       blocking_steps: steps.filter((s) => s.policy === 'blocking').length,
@@ -231,7 +342,7 @@ function main() {
   const haveGit = dirty !== null;
   state.source_sha = sourceSha;
   state.is_git_worktree = haveGit;
-  state.tree_clean_at_run = dirty === null ? null : dirty === '';
+  state.tree_clean_at_run = dirty === null ? null : dirty.trim() === '';
 
   console.log('=== C15 SUPPLY-CHAIN GATE ===');
   console.log(`mode:        ${finalMode ? 'FINAL' : 'preliminary'}`);
@@ -256,9 +367,10 @@ function main() {
     }
     if (dirty === null) {
       failures.push('git status could not be read; a clean worktree cannot be established');
-    } else if (dirty !== '') {
-      failures.push(`--final requires a clean worktree; ${dirty.split('\n').length} path(s) are dirty`);
-      state.dirty_paths = dirty.split('\n').slice(0, 40);
+    } else if (dirty.trim() !== '') {
+      const paths = dirty.trim().split('\n');
+      failures.push(`--final requires a clean worktree; ${paths.length} path(s) are dirty`);
+      state.dirty_paths = paths.slice(0, 40);
     }
     if (failures.length > 0) finish(1);
   }
@@ -277,18 +389,68 @@ function main() {
   state.scanner_binaries = scannerBinaries(['pnpm', 'node', 'gitleaks', 'trivy', 'docker']);
 
   // ── trivy cache: acquire BOTH artifacts, then capture and enforce provenance ────
-  const pins = loadPins(ROOT);
-  state.scanner_pins = { file: 'scripts/gate/scanner-pins.json', sha256: sha256(readFileSync(join(ROOT, 'scripts/gate/scanner-pins.json'))) };
+  const pinsRead = readGovernedJson('scripts/gate/scanner-pins.json');
+  const pins = pinsRead.doc;
+  state.scanner_pins = { file: 'scripts/gate/scanner-pins.json', sha256: sha256(pinsRead.raw) };
 
   console.log('\n-- trivy cache acquisition (vulnerability DB + checks bundle) --');
-  const acquisition = acquire({ cacheDir, log: (m) => console.log(m) });
+  const acquisition = acquire({ cacheDir, log: (m) => console.log(m), outDir });
   state.trivy_cache_acquisition = acquisition;
+  // A failed refresh must not be papered over by an older cache that happens to exist.
+  for (const p of acquisition.problems ?? []) failures.push(`trivy cache acquisition — ${p}`);
+  if (failures.length > 0) finish(1);
 
   const provenance = capture({
     cacheDir, nowIso: new Date().toISOString(), platform: SCAN_PLATFORM, pins,
   });
   state.trivy_provenance = provenance;
-  const provProblems = enforce(provenance, { expectedVersion: PINNED_TOOLS.trivy.expect });
+  // EXECUTED-BINARY AUTHENTICATION. A --version string is a claim the binary makes about
+  // itself, so the bytes actually resolved on PATH are digested and compared against the
+  // tracked executable digest for this host platform. A different executable that reports
+  // the correct version is therefore still rejected.
+  const hostPlatformKey = hostPlatform();
+  state.host_platform_key = hostPlatformKey;
+  const binaryExpectations = {};
+  for (const tool of ['trivy', 'gitleaks']) {
+    const art = pins.tools?.[tool]?.artifacts?.[hostPlatformKey];
+    binaryExpectations[tool] = art?.executable_sha256 ?? null;
+  }
+  state.executed_binary_authentication = { host_platform: hostPlatformKey, expected: binaryExpectations, verified: {} };
+  for (const tool of ['trivy', 'gitleaks']) {
+    const want = binaryExpectations[tool];
+    const actual = state.scanner_binaries?.[tool] ?? null;
+    // NOTE the field name: scannerBinaries() returns `binary_sha256`, not `sha256`.
+    // Reading the wrong key made this check always report "(unreadable)" and always fail —
+    // a false FAIL that would have blocked every run.
+    const actualSha = actual?.binary_sha256 ?? null;
+    state.executed_binary_authentication.verified[tool] = {
+      resolved_path: actual?.resolved_path ?? null,
+      actual_sha256: actualSha,
+      actual_bytes: actual?.binary_bytes ?? null,
+      expected_sha256: want,
+      expected_bytes: pins.tools?.[tool]?.artifacts?.[hostPlatformKey]?.executable_bytes ?? null,
+      match: want !== null && actualSha === want,
+    };
+    if (want === null) {
+      failures.push(
+        `no tracked executable digest for ${tool} on host platform '${hostPlatformKey}'; add it ` +
+        'to scripts/gate/scanner-pins.json before running the gate on this platform',
+      );
+    } else if (actualSha !== want) {
+      failures.push(
+        `${tool} EXECUTABLE at ${actual?.resolved_path ?? '(unresolved)'} digests to ` +
+        `${actualSha ?? '(unreadable)'}, which does not match the tracked ` +
+        `${want}. A binary that merely reports the right version is not authenticated — ` +
+        'install via scripts/gate/install-scanners.sh.',
+      );
+    }
+  }
+  if (failures.length > 0) finish(1);
+
+  const provProblems = enforce(provenance, {
+    expectedVersion: PINNED_TOOLS.trivy.expect,
+    expectedBinarySha256: binaryExpectations.trivy,
+  });
   state.trivy_provenance_problems = provProblems;
 
   if (provenance.vulnerability_db.metadata_present) {
@@ -311,7 +473,10 @@ function main() {
   const trivyEnv = { TRIVY_CACHE_DIR: cacheDir };
 
   // ── governed dispositions: validate BEFORE scanning ────────────────────────────
-  const { doc: exclusionDoc, raw: exclusionRaw, path: exclusionPath } = loadScannerExclusions(ROOT);
+  const exclusionRead = readGovernedJson('scripts/gate/scanner-exclusions.json');
+  const exclusionDoc = exclusionRead.doc;
+  const exclusionRaw = exclusionRead.raw;
+  const exclusionPath = 'scripts/gate/scanner-exclusions.json';
   state.scanner_exclusions = {
     file: exclusionPath,
     sha256: sha256(exclusionRaw),
@@ -449,10 +614,37 @@ function main() {
       console.log(`    index with ${resolution.child_count} children (${resolution.runnable_platform_count} runnable)`);
       console.log(`    ${SCAN_PLATFORM} child: ${resolution.target_digest ?? 'ABSENT'}`);
     } else console.log('    single-platform manifest; the pinned digest is the image');
-    return { pinned_ref: image, scan_ref: scanRef, resolution };
+    // The raw index bytes must hash to the digest in the configured reference. Without
+    // this, a substituted index could hand us any child digest and the gate would scan
+    // whatever it was given while still claiming to have scanned the pinned reference.
+    const pinnedDigest = image.slice(image.indexOf('@') + 1);
+    const rawMatches = resolution.index_raw_sha256 !== undefined &&
+      `sha256:${resolution.index_raw_sha256}` === pinnedDigest;
+    if (resolution.resolved) {
+      console.log(`    raw index digest ${rawMatches ? 'MATCHES' : 'DOES NOT MATCH'} the pinned reference`);
+    }
+    return {
+      pinned_ref: image,
+      scan_ref: scanRef,
+      pinned_digest: pinnedDigest,
+      raw_index_digest: resolution.index_raw_sha256 === undefined ? null : `sha256:${resolution.index_raw_sha256}`,
+      raw_index_digest_matches_reference: rawMatches,
+      resolution,
+    };
   });
   state.image_platform_resolution = imageResolutions;
   state.digest_pinned_images = images;
+
+  for (const r of imageResolutions) {
+    if (r.resolution.resolved && !r.raw_index_digest_matches_reference) {
+      failures.push(
+        `${r.pinned_ref}: the raw index manifest hashes to ${r.raw_index_digest}, which does not ` +
+        `equal the digest in the configured reference (${r.pinned_digest}). No child digest from ` +
+        'this response can be trusted.',
+      );
+    }
+  }
+  if (failures.length > 0) finish(1);
 
   const unresolvable = imageResolutions.filter((r) => r.scan_ref === null);
   if (unresolvable.length > 0) {
@@ -481,10 +673,23 @@ function main() {
       coverage: { severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform: SCAN_PLATFORM },
       env: trivyEnv,
     });
-    // Exit code is not the verdict here: findings are expected and governed. Only a
-    // scanner ERROR is a step failure.
-    rec.failed = false;
-    rec.policy_note = 'findings are reconciled against governed dispositions, not suppressed';
+    // A NONZERO EXIT ALWAYS BLOCKS. The image command deliberately omits `--exit-code`,
+    // so findings alone return zero; any nonzero status is therefore a SCANNER FAILURE, not
+    // a finding. The previous `rec.failed = false` discarded that unconditionally, so a
+    // crashed or partially-written scan could look like a clean pass as long as its stdout
+    // happened to parse. Parseable output is not evidence that the scan completed.
+    rec.policy_note =
+      'the image command omits --exit-code, so findings return zero; any nonzero exit is a ' +
+      'scanner failure and always blocks, regardless of whether stdout parses';
+    if (rec.exit_code !== 0) {
+      failures.push(
+        `${rec.id}: trivy exited ${rec.exit_code}. The image command uses no --exit-code, so a ` +
+        `nonzero status is a scanner failure, not a finding. Raw output preserved in ` +
+        `${rec.stdout_file} (sha256 ${rec.stdout_sha256}) and ${rec.stderr_file} ` +
+        `(sha256 ${rec.stderr_sha256}).`,
+      );
+      return;   // do not ingest findings from a run that did not complete
+    }
     try {
       const text = readFileSync(join(outDir, `${rec.id}.stdout.txt`), 'utf8');
       allFindings.push(...findingsFromTrivyJson(text, r.pinned_ref));
@@ -494,7 +699,7 @@ function main() {
   });
   if (failures.length > 0) finish(1);
 
-  const disposition = reconcileFindings(exclusionDoc, allFindings);
+  const disposition = reconcileFindings(exclusionDoc, allFindings, { scanPlatform: SCAN_PLATFORM });
   state.image_finding_reconciliation = disposition;
   writeFileSync(join(outDir, 'image-findings.json'), `${JSON.stringify(allFindings, null, 2)}\n`);
   console.log(`  findings ${disposition.total_findings}, governed ${disposition.matched.length} record(s), ` +
@@ -508,6 +713,11 @@ function main() {
   }
   for (const s of disposition.stale_advisory_ids) {
     failures.push(`STALE advisory id in a disposition (matched nothing): ${s}`);
+  }
+  // Near misses are recorded so a reviewer can see WHY a record failed to govern a
+  // finding — platform, severity, target or installed version — rather than only that it did.
+  for (const d of disposition.near_miss_detail ?? []) {
+    console.log(`  near-miss: ${d}`);
   }
 
   // ── cache equality: the authoritative scans updated nothing ────────────────────
@@ -561,4 +771,81 @@ function main() {
   finish(0);
 }
 
-main();
+/**
+ * OUTERMOST EXCEPTION BOUNDARY.
+ *
+ * `finish()` handles every EXPECTED failure. This handles the unexpected ones — a malformed
+ * argument, an unreadable governed document, an internal fault — and always attempts to
+ * leave auditable artifacts behind. Without it, `--trivy-cache` with no value threw a
+ * TypeError before any output directory existed and the run produced NOTHING: a red gate
+ * with no evidence of why.
+ *
+ * Nothing here can throw on the failure path: every step is individually guarded, so a
+ * secondary fault cannot destroy the primary diagnosis.
+ */
+function emergencyManifest(outArg, parsedOrNull, error) {
+  const kind = error instanceof UsageError ? 'USAGE' : 'INTERNAL';
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? (error.stack ?? '') : '';
+  let sourceSha = '(unavailable)';
+  try {
+    sourceSha = safeGit(['rev-parse', 'HEAD']) ?? NOT_A_WORKTREE;
+  } catch { /* recorded as unavailable */ }
+
+  let outDir = null;
+  try {
+    const candidate = outArg ?? 'evidence/supply-chain';
+    outDir = isAbsolute(candidate) ? resolve(candidate) : join(ROOT, candidate);
+    mkdirSync(outDir, { recursive: true });
+  } catch {
+    outDir = null;
+  }
+
+  const record = {
+    artifact: 'C15 supply-chain gate — raw execution evidence',
+    outcome: kind === 'USAGE' ? 'USAGE-ERROR' : 'CRASH',
+    exception: { type: kind, name: error?.constructor?.name ?? 'Error', message: message.slice(0, 800) },
+    source_sha: sourceSha,
+    arguments: process.argv.slice(2),
+    parsed_arguments: parsedOrNull,
+    finished_at: new Date().toISOString(),
+    failures: [`${kind.toLowerCase()} error: ${message.slice(0, 400)}`],
+    evidence_artifacts: [],
+  };
+  if (outDir !== null) {
+    try { record.evidence_artifacts = bindArtifacts(outDir); } catch { /* best effort */ }
+    try {
+      writeFileSync(join(outDir, 'supply-chain-manifest.json'), `${JSON.stringify(record, null, 2)}\n`);
+      writeFileSync(join(outDir, 'RESULT-FAIL.txt'), [
+        `outcome: ${record.outcome}`,
+        `exception: ${kind} ${record.exception.name}`,
+        `message: ${message}`,
+        `source_sha: ${sourceSha}`,
+        `arguments: ${process.argv.slice(2).join(' ')}`,
+        `timestamp: ${record.finished_at}`,
+        '',
+        stack,
+        '',
+      ].join('\n'));
+    } catch { /* nothing further can be recorded */ }
+  }
+  console.error(`\n=== SUPPLY-CHAIN GATE ${record.outcome} ===`);
+  console.error(`  ${kind}: ${message}`);
+  if (outDir !== null) console.error(`  failure manifest: ${join(outDir, 'supply-chain-manifest.json')}`);
+  else console.error('  no output directory could be created; nothing could be written');
+}
+
+let parsedArgs = null;
+try {
+  parsedArgs = parseArgs(process.argv);
+  main(parsedArgs);
+} catch (e) {
+  // Recover the --out value even when parsing itself failed, so the diagnosis still lands
+  // where the caller expects it.
+  const i = process.argv.indexOf('--out');
+  const outArg = i !== -1 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : null;
+  emergencyManifest(outArg, parsedArgs, e);
+  process.exit(1);
+}

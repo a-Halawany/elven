@@ -31,11 +31,14 @@ import { join } from 'node:path';
  * that defines its own required fields can weaken its own validation by editing itself.
  */
 export const REQUIRED_FIELDS = Object.freeze([
-  'id', 'image', 'scan_platform', 'package_name', 'package_purl_prefix',
+  'id', 'advisory_ids', 'image', 'scan_platform', 'package_name', 'package_purl',
+  'installed_version', 'severities', 'result_target',
   'reason', 'compensating_controls', 'owner', 'approver', 'evidence',
   'approved_on', 'expires_on',
 ]);
-export const SUPPORTED_SCHEMA_VERSIONS = Object.freeze(['1.0.0']);
+export const SUPPORTED_SCHEMA_VERSIONS = Object.freeze(['2.0.0']);
+/** The only severities a governed record may name. */
+export const ALLOWED_SEVERITIES = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ADVISORY_ID = /^(CVE-\d{4}-\d{4,}|GHSA-[a-z0-9-]+|[A-Z]+-\d{4}-\d+)$/;
 
@@ -49,7 +52,7 @@ export function loadScannerExclusions(root) {
 export function advisoryIdsOf(record) {
   const ids = [];
   if (typeof record.advisory_id === 'string') ids.push(record.advisory_id);
-  for (const id of record.advisory_ids ?? []) ids.push(id);
+  for (const id of Array.isArray(record.advisory_ids) ? record.advisory_ids : []) ids.push(id);
   return ids;
 }
 
@@ -99,8 +102,35 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
     }
 
     // OVERBROAD: a disposition must be scoped to a package, not just an advisory.
-    if (typeof r.package_purl_prefix === 'string' && !r.package_purl_prefix.startsWith('pkg:')) {
-      problems.push(`${where}: package_purl_prefix '${r.package_purl_prefix}' is not a PURL`);
+    if (typeof r.package_purl === 'string' && !r.package_purl.startsWith('pkg:')) {
+      problems.push(`${where}: package_purl '${r.package_purl}' is not a PURL`);
+    }
+    // A legacy PREFIX field is no longer accepted: a prefix can match a different
+    // installed version of the same package, which is a different finding.
+    if (r.package_purl_prefix !== undefined) {
+      problems.push(
+        `${where}: 'package_purl_prefix' is no longer accepted — a prefix can match a ` +
+        'different installed version. Declare the exact `package_purl`.',
+      );
+    }
+    // Severity must be an explicit governed array, never a composite label.
+    if (!Array.isArray(r.severities)) {
+      if (typeof r.severity === 'string') {
+        problems.push(
+          `${where}: 'severity' ${JSON.stringify(r.severity)} is an ambiguous scalar — declare an ` +
+          "explicit `severities` array (a record approved for HIGH must not absorb a CRITICAL)",
+        );
+      }
+    } else {
+      if (r.severities.length === 0) problems.push(`${where}: severities is empty`);
+      for (const sev of r.severities) {
+        if (!ALLOWED_SEVERITIES.includes(sev)) {
+          problems.push(`${where}: severity '${sev}' is not one of ${ALLOWED_SEVERITIES.join(', ')}`);
+        }
+      }
+      if (new Set(r.severities).size !== r.severities.length) {
+        problems.push(`${where}: duplicate entries in severities`);
+      }
     }
     if (typeof r.image === 'string' && !/@sha256:[a-f0-9]{64}$/.test(r.image)) {
       problems.push(`${where}: image '${r.image}' must be digest-pinned`);
@@ -148,7 +178,7 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
 
     // Duplicate scope: two records covering the same advisory+image+package.
     for (const id of ids) {
-      const key = `${id}|${r.image}|${r.package_purl_prefix}`;
+      const key = `${id}|${r.image}|${r.scan_platform}|${r.package_purl}|${r.result_target}`;
       if (seenScopes.has(key)) {
         problems.push(`${where}: duplicates the scope already covered by ${seenScopes.get(key)}`);
       } else {
@@ -165,25 +195,49 @@ export function validateRecords(doc, { runDate, root, isTracked }) {
  *
  * `findings` is a flat list of { advisory_id, image, package_name, purl, severity, target }.
  */
-export function reconcileFindings(doc, findings) {
+export function reconcileFindings(doc, findings, opts = {}) {
   const records = doc.records ?? [];
-  const matchedBy = new Map();          // record id -> [finding keys]
+  const matchedBy = new Map();
   const unmatched = [];
+  const mismatchDetail = [];
+  const scanPlatform = opts.scanPlatform ?? null;
 
   const keyOf = (f) => `${f.advisory_id}|${f.image}|${f.purl ?? f.package_name}`;
 
   for (const f of findings) {
+    // EVERY consequence-relevant field must agree. A record that matches on advisory id
+    // alone is the bare-CVE-id problem in a different costume: it would govern a finding
+    // in another package, another platform, another installed version or another severity.
+    const reasons = [];
     const record = records.find((r) => {
+      const why = [];
       if (!advisoryIdsOf(r).includes(f.advisory_id)) return false;
-      if (r.image !== f.image) return false;
-      if (typeof r.package_name === 'string' && r.package_name !== f.package_name) return false;
-      if (typeof r.package_purl_prefix === 'string') {
-        if (typeof f.purl !== 'string' || !f.purl.startsWith(r.package_purl_prefix)) return false;
+      if (r.image !== f.image) why.push(`image ${r.image} != ${f.image}`);
+      if (scanPlatform !== null && r.scan_platform !== scanPlatform) {
+        why.push(`platform ${r.scan_platform} != resolved ${scanPlatform}`);
+      }
+      if (r.package_name !== f.package_name) why.push(`package ${r.package_name} != ${f.package_name}`);
+      if (r.package_purl !== f.purl) why.push(`purl ${r.package_purl} != ${f.purl}`);
+      if (r.installed_version !== f.installed_version) {
+        why.push(`installed_version ${r.installed_version} != ${f.installed_version}`);
+      }
+      if (Array.isArray(r.severities) && !r.severities.includes(f.severity)) {
+        why.push(`severity ${f.severity} not in [${r.severities.join(', ')}]`);
+      }
+      if (typeof r.result_target === 'string' && r.result_target !== f.target) {
+        why.push(`result_target ${r.result_target} != ${f.target}`);
+      }
+      if (why.length > 0) {
+        reasons.push(`${r.id ?? '(unnamed)'}: ${why.join('; ')}`);
+        return false;
       }
       return true;
     });
     if (record === undefined) {
       unmatched.push(f);
+      if (reasons.length > 0) {
+        mismatchDetail.push(`${f.advisory_id} (${f.severity}, ${f.package_name}): ${reasons.join(' | ')}`);
+      }
       continue;
     }
     const id = record.id ?? '(unnamed)';
@@ -194,7 +248,6 @@ export function reconcileFindings(doc, findings) {
     .filter((r) => (matchedBy.get(r.id ?? '(unnamed)') ?? []).length === 0)
     .map((r) => r.id ?? '(unnamed)');
 
-  // Advisory ids declared inside a record that matched nothing at all.
   const staleAdvisories = [];
   for (const r of records) {
     const covered = new Set(
@@ -212,6 +265,7 @@ export function reconcileFindings(doc, findings) {
     unmatched: unmatched
       .map((f) => `${f.advisory_id} ${f.severity} ${f.package_name} ${f.purl ?? ''} in ${f.image}`)
       .sort(),
+    near_miss_detail: mismatchDetail.sort(),
     unused_records: unused.sort(),
     stale_advisory_ids: staleAdvisories.sort(),
   };
