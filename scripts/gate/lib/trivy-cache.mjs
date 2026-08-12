@@ -117,6 +117,30 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = nu
   // continuing would scan against whatever stale data happened to be present, which is
   // precisely the condition the freshness enforcement exists to prevent.
   const problems = [];
+
+  // EXIT ZERO IS NOT SUCCESS for the checks bundle. When the bundle download fails —
+  // observed as a 404 from the mirror CDN — trivy logs
+  //   ERROR [misconfig] Falling back to embedded checks
+  // and STILL EXITS 0, having scanned with its embedded rules instead. The cache then has
+  // no bundle metadata, so the gate fails closed either way, but it must name the real
+  // cause rather than telling the operator to run a scan that already ran.
+  const checksStderr = readStepText(outDir, checks, 'stderr');
+  const fellBack = /Falling back to embedded checks/i.test(checksStderr);
+  if (fellBack) {
+    const detail = checksStderr
+      .split('\n')
+      .filter((l) => /Falling back to embedded checks|failed to download checks bundle/i.test(l))
+      .map((l) => l.trim())
+      .slice(0, 2)
+      .join(' | ');
+    problems.push(
+      'the checks-bundle download FAILED and trivy fell back to its embedded checks while ' +
+      `still exiting ${checks.exit_code}. The authoritative scans would then run against ` +
+      'embedded rules of unknown provenance rather than the pinned bundle, so the run is ' +
+      `not evidence. Upstream detail: ${detail || '(see the captured acquisition stderr)'}`,
+    );
+  }
+
   if (db.exit_code !== 0) {
     problems.push(
       `vulnerability-database acquisition exited ${db.exit_code}; a scan must not proceed ` +
@@ -133,6 +157,17 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = nu
     cacheDir, steps, problems,
     db_exit: db.exit_code, checks_exit: checks.exit_code,
   };
+}
+
+/** The captured text for an acquisition step, from disk when written or from memory. */
+function readStepText(outDir, step, which) {
+  const file = which === 'stderr' ? step.stderr_file : step.stdout_file;
+  if (outDir === null || file === null || file === undefined) return step.stderr_tail?.join('\n') ?? '';
+  try {
+    return readFileSync(join(outDir, file), 'utf8');
+  } catch {
+    return step.stderr_tail?.join('\n') ?? '';
+  }
 }
 
 /** Read a JSON cache metadata file, returning its parsed content AND byte digest. */

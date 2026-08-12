@@ -24,6 +24,7 @@
  */
 import { describe, expect, it, afterAll } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -31,12 +32,15 @@ import { join } from 'node:path';
 import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enforceTrivyDatabase, MAX_VULN_DB_AGE_HOURS } from '../../../../scripts/gate/lib/scanner-provenance.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { enforce, frozenCacheArgs, fingerprint } from '../../../../scripts/gate/lib/trivy-cache.mjs';
+import { enforce, frozenCacheArgs, fingerprint, acquire } from '../../../../scripts/gate/lib/trivy-cache.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import { reconcileFindings, REQUIRED_FIELDS, FIELD_TYPES } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
+/** Module-level scratch directories, removed at the end of the file's run. */
+const made: string[] = [];
+afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 'supply-chain.mjs'), 'utf8');
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -414,9 +418,6 @@ describe('C16-R3 — the checks-bundle fingerprint is byte-level, not count-and-
    * before/after equality check would still pass while the policy content had changed.
    * These controls build a synthetic cache and prove an equal-length edit is detected.
    */
-  const made: string[] = [];
-  afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
-
   /** A minimal cache tree with the three artifacts the fingerprint covers. */
   const synthCache = (): string => {
     const cache = mkdtempSync(join(tmpdir(), 'eye-c16r3-cache-'));
@@ -648,5 +649,66 @@ describe('C16-R3.1 — the disposition matcher never skips a field because of it
     expect((FIELD_TYPES as Record<string, string>)['severities']).toBe('string[]');
     expect((FIELD_TYPES as Record<string, string>)['result_target']).toBe('string');
     expect((FIELD_TYPES as Record<string, string>)['evidence_sha256']).toBe('string');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C16-R3.1 — exit zero is not success for the checks bundle', () => {
+  /**
+   * Observed in a real clean-clone run: the bundle download returned 404 from the mirror
+   * CDN, trivy logged `ERROR [misconfig] Falling back to embedded checks`, and STILL EXITED
+   * 0. The gate failed closed at the enforcement step (no bundle metadata) but blamed the
+   * wrong thing — it told the operator to run a misconfig scan that had already run. The
+   * fallback is now detected explicitly so the diagnosis names the real cause.
+   */
+  it('the acquisition detects the embedded-checks fallback even on exit 0', () => {
+    const src = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'trivy-cache.mjs'), 'utf8');
+    expect(src).toContain('Falling back to embedded checks');
+    expect(src).toContain('EXIT ZERO IS NOT SUCCESS');
+    expect(src).toContain('embedded rules of unknown provenance');
+  });
+
+  it('a fallback makes acquire() report a problem with the upstream detail', () => {
+    // Drive the detection with a fake trivy that reproduces the exact upstream behaviour:
+    // logs the fallback on stderr, writes a valid report, and exits 0.
+    const binDir = mkdtempSync(join(tmpdir(), 'eye-r31-fallback-'));
+    made.push(binDir);
+    const fake = join(binDir, 'trivy');
+    writeFileSync(fake, [
+      '#!/bin/sh',
+      'for a in "$@"; do',
+      '  if [ "$a" = "--download-db-only" ]; then echo "db ok"; exit 0; fi',
+      'done',
+      'echo "ERROR [misconfig] Falling back to embedded checks err=\\"failed to download checks bundle: 404\\"" >&2',
+      'echo "{}"',
+      'exit 0',
+      '',
+    ].join('\n'));
+    spawnSync('chmod', ['+x', fake]);
+
+    const cache = mkdtempSync(join(tmpdir(), 'eye-r31-fbcache-'));
+    made.push(cache);
+    const out = mkdtempSync(join(tmpdir(), 'eye-r31-fbout-'));
+    made.push(out);
+    const r = acquire({ cacheDir: cache, outDir: out, trivyPath: fake }) as {
+      problems: string[]; checks_exit: number;
+    };
+    expect(r.checks_exit, 'the fake exits zero, exactly like the real failure').toBe(0);
+    expect(r.problems.join('\n')).toMatch(/fell back to its embedded checks while still exiting 0/);
+    expect(r.problems.join('\n')).toMatch(/404/);
+  });
+
+  it('a clean acquisition reports no fallback problem (positive control)', () => {
+    const binDir = mkdtempSync(join(tmpdir(), 'eye-r31-ok-'));
+    made.push(binDir);
+    const fake = join(binDir, 'trivy');
+    writeFileSync(fake, '#!/bin/sh\necho "{}"\nexit 0\n');
+    spawnSync('chmod', ['+x', fake]);
+    const cache = mkdtempSync(join(tmpdir(), 'eye-r31-okcache-'));
+    made.push(cache);
+    const out = mkdtempSync(join(tmpdir(), 'eye-r31-okout-'));
+    made.push(out);
+    const r = acquire({ cacheDir: cache, outDir: out, trivyPath: fake }) as { problems: string[] };
+    expect(r.problems).toEqual([]);
   });
 });
