@@ -49,7 +49,25 @@ install_tool() {
 
   work="$(mktemp -d)"
   echo "$tool ($PLATFORM) <- $url"
-  curl -fsSL --retry 3 -o "$work/archive.tar.gz" "$url"
+  # `--retry` alone does not cover a mid-transfer reset: hosted run 31644258092 died with
+  # `curl: (56) Connection died, tried 5 times before giving up` fetching the gitleaks
+  # release, reddening a run whose source was fine. Retry the WHOLE transfer with backoff,
+  # and let --retry-all-errors cover the non-transient-by-default codes.
+  #
+  # This changes nothing about trust: whatever arrives is still verified against the tracked
+  # archive AND executable digests below, and a mismatch still fails the run.
+  local attempt=0 delay=5
+  until curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
+             --max-time 600 -o "$work/archive.tar.gz" "$url"; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 4 ]; then
+      echo "::error::${tool} download failed after $attempt whole-transfer attempts: $url"
+      exit 1
+    fi
+    echo "  download attempt $attempt failed; retrying in ${delay}s"
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
 
   got_archive="$(sha256_of "$work/archive.tar.gz")"
   if [ "$got_archive" != "$want_archive" ]; then
