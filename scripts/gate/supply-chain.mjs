@@ -30,7 +30,7 @@
  *   node scripts/gate/supply-chain.mjs [--out DIR] [--final] [--expected-sha SHA]
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, copyFileSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, copyFileSync, chmodSync, lstatSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +43,7 @@ import {
 import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
 } from './lib/scanner-exclusions.mjs';
+import { loadAdapter, assertNoTestSeams, activeTestSeams } from './lib/execution-adapter.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -304,8 +305,35 @@ function readEvidenceBytes(relative) {
 }
 
 /** Read a governed JSON document with a precise, catchable failure. */
+/**
+ * C16-R3.4 §1.1: an override may be ABSOLUTE.
+ *
+ * `join(ROOT, '/tmp/x')` yields `/repo/tmp/x`, so an absolute override silently resolved to a
+ * path that does not exist and every disposition control reported USAGE-ERROR instead of the
+ * refusal it was testing. An absolute path is now taken as given, canonicalized, and required
+ * to be a real regular non-symlink file. Overrides remain refused outright in --final mode,
+ * before any scanner runs.
+ */
+function resolveGovernedPath(pathish) {
+  if (!isAbsolute(pathish)) return { abs: join(ROOT, pathish), display: pathish };
+  const real = realpathSync(pathish);
+  return { abs: real, display: real };
+}
+
 function readGovernedJson(relative) {
-  const abs = join(ROOT, relative);
+  const resolved = resolveGovernedPath(relative);
+  const abs = resolved.abs;
+  if (isAbsolute(relative)) {
+    let st;
+    try {
+      st = lstatSync(abs);
+    } catch {
+      throw new UsageError(`${relative} does not exist`);
+    }
+    if (st.isSymbolicLink()) throw new UsageError(`${relative} is a SYMLINK; a governed input must be a real file`);
+    if (st.isDirectory()) throw new UsageError(`${relative} is a directory, not a governed document`);
+    if (!st.isFile()) throw new UsageError(`${relative} is not a regular file`);
+  }
   let raw;
   try {
     raw = readFileSync(abs, 'utf8');
@@ -355,15 +383,17 @@ const isTracked = (rel) => {
   return spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: ROOT, encoding: 'utf8' }).status === 0;
 };
 
+/**
+ * The execution adapter for this run. Production unless a test seam replaced it — and a test
+ * seam is refused outright in --final mode, before any scanning, by `assertNoTestSeams()`.
+ */
+let ADAPTER = null;
+
 function run(steps, outDir, sourceSha, id, argv, opts = {}) {
   const started = new Date().toISOString();
   const t0 = Date.now();
-  const res = spawnSync(argv[0], argv.slice(1), {
-    cwd: opts.cwd ?? ROOT,
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-    env: { ...process.env, ...(opts.env ?? {}) },
-  });
+  // Every scanner execution crosses the external-effect boundary here, and nowhere else.
+  const res = ADAPTER.execute(argv, { cwd: opts.cwd ?? ROOT, env: opts.env ?? {}, id });
   const finished = new Date().toISOString();
   const stdout = res.stdout ?? '';
   const stderr = res.stderr ?? '';
@@ -400,8 +430,21 @@ function run(steps, outDir, sourceSha, id, argv, opts = {}) {
   return record;
 }
 
-function main(parsed) {
+async function main(parsed) {
   const opts = parsed;
+
+  // ── THE SEAM IS PROHIBITED IN FINAL MODE, BEFORE ANYTHING ELSE ─────────────────
+  // Refused here, ahead of staging, acquisition and every scan, so a seeded run cannot get
+  // far enough to write anything that could be mistaken for evidence.
+  const seamProblems = assertNoTestSeams(parsed.final);
+  if (seamProblems.length > 0) {
+    for (const p of seamProblems) console.error(`::error::${p}`);
+    process.exit(2);
+  }
+  ADAPTER = await loadAdapter();
+  if (ADAPTER.kind !== 'production') {
+    console.log(`  NOTE: execution adapter '${ADAPTER.kind}' is active (seams: ${activeTestSeams().join(', ')}). This run is NOT evidence.`);
+  }
   // An ABSOLUTE --out must not be re-rooted under the repo (join('/repo','/tmp/x') yields
   // '/repo/tmp/x', which silently wrote gate output INTO the working tree).
   const outDir = isAbsolute(opts.out) ? resolve(opts.out) : join(ROOT, opts.out);
@@ -554,13 +597,13 @@ function main(parsed) {
   // ── trivy cache: acquire BOTH artifacts, then capture and enforce provenance ────
   const TRIVY_FOR_CACHE = staged.paths.trivy;
   console.log('\n-- trivy cache acquisition (vulnerability DB + checks bundle) --');
-  const acquisition = acquire({ cacheDir, log: (m) => console.log(m), outDir, trivyPath: TRIVY_FOR_CACHE });
+  const acquisition = ADAPTER.acquireCache({ cacheDir, log: (m) => console.log(m), outDir, trivyPath: TRIVY_FOR_CACHE });
   state.trivy_cache_acquisition = acquisition;
   // A failed refresh must not be papered over by an older cache that happens to exist.
   for (const p of acquisition.problems ?? []) failures.push(`trivy cache acquisition — ${p}`);
   if (failures.length > 0) finish(1);
 
-  const provenance = capture({
+  const provenance = ADAPTER.captureProvenance({
     cacheDir, nowIso: new Date().toISOString(), platform: SCAN_PLATFORM, pins,
     trivyPath: TRIVY_FOR_CACHE,
   });
@@ -583,7 +626,7 @@ function main(parsed) {
     finish(1);
   }
 
-  const fpBefore = fingerprint(cacheDir);
+  const fpBefore = ADAPTER.cacheFingerprint(cacheDir);
   state.trivy_cache_fingerprint_before = fpBefore;
   console.log(`  cache digest ${fpBefore.digest}`);
 
@@ -594,16 +637,35 @@ function main(parsed) {
   const GITLEAKS = staged.paths.gitleaks;
 
   // ── governed dispositions: validate BEFORE scanning ────────────────────────────
-  const exclusionRead = readGovernedJson('scripts/gate/scanner-exclusions.json');
+  // ── TEST SEAM, RECORDED AND FENCED ────────────────────────────────────────────
+  // The behavioural controls need to run this gate against a DEFECTIVE disposition document.
+  // They previously did that by overwriting the tracked file in place and restoring it in a
+  // `finally`. When a run was killed mid-test the restore never ran, and the governed document
+  // was left corrupted on disk — which is exactly what happened here: one interrupted run left
+  // `SCX-0001` deleted, another left `scan_platform: linux/arm64`, and every later run failed
+  // with `UNGOVERNED image finding` for reasons that had nothing to do with the change under
+  // test.
+  //
+  // The override exists so no test ever writes the tracked file. It is not a governance hole:
+  // the resolved path is RECORDED in the manifest, and the final-manifest verifier requires it
+  // to be exactly the tracked default — so a run that used an override can never be accepted as
+  // final evidence.
+  const GOVERNED_EXCLUSIONS = 'scripts/gate/scanner-exclusions.json';
+  const exclusionPath = process.env.EYE_GATE_EXCLUSIONS_PATH ?? GOVERNED_EXCLUSIONS;
+  const exclusionRead = readGovernedJson(exclusionPath);
   const exclusionDoc = exclusionRead.doc;
   const exclusionRaw = exclusionRead.raw;
-  const exclusionPath = 'scripts/gate/scanner-exclusions.json';
   state.scanner_exclusions = {
     file: exclusionPath,
+    canonical_path: resolveGovernedPath(exclusionPath).display,
+    is_governed_default: exclusionPath === GOVERNED_EXCLUSIONS,
     sha256: sha256(exclusionRaw),
     schema_version: exclusionDoc.schema_version,
     declared: (exclusionDoc.records ?? []).length,
   };
+  if (exclusionPath !== GOVERNED_EXCLUSIONS) {
+    console.log(`  NOTE: dispositions read from ${exclusionPath} (override). This run is NOT final evidence.`);
+  }
   const recordValidation = validateRecords(exclusionDoc, {
     runDate, root: ROOT, isTracked, readEvidence: (rel) => readEvidenceBytes(rel),
   });
@@ -731,7 +793,7 @@ function main(parsed) {
   }
 
   const imageResolutions = images.map((image) => {
-    const resolution = resolveImageIndex(image, SCAN_PLATFORM);
+    const resolution = ADAPTER.resolveImage(image, SCAN_PLATFORM);
     const scanRef = platformPinnedRef(image, resolution);
     console.log(`  ${image}`);
     if (!resolution.resolved) console.log(`    UNRESOLVED: ${resolution.error}`);
@@ -848,7 +910,7 @@ function main(parsed) {
   }
 
   // ── cache equality: the authoritative scans updated nothing ────────────────────
-  const fpAfter = fingerprint(cacheDir);
+  const fpAfter = ADAPTER.cacheFingerprint(cacheDir);
   state.trivy_cache_fingerprint_after = fpAfter;
   state.trivy_cache_unchanged = fpAfter.digest === fpBefore.digest;
   console.log(`\ntrivy cache after scans: ${fpAfter.digest} (${state.trivy_cache_unchanged ? 'UNCHANGED' : 'CHANGED'})`);
@@ -994,7 +1056,7 @@ function emergencyManifest(outArg, parsedOrNull, error) {
 let parsedArgs = null;
 try {
   parsedArgs = parseArgs(process.argv);
-  main(parsedArgs);
+  await main(parsedArgs);
 } catch (e) {
   // Recover the --out value even when parsing itself failed, so the diagnosis still lands
   // where the caller expects it.

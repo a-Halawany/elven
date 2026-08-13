@@ -284,6 +284,148 @@ export function countsOf(closure) {
   };
 }
 
+/**
+ * C16-R3.4 — THE DETERMINISTIC SOURCE-DERIVED C16 DERIVATION.
+ *
+ * One pure function, called by BOTH the generator and the final verifier. Everything it
+ * returns is derived from tracked source: `pnpm-lock.yaml`, the target descriptor, the
+ * workspace manifests and the governed closure exclusions, with exclusion expiry evaluated
+ * against ONE explicitly bound as-of date rather than an implicit wall clock.
+ *
+ * This exists because the verifier previously accepted the generator's OWN self-report as
+ * proof of the generator's work: `reconciliation.clean` and the reported counts were read out
+ * of the evidence and compared to nothing. A verifier that can reconstruct the answer does
+ * not need to be told it.
+ *
+ * Purity: no writes, no console output, no wall clock. `asOfDate` must be supplied by the
+ * caller ('YYYY-MM-DD'), which is what makes two independent runs comparable.
+ */
+export function deriveC16Expectation({ root = ROOT, asOfDate, isTracked, readEvidence } = {}) {
+  if (typeof asOfDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {
+    throw new Error(`deriveC16Expectation requires an explicit asOfDate as YYYY-MM-DD, got ${JSON.stringify(asOfDate)}`);
+  }
+  const trackedFn = isTracked ?? ((rel) =>
+    spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: root, encoding: 'utf8' }).status === 0);
+  const evidenceFn = readEvidence ?? ((rel) => {
+    try { return readFileSync(join(root, rel)); } catch { return null; }
+  });
+
+  const exclusionDoc = JSON.parse(
+    readFileSync(join(root, 'scripts/gate/closure-exclusions.json'), 'utf8'),
+  );
+  const built = buildAllClosures(root);
+  const { descriptor, lockUniverse, meta } = built;
+
+  const gov = governExclusions(exclusionDoc, built.closures, lockUniverse, asOfDate, {
+    root, isTracked: trackedFn, readEvidence: evidenceFn,
+  });
+
+  const closures = {};
+  const exclusionApplication = {};
+  const cardinalityProblems = [];
+  for (const [name, closure] of Object.entries(built.closures)) {
+    const forTarget = gov.valid.filter((ex) => ex.target === name);
+    const before = closure.nodes.size;
+    const { closure: reduced, applied, excluded, cascaded } = applyExclusions(closure, forTarget);
+    closures[name] = reduced;
+    exclusionApplication[name] = {
+      valid_for_target: forTarget.length,
+      applied_count: applied.length,
+      cascaded_count: cascaded.length,
+      nodes_before: before,
+      nodes_after: reduced.nodes.size,
+      removed_nodes: before - reduced.nodes.size,
+      applied,
+      cascaded,
+      excluded_refs: excluded.map((n) => n.bomRef).sort(),
+    };
+    cardinalityProblems.push(...checkExclusionCardinality({
+      declared: forTarget.length, rejected: 0, valid: forTarget.length,
+      applied: applied.length, removedNodes: before - reduced.nodes.size, cascaded: cascaded.length,
+    }).map((p) => `${name}: ${p}`));
+  }
+  cardinalityProblems.push(...checkExclusionCardinality({
+    declared: gov.declared,
+    rejected: gov.problems.length > 0 ? gov.declared - gov.valid.length : 0,
+    valid: gov.valid.length,
+    applied: Object.values(exclusionApplication).reduce((a, x) => a + x.applied_count, 0),
+    removedNodes: Object.values(exclusionApplication).reduce((a, x) => a + x.removed_nodes, 0),
+    cascaded: Object.values(exclusionApplication).reduce((a, x) => a + x.cascaded_count, 0),
+  }).map((p) => `document: ${p}`));
+
+  const reports = {};
+  const sbomTexts = {};
+  const unresolved = {};
+  for (const [name, closure] of Object.entries(closures)) {
+    const target = closure.target;
+    if (closure.unresolved.length > 0) {
+      unresolved[name] = [...closure.unresolved];
+      continue;
+    }
+    const doc = buildSbom(closure, meta);
+    const text = serialize(doc);
+    sbomTexts[name] = text;
+
+    // Reconcile against the SERIALIZED TEXT — the same bytes that get written and shipped,
+    // never the in-memory document.
+    const rec = reconcile(closure, extractFromSbom(text), {
+      requireExactBindings: true,
+      expectedDocument: {
+        bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, serialNumber: doc.serialNumber,
+      },
+      expectedSubjectVersion: meta.projectVersion,
+      expectedSubjectType: 'application',
+      expectedSubjectPurl: subjectPurl(meta.projectVersion),
+      expectedSubjectDescription: target.description,
+      expectedBindings: {
+        'eye:target-id': target.id,
+        'eye:target-os': target.os,
+        'eye:target-arch': target.arch,
+        'eye:target-libc': target.libc,
+        'eye:target-node': target.node.pinned,
+        'eye:target-pnpm': target.pnpm.pinned,
+        'eye:importer-roots': target.importer_roots.join(','),
+        'eye:dependency-scopes': target.dependency_scopes.join(','),
+        'eye:closure-source': 'pnpm-lock.yaml (importers+packages+snapshots)',
+        'eye:source-sha': meta.sourceSha,
+        'eye:lockfile-sha256': meta.lockfileSha256,
+        'eye:descriptor-sha256': meta.descriptorSha256,
+        'eye:generator': 'scripts/gate/generate-closures.mjs',
+        'eye:generator-sha256': meta.generatorSha256,
+        'eye:purl-implementation': meta.purlImplementation,
+        'eye:yaml-implementation': meta.yamlImplementation,
+      },
+    });
+
+    reports[name] = {
+      target,
+      sbom_file: `sbom-${target.id}.cdx.json`,
+      sbom_sha256: sha256(text),
+      sbom_bytes: Buffer.byteLength(text),
+      serial_number: doc.serialNumber,
+      subject_ref: subjectRef(target.id),
+      counts: countsOf(closure),
+      scope_distribution: scopeDistribution(closure),
+      workspace_identities: [...closure.nodes.values()]
+        .filter((n) => n.kind === 'workspace')
+        .map((n) => ({
+          importer_root: n.importerPath, name: n.name, version: n.version, purl: n.purl,
+          manifest: n.manifestPath, manifest_sha256: n.manifestSha256,
+        }))
+        .sort((a, b) => (a.importer_root < b.importer_root ? -1 : 1)),
+      platform_exclusions: closure.excludedByPlatform,
+      governed_exclusions_applied: exclusionApplication[name],
+      reconciliation: rec,
+    };
+  }
+
+  return {
+    asOfDate, meta, descriptor, lockUniverse, closures,
+    reports, sbomTexts, unresolved,
+    gov, exclusionApplication, cardinalityProblems,
+  };
+}
+
 export function main(parsed) {
   const outArg = parsed.out;
   const outDir = isAbsolute(outArg) ? resolve(outArg) : join(ROOT, outArg);
@@ -366,148 +508,54 @@ export function main(parsed) {
     }
   }
 
-  // Exclusion governance runs BEFORE reconciliation, because a valid exclusion changes
-  // the closure that gets reconciled.
-  const isTracked = (rel) =>
-    spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: ROOT, encoding: 'utf8' }).status === 0;
-  const readEvidence = (rel) => {
-    try {
-      return readFileSync(join(ROOT, rel));
-    } catch {
-      return null;
-    }
-  };
+  // ── ONE SOURCE-DERIVED DERIVATION, SHARED WITH THE VERIFIER ────────────────────
+  // C16-R3.4: the producer and the final verifier now call the SAME pure function, so the
+  // verifier can reconstruct every count, every reconciliation and every SBOM byte from
+  // tracked source instead of reading the generator's self-report back as proof. The as-of
+  // date is passed explicitly for the same reason.
+  const derived = deriveC16Expectation({ root: ROOT, asOfDate: runDate });
+  const { gov, closures, exclusionApplication, cardinalityProblems, reports } = derived;
 
-  const gov = governExclusions(exclusionDoc, built.closures, lockUniverse, runDate, {
-    root: ROOT, isTracked, readEvidence,
-  });
-  const closures = {};
-  const exclusionApplication = {};
-  const cardinalityProblems = [];
-  for (const [name, closure] of Object.entries(built.closures)) {
-    const forTarget = gov.valid.filter((ex) => ex.target === name);
-    const before = closure.nodes.size;
-    const { closure: reduced, applied, excluded, cascaded } = applyExclusions(closure, forTarget);
-    closures[name] = reduced;
-    exclusionApplication[name] = {
-      valid_for_target: forTarget.length,
-      applied_count: applied.length,
-      cascaded_count: cascaded.length,
-      nodes_before: before,
-      nodes_after: reduced.nodes.size,
-      removed_nodes: before - reduced.nodes.size,
-      applied,
-      cascaded,
-      excluded_refs: excluded.map((n) => n.bomRef).sort(),
-    };
-    // Cardinalities must agree exactly, or the applied set is not the governed set.
-    cardinalityProblems.push(...checkExclusionCardinality({
-      declared: forTarget.length,
-      rejected: 0,
-      valid: forTarget.length,
-      applied: applied.length,
-      removedNodes: before - reduced.nodes.size,
-      cascaded: cascaded.length,
-    }).map((p) => `${name}: ${p}`));
+  for (const [name, refs] of Object.entries(derived.unresolved)) {
+    writeC16Failure({
+      outArg, phase: `closure-resolution:${name}`, category: 'GATE',
+      message: [
+        `${name}: UNRESOLVED lockfile references (closure is incomplete):`,
+        ...refs.slice(0, 40),
+        'Every required AND optional reference must resolve; the gate fails closed.',
+      ].join('\n'),
+      parsed, sourceSha: meta.sourceSha,
+    });
+    process.exit(1);
   }
-  // Whole-document cardinality: nothing may be silently dropped between stages.
-  cardinalityProblems.push(...checkExclusionCardinality({
-    declared: gov.declared,
-    rejected: gov.problems.length > 0 ? gov.declared - gov.valid.length : 0,
-    valid: gov.valid.length,
-    applied: Object.values(exclusionApplication).reduce((a, x) => a + x.applied_count, 0),
-    removedNodes: Object.values(exclusionApplication).reduce((a, x) => a + x.removed_nodes, 0),
-    cascaded: Object.values(exclusionApplication).reduce((a, x) => a + x.cascaded_count, 0),
-  }).map((p) => `document: ${p}`));
 
-  const reports = {};
-  for (const [name, closure] of Object.entries(closures)) {
-    const target = closure.target;
-    if (closure.unresolved.length > 0) {
+  for (const [name, report] of Object.entries(reports)) {
+    const target = report.target;
+    const text = derived.sbomTexts[name];
+    const file = join(outDir, report.sbom_file);
+    writeFileSync(file, text);
+    // The DELIVERED bytes must be the derived bytes. Reconciliation already ran against the
+    // derived text; this proves the file on disk is those same bytes and nothing else.
+    const onDisk = readFileSync(file, 'utf8');
+    if (onDisk !== text) {
       writeC16Failure({
-        outArg, phase: `closure-resolution:${name}`, category: 'GATE',
-        message: [
-          `${name}: UNRESOLVED lockfile references (closure is incomplete):`,
-          ...closure.unresolved.slice(0, 40),
-          'Every required AND optional reference must resolve; the gate fails closed.',
-        ].join('\n'),
+        outArg, phase: `sbom-write:${name}`, category: 'GATE',
+        message: `the SBOM written to ${report.sbom_file} does not equal the derived bytes`,
         parsed, sourceSha: meta.sourceSha,
       });
       process.exit(1);
     }
 
-    const doc = buildSbom(closure, meta);
-    const text = serialize(doc);
-    const file = join(outDir, `sbom-${target.id}.cdx.json`);
-    writeFileSync(file, text);
-
-    // RE-READ FROM DISK. Reconciliation never touches the in-memory document.
-    const onDiskText = readFileSync(file, 'utf8');
-    const onDisk = extractFromSbom(onDiskText);
-    // The COMPLETE governed binding set. `requireExactBindings` additionally rejects any
-    // metadata property that is not in this set, so a binding cannot be quietly added.
-    const rec = reconcile(closure, onDisk, {
-      requireExactBindings: true,
-      expectedDocument: {
-        bomFormat: 'CycloneDX',
-        specVersion: '1.6',
-        version: 1,
-        serialNumber: doc.serialNumber,
-      },
-      expectedSubjectVersion: meta.projectVersion,
-      expectedSubjectType: 'application',
-      expectedSubjectPurl: subjectPurl(meta.projectVersion),
-      expectedSubjectDescription: target.description,
-      expectedBindings: {
-        'eye:target-id': target.id,
-        'eye:target-os': target.os,
-        'eye:target-arch': target.arch,
-        'eye:target-libc': target.libc,
-        'eye:target-node': target.node.pinned,
-        'eye:target-pnpm': target.pnpm.pinned,
-        'eye:importer-roots': target.importer_roots.join(','),
-        'eye:dependency-scopes': target.dependency_scopes.join(','),
-        'eye:closure-source': 'pnpm-lock.yaml (importers+packages+snapshots)',
-        'eye:source-sha': meta.sourceSha,
-        'eye:lockfile-sha256': meta.lockfileSha256,
-        'eye:descriptor-sha256': meta.descriptorSha256,
-        'eye:generator': 'scripts/gate/generate-closures.mjs',
-        'eye:generator-sha256': meta.generatorSha256,
-        'eye:purl-implementation': meta.purlImplementation,
-        'eye:yaml-implementation': meta.yamlImplementation,
-      },
-    });
-
-    reports[name] = {
-      target,
-      sbom_file: `sbom-${target.id}.cdx.json`,
-      sbom_sha256: sha256(onDiskText),
-      sbom_bytes: Buffer.byteLength(onDiskText),
-      serial_number: doc.serialNumber,
-      subject_ref: subjectRef(target.id),
-      counts: countsOf(closure),
-      scope_distribution: scopeDistribution(closure),
-      workspace_identities: [...closure.nodes.values()]
-        .filter((n) => n.kind === 'workspace')
-        .map((n) => ({
-          importer_root: n.importerPath, name: n.name, version: n.version, purl: n.purl,
-          manifest: n.manifestPath, manifest_sha256: n.manifestSha256,
-        }))
-        .sort((a, b) => (a.importer_root < b.importer_root ? -1 : 1)),
-      platform_exclusions: closure.excludedByPlatform,
-      governed_exclusions_applied: exclusionApplication[name],
-      reconciliation: rec,
-    };
-
-    const c = reports[name].counts;
+    const rec = report.reconciliation;
+    const c = report.counts;
     console.log(`\n${name} (${target.id}):`);
     console.log(`  scopes            ${target.dependency_scopes.join(', ')}`);
     console.log(`  importer roots    ${target.importer_roots.join(', ')}`);
     console.log(`  components        ${c.nodes} (workspace ${c.workspace_nodes}, registry ${c.registry_nodes}, peer-variants ${c.peer_variant_nodes}, leaves ${c.leaf_nodes})`);
     console.log(`  edges             ${c.edges} + ${c.subject_root_edges} subject->root`);
     console.log(`  platform-excluded ${c.platform_excluded}`);
-    console.log(`  scope membership  ${JSON.stringify(reports[name].scope_distribution)}`);
-    console.log(`  workspace ids     ${reports[name].workspace_identities.map((w) => `${w.name}@${w.version}`).join(', ')}`);
+    console.log(`  scope membership  ${JSON.stringify(report.scope_distribution)}`);
+    console.log(`  workspace ids     ${report.workspace_identities.map((w) => `${w.name}@${w.version}`).join(', ')}`);
     console.log(`  lock <-> sbom     nodes ${rec.lock_nodes}/${rec.sbom_nodes}, edges ${rec.lock_edges}/${rec.sbom_edges}`);
     console.log(`  subject->root     ${rec.subject_root_edges_present}/${rec.subject_root_edges_expected}`);
     console.log(`  reconciliation    ${rec.clean ? 'CLEAN in both directions (full-field, multiset)' : 'DIFFERENCES FOUND'}`);
