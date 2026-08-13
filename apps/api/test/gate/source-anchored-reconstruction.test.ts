@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { assertFinalManifests } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR33Defective } from './fixtures/assert-final-manifests.r33-frozen.mjs';
 import { assertFinalManifests as assertR34Frozen } from './fixtures/assert-final-manifests.r34-frozen.mjs';
+import { assertFinalManifests as assertR341Frozen } from './fixtures/assert-final-manifests.r341-frozen.mjs';
 import {
   loadSourceContract, expectedStepContract, normalizeArg, ownMap, hasOwnKey, canonical,
 } from '../../../../scripts/gate/lib/verification-contract.mjs';
@@ -712,7 +713,7 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
 
   it.each([
     ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /no 'metadata' object|no 'metadata\.vulnerabilities' counters/],
-    ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /no integer SchemaVersion|no ArtifactName/],
+    ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /SchemaVersion is undefined, expected 2|ArtifactName is undefined/],
   ])('§A2 %s is rejected', (_label, rel, body, expected) => {
     substitute(rel as string, body as string);
     closes(expected as RegExp);
@@ -754,5 +755,138 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
       a.bytes = bytes.length; a.sha256 = sha256(bytes);
     });
     expect(check().some((p) => /these are not the bytes the reference names/.test(p))).toBe(true);
+  });
+});
+
+/**
+ * C16-R3.4.2 — the five false passes independent review reproduced against R3.4.1.
+ *
+ * Each executes the corrected verifier and `fixtures/assert-final-manifests.r341-frozen.mjs`,
+ * a byte copy of the R3.4.1 verifier as delivered at ff6f7a7.
+ */
+describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verifier', () => {
+  let root: string;
+  let built: ReturnType<typeof buildPassingR34Evidence>;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'eye-r342-'));
+    built = buildPassingR34Evidence(root, REPO);
+  });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  const check = () => assertFinalManifests({
+    c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+  }) as string[];
+  const frozen341 = () => {
+    try {
+      return assertR341Frozen({
+        c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+      }) as string[];
+    } catch (e) { return [`THREW: ${e instanceof Error ? e.message.slice(0, 100) : e}`]; }
+  };
+  const editC15 = (fn: (m: Record<string, any>) => void) =>
+    editManifest(built.c15Dir, 'supply-chain-manifest.json', fn);
+  const rebindRaw = (rel: string, body: string) => {
+    writeFileSync(join(built.c15Dir, rel), body);
+    const bytes = readFileSync(join(built.c15Dir, rel));
+    editC15((m) => {
+      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
+      if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
+      const step = m.steps.find((x: any) => x.stdout_file === rel);
+      if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
+    });
+  };
+  const closes = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((p) => expected.test(p)),
+      `expected ${expected}, got:\n${problems.join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen341();
+    expect(stale, `frozen R3.4.1 must ACCEPT this, but reported:\n${stale.join('\n')}`).toEqual([]);
+  };
+
+  it('the untouched fixture passes BOTH the corrected and the frozen R3.4.1 verifier', () => {
+    expect(check()).toEqual([]);
+    expect(frozen341()).toEqual([]);
+  });
+
+  it('§1 a DECOY filesystem report with empty Results is rejected', () => {
+    // The exact reproduction: a plausible-looking report naming another tree, analysing nothing.
+    rebindRaw('trivy-fs-json.stdout.txt', `${JSON.stringify({
+      SchemaVersion: 2, ArtifactName: '/attacker/decoy-source', ArtifactType: '', Results: [],
+    })}\n`);
+    const problems = check();
+    expect(problems.some((p) => /ArtifactName is "\/attacker\/decoy-source", expected "\."/.test(p))).toBe(true);
+    expect(problems.some((p) => /ArtifactType is "", expected "repository"/.test(p))).toBe(true);
+    expect(problems.some((p) => /Results is EMPTY/.test(p))).toBe(true);
+    const stale = frozen341();
+    expect(stale, `frozen R3.4.1 must ACCEPT this:\n${stale.join('\n')}`).toEqual([]);
+  });
+
+  it('§1 a filesystem report whose Metadata.Commit is another commit is rejected', () => {
+    const r = JSON.parse(readFileSync(join(built.c15Dir, 'trivy-fs-json.stdout.txt'), 'utf8'));
+    r.Metadata.Commit = 'f'.repeat(40);
+    rebindRaw('trivy-fs-json.stdout.txt', `${JSON.stringify(r)}\n`);
+    closes(/Metadata\.Commit is "f{40}".*the scan describes a different source/s);
+  });
+
+  it('§1 a filesystem report that analysed no pnpm-lock.yaml is rejected', () => {
+    const r = JSON.parse(readFileSync(join(built.c15Dir, 'trivy-fs-json.stdout.txt'), 'utf8'));
+    r.Results = [{ Target: 'somewhere/else.txt', Class: 'lang-pkgs', Type: 'pnpm' }];
+    rebindRaw('trivy-fs-json.stdout.txt', `${JSON.stringify(r)}\n`);
+    closes(/analysed no 'pnpm-lock\.yaml' result/);
+  });
+
+  it('§2 an image report named for a DECOY repository with the correct digest is rejected', () => {
+    // The exact reproduction: `attacker.example/decoy@sha256:<correct-child-digest>`.
+    const rel = 'trivy-image-0.stdout.txt';
+    const r = JSON.parse(readFileSync(join(built.c15Dir, rel), 'utf8'));
+    const digest = String(r.ArtifactName).slice(String(r.ArtifactName).indexOf('@') + 1);
+    r.ArtifactName = `attacker.example/decoy@${digest}`;
+    rebindRaw(rel, `${JSON.stringify(r, null, 2)}\n`);
+    closes(/ArtifactName is "attacker\.example\/decoy@.*A name that merely contains the digest is a different image/s);
+  });
+
+  it('§2 an image report whose Metadata.Reference or RepoDigests disagree is rejected', () => {
+    const rel = 'trivy-image-0.stdout.txt';
+    const r = JSON.parse(readFileSync(join(built.c15Dir, rel), 'utf8'));
+    r.Metadata.Reference = 'attacker.example/decoy@sha256:' + 'a'.repeat(64);
+    r.Metadata.RepoDigests = ['attacker.example/decoy@sha256:' + 'a'.repeat(64)];
+    rebindRaw(rel, `${JSON.stringify(r, null, 2)}\n`);
+    const problems = check();
+    expect(problems.some((p) => /Metadata\.Reference is/.test(p))).toBe(true);
+    expect(problems.some((p) => /RepoDigests .* does not contain/.test(p))).toBe(true);
+    expect(frozen341()).toEqual([]);
+  });
+
+  it.each([
+    ['AUDIT FAILED WITH HIDDEN VULNERABILITIES', 'pnpm-audit-human.stdout.txt', /reports vulnerabilities while the JSON audit reports none|not recognisable pnpm audit output/],
+    ['x', 'pnpm-audit-human.stdout.txt', /not recognisable pnpm audit output/],
+    ['NOT A TRIVY REPORT', 'trivy-fs.stdout.txt', /not recognisable trivy table output/],
+  ])('§3 a contradictory human receipt (%s) is rejected', (body, rel, expected) => {
+    rebindRaw(rel as string, `${body as string}\n`);
+    closes(expected as RegExp);
+  });
+
+  it('§4 rewriting every receipt cwd to a decoy source is rejected', () => {
+    // The exact reproduction: consistent, plausible, and previously ignored entirely.
+    editC15((m) => { for (const s of m.steps) s.cwd = '/attacker/decoy-source'; });
+    closes(/cwd is "\/attacker\/decoy-source", expected the canonical "<repo root>"/);
+  });
+
+  it('§4 a MISSING cwd is rejected', () => {
+    editC15((m) => { delete m.steps.find((s: any) => s.id === 'trivy-fs').cwd; });
+    closes(/records no cwd; where it executed is not optional/);
+  });
+
+  it('§4 an acquisition receipt that declares a cwd is rejected', () => {
+    editC15((m) => { m.trivy_cache_acquisition.steps[0].cwd = '/attacker/decoy-source'; });
+    closes(/acquisition step 'trivy-acquire-db' records cwd/);
+  });
+
+  it('§4 the verifier refuses to recompute against a different commit', () => {
+    const problems = assertFinalManifests({
+      c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: 'd'.repeat(40), root: REPO,
+    }) as string[];
+    expect(problems.some((p) => /the verifier's checkout is at .* not the expected/.test(p))).toBe(true);
   });
 });

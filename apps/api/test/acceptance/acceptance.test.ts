@@ -845,9 +845,12 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
     expect(installer).toContain('scripts/gate/scanner-pins.json');
     expect(installer).toContain('sha256sum');
     expect(installer).toContain('does not match the tracked');
-    // Both jobs that need scanners must use it — not an inline copy that can drift.
+    // C16-R3.4.2 §5: EXACTLY ONE job installs scanners. This used to require at least two,
+    // because build-test installed them to run live behavioural controls. Those controls are
+    // now hermetic, so build-test is offline and `supply-chain` is the sole live scanning job.
+    // The tracked installer is still the only mechanism — never an inline copy that can drift.
     expect((active.match(/scripts\/gate\/install-scanners\.sh/g) ?? []).length)
-      .toBeGreaterThanOrEqual(2);
+      .toBe(1);
     // The Gate-2.1 SBOM generator is SUPERSEDED: its "bidirectional" reconciliation
     // compared two structures derived from the same generated SBOM, so it could not
     // fail. It must not be part of the active gate.

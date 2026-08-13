@@ -1,56 +1,30 @@
 /**
- * C16-R3.4 — SOURCE-ANCHORED EVIDENCE RECONSTRUCTION.
+ * FROZEN HISTORICAL ARTIFACT — DO NOT EDIT, DO NOT IMPORT FROM PRODUCTION CODE.
  *
- * ── THE CONSTITUTIONAL RULE ───────────────────────────────────────────────────────
- * No evidence value may define the expectation used to validate itself. Every
- * acceptance-relevant claim is re-derived from tracked source, from deterministic
- * source-derived state, or from the delivered raw bytes.
+ * `scripts/gate/assert-final-manifests.mjs` at ff6f7a7 — the C16-R3.4.1 verifier. It bound the
+ * scanned candidate and derived the image child from shipped index bytes, and independent
+ * review still reproduced four false passes: a decoy `ArtifactName` with empty `Results`, an
+ * image report whose name merely CONTAINED the derived digest, "human" receipts accepted for
+ * being non-empty, and receipt `cwd` values ignored entirely.
  *
- * ── WHY THE MODEL CHANGED RATHER THAN THE FIELDS ──────────────────────────────────
- * Three rounds of field-by-field patching were each defeated the same way. R3.3 constrained
- * the step set — but derived it from `digest_pinned_images`, a manifest field. Replace both
- * configured images with one attacker-chosen digest, delete the second step, its files and its
- * bindings, and the package is perfectly self-consistent and was perfectly accepted. Six more
- * false passes had the same shape: a step redirected to another bound output, a cache entry
- * removed and the aggregates recomputed around it, an SBOM subject rewritten and rehashed,
- * duplicate contradictory metadata properties, argv removed entirely, and the whole component
- * graph deleted while the report kept claiming 195 nodes.
- *
- * So expectations no longer come from the manifest at all:
- *
- *   images        ← docker-compose.yml, cross-checked against conformance.manifest.json
- *   step set      ← the source image count, never the manifest's list
- *   argv          ← a tracked normalized contract, compared element by element
- *   cache entries ← a tracked path set, with every aggregate recomputed
- *   inventory     ← derived from the step/report contracts, and required to EQUAL the bindings
- *   C15 findings  ← RECONSTRUCTED from the delivered raw trivy bytes, then re-reconciled
- *                   against the tracked disposition records
- *   C16 closures  ← RE-DERIVED from pnpm-lock.yaml by the same pure function the generator
- *                   calls, then compared byte-for-byte with the delivered SBOMs
- *
- * Where a claim genuinely cannot be reconstructed, the limit is stated in a comment and the
- * derived aggregates around it are recomputed anyway.
- *
- * Usage:
- *   node scripts/gate/assert-final-manifests.mjs <C15_OUT> <C16_OUT> <EXPECTED_SHA>
+ * Kept so the R3.4.2 controls can EXECUTE the defective behaviour.
  */
 import { readFileSync, existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, basename, normalize, isAbsolute, sep, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 
 import {
   loadSourceContract, expectedStepContract, normalizeArgv, expectedC15Inventory,
   imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
   C15_NORMAL_STEPS, C15_ACQUISITION_STEPS, C15_REQUIRED_REPORTS, C16_REQUIRED_REPORTS,
-  CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS, CANDIDATE_ROOT_TOKEN,
-} from './lib/verification-contract.mjs';
-import { deriveC16Expectation } from './generate-closures.mjs';
-import { candidateSourceManifest } from './lib/candidate-source.mjs';
+  CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS,
+} from './verification-contract.r341-frozen.mjs';
+import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
+import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candidate-source.mjs';
 import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
-} from './lib/scanner-exclusions.mjs';
+} from '../../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -539,18 +513,6 @@ function verifyCandidateSource({ c15, root, expectedSha }) {
       `C15 candidate source changed during scanning (${claimed.digest} → ${after?.digest ?? 'absent'})`,
     );
   }
-  // §4: the verifier's own checkout must BE the expected candidate before its manifest means
-  // anything. Recomputing against some other commit would compare the wrong thing.
-  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
-  const headSha = head.status === 0 ? head.stdout.trim() : null;
-  if (headSha !== expectedSha) {
-    problems.push(
-      `the verifier's checkout is at ${JSON.stringify(headSha)}, not the expected ${expectedSha}; ` +
-      'the candidate-source manifest cannot be recomputed against a different commit',
-    );
-    return problems;
-  }
-
   // RECOMPUTE from the verifier's own tree. Equality means the bytes scanned are the bytes here.
   const recomputed = candidateSourceManifest(root);
   if (recomputed.ok !== true) {
@@ -612,21 +574,6 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
     }
     if (isNormal && step.policy !== want.policy) {
       problems.push(`${label} '${step.id}' has policy ${JSON.stringify(step.policy)}, expected ${JSON.stringify(want.policy)}`);
-    }
-    // §4: THE EXECUTION DIRECTORY IS GOVERNED. R3.4.1 ignored `cwd` entirely, so rewriting
-    // every receipt to /attacker/decoy-source passed. A normal step records the canonical
-    // candidate-root token and nothing else; an acquisition step records no cwd at all.
-    if (isNormal) {
-      if (!hasOwnKey(step, 'cwd')) {
-        problems.push(`${label} '${step.id}' records no cwd; where it executed is not optional`);
-      } else if (step.cwd !== CANDIDATE_ROOT_TOKEN) {
-        problems.push(
-          `${label} '${step.id}' cwd is ${JSON.stringify(step.cwd)}, expected the canonical ` +
-          `${JSON.stringify(CANDIDATE_ROOT_TOKEN)} — an absolute or alternate path is not the candidate root`,
-        );
-      }
-    } else if (hasOwnKey(step, 'cwd') && step.cwd !== null && step.cwd !== undefined) {
-      problems.push(`${label} '${step.id}' records cwd ${JSON.stringify(step.cwd)}; acquisition steps declare none`);
     }
     if (step.exit_code !== 0) problems.push(`${label} '${step.id}' exited ${JSON.stringify(step.exit_code)}; a PASS run requires 0`);
     if (isNormal && step.failed !== false) problems.push(`${label} '${step.id}' is marked failed in a PASS manifest`);
@@ -698,191 +645,45 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
  * evaluate it independently, then RECONSTRUCT the image findings from the delivered trivy
  * bytes and re-run the tracked disposition reconciliation over them.
  */
-/** A well-formed Results array: nonempty, correctly typed result objects. */
-function resultsProblems(label, results, { requireTargets = [] } = {}) {
-  const problems = [];
-  if (!Array.isArray(results)) {
-    problems.push(`C15 ${label} Results is ${typeof results}, not an array`);
-    return problems;
-  }
-  if (results.length === 0) {
-    problems.push(`C15 ${label} Results is EMPTY; a scan that analysed nothing is not coverage`);
-    return problems;
-  }
-  for (const [i, r] of results.entries()) {
-    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
-      problems.push(`C15 ${label} Results[${i}] is not an object`);
-      continue;
-    }
-    if (typeof r.Target !== 'string' || r.Target.length === 0) {
-      problems.push(`C15 ${label} Results[${i}] has no Target`);
-    }
-    if (typeof r.Class !== 'string' || r.Class.length === 0) {
-      problems.push(`C15 ${label} Results[${i}] has no Class`);
-    }
-  }
-  for (const want of requireTargets) {
-    if (!results.some((r) => r?.Target === want)) {
-      problems.push(`C15 ${label} analysed no '${want}' result; the expected package manifest was not scanned`);
-    }
-  }
-  return problems;
-}
-
 /**
- * §1 — THE FILESYSTEM SCAN'S IDENTITY AND COVERAGE.
- *
- * R3.4.1 accepted `{"SchemaVersion":2,"ArtifactName":"/attacker/decoy-source","ArtifactType":"",
- * "Results":[]}` once its receipt and binding were updated: it checked that the fields existed,
- * not what they said. The scan subject is now source-owned (`.` from the candidate root), the
- * repository identity must agree with the expected commit, and the result set must actually
- * contain the analysed lockfile.
+ * §A2: a trivy report must LOOK like a trivy report. R3.4 walked `Results ?? []`, so `{}` read
+ * as a completed scan with nothing to report.
  */
-function filesystemReportProblems(label, report, { expectedSha }) {
+function trivyReportSchemaProblems(label, report, { requireResults = false, expectArtifact = null } = {}) {
   const problems = [];
   if (report === null || typeof report !== 'object' || Array.isArray(report)) {
     problems.push(`C15 ${label} is not a JSON object`);
     return problems;
   }
-  if (report.SchemaVersion !== 2) {
-    problems.push(`C15 ${label} SchemaVersion is ${JSON.stringify(report.SchemaVersion)}, expected 2`);
+  if (!hasOwnKey(report, 'SchemaVersion') || !Number.isInteger(report.SchemaVersion)) {
+    problems.push(`C15 ${label} has no integer SchemaVersion; an empty substitute is not a scan`);
   }
-  // The scanner is invoked with the source-owned relative target, so this is the ONLY name a
-  // genuine filesystem receipt can carry.
-  if (report.ArtifactName !== '.') {
-    problems.push(`C15 ${label} ArtifactName is ${JSON.stringify(report.ArtifactName)}, expected "." — the candidate root`);
+  if (!hasOwnKey(report, 'ArtifactName') || typeof report.ArtifactName !== 'string' || report.ArtifactName.length === 0) {
+    problems.push(`C15 ${label} has no ArtifactName, so it names no scan subject`);
   }
-  if (report.ArtifactType !== 'repository') {
-    problems.push(`C15 ${label} ArtifactType is ${JSON.stringify(report.ArtifactType)}, expected "repository"`);
+  if (!hasOwnKey(report, 'ArtifactType') || typeof report.ArtifactType !== 'string') {
+    problems.push(`C15 ${label} has no ArtifactType`);
   }
-  const meta = report.Metadata;
-  if (meta === null || typeof meta !== 'object') {
-    problems.push(`C15 ${label} has no Metadata, so it identifies no repository`);
-  } else if (meta.Commit !== expectedSha) {
-    problems.push(
-      `C15 ${label} Metadata.Commit is ${JSON.stringify(meta.Commit)}, but the expected candidate ` +
-      `is ${expectedSha}; the scan describes a different source`,
-    );
+  if (!hasOwnKey(report, 'Results')) {
+    if (requireResults) problems.push(`C15 ${label} has no Results key; a missing key is not an empty result set`);
+  } else if (!Array.isArray(report.Results)) {
+    problems.push(`C15 ${label} Results is ${typeof report.Results}, not an array`);
   }
-  problems.push(...resultsProblems(label, report.Results, { requireTargets: ['pnpm-lock.yaml'] }));
-  return problems;
-}
-
-/**
- * §2 — EXACT CONTAINER-IMAGE IDENTITY.
- *
- * R3.4.1 asked whether `ArtifactName` CONTAINED the derived digest, so
- * `attacker.example/decoy@sha256:<correct-child-digest>` passed. Equality now, in three places.
- */
-function imageReportProblems(label, report, { expectedRef }) {
-  const problems = [];
-  if (report === null || typeof report !== 'object' || Array.isArray(report)) {
-    problems.push(`C15 ${label} is not a JSON object`);
-    return problems;
-  }
-  if (report.SchemaVersion !== 2) {
-    problems.push(`C15 ${label} SchemaVersion is ${JSON.stringify(report.SchemaVersion)}, expected 2`);
-  }
-  if (report.ArtifactType !== 'container_image') {
-    problems.push(`C15 ${label} ArtifactType is ${JSON.stringify(report.ArtifactType)}, expected "container_image"`);
-  }
-  if (expectedRef === null || expectedRef === undefined) {
-    problems.push(`C15 ${label} has no derived scan reference to compare against`);
-    return problems;
-  }
-  if (report.ArtifactName !== expectedRef) {
-    problems.push(
-      `C15 ${label} ArtifactName is ${JSON.stringify(report.ArtifactName)}; the derived child is ` +
-      `${expectedRef}. A name that merely contains the digest is a different image.`,
-    );
-  }
-  const meta = report.Metadata;
-  if (meta === null || typeof meta !== 'object') {
-    problems.push(`C15 ${label} has no Metadata`);
-    return problems;
-  }
-  if (meta.Reference !== expectedRef) {
-    problems.push(`C15 ${label} Metadata.Reference is ${JSON.stringify(meta.Reference)}, expected ${expectedRef}`);
-  }
-  const digests = Array.isArray(meta.RepoDigests) ? meta.RepoDigests : null;
-  if (digests === null) {
-    problems.push(`C15 ${label} Metadata.RepoDigests is not an array`);
-  } else if (!digests.includes(expectedRef)) {
-    problems.push(`C15 ${label} Metadata.RepoDigests ${JSON.stringify(digests)} does not contain ${expectedRef}`);
-  }
-  if (!Array.isArray(report.Results)) {
-    problems.push(`C15 ${label} Results is not an array`);
-  }
-  return problems;
-}
-
-/**
- * §3 — the human/table receipts are the SAME scan in another format, so they are parsed and
- * cross-checked. "Non-empty" is not a semantic check: `NOT A TRIVY REPORT` and
- * `AUDIT FAILED WITH HIDDEN VULNERABILITIES` both satisfied it.
- *
- * These forms remain raw scanner output rather than being regenerated, so what is asserted is
- * agreement with the authoritative JSON: same subject, and no blocking finding reported.
- */
-function tableReceiptProblems(label, text, { jsonTargets, kind }) {
-  const problems = [];
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    problems.push(`C15 ${label} is empty; the blocking ${kind} scan produced no receipt`);
-    return problems;
-  }
-  // trivy's table form opens with a Report Summary whose rows are the analysed targets.
-  if (!/Report Summary/i.test(trimmed)) {
-    problems.push(
-      `C15 ${label} is not recognisable trivy table output (${JSON.stringify(trimmed.slice(0, 40))}…); ` +
-      'a non-empty string is not a receipt',
-    );
-    return problems;
-  }
-  // EVERY target the authoritative JSON analysed must appear in the table: the two receipts
-  // are the same scan in two formats, so a disagreement means one of them is not this scan.
-  for (const target of jsonTargets) {
-    if (!trimmed.includes(target)) {
-      problems.push(`C15 ${label} does not list '${target}', which the JSON scan analysed; the receipts disagree`);
-    }
-  }
-  // A PASS run's table must not report findings. The summary columns are counts or '-'.
-  for (const row of trimmed.split('\n')) {
-    if (!row.includes('│')) continue;
-    const cells = row.split('│').map((c) => c.trim()).filter((c) => c.length > 0);
-    for (const cell of cells.slice(1)) {
-      if (/^[1-9]\d*$/.test(cell)) {
-        problems.push(`C15 ${label} reports ${cell} finding(s) while the JSON scan reports none; the receipts disagree`);
-      }
+  // §A1: the report must name the child the index bytes derived.
+  if (expectArtifact !== null && typeof report.ArtifactName === 'string') {
+    const named = report.ArtifactName;
+    const digest = expectArtifact.slice(expectArtifact.indexOf('@') + 1);
+    if (named !== expectArtifact && !named.includes(digest)) {
+      problems.push(
+        `C15 ${label} reports ArtifactName ${JSON.stringify(named)}, which is not the child ` +
+        `${expectArtifact} derived from the shipped index bytes`,
+      );
     }
   }
   return problems;
 }
 
-function auditHumanReceiptProblems(label, text) {
-  const problems = [];
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    problems.push(`C15 ${label} is empty; the blocking audit produced no receipt`);
-    return problems;
-  }
-  // pnpm's human audit output for a clean tree states that no vulnerabilities were found; a
-  // populated report lists severities. Either shape is recognisable — arbitrary prose is not.
-  const clean = /no known vulnerabilities found/i.test(trimmed);
-  const reportShaped = /\b(critical|high|moderate|low)\b/i.test(trimmed) && /vulnerabilit/i.test(trimmed);
-  if (!clean && !reportShaped) {
-    problems.push(
-      `C15 ${label} is not recognisable pnpm audit output (${JSON.stringify(trimmed.slice(0, 40))}…); ` +
-      'a non-empty string is not a receipt',
-    );
-  }
-  if (!clean && reportShaped) {
-    problems.push(`C15 ${label} reports vulnerabilities while the JSON audit reports none; the receipts disagree`);
-  }
-  return problems;
-}
-
-function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha }) {
+function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
   const problems = [];
   const read = (rel) => {
     const { bytes, problem } = readMember(c15Dir, rel);
@@ -942,8 +743,8 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     // Cross-check the HUMAN receipt: an empty table beside a populated JSON, or vice versa,
     // means the two receipts do not describe the same scan.
     const humanText = read('pnpm-audit-human.stdout.txt');
-    if (humanText !== null) {
-      problems.push(...auditHumanReceiptProblems('pnpm-audit-human.stdout.txt', humanText));
+    if (humanText !== null && humanText.trim().length === 0) {
+      problems.push('C15 pnpm-audit-human.stdout.txt is empty; the blocking audit produced no receipt');
     }
   }
 
@@ -970,19 +771,11 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     try { fsReport = JSON.parse(fsText); } catch (e) {
       problems.push(`C15 trivy-fs-json.stdout.txt is not valid JSON (${e instanceof Error ? e.message.slice(0, 100) : e})`);
     }
-    problems.push(...filesystemReportProblems('trivy-fs-json.stdout.txt', fsReport, { expectedSha }));
-    // ── §3: the TABLE receipt is cross-checked against the JSON, not merely non-empty ─────
-    // R3.4.1 accepted any non-empty string here — "NOT A TRIVY REPORT" passed. The table form
-    // is the same scan in another format, so it must name the same subject and agree that
-    // nothing blocking was found.
+    problems.push(...trivyReportSchemaProblems('trivy-fs-json.stdout.txt', fsReport, { requireResults: true }));
+    // The blocking TABLE receipt must not be empty while the JSON claims a completed scan.
     const tableText = read('trivy-fs.stdout.txt');
-    if (tableText !== null) {
-      const jsonTargets = Array.isArray(fsReport?.Results)
-        ? fsReport.Results.map((r) => r?.Target).filter((t) => typeof t === 'string')
-        : [];
-      problems.push(...tableReceiptProblems('trivy-fs.stdout.txt', tableText, {
-        jsonTargets, kind: 'filesystem',
-      }));
+    if (tableText !== null && tableText.trim().length === 0) {
+      problems.push('C15 trivy-fs.stdout.txt is empty; the blocking filesystem scan produced no receipt');
     }
     if (fsReport !== null) {
       let blocking = 0;
@@ -1016,7 +809,9 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     if (text === null) { reconstructable = false; return; }
     try {
       const parsed = JSON.parse(text);
-      problems.push(...imageReportProblems(rel, parsed, { expectedRef: scanRefs[index] }));
+      problems.push(...trivyReportSchemaProblems(rel, parsed, {
+        requireResults: true, expectArtifact: scanRefs[index],
+      }));
       reconstructed.push(...findingsFromTrivyJson(text, pinnedRef));
     } catch (e) {
       problems.push(`C15 ${rel} could not be parsed as a trivy report (${e instanceof Error ? e.message.slice(0, 100) : e})`);
@@ -1600,7 +1395,7 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
       c15, c15Dir, expectedSha, bindings: c15Bindings.byPath, contract, scanRefs: images.scanRefs, root,
     }).problems);
 
-    problems.push(...verifyRawSemantics({ c15, c15Dir, contract, scanRefs: images.scanRefs, root, expectedSha }));
+    problems.push(...verifyRawSemantics({ c15, c15Dir, contract, scanRefs: images.scanRefs, root }));
 
     if (c15.step_policy_audit?.every_informational_step_duplicates_a_blocking_step !== true) {
       problems.push('C15 did not prove every non-blocking step duplicates a blocking one');
@@ -1649,34 +1444,4 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
   }
 
   return problems;
-}
-
-// Only run when invoked as a script — the controls import the assertion.
-if (process.argv[1] !== undefined &&
-    join(process.argv[1]) === join(fileURLToPath(import.meta.url))) {
-  const [c15Dir, c16Dir, expectedSha] = process.argv.slice(2);
-  if (c15Dir === undefined || c16Dir === undefined || expectedSha === undefined) {
-    console.error('usage: node scripts/gate/assert-final-manifests.mjs <C15_OUT> <C16_OUT> <EXPECTED_SHA>');
-    process.exit(2);
-  }
-  if (!/^[0-9a-f]{40}$/.test(expectedSha)) {
-    console.error(`expected SHA ${JSON.stringify(expectedSha)} is not a 40-character git object id`);
-    process.exit(2);
-  }
-  const problems = assertFinalManifests({ c15Dir, c16Dir, expectedSha });
-  if (problems.length > 0) {
-    console.error('=== FINAL-MANIFEST ASSERTION FAILED ===');
-    for (const p of problems) console.error(`  ${p}`);
-    process.exit(1);
-  }
-  const contract = loadSourceContract();
-  const c15 = JSON.parse(readFileSync(join(c15Dir, 'supply-chain-manifest.json'), 'utf8'));
-  const c16 = JSON.parse(readFileSync(join(c16Dir, 'closure-reconciliation.json'), 'utf8'));
-  console.log(`final mode confirmed for C15 and C16 at ${expectedSha}`);
-  console.log(`  images: ${contract.imageRefs.length} from docker-compose.yml, agreeing with conformance.manifest.json`);
-  console.log(`  C15 steps: ${c15.steps.length} normal + ${c15.trivy_cache_acquisition.steps.length} acquisition, each with contract-exact normalized argv`);
-  console.log(`  C15 outputs: ${c15.evidence_artifacts.length} bound, EQUAL to the ${contract.expectedInventory.length} the source contract derives`);
-  console.log('  C15 image findings RECONSTRUCTED from the delivered raw trivy bytes and re-reconciled against the tracked dispositions');
-  console.log('  C15 cache recomputed over the exact tracked entry set, before === after');
-  console.log(`  C16 SBOMs byte-identical to the deterministic source-derived generation for ${Object.keys(c16.targets).sort().join(', ')}`);
 }

@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = join(HERE, '..', '..', '..');
+export const REPO_ROOT = join(HERE, '..', '..', '..', '..', '..');
 
 export const SHA256_HEX = /^[a-f0-9]{64}$/;
 export const IMAGE_REF = /^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$/;
@@ -140,12 +140,6 @@ export const CACHE_ENTRY_PATHS = Object.freeze([
 ]);
 
 /** Volatile absolute paths are replaced by these controlled tokens before comparison. */
-/**
- * §4: the canonical token a normal step must record as its execution directory. The runner
- * writes this literal, never an absolute path, so a rewritten cwd cannot look plausible.
- */
-export const CANDIDATE_ROOT_TOKEN = '<repo root>';
-
 export const ARGV_TOKENS = Object.freeze({
   REPO_ROOT: '<REPO_ROOT>',
   OUT_DIR: '<OUT_DIR>',

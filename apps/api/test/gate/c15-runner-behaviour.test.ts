@@ -48,8 +48,12 @@ type RunResult = {
  * The child ceiling is what actually stops work; the per-test ceiling is slightly larger so a
  * killed child surfaces as a named assertion failure instead of a vanished worker.
  */
-const GATE_CHILD_TIMEOUT_MS = 6 * 60_000;
-const GATE_TEST_TIMEOUT_MS = 7 * 60_000;
+// C16-R3.4.2 §6: measured ceilings for an 18-second suite. The slowest control builds a
+// disposable repository copy and takes ~3s; 30s of child budget and 45s per test is generous
+// against that without letting anything hang for minutes. The long bounded timeout belongs
+// only to the authoritative live supply-chain job in CI.
+const GATE_CHILD_TIMEOUT_MS = 30_000;
+const GATE_TEST_TIMEOUT_MS = 45_000;
 
 const HERMETIC_ADAPTER = join(__dirname, 'helpers', 'hermetic-adapter.mjs');
 

@@ -16,8 +16,10 @@ export default defineConfig({
     //
     // These are real ceilings, not aspirations: no gate can wait indefinitely, and a test that
     // exceeds its budget fails by name instead of vanishing with its worker.
-    testTimeout: 7 * 60_000,
-    hookTimeout: 7 * 60_000,
+    // C16-R3.4.2 §6: the suite is hermetic and measured in seconds, so the global ceilings are
+    // short. Nothing here waits on a network.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     teardownTimeout: 60_000,
   },
 });

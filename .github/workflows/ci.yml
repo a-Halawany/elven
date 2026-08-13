@@ -90,13 +90,6 @@ jobs:
           test -s "$C16_OUT/closure-reconciliation.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-prod.cdx.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-dev.cdx.json"
-      - name: Install PINNED scanner binaries (archive AND executable digests verified)
-        timeout-minutes: 25
-        run: bash scripts/gate/install-scanners.sh gitleaks trivy
-      # C16-R3.4.1 §B4: build-test is OFFLINE after dependency installation. The behavioural
-      # controls replay a recorded trace through the hermetic adapter, so this job installs no
-      # scanners, downloads no vulnerability database and performs no live scan. Only the
-      # authoritative supply-chain job below does any of that.
       - name: Unit + conformance + gate tests (hermetic — no network)
         timeout-minutes: 20
         run: pnpm test

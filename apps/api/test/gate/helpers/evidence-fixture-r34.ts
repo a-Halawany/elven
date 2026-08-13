@@ -76,10 +76,12 @@ function trivyReportForImage(records: any[], pinnedRef: string, childDigest: str
     }
     byTarget.set(target, list);
   }
+  const scanRef = `${pinnedRef.slice(0, pinnedRef.indexOf('@'))}@${childDigest}`;
   return {
     SchemaVersion: 2,
-    ArtifactName: `${pinnedRef.slice(0, pinnedRef.indexOf('@'))}@${childDigest}`,
+    ArtifactName: scanRef,
     ArtifactType: 'container_image',
+    Metadata: { Reference: scanRef, RepoDigests: [scanRef], OS: { Family: 'alpine' } },
     Results: [...byTarget.entries()].map(([Target, Vulnerabilities]) => ({
       Target, Class: 'os-pkgs', Type: 'alpine', Vulnerabilities,
     })),
@@ -221,9 +223,24 @@ export function buildPassingR34Evidence(
   })}\n`);
   rawFor.set('gitleaks-worktree.stdout.txt', '');
   rawFor.set('gitleaks-history.stdout.txt', '');
-  rawFor.set('trivy-fs.stdout.txt', 'no blocking results\n');
+  // §3: a real-shaped trivy Report Summary listing the same target the JSON analysed, with
+  // zero findings — the cross-check the verifier performs.
+  rawFor.set('trivy-fs.stdout.txt', [
+    'Report Summary', '',
+    '┌────────────────┬──────┬─────────────────┬─────────┬───────────────────┐',
+    '│     Target     │ Type │ Vulnerabilities │ Secrets │ Misconfigurations │',
+    '├────────────────┼──────┼─────────────────┼─────────┼───────────────────┤',
+    '│ pnpm-lock.yaml │ pnpm │        0        │    -    │         -         │',
+    '└────────────────┴──────┴─────────────────┴─────────┴───────────────────┘', '',
+  ].join('\n'));
+  // §1: full identity and real coverage — the candidate root, the expected commit, and the
+  // analysed lockfile.
   rawFor.set('trivy-fs-json.stdout.txt', `${JSON.stringify({
-    SchemaVersion: 2, ArtifactName: repo, ArtifactType: 'filesystem', Results: [],
+    SchemaVersion: 2,
+    ArtifactName: '.',
+    ArtifactType: 'repository',
+    Metadata: { RepoURL: 'https://github.com/a-Halawany/elven', Branch: 'main', Commit: expectedSha },
+    Results: [{ Target: 'pnpm-lock.yaml', Class: 'lang-pkgs', Type: 'pnpm', Vulnerabilities: [] }],
   })}\n`);
   imageRefs.forEach((ref, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
@@ -254,6 +271,7 @@ export function buildPassingR34Evidence(
     };
     base.tool_version = contract.toolVersions[want.tool];
     if (isNormal) {
+      base.cwd = '<repo root>';
       base.tool = want.tool;
       base.policy = want.policy;
       base.coverage = want.coverage ?? null;
