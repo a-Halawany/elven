@@ -40,6 +40,78 @@ sha256_of() {
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
+# ── ONE ABSOLUTE WALL-CLOCK DEADLINE ──────────────────────────────────────────────
+# The previous comment claimed "roughly five and a half minutes". That was FALSE.
+# `curl --max-time` bounds a single transfer attempt, and curl's own `--retry 3` starts a
+# fresh one, so each outer attempt could take ~4×600s; six outer attempts plus backoff put
+# the theoretical ceiling in the region of four hours, not five and a half minutes. A bound
+# that is only true when nothing goes wrong is not a bound.
+#
+# The real bound is now a single absolute deadline computed once, before the first attempt.
+# Every inner curl gets `--max-time` set to the time REMAINING, so no attempt — retried or
+# not — can run past it, and the loop stops as soon as the deadline passes. CI additionally
+# caps the step with `timeout-minutes` as a backstop in case this script is bypassed.
+#
+# Injection points exist so a behavioural control can drive this with a fake failing
+# downloader and a fake clock instead of waiting in real time:
+#   EYE_SCANNER_FETCH_CMD  <output-path> <url> <max-seconds>   (default: curl)
+#   EYE_SCANNER_NOW_CMD                                        (default: date +%s)
+#   EYE_SCANNER_SLEEP_CMD  <seconds>                           (default: sleep)
+ACQUIRE_DEADLINE_SECONDS="${EYE_SCANNER_ACQUIRE_DEADLINE_SECONDS:-600}"
+MAX_ATTEMPTS="${EYE_SCANNER_MAX_ATTEMPTS:-6}"
+
+now_seconds() {
+  if [ -n "${EYE_SCANNER_NOW_CMD:-}" ]; then "$EYE_SCANNER_NOW_CMD"; else date +%s; fi
+}
+do_sleep() {
+  if [ -n "${EYE_SCANNER_SLEEP_CMD:-}" ]; then "$EYE_SCANNER_SLEEP_CMD" "$1"; else sleep "$1"; fi
+}
+do_fetch() {
+  local out="$1" url="$2" max="$3"
+  if [ -n "${EYE_SCANNER_FETCH_CMD:-}" ]; then
+    "$EYE_SCANNER_FETCH_CMD" "$out" "$url" "$max"
+  else
+    # --retry covers transient HTTP/connection errors within one attempt; --max-time is the
+    # REMAINING budget, so curl's internal retries cannot outlive the deadline either.
+    curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
+         --max-time "$max" -o "$out" "$url"
+  fi
+}
+
+fetch_with_deadline() {
+  local tool="$1" url="$2" out="$3"
+  local start deadline attempt=0 delay=10 remaining
+  start="$(now_seconds)"
+  deadline=$((start + ACQUIRE_DEADLINE_SECONDS))
+  echo "  acquisition deadline: ${ACQUIRE_DEADLINE_SECONDS}s absolute (all attempts, all inner retries)"
+
+  while true; do
+    remaining=$(( deadline - $(now_seconds) ))
+    if [ "$remaining" -le 0 ]; then
+      echo "::error::${tool} download exceeded the ${ACQUIRE_DEADLINE_SECONDS}s absolute acquisition deadline after ${attempt} attempt(s): $url"
+      exit 1
+    fi
+    if do_fetch "$out" "$url" "$remaining"; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+      echo "::error::${tool} download failed after $attempt whole-transfer attempts: $url"
+      exit 1
+    fi
+    # Never sleep past the deadline — that would spend the budget doing nothing.
+    remaining=$(( deadline - $(now_seconds) ))
+    if [ "$remaining" -le 0 ]; then
+      echo "::error::${tool} download exceeded the ${ACQUIRE_DEADLINE_SECONDS}s absolute acquisition deadline after ${attempt} attempt(s): $url"
+      exit 1
+    fi
+    if [ "$delay" -gt "$remaining" ]; then delay="$remaining"; fi
+    echo "  download attempt $attempt failed; retrying in ${delay}s (${remaining}s of budget left)"
+    do_sleep "$delay"
+    delay=$((delay * 2))
+  done
+}
+
 install_tool() {
   local tool url want_archive want_binary got_archive got_binary work
   tool="$1"
@@ -49,31 +121,7 @@ install_tool() {
 
   work="$(mktemp -d)"
   echo "$tool ($PLATFORM) <- $url"
-  # `--retry` alone does not cover a mid-transfer reset: hosted run 31644258092 died with
-  # `curl: (56) Connection died, tried 5 times before giving up` fetching the gitleaks
-  # release, reddening a run whose source was fine. Retry the WHOLE transfer with backoff,
-  # and let --retry-all-errors cover the non-transient-by-default codes.
-  #
-  # This changes nothing about trust: whatever arrives is still verified against the tracked
-  # archive AND executable digests below, and a mismatch still fails the run.
-  # The window matters as much as the retry. Run 31644806581 exhausted a ~60s window against
-  # a burst of GitHub Releases 503s and failed build-test — while the supply-chain job in the
-  # SAME run downloaded and verified the identical asset 23 seconds earlier. The asset was
-  # never unavailable; the burst simply outlasted the backoff. Six whole-transfer attempts
-  # with doubling backoff covers roughly five and a half minutes, and remains bounded so a
-  # genuine outage still fails rather than hanging.
-  local attempt=0 delay=10
-  until curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
-             --max-time 600 -o "$work/archive.tar.gz" "$url"; do
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 6 ]; then
-      echo "::error::${tool} download failed after $attempt whole-transfer attempts: $url"
-      exit 1
-    fi
-    echo "  download attempt $attempt failed; retrying in ${delay}s"
-    sleep "$delay"
-    delay=$((delay * 2))
-  done
+  fetch_with_deadline "$tool" "$url" "$work/archive.tar.gz"
 
   got_archive="$(sha256_of "$work/archive.tar.gz")"
   if [ "$got_archive" != "$want_archive" ]; then

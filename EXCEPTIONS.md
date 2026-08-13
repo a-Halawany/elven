@@ -211,3 +211,97 @@ exit_criteria:           EvidenceStore adapter for a replicated object store + r
 required_evidence:       Cross-store round-trip + digest verification + recovery exercise records
 status:                  proposed   # controlled enum {proposed, open, closed, expired}; becomes open only upon PHASE 1 approval
 ```
+
+---
+
+## Security correction record — C16-R3.4 (§G)
+
+Two corrections landed before any further public CI logs were produced, plus one working-tree
+incident recorded because it changed a governed document.
+
+### G1 — ephemeral CI credentials appeared in the public Actions log (closed)
+
+The workflow generated thirteen per-run credentials with `openssl rand` and appended them
+straight to `$GITHUB_ENV`. The runner echoes an `env:` group before every `run:` step, so each
+value appeared in **plaintext**, once per subsequent step. Directly observable in the logs of
+runs `31644258092` and `31644806581`.
+
+*Exposure.* Values are generated per run and die with the runner and its database, so nothing
+durable was exposed and no reusable credential existed at any point. A public log should still
+never carry them.
+
+*Correction.* `scripts/ci/generate-run-secrets.sh` — one tracked script used by both database
+jobs — emits `::add-mask::` for every value **before** exporting it, so the runner redacts that
+exact string everywhere thereafter, including the `env:` groups. Six controls in
+`apps/api/test/gate/ci-security.test.ts` execute the real script with an injected generator and
+assert: the full credential set is exported, every exported value has a mask line, no value
+appears outside its mask line, real values are distinct and high-entropy, and the script refuses
+to run without `$GITHUB_ENV` rather than printing to stdout.
+
+*Status.* closed.
+
+### G2 — the documented scanner-acquisition bound was false (closed)
+
+The installer's retry window was documented as "roughly five and a half minutes". That was
+wrong: `curl --max-time` bounds one transfer attempt, and curl's own `--retry 3` starts fresh
+ones, so six outer attempts put the real ceiling in the region of hours. A bound that holds only
+when nothing goes wrong is not a bound.
+
+*Correction.* ONE absolute deadline (`EYE_SCANNER_ACQUIRE_DEADLINE_SECONDS`, default 600s per
+tool) computed before the first attempt. Every attempt — retried or not — receives only the
+REMAINING budget as its `--max-time`, and backoff never sleeps past the deadline. CI adds an
+independent `timeout-minutes: 25` backstop on the step, so the step is bounded even if the
+script is bypassed. Seven controls drive the real script with an injected failing downloader and
+a fake clock, asserting the announced deadline, strictly shrinking per-attempt budgets, abort on
+the deadline with attempts remaining, abort on the attempt cap with budget remaining, backoff
+never exceeding the printed remaining budget, and a transient failure inside the deadline still
+proceeding.
+
+*Status.* closed.
+
+### G3 — a test corrupted the governed disposition document (closed)
+
+`scripts/gate/scanner-exclusions.json` was found modified in the working tree, once with the
+entire `SCX-0001` record deleted and once with `scan_platform` changed to `linux/arm64`.
+
+**The cause is known.** An earlier record of this incident said it was unknown; that was wrong
+and is corrected here.
+
+*What happened.* `withReplacedFile()` in `apps/api/test/gate/c15-runner-behaviour.test.ts`
+overwrote the REAL tracked document in place and restored it in a `finally`. A `finally` does
+not run when the process is killed. Each of the 44 behavioural controls spawned a full live
+C15 gate — one file took 491.66 s — so the surrounding harness killed the run repeatedly, and
+each kill left the governed document holding whatever defect the interrupted control had
+written. Later runs, including unrelated suites, then failed with
+`UNGOVERNED image finding: CVE-2026-33630` for reasons that had nothing to do with the change
+under test.
+
+*This was not an upstream outage.* A separate upstream 404 on the trivy checks-bundle mirror
+occurred later and is a different matter; it did not cause the corruption and must not be
+conflated with it.
+
+*Correction.*
+1. No test writes a tracked governance file. The disposition document is supplied through
+   `EYE_GATE_EXCLUSIONS_PATH`, pointing at a temporary file; the gate records the resolved
+   canonical path and digest, and the final verifier refuses any run whose path is not the
+   tracked default, so the seam cannot launder evidence.
+2. Every external effect crosses `scripts/gate/lib/execution-adapter.mjs`. The behavioural
+   controls replay a recorded real trace, so they exercise the genuine decision logic against
+   genuine scanner output without repeated network acquisition: 492 s live → 169 s hermetic,
+   44/44 passing, zero network.
+3. `--final` refuses every test seam before staging, acquisition or any scan.
+4. Restoration hooks remain as defence in depth, but are no longer the safety mechanism —
+   the tracked file is never opened for writing at all.
+
+*Residual.* None for the corruption path. The governed document's committed state was never
+altered; every occurrence was working-tree only and was restored from `HEAD`.
+
+*Status.* closed.
+
+### Deferred to C19 (explicitly NOT in this patch)
+
+* Replace Node-20 actions.
+* Protect `main` with required checks.
+* Signed immutable release tag / signed provenance attestation.
+* Publish final evidence at a durable, anonymously downloadable location, removing the
+  dependency on expiring authenticated GitHub Actions artifact downloads.

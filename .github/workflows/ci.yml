@@ -33,6 +33,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # C16-R3.4 §7: a transient upstream failure (a 404 from the trivy checks-bundle mirror has
+  # reddened three runs) must be rerunnable WITHOUT touching source. Empty retry-only commits
+  # pollute the candidate history and change the SHA the evidence is bound to.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -52,24 +56,13 @@ jobs:
         with: { version: 11.9.0 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 24.11.1, cache: pnpm }
-      - name: Generate ephemeral run secrets (R7 — no fixed credentials)
-        run: |
-          gen() { openssl rand -hex 24; }
-          {
-            echo "EYE_DB_PASSWORD=$(gen)"
-            echo "EYE_DB_APP_PASSWORD=$(gen)"
-            echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
-            echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
-            echo "EYE_DB_COMMIT_PASSWORD=$(gen)"
-            echo "EYE_DB_IDENTITY_PASSWORD=$(gen)"
-            echo "EYE_DB_PUBLISHER_PASSWORD=$(gen)"
-            echo "EYE_DB_VERIFIER_PASSWORD=$(gen)"
-            echo "EYE_DB_RECOVERY_PASSWORD=$(gen)"
-            echo "EYE_TEST_BOOTSTRAP_PASSWORD=$(gen)"
-            echo "EYE_TEST_ADMIN_PASSWORD=$(gen)"
-            echo "EYE_REDIS_PASSWORD=$(gen)"
-            echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
-          } >> "$GITHUB_ENV"
+      # C16-R3.4 SECURITY CORRECTION. These values were previously appended straight to
+      # $GITHUB_ENV, and the runner echoes an `env:` group before every `run:` step — so all
+      # thirteen appeared in PLAINTEXT in the public log, once per subsequent step. The
+      # tracked helper emits `::add-mask::` for each value BEFORE exporting it, so the runner
+      # redacts it everywhere thereafter. One script, used by both database jobs.
+      - name: Generate, MASK and export ephemeral run secrets (R7 — no fixed credentials)
+        run: bash scripts/ci/generate-run-secrets.sh
       - name: Compose up (digest-pinned postgres/redis, loopback, redis auth)
         run: docker compose up -d --wait
       - name: Install dependencies
@@ -100,7 +93,11 @@ jobs:
       # The C15 BEHAVIOURAL controls under `pnpm test` SPAWN the real runner, so this job
       # needs the pinned scanners too. Same tracked, checksum-verified installer as the
       # supply-chain job — duplicating the shell is how two copies drift apart.
+      # timeout-minutes is the BACKSTOP for the script's own absolute acquisition deadline
+      # (EYE_SCANNER_ACQUIRE_DEADLINE_SECONDS, 600s per tool). It bounds the step even if the
+      # script is bypassed or edited; the two are deliberately independent.
       - name: Install PINNED scanner binaries (archive AND executable digests verified)
+        timeout-minutes: 25
         run: bash scripts/gate/install-scanners.sh gitleaks trivy
       - name: Verify scanner versions are EXACTLY the pinned ones
         run: |
@@ -150,24 +147,13 @@ jobs:
         with: { version: 11.9.0 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 24.11.1, cache: pnpm }
-      - name: Generate ephemeral run secrets (R7 — no fixed credentials)
-        run: |
-          gen() { openssl rand -hex 24; }
-          {
-            echo "EYE_DB_PASSWORD=$(gen)"
-            echo "EYE_DB_APP_PASSWORD=$(gen)"
-            echo "EYE_DB_ALLOCATOR_PASSWORD=$(gen)"
-            echo "EYE_DB_SYSTEM_PASSWORD=$(gen)"
-            echo "EYE_DB_COMMIT_PASSWORD=$(gen)"
-            echo "EYE_DB_IDENTITY_PASSWORD=$(gen)"
-            echo "EYE_DB_PUBLISHER_PASSWORD=$(gen)"
-            echo "EYE_DB_VERIFIER_PASSWORD=$(gen)"
-            echo "EYE_DB_RECOVERY_PASSWORD=$(gen)"
-            echo "EYE_TEST_BOOTSTRAP_PASSWORD=$(gen)"
-            echo "EYE_TEST_ADMIN_PASSWORD=$(gen)"
-            echo "EYE_REDIS_PASSWORD=$(gen)"
-            echo "EYE_IDENTITY_JWT_SECRET=$(gen)$(gen)"
-          } >> "$GITHUB_ENV"
+      # C16-R3.4 SECURITY CORRECTION. These values were previously appended straight to
+      # $GITHUB_ENV, and the runner echoes an `env:` group before every `run:` step — so all
+      # thirteen appeared in PLAINTEXT in the public log, once per subsequent step. The
+      # tracked helper emits `::add-mask::` for each value BEFORE exporting it, so the runner
+      # redacts it everywhere thereafter. One script, used by both database jobs.
+      - name: Generate, MASK and export ephemeral run secrets (R7 — no fixed credentials)
+        run: bash scripts/ci/generate-run-secrets.sh
       - name: Compose up (digest-pinned postgres/redis, loopback, redis auth)
         run: docker compose up -d --wait
       - run: pnpm install --frozen-lockfile
@@ -205,7 +191,11 @@ jobs:
       # Downloads are AUTHENTICATED against the tracked upstream checksums in
       # scripts/gate/scanner-pins.json. An unauthenticated download is an unverified input
       # to the gate that exists to verify inputs.
+      # timeout-minutes is the BACKSTOP for the script's own absolute acquisition deadline
+      # (EYE_SCANNER_ACQUIRE_DEADLINE_SECONDS, 600s per tool). It bounds the step even if the
+      # script is bypassed or edited; the two are deliberately independent.
       - name: Install PINNED scanner binaries (archive AND executable digests verified)
+        timeout-minutes: 25
         run: bash scripts/gate/install-scanners.sh gitleaks trivy
       - name: Verify scanner + toolchain versions are EXACTLY the pinned ones
         run: |
