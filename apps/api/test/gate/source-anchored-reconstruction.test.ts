@@ -833,7 +833,7 @@ describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verif
     const r = JSON.parse(readFileSync(join(built.c15Dir, 'trivy-fs-json.stdout.txt'), 'utf8'));
     r.Results = [{ Target: 'somewhere/else.txt', Class: 'lang-pkgs', Type: 'pnpm' }];
     rebindRaw('trivy-fs-json.stdout.txt', `${JSON.stringify(r)}\n`);
-    closes(/analysed no 'pnpm-lock\.yaml' result/);
+    closes(/has no 'pnpm-lock\.yaml' result/);
   });
 
   it('§2 an image report named for a DECOY repository with the correct digest is rejected', () => {
@@ -859,9 +859,9 @@ describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verif
   });
 
   it.each([
-    ['AUDIT FAILED WITH HIDDEN VULNERABILITIES', 'pnpm-audit-human.stdout.txt', /reports vulnerabilities while the JSON audit reports none|not recognisable pnpm audit output/],
-    ['x', 'pnpm-audit-human.stdout.txt', /not recognisable pnpm audit output/],
-    ['NOT A TRIVY REPORT', 'trivy-fs.stdout.txt', /not recognisable trivy table output/],
+    ['AUDIT FAILED WITH HIDDEN VULNERABILITIES', 'pnpm-audit-human.stdout.txt', /not the exact clean pnpm receipt/],
+    ['x', 'pnpm-audit-human.stdout.txt', /not the exact clean pnpm receipt/],
+    ['NOT A TRIVY REPORT', 'trivy-fs.stdout.txt', /no 'Report Summary' heading/],
   ])('§3 a contradictory human receipt (%s) is rejected', (body, rel, expected) => {
     rebindRaw(rel as string, `${body as string}\n`);
     closes(expected as RegExp);

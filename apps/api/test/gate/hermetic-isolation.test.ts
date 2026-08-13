@@ -1,9 +1,14 @@
 /**
  * C16-R3.4 §3 + §4 — hermeticity and kill-safety, proved by execution rather than by grep.
  *
- * §3  A poison PATH is placed ahead of everything for the duration of a gate run. Any live
- *     `curl`, `trivy`, `gitleaks` or `docker` invocation writes a marker and exits nonzero, so
- *     an escape from the adapter is a hard, visible failure rather than a slow test.
+ * §3  A poison PATH is placed ahead of everything for the duration of ONE representative gate
+ *     run, so an escape from the adapter is a hard, visible failure rather than a slow test.
+ *     The poisoned set here is the NETWORK tools — curl, wget, docker, skopeo, crane — because
+ *     the second control in this file deliberately runs the real scanners under a full poison
+ *     to prove the live path depends on them. The claim that the ENTIRE 44-test behavioural
+ *     suite passes with all seven tools poisoned, scanners included, is a different and larger
+ *     claim, and it is proved by execution in `hermetic-suite-meta.test.ts` (R3.4.3 §E) — not
+ *     here, and not by this control.
  *
  * §4  A mutation-test child is KILLED mid-run and the governed tracked files are proved
  *     byte-unchanged — not because a restoration hook rescued them, but because they were

@@ -303,6 +303,34 @@ never altered; every occurrence was working-tree only and was restored from `HEA
 
 *Status.* closed.
 
+### G4 — the "complete 44-test poison proof" was claimed before it existed (closed at R3.4.3)
+
+The R3.4.2 delivery report stated that the whole behavioural suite had been proved to pass with
+every external tool replaced by a refusing stub. **That was false when written.**
+
+**What was actually committed at R3.4.2.** `apps/api/test/gate/hermetic-isolation.test.ts` ran
+ONE representative gate invocation under shims for `curl`, `wget`, `docker`, `skopeo` and
+`crane`. `trivy` and `gitleaks` were not poisoned in that control at all, and no control
+executed the 44-test file as a unit under the full set. The file's own header compounded the
+error by listing `trivy` and `gitleaks` among the poisoned tools.
+
+**Why the underlying claim was nevertheless true.** Independent review confirmed the suite does
+pass under all seven shims. The defect was in the evidence, not in the hermeticity: an
+unproved true statement is still an unproved statement, and it was reported as proved.
+
+**Closure at R3.4.3.**
+1. `apps/api/test/gate/hermetic-suite-meta.test.ts` spawns a child vitest over the entire
+   `c15-runner-behaviour.test.ts` with `curl`, `wget`, `docker`, `skopeo`, `crane`, `trivy` and
+   `gitleaks` all poisoned, and asserts the child reports **exactly** 44 passed and 0 failed —
+   not "at least", so a suite that silently shrinks fails the control.
+2. The marker log is asserted **empty** for that child run.
+3. Each of the seven shims is invoked separately and must exit 97, record the attempt and print
+   its refusal — without which an empty log would be indistinguishable from inert stubs.
+4. The `hermetic-isolation.test.ts` header no longer claims a scanner poison it does not apply,
+   and names the file that carries the larger claim.
+
+*Status.* closed.
+
 ### Deferred to C19 (explicitly NOT in this patch)
 
 * Replace Node-20 actions.

@@ -77,6 +77,10 @@ function trivyReportForImage(records: any[], pinnedRef: string, childDigest: str
     byTarget.set(target, list);
   }
   const scanRef = `${pinnedRef.slice(0, pinnedRef.indexOf('@'))}@${childDigest}`;
+  // R3.4.3 §A: an image with no recorded dispositions was still SCANNED, and a real report
+  // says so with an os-pkgs result naming the image. An empty Results array is the shape of
+  // an image that was never analysed at all, which is what the verifier now rejects.
+  if (byTarget.size === 0) byTarget.set(`${scanRef} (alpine 3.24.1)`, []);
   return {
     SchemaVersion: 2,
     ArtifactName: scanRef,
@@ -84,6 +88,8 @@ function trivyReportForImage(records: any[], pinnedRef: string, childDigest: str
     Metadata: { Reference: scanRef, RepoDigests: [scanRef], OS: { Family: 'alpine' } },
     Results: [...byTarget.entries()].map(([Target, Vulnerabilities]) => ({
       Target, Class: 'os-pkgs', Type: 'alpine', Vulnerabilities,
+      // R3.4.3 §A: an OS-package result must list the OS packages it analysed.
+      Packages: OS_PACKAGES,
     })),
   };
 }
@@ -94,6 +100,39 @@ function trivyReportForImage(records: any[], pinnedRef: string, childDigest: str
  * once per test took the R3.4 suite from minutes (which starved the concurrently running C15
  * behavioural controls until the runner was killed) to seconds.
  */
+/**
+ * Identified packages, shaped as real trivy emits them. R3.4.3 §A requires Name, Version and
+ * an Identifier.PURL on every package, and `AnalyzedBy` naming the analyzer that produced it.
+ */
+/**
+ * R3.4.3 §B: a filesystem scan announces the scanners it enables, and deleting that stderr
+ * removed the only evidence they were on. Both filesystem steps must carry the banner.
+ */
+const TRIVY_FS_BANNER = [
+  '2026-01-01T00:00:00Z\tINFO\t[vuln] Vulnerability scanning is enabled',
+  '2026-01-01T00:00:00Z\tINFO\t[misconfig] Misconfiguration scanning is enabled',
+  '2026-01-01T00:00:00Z\tINFO\t[secret] Secret scanning is enabled',
+  '2026-01-01T00:00:00Z\tINFO\t[pnpm] Detecting vulnerabilities...',
+  '',
+].join('\n');
+const SCANNER_BANNER: Record<string, string> = {
+  'trivy-fs': TRIVY_FS_BANNER,
+  'trivy-fs-json': TRIVY_FS_BANNER,
+};
+
+const LOCKFILE_PACKAGES = Object.freeze([
+  { Name: '@nestjs/common', Version: '11.1.28', Relationship: 'direct', AnalyzedBy: 'pnpm',
+    Identifier: { PURL: 'pkg:npm/%40nestjs/common@11.1.28', UID: '289f1f6f82389785' } },
+  { Name: 'pg', Version: '8.16.3', Relationship: 'direct', AnalyzedBy: 'pnpm',
+    Identifier: { PURL: 'pkg:npm/pg@8.16.3', UID: '4b1c0f9a2e7d5c31' } },
+]);
+const OS_PACKAGES = Object.freeze([
+  { Name: 'musl', Version: '1.2.5-r19', Arch: 'x86_64',
+    Identifier: { PURL: 'pkg:apk/alpine/musl@1.2.5-r19?arch=x86_64', UID: 'a1f0c3d5e7b9' } },
+  { Name: 'busybox', Version: '1.37.0-r20', Arch: 'x86_64',
+    Identifier: { PURL: 'pkg:apk/alpine/busybox@1.37.0-r20?arch=x86_64', UID: 'b2e1d4c6f8a0' } },
+]);
+
 const derivationCache = new Map<string, { contract: any; derived: any }>();
 function derivationFor(repo: string, runDate: string) {
   const key = `${repo}\u0000${runDate}`;
@@ -240,7 +279,15 @@ export function buildPassingR34Evidence(
     ArtifactName: '.',
     ArtifactType: 'repository',
     Metadata: { RepoURL: 'https://github.com/a-Halawany/elven', Branch: 'main', Commit: expectedSha },
-    Results: [{ Target: 'pnpm-lock.yaml', Class: 'lang-pkgs', Type: 'pnpm', Vulnerabilities: [] }],
+    Results: [{
+      Target: 'pnpm-lock.yaml',
+      Class: 'lang-pkgs',
+      Type: 'pnpm',
+      // R3.4.3 §A: a result that names a file without listing what was analysed in it is a
+      // label, not a scan. Real trivy emits an identified package per lockfile entry.
+      Packages: LOCKFILE_PACKAGES,
+      Vulnerabilities: [],
+    }],
   })}\n`);
   imageRefs.forEach((ref, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
@@ -259,7 +306,7 @@ export function buildPassingR34Evidence(
     const stdoutName = `${id}.stdout.txt`;
     const stderrName = `${id}.stderr.txt`;
     writeFileSync(join(c15, stdoutName), rawFor.get(stdoutName) ?? '');
-    writeFileSync(join(c15, stderrName), `${id}: fixture stderr\n`);
+    writeFileSync(join(c15, stderrName), SCANNER_BANNER[id] ?? `${id}: fixture stderr\n`);
     const so = readFileSync(join(c15, stdoutName));
     const se = readFileSync(join(c15, stderrName));
     const base: Record<string, unknown> = {
