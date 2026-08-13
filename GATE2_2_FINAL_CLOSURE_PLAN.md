@@ -1275,3 +1275,41 @@ remains unapproved; the source is not frozen; no independent approval is claimed
 
 C17, C18, C19, the freeze protocol and external independent review remain pending. Phase 0
 remains unapproved; the source is not frozen; no independent approval is claimed.
+
+---
+
+## 12. C16-R3.4 — SOURCE-ANCHORED EVIDENCE RECONSTRUCTION (delivered)
+
+**Candidate `dab1e12335df455a912e0a73bc42c3d5bcc672dd`** · hosted run `31729347279` (3/3 green)
+· archive `c16-r34-final-evidence-dab1e12335df455a912e0a73bc42c3d5bcc672dd.zip`,
+215,561 bytes, SHA-256 `bccea23696f100b9f03e05a23be44911f5a2857a548f6714f3b31e193ccbe5ae`.
+
+**The rule.** No evidence value may define the expectation used to validate itself. Images come
+from `docker-compose.yml` cross-checked against `conformance.manifest.json`; the step set from
+the source image count; argv from a tracked normalized contract; cache paths from a code-owned
+set with every aggregate recomputed; the inventory derived and required to EQUAL the bindings;
+C15 findings reconstructed from the delivered raw trivy bytes; C16 closures re-derived from
+`pnpm-lock.yaml` by the same pure function the generator calls, with SBOMs compared byte for byte.
+
+**Hermetic harness.** Every external effect crosses `lib/execution-adapter.mjs`. The 44 C15
+behavioural controls replay a recorded real trace: 492 s live → 169 s offline, 44/44. `--final`
+refuses every test seam before staging or any scan. Hermeticity is proved by a poison PATH, not
+by grep: `live_network_calls = 0`, `live_scanner_processes = 0`, with a control firing a shim to
+prove the shims are armed.
+
+**Two defects found by this round's own process, both corrected.**
+1. A test overwrote the tracked `scanner-exclusions.json` and was killed before its `finally`;
+   the governed file stayed corrupted and reddened later runs. No test now writes a tracked
+   governance file, proved by SIGKILLing a mutation child and showing all eight governed digests
+   unchanged. Recorded in full in `EXCEPTIONS.md` G3 — the earlier "cause unknown" is corrected.
+2. `<REPO_ROOT>` was tokenized from the verifier's own root, so the delivered hosted package
+   failed when verified from a different checkout — the reviewer case. The producer's repository
+   root is now derived by shape and cross-checked across steps.
+
+**Suites.** gate 494/494 offline in 172 s; api gate+unit 508/508; contracts 203/203; tokens 3/3;
+integration 297/297; acceptance 58/58; Playwright 10/10 on a virgin database; typecheck 0;
+build 0; boundaries clean. Migrations `0001`–`0021` byte-identical to `e3a0b1f` (0 files).
+
+**Still open.** C17, C18, C19, the freeze protocol and external independent review. Node-20
+action replacement, branch protection, signed freeze provenance and durable public artifact
+hosting remain C19. Phase 0 is not approved; the source is not frozen.
