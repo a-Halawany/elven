@@ -73,7 +73,7 @@ mv "$WORK/SHA256SUMS.txt" "$BUNDLE/SHA256SUMS.txt"
 # Refuse to publish evidence whose own manifest does not verify.
 ( cd "$BUNDLE" && verify_manifest )
 
-ZIP="$DEST_DIR/c16-r33-final-evidence-${SOURCE_SHA}.zip"
+ZIP="$DEST_DIR/c16-r34-final-evidence-${SOURCE_SHA}.zip"
 rm -f "$ZIP"
 ( cd "$BUNDLE" && zip -qr "$ZIP" . )
 

@@ -288,7 +288,7 @@ describe('C16-R3.1 evidence packaging — the published manifest verifies', () =
   afterAll(() => { rmSync(work, { recursive: true, force: true }); });
 
   it('the ZIP is named for the source SHA and the reported digest is the archive it wrote', () => {
-    expect(zip.endsWith(`c16-r33-final-evidence-${SHA}.zip`)).toBe(true);
+    expect(zip.endsWith(`c16-r34-final-evidence-${SHA}.zip`)).toBe(true);
     expect(digest).toMatch(/^[0-9a-f]{64}$/);
     const actual = createHash('sha256').update(readFileSync(zip)).digest('hex');
     expect(digest, 'the printed digest must describe the ZIP on disk').toBe(actual);
