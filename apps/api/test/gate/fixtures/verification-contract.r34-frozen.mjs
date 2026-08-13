@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = join(HERE, '..', '..', '..');
+export const REPO_ROOT = join(HERE, '..', '..', '..', '..', '..');
 
 export const SHA256_HEX = /^[a-f0-9]{64}$/;
 export const IMAGE_REF = /^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$/;
@@ -279,20 +279,13 @@ export function streamFilesFor(id) {
  * The COMPLETE expected C15 output inventory, derived from the contracts and a SOURCE-derived
  * image count. The binding inventory must EQUAL this, not merely contain it.
  */
-export function ociIndexFileFor(index) {
-  return `oci-index-${index}.json`;
-}
-
 export function expectedC15Inventory(imageCount) {
   const ids = [
     ...C15_NORMAL_STEPS.map((s) => s.id),
     ...imageStepIdsFor(imageCount),
     ...C15_ACQUISITION_STEPS.map((s) => s.id),
   ];
-  // C16-R3.4.1 §A1: the raw OCI index bytes are shipped, one per configured image, so a
-  // reviewer can derive the scanned child themselves instead of believing the summary.
-  const files = [...C15_REQUIRED_REPORTS,
-    ...Array.from({ length: imageCount }, (_, i) => ociIndexFileFor(i))];
+  const files = [...C15_REQUIRED_REPORTS];
   for (const id of ids) {
     const { stdout, stderr } = streamFilesFor(id);
     files.push(stdout, stderr);

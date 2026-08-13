@@ -135,17 +135,26 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
     .find((k) => contract.scannerNames.every((t: string) =>
       (contract.scanners[t].artifacts as Record<string, unknown>)[k] !== undefined))!;
 
+  // ── §A1: the AUTHENTIC raw OCI index bytes, copied from the recorded trace. Their digests
+  // really are the ones the configured references pin, so the verifier derives the scanned
+  // child from them exactly as it does on a real run.
+  const traceStreams = join(repo, 'apps/api/test/gate/fixtures/c15-trace/streams');
+
   // ── images and platform resolution, from Compose ────────────────────────────────
   const imageRefs: string[] = contract.imageRefs;
   const scanRefs = imageRefs.map((ref) => {
     const name = ref.slice(0, ref.indexOf('@'));
     return `${name}@${CHILD_DIGESTS[name]}`;
   });
+  imageRefs.forEach((_ref, i) => {
+    writeFileSync(join(c15, `oci-index-${i}.json`), readFileSync(join(traceStreams, `oci-index-${i}.json`)));
+  });
   const imagePlatformResolution = imageRefs.map((ref, i) => {
     const digest = ref.slice(ref.indexOf('@') + 1);
     const name = ref.slice(0, ref.indexOf('@'));
     return {
       pinned_ref: ref,
+      raw_index_file: `oci-index-${i}.json`,
       scan_ref: scanRefs[i],
       pinned_digest: digest,
       raw_index_digest: digest,
@@ -188,12 +197,15 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
   const rawFor = new Map<string, string>();
   rawFor.set('pnpm-audit-human.stdout.txt', 'No known vulnerabilities found\n');
   rawFor.set('pnpm-audit-json.stdout.txt', `${JSON.stringify({
-    advisories: {}, metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 } },
+    advisories: {},
+    metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 } },
   })}\n`);
   rawFor.set('gitleaks-worktree.stdout.txt', '');
   rawFor.set('gitleaks-history.stdout.txt', '');
   rawFor.set('trivy-fs.stdout.txt', 'no blocking results\n');
-  rawFor.set('trivy-fs-json.stdout.txt', `${JSON.stringify({ SchemaVersion: 2, Results: [] })}\n`);
+  rawFor.set('trivy-fs-json.stdout.txt', `${JSON.stringify({
+    SchemaVersion: 2, ArtifactName: repo, ArtifactType: 'filesystem', Results: [],
+  })}\n`);
   imageRefs.forEach((ref, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
     rawFor.set(`${imageStepIds[i]}.stdout.txt`,
@@ -221,9 +233,9 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
       stdout_file: stdoutName, stdout_bytes: so.length, stdout_sha256: sha256(so),
       stderr_file: stderrName, stderr_bytes: se.length, stderr_sha256: sha256(se),
     };
+    base.tool_version = contract.toolVersions[want.tool];
     if (isNormal) {
       base.tool = want.tool;
-      base.tool_version = contract.toolVersions[want.tool];
       base.policy = want.policy;
       base.coverage = want.coverage ?? null;
       base.failed = false;
@@ -298,6 +310,7 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
   });
   const c15Names = [
     'RESULT-PASS.txt', 'gitleaks-worktree.json', 'gitleaks-history.json', 'image-findings.json',
+    ...imageRefs.map((_r, i) => `oci-index-${i}.json`),
     ...[...steps, ...acquisitionSteps].flatMap((s) => [s.stdout_file as string, s.stderr_file as string]),
   ];
 

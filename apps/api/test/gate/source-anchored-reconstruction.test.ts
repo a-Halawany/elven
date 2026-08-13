@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import { assertFinalManifests } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR33Defective } from './fixtures/assert-final-manifests.r33-frozen.mjs';
+import { assertFinalManifests as assertR34Frozen } from './fixtures/assert-final-manifests.r34-frozen.mjs';
 import {
   loadSourceContract, expectedStepContract, normalizeArg, ownMap, hasOwnKey, canonical,
 } from '../../../../scripts/gate/lib/verification-contract.mjs';
@@ -112,7 +113,9 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
     expect([...c.conformanceRefs].sort()).toEqual([...c.imageRefs].sort());
     expect(c.targetIds).toEqual(['development', 'production']);
     expect(c.scannerNames).toEqual(['gitleaks', 'trivy']);
-    expect(c.expectedInventory.length).toBe((6 + c.imageRefs.length + 2) * 2 + 4);
+    // 6 normal + N image + 2 acquisition steps, two streams each; 4 governed reports; and
+    // C16-R3.4.1 §A1 adds one shipped raw OCI index per configured image.
+    expect(c.expectedInventory.length).toBe((6 + c.imageRefs.length + 2) * 2 + 4 + c.imageRefs.length);
   });
 
   it('controlled-key lookups are prototype-safe', () => {
@@ -613,5 +616,139 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
     built.scanRefs.forEach((ref, i) => {
       expect(canonical(steps[`trivy-image-${i}`].argv)).toContain(ref);
     });
+  });
+});
+
+/**
+ * C16-R3.4.1 §A — the four false passes independent review reproduced against R3.4.
+ *
+ * Each executes BOTH the corrected verifier and `fixtures/assert-final-manifests.r34-frozen.mjs`,
+ * a byte copy of the R3.4 verifier as delivered at e819b1e.
+ */
+describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifier', () => {
+  let root: string;
+  let built: ReturnType<typeof buildPassingR34Evidence>;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'eye-r341-'));
+    built = buildPassingR34Evidence(root, REPO);
+  });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  const check = () => assertFinalManifests({
+    c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+  }) as string[];
+  /**
+   * The frozen R3.4 verifier, with ONE class of complaint filtered out and named.
+   *
+   * R3.4's derived inventory predates §A1, so it does not know the raw OCI index bytes exist
+   * and reports each as an unexpected extra. That is not the false pass under test — it is
+   * R3.4 correctly enforcing its own, older, inventory. Every OTHER complaint is retained, so
+   * "R3.4 accepted this mutation" still means exactly that.
+   */
+  const frozen34 = () => {
+    try {
+      const all = assertR34Frozen({
+        c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+      }) as string[];
+      return all.filter((p) => !/bound 'oci-index-\d+\.json', which the source-owned contract does not expect/.test(p));
+    } catch (e) { return [`THREW: ${e instanceof Error ? e.message.slice(0, 100) : e}`]; }
+  };
+  const editC15 = (fn: (m: Record<string, any>) => void) =>
+    editManifest(built.c15Dir, 'supply-chain-manifest.json', fn);
+
+  const closes = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((p) => expected.test(p)),
+      `expected ${expected}, got:\n${problems.join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen34();
+    expect(stale, `frozen R3.4 must ACCEPT this, but reported:\n${stale.join('\n')}`).toEqual([]);
+  };
+
+  it('the untouched fixture passes BOTH the corrected and the frozen R3.4 verifier', () => {
+    expect(check()).toEqual([]);
+    expect(frozen34()).toEqual([]);
+    // And the filtered class really is only the new artifact: R3.4 reports exactly two.
+    const raw = assertR34Frozen({
+      c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+    }) as string[];
+    expect(raw).toHaveLength(2);
+    expect(raw.every((p) => /oci-index-\d+\.json/.test(p))).toBe(true);
+  });
+
+  it('§A1 a substituted image child — digest, scan_ref and argv changed together — is rejected', () => {
+    // R3.4 read resolution.children, so a consistent substitution was self-proving. The child
+    // is now derived from the shipped index bytes, which still hash to the configured digest.
+    const fakeChild = `sha256:${'7'.repeat(64)}`;
+    editC15((m) => {
+      const r = m.image_platform_resolution[0];
+      const name = r.pinned_ref.slice(0, r.pinned_ref.indexOf('@'));
+      r.scan_ref = `${name}@${fakeChild}`;
+      r.resolution.target_digest = fakeChild;
+      r.resolution.children = [{
+        digest: fakeChild, media_type: 'application/vnd.oci.image.manifest.v1+json',
+        os: 'linux', architecture: 'amd64', variant: null, size: 2678, attestation: false,
+      }];
+      const step = m.steps.find((s: any) => s.id === 'trivy-image-0');
+      step.argv = step.argv.map((a: string) => (a.startsWith(`${name}@`) ? `${name}@${fakeChild}` : a));
+    });
+    closes(/scan_ref .* is not the linux\/amd64 child derived from the shipped index bytes/);
+  });
+
+  it.each([
+    ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /no 'metadata' object|no 'metadata\.vulnerabilities' counters/],
+    ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /no integer SchemaVersion|no ArtifactName/],
+  ])('§A2 %s is rejected', (_label, rel, body, expected) => {
+    writeFileSync(join(built.c15Dir, rel as string), body as string);
+    const bytes = readFileSync(join(built.c15Dir, rel as string));
+    editC15((m) => {
+      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
+      a.bytes = bytes.length; a.sha256 = sha256(bytes);
+      const step = m.steps.find((x: any) => x.stdout_file === rel);
+      if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
+    });
+    closes(expected as RegExp);
+  });
+
+  it('§A2 an EMPTY blocking table receipt beside a populated JSON is rejected', () => {
+    writeFileSync(join(built.c15Dir, 'trivy-fs.stdout.txt'), '');
+    const bytes = readFileSync(join(built.c15Dir, 'trivy-fs.stdout.txt'));
+    editC15((m) => {
+      const a = m.evidence_artifacts.find((x: any) => x.path === 'trivy-fs.stdout.txt');
+      a.bytes = bytes.length; a.sha256 = sha256(bytes);
+      const step = m.steps.find((x: any) => x.id === 'trivy-fs');
+      step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes);
+    });
+    closes(/trivy-fs\.stdout\.txt is empty; the blocking filesystem scan produced no receipt/);
+  });
+
+  it('§A4 a DELETED tool_version is rejected on a normal receipt', () => {
+    editC15((m) => { delete m.steps.find((s: any) => s.id === 'trivy-fs').tool_version; });
+    closes(/records no tool_version; the version that ran is not optional/);
+  });
+
+  it('§A4 a DELETED tool_version is rejected on an acquisition receipt', () => {
+    editC15((m) => { delete m.trivy_cache_acquisition.steps[0].tool_version; });
+    closes(/acquisition step 'trivy-acquire-db' records no tool_version/);
+  });
+
+  it('§A4 a MISMATCHED tool_version is rejected — and R3.4 caught this one too', () => {
+    // HONEST NOTE: R3.4 compared the version whenever the field was PRESENT, so a wrong value
+    // was already refused. The false pass was the MISSING field, which R3.4 skipped entirely —
+    // covered by the two deletion controls above. This control records the retained behaviour.
+    editC15((m) => { m.steps.find((s: any) => s.id === 'trivy-fs').tool_version = '0.99.0'; });
+    const problems = check();
+    expect(problems.some((p) => /tool_version is "0\.99\.0", expected the pinned/.test(p))).toBe(true);
+    expect(frozen34().length, 'R3.4 was expected to reject a mismatched version as well').toBeGreaterThan(0);
+  });
+
+  it('§A1 a raw index whose bytes do not hash to the configured reference is rejected', () => {
+    writeFileSync(join(built.c15Dir, 'oci-index-0.json'), '{"manifests":[]}');
+    const bytes = readFileSync(join(built.c15Dir, 'oci-index-0.json'));
+    editC15((m) => {
+      const a = m.evidence_artifacts.find((x: any) => x.path === 'oci-index-0.json');
+      a.bytes = bytes.length; a.sha256 = sha256(bytes);
+    });
+    closes(/these are not the bytes the reference names/);
   });
 });

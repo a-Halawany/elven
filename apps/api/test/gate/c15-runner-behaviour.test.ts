@@ -171,52 +171,11 @@ function withReplacedFile<T>(rel: string, contents: string, fn: () => T): T {
 }
 
 beforeAll(() => {
-  // DECLARED PRECONDITION, stated rather than skipped: these controls execute the real
-  // runner, so the pinned scanners must be present. A skip here would make the whole
-  // suite vacuous exactly where it matters most.
-  // The gate now AUTHENTICATES the executable bytes, so presence is not enough: the
-  // resolved binary must be the tracked upstream release build. A distribution rebuild
-  // (Homebrew, apt) reports the same version with different bytes and is correctly
-  // rejected — so state that precisely instead of letting every control fail at the
-  // authentication step for a reason that looks unrelated.
-  const pins = JSON.parse(
-    readFileSync(join(REPO, 'scripts/gate/scanner-pins.json'), 'utf8'),
-  ) as { tools: Record<string, { artifacts: Record<string, { executable_sha256: string }> }> };
-  const hostKey = `${process.platform}-${process.arch}`;
-  for (const [tool, args] of [
-    ['gitleaks', ['version']],
-    ['trivy', ['--version']],
-  ] as Array<[string, string[]]>) {
-    const probe = spawnSync(tool, args, { encoding: 'utf8' });
-    const which = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' });
-    const resolved = which.status === 0 ? which.stdout.trim() : null;
-    const want = pins.tools[tool]?.artifacts?.[hostKey]?.executable_sha256 ?? null;
-    const actual = resolved === null ? null
-      : createHash('sha256').update(readFileSync(resolved)).digest('hex');
-    const how =
-      'Install the authenticated upstream builds and put them first on PATH:\n' +
-      '  DEST=/tmp/eye-gatebin bash scripts/gate/install-scanners.sh gitleaks trivy\n' +
-      '  PATH=/tmp/eye-gatebin:$PATH pnpm --filter @eye/api test\n' +
-      'These controls are not skippable — they are the only proof the gate refuses a bad input.';
-    if (probe.error !== undefined || probe.status !== 0 || resolved === null) {
-      throw new Error(`${tool} is not on PATH, so the C15 behavioural controls cannot run.\n${how}`);
-    }
-    if (want === null) {
-      throw new Error(`no tracked executable digest for ${tool} on '${hostKey}'.\n${how}`);
-    }
-    if (actual !== want) {
-      throw new Error(
-        `${tool} at ${resolved} digests to ${actual}, not the tracked upstream release build ` +
-        `${want}. The gate authenticates executable BYTES, not version strings, so this run ` +
-        `would fail authentication rather than exercising the controls.\n${how}`,
-      );
-    }
-  }
-
-  // ── NO NETWORK. ────────────────────────────────────────────────────────────────
-  // The cache directory exists only because the runner is given one; the hermetic adapter
-  // replays a recorded acquisition rather than performing one. Nothing here downloads a
-  // database, resolves a remote image or runs a live scan.
+  // C16-R3.4.1 §B2: NO scanner is executed here and none needs to be installed. Tool
+  // resolution and executable authentication cross the execution adapter, so the hermetic
+  // replay supplies the tracked digest for this host and the gate's authentication logic runs
+  // for real. The previous precondition probed `gitleaks version` and `trivy --version` and
+  // digested the binaries on PATH, which made the whole suite depend on a live install.
   cacheDir = mkdtempSync(join(tmpdir(), 'eye-c15-cache-'));
   scratch.push(cacheDir);
 }, 60_000);

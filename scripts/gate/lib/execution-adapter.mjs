@@ -30,6 +30,8 @@
  * evidence — the seam exists only where evidence does not.
  */
 import { spawnSync } from 'node:child_process';
+import { readFileSync, copyFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { acquire, capture, fingerprint } from './trivy-cache.mjs';
 import { resolveImageIndex } from './scanner-provenance.mjs';
 
@@ -96,6 +98,13 @@ export function productionAdapter() {
     whichTool(name) {
       const res = spawnSync('sh', ['-c', `command -v ${name}`], { encoding: 'utf8' });
       return { status: res.status, stdout: res.stdout ?? '' };
+    },
+    stageTool(from, to) {
+      copyFileSync(from, to);
+    },
+    authenticateTool(_name, resolvedPath) {
+      const buf = readFileSync(resolvedPath);
+      return { sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.byteLength };
     },
   };
 }
