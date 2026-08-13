@@ -21,6 +21,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const TRACE_DIR = join(HERE, '..', 'fixtures', 'c15-trace');
 
 const readTrace = () => JSON.parse(readFileSync(join(TRACE_DIR, 'trace.json'), 'utf8'));
+
+/** The pins are indexed by this key; it must match how the runner computes its own. */
+function hostPlatformKey() {
+  const os = process.platform === 'darwin' ? 'darwin' : 'linux';
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  return `${os}-${arch}`;
+}
 const readStream = (rel) => readFileSync(join(TRACE_DIR, rel), 'utf8');
 
 /**
@@ -109,8 +116,19 @@ export default function createAdapter(env = process.env) {
     captureProvenance(opts) {
       // Cache identity is metadata the core EVALUATES; replaying it keeps freshness, version
       // and digest enforcement running for real without a 1.2GB database on disk.
+      //
+      // The executable digest is HOST-SPECIFIC. The trace was recorded on darwin-arm64, so
+      // replaying its digest verbatim made provenance enforcement fail on a linux-x64 runner
+      // against that platform's tracked pin — correctly, because the two really are different
+      // binaries. The replay therefore reports the digest the TRACKED PIN declares for this
+      // host, which is exactly what a real staged binary on this host has. Enforcement still
+      // runs for real; it is simply asked about the right platform.
       const base = trace.provenance ?? {};
-      return { ...base, cache_dir: opts.cacheDir, ...(scenario.provenance ?? {}) };
+      const hostPin = opts.pins?.tools?.trivy?.artifacts?.[hostPlatformKey()]?.executable_sha256;
+      const executable = hostPin === undefined
+        ? base.executable
+        : { ...base.executable, sha256: hostPin, resolved_path: opts.trivyPath ?? base.executable?.resolved_path };
+      return { ...base, executable, cache_dir: opts.cacheDir, ...(scenario.provenance ?? {}) };
     },
 
     cacheFingerprint() {
