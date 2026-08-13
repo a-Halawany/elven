@@ -41,11 +41,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   loadSourceContract, expectedStepContract, normalizeArgv, expectedC15Inventory,
-  imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey,
+  imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
   C15_NORMAL_STEPS, C15_ACQUISITION_STEPS, C15_REQUIRED_REPORTS, C16_REQUIRED_REPORTS,
   CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS,
 } from './lib/verification-contract.mjs';
 import { deriveC16Expectation } from './generate-closures.mjs';
+import { candidateSourceManifest } from './lib/candidate-source.mjs';
 import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
 } from './lib/scanner-exclusions.mjs';
@@ -265,7 +266,7 @@ export function verifyBindings({ label, dir, bindings, allowed, requiredInventor
 // §C Images and platform resolution — from Compose, never from the manifest
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function verifyImages({ c15, contract }) {
+function verifyImages({ c15, c15Dir, contract }) {
   const problems = [];
   const sourceRefs = contract.imageRefs;
 
@@ -314,21 +315,73 @@ function verifyImages({ c15, contract }) {
     if (r.resolution?.resolved !== true) {
       problems.push(`C15 resolution ${index} did not resolve`);
     }
-    // The scanned child must be the linux/amd64 child of THAT index, named by the resolution
-    // itself — so a scan_ref cannot be an arbitrary digest.
-    const children = Array.isArray(r.resolution?.children) ? r.resolution.children : [];
-    const amd64 = children.filter(
-      (c) => c.os === 'linux' && c.architecture === 'amd64' && c.attestation !== true,
-    );
-    if (amd64.length !== 1) {
-      problems.push(`C15 resolution ${index} has ${amd64.length} non-attestation linux/amd64 children; expected exactly 1`);
-    } else if (r.scan_ref !== `${ref.slice(0, ref.indexOf('@'))}@${amd64[0].digest}`) {
+    // ── §A1: DERIVE THE CHILD FROM THE SHIPPED RAW INDEX BYTES ────────────────────
+    // R3.4 read `resolution.children` — the producer's own summary — so replacing the child
+    // digest, the scan reference and the argv together was perfectly self-consistent and was
+    // accepted. The index bytes are now shipped and bound; the digest is recomputed from them,
+    // the child is parsed out of them, and the summary is checked AGAINST that, never used as it.
+    const indexRel = ociIndexFileFor(index);
+    const { bytes: indexBytes, problem: indexProblem } = readMember(c15Dir, indexRel);
+    if (indexProblem !== null) {
+      problems.push(`C15 raw OCI index '${indexRel}' ${indexProblem}; the scanned child cannot be derived`);
+      scanRefs.push(null);
+      return;
+    }
+    const recomputed = `sha256:${sha256(indexBytes)}`;
+    if (recomputed !== digest) {
+      problems.push(
+        `C15 raw OCI index '${indexRel}' hashes to ${recomputed}, but the CONFIGURED reference ` +
+        `pins ${digest}; these are not the bytes the reference names`,
+      );
+      scanRefs.push(null);
+      return;
+    }
+    let indexDoc;
+    try {
+      indexDoc = JSON.parse(indexBytes.toString('utf8'));
+    } catch (e) {
+      problems.push(`C15 raw OCI index '${indexRel}' is not valid JSON (${e instanceof Error ? e.message.slice(0, 100) : e})`);
+      scanRefs.push(null);
+      return;
+    }
+    const manifests = Array.isArray(indexDoc.manifests) ? indexDoc.manifests : null;
+    if (manifests === null) {
+      problems.push(`C15 raw OCI index '${indexRel}' declares no manifests array`);
+      scanRefs.push(null);
+      return;
+    }
+    const derivedChildren = manifests.filter((m) => {
+      const os = m?.platform?.os;
+      const arch = m?.platform?.architecture;
+      const attestation = os === 'unknown' && arch === 'unknown';
+      return !attestation && os === 'linux' && arch === 'amd64';
+    });
+    if (derivedChildren.length !== 1) {
+      problems.push(
+        `C15 raw OCI index '${indexRel}' yields ${derivedChildren.length} non-attestation ` +
+        `linux/amd64 children; exactly 1 is required`,
+      );
+      scanRefs.push(null);
+      return;
+    }
+    const derivedRef = `${ref.slice(0, ref.indexOf('@'))}@${derivedChildren[0].digest}`;
+    if (r.scan_ref !== derivedRef) {
       problems.push(
         `C15 resolution ${index} scan_ref ${JSON.stringify(r.scan_ref)} is not the linux/amd64 child ` +
-        `${amd64[0].digest} of the configured index`,
+        `derived from the shipped index bytes (${derivedRef})`,
       );
     }
-    scanRefs.push(typeof r.scan_ref === 'string' ? r.scan_ref : null);
+    if (r.resolution?.target_digest !== undefined && r.resolution.target_digest !== derivedChildren[0].digest) {
+      problems.push(
+        `C15 resolution ${index} reports target_digest ${JSON.stringify(r.resolution.target_digest)}, ` +
+        `but the shipped index bytes yield ${derivedChildren[0].digest}`,
+      );
+    }
+    if (r.raw_index_file !== undefined && r.raw_index_file !== indexRel) {
+      problems.push(`C15 resolution ${index} names raw_index_file ${JSON.stringify(r.raw_index_file)}, expected '${indexRel}'`);
+    }
+    // The expectation is the DERIVED reference, never the reported one.
+    scanRefs.push(derivedRef);
   });
 
   if (c15.scan_platform !== undefined && c15.scan_platform !== SCAN_PLATFORM) {
@@ -453,62 +506,58 @@ function deriveProducerOutDir(c15) {
 }
 
 /**
- * The PRODUCER's repository root, derived by shape from the gitleaks `--source` argument.
+ * §A3: THE SCANNED CANDIDATE IS RECOMPUTED, NOT READ OUT OF THE EVIDENCE.
  *
- * It cannot be the verifier's own root. A package produced on a hosted runner records
- * `/home/runner/work/elven/elven`; a reviewer verifying it from their own checkout has a
- * different path, and every argv comparison failed — the exact reviewer scenario this whole
- * verifier exists to serve. Caught by running the corrected verifier against the delivered ZIP.
- *
- * It is derived, not trusted: the value must be absolute, every step that names the repository
- * must name the SAME directory, and the gitleaks config must be exactly `<root>/.gitleaks.toml`.
- * A step cannot therefore relabel some other directory as "the repo" without disagreeing with
- * its siblings.
+ * R3.4 took the expected repository root from the recorded `--source` argument, so rewriting
+ * every recorded scan root to `/attacker/decoy-source` was self-consistent and accepted. The
+ * scanners now take source-owned RELATIVE arguments, so there is no absolute path in argv to
+ * rewrite, and the subject is identified by a manifest recomputed here from the verifier's own
+ * checkout of the expected SHA.
  */
-function deriveProducerRepoRoot(c15) {
+function verifyCandidateSource({ c15, root, expectedSha }) {
   const problems = [];
-  const steps = Array.isArray(c15.steps) ? c15.steps : [];
-  const candidates = new Set();
-  for (const step of steps) {
-    const argv = Array.isArray(step?.argv) ? step.argv : [];
-    const i = argv.indexOf('--source');
-    if (i !== -1 && typeof argv[i + 1] === 'string') candidates.add(argv[i + 1]);
-    // The trivy filesystem scans take the repository as their final positional argument.
-    if (step?.id === 'trivy-fs' || step?.id === 'trivy-fs-json') {
-      const last = argv[argv.length - 1];
-      if (typeof last === 'string' && isAbsolute(last)) candidates.add(last);
-    }
+  const claimed = c15.candidate_source;
+  if (claimed === null || claimed === undefined || typeof claimed !== 'object') {
+    problems.push('C15 recorded no candidate_source manifest, so the scanned subject is unidentified');
+    return problems;
   }
-  if (candidates.size === 0) {
-    problems.push('C15 records no scanned repository root, so the argv contract cannot be checked');
-    return { repoRoot: null, problems };
+  if (claimed.ok !== true) {
+    problems.push(`C15 candidate_source did not compute: ${claimed.error ?? 'unknown'}`);
+    return problems;
   }
-  if (candidates.size > 1) {
-    problems.push(`C15 steps disagree about the scanned repository root: ${[...candidates].join(', ')}`);
-    return { repoRoot: null, problems };
+  if (!SHA256_HEX.test(String(claimed.digest))) {
+    problems.push('C15 candidate_source has no valid digest');
+    return problems;
   }
-  const repoRoot = [...candidates][0];
-  if (!isAbsolute(repoRoot)) {
-    problems.push(`C15 scanned repository root ${JSON.stringify(repoRoot)} is not an absolute path`);
-    return { repoRoot: null, problems };
+  if (claimed.expected_sha !== undefined && claimed.expected_sha !== null && claimed.expected_sha !== expectedSha) {
+    problems.push(`C15 candidate_source binds ${JSON.stringify(claimed.expected_sha)}, not the expected ${expectedSha}`);
   }
-  for (const step of steps) {
-    const argv = Array.isArray(step?.argv) ? step.argv : [];
-    const c = argv.indexOf('--config');
-    if (c !== -1 && argv[c + 1] !== `${repoRoot}/.gitleaks.toml`) {
-      problems.push(
-        `C15 step '${step.id}' used config ${JSON.stringify(argv[c + 1])}, not the scanned repository's ` +
-        `${repoRoot}/.gitleaks.toml`,
-      );
-    }
+  const after = c15.candidate_source_after;
+  if (after?.ok !== true || after.digest !== claimed.digest) {
+    problems.push(
+      `C15 candidate source changed during scanning (${claimed.digest} → ${after?.digest ?? 'absent'})`,
+    );
   }
-  return { repoRoot, problems };
+  // RECOMPUTE from the verifier's own tree. Equality means the bytes scanned are the bytes here.
+  const recomputed = candidateSourceManifest(root);
+  if (recomputed.ok !== true) {
+    problems.push(`the verifier could not enumerate its own candidate: ${recomputed.error}`);
+    return problems;
+  }
+  if (recomputed.digest !== claimed.digest) {
+    problems.push(
+      `C15 scanned a DIFFERENT candidate: the evidence records ${claimed.digest} ` +
+      `(${claimed.file_count} files / ${claimed.total_bytes}B) but this checkout of ${expectedSha} ` +
+      `computes ${recomputed.digest} (${recomputed.file_count} files / ${recomputed.total_bytes}B)`,
+    );
+  }
+  return problems;
 }
 
-function argvPathsFor({ c15, root, producerOutDir, producerRepoRoot }) {
+function argvPathsFor({ c15, root, producerOutDir }) {
   const staged = c15.staged_scanner_binaries ?? {};
   return {
-    repoRoot: producerRepoRoot ?? root,
+    repoRoot: root,
     outDir: producerOutDir,
     // The cache and staged-binary locations are genuinely per-run, and are tokenized only so
     // the surrounding argument shape can be compared exactly; their VALUES are separately
@@ -528,11 +577,7 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
   const expectedArgv = expectedStepContract({ scanRefs: scanRefs ?? [] });
   const derivedOut = deriveProducerOutDir(c15);
   problems.push(...derivedOut.problems);
-  const derivedRepo = deriveProducerRepoRoot(c15);
-  problems.push(...derivedRepo.problems);
-  const paths = argvPathsFor({
-    c15, root, producerOutDir: derivedOut.outDir, producerRepoRoot: derivedRepo.repoRoot,
-  });
+  const paths = argvPathsFor({ c15, root, producerOutDir: derivedOut.outDir });
 
   const steps = Array.isArray(c15.steps) ? c15.steps : null;
   if (steps === null) {
@@ -547,7 +592,8 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
     if (want === null) return;   // reported by the set comparison
 
     // Acquisition receipts carry no `tool` field; their argv contract names the staged binary,
-    // which is stronger than a self-declared label anyway.
+    // which is stronger than a self-declared label anyway. Their tool_version IS required —
+    // see the mandatory check below, which applies to both kinds.
     if (isNormal && step.tool !== want.tool) {
       problems.push(`${label} '${step.id}' was run by ${JSON.stringify(step.tool)}, expected ${JSON.stringify(want.tool)}`);
     }
@@ -581,9 +627,17 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
         `expected ${JSON.stringify(want.coverage ?? null)}`,
       );
     }
+    // §A4: MANDATORY and exact. R3.4 skipped the check whenever the field was absent, so
+    // deleting it passed — the one mutation guaranteed to work on a receipt you control.
     const wantVersion = hasOwnKey(contract.toolVersions, want.tool) ? contract.toolVersions[want.tool] : null;
-    if (wantVersion !== null && step.tool_version !== undefined && step.tool_version !== wantVersion) {
-      problems.push(`${label} '${step.id}' tool_version is ${JSON.stringify(step.tool_version)}, expected the pinned ${wantVersion}`);
+    if (wantVersion !== null) {
+      if (!hasOwnKey(step, 'tool_version') || step.tool_version === null || step.tool_version === undefined) {
+        problems.push(`${label} '${step.id}' records no tool_version; the version that ran is not optional`);
+      } else if (typeof step.tool_version !== 'string' || step.tool_version.length === 0) {
+        problems.push(`${label} '${step.id}' tool_version is ${JSON.stringify(step.tool_version)}, not a version string`);
+      } else if (step.tool_version !== wantVersion) {
+        problems.push(`${label} '${step.id}' tool_version is ${JSON.stringify(step.tool_version)}, expected the pinned ${wantVersion}`);
+      }
     }
 
     problems.push(...verifyStepStreams({ label: 'C15', dir: c15Dir, step, bindings, referenceCounts }));
@@ -616,6 +670,44 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
  * evaluate it independently, then RECONSTRUCT the image findings from the delivered trivy
  * bytes and re-run the tracked disposition reconciliation over them.
  */
+/**
+ * §A2: a trivy report must LOOK like a trivy report. R3.4 walked `Results ?? []`, so `{}` read
+ * as a completed scan with nothing to report.
+ */
+function trivyReportSchemaProblems(label, report, { requireResults = false, expectArtifact = null } = {}) {
+  const problems = [];
+  if (report === null || typeof report !== 'object' || Array.isArray(report)) {
+    problems.push(`C15 ${label} is not a JSON object`);
+    return problems;
+  }
+  if (!hasOwnKey(report, 'SchemaVersion') || !Number.isInteger(report.SchemaVersion)) {
+    problems.push(`C15 ${label} has no integer SchemaVersion; an empty substitute is not a scan`);
+  }
+  if (!hasOwnKey(report, 'ArtifactName') || typeof report.ArtifactName !== 'string' || report.ArtifactName.length === 0) {
+    problems.push(`C15 ${label} has no ArtifactName, so it names no scan subject`);
+  }
+  if (!hasOwnKey(report, 'ArtifactType') || typeof report.ArtifactType !== 'string') {
+    problems.push(`C15 ${label} has no ArtifactType`);
+  }
+  if (!hasOwnKey(report, 'Results')) {
+    if (requireResults) problems.push(`C15 ${label} has no Results key; a missing key is not an empty result set`);
+  } else if (!Array.isArray(report.Results)) {
+    problems.push(`C15 ${label} Results is ${typeof report.Results}, not an array`);
+  }
+  // §A1: the report must name the child the index bytes derived.
+  if (expectArtifact !== null && typeof report.ArtifactName === 'string') {
+    const named = report.ArtifactName;
+    const digest = expectArtifact.slice(expectArtifact.indexOf('@') + 1);
+    if (named !== expectArtifact && !named.includes(digest)) {
+      problems.push(
+        `C15 ${label} reports ArtifactName ${JSON.stringify(named)}, which is not the child ` +
+        `${expectArtifact} derived from the shipped index bytes`,
+      );
+    }
+  }
+  return problems;
+}
+
 function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
   const problems = [];
   const read = (rel) => {
@@ -624,7 +716,9 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
     return bytes.toString('utf8');
   };
 
-  // 1. Dependency audit — no governed blocking vulnerability.
+  // ── §A2 1. Dependency audit: REQUIRED STRUCTURE, not `?? {}` ──────────────────
+  // R3.4 read counters through `?? {}` and advisories through `?? []`, so replacing the whole
+  // report with `{}` looked like a clean audit. A missing field is now a missing field.
   const auditText = read('pnpm-audit-json.stdout.txt');
   if (auditText !== null) {
     let audit = null;
@@ -632,20 +726,50 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
       problems.push(`C15 pnpm-audit-json.stdout.txt is not valid JSON (${e instanceof Error ? e.message.slice(0, 100) : e})`);
     }
     if (audit !== null) {
-      const vuln = audit.metadata?.vulnerabilities ?? {};
-      for (const level of ['high', 'critical']) {
-        const n = vuln[level];
-        if (Number.isInteger(n) && n > 0) {
-          problems.push(`C15 dependency audit reports ${n} ${level} vulnerability(ies); a PASS run requires none`);
+      if (audit === null || typeof audit !== 'object' || Array.isArray(audit)) {
+        problems.push('C15 pnpm-audit-json.stdout.txt is not a JSON object');
+      } else if (!hasOwnKey(audit, 'metadata') || typeof audit.metadata !== 'object' || audit.metadata === null) {
+        problems.push("C15 dependency audit has no 'metadata' object; an empty substitute is not a clean audit");
+      } else if (!hasOwnKey(audit.metadata, 'vulnerabilities')
+        || typeof audit.metadata.vulnerabilities !== 'object' || audit.metadata.vulnerabilities === null) {
+        problems.push("C15 dependency audit has no 'metadata.vulnerabilities' counters");
+      } else {
+        const vuln = audit.metadata.vulnerabilities;
+        // EVERY severity counter must be present and a non-negative integer.
+        for (const level of ['info', 'low', 'moderate', 'high', 'critical']) {
+          if (!hasOwnKey(vuln, level)) {
+            problems.push(`C15 dependency audit is missing the '${level}' vulnerability counter`);
+          } else if (!Number.isInteger(vuln[level]) || vuln[level] < 0) {
+            problems.push(`C15 dependency audit counter '${level}' is ${JSON.stringify(vuln[level])}, not a non-negative integer`);
+          }
+        }
+        for (const level of ['high', 'critical']) {
+          if (Number.isInteger(vuln[level]) && vuln[level] > 0) {
+            problems.push(`C15 dependency audit reports ${vuln[level]} ${level} vulnerability(ies); a PASS run requires none`);
+          }
         }
       }
-      const advisories = audit.advisories ?? {};
-      const blocking = Object.keys(advisories).filter(
-        (k) => ['high', 'critical'].includes(String(advisories[k]?.severity).toLowerCase()),
-      );
-      if (blocking.length > 0) {
-        problems.push(`C15 dependency audit carries ${blocking.length} blocking advisory(ies)`);
+      // The advisory container must EXIST, even when empty.
+      if (audit !== null && typeof audit === 'object' && !Array.isArray(audit)) {
+        const container = hasOwnKey(audit, 'advisories') ? audit.advisories
+          : hasOwnKey(audit, 'vulnerabilities') ? audit.vulnerabilities : undefined;
+        if (container === undefined || typeof container !== 'object' || container === null) {
+          problems.push("C15 dependency audit has no advisory container ('advisories' or 'vulnerabilities')");
+        } else {
+          const blocking = Object.keys(container).filter(
+            (k) => ['high', 'critical'].includes(String(container[k]?.severity).toLowerCase()),
+          );
+          if (blocking.length > 0) {
+            problems.push(`C15 dependency audit carries ${blocking.length} blocking advisory(ies)`);
+          }
+        }
       }
+    }
+    // Cross-check the HUMAN receipt: an empty table beside a populated JSON, or vice versa,
+    // means the two receipts do not describe the same scan.
+    const humanText = read('pnpm-audit-human.stdout.txt');
+    if (humanText !== null && humanText.trim().length === 0) {
+      problems.push('C15 pnpm-audit-human.stdout.txt is empty; the blocking audit produced no receipt');
     }
   }
 
@@ -671,6 +795,12 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
     let fsReport = null;
     try { fsReport = JSON.parse(fsText); } catch (e) {
       problems.push(`C15 trivy-fs-json.stdout.txt is not valid JSON (${e instanceof Error ? e.message.slice(0, 100) : e})`);
+    }
+    problems.push(...trivyReportSchemaProblems('trivy-fs-json.stdout.txt', fsReport, { requireResults: true }));
+    // The blocking TABLE receipt must not be empty while the JSON claims a completed scan.
+    const tableText = read('trivy-fs.stdout.txt');
+    if (tableText !== null && tableText.trim().length === 0) {
+      problems.push('C15 trivy-fs.stdout.txt is empty; the blocking filesystem scan produced no receipt');
     }
     if (fsReport !== null) {
       let blocking = 0;
@@ -703,6 +833,10 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root }) {
     const text = read(rel);
     if (text === null) { reconstructable = false; return; }
     try {
+      const parsed = JSON.parse(text);
+      problems.push(...trivyReportSchemaProblems(rel, parsed, {
+        requireResults: true, expectArtifact: scanRefs[index],
+      }));
       reconstructed.push(...findingsFromTrivyJson(text, pinnedRef));
     } catch (e) {
       problems.push(`C15 ${rel} could not be parsed as a trivy report (${e instanceof Error ? e.message.slice(0, 100) : e})`);
@@ -1268,10 +1402,11 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
       problems.push('C15 recorded that its disposition document was overridden');
     }
 
+    problems.push(...verifyCandidateSource({ c15, root, expectedSha }));
     problems.push(...verifyCacheProvenance(c15));
     problems.push(...verifyScannerChain({ c15, contract }));
 
-    const images = verifyImages({ c15, contract });
+    const images = verifyImages({ c15, c15Dir, contract });
     problems.push(...images.problems);
 
     const { inventory } = expectedC15Inventory(contract.imageRefs.length);

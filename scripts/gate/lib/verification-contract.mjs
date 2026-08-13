@@ -206,8 +206,8 @@ export function expectedStepContract({ scanRefs }) {
   contract['gitleaks-worktree'] = {
     tool: 'gitleaks', policy: 'blocking',
     argv: [
-      T.STAGED_GITLEAKS, 'detect', '--source', T.REPO_ROOT, '--no-git', '--redact',
-      '--config', `${T.REPO_ROOT}/.gitleaks.toml`,
+      T.STAGED_GITLEAKS, 'detect', '--source', '.', '--no-git', '--redact',
+      '--config', '.gitleaks.toml',
       '--report-format', 'json', '--report-path', `${T.OUT_DIR}/gitleaks-worktree.json`,
     ],
     coverage: null,
@@ -215,8 +215,8 @@ export function expectedStepContract({ scanRefs }) {
   contract['gitleaks-history'] = {
     tool: 'gitleaks', policy: 'blocking',
     argv: [
-      T.STAGED_GITLEAKS, 'detect', '--source', T.REPO_ROOT, '--redact',
-      '--config', `${T.REPO_ROOT}/.gitleaks.toml`,
+      T.STAGED_GITLEAKS, 'detect', '--source', '.', '--redact',
+      '--config', '.gitleaks.toml',
       '--log-opts', '--all --full-history',
       '--report-format', 'json', '--report-path', `${T.OUT_DIR}/gitleaks-history.json`,
     ],
@@ -227,7 +227,7 @@ export function expectedStepContract({ scanRefs }) {
     '--severity', 'HIGH,CRITICAL', '--ignorefile', '/dev/null',
     '--cache-dir', T.TRIVY_CACHE, '--skip-db-update', '--skip-check-update', '--no-progress',
     ...(format === 'table' ? ['--exit-code', '1'] : []),
-    '--format', format, T.REPO_ROOT,
+    '--format', format, '.',
   ];
   const fsCoverage = {
     scanners: 'vuln,secret,misconfig', severity: 'HIGH,CRITICAL',
@@ -279,13 +279,20 @@ export function streamFilesFor(id) {
  * The COMPLETE expected C15 output inventory, derived from the contracts and a SOURCE-derived
  * image count. The binding inventory must EQUAL this, not merely contain it.
  */
+export function ociIndexFileFor(index) {
+  return `oci-index-${index}.json`;
+}
+
 export function expectedC15Inventory(imageCount) {
   const ids = [
     ...C15_NORMAL_STEPS.map((s) => s.id),
     ...imageStepIdsFor(imageCount),
     ...C15_ACQUISITION_STEPS.map((s) => s.id),
   ];
-  const files = [...C15_REQUIRED_REPORTS];
+  // C16-R3.4.1 §A1: the raw OCI index bytes are shipped, one per configured image, so a
+  // reviewer can derive the scanned child themselves instead of believing the summary.
+  const files = [...C15_REQUIRED_REPORTS,
+    ...Array.from({ length: imageCount }, (_, i) => ociIndexFileFor(i))];
   for (const id of ids) {
     const { stdout, stderr } = streamFilesFor(id);
     files.push(stdout, stderr);

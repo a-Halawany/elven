@@ -60,7 +60,7 @@ export const frozenCacheArgs = (cacheDir) => [
  * populate it, and doing it here — once, explicitly — is what makes the authoritative
  * scans able to run with updates disabled.
  */
-export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = null, trivyPath = 'trivy' }) {
+export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = null, trivyPath = 'trivy', toolVersion = null }) {
   mkdirSync(cacheDir, { recursive: true });
   const steps = [];
 
@@ -83,6 +83,9 @@ export function acquire({ cacheDir, timeout = '15m', log = () => {}, outDir = nu
       label,
       id,
       argv,
+      // C16-R3.4.1 §A4: the version that ran is not optional on an acquisition receipt either.
+      tool: 'trivy',
+      tool_version: toolVersion,
       started_at: started,
       finished_at: new Date().toISOString(),
       exit_code: res.status,

@@ -44,6 +44,7 @@ import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
 } from './lib/scanner-exclusions.mjs';
 import { loadAdapter, assertNoTestSeams, activeTestSeams } from './lib/execution-adapter.mjs';
+import { candidateSourceManifest, manifestProblems } from './lib/candidate-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -197,18 +198,28 @@ function stageAuthenticatedTools(tools, pins, hostPlatformKey, outDir, failures)
     const want = art?.executable_sha256 ?? null;
     expected[tool] = want;
 
-    const which = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' });
+    // C16-R3.4.1 §B2: resolution AND authentication cross the execution boundary, so the
+    // hermetic suite needs no real scanner binary on PATH. The production adapter still
+    // resolves and digests the real executable; only a test adapter answers otherwise, and
+    // --final refuses every seam before this point.
+    const which = ADAPTER.whichTool(tool);
     const resolved = which.status === 0 ? which.stdout.trim() : null;
 
     let actual = null;
     let bytes = null;
     if (resolved !== null) {
-      try {
-        const buf = readFileSync(resolved);
-        actual = sha256(buf);
-        bytes = buf.byteLength;
-      } catch (e) {
-        actual = null;
+      const authed = ADAPTER.authenticateTool === undefined
+        ? null
+        : ADAPTER.authenticateTool(tool, resolved);
+      if (authed !== null && authed !== undefined) {
+        actual = authed.sha256 ?? null;
+        bytes = authed.bytes ?? null;
+      } else {
+        try {
+          const buf = readFileSync(resolved);
+          actual = sha256(buf);
+          bytes = buf.byteLength;
+        } catch { actual = null; }
       }
     }
 
@@ -246,9 +257,15 @@ function stageAuthenticatedTools(tools, pins, hostPlatformKey, outDir, failures)
 
     // Only an AUTHENTICATED binary is staged, and only the staged copy is executed.
     const target = join(stageDir, tool);
-    copyFileSync(resolved, target);
+    // §B2: staging crosses the boundary too, so the hermetic replay needs no real binary.
+    if (ADAPTER.stageTool !== undefined) ADAPTER.stageTool(resolved, target);
+    else copyFileSync(resolved, target);
     chmodSync(target, 0o755);
-    const stagedDigest = sha256(readFileSync(target));
+    // The staged copy is re-digested across the same boundary, so a hermetic replay proves the
+    // same invariant — the bytes that will execute are the authenticated ones — without a real
+    // binary. The production adapter reads and hashes the actual staged file.
+    const stagedAuth = ADAPTER.authenticateTool === undefined ? null : ADAPTER.authenticateTool(tool, target);
+    const stagedDigest = stagedAuth?.sha256 ?? sha256(readFileSync(target));
     if (stagedDigest !== want) {
       failures.push(`${tool}: the staged copy digests to ${stagedDigest}, not ${want}`);
       continue;
@@ -281,7 +298,10 @@ function reverifyStagedTools(staged, failures) {
   for (const [tool, path] of Object.entries(staged.paths)) {
     let digest = null;
     try {
-      digest = sha256(readFileSync(path));
+      // Same boundary as staging: the post-scan re-verification asks whether the bytes that
+      // executed are still the authenticated ones, and a hermetic replay answers it the same way.
+      digest = (ADAPTER.authenticateTool === undefined ? null : ADAPTER.authenticateTool(tool, path))?.sha256
+        ?? sha256(readFileSync(path));
     } catch { /* recorded as null below */ }
     const want = staged.record.expected[tool];
     after[tool] = { staged_path: path, sha256_after: digest, expected: want, match: digest === want };
@@ -357,7 +377,10 @@ function toolVersions(stagedPaths = {}) {
     // Execute the AUTHENTICATED staged binary when one exists for this tool.
     const exe = stagedPaths[name] ?? spec.argv[0];
     try {
-      actual = spec.extract(execFileSync(exe, spec.argv.slice(1), { encoding: 'utf8' }));
+      // §B2: the version probe is an EXECUTION, so it crosses the boundary like every other.
+      const res = ADAPTER.execute([exe, ...spec.argv.slice(1)], { id: `version:${name}` });
+      if (res.status !== 0) throw new Error(`exit ${res.status}`);
+      actual = spec.extract(res.stdout);
     } catch (e) {
       actual = `(failed: ${e instanceof Error ? e.message.slice(0, 60) : String(e)})`;
     }
@@ -597,7 +620,7 @@ async function main(parsed) {
   // ── trivy cache: acquire BOTH artifacts, then capture and enforce provenance ────
   const TRIVY_FOR_CACHE = staged.paths.trivy;
   console.log('\n-- trivy cache acquisition (vulnerability DB + checks bundle) --');
-  const acquisition = ADAPTER.acquireCache({ cacheDir, log: (m) => console.log(m), outDir, trivyPath: TRIVY_FOR_CACHE });
+  const acquisition = ADAPTER.acquireCache({ cacheDir, log: (m) => console.log(m), outDir, trivyPath: TRIVY_FOR_CACHE, toolVersion: versions.trivy.actual });
   state.trivy_cache_acquisition = acquisition;
   // A failed refresh must not be papered over by an older cache that happens to exist.
   for (const p of acquisition.problems ?? []) failures.push(`trivy cache acquisition — ${p}`);
@@ -689,6 +712,22 @@ async function main(parsed) {
   // ── dependency vulnerabilities ────────────────────────────────────────────────
   // Identical audit level in both steps, so the JSON capture is an alternate FORMAT of
   // the blocking scan rather than extra unenforced coverage.
+  // ── §A3: BIND THE SCANNED CANDIDATE ────────────────────────────────────────────
+  // Computed before the first scan and recomputed after the last, so the evidence names WHICH
+  // source was scanned rather than merely that something was.
+  const candidateBefore = candidateSourceManifest(ROOT);
+  state.candidate_source = {
+    ...candidateBefore,
+    expected_sha: expectedSha ?? null,
+    note: 'scanners run with source-owned relative arguments from this candidate root; no '
+      + 'absolute repository path appears in any argv',
+  };
+  if (candidateBefore.ok !== true) {
+    failures.push(`candidate source — ${candidateBefore.error}`);
+    finish(1);
+  }
+  console.log(`  candidate source ${candidateBefore.file_count} tracked files, ${candidateBefore.digest.slice(0, 16)}…`);
+
   console.log('\n-- dependency vulnerabilities --');
   const AUDIT_LEVEL = ['--audit-level', 'high'];
   run(steps, outDir, sourceSha, 'pnpm-audit-human', ['pnpm', 'audit', ...AUDIT_LEVEL], {
@@ -706,14 +745,14 @@ async function main(parsed) {
   console.log('\n-- secret scanning --');
   const gitleaksConfig = join(ROOT, '.gitleaks.toml');
   run(steps, outDir, sourceSha, 'gitleaks-worktree', [
-    GITLEAKS, 'detect', '--source', ROOT, '--no-git', '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', '.', '--no-git', '--redact', '--config', '.gitleaks.toml',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-worktree.json'),
   ], {
     description: 'gitleaks over the WORKING TREE (files as they exist)',
     tool: 'gitleaks', toolVersion: versions.gitleaks.actual, policy: 'blocking',
   });
   if (haveGit) run(steps, outDir, sourceSha, 'gitleaks-history', [
-    GITLEAKS, 'detect', '--source', ROOT, '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', '.', '--redact', '--config', '.gitleaks.toml',
     '--log-opts', '--all --full-history',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-history.json'),
   ], {
@@ -773,12 +812,12 @@ async function main(parsed) {
     'fs', '--scanners', 'vuln,secret,misconfig', '--severity', 'HIGH,CRITICAL',
     '--ignorefile', '/dev/null', ...FROZEN, '--no-progress',
   ];
-  run(steps, outDir, sourceSha, 'trivy-fs', [TRIVY, ...FS_ARGS, '--exit-code', '1', '--format', 'table', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs', [TRIVY, ...FS_ARGS, '--exit-code', '1', '--format', 'table', '.'], {
     description: 'trivy filesystem scan, blocking at HIGH/CRITICAL',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
     coverage: FS_COVERAGE, env: trivyEnv,
   });
-  run(steps, outDir, sourceSha, 'trivy-fs-json', [TRIVY, ...FS_ARGS, '--format', 'json', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs-json', [TRIVY, ...FS_ARGS, '--format', 'json', '.'], {
     description: 'trivy filesystem scan, machine-readable, IDENTICAL coverage to the blocking step',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'informational',
     coverage: FS_COVERAGE, env: trivyEnv,
@@ -792,8 +831,16 @@ async function main(parsed) {
     finish(1);
   }
 
-  const imageResolutions = images.map((image) => {
+  const imageResolutions = images.map((image, index) => {
     const resolution = ADAPTER.resolveImage(image, SCAN_PLATFORM);
+    // C16-R3.4.1 §A1: WRITE AND BIND THE RAW INDEX BYTES. Without them a verifier can only
+    // re-read the producer's own summary of the index, so replacing the child digest, the
+    // scan reference and the argv together was self-consistent and accepted. With the bytes
+    // shipped, the child is derived independently and the summary is checked against it.
+    const indexFile = `oci-index-${index}.json`;
+    if (typeof resolution.index_raw_bytes === 'string') {
+      writeFileSync(join(outDir, indexFile), resolution.index_raw_bytes);
+    }
     const scanRef = platformPinnedRef(image, resolution);
     console.log(`  ${image}`);
     if (!resolution.resolved) console.log(`    UNRESOLVED: ${resolution.error}`);
@@ -814,9 +861,10 @@ async function main(parsed) {
       pinned_ref: image,
       scan_ref: scanRef,
       pinned_digest: pinnedDigest,
+      raw_index_file: indexFile,
       raw_index_digest: resolution.index_raw_sha256 === undefined ? null : `sha256:${resolution.index_raw_sha256}`,
       raw_index_digest_matches_reference: rawMatches,
-      resolution,
+      resolution: { ...resolution, index_raw_bytes: undefined },
     };
   });
   state.image_platform_resolution = imageResolutions;
@@ -933,6 +981,14 @@ async function main(parsed) {
   const afterSet = (dirtyAfter ?? '').trim();
   state.tree_clean_after_scanning = dirtyAfter === null ? null : afterSet === '';
   state.worktree_unchanged_by_scanning = dirtyAfter === null ? null : afterSet === beforeSet;
+
+  // §A3: recompute the candidate manifest and require exact equality. A worktree that is
+  // "clean" by git's account can still have had tracked bytes swapped and swapped back, or
+  // swapped by something git does not report; this compares the bytes themselves.
+  const candidateAfter = candidateSourceManifest(ROOT);
+  state.candidate_source_after = candidateAfter;
+  const candidateProblems = manifestProblems(candidateBefore, candidateAfter);
+  for (const p of candidateProblems) failures.push(`candidate source — ${p}`);
   if (haveGit && dirtyAfter !== null && afterSet !== beforeSet) {
     const before = new Set(beforeSet === '' ? [] : beforeSet.split('\n'));
     const appeared = (afterSet === '' ? [] : afterSet.split('\n')).filter((l) => !before.has(l));
