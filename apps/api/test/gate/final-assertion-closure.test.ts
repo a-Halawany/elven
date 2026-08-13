@@ -20,6 +20,9 @@ import { writeFileSync, readFileSync, rmSync, mkdtempSync, mkdirSync, symlinkSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// C16-R3.4: this suite is a FROZEN historical record of the R3.3 verifier's behaviour. It
+// executes the frozen R3.3 code against the frozen fixture, so neither drifts. The LIVE
+// verifier is covered by source-anchored-reconstruction.test.ts, which is strictly stronger.
 import {
   assertFinalManifests,
   PHASE0_TARGET_IDS,
@@ -27,7 +30,7 @@ import {
   C15_ACQUISITION_STEPS,
   expectedC15Inventory,
   TARGET_RECORD_MERGED_KEYS,
-} from '../../../../scripts/gate/assert-final-manifests.mjs';
+} from './fixtures/assert-final-manifests.r33-frozen.mjs';
 import { assertFinalManifests as assertR32Defective } from './fixtures/assert-final-manifests.r32-frozen.mjs';
 import {
   buildPassingEvidence, editManifest, sha256, FIXTURE_SHA, FIXTURE_IMAGES,

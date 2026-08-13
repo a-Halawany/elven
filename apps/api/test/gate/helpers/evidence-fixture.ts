@@ -1,15 +1,13 @@
 /**
- * A COMPLETE, PASSING C15/C16 evidence pair, built for the final-assertion controls.
+ * FROZEN HISTORICAL FIXTURE — used ONLY by the frozen R3.1/R3.2/R3.3 control suites.
  *
- * Shared by the R3.2 and R3.3 control suites so there is exactly one definition of what a
- * healthy package looks like. Every digest and byte count is computed from bytes this file
- * actually writes, and every identity is read from the real tracked descriptor and pins —
- * so the fixture cannot drift into claiming something untrue, and a control that mutates one
- * field is mutating it away from something genuinely correct.
+ * C16-R3.4 note: this builder satisfies the contracts those verifiers enforced, and nothing
+ * newer. It is deliberately NOT used against the live verifier: pointing an old fixture at a
+ * stricter verifier is what produced two rounds of false fixtures, most recently one claiming
+ * `counts.nodes: 195` while shipping `components: []`.
  *
- * The cache fingerprint is constructed the way `scripts/gate/lib/trivy-cache.mjs
- * fingerprint()` constructs it, so the verifier's recomputation succeeds here for the same
- * reason it succeeds on a real run.
+ * The live verifier is covered by `helpers/evidence-fixture-r34.ts`, whose C16 half is the real
+ * source derivation — real graph, real reconciliation, real bytes.
  */
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';

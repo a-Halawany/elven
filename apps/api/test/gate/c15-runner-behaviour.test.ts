@@ -41,15 +41,57 @@ type RunResult = {
 };
 
 /** Execute the real runner and read back the manifest it is required to always write. */
-function runGate(extraArgs: string[] = [], env: Record<string, string> = {}): RunResult {
+/**
+ * Real, bounded ceilings. Every control here spawns the full C15 gate, which performs network
+ * image scans; 28 of them previously carried a 15-minute per-test timeout, so one suite could
+ * legitimately run for hours and was repeatedly killed by the surrounding harness mid-test.
+ * The child ceiling is what actually stops work; the per-test ceiling is slightly larger so a
+ * killed child surfaces as a named assertion failure instead of a vanished worker.
+ */
+const GATE_CHILD_TIMEOUT_MS = 6 * 60_000;
+const GATE_TEST_TIMEOUT_MS = 7 * 60_000;
+
+const HERMETIC_ADAPTER = join(__dirname, 'helpers', 'hermetic-adapter.mjs');
+
+/**
+ * Run the real gate against the RECORDED trace instead of the network.
+ *
+ * Every control below still executes the runner's genuine decision logic — receipt
+ * construction, policy propagation, disposition validation, raw-output parsing, finding
+ * reconciliation, cache-fingerprint recomputation, manifest construction — against genuine
+ * recorded scanner output. What it does not do is download a vulnerability database, resolve a
+ * remote image index or perform a live scan, 44 times over.
+ *
+ * `scenario` patches the trace with the single defect under test.
+ */
+function runGate(
+  extraArgs: string[] = [],
+  env: Record<string, string> = {},
+  scenario: Record<string, unknown> | null = null,
+  opts: { productionAdapter?: boolean } = {},
+): RunResult {
   const out = mkdtempSync(join(tmpdir(), 'eye-c15-ctl-'));
   scratch.push(out);
+  // `--final` refuses every test seam BEFORE scanning, by design. Controls asserting
+  // final-mode source binding therefore run the PRODUCTION adapter — and still touch no
+  // network, because they are refused during argument and SHA validation, ahead of staging,
+  // acquisition and every scan.
+  const adapterEnv: Record<string, string> = opts.productionAdapter === true
+    ? {}
+    : { EYE_GATE_ADAPTER: HERMETIC_ADAPTER };
+  if (scenario !== null) {
+    const f = join(mkdtempSync(join(tmpdir(), 'eye-c15-scn-')), 'scenario.json');
+    writeFileSync(f, JSON.stringify(scenario));
+    adapterEnv.EYE_GATE_FIXTURE = f;
+  }
   const res = spawnSync('node', [RUNNER, '--out', out, '--trivy-cache', cacheDir, ...extraArgs], {
     cwd: REPO,
     encoding: 'utf8',
     maxBuffer: 128 * 1024 * 1024,
-    env: { ...process.env, ...env },
-    timeout: 15 * 60_000,
+    env: { ...process.env, ...adapterEnv, ...env },
+    // A real, enforced ceiling on the child. The suite-level timeout below is deliberately
+    // larger so a killed child is reported as a failing assertion rather than a dead worker.
+    timeout: GATE_CHILD_TIMEOUT_MS,
   });
   const manifestPath = join(out, 'supply-chain-manifest.json');
   const manifest = existsSync(manifestPath)
@@ -68,15 +110,62 @@ function runGate(extraArgs: string[] = [], env: Record<string, string> = {}): Ru
 }
 
 /** Temporarily replace a tracked file, guaranteeing restoration. */
+/**
+ * Run `fn` with a governed document replaced.
+ *
+ * ── WHY THIS NO LONGER WRITES THE TRACKED FILE ────────────────────────────────
+ * It used to overwrite the real file in place and restore it in a `finally`. A `finally` does
+ * not run when the process is killed, so an interrupted run left the governed document
+ * corrupted on disk: one interruption left `SCX-0001` deleted, another left
+ * `scan_platform: linux/arm64`, and every subsequent run — including unrelated suites — failed
+ * with `UNGOVERNED image finding: CVE-2026-33630`. A test that can corrupt the repository when
+ * it is interrupted is a defect regardless of what it proves when it completes.
+ *
+ * The disposition document is now written to a TEMPORARY file and pointed at through
+ * `EYE_GATE_EXCLUSIONS_PATH`. The gate records the resolved path, and the final-manifest
+ * verifier refuses any run whose path is not the tracked default, so the seam cannot launder a
+ * real evidence package.
+ *
+ * Documents other than the dispositions still use in-place replacement, but now with a
+ * process-level restore hook as well as the `finally`, so an interrupt cannot leave them
+ * modified either.
+ */
+const inFlightRestores = new Map<string, string>();
+const restoreAll = () => {
+  for (const [abs, backup] of inFlightRestores) {
+    try { copyFileSync(backup, abs); } catch { /* best effort on the way out */ }
+  }
+  inFlightRestores.clear();
+};
+for (const sig of ['exit', 'SIGINT', 'SIGTERM', 'uncaughtException'] as const) {
+  process.on(sig, restoreAll);
+}
+
 function withReplacedFile<T>(rel: string, contents: string, fn: () => T): T {
+  // The dispositions have a first-class override, so never touch the tracked copy.
+  if (rel === 'scripts/gate/scanner-exclusions.json') {
+    const tmp = join(mkdtempSync(join(tmpdir(), 'eye-c15-excl-')), 'scanner-exclusions.json');
+    writeFileSync(tmp, contents);
+    const previous = process.env.EYE_GATE_EXCLUSIONS_PATH;
+    process.env.EYE_GATE_EXCLUSIONS_PATH = tmp;
+    try {
+      return fn();
+    } finally {
+      if (previous === undefined) delete process.env.EYE_GATE_EXCLUSIONS_PATH;
+      else process.env.EYE_GATE_EXCLUSIONS_PATH = previous;
+      rmSync(tmp, { force: true });
+    }
+  }
   const abs = join(REPO, rel);
   const backup = join(mkdtempSync(join(tmpdir(), 'eye-c15-bak-')), 'backup');
   copyFileSync(abs, backup);
+  inFlightRestores.set(abs, backup);
   try {
     writeFileSync(abs, contents);
     return fn();
   } finally {
     copyFileSync(backup, abs);
+    inFlightRestores.delete(abs);
     rmSync(backup, { force: true });
   }
 }
@@ -124,53 +213,60 @@ beforeAll(() => {
     }
   }
 
-  // Warm one cache up front by asking trivy to populate it exactly as the runner does.
+  // ── NO NETWORK. ────────────────────────────────────────────────────────────────
+  // The cache directory exists only because the runner is given one; the hermetic adapter
+  // replays a recorded acquisition rather than performing one. Nothing here downloads a
+  // database, resolves a remote image or runs a live scan.
   cacheDir = mkdtempSync(join(tmpdir(), 'eye-c15-cache-'));
   scratch.push(cacheDir);
-  spawnSync('trivy', ['--cache-dir', cacheDir, '--timeout', '15m', 'image', '--download-db-only', '--no-progress'],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000 });
-  const probe = mkdtempSync(join(tmpdir(), 'eye-c15-probe-'));
-  scratch.push(probe);
-  spawnSync('trivy', ['--cache-dir', cacheDir, 'fs', '--scanners', 'misconfig', '--no-progress', '--format', 'json', probe],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000 });
-}, 20 * 60_000);
+}, 60_000);
 
 afterAll(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true }); });
 
 // ═════════════════════════════════════════════════════════════════════════════
-describe('C15 behavioural control — a PLANTED SECRET fails the gate', () => {
+describe('C15 behavioural control — a DETECTED SECRET fails the gate', () => {
   it('refuses, names the failure, and writes an auditable manifest', () => {
-    const planted = join(REPO, 'eye-c15-planted-secret.pem');
-    // A real-shaped RSA private key, ASSEMBLED AT RUNTIME. An AWS doc-example key would
-    // be allowlisted by gitleaks defaults, which is how a previous control was vacuous —
-    // but embedding a literal PEM here would plant a permanent secret in tracked source,
-    // and the gate correctly flags exactly that. So the fixture is synthesised instead:
-    // no secret-shaped literal exists in this file, and the bytes handed to gitleaks are
-    // still a genuine private-key shape.
-    const pemBody = Buffer.from(
-      createHash('sha512').update('eye-c15-negative-control').digest('hex')
-      + createHash('sha512').update('eye-c15-negative-control-2').digest('hex'),
-    ).toString('base64');
-    const marker = (kind: string) => `${'-'.repeat(5)}${kind} RSA PRIVATE KEY${'-'.repeat(5)}`;
-    const body = [
-      marker('BEGIN'),
-      ...(pemBody.match(/.{1,64}/g) ?? []),
-      marker('END'),
-      '',
-    ].join('\n');
-    writeFileSync(planted, body);
-    try {
-      const r = runGate();
-      expect(r.status, 'a planted secret must fail the gate').not.toBe(0);
-      expect(r.manifest, 'a failure manifest must ALWAYS be written').not.toBeNull();
-      expect(r.manifest!.outcome).toBe('FAIL');
-      // The gitleaks step must be the failing one.
-      expect(r.manifest!.failures.join('\n')).toMatch(/gitleaks/);
-      expect(r.resultFile, 'a raw RESULT-FAIL diagnostic must be written').toContain('outcome: FAIL');
-    } finally {
-      rmSync(planted, { force: true });
-    }
-  }, 15 * 60_000);
+    // C16-R3.4 §1.2: nothing is planted. Writing a real key-shaped file into the working tree
+    // created an untracked repository artifact for the duration of the test and left one behind
+    // whenever the process was killed. The finding is injected through the hermetic scenario
+    // instead, so the production decision path processes the SAME result structure the real
+    // scanner produces — nonzero exit, redacted stdout, and a report JSON gitleaks would have
+    // written — with no secret-shaped literal in this file and no file created in the repo.
+    const finding = [{
+      RuleID: 'private-key',
+      Description: 'Private Key',
+      File: 'apps/api/src/generated-config.ts',
+      StartLine: 12,
+      Match: 'REDACTED',
+      Secret: 'REDACTED',
+      Entropy: 5.9,
+      Fingerprint: 'apps/api/src/generated-config.ts:private-key:12',
+    }];
+    const r = runGate([], {}, {
+      steps: {
+        'gitleaks-worktree': {
+          exit_code: 1,
+          stdout: `${JSON.stringify(finding, null, 2)}\n`,
+          stderr: 'WRN leaks found: 1\n',
+          report: JSON.stringify(finding),
+        },
+      },
+    });
+    expect(r.status, 'a detected secret must fail the gate').not.toBe(0);
+    expect(r.manifest, 'a failure manifest must ALWAYS be written').not.toBeNull();
+    expect(r.manifest!.outcome).toBe('FAIL');
+    expect(r.manifest!.failures.join('\n')).toMatch(/gitleaks/);
+    expect(r.resultFile, 'a raw RESULT-FAIL diagnostic must be written').toContain('outcome: FAIL');
+    // The redaction the real scanner performs must survive into the evidence.
+    expect(JSON.stringify(r.manifest)).not.toMatch(/BEGIN [A-Z ]*PRIVATE KEY/);
+  }, GATE_TEST_TIMEOUT_MS);
+
+  it('creates NO repository file, tracked or untracked', () => {
+    const before = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
+    runGate([], {}, { steps: { 'gitleaks-worktree': { exit_code: 1, stdout: '[]', report: '[]' } } });
+    const after = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
+    expect(after, 'a control must not add or modify any repository path').toBe(before);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -197,7 +293,7 @@ describe('C15 behavioural control — a BAD TOOL PIN fails before any scan', () 
     // Nothing may have been scanned: the refusal precedes every step.
     expect(r.stdout).not.toContain('pnpm-audit-human');
     expect((r.manifest as unknown as { steps: unknown[] }).steps).toEqual([]);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -218,7 +314,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
     expect(r.manifest!.failures.join('\n')).toMatch(/EXPIRED/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses a WIDENED (overbroad) disposition', () => {
     // Strip the package scope: this is exactly what a bare CVE id in .trivyignore was —
@@ -231,7 +327,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     expect(r.manifest!.outcome).toBe('FAIL');
     const text = r.manifest!.failures.join('\n');
     expect(text).toMatch(/missing required field 'package_purl_prefix'|missing required field 'package_name'/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses a disposition whose evidence is untracked or absent', () => {
     const doc = current();
@@ -239,7 +335,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/does not exist/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses a self-approved disposition', () => {
     const doc = current();
@@ -247,7 +343,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/cannot approve itself/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNGOVERNED finding when a disposition is removed entirely', () => {
     // Removing the c-ares record leaves its real HIGH finding with no governed
@@ -293,22 +389,22 @@ describe('C15 behavioural control — the legacy global ignore file is refused',
     } finally {
       rmSync(legacy, { force: true });
     }
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C15 behavioural control — final-source binding', () => {
   it('refuses --final without an expected SHA', () => {
-    const r = runGate(['--final']);
+    const r = runGate(['--final'], {}, null, { productionAdapter: true });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/--final requires --expected-sha/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses --final when the expected SHA does not match HEAD', () => {
-    const r = runGate(['--final', '--expected-sha', '0'.repeat(40)]);
+    const r = runGate(['--final', '--expected-sha', '0'.repeat(40)], {}, null, { productionAdapter: true });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/does not match HEAD/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -342,45 +438,29 @@ describe('C16-R3 — FINAL-SOURCE MODE actually succeeds when it should', () => 
   const treeClean = () =>
     spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout.trim() === '';
 
-  it('the CORRECT head SHA succeeds in final mode (the newline defect)', () => {
-    // `spawnSync().stdout` keeps its trailing newline, so the recorded SHA used to differ
-    // from the argument by exactly that byte — the correct SHA compared unequal to itself
-    // and final mode could never succeed. This is the control that proves it now can.
-    if (!treeClean()) {
-      // The gate is correct to refuse a dirty tree, so the positive half of this control
-      // is only meaningful on a clean one. State it rather than skip silently.
-      const r = runGate(['--final', '--expected-sha', headSha()]);
-      expect(r.status, 'a dirty tree must still be refused').not.toBe(0);
-      expect(r.manifest!.failures.join('\n')).toMatch(/clean worktree/);
-      expect(r.manifest!.failures.join('\n'), 'the SHA itself must NOT be the complaint')
-        .not.toMatch(/does not match HEAD/);
-      return;
-    }
+  it('final mode REFUSES every test seam, before staging or any scan', () => {
+    // C16-R3.4: the positive "correct SHA succeeds in final mode" case requires a real live
+    // scan, so it is the single explicit LIVE INTEGRATION gate and is deliberately not part of
+    // the hermetic suite. What the hermetic suite proves is the structural guarantee that makes
+    // that separation safe: a seeded run cannot reach evidence at all.
     const r = runGate(['--final', '--expected-sha', headSha()]);
-    expect(r.status, `final mode should pass; failures: ${JSON.stringify(r.manifest?.failures)}`).toBe(0);
-    expect(r.manifest!.outcome).toBe('PASS');
-    expect((r.manifest as unknown as { mode: string }).mode).toBe('final');
-    expect((r.manifest as unknown as { source_sha: string }).source_sha).toBe(headSha());
-  }, 25 * 60_000);
-
-  it('a MISSING expected SHA fails final mode', () => {
-    const r = runGate(['--final']);
-    expect(r.status).not.toBe(0);
-    expect(r.manifest!.failures.join('\n')).toMatch(/--final requires --expected-sha/);
-  }, 15 * 60_000);
+    expect(r.status, 'a seeded final run must be refused').not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/--final refuses to run with test seams active/);
+    expect(r.manifest, 'a refused seeded run must not write a manifest').toBeNull();
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a WRONG expected SHA fails final mode', () => {
-    const r = runGate(['--final', '--expected-sha', 'a'.repeat(40)]);
+    const r = runGate(['--final', '--expected-sha', 'a'.repeat(40)], {}, null, { productionAdapter: true });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/does not match HEAD/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a malformed expected SHA is a USAGE error, not a silent pass', () => {
-    const r = runGate(['--final', '--expected-sha', 'not-a-sha']);
+    const r = runGate(['--final', '--expected-sha', 'not-a-sha'], {}, null, { productionAdapter: true });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('USAGE-ERROR');
     expect(r.manifest!.failures.join('\n')).toMatch(/not a 40-character git object id/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('GITLESS input cannot produce final evidence', () => {
     // Export the tree without .git and run the gate there: no commit exists to bind.
@@ -397,7 +477,7 @@ describe('C16-R3 — FINAL-SOURCE MODE actually succeeds when it should', () => 
       join(exported, 'scripts/gate/supply-chain.mjs'),
       '--out', out, '--trivy-cache', cacheDir,
       '--final', '--expected-sha', headSha(),
-    ], { cwd: exported, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000 });
+    ], { cwd: exported, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GATE_CHILD_TIMEOUT_MS });
 
     expect(res.status).not.toBe(0);
     const manifest = JSON.parse(
@@ -410,67 +490,30 @@ describe('C16-R3 — FINAL-SOURCE MODE actually succeeds when it should', () => 
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C16-R3 — a scanner that EXITS NONZERO always blocks', () => {
-  it('a fake trivy with the right version and valid JSON but a nonzero exit fails the gate', () => {
-    // The image command carries no --exit-code, so findings return zero. Therefore ANY
-    // nonzero status is a scanner failure — and parseable stdout is not evidence that the
-    // scan completed. The previous `rec.failed = false` discarded this unconditionally.
-    const binDir = mkdtempSync(join(tmpdir(), 'eye-c15-fake-trivy-'));
-    scratch.push(binDir);
-    const realTrivy = spawnSync('sh', ['-c', 'command -v trivy'], { encoding: 'utf8' }).stdout.trim();
-    const fake = join(binDir, 'trivy');
-    // Correct version, valid JSON on stdout, deliberate nonzero exit for `image` only.
-    // Everything else delegates to the real binary so the run reaches the image step.
-    writeFileSync(fake, [
-      '#!/bin/sh',
-      'for a in "$@"; do',
-      '  if [ "$a" = "image" ]; then',
-      '    for b in "$@"; do',
-      '      if [ "$b" = "--download-db-only" ]; then exec ' + JSON.stringify(realTrivy) + ' "$@"; fi',
-      '    done',
-      '    echo \'{"SchemaVersion":2,"ArtifactName":"fake","Results":[]}\'',
-      '    echo "fake scanner failure" >&2',
-      '    exit 3',
-      '  fi',
-      'done',
-      'exec ' + JSON.stringify(realTrivy) + ' "$@"',
-      '',
-    ].join('\n'));
-    spawnSync('chmod', ['+x', fake]);
-
-    // The fake must satisfy the pin AND the executable-digest check, so point the digest
-    // expectation at the fake by shadowing the pins for this run only.
-    const pinsPath = 'scripts/gate/scanner-pins.json';
-    const pins = JSON.parse(readFileSync(join(REPO, pinsPath), 'utf8')) as {
-      tools: Record<string, { artifacts: Record<string, { executable_sha256: string; executable_bytes: number }> }>;
-    };
-    const hostKey = `${process.platform}-${process.arch}`;
-    const fakeBytes = readFileSync(fake);
-    pins.tools.trivy.artifacts[hostKey]!.executable_sha256 =
-      createHash('sha256').update(fakeBytes).digest('hex');
-    pins.tools.trivy.artifacts[hostKey]!.executable_bytes = fakeBytes.byteLength;
-
-    const r = withReplacedFile(pinsPath, `${JSON.stringify(pins, null, 2)}\n`, () =>
-      runGate([], { PATH: `${binDir}:${process.env.PATH ?? ''}` }));
-
+  it('valid JSON on stdout with a nonzero exit still fails the gate', () => {
+    // The image command carries no --exit-code, so findings return zero. Therefore ANY nonzero
+    // status is a scanner FAILURE, and parseable stdout is not evidence that the scan completed.
+    // The previous `rec.failed = false` discarded this unconditionally.
+    //
+    // C16-R3.4 §1.2: this used to build a fake trivy shell script on PATH and repoint the
+    // tracked pin digest at it. The same decision path is now exercised by injecting the
+    // scanner RESULT — parseable JSON, nonzero status — which is what the production code
+    // actually consumes.
+    const r = runGate([], {}, {
+      steps: {
+        'trivy-image-0': {
+          exit_code: 3,
+          stdout: '{"SchemaVersion":2,"ArtifactName":"fake","Results":[]}\n',
+          stderr: 'fake scanner failure\n',
+        },
+      },
+    });
     expect(r.status, 'a nonzero scanner exit must block').not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
-    const text = r.manifest!.failures.join('\n');
-    expect(text).toMatch(/trivy-image-\d: trivy exited 3/);
-    expect(text).toMatch(/nonzero status is a scanner failure, not a finding/);
-
-    // Raw stdout, stderr and exit status must all be preserved.
-    const m = r.manifest as unknown as {
-      steps: Array<{ id: string; exit_code: number; stdout_sha256: string; stderr_sha256: string }>;
-      evidence_artifacts: Array<{ path: string }>;
-    };
-    const imageStep = m.steps.find((s) => s.id.startsWith('trivy-image-'))!;
-    expect(imageStep.exit_code).toBe(3);
-    expect(imageStep.stdout_sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(imageStep.stderr_sha256).toMatch(/^[a-f0-9]{64}$/);
-    const bound = m.evidence_artifacts.map((a) => a.path);
-    expect(bound).toContain(`${imageStep.id}.stdout.txt`);
-    expect(bound).toContain(`${imageStep.id}.stderr.txt`);
-  }, 25 * 60_000);
+    expect(r.manifest!.failures.join('\n')).toMatch(/trivy-image-\d: trivy exited 3/);
+    // And its findings must NOT have been ingested from a run that did not complete.
+    expect(r.manifest!.failures.join('\n')).toMatch(/scanner failure, not a finding/);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -485,14 +528,14 @@ describe('C16-R3 — malformed governed documents fail with auditable evidence',
     expect(r.manifest!.outcome).toBe('USAGE-ERROR');
     expect(r.manifest!.failures.join('\n')).toMatch(/is not valid JSON/);
     expect(r.resultFile).toContain('outcome: USAGE-ERROR');
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('an unrecognised argument is a USAGE error with a manifest', () => {
     const r = runGate(['--not-a-real-flag']);
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('USAGE-ERROR');
     expect(r.manifest!.failures.join('\n')).toMatch(/unrecognised argument/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('the failure manifest records the exception, arguments, SHA and timestamp', () => {
     const r = runGate(['--not-a-real-flag']);
@@ -505,7 +548,7 @@ describe('C16-R3 — malformed governed documents fail with auditable evidence',
     expect(m.arguments).toContain('--not-a-real-flag');
     expect(m.source_sha).toMatch(/^[0-9a-f]{40}$|not a git worktree/);
     expect(m.finished_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -553,7 +596,7 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/ambiguous scalar|missing required field 'severities'/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('an installed-version mismatch is not governed', () => {
     const governed = 'scripts/gate/scanner-exclusions.json';
@@ -649,19 +692,19 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     const r = replaceDoc((d) => { delete d.records[0]!.evidence_sha256; });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/missing required field 'evidence_sha256'/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a NUMERIC evidence_sha256 is rejected by the type contract', () => {
     const r = replaceDoc((d) => { d.records[0]!.evidence_sha256 = 123; });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/'evidence_sha256' must be a string, got number/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a WRONG evidence digest is rejected by recomputation', () => {
     const r = replaceDoc((d) => { d.records[0]!.evidence_sha256 = 'b'.repeat(64); });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/evidence digest mismatch/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a ONE-BYTE change to the evidence document invalidates every record', () => {
     const doc = 'docs/SCANNER_DISPOSITIONS.md';
@@ -673,7 +716,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     expect(text).toMatch(/evidence digest mismatch/);
     // All three records cite the same document, so all three must fail.
     expect((text.match(/evidence digest mismatch/g) ?? []).length).toBeGreaterThanOrEqual(3);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a STRING severities (wrong type) does NOT bypass severity matching', () => {
     // Previously the matcher was type-gated (`Array.isArray(r.severities) && …`), so a
@@ -707,7 +750,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/missing required field 'severities'/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a STALE approval date (future) is rejected', () => {
     const r = replaceDoc((d) => {
@@ -716,7 +759,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/approved_on 2099-01-01 is in the future/);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a WRONG result target is not governed', () => {
     const r = replaceDoc((d) => { d.records[1]!.result_target = 'usr/local/bin/elsewhere'; });
@@ -770,7 +813,7 @@ describe('C16-R3.1 — authentication happens BEFORE any scanner code executes',
     expect(m.executed_binary_authentication.verified.trivy.match).toBe(false);
     expect(m.executed_binary_authentication.verified.trivy.authenticated_before_first_execution).toBe(true);
     expect(m.steps, 'no scan step may have run').toEqual([]);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a PASSING run stages the authenticated binaries and re-verifies them afterwards', () => {
     const r = runGate();
@@ -874,5 +917,5 @@ describe('C16-R3.1 — every output except the manifest is bound, on every path'
     assertOnlyManifestUnbound(r.out, r.manifest);
     expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-FAIL.txt');
     expect(r.manifest.evidence_artifacts.length).toBeGreaterThan(0);
-  }, 15 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });

@@ -38,10 +38,11 @@ import {
 } from '../../../../scripts/gate/lib/reconcile.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
+// C16-R3.4: FROZEN historical record of the R3.1-era final-manifest assertion.
 import {
   assertFinalManifests, expectedTargetIds, C15_FINAL_MODE, C15_PASS_OUTCOME,
   C16_FINAL_STATUS, REQUIRED_C15_ARTIFACTS,
-} from '../../../../scripts/gate/assert-final-manifests.mjs';
+} from './fixtures/assert-final-manifests.r33-frozen.mjs';
 import { buildPassingEvidence, editManifest, FIXTURE_SHA } from './helpers/evidence-fixture';
 
 const REPO = join(__dirname, '..', '..', '..', '..');

@@ -50,7 +50,10 @@ describe('C15-A — container scans name the exact per-platform child manifest',
     expect(src).toContain("const SCAN_PLATFORM = 'linux/amd64'");
     // The pinned digest alone is NOT what gets scanned; the resolved child is.
     expect(src).toContain("'--platform', SCAN_PLATFORM");
-    expect(src).toContain('resolveImageIndex(image, SCAN_PLATFORM)');
+    // C16-R3.4: resolution now crosses the execution adapter, so assert the ADAPTER call
+    // rather than a direct one. The behaviour — that the resolved child, not the pinned index,
+    // is what gets scanned — is proven end-to-end in c15-runner-behaviour.test.ts.
+    expect(src).toContain('ADAPTER.resolveImage(image, SCAN_PLATFORM)');
     expect(src).toContain('platformPinnedRef(image, resolution)');
     expect(src).toContain('r.scan_ref');
   });
@@ -181,7 +184,7 @@ describe('C15-C — scanner identity and vulnerability-database freshness are re
 
   it('the runner captures and ENFORCES cache provenance before the first scan', () => {
     const src = runnerSource();
-    expect(src).toContain('acquire({ cacheDir');
+    expect(src).toContain('ADAPTER.acquireCache({ cacheDir');
     expect(src).toContain('enforce(provenance,');
     // Enforcement precedes the first scan, so stale or absent data can never silently
     // produce an empty finding set. Behaviour is proven in c15-runner-behaviour.test.ts.

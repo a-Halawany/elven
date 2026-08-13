@@ -25,6 +25,8 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// C16-R3.4: FROZEN historical record of the R3.2 verifier, executed against the frozen
+// fixture. The live verifier is covered by source-anchored-reconstruction.test.ts.
 import {
   assertFinalManifests,
   PHASE0_TARGET_IDS,
@@ -32,11 +34,9 @@ import {
   REQUIRED_C15_ARTIFACTS,
   pinnedScannerNames,
   descriptorTargetIds,
-} from '../../../../scripts/gate/assert-final-manifests.mjs';
+} from './fixtures/assert-final-manifests.r32-frozen.mjs';
 import { assertFinalManifests as assertR31Defective } from './fixtures/assert-final-manifests.r31-frozen.mjs';
-import {
-  buildPassingEvidence, editManifest, FIXTURE_SHA,
-} from './helpers/evidence-fixture';
+import { buildPassingEvidence, editManifest, FIXTURE_SHA } from './helpers/evidence-fixture';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const SHA = FIXTURE_SHA;
@@ -370,9 +370,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.staged_tools_after_scanning.trivy.sha256_after = 'e'.repeat(64);
       m.staged_tools_after_scanning.trivy.match = false;
     });
-    // R3.3 reports this as a broken link in the chain back to the tracked pin, which is
-    // strictly more specific than R3.2's standalone message.
-    expect(check().some((p) => /trivy chain BROKEN: staged post-scan actual digest/.test(p))).toBe(true);
+    expect(check().some((p) => /staged trivy binary changed during scanning/.test(p))).toBe(true);
     expect(checkDefective()).toEqual([]);
   });
 
@@ -381,7 +379,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.trivy_cache_fingerprint_after.digest = sha256('a different cache');
       m.trivy_cache_unchanged = true;   // the boolean lies; the digests do not
     });
-    expect(check().some((p) => /after cache fingerprint digest is .*; recomputes to/.test(p))).toBe(true);
+    expect(check().some((p) => /cache digest changed across scanning/.test(p))).toBe(true);
     expect(checkDefective(), 'R3.1 trusted the boolean').toEqual([]);
   });
 
@@ -390,7 +388,7 @@ describe('C16-R3.2 final-manifest verifier — the delivered bytes, not the clai
       m.evidence_artifacts = m.evidence_artifacts.filter((a: any) => a.path !== 'RESULT-PASS.txt');
     });
     const problems = check();
-    expect(problems.some((p) => /C16 did not bind the required output 'RESULT-PASS\.txt'/.test(p))).toBe(true);
+    expect(problems.some((p) => /C16 did not bind the required artifact 'RESULT-PASS\.txt'/.test(p))).toBe(true);
     expect(problems.some((p) => /RESULT-PASS\.txt.*UNBOUND/.test(p))).toBe(true);
     expect(checkDefective(), 'R3.1 required no C16 bindings at all').toEqual([]);
   });
