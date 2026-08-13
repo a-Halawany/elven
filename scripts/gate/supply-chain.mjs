@@ -44,6 +44,7 @@ import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
 } from './lib/scanner-exclusions.mjs';
 import { loadAdapter, assertNoTestSeams, activeTestSeams } from './lib/execution-adapter.mjs';
+import { candidateSourceManifest, manifestProblems } from './lib/candidate-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -711,6 +712,22 @@ async function main(parsed) {
   // ── dependency vulnerabilities ────────────────────────────────────────────────
   // Identical audit level in both steps, so the JSON capture is an alternate FORMAT of
   // the blocking scan rather than extra unenforced coverage.
+  // ── §A3: BIND THE SCANNED CANDIDATE ────────────────────────────────────────────
+  // Computed before the first scan and recomputed after the last, so the evidence names WHICH
+  // source was scanned rather than merely that something was.
+  const candidateBefore = candidateSourceManifest(ROOT);
+  state.candidate_source = {
+    ...candidateBefore,
+    expected_sha: expectedSha ?? null,
+    note: 'scanners run with source-owned relative arguments from this candidate root; no '
+      + 'absolute repository path appears in any argv',
+  };
+  if (candidateBefore.ok !== true) {
+    failures.push(`candidate source — ${candidateBefore.error}`);
+    finish(1);
+  }
+  console.log(`  candidate source ${candidateBefore.file_count} tracked files, ${candidateBefore.digest.slice(0, 16)}…`);
+
   console.log('\n-- dependency vulnerabilities --');
   const AUDIT_LEVEL = ['--audit-level', 'high'];
   run(steps, outDir, sourceSha, 'pnpm-audit-human', ['pnpm', 'audit', ...AUDIT_LEVEL], {
@@ -728,14 +745,14 @@ async function main(parsed) {
   console.log('\n-- secret scanning --');
   const gitleaksConfig = join(ROOT, '.gitleaks.toml');
   run(steps, outDir, sourceSha, 'gitleaks-worktree', [
-    GITLEAKS, 'detect', '--source', ROOT, '--no-git', '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', '.', '--no-git', '--redact', '--config', '.gitleaks.toml',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-worktree.json'),
   ], {
     description: 'gitleaks over the WORKING TREE (files as they exist)',
     tool: 'gitleaks', toolVersion: versions.gitleaks.actual, policy: 'blocking',
   });
   if (haveGit) run(steps, outDir, sourceSha, 'gitleaks-history', [
-    GITLEAKS, 'detect', '--source', ROOT, '--redact', '--config', gitleaksConfig,
+    GITLEAKS, 'detect', '--source', '.', '--redact', '--config', '.gitleaks.toml',
     '--log-opts', '--all --full-history',
     '--report-format', 'json', '--report-path', join(outDir, 'gitleaks-history.json'),
   ], {
@@ -795,12 +812,12 @@ async function main(parsed) {
     'fs', '--scanners', 'vuln,secret,misconfig', '--severity', 'HIGH,CRITICAL',
     '--ignorefile', '/dev/null', ...FROZEN, '--no-progress',
   ];
-  run(steps, outDir, sourceSha, 'trivy-fs', [TRIVY, ...FS_ARGS, '--exit-code', '1', '--format', 'table', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs', [TRIVY, ...FS_ARGS, '--exit-code', '1', '--format', 'table', '.'], {
     description: 'trivy filesystem scan, blocking at HIGH/CRITICAL',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
     coverage: FS_COVERAGE, env: trivyEnv,
   });
-  run(steps, outDir, sourceSha, 'trivy-fs-json', [TRIVY, ...FS_ARGS, '--format', 'json', ROOT], {
+  run(steps, outDir, sourceSha, 'trivy-fs-json', [TRIVY, ...FS_ARGS, '--format', 'json', '.'], {
     description: 'trivy filesystem scan, machine-readable, IDENTICAL coverage to the blocking step',
     tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'informational',
     coverage: FS_COVERAGE, env: trivyEnv,
@@ -964,6 +981,14 @@ async function main(parsed) {
   const afterSet = (dirtyAfter ?? '').trim();
   state.tree_clean_after_scanning = dirtyAfter === null ? null : afterSet === '';
   state.worktree_unchanged_by_scanning = dirtyAfter === null ? null : afterSet === beforeSet;
+
+  // §A3: recompute the candidate manifest and require exact equality. A worktree that is
+  // "clean" by git's account can still have had tracked bytes swapped and swapped back, or
+  // swapped by something git does not report; this compares the bytes themselves.
+  const candidateAfter = candidateSourceManifest(ROOT);
+  state.candidate_source_after = candidateAfter;
+  const candidateProblems = manifestProblems(candidateBefore, candidateAfter);
+  for (const p of candidateProblems) failures.push(`candidate source — ${p}`);
   if (haveGit && dirtyAfter !== null && afterSet !== beforeSet) {
     const before = new Set(beforeSet === '' ? [] : beforeSet.split('\n'));
     const appeared = (afterSet === '' ? [] : afterSet.split('\n')).filter((l) => !before.has(l));

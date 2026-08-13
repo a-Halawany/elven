@@ -46,6 +46,7 @@ import {
   CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS,
 } from './lib/verification-contract.mjs';
 import { deriveC16Expectation } from './generate-closures.mjs';
+import { candidateSourceManifest } from './lib/candidate-source.mjs';
 import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
 } from './lib/scanner-exclusions.mjs';
@@ -505,62 +506,58 @@ function deriveProducerOutDir(c15) {
 }
 
 /**
- * The PRODUCER's repository root, derived by shape from the gitleaks `--source` argument.
+ * §A3: THE SCANNED CANDIDATE IS RECOMPUTED, NOT READ OUT OF THE EVIDENCE.
  *
- * It cannot be the verifier's own root. A package produced on a hosted runner records
- * `/home/runner/work/elven/elven`; a reviewer verifying it from their own checkout has a
- * different path, and every argv comparison failed — the exact reviewer scenario this whole
- * verifier exists to serve. Caught by running the corrected verifier against the delivered ZIP.
- *
- * It is derived, not trusted: the value must be absolute, every step that names the repository
- * must name the SAME directory, and the gitleaks config must be exactly `<root>/.gitleaks.toml`.
- * A step cannot therefore relabel some other directory as "the repo" without disagreeing with
- * its siblings.
+ * R3.4 took the expected repository root from the recorded `--source` argument, so rewriting
+ * every recorded scan root to `/attacker/decoy-source` was self-consistent and accepted. The
+ * scanners now take source-owned RELATIVE arguments, so there is no absolute path in argv to
+ * rewrite, and the subject is identified by a manifest recomputed here from the verifier's own
+ * checkout of the expected SHA.
  */
-function deriveProducerRepoRoot(c15) {
+function verifyCandidateSource({ c15, root, expectedSha }) {
   const problems = [];
-  const steps = Array.isArray(c15.steps) ? c15.steps : [];
-  const candidates = new Set();
-  for (const step of steps) {
-    const argv = Array.isArray(step?.argv) ? step.argv : [];
-    const i = argv.indexOf('--source');
-    if (i !== -1 && typeof argv[i + 1] === 'string') candidates.add(argv[i + 1]);
-    // The trivy filesystem scans take the repository as their final positional argument.
-    if (step?.id === 'trivy-fs' || step?.id === 'trivy-fs-json') {
-      const last = argv[argv.length - 1];
-      if (typeof last === 'string' && isAbsolute(last)) candidates.add(last);
-    }
+  const claimed = c15.candidate_source;
+  if (claimed === null || claimed === undefined || typeof claimed !== 'object') {
+    problems.push('C15 recorded no candidate_source manifest, so the scanned subject is unidentified');
+    return problems;
   }
-  if (candidates.size === 0) {
-    problems.push('C15 records no scanned repository root, so the argv contract cannot be checked');
-    return { repoRoot: null, problems };
+  if (claimed.ok !== true) {
+    problems.push(`C15 candidate_source did not compute: ${claimed.error ?? 'unknown'}`);
+    return problems;
   }
-  if (candidates.size > 1) {
-    problems.push(`C15 steps disagree about the scanned repository root: ${[...candidates].join(', ')}`);
-    return { repoRoot: null, problems };
+  if (!SHA256_HEX.test(String(claimed.digest))) {
+    problems.push('C15 candidate_source has no valid digest');
+    return problems;
   }
-  const repoRoot = [...candidates][0];
-  if (!isAbsolute(repoRoot)) {
-    problems.push(`C15 scanned repository root ${JSON.stringify(repoRoot)} is not an absolute path`);
-    return { repoRoot: null, problems };
+  if (claimed.expected_sha !== undefined && claimed.expected_sha !== null && claimed.expected_sha !== expectedSha) {
+    problems.push(`C15 candidate_source binds ${JSON.stringify(claimed.expected_sha)}, not the expected ${expectedSha}`);
   }
-  for (const step of steps) {
-    const argv = Array.isArray(step?.argv) ? step.argv : [];
-    const c = argv.indexOf('--config');
-    if (c !== -1 && argv[c + 1] !== `${repoRoot}/.gitleaks.toml`) {
-      problems.push(
-        `C15 step '${step.id}' used config ${JSON.stringify(argv[c + 1])}, not the scanned repository's ` +
-        `${repoRoot}/.gitleaks.toml`,
-      );
-    }
+  const after = c15.candidate_source_after;
+  if (after?.ok !== true || after.digest !== claimed.digest) {
+    problems.push(
+      `C15 candidate source changed during scanning (${claimed.digest} → ${after?.digest ?? 'absent'})`,
+    );
   }
-  return { repoRoot, problems };
+  // RECOMPUTE from the verifier's own tree. Equality means the bytes scanned are the bytes here.
+  const recomputed = candidateSourceManifest(root);
+  if (recomputed.ok !== true) {
+    problems.push(`the verifier could not enumerate its own candidate: ${recomputed.error}`);
+    return problems;
+  }
+  if (recomputed.digest !== claimed.digest) {
+    problems.push(
+      `C15 scanned a DIFFERENT candidate: the evidence records ${claimed.digest} ` +
+      `(${claimed.file_count} files / ${claimed.total_bytes}B) but this checkout of ${expectedSha} ` +
+      `computes ${recomputed.digest} (${recomputed.file_count} files / ${recomputed.total_bytes}B)`,
+    );
+  }
+  return problems;
 }
 
-function argvPathsFor({ c15, root, producerOutDir, producerRepoRoot }) {
+function argvPathsFor({ c15, root, producerOutDir }) {
   const staged = c15.staged_scanner_binaries ?? {};
   return {
-    repoRoot: producerRepoRoot ?? root,
+    repoRoot: root,
     outDir: producerOutDir,
     // The cache and staged-binary locations are genuinely per-run, and are tokenized only so
     // the surrounding argument shape can be compared exactly; their VALUES are separately
@@ -580,11 +577,7 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
   const expectedArgv = expectedStepContract({ scanRefs: scanRefs ?? [] });
   const derivedOut = deriveProducerOutDir(c15);
   problems.push(...derivedOut.problems);
-  const derivedRepo = deriveProducerRepoRoot(c15);
-  problems.push(...derivedRepo.problems);
-  const paths = argvPathsFor({
-    c15, root, producerOutDir: derivedOut.outDir, producerRepoRoot: derivedRepo.repoRoot,
-  });
+  const paths = argvPathsFor({ c15, root, producerOutDir: derivedOut.outDir });
 
   const steps = Array.isArray(c15.steps) ? c15.steps : null;
   if (steps === null) {
@@ -1409,6 +1402,7 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
       problems.push('C15 recorded that its disposition document was overridden');
     }
 
+    problems.push(...verifyCandidateSource({ c15, root, expectedSha }));
     problems.push(...verifyCacheProvenance(c15));
     problems.push(...verifyScannerChain({ c15, contract }));
 

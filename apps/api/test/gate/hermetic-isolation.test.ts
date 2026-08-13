@@ -163,9 +163,12 @@ describe('C16-R3.4 §4 — killing a mutation test cannot corrupt a governed fil
     });
 
     // KILL IT MID-RUN, with SIGKILL so no handler, hook or `finally` can possibly run.
+    // Attach the exit listener BEFORE killing: a child that dies between kill() and listen()
+    // has already emitted 'exit', and awaiting it afterwards hangs forever.
+    const exited = new Promise((r) => { child.once('exit', r); child.once('error', r); });
     await new Promise((r) => { setTimeout(r, 400); });
     child.kill('SIGKILL');
-    await new Promise((r) => { child.on('exit', r); child.on('error', r); });
+    await exited;
 
     const after = digestsOf();
     for (const rel of GOVERNED) {
@@ -176,13 +179,57 @@ describe('C16-R3.4 §4 — killing a mutation test cannot corrupt a governed fil
     rmSync(out, { recursive: true, force: true });
     rmSync(cache, { recursive: true, force: true });
     rmSync(tmp, { force: true });
-  }, 60_000);
+  }, 120_000);
+
+  it.each([
+    ['disposition override', (tmp: string) => ({ EYE_GATE_EXCLUSIONS_PATH: tmp })],
+    ['hermetic scenario', (tmp: string) => ({ EYE_GATE_FIXTURE: tmp })],
+  ])('§B6 SIGKILL during a %s mutation leaves the repository untouched', async (_label, envFor) => {
+    const before = digestsOf();
+    const status = () => spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
+    const statusBefore = status();
+
+    const doc = JSON.parse(readFileSync(join(REPO, 'scripts/gate/scanner-exclusions.json'), 'utf8'));
+    doc.records[0].expires_on = '2020-01-01';
+    const tmp = join(mkdtempSync(join(tmpdir(), 'eye-kill2-')), 'injected.json');
+    writeFileSync(tmp, JSON.stringify(doc, null, 2));
+
+    const out = mkdtempSync(join(tmpdir(), 'eye-kill2-out-'));
+    const cache = mkdtempSync(join(tmpdir(), 'eye-kill2-cache-'));
+    const child = spawn('node', [RUNNER, '--out', out, '--trivy-cache', cache], {
+      cwd: REPO,
+      env: { ...process.env, EYE_GATE_ADAPTER: HERMETIC_ADAPTER, ...envFor(tmp) },
+      stdio: 'ignore',
+    });
+    const exited = new Promise((r) => { child.once('exit', r); child.once('error', r); });
+    await new Promise((r) => { setTimeout(r, 350); });
+    child.kill('SIGKILL');
+    await exited;
+
+    for (const rel of GOVERNED) {
+      expect(digestsOf()[rel], `${rel} changed across a killed ${_label} mutation`).toBe(before[rel]);
+    }
+    expect(status(), 'the worktree must be unchanged').toBe(statusBefore);
+    // Nothing may be left INSIDE the repository: no legacy ignore file, no output, no cache,
+    // no staged scanner, no temporary fixture.
+    // `evidence/` is a TRACKED directory and legitimately present; the stray classes are the
+    // ones a killed run could leave behind. `git status` above already covers anything else.
+    for (const stray of ['.trivyignore', '.trivy-cache', '.staged-scanners']) {
+      expect(existsSync(join(REPO, stray)), `${stray} must not exist in the repository`).toBe(false);
+    }
+    for (const d of [out, cache]) rmSync(d, { recursive: true, force: true });
+    rmSync(tmp, { force: true });
+  }, 120_000);
 
   it('no control opens a tracked governance file for writing', () => {
     // The behavioural suite's only in-place replacement path is for documents OTHER than the
     // dispositions; assert the dispositions take the override branch, by name.
     const src = readFileSync(join(__dirname, 'c15-runner-behaviour.test.ts'), 'utf8');
-    expect(src).toMatch(/if \(rel === 'scripts\/gate\/scanner-exclusions\.json'\)/);
+    // §B1: the generic in-place replacement path is GONE, and no control names a
+    // repository-root path for writing.
+    expect(src).not.toMatch(/function withReplacedFile/);
+    expect(src).not.toMatch(/writeFileSync\(join\(REPO,/);
     expect(src).toMatch(/EYE_GATE_EXCLUSIONS_PATH/);
+    expect(src).toMatch(/function disposableRepo/);
   });
 });

@@ -628,10 +628,13 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
 describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifier', () => {
   let root: string;
   let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-r341-'));
-    built = buildPassingR34Evidence(root, REPO);
+    built = buildPassingR34Evidence(join(root, 'now'), REPO);
+    // The package R3.4 expected, so "frozen R3.4 accepted this mutation" is an unfiltered claim.
+    legacy = buildPassingR34Evidence(join(root, 'r34'), REPO, { shape: 'r34' });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
@@ -646,16 +649,34 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
    * R3.4 correctly enforcing its own, older, inventory. Every OTHER complaint is retained, so
    * "R3.4 accepted this mutation" still means exactly that.
    */
+  /** The frozen R3.4 verifier against the package R3.4 expected. No filtering. */
   const frozen34 = () => {
     try {
-      const all = assertR34Frozen({
-        c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+      return assertR34Frozen({
+        c15Dir: legacy.c15Dir, c16Dir: legacy.c16Dir, expectedSha: legacy.expectedSha, root: REPO,
       }) as string[];
-      return all.filter((p) => !/bound 'oci-index-\d+\.json', which the source-owned contract does not expect/.test(p));
     } catch (e) { return [`THREW: ${e instanceof Error ? e.message.slice(0, 100) : e}`]; }
   };
-  const editC15 = (fn: (m: Record<string, any>) => void) =>
+  const editLegacyC15 = (fn: (m: Record<string, any>) => void) =>
+    editManifest(legacy.c15Dir, 'supply-chain-manifest.json', fn);
+  const editC15 = (fn: (m: Record<string, any>) => void) => {
     editManifest(built.c15Dir, 'supply-chain-manifest.json', fn);
+    editLegacyC15(fn);   // the same mutation, applied to the R3.4-shaped package
+  };
+
+  /** Replace a raw output in both shapes, rebinding its receipt and artifact binding. */
+  const substitute = (rel: string, body: string) => {
+    for (const pkg of [built, legacy]) {
+      writeFileSync(join(pkg.c15Dir, rel), body);
+      const bytes = readFileSync(join(pkg.c15Dir, rel));
+      editManifest(pkg.c15Dir, 'supply-chain-manifest.json', (m) => {
+        const a = m.evidence_artifacts.find((x: any) => x.path === rel);
+        if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
+        const step = m.steps.find((x: any) => x.stdout_file === rel);
+        if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
+      });
+    }
+  };
 
   const closes = (expected: RegExp) => {
     const problems = check();
@@ -665,15 +686,9 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
     expect(stale, `frozen R3.4 must ACCEPT this, but reported:\n${stale.join('\n')}`).toEqual([]);
   };
 
-  it('the untouched fixture passes BOTH the corrected and the frozen R3.4 verifier', () => {
+  it('both shapes start clean: R3.4.1 accepts the current package, R3.4 accepts its own', () => {
     expect(check()).toEqual([]);
     expect(frozen34()).toEqual([]);
-    // And the filtered class really is only the new artifact: R3.4 reports exactly two.
-    const raw = assertR34Frozen({
-      c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
-    }) as string[];
-    expect(raw).toHaveLength(2);
-    expect(raw.every((p) => /oci-index-\d+\.json/.test(p))).toBe(true);
   });
 
   it('§A1 a substituted image child — digest, scan_ref and argv changed together — is rejected', () => {
@@ -699,26 +714,12 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
     ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /no 'metadata' object|no 'metadata\.vulnerabilities' counters/],
     ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /no integer SchemaVersion|no ArtifactName/],
   ])('§A2 %s is rejected', (_label, rel, body, expected) => {
-    writeFileSync(join(built.c15Dir, rel as string), body as string);
-    const bytes = readFileSync(join(built.c15Dir, rel as string));
-    editC15((m) => {
-      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
-      a.bytes = bytes.length; a.sha256 = sha256(bytes);
-      const step = m.steps.find((x: any) => x.stdout_file === rel);
-      if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
-    });
+    substitute(rel as string, body as string);
     closes(expected as RegExp);
   });
 
   it('§A2 an EMPTY blocking table receipt beside a populated JSON is rejected', () => {
-    writeFileSync(join(built.c15Dir, 'trivy-fs.stdout.txt'), '');
-    const bytes = readFileSync(join(built.c15Dir, 'trivy-fs.stdout.txt'));
-    editC15((m) => {
-      const a = m.evidence_artifacts.find((x: any) => x.path === 'trivy-fs.stdout.txt');
-      a.bytes = bytes.length; a.sha256 = sha256(bytes);
-      const step = m.steps.find((x: any) => x.id === 'trivy-fs');
-      step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes);
-    });
+    substitute('trivy-fs.stdout.txt', '');
     closes(/trivy-fs\.stdout\.txt is empty; the blocking filesystem scan produced no receipt/);
   });
 
@@ -743,12 +744,15 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
   });
 
   it('§A1 a raw index whose bytes do not hash to the configured reference is rejected', () => {
+    // CORRECTED-ONLY by construction: R3.4 shipped no index bytes at all, so there is no
+    // R3.4-shaped package in which this mutation exists. The false pass R3.4 permitted is the
+    // substituted-child control above; this one guards the new artifact itself.
     writeFileSync(join(built.c15Dir, 'oci-index-0.json'), '{"manifests":[]}');
     const bytes = readFileSync(join(built.c15Dir, 'oci-index-0.json'));
-    editC15((m) => {
+    editManifest(built.c15Dir, 'supply-chain-manifest.json', (m) => {
       const a = m.evidence_artifacts.find((x: any) => x.path === 'oci-index-0.json');
       a.bytes = bytes.length; a.sha256 = sha256(bytes);
     });
-    closes(/these are not the bytes the reference names/);
+    expect(check().some((p) => /these are not the bytes the reference names/.test(p))).toBe(true);
   });
 });

@@ -259,42 +259,47 @@ proceeding.
 
 *Status.* closed.
 
-### G3 — a test corrupted the governed disposition document (closed)
+### G3 — tests wrote tracked files; every path is now eliminated (closed at R3.4.1)
 
 `scripts/gate/scanner-exclusions.json` was found modified in the working tree, once with the
-entire `SCX-0001` record deleted and once with `scan_platform` changed to `linux/arm64`.
+`SCX-0001` record deleted and once with `scan_platform` changed to `linux/arm64`.
 
-**The cause is known.** An earlier record of this incident said it was unknown; that was wrong
-and is corrected here.
+**Cause.** `withReplacedFile()` in `apps/api/test/gate/c15-runner-behaviour.test.ts` overwrote
+the real tracked document in place and restored it in a `finally`, which a kill skips. Each of
+the 44 behavioural controls spawned a full live C15 gate — one file took 491.66 s — so the
+harness killed the run repeatedly, and each kill left the governed document holding whatever
+defect the interrupted control had written. Later runs failed with
+`UNGOVERNED image finding: CVE-2026-33630` for reasons unrelated to the change under test. This
+was not an upstream outage; a separate mirror 404 occurred later and is a different matter.
 
-*What happened.* `withReplacedFile()` in `apps/api/test/gate/c15-runner-behaviour.test.ts`
-overwrote the REAL tracked document in place and restored it in a `finally`. A `finally` does
-not run when the process is killed. Each of the 44 behavioural controls spawned a full live
-C15 gate — one file took 491.66 s — so the surrounding harness killed the run repeatedly, and
-each kill left the governed document holding whatever defect the interrupted control had
-written. Later runs, including unrelated suites, then failed with
-`UNGOVERNED image finding: CVE-2026-33630` for reasons that had nothing to do with the change
-under test.
+**Correction of the previous record.** The R3.4 entry stated that no test writes tracked
+governance files. **That was false when written.** R3.4 introduced an injection seam for the
+disposition document only; independent review then found the generic in-place path still live
+and still used for:
 
-*This was not an upstream outage.* A separate upstream 404 on the trivy checks-bundle mirror
-occurred later and is a different matter; it did not cause the corruption and must not be
-conflated with it.
+| tracked path | was written by | now |
+|---|---|---|
+| `scripts/gate/scanner-exclusions.json` | 12 disposition controls | temporary injected document (`EYE_GATE_EXCLUSIONS_PATH`) |
+| `scripts/gate/scanner-pins.json` | malformed-document control | disposable repository copy |
+| `docs/SCANNER_DISPOSITIONS.md` | one-byte evidence-tamper control | disposable repository copy |
+| `.trivyignore` (repository root) | two legacy-ignore controls | disposable repository copy |
 
-*Correction.*
-1. No test writes a tracked governance file. The disposition document is supplied through
-   `EYE_GATE_EXCLUSIONS_PATH`, pointing at a temporary file; the gate records the resolved
-   canonical path and digest, and the final verifier refuses any run whose path is not the
-   tracked default, so the seam cannot launder evidence.
-2. Every external effect crosses `scripts/gate/lib/execution-adapter.mjs`. The behavioural
-   controls replay a recorded real trace, so they exercise the genuine decision logic against
-   genuine scanner output without repeated network acquisition: 492 s live → 169 s hermetic,
-   44/44 passing, zero network.
-3. `--final` refuses every test seam before staging, acquisition or any scan.
-4. Restoration hooks remain as defence in depth, but are no longer the safety mechanism —
-   the tracked file is never opened for writing at all.
+**Closure at R3.4.1.**
+1. `withReplacedFile()` is **deleted**. Its replacement, `withInjectedDocument()`, serves the
+   one path that has an injection seam and **throws** for anything else, naming
+   `disposableRepo()` as the alternative — so a future control cannot silently reintroduce a
+   repository write.
+2. Inputs the gate locates by repository root are exercised in a throwaway copy built from
+   `git ls-files`, running that copy's own runner.
+3. `--final` refuses every seam before staging, acquisition or any scan.
+4. SIGKILL controls per injected-input class prove all eight governed digests and
+   `git status --porcelain` are byte-identical across a killed mutation, and that no
+   `.trivyignore`, cache or staged scanner is left in the repository.
+5. Restoration hooks remain only as defence in depth; the tracked file is never opened for
+   writing, so they are not the mechanism.
 
-*Residual.* None for the corruption path. The governed document's committed state was never
-altered; every occurrence was working-tree only and was restored from `HEAD`.
+**Residual.** None for the corruption path. The committed state of the governed document was
+never altered; every occurrence was working-tree only and was restored from `HEAD`.
 
 *Status.* closed.
 

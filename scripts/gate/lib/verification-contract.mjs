@@ -206,8 +206,8 @@ export function expectedStepContract({ scanRefs }) {
   contract['gitleaks-worktree'] = {
     tool: 'gitleaks', policy: 'blocking',
     argv: [
-      T.STAGED_GITLEAKS, 'detect', '--source', T.REPO_ROOT, '--no-git', '--redact',
-      '--config', `${T.REPO_ROOT}/.gitleaks.toml`,
+      T.STAGED_GITLEAKS, 'detect', '--source', '.', '--no-git', '--redact',
+      '--config', '.gitleaks.toml',
       '--report-format', 'json', '--report-path', `${T.OUT_DIR}/gitleaks-worktree.json`,
     ],
     coverage: null,
@@ -215,8 +215,8 @@ export function expectedStepContract({ scanRefs }) {
   contract['gitleaks-history'] = {
     tool: 'gitleaks', policy: 'blocking',
     argv: [
-      T.STAGED_GITLEAKS, 'detect', '--source', T.REPO_ROOT, '--redact',
-      '--config', `${T.REPO_ROOT}/.gitleaks.toml`,
+      T.STAGED_GITLEAKS, 'detect', '--source', '.', '--redact',
+      '--config', '.gitleaks.toml',
       '--log-opts', '--all --full-history',
       '--report-format', 'json', '--report-path', `${T.OUT_DIR}/gitleaks-history.json`,
     ],
@@ -227,7 +227,7 @@ export function expectedStepContract({ scanRefs }) {
     '--severity', 'HIGH,CRITICAL', '--ignorefile', '/dev/null',
     '--cache-dir', T.TRIVY_CACHE, '--skip-db-update', '--skip-check-update', '--no-progress',
     ...(format === 'table' ? ['--exit-code', '1'] : []),
-    '--format', format, T.REPO_ROOT,
+    '--format', format, '.',
   ];
   const fsCoverage = {
     scanners: 'vuln,secret,misconfig', severity: 'HIGH,CRITICAL',
