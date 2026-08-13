@@ -62,6 +62,11 @@ describe('C16-R3.4.3 §E — the entire behavioural suite runs with every extern
         // spawns, finds a refusing stub before it finds a real binary.
         PATH: `${poison}:${process.env.PATH ?? ''}`,
         CI: '1',
+        // The summary is PARSED, so it must not arrive wrapped in colour escapes. A hosted
+        // runner colourises by default and a local terminal may not, which is exactly the kind
+        // of difference that makes a control pass locally and fail in CI.
+        NO_COLOR: '1',
+        FORCE_COLOR: '0',
       },
     });
   }, 16 * 60_000);
@@ -71,7 +76,10 @@ describe('C16-R3.4.3 §E — the entire behavioural suite runs with every extern
   });
 
   it(`the child suite reports exactly ${EXPECTED_TESTS} passed and 0 failed`, () => {
-    const output = `${child.stdout}${child.stderr}`;
+    // Belt and braces: `NO_COLOR` is honoured by vitest, but the surrounding runner can still
+    // inject escapes, so strip them before parsing rather than trusting the child's settings.
+    // eslint-disable-next-line no-control-regex
+    const output = `${child.stdout}${child.stderr}`.replace(/\[[0-9;]*m/g, '');
     expect(child.status, `child vitest exited ${child.status}:\n${output.slice(-4000)}`).toBe(0);
     // vitest prints `Tests  44 passed (44)`; a run with failures prints a `failed` term too.
     const summary = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed\s+\((\d+)\)/.exec(output);
