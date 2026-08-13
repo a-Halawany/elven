@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TRACE_DIR = join(HERE, '..', 'fixtures', 'c15-trace');
+// helpers/ -> gate/ -> test/ -> api/ -> apps/ -> repo root
+const REPO_ROOT = join(HERE, '..', '..', '..', '..', '..');
 
 const readTrace = () => JSON.parse(readFileSync(join(TRACE_DIR, 'trace.json'), 'utf8'));
 
@@ -60,11 +62,15 @@ export default function createAdapter(env = process.env) {
       // toolchain rather than inventing something, so version enforcement still runs for real.
       const recorded = recordedFor(id);
       if (recorded === undefined && override === null) {
-        const tool = argv[0].split('/').pop();
-        if (argv.includes('--version') || argv.includes('version')) {
+        const tool = typeof id === 'string' && id.startsWith('version:')
+          ? id.slice('version:'.length)
+          : argv[0].split('/').pop();
+        if (argv.includes('--version') || argv.includes('version') || String(id).startsWith('version:')) {
           const v = trace.tool_versions?.[tool]?.actual;
           if (v !== undefined) {
-            return { status: 0, signal: null, stdout: tool === 'trivy' ? `Version: ${v}\n` : `${v}\n`, stderr: '' };
+            const line = tool === 'trivy' ? `Version: ${v}\n`
+              : tool === 'node' ? `v${v.replace(/^v/, '')}\n` : `${v}\n`;
+            return { status: 0, signal: null, stdout: line, stderr: '' };
           }
         }
         return { status: 0, signal: null, stdout: '', stderr: '' };
@@ -137,11 +143,31 @@ export default function createAdapter(env = process.env) {
 
     resolveImage(ref, platform) {
       if (Object.hasOwn(scenario.resolveImage ?? {}, ref)) return scenario.resolveImage[ref];
-      const hit = (trace.image_resolutions ?? []).find((r) => r.ref === ref);
-      if (hit === undefined) {
+      const idx = (trace.image_resolutions ?? []).findIndex((r) => r.ref === ref);
+      if (idx === -1) {
         return { ref, resolved: false, error: `no recorded resolution for ${ref} on ${platform}` };
       }
-      return hit.resolution;
+      // §A1: replay the AUTHENTIC raw index bytes, whose digest really is the one the
+      // configured reference pins, so the verifier derives the child for itself.
+      const file = (trace.oci_index_files ?? {})[String(idx)];
+      const bytes = file === undefined ? undefined : readStream(file);
+      return { ...trace.image_resolutions[idx].resolution, index_raw_bytes: bytes };
+    },
+
+    stageTool(_from, to) {
+      // A stand-in with the right NAME and location; its digest is supplied by
+      // authenticateTool, and no scanner is ever executed from it.
+      writeFileSync(to, 'hermetic replay: no scanner binary is executed\n');
+    },
+
+    authenticateTool(name, _resolvedPath) {
+      // §B2: the tracked pin for THIS host — the digest a genuinely authenticated binary has —
+      // so the suite needs no scanner installed and authentication still runs for real.
+      if (Object.hasOwn(scenario.authenticateTool ?? {}, name)) return scenario.authenticateTool[name];
+      const pins = JSON.parse(readFileSync(join(REPO_ROOT, 'scripts', 'gate', 'scanner-pins.json'), 'utf8'));
+      const art = pins.tools?.[name]?.artifacts?.[hostPlatformKey()];
+      if (art === undefined) return null;
+      return { sha256: art.executable_sha256, bytes: art.executable_bytes ?? null };
     },
 
     whichTool(name) {

@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import { assertFinalManifests } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR33Defective } from './fixtures/assert-final-manifests.r33-frozen.mjs';
+import { assertFinalManifests as assertR34Frozen } from './fixtures/assert-final-manifests.r34-frozen.mjs';
 import {
   loadSourceContract, expectedStepContract, normalizeArg, ownMap, hasOwnKey, canonical,
 } from '../../../../scripts/gate/lib/verification-contract.mjs';
@@ -112,7 +113,9 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
     expect([...c.conformanceRefs].sort()).toEqual([...c.imageRefs].sort());
     expect(c.targetIds).toEqual(['development', 'production']);
     expect(c.scannerNames).toEqual(['gitleaks', 'trivy']);
-    expect(c.expectedInventory.length).toBe((6 + c.imageRefs.length + 2) * 2 + 4);
+    // 6 normal + N image + 2 acquisition steps, two streams each; 4 governed reports; and
+    // C16-R3.4.1 §A1 adds one shipped raw OCI index per configured image.
+    expect(c.expectedInventory.length).toBe((6 + c.imageRefs.length + 2) * 2 + 4 + c.imageRefs.length);
   });
 
   it('controlled-key lookups are prototype-safe', () => {
@@ -613,5 +616,143 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
     built.scanRefs.forEach((ref, i) => {
       expect(canonical(steps[`trivy-image-${i}`].argv)).toContain(ref);
     });
+  });
+});
+
+/**
+ * C16-R3.4.1 §A — the four false passes independent review reproduced against R3.4.
+ *
+ * Each executes BOTH the corrected verifier and `fixtures/assert-final-manifests.r34-frozen.mjs`,
+ * a byte copy of the R3.4 verifier as delivered at e819b1e.
+ */
+describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifier', () => {
+  let root: string;
+  let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'eye-r341-'));
+    built = buildPassingR34Evidence(join(root, 'now'), REPO);
+    // The package R3.4 expected, so "frozen R3.4 accepted this mutation" is an unfiltered claim.
+    legacy = buildPassingR34Evidence(join(root, 'r34'), REPO, { shape: 'r34' });
+  });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  const check = () => assertFinalManifests({
+    c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+  }) as string[];
+  /**
+   * The frozen R3.4 verifier, with ONE class of complaint filtered out and named.
+   *
+   * R3.4's derived inventory predates §A1, so it does not know the raw OCI index bytes exist
+   * and reports each as an unexpected extra. That is not the false pass under test — it is
+   * R3.4 correctly enforcing its own, older, inventory. Every OTHER complaint is retained, so
+   * "R3.4 accepted this mutation" still means exactly that.
+   */
+  /** The frozen R3.4 verifier against the package R3.4 expected. No filtering. */
+  const frozen34 = () => {
+    try {
+      return assertR34Frozen({
+        c15Dir: legacy.c15Dir, c16Dir: legacy.c16Dir, expectedSha: legacy.expectedSha, root: REPO,
+      }) as string[];
+    } catch (e) { return [`THREW: ${e instanceof Error ? e.message.slice(0, 100) : e}`]; }
+  };
+  const editLegacyC15 = (fn: (m: Record<string, any>) => void) =>
+    editManifest(legacy.c15Dir, 'supply-chain-manifest.json', fn);
+  const editC15 = (fn: (m: Record<string, any>) => void) => {
+    editManifest(built.c15Dir, 'supply-chain-manifest.json', fn);
+    editLegacyC15(fn);   // the same mutation, applied to the R3.4-shaped package
+  };
+
+  /** Replace a raw output in both shapes, rebinding its receipt and artifact binding. */
+  const substitute = (rel: string, body: string) => {
+    for (const pkg of [built, legacy]) {
+      writeFileSync(join(pkg.c15Dir, rel), body);
+      const bytes = readFileSync(join(pkg.c15Dir, rel));
+      editManifest(pkg.c15Dir, 'supply-chain-manifest.json', (m) => {
+        const a = m.evidence_artifacts.find((x: any) => x.path === rel);
+        if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
+        const step = m.steps.find((x: any) => x.stdout_file === rel);
+        if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
+      });
+    }
+  };
+
+  const closes = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((p) => expected.test(p)),
+      `expected ${expected}, got:\n${problems.join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen34();
+    expect(stale, `frozen R3.4 must ACCEPT this, but reported:\n${stale.join('\n')}`).toEqual([]);
+  };
+
+  it('both shapes start clean: R3.4.1 accepts the current package, R3.4 accepts its own', () => {
+    expect(check()).toEqual([]);
+    expect(frozen34()).toEqual([]);
+  });
+
+  it('§A1 a substituted image child — digest, scan_ref and argv changed together — is rejected', () => {
+    // R3.4 read resolution.children, so a consistent substitution was self-proving. The child
+    // is now derived from the shipped index bytes, which still hash to the configured digest.
+    const fakeChild = `sha256:${'7'.repeat(64)}`;
+    editC15((m) => {
+      const r = m.image_platform_resolution[0];
+      const name = r.pinned_ref.slice(0, r.pinned_ref.indexOf('@'));
+      r.scan_ref = `${name}@${fakeChild}`;
+      r.resolution.target_digest = fakeChild;
+      r.resolution.children = [{
+        digest: fakeChild, media_type: 'application/vnd.oci.image.manifest.v1+json',
+        os: 'linux', architecture: 'amd64', variant: null, size: 2678, attestation: false,
+      }];
+      const step = m.steps.find((s: any) => s.id === 'trivy-image-0');
+      step.argv = step.argv.map((a: string) => (a.startsWith(`${name}@`) ? `${name}@${fakeChild}` : a));
+    });
+    closes(/scan_ref .* is not the linux\/amd64 child derived from the shipped index bytes/);
+  });
+
+  it.each([
+    ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /no 'metadata' object|no 'metadata\.vulnerabilities' counters/],
+    ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /no integer SchemaVersion|no ArtifactName/],
+  ])('§A2 %s is rejected', (_label, rel, body, expected) => {
+    substitute(rel as string, body as string);
+    closes(expected as RegExp);
+  });
+
+  it('§A2 an EMPTY blocking table receipt beside a populated JSON is rejected', () => {
+    substitute('trivy-fs.stdout.txt', '');
+    closes(/trivy-fs\.stdout\.txt is empty; the blocking filesystem scan produced no receipt/);
+  });
+
+  it('§A4 a DELETED tool_version is rejected on a normal receipt', () => {
+    editC15((m) => { delete m.steps.find((s: any) => s.id === 'trivy-fs').tool_version; });
+    closes(/records no tool_version; the version that ran is not optional/);
+  });
+
+  it('§A4 a DELETED tool_version is rejected on an acquisition receipt', () => {
+    editC15((m) => { delete m.trivy_cache_acquisition.steps[0].tool_version; });
+    closes(/acquisition step 'trivy-acquire-db' records no tool_version/);
+  });
+
+  it('§A4 a MISMATCHED tool_version is rejected — and R3.4 caught this one too', () => {
+    // HONEST NOTE: R3.4 compared the version whenever the field was PRESENT, so a wrong value
+    // was already refused. The false pass was the MISSING field, which R3.4 skipped entirely —
+    // covered by the two deletion controls above. This control records the retained behaviour.
+    editC15((m) => { m.steps.find((s: any) => s.id === 'trivy-fs').tool_version = '0.99.0'; });
+    const problems = check();
+    expect(problems.some((p) => /tool_version is "0\.99\.0", expected the pinned/.test(p))).toBe(true);
+    expect(frozen34().length, 'R3.4 was expected to reject a mismatched version as well').toBeGreaterThan(0);
+  });
+
+  it('§A1 a raw index whose bytes do not hash to the configured reference is rejected', () => {
+    // CORRECTED-ONLY by construction: R3.4 shipped no index bytes at all, so there is no
+    // R3.4-shaped package in which this mutation exists. The false pass R3.4 permitted is the
+    // substituted-child control above; this one guards the new artifact itself.
+    writeFileSync(join(built.c15Dir, 'oci-index-0.json'), '{"manifests":[]}');
+    const bytes = readFileSync(join(built.c15Dir, 'oci-index-0.json'));
+    editManifest(built.c15Dir, 'supply-chain-manifest.json', (m) => {
+      const a = m.evidence_artifacts.find((x: any) => x.path === 'oci-index-0.json');
+      a.bytes = bytes.length; a.sha256 = sha256(bytes);
+    });
+    expect(check().some((p) => /these are not the bytes the reference names/.test(p))).toBe(true);
   });
 });

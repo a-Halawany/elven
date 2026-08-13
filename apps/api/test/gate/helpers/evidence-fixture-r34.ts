@@ -28,6 +28,7 @@ import {
 } from '../../../../../scripts/gate/lib/verification-contract.mjs';
 import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
 import { loadScannerExclusions } from '../../../../../scripts/gate/lib/scanner-exclusions.mjs';
+import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candidate-source.mjs';
 
 export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
@@ -105,7 +106,19 @@ function derivationFor(repo: string, runDate: string) {
   return hit;
 }
 
-export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
+/**
+ * `shape: 'r341'` (default) builds a package for the CURRENT contract: relative scanner
+ * arguments, shipped raw OCI index bytes, a bound candidate-source manifest.
+ *
+ * `shape: 'r34'` builds the package R3.4 expected — absolute scan arguments, no index bytes, no
+ * candidate manifest. The §A mutation controls apply the same mutation to both, so
+ * "frozen R3.4 accepted this" is an unfiltered claim about the mutation rather than a claim
+ * filtered around R3.4 not knowing about the new artifacts.
+ */
+export function buildPassingR34Evidence(
+  root: string, repo: string, opts: { shape?: 'r34' | 'r341' } = {},
+): BuiltR34 {
+  const shape = opts.shape ?? 'r341';
   const c15 = join(root, 'c15');
   const c16 = join(root, 'c16');
   const cache = join(root, 'trivy-cache');
@@ -115,6 +128,7 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
 
   const runDate = '2026-08-13';
   const { contract, derived } = derivationFor(repo, runDate);
+  const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;
 
   // ── staged binaries: the paths the producer-out-dir derivation reads ────────────
@@ -135,17 +149,28 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
     .find((k) => contract.scannerNames.every((t: string) =>
       (contract.scanners[t].artifacts as Record<string, unknown>)[k] !== undefined))!;
 
+  // ── §A1: the AUTHENTIC raw OCI index bytes, copied from the recorded trace. Their digests
+  // really are the ones the configured references pin, so the verifier derives the scanned
+  // child from them exactly as it does on a real run.
+  const traceStreams = join(repo, 'apps/api/test/gate/fixtures/c15-trace/streams');
+
   // ── images and platform resolution, from Compose ────────────────────────────────
   const imageRefs: string[] = contract.imageRefs;
   const scanRefs = imageRefs.map((ref) => {
     const name = ref.slice(0, ref.indexOf('@'));
     return `${name}@${CHILD_DIGESTS[name]}`;
   });
+  if (shape === 'r341') {
+    imageRefs.forEach((_ref, i) => {
+      writeFileSync(join(c15, `oci-index-${i}.json`), readFileSync(join(traceStreams, `oci-index-${i}.json`)));
+    });
+  }
   const imagePlatformResolution = imageRefs.map((ref, i) => {
     const digest = ref.slice(ref.indexOf('@') + 1);
     const name = ref.slice(0, ref.indexOf('@'));
     return {
       pinned_ref: ref,
+      ...(shape === 'r341' ? { raw_index_file: `oci-index-${i}.json` } : {}),
       scan_ref: scanRefs[i],
       pinned_digest: digest,
       raw_index_digest: digest,
@@ -173,7 +198,10 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
   });
 
   // ── argv from the tracked contract, tokens expanded to this fixture ─────────────
-  const expand = (argv: string[]) => argv.map((a) => a
+  const expand = (argv: string[]) => argv.map((a) => (shape === 'r34'
+    ? (a === '.' ? repo : a === '.gitleaks.toml' ? `${repo}/.gitleaks.toml` : a)
+    : a))
+    .map((a) => a
     .replaceAll(ARGV_TOKENS.STAGED_GITLEAKS, stagedPath.gitleaks)
     .replaceAll(ARGV_TOKENS.STAGED_TRIVY, stagedPath.trivy)
     .replaceAll(ARGV_TOKENS.TRIVY_CACHE, cache)
@@ -188,12 +216,15 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
   const rawFor = new Map<string, string>();
   rawFor.set('pnpm-audit-human.stdout.txt', 'No known vulnerabilities found\n');
   rawFor.set('pnpm-audit-json.stdout.txt', `${JSON.stringify({
-    advisories: {}, metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 } },
+    advisories: {},
+    metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 } },
   })}\n`);
   rawFor.set('gitleaks-worktree.stdout.txt', '');
   rawFor.set('gitleaks-history.stdout.txt', '');
   rawFor.set('trivy-fs.stdout.txt', 'no blocking results\n');
-  rawFor.set('trivy-fs-json.stdout.txt', `${JSON.stringify({ SchemaVersion: 2, Results: [] })}\n`);
+  rawFor.set('trivy-fs-json.stdout.txt', `${JSON.stringify({
+    SchemaVersion: 2, ArtifactName: repo, ArtifactType: 'filesystem', Results: [],
+  })}\n`);
   imageRefs.forEach((ref, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
     rawFor.set(`${imageStepIds[i]}.stdout.txt`,
@@ -221,9 +252,9 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
       stdout_file: stdoutName, stdout_bytes: so.length, stdout_sha256: sha256(so),
       stderr_file: stderrName, stderr_bytes: se.length, stderr_sha256: sha256(se),
     };
+    base.tool_version = contract.toolVersions[want.tool];
     if (isNormal) {
       base.tool = want.tool;
-      base.tool_version = contract.toolVersions[want.tool];
       base.policy = want.policy;
       base.coverage = want.coverage ?? null;
       base.failed = false;
@@ -298,6 +329,7 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
   });
   const c15Names = [
     'RESULT-PASS.txt', 'gitleaks-worktree.json', 'gitleaks-history.json', 'image-findings.json',
+    ...(shape === 'r341' ? imageRefs.map((_r, i) => `oci-index-${i}.json`) : []),
     ...[...steps, ...acquisitionSteps].flatMap((s) => [s.stdout_file as string, s.stderr_file as string]),
   ];
 
@@ -324,6 +356,11 @@ export function buildPassingR34Evidence(root: string, repo: string): BuiltR34 {
     digest_pinned_images: [...imageRefs],
     image_platform_resolution: imagePlatformResolution,
     trivy_cache_dir: cache,
+    // §A3: the real candidate manifest for this checkout, so the verifier's recomputation
+    // matches for the same reason it does on a real run.
+    ...(shape === 'r341'
+      ? { candidate_source: { ...candidateManifest, expected_sha: expectedSha }, candidate_source_after: candidateManifest }
+      : {}),
     tree_clean_at_run: true, tree_clean_after_scanning: true, worktree_unchanged_by_scanning: true,
     trivy_cache_unchanged: true,
     trivy_cache_fingerprint_before: fingerprint(),

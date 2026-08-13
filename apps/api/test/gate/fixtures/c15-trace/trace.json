@@ -8,7 +8,7 @@
   "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241"
  ],
  "acquisition": {
-  "cacheDir": "/private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/41f9bd54-615a-4c55-b883-1f9e0c92601d/scratchpad/probe15c/cache",
+  "cacheDir": "/private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/41f9bd54-615a-4c55-b883-1f9e0c92601d/scratchpad/nb/cache",
   "steps": [
    {
     "label": "acquire vulnerability database",
@@ -38,7 +38,9 @@
      "2026-08-13T14:58:01+03:00\tINFO\t[vulndb] Downloading vulnerability DB...",
      "2026-08-13T14:58:01+03:00\tINFO\t[vulndb] Downloading artifact...\trepo=\"mirror.gcr.io/aquasec/trivy-db:2\"",
      "2026-08-13T14:58:53+03:00\tINFO\t[vulndb] Artifact successfully downloaded\trepo=\"mirror.gcr.io/aquasec/trivy-db:2\""
-    ]
+    ],
+    "tool": "trivy",
+    "tool_version": "0.73.0"
    },
    {
     "label": "acquire misconfiguration checks bundle",
@@ -72,7 +74,9 @@
      "2026-08-13T14:58:54+03:00\tINFO\t[checks-client] Downloading the checks bundle...",
      "223.25 KiB / 234.65 KiB [-------------------------------------------------------->__] 95.14% ? p/s ?234.65 KiB / 234.65 KiB [-----------------------------------------------] 100.00% 1.73 MiB p/s 300ms2026-08-13T14:58:55+03:00\tINFO\tNumber of language-specific files\tnum=0",
      "2026-08-13T14:58:55+03:00\tINFO\tDetected config files\tnum=0"
-    ]
+    ],
+    "tool": "trivy",
+    "tool_version": "0.73.0"
    }
   ],
   "problems": [],
@@ -3764,5 +3768,9 @@
     "sha256": "2a4c1dbe5f9133faa4c86beec8936069d88e0766612c0b467f4a37a5b44979b6"
    }
   ]
+ },
+ "oci_index_files": {
+  "0": "streams/oci-index-0.json",
+  "1": "streams/oci-index-1.json"
  }
 }

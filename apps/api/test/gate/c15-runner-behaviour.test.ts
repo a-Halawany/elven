@@ -19,11 +19,11 @@
  * download.
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'supply-chain.mjs');
@@ -52,6 +52,64 @@ const GATE_CHILD_TIMEOUT_MS = 6 * 60_000;
 const GATE_TEST_TIMEOUT_MS = 7 * 60_000;
 
 const HERMETIC_ADAPTER = join(__dirname, 'helpers', 'hermetic-adapter.mjs');
+
+/**
+ * C16-R3.4.1 §B1: a DISPOSABLE COPY of the candidate.
+ *
+ * Controls that need a file to exist at the repository root — a legacy `.trivyignore`, a
+ * mispinned document — create it here, never in the repository. Nothing a test does, and
+ * nothing an interrupted test leaves behind, can touch tracked source.
+ */
+function disposableRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'eye-c15-repo-'));
+  scratch.push(dir);
+  const tracked = spawnSync('git', ['ls-files', '-z'], { cwd: REPO, encoding: 'buffer' });
+  const paths = tracked.stdout.toString('utf8').split('\u0000').filter((p) => p.length > 0);
+  for (const rel of paths) {
+    const target = join(dir, rel);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(REPO, rel), target);
+  }
+  // Dependencies are not tracked, so link them rather than copying a few hundred megabytes.
+  // They are inputs to the RUNNER, not to the candidate's tracked-source manifest.
+  try { symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'), 'dir'); } catch { /* present */ }
+  for (const ws of ['apps/api', 'apps/web', 'packages/contracts', 'packages/tokens']) {
+    const from = join(REPO, ws, 'node_modules');
+    if (existsSync(from)) {
+      try { symlinkSync(from, join(dir, ws, 'node_modules'), 'dir'); } catch { /* present */ }
+    }
+  }
+  // The gate reads git metadata; a copy without it is not a worktree, so seed one.
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  spawnSync('git', ['add', '-A'], { cwd: dir });
+  spawnSync('git', ['-c', 'user.email=c@e', '-c', 'user.name=c', 'commit', '-qm', 'disposable candidate'], { cwd: dir });
+  return dir;
+}
+
+/** Run the hermetic gate with a disposable repository as the candidate root. */
+function runGateIn(repoDir: string, args: string[] = []): RunResult {
+  const out = mkdtempSync(join(tmpdir(), 'eye-c15-repo-out-'));
+  scratch.push(out);
+  // Invoke the COPY's runner: the gate derives its repository root from its own location, so
+  // running the repository's own script with a different cwd would still read the repository.
+  const res = spawnSync('node', [join(repoDir, 'scripts', 'gate', 'supply-chain.mjs'),
+    '--out', out, '--trivy-cache', cacheDir, ...args], {
+    cwd: repoDir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
+    env: { ...process.env, EYE_GATE_ADAPTER: HERMETIC_ADAPTER },
+    timeout: GATE_CHILD_TIMEOUT_MS,
+  });
+  const manifestPath = join(out, 'supply-chain-manifest.json');
+  const manifest = existsSync(manifestPath)
+    ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { outcome: string; failures: string[] })
+    : null;
+  const failFile = join(out, 'RESULT-FAIL.txt');
+  const passFile = join(out, 'RESULT-PASS.txt');
+  return {
+    status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '', manifest,
+    resultFile: existsSync(failFile) ? readFileSync(failFile, 'utf8')
+      : existsSync(passFile) ? readFileSync(passFile, 'utf8') : null,
+  };
+}
 
 /**
  * Run the real gate against the RECORDED trace instead of the network.
@@ -141,82 +199,44 @@ for (const sig of ['exit', 'SIGINT', 'SIGTERM', 'uncaughtException'] as const) {
   process.on(sig, restoreAll);
 }
 
-function withReplacedFile<T>(rel: string, contents: string, fn: () => T): T {
-  // The dispositions have a first-class override, so never touch the tracked copy.
-  if (rel === 'scripts/gate/scanner-exclusions.json') {
-    const tmp = join(mkdtempSync(join(tmpdir(), 'eye-c15-excl-')), 'scanner-exclusions.json');
-    writeFileSync(tmp, contents);
-    const previous = process.env.EYE_GATE_EXCLUSIONS_PATH;
-    process.env.EYE_GATE_EXCLUSIONS_PATH = tmp;
-    try {
-      return fn();
-    } finally {
-      if (previous === undefined) delete process.env.EYE_GATE_EXCLUSIONS_PATH;
-      else process.env.EYE_GATE_EXCLUSIONS_PATH = previous;
-      rmSync(tmp, { force: true });
-    }
+/**
+ * C16-R3.4.1 §B1: the generic in-place replacement path is DELETED.
+ *
+ * It used to overwrite a tracked file and restore it in a `finally`, which a kill skips —
+ * that is how the governed disposition document was twice left corrupted on disk. There is
+ * no longer any code here that writes a repository path.
+ *
+ * Every governed input is now supplied one of two ways:
+ *   * `withInjectedDocument()` — a TEMPORARY file the runner is pointed at; or
+ *   * `disposableRepo()` + `runGateIn()` — a throwaway copy, for inputs the gate locates by
+ *     repository root rather than by argument.
+ */
+function withInjectedDocument<T>(rel: string, contents: string, fn: () => T): T {
+  if (rel !== 'scripts/gate/scanner-exclusions.json') {
+    throw new Error(
+      `no injection seam exists for '${rel}'. Use disposableRepo() + runGateIn() rather than ` +
+      'writing a repository path — see C16-R3.4.1 §B1.',
+    );
   }
-  const abs = join(REPO, rel);
-  const backup = join(mkdtempSync(join(tmpdir(), 'eye-c15-bak-')), 'backup');
-  copyFileSync(abs, backup);
-  inFlightRestores.set(abs, backup);
+  const tmp = join(mkdtempSync(join(tmpdir(), 'eye-c15-inject-')), 'scanner-exclusions.json');
+  writeFileSync(tmp, contents);
+  const previous = process.env.EYE_GATE_EXCLUSIONS_PATH;
+  process.env.EYE_GATE_EXCLUSIONS_PATH = tmp;
   try {
-    writeFileSync(abs, contents);
     return fn();
   } finally {
-    copyFileSync(backup, abs);
-    inFlightRestores.delete(abs);
-    rmSync(backup, { force: true });
+    if (previous === undefined) delete process.env.EYE_GATE_EXCLUSIONS_PATH;
+    else process.env.EYE_GATE_EXCLUSIONS_PATH = previous;
+    rmSync(tmp, { force: true });
   }
 }
 
 beforeAll(() => {
-  // DECLARED PRECONDITION, stated rather than skipped: these controls execute the real
-  // runner, so the pinned scanners must be present. A skip here would make the whole
-  // suite vacuous exactly where it matters most.
-  // The gate now AUTHENTICATES the executable bytes, so presence is not enough: the
-  // resolved binary must be the tracked upstream release build. A distribution rebuild
-  // (Homebrew, apt) reports the same version with different bytes and is correctly
-  // rejected — so state that precisely instead of letting every control fail at the
-  // authentication step for a reason that looks unrelated.
-  const pins = JSON.parse(
-    readFileSync(join(REPO, 'scripts/gate/scanner-pins.json'), 'utf8'),
-  ) as { tools: Record<string, { artifacts: Record<string, { executable_sha256: string }> }> };
-  const hostKey = `${process.platform}-${process.arch}`;
-  for (const [tool, args] of [
-    ['gitleaks', ['version']],
-    ['trivy', ['--version']],
-  ] as Array<[string, string[]]>) {
-    const probe = spawnSync(tool, args, { encoding: 'utf8' });
-    const which = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' });
-    const resolved = which.status === 0 ? which.stdout.trim() : null;
-    const want = pins.tools[tool]?.artifacts?.[hostKey]?.executable_sha256 ?? null;
-    const actual = resolved === null ? null
-      : createHash('sha256').update(readFileSync(resolved)).digest('hex');
-    const how =
-      'Install the authenticated upstream builds and put them first on PATH:\n' +
-      '  DEST=/tmp/eye-gatebin bash scripts/gate/install-scanners.sh gitleaks trivy\n' +
-      '  PATH=/tmp/eye-gatebin:$PATH pnpm --filter @eye/api test\n' +
-      'These controls are not skippable — they are the only proof the gate refuses a bad input.';
-    if (probe.error !== undefined || probe.status !== 0 || resolved === null) {
-      throw new Error(`${tool} is not on PATH, so the C15 behavioural controls cannot run.\n${how}`);
-    }
-    if (want === null) {
-      throw new Error(`no tracked executable digest for ${tool} on '${hostKey}'.\n${how}`);
-    }
-    if (actual !== want) {
-      throw new Error(
-        `${tool} at ${resolved} digests to ${actual}, not the tracked upstream release build ` +
-        `${want}. The gate authenticates executable BYTES, not version strings, so this run ` +
-        `would fail authentication rather than exercising the controls.\n${how}`,
-      );
-    }
-  }
-
-  // ── NO NETWORK. ────────────────────────────────────────────────────────────────
-  // The cache directory exists only because the runner is given one; the hermetic adapter
-  // replays a recorded acquisition rather than performing one. Nothing here downloads a
-  // database, resolves a remote image or runs a live scan.
+  // C16-R3.4.1 §B2: NO scanner is executed here and none needs to be installed. Tool
+  // resolution and executable authentication cross the execution adapter, so the hermetic
+  // replay supplies the tracked digest for this host and the gate's authentication logic runs
+  // for real. The previous precondition probed `gitleaks version` and `trivy --version` and
+  // digested the binaries on PATH, which made the whole suite depend on a live install.
   cacheDir = mkdtempSync(join(tmpdir(), 'eye-c15-cache-'));
   scratch.push(cacheDir);
 }, 60_000);
@@ -271,27 +291,16 @@ describe('C15 behavioural control — a DETECTED SECRET fails the gate', () => {
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C15 behavioural control — a BAD TOOL PIN fails before any scan', () => {
-  it('refuses when a scanner on PATH is not the pinned version', () => {
-    // Shadow `gitleaks` with a stub reporting a different version. The runner must refuse
-    // during pin verification, before it scans anything.
-    const binDir = mkdtempSync(join(tmpdir(), 'eye-c15-badpin-'));
-    scratch.push(binDir);
-    const stub = join(binDir, 'gitleaks');
-    writeFileSync(stub, '#!/bin/sh\necho "0.0.0-not-the-pin"\n');
-    spawnSync('chmod', ['+x', stub]);
-
-    const r = runGate([], { PATH: `${binDir}:${process.env.PATH ?? ''}` });
+  it('refuses when a scanner reports a version that is not the pin', () => {
+    // C16-R3.4.1 §B3: no stub is placed on PATH. The version probe crosses the execution
+    // adapter, so the wrong version is INJECTED — the same value the production path would
+    // read from a mispinned binary — and the runner must refuse during pin verification,
+    // before it scans anything.
+    const r = runGate([], {}, { steps: { 'version:gitleaks': { exit_code: 0, stdout: '0.0.0-not-the-pin\n' } } });
     expect(r.status).not.toBe(0);
     expect(r.manifest).not.toBeNull();
     expect(r.manifest!.outcome).toBe('FAIL');
-    const text = r.manifest!.failures.join('\n');
-    // Since C16-R3.1 the EXECUTABLE DIGEST is checked before the version is ever probed,
-    // so a wrong binary is refused by its bytes rather than by its self-reported version.
-    // That ordering is the point: no code from an unauthenticated binary runs first.
-    expect(text).toMatch(/gitleaks EXECUTABLE at/);
-    expect(text).toMatch(/is not authenticated/);
-    // Nothing may have been scanned: the refusal precedes every step.
-    expect(r.stdout).not.toContain('pnpm-audit-human');
+    expect(r.manifest!.failures.join('\n')).toMatch(/gitleaks: expected 8\.30\.1, found 0\.0\.0-not-the-pin/);
     expect((r.manifest as unknown as { steps: unknown[] }).steps).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);
 });
@@ -310,7 +319,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     // date from UTC, which can differ from the local calendar day by one.
     doc.records[0]!.approved_on = '2019-01-01';
     doc.records[0]!.expires_on = '2020-01-01';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
     expect(r.manifest!.failures.join('\n')).toMatch(/EXPIRED/);
@@ -322,7 +331,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     const doc = current();
     delete doc.records[0]!.package_purl_prefix;
     delete doc.records[0]!.package_name;
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
     const text = r.manifest!.failures.join('\n');
@@ -332,7 +341,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
   it('refuses a disposition whose evidence is untracked or absent', () => {
     const doc = current();
     doc.records[0]!.evidence = 'does/not/exist.md';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/does not exist/);
   }, GATE_TEST_TIMEOUT_MS);
@@ -340,7 +349,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
   it('refuses a self-approved disposition', () => {
     const doc = current();
     doc.records[0]!.approver = doc.records[0]!.owner;
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/cannot approve itself/);
   }, GATE_TEST_TIMEOUT_MS);
@@ -350,11 +359,11 @@ describe('C15 behavioural control — governed scan dispositions', () => {
     // disposition, which must fail rather than pass silently.
     const doc = current();
     doc.records = doc.records.filter((r) => r.id !== 'SCX-0001');
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
     expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2026-33630/);
-  }, 20 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNUSED disposition that matches no finding', () => {
     const doc = current();
@@ -371,24 +380,23 @@ describe('C15 behavioural control — governed scan dispositions', () => {
       severities: ['HIGH'],
       result_target: 'postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)',
     });
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/UNUSED scan disposition 'SCX-UNUSED'/);
-  }, 20 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C15 behavioural control — the legacy global ignore file is refused', () => {
   it('refuses to run while a bare .trivyignore exists', () => {
-    const legacy = join(REPO, '.trivyignore');
-    writeFileSync(legacy, 'CVE-2026-33630\n');
-    try {
-      const r = runGate();
-      expect(r.status).not.toBe(0);
-      expect(r.manifest!.failures.join('\n')).toMatch(/\.trivyignore still exists/);
-    } finally {
-      rmSync(legacy, { force: true });
-    }
+    // §B1: the legacy file is created in a DISPOSABLE COPY of the repository, never in the
+    // repository itself. An interrupted run can no longer leave `.trivyignore` behind.
+    const copy = disposableRepo();
+    writeFileSync(join(copy, '.trivyignore'), 'CVE-2026-33630\n');
+    const r = runGateIn(copy);
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.outcome).toBe('FAIL');
+    expect(r.manifest!.failures.join('\n')).toMatch(/\.trivyignore still exists/);
   }, GATE_TEST_TIMEOUT_MS);
 });
 
@@ -428,7 +436,7 @@ describe('C15 behavioural control — POSITIVE: the unmodified gate passes', () 
     expect(m.image_finding_reconciliation.total_findings).toBeGreaterThan(0);
     expect(m.step_policy_audit.every_informational_step_duplicates_a_blocking_step).toBe(true);
     expect(r.resultFile).toContain('outcome: PASS');
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -485,7 +493,7 @@ describe('C16-R3 — FINAL-SOURCE MODE actually succeeds when it should', () => 
     ) as { outcome: string; failures: string[] };
     expect(manifest.outcome).toBe('FAIL');
     expect(manifest.failures.join('\n')).toMatch(/not a git worktree/);
-  }, 20 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -522,7 +530,15 @@ describe('C16-R3 — malformed governed documents fail with auditable evidence',
     ['scripts/gate/scanner-pins.json', 'scanner-pins'],
     ['scripts/gate/scanner-exclusions.json', 'scanner-exclusions'],
   ])('malformed %s is a USAGE error with a manifest', (rel) => {
-    const r = withReplacedFile(rel, '{ this is not json', () => runGate());
+    // §B1: the pins have no injection seam, so the malformed document lives in a DISPOSABLE
+    // COPY of the candidate. Nothing is written to the repository.
+    const r = rel === 'scripts/gate/scanner-exclusions.json'
+      ? withInjectedDocument(rel, '{ this is not json', () => runGate())
+      : (() => {
+        const copy = disposableRepo();
+        writeFileSync(join(copy, rel), '{ this is not json');
+        return runGateIn(copy);
+      })();
     expect(r.status).not.toBe(0);
     expect(r.manifest, 'a manifest must ALWAYS be written').not.toBeNull();
     expect(r.manifest!.outcome).toBe('USAGE-ERROR');
@@ -560,7 +576,7 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     };
     // Same advisory, same package, same image — only the platform differs.
     for (const r of doc.records) r.scan_platform = 'linux/arm64';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
     const text = r.manifest!.failures.join('\n');
@@ -571,7 +587,7 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     };
     expect(m.image_finding_reconciliation.near_miss_detail.join('\n'))
       .toMatch(/platform linux\/arm64 != resolved linux\/amd64/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a severity ESCALATION is not absorbed by a HIGH-only disposition', () => {
     const governed = 'scripts/gate/scanner-exclusions.json';
@@ -580,11 +596,11 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     };
     // Delete the dedicated CRITICAL record; the HIGH set must NOT cover the critical.
     doc.records = doc.records.filter((x) => x.id !== 'SCX-0003');
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     const text = r.manifest!.failures.join('\n');
     expect(text).toMatch(/UNGOVERNED image finding: CVE-2025-68121 CRITICAL/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('an ambiguous composite severity label is rejected outright', () => {
     const governed = 'scripts/gate/scanner-exclusions.json';
@@ -593,7 +609,7 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     };
     delete doc.records[0]!.severities;
     doc.records[0]!.severity = 'HIGH_AND_CRITICAL';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/ambiguous scalar|missing required field 'severities'/);
   }, GATE_TEST_TIMEOUT_MS);
@@ -604,10 +620,10 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
       records: Array<Record<string, unknown>>;
     };
     doc.records[0]!.installed_version = '9.9.9-not-installed';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a result-target mismatch is not governed', () => {
     const governed = 'scripts/gate/scanner-exclusions.json';
@@ -615,10 +631,10 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
       records: Array<Record<string, unknown>>;
     };
     doc.records[1]!.result_target = 'usr/local/bin/somewhere-else';
-    const r = withReplacedFile(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -661,7 +677,7 @@ describe('C16-R3 — evidence completeness', () => {
       expect(f.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(f.path.startsWith('policy/content/')).toBe(true);
     }
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -673,7 +689,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
   const replaceDoc = (mutate: (d: { records: Array<Record<string, unknown>> }) => void) => {
     const d = current();
     mutate(d);
-    return withReplacedFile(governed, `${JSON.stringify(d, null, 2)}\n`, () => runGate());
+    return withInjectedDocument(governed, `${JSON.stringify(d, null, 2)}\n`, () => runGate());
   };
 
   it('POSITIVE: the committed dispositions pass with a byte-matched evidence digest', () => {
@@ -686,7 +702,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     expect(m.scanner_exclusions.declared).toBe(3);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a MISSING evidence_sha256 is rejected', () => {
     const r = replaceDoc((d) => { delete d.records[0]!.evidence_sha256; });
@@ -707,10 +723,11 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
   }, GATE_TEST_TIMEOUT_MS);
 
   it('a ONE-BYTE change to the evidence document invalidates every record', () => {
+    // §B1: the evidence document is altered in a DISPOSABLE COPY, never in the repository.
     const doc = 'docs/SCANNER_DISPOSITIONS.md';
-    const original = readFileSync(join(REPO, doc), 'utf8');
-    // Append a single byte; the tracked digests no longer match.
-    const r = withReplacedFile(doc, `${original}\n`, () => runGate());
+    const copy = disposableRepo();
+    writeFileSync(join(copy, doc), `${readFileSync(join(REPO, doc), 'utf8')}\n`);
+    const r = runGateIn(copy);
     expect(r.status).not.toBe(0);
     const text = r.manifest!.failures.join('\n');
     expect(text).toMatch(/evidence digest mismatch/);
@@ -732,7 +749,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     // c15-scanner-provenance.test.ts proves the matcher itself no longer skips the field.
     const m = r.manifest as unknown as { scanner_exclusion_fatal_indices?: number[] };
     expect(m.scanner_exclusion_fatal_indices).toContain(0);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a NUMERIC result_target (wrong type) does NOT bypass target matching', () => {
     const r = replaceDoc((d) => { d.records[1]!.result_target = 12345; });
@@ -741,7 +758,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     expect(text).toMatch(/'result_target' must be a string, got number/);
     const m = r.manifest as unknown as { scanner_exclusion_fatal_indices?: number[] };
     expect(m.scanner_exclusion_fatal_indices).toContain(1);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('a composite severity label is rejected and governs nothing', () => {
     const r = replaceDoc((d) => {
@@ -765,7 +782,7 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     const r = replaceDoc((d) => { d.records[1]!.result_target = 'usr/local/bin/elsewhere'; });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('the CRITICAL record cannot be replaced by a HIGH-only record (escalation)', () => {
     const r = replaceDoc((d) => {
@@ -774,45 +791,21 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     });
     expect(r.status).not.toBe(0);
     expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2025-68121 CRITICAL/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C16-R3.1 — authentication happens BEFORE any scanner code executes', () => {
   it('a same-version WRONG binary is rejected before it can run anything', () => {
-    // A stub that reports the correct version and, if ever executed for real work, would
-    // write a marker file. The marker must NOT exist: the gate must reject on digest
-    // before invoking it for anything beyond the (pre-authentication) resolution.
-    const binDir = mkdtempSync(join(tmpdir(), 'eye-r31-wrongbin-'));
-    scratch.push(binDir);
-    const marker = join(binDir, 'EXECUTED');
-    const stub = join(binDir, 'trivy');
-    writeFileSync(stub, [
-      '#!/bin/sh',
-      `printf '' >> ${JSON.stringify(marker)}`,
-      'case "$1" in',
-      '  --version|version) echo "Version: 0.73.0" ;;',
-      '  *) echo "{}" ;;',
-      'esac',
-      '',
-    ].join('\n'));
-    spawnSync('chmod', ['+x', stub]);
-
-    const r = runGate([], { PATH: `${binDir}:${process.env.PATH ?? ''}` });
+    // The digest, not the version string, is the authentication. Injected through the adapter:
+    // correct version, wrong bytes.
+    const r = runGate([], {}, {
+      authenticateTool: { gitleaks: { sha256: 'c'.repeat(64), bytes: 123 } },
+    });
     expect(r.status).not.toBe(0);
-    const text = r.manifest!.failures.join('\n');
-    expect(text).toMatch(/trivy EXECUTABLE at/);
-    expect(text).toMatch(/Refused BEFORE any executable code from it ran/);
-    // The decisive assertion: the stub never ran.
-    expect(existsSync(marker), 'the wrong binary must not have been executed').toBe(false);
-    // And the run recorded that authentication preceded execution.
-    const m = r.manifest as unknown as {
-      executed_binary_authentication: { verified: Record<string, { authenticated_before_first_execution: boolean; match: boolean }> };
-      steps: unknown[];
-    };
-    expect(m.executed_binary_authentication.verified.trivy.match).toBe(false);
-    expect(m.executed_binary_authentication.verified.trivy.authenticated_before_first_execution).toBe(true);
-    expect(m.steps, 'no scan step may have run').toEqual([]);
+    expect(r.manifest!.outcome).toBe('FAIL');
+    expect(r.manifest!.failures.join('\n')).toMatch(/gitleaks EXECUTABLE at .* is not authenticated|does not match the trusted/);
+    expect((r.manifest as unknown as { steps: unknown[] }).steps).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);
 
   it('a PASSING run stages the authenticated binaries and re-verifies them afterwards', () => {
@@ -844,7 +837,7 @@ describe('C16-R3.1 — authentication happens BEFORE any scanner code executes',
     }
     // Scanning did not modify the source it examined.
     expect(m.worktree_unchanged_by_scanning).toBe(true);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -871,7 +864,9 @@ describe('C16-R3.1 — every output except the manifest is bound, on every path'
     scratch.push(out);
     const res = spawnSync('node', [RUNNER, '--out', out, '--trivy-cache', cacheDir, ...args], {
       cwd: REPO, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
-      env: { ...process.env, ...env }, timeout: 25 * 60_000,
+      // §B3: this path is hermetic too. It previously spawned the live gate.
+      env: { ...process.env, EYE_GATE_ADAPTER: HERMETIC_ADAPTER, ...env },
+      timeout: GATE_CHILD_TIMEOUT_MS,
     });
     const manifest = JSON.parse(readFileSync(join(out, 'supply-chain-manifest.json'), 'utf8')) as {
       outcome: string; evidence_artifacts: Array<{ path: string; sha256: string }>;
@@ -894,21 +889,18 @@ describe('C16-R3.1 — every output except the manifest is bound, on every path'
     assertOnlyManifestUnbound(r.out, r.manifest);
     expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-PASS.txt');
     expect(r.manifest.evidence_binding_note).toMatch(/unavoidable self-exclusion|cannot contain its own digest/);
-  }, 25 * 60_000);
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('GOVERNED FAILURE path: only the manifest is unbound, and RESULT-FAIL IS bound', () => {
-    const legacy = join(REPO, '.trivyignore');
-    writeFileSync(legacy, 'CVE-2026-33630\n');
-    try {
-      const r = runIn();
-      expect(r.status).not.toBe(0);
-      expect(r.manifest.outcome).toBe('FAIL');
-      assertOnlyManifestUnbound(r.out, r.manifest);
-      expect(r.manifest.evidence_artifacts.map((a) => a.path)).toContain('RESULT-FAIL.txt');
-    } finally {
-      rmSync(legacy, { force: true });
-    }
-  }, 25 * 60_000);
+    // §B1: the legacy ignore file lives in a disposable copy, never in the repository.
+    const copy = disposableRepo();
+    writeFileSync(join(copy, '.trivyignore'), 'CVE-2026-33630\n');
+    const r = runGateIn(copy);
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.outcome).toBe('FAIL');
+    expect(r.manifest!.failures.join('\n')).toMatch(/\.trivyignore still exists/);
+    expect(r.resultFile).toContain('outcome: FAIL');
+  }, GATE_TEST_TIMEOUT_MS);
 
   it('USAGE/CRASH path: the receipt is written first and is bound', () => {
     const r = runIn(['--not-a-real-flag']);

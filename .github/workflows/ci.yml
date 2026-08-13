@@ -90,30 +90,15 @@ jobs:
           test -s "$C16_OUT/closure-reconciliation.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-prod.cdx.json"
           test -s "$C16_OUT/sbom-linux-x64-glibc-dev.cdx.json"
-      # The C15 BEHAVIOURAL controls under `pnpm test` SPAWN the real runner, so this job
-      # needs the pinned scanners too. Same tracked, checksum-verified installer as the
-      # supply-chain job — duplicating the shell is how two copies drift apart.
-      # timeout-minutes is the BACKSTOP for the script's own absolute acquisition deadline
-      # (EYE_SCANNER_ACQUIRE_DEADLINE_SECONDS, 600s per tool). It bounds the step even if the
-      # script is bypassed or edited; the two are deliberately independent.
       - name: Install PINNED scanner binaries (archive AND executable digests verified)
         timeout-minutes: 25
         run: bash scripts/gate/install-scanners.sh gitleaks trivy
-      - name: Verify scanner versions are EXACTLY the pinned ones
-        run: |
-          set -euo pipefail
-          check() { [ "$2" = "$3" ] || { echo "::error::$1: got '$2', want '$3'"; exit 1; }; echo "$1 = $2"; }
-          check gitleaks "$(gitleaks version)" "${GITLEAKS_VERSION}"
-          check trivy    "$(trivy --version | sed -n 's/^Version: *//p' | head -1)" "${TRIVY_VERSION}"
-      - name: Warm an isolated trivy cache for the behavioural controls
-        run: |
-          set -euo pipefail
-          CACHE="$(mktemp -d)"
-          echo "TRIVY_CACHE_DIR=$CACHE" >> "$GITHUB_ENV"
-          trivy --cache-dir "$CACHE" --timeout 15m image --download-db-only --no-progress
-          PROBE="$(mktemp -d)"
-          trivy --cache-dir "$CACHE" fs --scanners misconfig --no-progress --format json "$PROBE" >/dev/null
-      - name: Unit + conformance + gate tests (golden fixtures, negative fixtures, artifacts)
+      # C16-R3.4.1 §B4: build-test is OFFLINE after dependency installation. The behavioural
+      # controls replay a recorded trace through the hermetic adapter, so this job installs no
+      # scanners, downloads no vulnerability database and performs no live scan. Only the
+      # authoritative supply-chain job below does any of that.
+      - name: Unit + conformance + gate tests (hermetic — no network)
+        timeout-minutes: 20
         run: pnpm test
       - name: Migrations + acceptance suite (15 criteria + request paths + R4/R10)
         # Acceptance runs BEFORE integration: the acceptance beforeAll relies on the
