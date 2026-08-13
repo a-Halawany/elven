@@ -452,12 +452,63 @@ function deriveProducerOutDir(c15) {
   return { outDir: [...candidates][0], problems };
 }
 
-function argvPathsFor({ c15, root, producerOutDir }) {
+/**
+ * The PRODUCER's repository root, derived by shape from the gitleaks `--source` argument.
+ *
+ * It cannot be the verifier's own root. A package produced on a hosted runner records
+ * `/home/runner/work/elven/elven`; a reviewer verifying it from their own checkout has a
+ * different path, and every argv comparison failed — the exact reviewer scenario this whole
+ * verifier exists to serve. Caught by running the corrected verifier against the delivered ZIP.
+ *
+ * It is derived, not trusted: the value must be absolute, every step that names the repository
+ * must name the SAME directory, and the gitleaks config must be exactly `<root>/.gitleaks.toml`.
+ * A step cannot therefore relabel some other directory as "the repo" without disagreeing with
+ * its siblings.
+ */
+function deriveProducerRepoRoot(c15) {
+  const problems = [];
+  const steps = Array.isArray(c15.steps) ? c15.steps : [];
+  const candidates = new Set();
+  for (const step of steps) {
+    const argv = Array.isArray(step?.argv) ? step.argv : [];
+    const i = argv.indexOf('--source');
+    if (i !== -1 && typeof argv[i + 1] === 'string') candidates.add(argv[i + 1]);
+    // The trivy filesystem scans take the repository as their final positional argument.
+    if (step?.id === 'trivy-fs' || step?.id === 'trivy-fs-json') {
+      const last = argv[argv.length - 1];
+      if (typeof last === 'string' && isAbsolute(last)) candidates.add(last);
+    }
+  }
+  if (candidates.size === 0) {
+    problems.push('C15 records no scanned repository root, so the argv contract cannot be checked');
+    return { repoRoot: null, problems };
+  }
+  if (candidates.size > 1) {
+    problems.push(`C15 steps disagree about the scanned repository root: ${[...candidates].join(', ')}`);
+    return { repoRoot: null, problems };
+  }
+  const repoRoot = [...candidates][0];
+  if (!isAbsolute(repoRoot)) {
+    problems.push(`C15 scanned repository root ${JSON.stringify(repoRoot)} is not an absolute path`);
+    return { repoRoot: null, problems };
+  }
+  for (const step of steps) {
+    const argv = Array.isArray(step?.argv) ? step.argv : [];
+    const c = argv.indexOf('--config');
+    if (c !== -1 && argv[c + 1] !== `${repoRoot}/.gitleaks.toml`) {
+      problems.push(
+        `C15 step '${step.id}' used config ${JSON.stringify(argv[c + 1])}, not the scanned repository's ` +
+        `${repoRoot}/.gitleaks.toml`,
+      );
+    }
+  }
+  return { repoRoot, problems };
+}
+
+function argvPathsFor({ c15, root, producerOutDir, producerRepoRoot }) {
   const staged = c15.staged_scanner_binaries ?? {};
   return {
-    // The repository root is the verifier's OWN root — tracked ground truth. Taking it from a
-    // manifest field would let the evidence relabel whatever it scanned as "the repo".
-    repoRoot: root,
+    repoRoot: producerRepoRoot ?? root,
     outDir: producerOutDir,
     // The cache and staged-binary locations are genuinely per-run, and are tokenized only so
     // the surrounding argument shape can be compared exactly; their VALUES are separately
@@ -477,7 +528,11 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
   const expectedArgv = expectedStepContract({ scanRefs: scanRefs ?? [] });
   const derivedOut = deriveProducerOutDir(c15);
   problems.push(...derivedOut.problems);
-  const paths = argvPathsFor({ c15, root, producerOutDir: derivedOut.outDir });
+  const derivedRepo = deriveProducerRepoRoot(c15);
+  problems.push(...derivedRepo.problems);
+  const paths = argvPathsFor({
+    c15, root, producerOutDir: derivedOut.outDir, producerRepoRoot: derivedRepo.repoRoot,
+  });
 
   const steps = Array.isArray(c15.steps) ? c15.steps : null;
   if (steps === null) {
