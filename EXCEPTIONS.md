@@ -331,6 +331,42 @@ unproved true statement is still an unproved statement, and it was reported as p
 
 *Status.* closed.
 
+### G5 — the verifier sampled five packages and the closure count was overstated (closed at R3.4.4)
+
+Two separate defects in the same delivery, both recorded here because both were reported as
+stronger than they were.
+
+**G5a — `PACKAGE_SAMPLE`.** R3.4.3 introduced a shared trivy `Results` validator and the
+delivery report described it as requiring "nonempty `Packages`" with "valid identity fields".
+What it actually did was validate the **first five packages** of each result and accept any
+nonempty string as a PURL. The constant was named `PACKAGE_SAMPLE = 5` and carried a comment
+justifying the sample on the grounds that a fabricated array "fails on its first entries".
+**That reasoning was wrong.** It assumes a forger who corrupts from the beginning. Truncating a
+genuine 229-package result to five passed, as did truncating it to one, as did corrupting every
+package from index five onward. A sample cannot establish a property of a set.
+
+**Closure.** The sample is deleted. Every package in every filesystem and image result is
+validated, each PURL is parsed with the same exact-pinned `packageurl-js@2.0.1` the C16 closure
+uses, and the reported set is measured in both directions against source: every reported
+package must exist in the lockfile universe derived from `pnpm-lock.yaml`, and every production
+registry package the deterministic C16 closure derives must appear in the report. Neither bound
+is written down as a number — both are derived per run and reported as measured.
+
+**G5b — the R3.4.3 §F arithmetic.** The delivery report stated that
+`final-receipt-semantics.test.ts` contained "17 closures plus one recorded case". The file
+contains 18 tests, and the correct decomposition is **1 positive baseline + 16 reproduced
+R3.4.2 false-pass closures + 1 already-caught case**. The baseline was double-counted as a
+closure. The file header now states the arithmetic so a future report cannot restate it wrongly.
+
+**Also corrected at R3.4.4, for the record.** Four frozen verifier fixtures shipped with frozen
+COPIES of the shared argv contract. That was a mistake in kind: the contract is tracked source
+that the producer and every verifier must read identically, so freezing it makes an unrelated
+producer change look like a verifier disagreement. The R3.4.1, R3.4.2 and R3.4.3 fixtures now
+read the live contract. The R3.4 copy is retained, because it exists to freeze the pre-R3.4.1
+absolute-path argv convention that its controls exercise, and it carries a note saying so.
+
+*Status.* closed.
+
 ### Deferred to C19 (explicitly NOT in this patch)
 
 * Replace Node-20 actions.

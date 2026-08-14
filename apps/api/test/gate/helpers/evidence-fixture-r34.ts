@@ -28,6 +28,7 @@ import {
 } from '../../../../../scripts/gate/lib/verification-contract.mjs';
 import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
 import { loadScannerExclusions } from '../../../../../scripts/gate/lib/scanner-exclusions.mjs';
+import { npmPurl } from '../../../../../scripts/gate/lib/lock-closure.mjs';
 import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candidate-source.mjs';
 
 export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
@@ -54,43 +55,36 @@ export type BuiltR34 = {
  * Turn the tracked disposition records into a trivy image report whose reconstructed findings
  * are exactly the findings those records govern.
  */
-function trivyReportForImage(records: any[], pinnedRef: string, childDigest: string) {
-  const mine = records.filter((r) => r.image === pinnedRef);
-  const byTarget = new Map<string, any[]>();
-  for (const r of mine) {
-    const target = r.result_target as string;
-    const ids: string[] = [
-      ...(typeof r.advisory_id === 'string' ? [r.advisory_id] : []),
-      ...(Array.isArray(r.advisory_ids) ? r.advisory_ids : []),
-    ];
-    const list = byTarget.get(target) ?? [];
-    for (const id of ids) {
-      list.push({
-        VulnerabilityID: id,
-        PkgName: r.package_name,
-        PkgIdentifier: { PURL: r.package_purl },
-        InstalledVersion: r.installed_version,
-        FixedVersion: '',
-        Severity: r.severities[0],
-      });
-    }
-    byTarget.set(target, list);
-  }
+/**
+ * R3.4.4: the image reports are the REAL captured scanner output.
+ *
+ * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from the
+ * delivered C15 evidence - 53 alpine packages and one HIGH finding for postgres, 4 gobinary
+ * packages and 15 findings for its gosu binary, 22 alpine packages for redis - with only the
+ * verbose advisory prose stripped. Synthesising these would defeat the point: a control that
+ * mutates invented data proves nothing about what the verifier does to a real receipt.
+ *
+ * Only the scan reference is substituted, because it is derived per run from the tracked
+ * digest pins rather than fixed in the capture.
+ */
+const REAL_IMAGE_RESULTS = JSON.parse(
+  readFileSync(join(__dirname, '..', 'fixtures', 'real-image-results.json'), 'utf8'),
+) as Record<string, { OS: { Family: string; Name: string }; Results: any[] }>;
+
+function trivyReportForImage(_records: any[], pinnedRef: string, childDigest: string, index: number) {
   const scanRef = `${pinnedRef.slice(0, pinnedRef.indexOf('@'))}@${childDigest}`;
-  // R3.4.3 §A: an image with no recorded dispositions was still SCANNED, and a real report
-  // says so with an os-pkgs result naming the image. An empty Results array is the shape of
-  // an image that was never analysed at all, which is what the verifier now rejects.
-  if (byTarget.size === 0) byTarget.set(`${scanRef} (alpine 3.24.1)`, []);
+  const captured = REAL_IMAGE_RESULTS[String(index)];
+  const os = captured.OS;
+  const Results = captured.Results.map((r) => (r.Class === 'os-pkgs'
+    // The OS result names the image it scanned, so it must name THIS derived reference.
+    ? { ...r, Target: `${scanRef} (${os.Family} ${os.Name})` }
+    : { ...r }));
   return {
     SchemaVersion: 2,
     ArtifactName: scanRef,
     ArtifactType: 'container_image',
-    Metadata: { Reference: scanRef, RepoDigests: [scanRef], OS: { Family: 'alpine' } },
-    Results: [...byTarget.entries()].map(([Target, Vulnerabilities]) => ({
-      Target, Class: 'os-pkgs', Type: 'alpine', Vulnerabilities,
-      // R3.4.3 §A: an OS-package result must list the OS packages it analysed.
-      Packages: OS_PACKAGES,
-    })),
+    Metadata: { Reference: scanRef, RepoDigests: [scanRef], OS: os },
+    Results,
   };
 }
 
@@ -115,23 +109,44 @@ const TRIVY_FS_BANNER = [
   '2026-01-01T00:00:00Z\tINFO\t[pnpm] Detecting vulnerabilities...',
   '',
 ].join('\n');
+// R3.4.4: the image command declares `--scanners vuln,secret`, so its receipt says so.
+const TRIVY_IMAGE_BANNER = [
+  '2026-01-01T00:00:00Z\tINFO\t[vuln] Vulnerability scanning is enabled',
+  '2026-01-01T00:00:00Z\tINFO\t[secret] Secret scanning is enabled',
+  '',
+].join('\n');
 const SCANNER_BANNER: Record<string, string> = {
   'trivy-fs': TRIVY_FS_BANNER,
   'trivy-fs-json': TRIVY_FS_BANNER,
+  'trivy-image-0': TRIVY_IMAGE_BANNER,
+  'trivy-image-1': TRIVY_IMAGE_BANNER,
 };
 
-const LOCKFILE_PACKAGES = Object.freeze([
-  { Name: '@nestjs/common', Version: '11.1.28', Relationship: 'direct', AnalyzedBy: 'pnpm',
-    Identifier: { PURL: 'pkg:npm/%40nestjs/common@11.1.28', UID: '289f1f6f82389785' } },
-  { Name: 'pg', Version: '8.16.3', Relationship: 'direct', AnalyzedBy: 'pnpm',
-    Identifier: { PURL: 'pkg:npm/pg@8.16.3', UID: '4b1c0f9a2e7d5c31' } },
-]);
-const OS_PACKAGES = Object.freeze([
-  { Name: 'musl', Version: '1.2.5-r19', Arch: 'x86_64',
-    Identifier: { PURL: 'pkg:apk/alpine/musl@1.2.5-r19?arch=x86_64', UID: 'a1f0c3d5e7b9' } },
-  { Name: 'busybox', Version: '1.37.0-r20', Arch: 'x86_64',
-    Identifier: { PURL: 'pkg:apk/alpine/busybox@1.37.0-r20?arch=x86_64', UID: 'b2e1d4c6f8a0' } },
-]);
+/**
+ * R3.4.4: the COMPLETE lockfile universe, derived from source rather than listed.
+ *
+ * R3.4.3's fixture carried two hand-written packages, which was enough only because the
+ * verifier sampled five. The verifier now measures the reported set against the lockfile
+ * universe and the production closure, so the fixture must carry the whole thing - every
+ * package pnpm-lock.yaml resolves, identified exactly as trivy identifies it.
+ */
+function lockfilePackages(repo: string, runDate: string) {
+  const { derived } = derivationFor(repo, runDate);
+  return [...(derived.lockUniverse as Set<string>)].sort().map((id) => {
+    const at = id.lastIndexOf('@');
+    const name = id.slice(0, at);
+    const version = id.slice(at + 1);
+    return {
+      ID: id,
+      Name: name,
+      Version: version,
+      Identifier: { PURL: npmPurl(name, version), UID: sha256(id).slice(0, 16) },
+      Relationship: 'indirect',
+      AnalyzedBy: 'pnpm',
+    };
+  });
+}
+
 
 const derivationCache = new Map<string, { contract: any; derived: any }>();
 function derivationFor(repo: string, runDate: string) {
@@ -256,9 +271,18 @@ export function buildPassingR34Evidence(
   const imageStepIds = imageStepIdsFor(imageRefs.length);
   const rawFor = new Map<string, string>();
   rawFor.set('pnpm-audit-human.stdout.txt', 'No known vulnerabilities found\n');
+  // R3.4.4: the audit must describe the tree it audited, and its totals must agree with the
+  // source-derived lockfile universe.
+  const lockSize = (derivationFor(repo, runDate).derived.lockUniverse as Set<string>).size;
   rawFor.set('pnpm-audit-json.stdout.txt', `${JSON.stringify({
     advisories: {},
-    metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 } },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0 },
+      dependencies: 182,
+      devDependencies: 122,
+      optionalDependencies: 79,
+      totalDependencies: lockSize,
+    },
   })}\n`);
   rawFor.set('gitleaks-worktree.stdout.txt', '');
   rawFor.set('gitleaks-history.stdout.txt', '');
@@ -285,14 +309,14 @@ export function buildPassingR34Evidence(
       Type: 'pnpm',
       // R3.4.3 §A: a result that names a file without listing what was analysed in it is a
       // label, not a scan. Real trivy emits an identified package per lockfile entry.
-      Packages: LOCKFILE_PACKAGES,
+      Packages: lockfilePackages(repo, runDate),
       Vulnerabilities: [],
     }],
   })}\n`);
   imageRefs.forEach((ref, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
     rawFor.set(`${imageStepIds[i]}.stdout.txt`,
-      `${JSON.stringify(trivyReportForImage(records, ref, CHILD_DIGESTS[name]), null, 2)}\n`);
+      `${JSON.stringify(trivyReportForImage(records, ref, CHILD_DIGESTS[name], i), null, 2)}\n`);
   });
   rawFor.set('trivy-acquire-db.stdout.txt', '');
   rawFor.set('trivy-acquire-checks.stdout.txt', '{}\n');

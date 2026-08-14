@@ -898,14 +898,20 @@ async function main(parsed) {
     // UNSUPPRESSED scan: the complete finding set, reconciled below against governed
     // records. Trivy's own ignore mechanism is never relied upon.
     const rec = run(steps, outDir, sourceSha, `trivy-image-${i}`, [
-      TRIVY, 'image', '--platform', SCAN_PLATFORM, '--severity', 'HIGH,CRITICAL',
+      // R3.4.4: the scanner set is DECLARED rather than left to the tool's default, so the
+      // argv contract and the stderr receipt can both be checked against it.
+      TRIVY, 'image', '--platform', SCAN_PLATFORM, '--scanners', 'vuln,secret',
+      '--severity', 'HIGH,CRITICAL',
       '--ignorefile', '/dev/null', ...FROZEN, '--no-progress', '--format', 'json', r.scan_ref,
     ], {
       description:
         `trivy scan of the ${SCAN_PLATFORM} child manifest ${r.resolution.target_digest} ` +
         `resolved from digest-pinned index ${r.pinned_ref}, with NO suppression`,
       tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
-      coverage: { severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform: SCAN_PLATFORM },
+      coverage: {
+        severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured',
+        platform: SCAN_PLATFORM, scanners: 'vuln,secret',
+      },
       env: trivyEnv,
     });
     // A NONZERO EXIT ALWAYS BLOCKS. The image command deliberately omits `--exit-code`,

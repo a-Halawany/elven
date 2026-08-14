@@ -1,0 +1,1118 @@
+{
+ "0": {
+  "OS": {
+   "Family": "alpine",
+   "Name": "3.24.1"
+  },
+  "Results": [
+   {
+    "Class": "os-pkgs",
+    "Packages": [
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "noarch",
+      "ID": ".postgresql-rundeps@20260707.174611",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/.postgresql-rundeps@20260707.174611?arch=noarch&distro=3.24.1",
+       "UID": "cbe3d975044b1f6e"
+      },
+      "Name": ".postgresql-rundeps",
+      "Version": "20260707.174611"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-baselayout@3.7.2-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r1?arch=x86_64&distro=3.24.1",
+       "UID": "1b9c543300f8073e"
+      },
+      "Name": "alpine-baselayout",
+      "Version": "3.7.2-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-baselayout-data@3.7.2-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r1?arch=x86_64&distro=3.24.1",
+       "UID": "fcc3cd90122d8aa7"
+      },
+      "Name": "alpine-baselayout-data",
+      "Version": "3.7.2-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-keys@2.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=3.24.1",
+       "UID": "cb1f6c8fa74713e0"
+      },
+      "Name": "alpine-keys",
+      "Version": "2.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-release@3.24.1-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-release@3.24.1-r0?arch=x86_64&distro=3.24.1",
+       "UID": "6cfad6f36e1f31aa"
+      },
+      "Name": "alpine-release",
+      "Version": "3.24.1-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "apk-tools@3.0.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/apk-tools@3.0.6-r0?arch=x86_64&distro=3.24.1",
+       "UID": "c6097cc137f3de8c"
+      },
+      "Name": "apk-tools",
+      "Version": "3.0.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "bash@5.3.9-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/bash@5.3.9-r1?arch=x86_64&distro=3.24.1",
+       "UID": "89d1544dc9bae858"
+      },
+      "Name": "bash",
+      "Version": "5.3.9-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "brotli-libs@1.2.0-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/brotli-libs@1.2.0-r1?arch=x86_64&distro=3.24.1",
+       "UID": "34680ab8e4de744b"
+      },
+      "Name": "brotli-libs",
+      "Version": "1.2.0-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "busybox@1.37.0-r31",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/busybox@1.37.0-r31?arch=x86_64&distro=3.24.1",
+       "UID": "771020c43c8440bf"
+      },
+      "Name": "busybox",
+      "Version": "1.37.0-r31"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "busybox-binsh@1.37.0-r31",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r31?arch=x86_64&distro=3.24.1",
+       "UID": "1ec8a3d5d2b63297"
+      },
+      "Name": "busybox-binsh",
+      "Version": "1.37.0-r31"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "c-ares@1.34.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/c-ares@1.34.6-r0?arch=x86_64&distro=3.24.1",
+       "UID": "3262f09038595d05"
+      },
+      "Name": "c-ares",
+      "Version": "1.34.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "ca-certificates-bundle@20260611-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260611-r0?arch=x86_64&distro=3.24.1",
+       "UID": "20337c2ea28bef28"
+      },
+      "Name": "ca-certificates-bundle",
+      "Version": "20260611-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "gdbm@1.26-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/gdbm@1.26-r0?arch=x86_64&distro=3.24.1",
+       "UID": "5eb1a3f86262ca77"
+      },
+      "Name": "gdbm",
+      "Version": "1.26-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "icu-data-full@78.1-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/icu-data-full@78.1-r0?arch=x86_64&distro=3.24.1",
+       "UID": "4fa30f43b2e5f036"
+      },
+      "Name": "icu-data-full",
+      "Version": "78.1-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "icu-libs@78.1-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/icu-libs@78.1-r0?arch=x86_64&distro=3.24.1",
+       "UID": "66c4aa79b293e4ff"
+      },
+      "Name": "icu-libs",
+      "Version": "78.1-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "keyutils-libs@1.6.3-r4",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/keyutils-libs@1.6.3-r4?arch=x86_64&distro=3.24.1",
+       "UID": "a1a29120eb342032"
+      },
+      "Name": "keyutils-libs",
+      "Version": "1.6.3-r4"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "krb5-conf@1.0-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/krb5-conf@1.0-r2?arch=x86_64&distro=3.24.1",
+       "UID": "e7cf94ba8b6dbc33"
+      },
+      "Name": "krb5-conf",
+      "Version": "1.0-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "krb5-libs@1.22.2-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/krb5-libs@1.22.2-r1?arch=x86_64&distro=3.24.1",
+       "UID": "b2a26eefd488c92b"
+      },
+      "Name": "krb5-libs",
+      "Version": "1.22.2-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libapk@3.0.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libapk@3.0.6-r0?arch=x86_64&distro=3.24.1",
+       "UID": "99b3039c6c4890c4"
+      },
+      "Name": "libapk",
+      "Version": "3.0.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libcom_err@1.47.4-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libcom_err@1.47.4-r0?arch=x86_64&distro=3.24.1",
+       "UID": "3fc35a3f66d192af"
+      },
+      "Name": "libcom_err",
+      "Version": "1.47.4-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libcrypto3@3.5.7-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.24.1",
+       "UID": "9ce2cdb3f0bf014b"
+      },
+      "Name": "libcrypto3",
+      "Version": "3.5.7-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libcurl@8.21.0-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libcurl@8.21.0-r0?arch=x86_64&distro=3.24.1",
+       "UID": "dd0c21b371ac6350"
+      },
+      "Name": "libcurl",
+      "Version": "8.21.0-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libedit@20260508.3.1-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libedit@20260508.3.1-r1?arch=x86_64&distro=3.24.1",
+       "UID": "98a763e822f29606"
+      },
+      "Name": "libedit",
+      "Version": "20260508.3.1-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libffi@3.5.2-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libffi@3.5.2-r1?arch=x86_64&distro=3.24.1",
+       "UID": "d3eaa921287b1ccd"
+      },
+      "Name": "libffi",
+      "Version": "3.5.2-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libgcc@15.2.0-r5",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libgcc@15.2.0-r5?arch=x86_64&distro=3.24.1",
+       "UID": "8cf3d813d20beeee"
+      },
+      "Name": "libgcc",
+      "Version": "15.2.0-r5"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libidn2@2.3.8-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libidn2@2.3.8-r0?arch=x86_64&distro=3.24.1",
+       "UID": "bff421f953b410b7"
+      },
+      "Name": "libidn2",
+      "Version": "2.3.8-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libldap@2.6.13-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libldap@2.6.13-r0?arch=x86_64&distro=3.24.1",
+       "UID": "8f77d6a78a09f05"
+      },
+      "Name": "libldap",
+      "Version": "2.6.13-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libncursesw@6.6_p20260516-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libncursesw@6.6_p20260516-r0?arch=x86_64&distro=3.24.1",
+       "UID": "e8939f45e2191bcc"
+      },
+      "Name": "libncursesw",
+      "Version": "6.6_p20260516-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libpsl@0.21.5-r3",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libpsl@0.21.5-r3?arch=x86_64&distro=3.24.1",
+       "UID": "7879224d01df05c2"
+      },
+      "Name": "libpsl",
+      "Version": "0.21.5-r3"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libsasl@2.1.28-r9",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libsasl@2.1.28-r9?arch=x86_64&distro=3.24.1",
+       "UID": "28cd83afcf08300b"
+      },
+      "Name": "libsasl",
+      "Version": "2.1.28-r9"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libssl3@3.5.7-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.24.1",
+       "UID": "a25152af95b643e0"
+      },
+      "Name": "libssl3",
+      "Version": "3.5.7-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libstdc++@15.2.0-r5",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r5?arch=x86_64&distro=3.24.1",
+       "UID": "2eed307edf277aae"
+      },
+      "Name": "libstdc++",
+      "Version": "15.2.0-r5"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libunistring@1.4.2-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libunistring@1.4.2-r0?arch=x86_64&distro=3.24.1",
+       "UID": "b5ad22f7f34d881f"
+      },
+      "Name": "libunistring",
+      "Version": "1.4.2-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "liburing@2.14-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/liburing@2.14-r0?arch=x86_64&distro=3.24.1",
+       "UID": "d6603e8ed60461c4"
+      },
+      "Name": "liburing",
+      "Version": "2.14-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libuuid@2.42.1-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1",
+       "UID": "61e289a52fcab6f6"
+      },
+      "Name": "libuuid",
+      "Version": "2.42.1-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libverto@0.3.2-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libverto@0.3.2-r2?arch=x86_64&distro=3.24.1",
+       "UID": "9df4321a283a6cf6"
+      },
+      "Name": "libverto",
+      "Version": "0.3.2-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libxml2@2.13.9-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libxml2@2.13.9-r2?arch=x86_64&distro=3.24.1",
+       "UID": "661e2a4b0a2b6c43"
+      },
+      "Name": "libxml2",
+      "Version": "2.13.9-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libxslt@1.1.43-r3",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libxslt@1.1.43-r3?arch=x86_64&distro=3.24.1",
+       "UID": "2810f2fbfcee454a"
+      },
+      "Name": "libxslt",
+      "Version": "1.1.43-r3"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "llvm21-libs@21.1.8-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/llvm21-libs@21.1.8-r1?arch=x86_64&distro=3.24.1",
+       "UID": "b4a6fa05ae868a0d"
+      },
+      "Name": "llvm21-libs",
+      "Version": "21.1.8-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "lz4-libs@1.10.0-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/lz4-libs@1.10.0-r1?arch=x86_64&distro=3.24.1",
+       "UID": "697c5d416b5775fb"
+      },
+      "Name": "lz4-libs",
+      "Version": "1.10.0-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "musl@1.2.6-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/musl@1.2.6-r2?arch=x86_64&distro=3.24.1",
+       "UID": "1f8cb44befe503d4"
+      },
+      "Name": "musl",
+      "Version": "1.2.6-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "musl-utils@1.2.6-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/musl-utils@1.2.6-r2?arch=x86_64&distro=3.24.1",
+       "UID": "4497482ec1d943e1"
+      },
+      "Name": "musl-utils",
+      "Version": "1.2.6-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "ncurses-terminfo-base@6.6_p20260516-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/ncurses-terminfo-base@6.6_p20260516-r0?arch=x86_64&distro=3.24.1",
+       "UID": "e7fac5c6a6e9ae8"
+      },
+      "Name": "ncurses-terminfo-base",
+      "Version": "6.6_p20260516-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "nghttp2-libs@1.69.0-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/nghttp2-libs@1.69.0-r0?arch=x86_64&distro=3.24.1",
+       "UID": "cdceee5bd778a45c"
+      },
+      "Name": "nghttp2-libs",
+      "Version": "1.69.0-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "nss_wrapper@1.1.12-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/nss_wrapper@1.1.12-r1?arch=x86_64&distro=3.24.1",
+       "UID": "da8371470b181c32"
+      },
+      "Name": "nss_wrapper",
+      "Version": "1.1.12-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "readline@8.3.3-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/readline@8.3.3-r1?arch=x86_64&distro=3.24.1",
+       "UID": "f50058781c93e1f2"
+      },
+      "Name": "readline",
+      "Version": "8.3.3-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "scanelf@1.3.9-r1",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/scanelf@1.3.9-r1?arch=x86_64&distro=3.24.1",
+       "UID": "936394657a1626fb"
+      },
+      "Name": "scanelf",
+      "Version": "1.3.9-r1"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "ssl_client@1.37.0-r31",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r31?arch=x86_64&distro=3.24.1",
+       "UID": "2884df80ae89778e"
+      },
+      "Name": "ssl_client",
+      "Version": "1.37.0-r31"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "tzdata@2026b-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/tzdata@2026b-r0?arch=x86_64&distro=3.24.1",
+       "UID": "71d7d50eaadd80dc"
+      },
+      "Name": "tzdata",
+      "Version": "2026b-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "xz-libs@5.8.3-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/xz-libs@5.8.3-r0?arch=x86_64&distro=3.24.1",
+       "UID": "1ae658a5f132a091"
+      },
+      "Name": "xz-libs",
+      "Version": "5.8.3-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "zlib@1.3.2-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64&distro=3.24.1",
+       "UID": "e37054a2982d6c16"
+      },
+      "Name": "zlib",
+      "Version": "1.3.2-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "zstd@1.5.7-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/zstd@1.5.7-r2?arch=x86_64&distro=3.24.1",
+       "UID": "71f39af918e4d14c"
+      },
+      "Name": "zstd",
+      "Version": "1.5.7-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "zstd-libs@1.5.7-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/zstd-libs@1.5.7-r2?arch=x86_64&distro=3.24.1",
+       "UID": "b33716e8bc222f1f"
+      },
+      "Name": "zstd-libs",
+      "Version": "1.5.7-r2"
+     }
+    ],
+    "Target": "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)",
+    "Type": "alpine",
+    "Vulnerabilities": [
+     {
+      "FixedVersion": "1.34.8-r0",
+      "InstalledVersion": "1.34.6-r0",
+      "PkgID": "c-ares@1.34.6-r0",
+      "PkgIdentifier": {
+       "PURL": "pkg:apk/alpine/c-ares@1.34.6-r0?arch=x86_64&distro=3.24.1",
+       "UID": "3262f09038595d05"
+      },
+      "PkgName": "c-ares",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-33630"
+     }
+    ]
+   },
+   {
+    "Class": "lang-pkgs",
+    "Packages": [
+     {
+      "AnalyzedBy": "gobinary",
+      "ID": "github.com/tianon/gosu@v1.19.0",
+      "Identifier": {
+       "PURL": "pkg:golang/github.com/tianon/gosu@v1.19.0",
+       "UID": "1057a82ec313601"
+      },
+      "Name": "github.com/tianon/gosu",
+      "Relationship": "root",
+      "Version": "v1.19.0"
+     },
+     {
+      "AnalyzedBy": "gobinary",
+      "ID": "stdlib@v1.24.6",
+      "Identifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "Name": "stdlib",
+      "Relationship": "direct",
+      "Version": "v1.24.6"
+     },
+     {
+      "AnalyzedBy": "gobinary",
+      "ID": "github.com/moby/sys/user@v0.1.0",
+      "Identifier": {
+       "PURL": "pkg:golang/github.com/moby/sys/user@v0.1.0",
+       "UID": "cfd815b74e215fdf"
+      },
+      "Name": "github.com/moby/sys/user",
+      "Version": "v0.1.0"
+     },
+     {
+      "AnalyzedBy": "gobinary",
+      "ID": "golang.org/x/sys@v0.1.0",
+      "Identifier": {
+       "PURL": "pkg:golang/golang.org/x/sys@v0.1.0",
+       "UID": "11ab2e48c80f8e7d"
+      },
+      "Name": "golang.org/x/sys",
+      "Version": "v0.1.0"
+     }
+    ],
+    "Target": "usr/local/bin/gosu",
+    "Type": "gobinary",
+    "Vulnerabilities": [
+     {
+      "FixedVersion": "1.24.13, 1.25.7, 1.26.0-rc.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "CRITICAL",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2025-68121"
+     },
+     {
+      "FixedVersion": "1.24.12, 1.25.6",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2025-61726"
+     },
+     {
+      "FixedVersion": "1.24.11, 1.25.5",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2025-61729"
+     },
+     {
+      "FixedVersion": "1.25.8, 1.26.1",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-25679"
+     },
+     {
+      "FixedVersion": "1.25.11, 1.26.4",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-27145"
+     },
+     {
+      "FixedVersion": "1.25.9, 1.26.2",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-32280"
+     },
+     {
+      "FixedVersion": "1.25.9, 1.26.2",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-32281"
+     },
+     {
+      "FixedVersion": "1.25.9, 1.26.2",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-32283"
+     },
+     {
+      "FixedVersion": "1.25.10, 1.26.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-33811"
+     },
+     {
+      "FixedVersion": "1.25.10, 1.26.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-33814"
+     },
+     {
+      "FixedVersion": "1.25.10, 1.26.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-39820"
+     },
+     {
+      "FixedVersion": "1.25.12, 1.26.5, 1.27.0-rc.2",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-39822"
+     },
+     {
+      "FixedVersion": "1.25.10, 1.26.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-39836"
+     },
+     {
+      "FixedVersion": "1.25.10, 1.26.3",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-42499"
+     },
+     {
+      "FixedVersion": "1.25.11, 1.26.4",
+      "InstalledVersion": "v1.24.6",
+      "PkgID": "stdlib@v1.24.6",
+      "PkgIdentifier": {
+       "PURL": "pkg:golang/stdlib@v1.24.6",
+       "UID": "5a9b484fa87e1a00"
+      },
+      "PkgName": "stdlib",
+      "Severity": "HIGH",
+      "Status": "fixed",
+      "VulnerabilityID": "CVE-2026-42504"
+     }
+    ]
+   }
+  ]
+ },
+ "1": {
+  "OS": {
+   "Family": "alpine",
+   "Name": "3.23.5"
+  },
+  "Results": [
+   {
+    "Class": "os-pkgs",
+    "Packages": [
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "noarch",
+      "ID": ".redis-rundeps@20260730.194210",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/.redis-rundeps@20260730.194210?arch=noarch&distro=3.23.5",
+       "UID": "a636a5955dd64045"
+      },
+      "Name": ".redis-rundeps",
+      "Version": "20260730.194210"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-baselayout@3.7.2-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64&distro=3.23.5",
+       "UID": "ff3090489ca40326"
+      },
+      "Name": "alpine-baselayout",
+      "Version": "3.7.2-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-baselayout-data@3.7.2-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64&distro=3.23.5",
+       "UID": "78c0ed61d7df9a7e"
+      },
+      "Name": "alpine-baselayout-data",
+      "Version": "3.7.2-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-keys@2.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=3.23.5",
+       "UID": "2c7cb90de388aa7d"
+      },
+      "Name": "alpine-keys",
+      "Version": "2.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "alpine-release@3.23.5-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/alpine-release@3.23.5-r0?arch=x86_64&distro=3.23.5",
+       "UID": "58b001445238c53e"
+      },
+      "Name": "alpine-release",
+      "Version": "3.23.5-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "apk-tools@3.0.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/apk-tools@3.0.6-r0?arch=x86_64&distro=3.23.5",
+       "UID": "c719faa075d9da13"
+      },
+      "Name": "apk-tools",
+      "Version": "3.0.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "busybox@1.37.0-r30",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64&distro=3.23.5",
+       "UID": "9647681d0b54db77"
+      },
+      "Name": "busybox",
+      "Version": "1.37.0-r30"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "busybox-binsh@1.37.0-r30",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64&distro=3.23.5",
+       "UID": "3e18d05d46a6f46f"
+      },
+      "Name": "busybox-binsh",
+      "Version": "1.37.0-r30"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "ca-certificates-bundle@20260611-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260611-r0?arch=x86_64&distro=3.23.5",
+       "UID": "a9a37912fbf01124"
+      },
+      "Name": "ca-certificates-bundle",
+      "Version": "20260611-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libapk@3.0.6-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libapk@3.0.6-r0?arch=x86_64&distro=3.23.5",
+       "UID": "843500ddf1c91d19"
+      },
+      "Name": "libapk",
+      "Version": "3.0.6-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libcap-ng@0.8.5-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libcap-ng@0.8.5-r0?arch=x86_64&distro=3.23.5",
+       "UID": "3e91d44a34057ad"
+      },
+      "Name": "libcap-ng",
+      "Version": "0.8.5-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libcrypto3@3.5.7-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.23.5",
+       "UID": "6154ae3cc122c0b8"
+      },
+      "Name": "libcrypto3",
+      "Version": "3.5.7-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libgcc@15.2.0-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64&distro=3.23.5",
+       "UID": "89fff20701e56ab7"
+      },
+      "Name": "libgcc",
+      "Version": "15.2.0-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libssl3@3.5.7-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.23.5",
+       "UID": "f1aee6071ea99047"
+      },
+      "Name": "libssl3",
+      "Version": "3.5.7-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "libstdc++@15.2.0-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r2?arch=x86_64&distro=3.23.5",
+       "UID": "3ff8ae215a6a54a6"
+      },
+      "Name": "libstdc++",
+      "Version": "15.2.0-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "musl@1.2.5-r23",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64&distro=3.23.5",
+       "UID": "dca30b3fd6708a32"
+      },
+      "Name": "musl",
+      "Version": "1.2.5-r23"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "musl-utils@1.2.5-r23",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64&distro=3.23.5",
+       "UID": "ffcf7198a9776c5f"
+      },
+      "Name": "musl-utils",
+      "Version": "1.2.5-r23"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "scanelf@1.3.8-r2",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64&distro=3.23.5",
+       "UID": "4efd612ed6f16dca"
+      },
+      "Name": "scanelf",
+      "Version": "1.3.8-r2"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "setpriv@2.41.4-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5",
+       "UID": "97f0730dc6588846"
+      },
+      "Name": "setpriv",
+      "Version": "2.41.4-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "ssl_client@1.37.0-r30",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64&distro=3.23.5",
+       "UID": "b95632d8ece05f0c"
+      },
+      "Name": "ssl_client",
+      "Version": "1.37.0-r30"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "tzdata@2026c-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/tzdata@2026c-r0?arch=x86_64&distro=3.23.5",
+       "UID": "e471ecd044c6763"
+      },
+      "Name": "tzdata",
+      "Version": "2026c-r0"
+     },
+     {
+      "AnalyzedBy": "apk",
+      "Arch": "x86_64",
+      "ID": "zlib@1.3.2-r0",
+      "Identifier": {
+       "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64&distro=3.23.5",
+       "UID": "23a5a7d167a86311"
+      },
+      "Name": "zlib",
+      "Version": "1.3.2-r0"
+     }
+    ],
+    "Target": "redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)",
+    "Type": "alpine"
+   }
+  ]
+ }
+}

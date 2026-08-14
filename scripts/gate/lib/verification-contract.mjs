@@ -246,13 +246,14 @@ export function expectedStepContract({ scanRefs }) {
     contract[`${IMAGE_STEP_PREFIX}${index}`] = {
       tool: 'trivy', policy: 'blocking',
       argv: [
-        T.STAGED_TRIVY, 'image', '--platform', 'linux/amd64',
+        T.STAGED_TRIVY, 'image', '--platform', 'linux/amd64', '--scanners', 'vuln,secret',
         '--severity', 'HIGH,CRITICAL', '--ignorefile', '/dev/null',
         '--cache-dir', T.TRIVY_CACHE, '--skip-db-update', '--skip-check-update', '--no-progress',
         '--format', 'json', scanRef,
       ],
       coverage: {
         severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform: 'linux/amd64',
+        scanners: 'vuln,secret',
       },
     };
   });

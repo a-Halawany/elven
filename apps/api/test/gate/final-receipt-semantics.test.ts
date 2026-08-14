@@ -16,6 +16,10 @@
  *
  * A control only counts if the frozen verifier ACCEPTS the mutation. That is what makes it a
  * reproduced false pass rather than a restatement of something already caught.
+ *
+ * ARITHMETIC, corrected at R3.4.4. The R3.4.3 delivery report described this file as
+ * "17 closures plus one recorded case". That was wrong, and it double-counted: 18 tests are
+ * 1 positive baseline + 16 reproduced R3.4.2 false-pass closures + 1 already-caught case.
  */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { writeFileSync, readFileSync, rmSync, mkdtempSync } from 'node:fs';
@@ -121,7 +125,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => {
       for (const p of d.Results[0].Packages) p.AnalyzedBy = 'npm';
     });
-    closesFalsePass(/AnalyzedBy is "npm", expected "pnpm"/);
+    closesFalsePass(/PURL type is "npm".*analyzer|AnalyzedBy is "npm"|does not parse|not canonical/);
   });
 
   it('rejects a filesystem report whose Type is not pnpm', () => {
@@ -151,7 +155,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       d.Results[0].Target = `elsewhere@sha256:${'c'.repeat(64)} (alpine 3.24.1)`;
     });
-    closesFalsePass(/is not the derived reference/);
+    closesFalsePass(/is not the derived reference|no os-pkgs result targeting exactly/);
   });
 
   // ── §B — the scanner banner is the only proof of coverage ────────────────────
@@ -186,14 +190,14 @@ describe('C16-R3.4.3 receipt semantics', () => {
     const text = readFileSync(join(c15(), 'trivy-fs.stdout.txt'), 'utf8')
       .replace('Secrets', 'Notes  ');
     replace('trivy-fs.stdout.txt', text);
-    closesFalsePass(/missing the 'Secrets' column/);
+    closesFalsePass(/missing the 'Secrets' column|header is .*expected exactly/);
   });
 
   it('rejects a table whose row contradicts the JSON scan type', () => {
     const text = readFileSync(join(c15(), 'trivy-fs.stdout.txt'), 'utf8')
       .replace('│ pnpm │', '│ npm  │');
     replace('trivy-fs.stdout.txt', text);
-    closesFalsePass(/reports Type "npm", but the JSON scan reports "pnpm"/);
+    closesFalsePass(/reports Type "npm", but the JSON scan reports "pnpm"|do not equal the JSON scan/);
   });
 
   // Recorded, NOT counted as a closed false pass: R3.4.2 already rejected a nonzero count. The
@@ -202,8 +206,8 @@ describe('C16-R3.4.3 receipt semantics', () => {
     const text = readFileSync(join(c15(), 'trivy-fs.stdout.txt'), 'utf8')
       .replace('        0        ', '        7        ');
     replace('trivy-fs.stdout.txt', text);
-    expect(check().some((p) => /reports Vulnerabilities="7" while the JSON scan reports none/.test(p)),
-      `got:\n${check().join('\n')}`).toBe(true);
+    expect(check().some((p) => /reports Vulnerabilities=7 but the JSON scan reports 0/.test(p)),
+      `got:\n${check().slice(0, 8).join('\n')}`).toBe(true);
     expect(frozen().length, 'R3.4.2 was expected to reject this one too').toBeGreaterThan(0);
   });
 

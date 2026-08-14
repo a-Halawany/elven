@@ -1,4 +1,10 @@
 /**
+ * FROZEN BYTE COPY of scripts/gate/assert-final-manifests.mjs as delivered at C16-R3.4.3
+ * (dc1a081a68fd400b482ddc8eef81147fbba8d3cc). Only the CLI guard is removed and the imports
+ * are repointed at the LIVE tracked contracts. DO NOT EDIT: the R3.4.4 controls are non-vacuous only because this file
+ * still ACCEPTS the packages they mutate.
+ */
+/**
  * C16-R3.4 — SOURCE-ANCHORED EVIDENCE RECONSTRUCTION.
  *
  * ── THE CONSTITUTIONAL RULE ───────────────────────────────────────────────────────
@@ -39,19 +45,18 @@ import { createHash } from 'node:crypto';
 import { join, dirname, basename, normalize, isAbsolute, sep, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { PackageURL } from 'packageurl-js';
 
 import {
   loadSourceContract, expectedStepContract, normalizeArgv, expectedC15Inventory,
   imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
   C15_NORMAL_STEPS, C15_ACQUISITION_STEPS, C15_REQUIRED_REPORTS, C16_REQUIRED_REPORTS,
   CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS, CANDIDATE_ROOT_TOKEN,
-} from './lib/verification-contract.mjs';
-import { deriveC16Expectation } from './generate-closures.mjs';
-import { candidateSourceManifest } from './lib/candidate-source.mjs';
+} from '../../../../../scripts/gate/lib/verification-contract.mjs';
+import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
+import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candidate-source.mjs';
 import {
   loadScannerExclusions, validateRecords, reconcileFindings, findingsFromTrivyJson,
-} from './lib/scanner-exclusions.mjs';
+} from '../../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -708,153 +713,40 @@ function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanR
  * and `Results: [{}]`. A result row that names a file without listing what was found in it is
  * a label, not a scan.
  */
+const PACKAGE_SAMPLE = 5;
 
-/**
- * R3.4.4 SS-A: EVERY package, with a REAL PURL parser.
- *
- * R3.4.3 sampled the first five packages and asked only that a PURL be a nonempty string.
- * So truncating the real 229-package result to 5 - or to 1 - passed, and a PURL saying
- * anything at all passed. A sample cannot establish a property of a set, and a string is
- * not an identity.
- *
- * Identity is now parsed with the same exact-pinned packageurl-js the C16 closure uses, so
- * the verifier and the SBOM generator cannot disagree about what a package IS.
- */
-// Keyed by the RESULT's Type, which is what trivy reports. Each row says which ecosystem the
-// PURLs must belong to and which analyzer trivy names in `AnalyzedBy` - and the two are not
-// the same string: an `alpine` result carries `apk` packages produced by the `apk` analyzer,
-// while a `pnpm` result carries `npm` packages produced by `pnpm`.
-const PURL_TYPE_FOR_ANALYZER = Object.freeze({ pnpm: 'npm', alpine: 'apk', gobinary: 'golang' });
-const ANALYZED_BY_FOR_TYPE = Object.freeze({ pnpm: 'pnpm', alpine: 'apk', gobinary: 'gobinary' });
-
-/**
- * The package NAME a PURL denotes, which is ecosystem-specific and not simply
- * `namespace/name`. For npm and golang the namespace is part of the name
- * (`@nestjs/common`, `github.com/tianon/gosu`); for apk the namespace is the DISTRO
- * (`pkg:apk/alpine/busybox`), so the package is just `busybox`. Getting this wrong would
- * either reject every genuine OS package or accept a renamed one.
- */
-const NAMESPACE_IS_DISTRO = Object.freeze(['apk', 'deb', 'rpm']);
-const purlPackageName = (u) => (
-  u.namespace && !NAMESPACE_IS_DISTRO.includes(u.type) ? `${u.namespace}/${u.name}` : u.name
-);
-
-/** The canonical `name@version` identity of a parsed PURL. */
-const purlIdentity = (u) => `${purlPackageName(u)}@${u.version}`;
-
-/**
- * One package: parsed identity, agreement with its own declared fields, and the ecosystem
- * its analyzer is allowed to produce.
- */
-function packageProblems(label, at, pkg, { analyzer, seen, requireAnalyzedBy }) {
+function packagesProblems(label, where, packages, { analyzedBy }) {
   const problems = [];
-  if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
-    problems.push(`C15 ${label} ${at} is not an object`);
-    return problems;
-  }
-  if (typeof pkg.Name !== 'string' || pkg.Name.length === 0) {
-    problems.push(`C15 ${label} ${at} has no Name`);
-  }
-  if (typeof pkg.Version !== 'string' || pkg.Version.length === 0) {
-    problems.push(`C15 ${label} ${at} has no Version`);
-  }
-  // The analyzer that produced the record, where trivy states it. Kept alongside the PURL
-  // ecosystem check rather than replaced by it: one says who found the package, the other
-  // says what kind of package it is, and a forger has to satisfy both.
-  const expectedAnalyzedBy = ANALYZED_BY_FOR_TYPE[analyzer];
-  if (expectedAnalyzedBy !== undefined
-      && (requireAnalyzedBy || hasOwnKey(pkg, 'AnalyzedBy'))
-      && pkg.AnalyzedBy !== expectedAnalyzedBy) {
-    problems.push(
-      `C15 ${label} ${at} AnalyzedBy is ${JSON.stringify(pkg.AnalyzedBy)}, expected `
-      + `${JSON.stringify(expectedAnalyzedBy)} for a ${JSON.stringify(analyzer)} result; the `
-      + 'package was not produced by the expected analyzer',
-    );
-  }
-  const raw = pkg.Identifier?.PURL;
-  if (typeof raw !== 'string' || raw.length === 0) {
-    problems.push(`C15 ${label} ${at} has no Identifier.PURL; the package has no identity`);
-    return problems;
-  }
-  let parsed;
-  try {
-    parsed = PackageURL.fromString(raw);
-  } catch (e) {
-    problems.push(`C15 ${label} ${at} PURL ${JSON.stringify(raw)} does not parse: ${e instanceof Error ? e.message : e}`);
-    return problems;
-  }
-  // A PURL that parses but does not round-trip is not canonical, and a non-canonical
-  // identity cannot be compared with the source-derived set.
-  if (parsed.toString() !== raw) {
-    problems.push(
-      `C15 ${label} ${at} PURL ${JSON.stringify(raw)} is not canonical; it round-trips to `
-      + `${JSON.stringify(parsed.toString())}`,
-    );
-  }
-  const expectedType = PURL_TYPE_FOR_ANALYZER[analyzer];
-  if (expectedType !== undefined && parsed.type !== expectedType) {
-    problems.push(
-      `C15 ${label} ${at} PURL type is ${JSON.stringify(parsed.type)}, but an analyzer of `
-      + `${JSON.stringify(analyzer)} produces ${JSON.stringify(expectedType)} packages`,
-    );
-  }
-  // The PURL must describe the package it is attached to, not some other package.
-  const purlName = purlPackageName(parsed);
-  if (typeof pkg.Name === 'string' && purlName !== pkg.Name) {
-    problems.push(`C15 ${label} ${at} PURL names ${JSON.stringify(purlName)} but the package is ${JSON.stringify(pkg.Name)}`);
-  }
-  if (typeof pkg.Version === 'string' && parsed.version !== pkg.Version) {
-    problems.push(`C15 ${label} ${at} PURL version is ${JSON.stringify(parsed.version)} but the package is ${JSON.stringify(pkg.Version)}`);
-  }
-  const id = purlIdentity(parsed);
-  if (seen.has(id)) {
-    problems.push(`C15 ${label} ${at} repeats package identity ${id}; a scan reports each package once`);
-  } else {
-    seen.add(id);
-  }
-  return problems;
-}
-
-/** Every package in a result. No sampling: the whole point is that a truncated set fails. */
-function packagesProblems(label, where, packages, { analyzer, requireAnalyzedBy = false }) {
-  const problems = [];
-  const identities = new Set();
   if (!Array.isArray(packages)) {
     problems.push(`C15 ${label} ${where} Packages is ${typeof packages}, not an array`);
-    return { problems, identities };
+    return problems;
   }
   if (packages.length === 0) {
     problems.push(`C15 ${label} ${where} lists ZERO packages; a result that analysed nothing is not coverage`);
-    return { problems, identities };
+    return problems;
   }
-  for (const [i, pkg] of packages.entries()) {
-    problems.push(...packageProblems(label, `${where} Packages[${i}]`, pkg, {
-      analyzer, seen: identities, requireAnalyzedBy,
-    }));
-  }
-  return { problems, identities };
-}
-
-/**
- * R3.4.4 SS-B7 filesystem findings.
- *
- * The filesystem command scans HIGH,CRITICAL only and its blocking step PASSED, so a
- * genuine receipt reports nothing. Any finding at all - including a lowercase severity, a
- * LOW record the command could not have produced, or `{}` - contradicts the verdict.
- */
-function emptyFindingsProblems(label, at, r) {
-  const problems = [];
-  for (const field of ['Vulnerabilities', 'Misconfigurations', 'Secrets']) {
-    if (!hasOwnKey(r, field)) continue;
-    const arr = r[field];
-    if (!Array.isArray(arr)) {
-      problems.push(`C15 ${label} ${at} ${field} is ${typeof arr}, not an array`);
+  // Sample rather than walk hundreds: a fabricated array fails on its first entries, and a
+  // real one is uniform. The COUNT is already load-bearing above.
+  for (const [i, pkg] of packages.slice(0, PACKAGE_SAMPLE).entries()) {
+    const at = `${where} Packages[${i}]`;
+    if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
+      problems.push(`C15 ${label} ${at} is not an object`);
       continue;
     }
-    if (arr.length > 0) {
+    if (typeof pkg.Name !== 'string' || pkg.Name.length === 0) {
+      problems.push(`C15 ${label} ${at} has no Name`);
+    }
+    if (typeof pkg.Version !== 'string' || pkg.Version.length === 0) {
+      problems.push(`C15 ${label} ${at} has no Version`);
+    }
+    const purl = pkg.Identifier?.PURL;
+    if (typeof purl !== 'string' || purl.length === 0) {
+      problems.push(`C15 ${label} ${at} has no Identifier.PURL; the package has no identity`);
+    }
+    if (analyzedBy !== null && pkg.AnalyzedBy !== analyzedBy) {
       problems.push(
-        `C15 ${label} ${at} reports ${arr.length} ${field}; the blocking filesystem scan PASSED `
-        + 'at HIGH,CRITICAL, so a genuine receipt reports none',
+        `C15 ${label} ${at} AnalyzedBy is ${JSON.stringify(pkg.AnalyzedBy)}, expected ${JSON.stringify(analyzedBy)} — ` +
+        'the package was not produced by the expected analyzer',
       );
     }
   }
@@ -862,16 +754,16 @@ function emptyFindingsProblems(label, at, r) {
 }
 
 /** A result record must name its target, its class, its type, and what it found. */
-function resultRecordProblems(label, i, r, { requirePackages, analyzer = null, requireAnalyzedBy = false }) {
+function resultRecordProblems(label, i, r, { requirePackages, analyzedBy = null }) {
   const problems = [];
   const at = `Results[${i}]`;
   if (r === null || typeof r !== 'object' || Array.isArray(r)) {
     problems.push(`C15 ${label} ${at} is not an object`);
-    return { problems, identities: new Set() };
+    return problems;
   }
   if (Object.keys(r).length === 0) {
     problems.push(`C15 ${label} ${at} is an EMPTY object; it records no scan at all`);
-    return { problems, identities: new Set() };
+    return problems;
   }
   for (const field of ['Target', 'Class', 'Type']) {
     if (typeof r[field] !== 'string' || r[field].length === 0) {
@@ -883,69 +775,16 @@ function resultRecordProblems(label, i, r, { requirePackages, analyzer = null, r
       problems.push(`C15 ${label} ${at} ${arrayField} is ${typeof r[arrayField]}, not an array`);
     }
   }
-  let identities = new Set();
   if (requirePackages) {
-    const res = packagesProblems(label, at, r.Packages, { analyzer, requireAnalyzedBy });
-    problems.push(...res.problems);
-    identities = res.identities;
-  }
-  return { problems, identities };
-}
-
-/** SS-B5: a scan reports each (Target, Class, Type) exactly once. */
-function duplicateResultProblems(label, results) {
-  const problems = [];
-  const seen = new Set();
-  for (const [i, r] of results.entries()) {
-    if (r === null || typeof r !== 'object') continue;
-    const key = `${r.Target} ${r.Class} ${r.Type}`;
-    if (seen.has(key)) {
-      problems.push(
-        `C15 ${label} Results[${i}] repeats the result identity (${JSON.stringify(r.Target)}, `
-        + `${JSON.stringify(r.Class)}, ${JSON.stringify(r.Type)}); a duplicate can carry contradictory findings`,
-      );
-    }
-    seen.add(key);
+    problems.push(...packagesProblems(label, at, r.Packages, { analyzedBy }));
   }
   return problems;
 }
 
 /**
- * SS-A3 filesystem coverage, derived from SOURCE - not merely nonempty.
- *
- * Two directions, and both matter:
- *   - every package the scanner reports must exist in the lockfile universe, so a report
- *     cannot invent coverage;
- *   - every production registry package the C16 closure derives must appear in the report,
- *     so a report cannot omit coverage. This is what a truncation from 229 to 5 fails.
+ * §A filesystem: exactly the pnpm lockfile result, analysed by pnpm, with real packages.
  */
-function filesystemCoverageProblems(label, identities, sourceSets) {
-  const problems = [];
-  if (sourceSets === null) return problems;
-  const { lockUniverse, productionRegistry } = sourceSets;
-  const invented = [...identities].filter((id) => !lockUniverse.has(id)).sort();
-  if (invented.length > 0) {
-    problems.push(
-      `C15 ${label} reports ${invented.length} package(s) absent from the ${lockUniverse.size}-package `
-      + `lockfile universe derived from pnpm-lock.yaml, e.g. ${invented.slice(0, 3).join(', ')}`,
-    );
-  }
-  const omitted = [...productionRegistry].filter((id) => !identities.has(id)).sort();
-  if (omitted.length > 0) {
-    problems.push(
-      `C15 ${label} omits ${omitted.length} of the ${productionRegistry.size} production registry `
-      + `package(s) the C16 closure derives, e.g. ${omitted.slice(0, 3).join(', ')}. A scan that `
-      + 'missed part of the shipped closure did not cover it.',
-    );
-  }
-  return problems;
-}
-
-/**
- * SS-A filesystem: exactly the pnpm lockfile result, analysed by pnpm, with every package
- * identified and the whole production closure covered.
- */
-function filesystemResultsProblems(label, results, sourceSets) {
+function filesystemResultsProblems(label, results) {
   const problems = [];
   if (!Array.isArray(results)) {
     problems.push(`C15 ${label} Results is ${typeof results}, not an array`);
@@ -955,7 +794,6 @@ function filesystemResultsProblems(label, results, sourceSets) {
     problems.push(`C15 ${label} Results is EMPTY; a scan that analysed nothing is not coverage`);
     return problems;
   }
-  problems.push(...duplicateResultProblems(label, results));
   const lock = results.find((r) => r?.Target === 'pnpm-lock.yaml');
   if (lock === undefined) {
     problems.push(`C15 ${label} has no 'pnpm-lock.yaml' result; the expected package manifest was not analysed`);
@@ -967,21 +805,48 @@ function filesystemResultsProblems(label, results, sourceSets) {
       problems.push(`C15 ${label} pnpm-lock.yaml Type is ${JSON.stringify(lock.Type)}, expected "pnpm"`);
     }
   }
-  let lockIdentities = new Set();
   for (const [i, r] of results.entries()) {
-    const isLock = r?.Target === 'pnpm-lock.yaml';
-    const res = resultRecordProblems(label, i, r, {
-      requirePackages: isLock, analyzer: 'pnpm', requireAnalyzedBy: isLock,
-    });
-    problems.push(...res.problems);
-    if (r !== null && typeof r === 'object') problems.push(...emptyFindingsProblems(label, `Results[${i}]`, r));
-    if (isLock) lockIdentities = res.identities;
+    problems.push(...resultRecordProblems(label, i, r, {
+      requirePackages: r?.Target === 'pnpm-lock.yaml', analyzedBy: 'pnpm',
+    }));
   }
-  problems.push(...filesystemCoverageProblems(label, lockIdentities, sourceSets));
   return problems;
 }
 
-function filesystemReportProblems(label, report, { expectedSha, sourceSets }) {
+/**
+ * §A images: nonempty, well-formed, and containing at least one OS-package result tied to the
+ * exact derived reference with real packages.
+ */
+function imageResultsProblems(label, results, { expectedRef }) {
+  const problems = [];
+  if (!Array.isArray(results)) {
+    problems.push(`C15 ${label} Results is ${typeof results}, not an array`);
+    return problems;
+  }
+  if (results.length === 0) {
+    problems.push(`C15 ${label} Results is EMPTY; the image was not analysed`);
+    return problems;
+  }
+  for (const [i, r] of results.entries()) {
+    problems.push(...resultRecordProblems(label, i, r, { requirePackages: r?.Class === 'os-pkgs' }));
+  }
+  const osResults = results.filter((r) => r?.Class === 'os-pkgs');
+  if (osResults.length === 0) {
+    problems.push(`C15 ${label} contains no 'os-pkgs' result; the image's operating-system packages were never analysed`);
+    return problems;
+  }
+  // The OS result's target names the scanned image; it must be THIS image.
+  const tied = osResults.some((r) => typeof r.Target === 'string' && r.Target.startsWith(expectedRef));
+  if (!tied) {
+    problems.push(
+      `C15 ${label} os-pkgs result target ${JSON.stringify(osResults[0].Target)} is not the derived ` +
+      `reference ${expectedRef}; the analysed packages belong to another image`,
+    );
+  }
+  return problems;
+}
+
+function filesystemReportProblems(label, report, { expectedSha }) {
   const problems = [];
   if (report === null || typeof report !== 'object' || Array.isArray(report)) {
     problems.push(`C15 ${label} is not a JSON object`);
@@ -1007,192 +872,7 @@ function filesystemReportProblems(label, report, { expectedSha, sourceSets }) {
       `is ${expectedSha}; the scan describes a different source`,
     );
   }
-  problems.push(...filesystemResultsProblems(label, report.Results, sourceSets));
-  return problems;
-}
-
-/**
- * R3.4.4 SS-A4 / SS-B6 / SS-B7: image results.
- *
- * R3.4.3 required packages only on os-pkgs results, accepted any Class/Type pair, matched the
- * OS target with startsWith (so `<exactRef>-attacker` passed) and never looked at a single
- * finding. Each of those is an invariant now.
- */
-const IMAGE_CLASS_TYPES = Object.freeze({
-  'os-pkgs': ['alpine', 'debian', 'ubuntu'],
-  'lang-pkgs': ['gobinary', 'node-pkg', 'jar', 'python-pkg'],
-});
-const CANONICAL_SEVERITIES = Object.freeze(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
-
-/**
- * SS-B7: every vulnerability, fully. A finding is what makes the gate block or pass, so a
- * malformed one is not a cosmetic defect - it is an unreconcilable claim.
- */
-function vulnerabilityProblems(label, at, v, { packageIdentities }) {
-  const problems = [];
-  if (v === null || typeof v !== 'object' || Array.isArray(v)) {
-    problems.push(`C15 ${label} ${at} is not an object`);
-    return problems;
-  }
-  if (typeof v.VulnerabilityID !== 'string' || !/^[A-Z][A-Z0-9-]{2,}-/.test(v.VulnerabilityID)) {
-    problems.push(`C15 ${label} ${at} VulnerabilityID ${JSON.stringify(v.VulnerabilityID)} is not an advisory identifier`);
-  }
-  if (typeof v.PkgName !== 'string' || v.PkgName.length === 0) {
-    problems.push(`C15 ${label} ${at} has no PkgName`);
-  }
-  if (typeof v.InstalledVersion !== 'string' || v.InstalledVersion.length === 0) {
-    problems.push(`C15 ${label} ${at} has no InstalledVersion`);
-  }
-  if (!CANONICAL_SEVERITIES.includes(v.Severity)) {
-    problems.push(
-      `C15 ${label} ${at} Severity ${JSON.stringify(v.Severity)} is not one of `
-      + `${CANONICAL_SEVERITIES.join(', ')}; trivy emits canonical upper-case severities`,
-    );
-  }
-  const raw = v.PkgIdentifier?.PURL;
-  if (typeof raw !== 'string' || raw.length === 0) {
-    problems.push(`C15 ${label} ${at} has no PkgIdentifier.PURL, so the finding names no package`);
-    return problems;
-  }
-  let parsed;
-  try {
-    parsed = PackageURL.fromString(raw);
-  } catch (e) {
-    problems.push(`C15 ${label} ${at} PURL ${JSON.stringify(raw)} does not parse: ${e instanceof Error ? e.message : e}`);
-    return problems;
-  }
-  // A finding must be about a package the SAME result reported. Otherwise the scan is
-  // asserting a vulnerability in something it never claimed to have found.
-  const id = purlIdentity(parsed);
-  if (!packageIdentities.has(id)) {
-    problems.push(
-      `C15 ${label} ${at} reports a vulnerability in ${id}, which this result does not list `
-      + 'among its packages',
-    );
-  }
-  if (typeof v.PkgName === 'string') {
-    const purlName = purlPackageName(parsed);
-    if (purlName !== v.PkgName) {
-      problems.push(`C15 ${label} ${at} PkgName is ${JSON.stringify(v.PkgName)} but its PURL names ${JSON.stringify(purlName)}`);
-    }
-  }
-  if (typeof v.InstalledVersion === 'string' && parsed.version !== v.InstalledVersion) {
-    problems.push(
-      `C15 ${label} ${at} InstalledVersion is ${JSON.stringify(v.InstalledVersion)} but its PURL `
-      + `says ${JSON.stringify(parsed.version)}`,
-    );
-  }
-  return problems;
-}
-
-/**
- * SS-B7: scanner classes the verifier does not reconcile must be empty, and a secret finding
- * fails closed.
- *
- * There is deliberately NO secret-disposition mechanism. Governing a secret would mean
- * recording, in a tracked document, that a particular credential in a shipped image is
- * acceptable - a decision that needs its own typed mechanism and its own review, not a reuse
- * of the vulnerability dispositions. Until that exists, any secret is a hard failure.
- */
-function unreconciledClassProblems(label, at, r) {
-  const problems = [];
-  const secrets = Array.isArray(r.Secrets) ? r.Secrets : [];
-  if (secrets.length > 0) {
-    problems.push(
-      `C15 ${label} ${at} reports ${secrets.length} SECRET finding(s). There is no secret-disposition `
-      + 'mechanism, so a secret in a shipped image fails closed rather than being absorbed by the '
-      + 'vulnerability dispositions.',
-    );
-  }
-  const misconfig = Array.isArray(r.Misconfigurations) ? r.Misconfigurations : [];
-  if (misconfig.length > 0) {
-    problems.push(
-      `C15 ${label} ${at} reports ${misconfig.length} misconfiguration(s), which the image `
-      + 'reconciliation does not cover; an unreconciled finding cannot be shown to be governed',
-    );
-  }
-  for (const key of Object.keys(r)) {
-    if (['Target', 'Class', 'Type', 'Packages', 'Vulnerabilities', 'Secrets', 'Misconfigurations'].includes(key)) continue;
-    const val = r[key];
-    if (Array.isArray(val) && val.length > 0) {
-      problems.push(
-        `C15 ${label} ${at} carries a nonempty ${key} array that the verifier does not reconcile; `
-        + 'an unknown finding class cannot be shown to be governed',
-      );
-    }
-  }
-  return problems;
-}
-
-function imageResultsProblems(label, results, { expectedRef, osFamily, osName }) {
-  const problems = [];
-  if (!Array.isArray(results)) {
-    problems.push(`C15 ${label} Results is ${typeof results}, not an array`);
-    return problems;
-  }
-  if (results.length === 0) {
-    problems.push(`C15 ${label} Results is EMPTY; the image was not analysed`);
-    return problems;
-  }
-  problems.push(...duplicateResultProblems(label, results));
-
-  for (const [i, r] of results.entries()) {
-    const at = `Results[${i}]`;
-    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
-      problems.push(`C15 ${label} ${at} is not an object`);
-      continue;
-    }
-    if (Object.keys(r).length === 0) {
-      problems.push(`C15 ${label} ${at} is an EMPTY object; it records no scan at all`);
-      continue;
-    }
-    // SS-A4: unknown Class/Type combinations are rejected, not ignored.
-    const allowedTypes = hasOwnKey(IMAGE_CLASS_TYPES, r.Class) ? IMAGE_CLASS_TYPES[r.Class] : null;
-    if (allowedTypes === null) {
-      problems.push(`C15 ${label} ${at} Class ${JSON.stringify(r.Class)} is not a class this gate analyses`);
-    } else if (!allowedTypes.includes(r.Type)) {
-      problems.push(
-        `C15 ${label} ${at} Type ${JSON.stringify(r.Type)} is not valid for Class ${JSON.stringify(r.Class)} `
-        + `(expected one of ${allowedTypes.join(', ')})`,
-      );
-    }
-    // SS-A4: BOTH os-pkgs and lang-pkgs must list what they analysed.
-    const analyzer = typeof r.Type === 'string' ? r.Type : null;
-    const res = resultRecordProblems(label, i, r, { requirePackages: true, analyzer });
-    problems.push(...res.problems);
-
-    for (const [j, v] of (Array.isArray(r.Vulnerabilities) ? r.Vulnerabilities : []).entries()) {
-      problems.push(...vulnerabilityProblems(label, `${at} Vulnerabilities[${j}]`, v, {
-        packageIdentities: res.identities,
-      }));
-    }
-    problems.push(...unreconciledClassProblems(label, at, r));
-  }
-
-  const osResults = results.filter((r) => r?.Class === 'os-pkgs');
-  if (osResults.length === 0) {
-    problems.push(`C15 ${label} contains no 'os-pkgs' result; the image's operating-system packages were never analysed`);
-    return problems;
-  }
-  // SS-B6: the OS result's identity, exactly. `startsWith` let `<exactRef>-attacker` through.
-  if (typeof osFamily === 'string' && typeof osName === 'string') {
-    const exactTarget = `${expectedRef} (${osFamily} ${osName})`;
-    const tied = osResults.some((r) => r.Target === exactTarget);
-    if (!tied) {
-      problems.push(
-        `C15 ${label} has no os-pkgs result targeting exactly ${JSON.stringify(exactTarget)}; `
-        + `got ${JSON.stringify(osResults.map((r) => r.Target))}. The analysed packages belong to another image.`,
-      );
-    }
-    for (const r of osResults) {
-      if (r.Type !== osFamily) {
-        problems.push(
-          `C15 ${label} os-pkgs result ${JSON.stringify(r.Target)} has Type ${JSON.stringify(r.Type)} `
-          + `but Metadata.OS.Family is ${JSON.stringify(osFamily)}; the report contradicts itself`,
-        );
-      }
-    }
-  }
+  problems.push(...filesystemResultsProblems(label, report.Results));
   return problems;
 }
 
@@ -1238,13 +918,7 @@ function imageReportProblems(label, report, { expectedRef }) {
   } else if (!digests.includes(expectedRef)) {
     problems.push(`C15 ${label} Metadata.RepoDigests ${JSON.stringify(digests)} does not contain ${expectedRef}`);
   }
-  // SS-B6: the OS identity is what ties the os-pkgs result to this image, so it must exist.
-  const os = meta.OS;
-  const osFamily = typeof os?.Family === 'string' && os.Family.length > 0 ? os.Family : null;
-  const osName = typeof os?.Name === 'string' && os.Name.length > 0 ? os.Name : null;
-  if (osFamily === null) problems.push(`C15 ${label} Metadata.OS.Family is missing; the image identifies no operating system`);
-  if (osName === null) problems.push(`C15 ${label} Metadata.OS.Name is missing; the image identifies no OS release`);
-  problems.push(...imageResultsProblems(label, report.Results, { expectedRef, osFamily, osName }));
+  problems.push(...imageResultsProblems(label, report.Results, { expectedRef }));
   return problems;
 }
 
@@ -1256,16 +930,6 @@ function imageReportProblems(label, report, { expectedRef }) {
  * These forms remain raw scanner output rather than being regenerated, so what is asserted is
  * agreement with the authoritative JSON: same subject, and no blocking finding reported.
  */
-/**
- * R3.4.4 SS-C: the table is compared as a MULTISET against the JSON, with counts.
- *
- * R3.4.3 looked up each JSON target in a Map built from the table rows and checked the count
- * cells were 0 or '-'. A forged FIRST row for the same target - `999 / 99 / 88` - was silently
- * overwritten by the genuine zero row that followed it, so the fabricated row was never seen.
- * A receipt is now parsed as an ordered list of rows and compared row-for-row.
- */
-const TABLE_COLUMNS = Object.freeze(['Target', 'Type', 'Vulnerabilities', 'Secrets', 'Misconfigurations']);
-
 function tableReceiptProblems(label, text, { jsonResults, kind }) {
   const problems = [];
   const trimmed = text.trim();
@@ -1273,99 +937,63 @@ function tableReceiptProblems(label, text, { jsonResults, kind }) {
     problems.push(`C15 ${label} is empty; the blocking ${kind} scan produced no receipt`);
     return problems;
   }
+  // ── §C: PARSE THE GRAMMAR, do not look for a substring ────────────────────────
+  // R3.4.2 accepted a two-line file containing "Report Summary" and a target name. A receipt
+  // is a table: a header row naming the columns, and one bordered row per analysed target.
+  const lines = trimmed.split('\n');
   if (!/^Report Summary\s*$/m.test(trimmed)) {
     problems.push(`C15 ${label} has no 'Report Summary' heading; it is not trivy table output`);
     return problems;
   }
-  const rows = trimmed.split('\n').filter((l) => l.includes('│'));
+  const rows = lines.filter((l) => l.includes('│'));
   if (rows.length < 2) {
     problems.push(`C15 ${label} has ${rows.length} table row(s); a summary needs a header and at least one target`);
     return problems;
   }
   const cellsOf = (row) => row.split('│').map((c) => c.trim()).filter((c) => c.length > 0);
   const header = cellsOf(rows[0]);
-  // Exact column ORDER, not merely presence: a reordered header means the cells beneath it
-  // are being read as something other than what they are.
-  if (header.length !== TABLE_COLUMNS.length || header.some((c, i) => c !== TABLE_COLUMNS[i])) {
-    problems.push(
-      `C15 ${label} header is ${JSON.stringify(header)}, expected exactly `
-      + `${JSON.stringify([...TABLE_COLUMNS])} in that order`,
-    );
-    return problems;
-  }
-
-  // Every non-header row must PARSE. R3.4.3 filtered mismatched rows away, which is how a
-  // malformed row became invisible rather than fatal.
-  const dataRows = [];
-  for (const [i, row] of rows.slice(1).entries()) {
-    const cells = cellsOf(row);
-    if (cells.length !== TABLE_COLUMNS.length) {
-      problems.push(
-        `C15 ${label} row ${i + 1} has ${cells.length} cell(s), not ${TABLE_COLUMNS.length}: `
-        + `${JSON.stringify(row.slice(0, 100))}. A row the verifier cannot parse is not a row it may ignore.`,
-      );
-      continue;
+  const REQUIRED_COLUMNS = ['Target', 'Type', 'Vulnerabilities', 'Secrets', 'Misconfigurations'];
+  for (const col of REQUIRED_COLUMNS) {
+    if (!header.includes(col)) {
+      problems.push(`C15 ${label} header ${JSON.stringify(header)} is missing the '${col}' column`);
     }
-    dataRows.push(cells);
   }
   if (problems.length > 0) return problems;
+
+  const colIndex = Object.fromEntries(REQUIRED_COLUMNS.map((c) => [c, header.indexOf(c)]));
+  const dataRows = rows.slice(1).map(cellsOf).filter((c) => c.length === header.length);
   if (dataRows.length === 0) {
     problems.push(`C15 ${label} has no data row matching its header; the table is decorative`);
     return problems;
   }
-
-  const seen = new Set();
-  for (const cells of dataRows) {
-    if (seen.has(cells[0])) {
+  // EXACT correspondence with the authoritative JSON: same targets, same types.
+  const tableByTarget = new Map(dataRows.map((c) => [c[colIndex.Target], c]));
+  for (const r of jsonResults) {
+    const row = tableByTarget.get(r.Target);
+    if (row === undefined) {
+      problems.push(`C15 ${label} lists no row for '${r.Target}', which the JSON scan analysed; the receipts disagree`);
+      continue;
+    }
+    if (row[colIndex.Type] !== r.Type) {
       problems.push(
-        `C15 ${label} lists '${cells[0]}' more than once; duplicate rows can carry contradictory counts `
-        + 'and only one of them can be true',
+        `C15 ${label} row '${r.Target}' reports Type ${JSON.stringify(row[colIndex.Type])}, ` +
+        `but the JSON scan reports ${JSON.stringify(r.Type)}`,
       );
     }
-    seen.add(cells[0]);
-  }
-
-  // Exact multiset comparison with the authoritative JSON, on (Target, Type).
-  const tableKeys = dataRows.map((c) => `${c[0]} :: ${c[1]}`).sort();
-  const jsonKeys = jsonResults.map((r) => `${r.Target} :: ${r.Type}`).sort();
-  if (tableKeys.length !== jsonKeys.length || tableKeys.some((k, i) => k !== jsonKeys[i])) {
-    problems.push(
-      `C15 ${label} rows ${JSON.stringify(tableKeys)} do not equal the `
-      + `JSON scan's ${JSON.stringify(jsonKeys)}; the receipts disagree`,
-    );
-    return problems;
-  }
-
-  // Counts, compared with the JSON arrays rather than pattern-matched.
-  const byKey = new Map(jsonResults.map((r) => [`${r.Target} :: ${r.Type}`, r]));
-  const COUNTED = { Vulnerabilities: 2, Secrets: 3, Misconfigurations: 4 };
-  for (const cells of dataRows) {
-    const r = byKey.get(`${cells[0]} :: ${cells[1]}`);
-    if (r === undefined) continue;
-    for (const [field, col] of Object.entries(COUNTED)) {
-      const cell = cells[col];
-      const jsonCount = Array.isArray(r[field]) ? r[field].length : 0;
-      // '-' means the scanner did not run for that target, which is only consistent with the
-      // JSON carrying no such array at all.
-      if (cell === '-') {
-        if (hasOwnKey(r, field)) {
-          problems.push(
-            `C15 ${label} row '${cells[0]}' reports ${field}='-' (not scanned) while the JSON scan `
-            + `carries a ${field} array`,
-          );
-        }
-        continue;
-      }
-      if (!/^\d+$/.test(cell)) {
-        problems.push(`C15 ${label} row '${cells[0]}' ${field} cell ${JSON.stringify(cell)} is neither a count nor '-'`);
-        continue;
-      }
-      if (Number(cell) !== jsonCount) {
+    // A PASS run's counts are 0 or '-' (scanner not applicable to that target).
+    for (const col of ['Vulnerabilities', 'Secrets', 'Misconfigurations']) {
+      const cell = row[colIndex[col]];
+      if (cell !== '0' && cell !== '-') {
         problems.push(
-          `C15 ${label} row '${cells[0]}' reports ${field}=${cell} but the JSON scan reports `
-          + `${jsonCount}; the receipts disagree`,
+          `C15 ${label} row '${r.Target}' reports ${col}=${JSON.stringify(cell)} while the JSON scan ` +
+          'reports none; the receipts disagree',
         );
       }
+    }
+  }
+  for (const target of tableByTarget.keys()) {
+    if (!jsonResults.some((r) => r.Target === target)) {
+      problems.push(`C15 ${label} lists '${target}', which the JSON scan did not analyse`);
     }
   }
   return problems;
@@ -1382,7 +1010,7 @@ const SCANNER_MARKERS = Object.freeze([
   { scanner: 'secret', pattern: /\[secret\]\s+Secret scanning is enabled/ },
 ]);
 
-function scannerCoverageProblems(label, stderrText, { scanners = ['vulnerability', 'misconfiguration', 'secret'] } = {}) {
+function scannerCoverageProblems(label, stderrText) {
   const problems = [];
   if (stderrText === null) {
     problems.push(`C15 ${label} is absent; without it nothing proves which scanners were enabled`);
@@ -1393,7 +1021,6 @@ function scannerCoverageProblems(label, stderrText, { scanners = ['vulnerability
     return problems;
   }
   for (const { scanner, pattern } of SCANNER_MARKERS) {
-    if (!scanners.includes(scanner)) continue;
     if (!pattern.test(stderrText)) {
       problems.push(`C15 ${label} carries no evidence that ${scanner} scanning was enabled`);
     }
@@ -1408,119 +1035,23 @@ function auditHumanReceiptProblems(label, text) {
     problems.push(`C15 ${label} is empty; the blocking audit produced no receipt`);
     return problems;
   }
-  // pnpm 11.9.0 emits EXACTLY this line for a clean tree. R3.4.2 accepted anything CONTAINING
-  // the clean phrase, so appending "HIGH vulnerability found" passed.
+  // ── §D: pnpm 11.9.0 emits EXACTLY this line for a clean tree ───────────────────
+  // R3.4.2 accepted anything containing the clean phrase, so appending
+  // "HIGH vulnerability found" passed. The whole normalized receipt must be the clean line.
   const CLEAN = 'No known vulnerabilities found';
   const normalized = trimmed.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).join('\n');
   if (normalized !== CLEAN) {
     problems.push(
-      `C15 ${label} is not the exact clean pnpm receipt. A PASS run's human audit is `
-      + `${JSON.stringify(CLEAN)} and nothing else; got ${JSON.stringify(normalized.slice(0, 80))}`
-      + (normalized.length > 80 ? '…' : ''),
+      `C15 ${label} is not the exact clean pnpm receipt. A PASS run's human audit is ` +
+      `${JSON.stringify(CLEAN)} and nothing else; got ${JSON.stringify(normalized.slice(0, 80))}` +
+      (normalized.length > 80 ? '…' : ''),
     );
   }
   return problems;
 }
 
-/**
- * R3.4.4 SS-D: the JSON audit must AGREE with the clean human receipt, and describe the tree
- * it audited.
- *
- * R3.4.3 checked that an advisory container existed and was a plain object. It never read the
- * severity counters, so `low: 1` beside an empty advisory set passed, as did `info: 10` with
- * nothing to account for it; and it never read the dependency counts, so an audit claiming to
- * have examined nothing at all passed beside a receipt saying the tree was clean.
- */
-function auditConsistencyProblems(audit, { container, lockUniverseSize }) {
+function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha }) {
   const problems = [];
-  const meta = audit?.metadata;
-  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
-    problems.push('C15 dependency audit has no metadata object, so it describes no tree');
-    return problems;
-  }
-  const counts = meta.vulnerabilities;
-  if (counts === null || typeof counts !== 'object' || Array.isArray(counts)) {
-    problems.push('C15 dependency audit metadata has no vulnerabilities counters');
-  } else {
-    for (const sev of ['info', 'low', 'moderate', 'high', 'critical']) {
-      const n = counts[sev];
-      if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) {
-        problems.push(`C15 dependency audit ${sev} counter is ${JSON.stringify(n)}, not a non-negative integer`);
-      } else if (n !== 0) {
-        problems.push(
-          `C15 dependency audit reports ${n} ${sev} finding(s) while the human receipt says the tree `
-          + 'is clean; the two receipts describe different trees',
-        );
-      }
-    }
-  }
-  // A clean receipt and a nonempty advisory set cannot both be true.
-  if (container !== undefined && container !== null && typeof container === 'object' && !Array.isArray(container)) {
-    const n = Object.keys(container).length;
-    if (n > 0) {
-      problems.push(
-        `C15 dependency audit carries ${n} advisory record(s) while the human receipt says the tree `
-        + 'is clean',
-      );
-    }
-  }
-  // SS-D10: the audit must have examined the whole lockfile, not an empty tree.
-  const FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'totalDependencies'];
-  const values = {};
-  for (const f of FIELDS) {
-    const n = meta[f];
-    if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) {
-      problems.push(`C15 dependency audit metadata.${f} is ${JSON.stringify(n)}, not a non-negative integer`);
-    } else {
-      values[f] = n;
-    }
-  }
-  if (Object.keys(values).length === FIELDS.length) {
-    if (FIELDS.every((f) => values[f] === 0)) {
-      problems.push('C15 dependency audit reports ZERO dependencies of every kind; it audited nothing');
-    }
-    if (typeof lockUniverseSize === 'number' && values.totalDependencies !== lockUniverseSize) {
-      problems.push(
-        `C15 dependency audit examined ${values.totalDependencies} package(s), but the lockfile `
-        + `universe derived from pnpm-lock.yaml has ${lockUniverseSize}; the audit did not cover the tree`,
-      );
-    }
-  }
-  return problems;
-}
-
-/**
- * R3.4.4 SS-A3 / SS-D10: the two source-derived sets the receipts are measured against.
- *
- * Both come from tracked source only - the lockfile and the deterministic C16 closure - so
- * nothing in the evidence can move the expectation it is checked against. Failing to derive
- * them is itself reported: an unmeasurable claim is not a passing claim.
- */
-function sourceCoverageSets(root, asOfDate) {
-  try {
-    const derived = deriveC16Expectation({ root, asOfDate });
-    const production = derived.closures?.production;
-    if (production === undefined) return { sets: null, problems: ['C15 could not derive the production closure to measure filesystem coverage against'] };
-    const productionRegistry = new Set();
-    for (const node of production.nodes.values()) {
-      // Registry packages only: first-party workspace components are not published, so no
-      // dependency scanner reports them.
-      if (node.kind !== 'npm' || typeof node.purl !== 'string') continue;
-      productionRegistry.add(purlIdentity(PackageURL.fromString(node.purl)));
-    }
-    return { sets: { lockUniverse: derived.lockUniverse, productionRegistry }, problems: [] };
-  } catch (e) {
-    return {
-      sets: null,
-      problems: [`C15 could not derive the source coverage sets (${e instanceof Error ? e.message.slice(0, 160) : e})`],
-    };
-  }
-}
-
-function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha, asOfDate }) {
-  const problems = [];
-  const { sets: sourceSets, problems: setProblems } = sourceCoverageSets(root, asOfDate);
-  problems.push(...setProblems);
   const read = (rel) => {
     const { bytes, problem } = readMember(c15Dir, rel);
     if (problem !== null) { problems.push(`C15 '${rel}' ${problem}`); return null; }
@@ -1577,12 +1108,6 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
             problems.push(`C15 dependency audit carries ${blocking.length} blocking advisory(ies)`);
           }
         }
-        // SS-D9 / SS-D10: the counters, the advisory set and the dependency totals must all
-        // agree with the clean human receipt and with the lockfile the audit claims to cover.
-        problems.push(...auditConsistencyProblems(audit, {
-          container,
-          lockUniverseSize: sourceSets === null ? null : sourceSets.lockUniverse.size,
-        }));
       }
     }
     // Cross-check the HUMAN receipt: an empty table beside a populated JSON, or vice versa,
@@ -1616,7 +1141,7 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     try { fsReport = JSON.parse(fsText); } catch (e) {
       problems.push(`C15 trivy-fs-json.stdout.txt is not valid JSON (${e instanceof Error ? e.message.slice(0, 100) : e})`);
     }
-    problems.push(...filesystemReportProblems('trivy-fs-json.stdout.txt', fsReport, { expectedSha, sourceSets }));
+    problems.push(...filesystemReportProblems('trivy-fs-json.stdout.txt', fsReport, { expectedSha }));
     // ── §3: the TABLE receipt is cross-checked against the JSON, not merely non-empty ─────
     // R3.4.1 accepted any non-empty string here — "NOT A TRIVY REPORT" passed. The table form
     // is the same scan in another format, so it must name the same subject and agree that
@@ -1667,10 +1192,6 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     try {
       const parsed = JSON.parse(text);
       problems.push(...imageReportProblems(rel, parsed, { expectedRef: scanRefs[index] }));
-      // SS-B7: the image command declares `--scanners vuln,secret`, so its receipt must show
-      // both were enabled. A scan that quietly ran fewer scanners covered less than it claims.
-      problems.push(...scannerCoverageProblems(`trivy-image-${index}.stderr.txt`,
-        read(`trivy-image-${index}.stderr.txt`), { scanners: ['vulnerability', 'secret'] }));
       reconstructed.push(...findingsFromTrivyJson(text, pinnedRef));
     } catch (e) {
       problems.push(`C15 ${rel} could not be parsed as a trivy report (${e instanceof Error ? e.message.slice(0, 100) : e})`);
@@ -2236,16 +1757,6 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
       problems.push('C15 recorded that its disposition document was overridden');
     }
 
-    // Both halves of the package are measured against the SAME derivation window. It selects
-    // the exclusion window only; it cannot move a derived closure, and a mismatch in the
-    // derived result is what fails. The C16 record is read directly here because the C16 block
-    // below has not parsed it yet.
-    let c16AsOfDate = new Date().toISOString().slice(0, 10);
-    try {
-      const rec = JSON.parse(readFileSync(join(c16Dir, 'closure-reconciliation.json'), 'utf8'));
-      if (typeof rec.generated_from?.run_date === 'string') c16AsOfDate = rec.generated_from.run_date;
-    } catch { /* the C16 block reports an unreadable record; C15 falls back to today */ }
-
     problems.push(...verifyCandidateSource({ c15, root, expectedSha }));
     problems.push(...verifyCacheProvenance(c15));
     problems.push(...verifyScannerChain({ c15, contract }));
@@ -2264,9 +1775,7 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
       c15, c15Dir, expectedSha, bindings: c15Bindings.byPath, contract, scanRefs: images.scanRefs, root,
     }).problems);
 
-    problems.push(...verifyRawSemantics({
-      c15, c15Dir, contract, scanRefs: images.scanRefs, root, expectedSha, asOfDate: c16AsOfDate,
-    }));
+    problems.push(...verifyRawSemantics({ c15, c15Dir, contract, scanRefs: images.scanRefs, root, expectedSha }));
 
     if (c15.step_policy_audit?.every_informational_step_duplicates_a_blocking_step !== true) {
       problems.push('C15 did not prove every non-blocking step duplicates a blocking one');
@@ -2315,34 +1824,4 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
   }
 
   return problems;
-}
-
-// Only run when invoked as a script — the controls import the assertion.
-if (process.argv[1] !== undefined &&
-    join(process.argv[1]) === join(fileURLToPath(import.meta.url))) {
-  const [c15Dir, c16Dir, expectedSha] = process.argv.slice(2);
-  if (c15Dir === undefined || c16Dir === undefined || expectedSha === undefined) {
-    console.error('usage: node scripts/gate/assert-final-manifests.mjs <C15_OUT> <C16_OUT> <EXPECTED_SHA>');
-    process.exit(2);
-  }
-  if (!/^[0-9a-f]{40}$/.test(expectedSha)) {
-    console.error(`expected SHA ${JSON.stringify(expectedSha)} is not a 40-character git object id`);
-    process.exit(2);
-  }
-  const problems = assertFinalManifests({ c15Dir, c16Dir, expectedSha });
-  if (problems.length > 0) {
-    console.error('=== FINAL-MANIFEST ASSERTION FAILED ===');
-    for (const p of problems) console.error(`  ${p}`);
-    process.exit(1);
-  }
-  const contract = loadSourceContract();
-  const c15 = JSON.parse(readFileSync(join(c15Dir, 'supply-chain-manifest.json'), 'utf8'));
-  const c16 = JSON.parse(readFileSync(join(c16Dir, 'closure-reconciliation.json'), 'utf8'));
-  console.log(`final mode confirmed for C15 and C16 at ${expectedSha}`);
-  console.log(`  images: ${contract.imageRefs.length} from docker-compose.yml, agreeing with conformance.manifest.json`);
-  console.log(`  C15 steps: ${c15.steps.length} normal + ${c15.trivy_cache_acquisition.steps.length} acquisition, each with contract-exact normalized argv`);
-  console.log(`  C15 outputs: ${c15.evidence_artifacts.length} bound, EQUAL to the ${contract.expectedInventory.length} the source contract derives`);
-  console.log('  C15 image findings RECONSTRUCTED from the delivered raw trivy bytes and re-reconciled against the tracked dispositions');
-  console.log('  C15 cache recomputed over the exact tracked entry set, before === after');
-  console.log(`  C16 SBOMs byte-identical to the deterministic source-derived generation for ${Object.keys(c16.targets).sort().join(', ')}`);
 }

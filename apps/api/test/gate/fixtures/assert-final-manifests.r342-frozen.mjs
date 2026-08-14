@@ -19,7 +19,7 @@ import {
   imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
   C15_NORMAL_STEPS, C15_ACQUISITION_STEPS, C15_REQUIRED_REPORTS, C16_REQUIRED_REPORTS,
   CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS, CANDIDATE_ROOT_TOKEN,
-} from './verification-contract.r342-frozen.mjs';
+} from '../../../../../scripts/gate/lib/verification-contract.mjs';
 import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
 import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candidate-source.mjs';
 import {
