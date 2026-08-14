@@ -28,6 +28,8 @@ import { readFileSync, readdirSync, existsSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
+import parseSpdx from 'spdx-expression-parse';
+
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 
 /**
@@ -87,16 +89,121 @@ export const CATEGORY_OBLIGATIONS = Object.freeze({
 const LICENCE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|AUTHORS|COPYRIGHT)([-._].*)?$/i;
 const COPYRIGHT_LINE = /^.*copyright.*$/gim;
 
-/** Split an SPDX expression into the ids it names. Deliberately syntactic, never semantic. */
+/**
+ * C17.1 B3 — a REAL SPDX expression parser.
+ *
+ * The previous implementation split on whitespace around OR/AND/WITH. That accepts anything:
+ * `NOT-A-LICENCE` is a single token and became an "id", `MIT OR` parsed as `['MIT']`, and
+ * `Apache-2.0 WITH Nope-exception` yielded a fabricated exception. Identifier validity was then
+ * checked against the obligation table, so an unknown id landed in `unclassified_licence` —
+ * correct by accident for that one case, and wrong for malformed grammar and bad exceptions.
+ *
+ * `spdx-expression-parse@5.0.0` (exact-pinned) validates the grammar AND the identifier register,
+ * and throws on an invalid exception. A throw is a hard failure here: an expression this parser
+ * cannot read is not an expression we may interpret.
+ */
 export function spdxIds(expression) {
-  if (typeof expression !== 'string' || expression.trim() === '') return [];
-  return [...new Set(
-    expression
-      .replace(/[()]/g, ' ')
-      .split(/\s+(?:OR|AND|WITH)\s+/i)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0 && !/^(OR|AND|WITH)$/i.test(t)),
-  )];
+  const r = parseSpdxExpression(expression);
+  return r.ok ? r.ids : [];
+}
+
+/** Parse an SPDX expression, reporting WHY it failed rather than swallowing it. */
+export function parseSpdxExpression(expression) {
+  if (typeof expression !== 'string' || expression.trim() === '') {
+    return { ok: false, ids: [], exceptions: [], error: 'no licence expression' };
+  }
+  let ast;
+  try {
+    ast = parseSpdx(expression.trim());
+  } catch (e) {
+    return {
+      ok: false, ids: [], exceptions: [],
+      error: `not a valid SPDX expression: ${e instanceof Error ? e.message : e}`,
+    };
+  }
+  const ids = new Set();
+  const exceptions = new Set();
+  let disjunctive = false;
+  const walk = (n) => {
+    if (n === null || typeof n !== 'object') return;
+    if (typeof n.license === 'string') {
+      ids.add(n.license + (n.plus === true ? '+' : ''));
+      if (typeof n.exception === 'string') exceptions.add(n.exception);
+      return;
+    }
+    if (typeof n.conjunction === 'string') {
+      if (n.conjunction === 'or') disjunctive = true;
+      walk(n.left);
+      walk(n.right);
+    }
+  };
+  walk(ast);
+  if (ids.size === 0) {
+    return { ok: false, ids: [], exceptions: [], error: 'expression names no licence identifier' };
+  }
+  return { ok: true, ids: [...ids].sort(), exceptions: [...exceptions].sort(), disjunctive };
+}
+
+/**
+ * C17.1 B2 — CONTRADICTORY licence evidence.
+ *
+ * A manifest saying `MIT` while shipping the GPLv3 text is not an MIT package; it is a package
+ * whose evidence disagrees with itself, and classifying it as MIT would launder that. Detection
+ * is deterministic and reviewable: one code-owned table of phrases that appear in a licence
+ * FAMILY's own text and in no other family's. If a shipped file matches a family the declared
+ * expression does not name, the component becomes `contradictory_licence` and fails closed.
+ *
+ * The table is deliberately conservative. It is used to detect DISAGREEMENT, never to infer a
+ * licence: a file matching nothing recognisable is not a contradiction, because absence of a
+ * marker is not evidence of a different licence.
+ *
+ * ── WHY THE TITLE POSITION MATTERS ───────────────────────────────────────────────
+ * A first attempt matched the markers anywhere in the file and produced three FALSE POSITIVES on
+ * the real tree, each instructive:
+ *   * `lightningcss@1.33.0` and its native binary declare MPL-2.0, and the MPL's own text names
+ *     the GNU GPL as a compatible Secondary License in §3.3 and Exhibit B. Mentioning a licence
+ *     is not being under it.
+ *   * `vite@8.2.0` declares MIT and ships a LICENSE.md that BUNDLES its vendored dependencies'
+ *     licences, several Apache-2.0. A bundle of other people's notices is not a redeclaration.
+ * So the marker must appear as the file's own TITLE — on a short line near the top, which is
+ * where a licence states what it is — rather than anywhere in the body.
+ */
+export const FAMILY_MARKERS = Object.freeze([
+  { family: 'GPL', pattern: /GNU GENERAL PUBLIC LICENSE/i },
+  { family: 'LGPL', pattern: /GNU LESSER GENERAL PUBLIC LICENSE/i },
+  { family: 'AGPL', pattern: /GNU AFFERO GENERAL PUBLIC LICENSE/i },
+  { family: 'MPL', pattern: /Mozilla Public License Version/i },
+  { family: 'Apache', pattern: /Apache License\s*,?\s*Version 2\.0/i },
+  { family: 'CC-BY', pattern: /Creative Commons Attribution/i },
+  { family: 'Python', pattern: /PYTHON SOFTWARE FOUNDATION LICENSE/i },
+]);
+
+/** Which family a declared SPDX id belongs to, where the id names one at all. */
+export function familyOf(id) {
+  if (/^AGPL-/i.test(id)) return 'AGPL';
+  if (/^LGPL-/i.test(id)) return 'LGPL';
+  if (/^GPL-/i.test(id)) return 'GPL';
+  if (/^MPL-/i.test(id)) return 'MPL';
+  if (/^Apache-/i.test(id)) return 'Apache';
+  if (/^CC-BY/i.test(id)) return 'CC-BY';
+  if (/^Python-/i.test(id)) return 'Python';
+  return null;
+}
+
+/** Families the shipped text positively identifies AS ITS OWN, by title position. */
+export function familiesInText(text) {
+  const found = new Set();
+  // The head of the file only, and only lines short enough to be a heading rather than prose
+  // that happens to name another licence.
+  const head = text.split(/\r?\n/).slice(0, 12);
+  for (const raw of head) {
+    const line = raw.trim().replace(/^#+\s*/, '');
+    if (line.length === 0 || line.length > 80) continue;
+    for (const { family, pattern } of FAMILY_MARKERS) {
+      if (pattern.test(line)) found.add(family);
+    }
+  }
+  return [...found].sort();
 }
 
 /**
@@ -150,7 +257,11 @@ function licenceFiles(dir) {
       file: name,
       bytes: bytes.byteLength,
       sha256: sha256(bytes),
-      copyright: [...new Set((text.match(COPYRIGHT_LINE) ?? []).map((l) => l.trim()))].slice(0, 8),
+      // C17.1 C — every copyright line, not the first eight. A distribution obligation is not
+      // satisfied by a sample of the notices it requires.
+      copyright: [...new Set((text.match(COPYRIGHT_LINE) ?? []).map((l) => l.trim()))],
+      families: familiesInText(text),
+      text,
     });
   }
   return out;
@@ -226,6 +337,20 @@ export function buildTargetInventory({ root, target, closure }) {
       unresolved.push({ ...base, issue: 'unparseable_manifest', detail: String(e).slice(0, 120) });
       continue;
     }
+    // C17.1 B1 — the materialized package must BE the component before its licence is trusted.
+    // A store directory named `foo@1.0.0` holding a manifest that says `attacker@9.9.9` would
+    // otherwise contribute that package's licence, notices and copyright under this component's
+    // identity. The directory name is a filesystem fact; the manifest is the package's own claim.
+    if (manifest.name !== node.name || manifest.version !== node.version) {
+      unresolved.push({
+        ...base,
+        issue: 'identity_mismatch',
+        detail: `the materialized package at ${dir} declares `
+          + `${JSON.stringify(manifest.name)}@${JSON.stringify(manifest.version)}, but the C16 `
+          + `closure resolves ${node.name}@${node.version}`,
+      });
+      continue;
+    }
     // DETECTED FACT: the exact declared field, in whichever of the two shapes npm allows.
     let declared = null;
     if (typeof manifest.license === 'string') declared = manifest.license;
@@ -236,11 +361,13 @@ export function buildTargetInventory({ root, target, closure }) {
       declared = ids.length > 1 ? `(${ids.join(' OR ')})` : (ids[0] ?? null);
     }
     const files = licenceFiles(dir);
+    const parsed = parseSpdxExpression(declared);
     const record = {
       ...base,
       first_party: false,
       declared_license: declared,
-      spdx_ids: spdxIds(declared),
+      spdx_ids: parsed.ok ? parsed.ids : [],
+      spdx_exceptions: parsed.ok ? parsed.exceptions : [],
       manifest_sha256: sha256(manifestBytes),
       licence_files: files,
       copyright: [...new Set(files.flatMap((f) => f.copyright))].sort(),
@@ -249,6 +376,23 @@ export function buildTargetInventory({ root, target, closure }) {
     };
     if (declared === null || declared.trim() === '') {
       unresolved.push({ ...record, issue: 'no_declared_licence', detail: 'the package declares no licence' });
+      continue;
+    }
+    if (!parsed.ok) {
+      unresolved.push({ ...record, issue: 'unclassified_licence', detail: `'${declared}' is ${parsed.error}` });
+      continue;
+    }
+    // B2: shipped text that positively identifies another family contradicts the declaration.
+    const declaredFamilies = new Set(parsed.ids.map(familyOf).filter(Boolean));
+    const shippedFamilies = [...new Set(files.flatMap((f) => f.families))];
+    const conflicting = shippedFamilies.filter((f) => !declaredFamilies.has(f));
+    if (shippedFamilies.length > 0 && conflicting.length > 0) {
+      unresolved.push({
+        ...record,
+        issue: 'contradictory_licence',
+        detail: `declares '${declared}' but its shipped licence text identifies `
+          + `${conflicting.join(', ')} (files: ${files.filter((f) => f.families.some((x) => conflicting.includes(x))).map((f) => f.file).join(', ')})`,
+      });
       continue;
     }
     const ids = record.spdx_ids;

@@ -18,7 +18,8 @@ import { join } from 'node:path';
 
 import { deriveC16Expectation } from '../../../../scripts/gate/generate-closures.mjs';
 import {
-  buildTargetInventory, reconcileInventory, spdxIds, OBLIGATION_TABLE,
+  buildTargetInventory, reconcileInventory, spdxIds, parseSpdxExpression, resetStoreIndex,
+  familiesInText, familyOf, OBLIGATION_TABLE,
 } from '../../../../scripts/gate/lib/license-closure.mjs';
 import {
   validateLegalDispositions, loadLegalDispositions, unresolvedScopeKey,
@@ -129,11 +130,24 @@ describe('C17 §4/§6/§7 — licence governance', () => {
     }
   });
 
-  it('SPDX expressions split into their constituent ids, including alternatives', () => {
+  it('the REAL SPDX parser reports ids, exceptions and malformed grammar distinctly', () => {
+    // The whitespace split this replaced treated an exception as an "id" and accepted anything
+    // token-shaped. The parser separates them and rejects invalid grammar and registers.
     expect(spdxIds('MIT')).toEqual(['MIT']);
-    expect(spdxIds('(MIT OR Apache-2.0)').sort()).toEqual(['Apache-2.0', 'MIT']);
-    expect(spdxIds('Apache-2.0 WITH LLVM-exception').sort()).toEqual(['Apache-2.0', 'LLVM-exception']);
-    expect(spdxIds('')).toEqual([]);
+    expect(spdxIds('(MIT OR Apache-2.0)')).toEqual(['Apache-2.0', 'MIT']);
+    // An exception is NOT a licence id: it is reported separately.
+    const withException = parseSpdxExpression('Apache-2.0 WITH LLVM-exception');
+    expect(withException.ok).toBe(true);
+    expect(withException.ids).toEqual(['Apache-2.0']);
+    expect(withException.exceptions).toEqual(['LLVM-exception']);
+    // A disjunction is flagged, because choosing a limb is a legal decision, not a mechanical one.
+    expect(parseSpdxExpression('(MIT OR Apache-2.0)').disjunctive).toBe(true);
+    for (const bad of ['NOT-A-LICENCE', 'MIT OR', 'Apache-2.0 WITH Nope-exception', '', 'MIT AND']) {
+      const r = parseSpdxExpression(bad);
+      expect(r.ok, `${JSON.stringify(bad)} must not parse`).toBe(false);
+      expect(r.ids).toEqual([]);
+      expect(r.error.length).toBeGreaterThan(0);
+    }
     expect(spdxIds(null as unknown as string)).toEqual([]);
   });
 
@@ -318,4 +332,68 @@ describe('C17 §4/§6/§7 — licence governance', () => {
       rmSync(out, { recursive: true, force: true });
     }
   }, TIMEOUT);
+
+  // ── C17.1 B1/B2 — identity and contradiction ────────────────────────────────
+
+  it('a materialized package whose manifest names ANOTHER package fails as an identity mismatch', () => {
+    // A store directory named foo@1.0.0 holding attacker@9.9.9 would otherwise contribute the
+    // attacker's licence, notices and copyright under the real component's identity.
+    const root = mkdtempSync(join(tmpdir(), 'eye-c17-ident-'));
+    try {
+      const node = { bomRef: 'foo@1.0.0', purl: 'pkg:npm/foo@1.0.0', name: 'foo', version: '1.0.0', kind: 'npm' };
+      const dir = join(root, 'node_modules', '.pnpm', 'foo@1.0.0', 'node_modules', 'foo');
+      require('node:fs').mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'),
+        JSON.stringify({ name: 'attacker', version: '9.9.9', license: 'MIT' }));
+      writeFileSync(join(dir, 'LICENSE'), 'MIT License\n\nCopyright (c) attacker\n');
+      resetStoreIndex();
+      const inv = buildTargetInventory({
+        root, target: 'production', closure: { nodes: new Map([[node.bomRef, node]]) },
+      });
+      resetStoreIndex();
+      expect(inv.components).toHaveLength(0);
+      expect(inv.unresolved).toHaveLength(1);
+      expect(inv.unresolved[0].issue).toBe('identity_mismatch');
+      expect(inv.unresolved[0].detail).toMatch(/declares "attacker"@"9\.9\.9".*resolves foo@1\.0\.0/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      resetStoreIndex();
+    }
+  });
+
+  it('a manifest declaring MIT while shipping GPLv3 text becomes contradictory_licence', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eye-c17-contra-'));
+    try {
+      const node = { bomRef: 'two-faced@1.0.0', purl: 'pkg:npm/two-faced@1.0.0', name: 'two-faced', version: '1.0.0', kind: 'npm' };
+      const dir = join(root, 'node_modules', '.pnpm', 'two-faced@1.0.0', 'node_modules', 'two-faced');
+      require('node:fs').mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'),
+        JSON.stringify({ name: 'two-faced', version: '1.0.0', license: 'MIT' }));
+      writeFileSync(join(dir, 'LICENSE'),
+        'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n\nCopyright (C) 2007 FSF\n');
+      resetStoreIndex();
+      const inv = buildTargetInventory({
+        root, target: 'production', closure: { nodes: new Map([[node.bomRef, node]]) },
+      });
+      resetStoreIndex();
+      expect(inv.components, 'it must NOT classify cleanly as MIT').toHaveLength(0);
+      expect(inv.unresolved[0].issue).toBe('contradictory_licence');
+      expect(inv.unresolved[0].detail).toMatch(/declares 'MIT' but its shipped licence text identifies GPL/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      resetStoreIndex();
+    }
+  });
+
+  it('but MENTIONING another licence is not a contradiction — the title position decides', () => {
+    // The first version of this check matched anywhere in the file and produced three false
+    // positives on the real tree: the MPL names the GNU GPL as a Secondary License, and vite's
+    // LICENSE.md bundles its vendored dependencies' Apache notices.
+    expect(familiesInText('Mozilla Public License Version 2.0\n\n1. Definitions\n')).toEqual(['MPL']);
+    const mplBody = ['Mozilla Public License Version 2.0', '', ...Array(20).fill('body text'),
+      'compatible with the GNU GENERAL PUBLIC LICENSE as a Secondary License'].join('\n');
+    expect(familiesInText(mplBody), 'a body mention must not register').toEqual(['MPL']);
+    expect(familyOf('MPL-2.0')).toBe('MPL');
+    expect(familyOf('MIT')).toBeNull();
+  });
 });
