@@ -42,3 +42,6 @@ evidence/supply-chain/gitleaks-history.json
 # C16 closure outputs (regenerated deterministically from the frozen SHA at the
 # isolated run; byte-identical across runs, so nothing is lost by not tracking them):
 evidence/supply-chain/c16/
+
+# C17 preliminary evidence (gitignored until the final freeze child)
+evidence/c17/

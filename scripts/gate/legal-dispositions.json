@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": [
+    "C17 legal dispositions: human decisions about LICENCE matters, held entirely apart from",
+    "scripts/gate/scanner-exclusions.json, which governs VULNERABILITIES.",
+    "",
+    "The separation is structural, not stylistic. A licence decision and a security decision are",
+    "made by different people, on different evidence, with different review cycles. One document",
+    "would let a record approved for one purpose suppress a finding of the other kind.",
+    "",
+    "A disposition names ONE target, ONE complete canonical PURL and ONE version. It cannot be",
+    "widened to a name, a range or a whole target: a decision about one artifact is not a",
+    "decision about its next release. The gate rejects missing, malformed, duplicate, stale,",
+    "unused, overbroad and mismatched records, and an unresolved licence finding with no",
+    "covering disposition BLOCKS.",
+    "",
+    "This set is EMPTY on purpose. No unresolved licence matter has been reviewed and signed",
+    "off, so none is recorded. An empty set is the honest state; inventing a disposition to",
+    "silence a finding would be the failure this mechanism exists to prevent."
+  ],
+  "records": []
+}
