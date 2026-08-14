@@ -29,7 +29,7 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8fd6492094c90b9b71553e0287b1bd4d1054efb8599351ef0df10972b85ad39d"
+      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
     },
     {
       "id": "SCX-0002",
@@ -44,10 +44,12 @@
         "CVE-2026-33811",
         "CVE-2026-33814",
         "CVE-2026-39820",
+        "CVE-2026-39821",
         "CVE-2026-39822",
         "CVE-2026-39836",
         "CVE-2026-42499",
-        "CVE-2026-42504"
+        "CVE-2026-42504",
+        "CVE-2026-46600"
       ],
       "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
       "scan_platform": "linux/amd64",
@@ -70,7 +72,7 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8fd6492094c90b9b71553e0287b1bd4d1054efb8599351ef0df10972b85ad39d"
+      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
     },
     {
       "id": "SCX-0003",
@@ -98,7 +100,7 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8fd6492094c90b9b71553e0287b1bd4d1054efb8599351ef0df10972b85ad39d"
+      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions."

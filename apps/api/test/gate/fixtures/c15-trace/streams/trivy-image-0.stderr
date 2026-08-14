@@ -1,10 +1,16 @@
-2026-08-13T14:59:10+03:00	INFO	[vuln] Vulnerability scanning is enabled
-2026-08-13T14:59:10+03:00	INFO	[secret] Secret scanning is enabled
-2026-08-13T14:59:10+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
-2026-08-13T14:59:10+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
-2026-08-13T15:00:43+03:00	INFO	Detected OS	family="alpine" version="3.24.1"
-2026-08-13T15:00:43+03:00	WARN	This OS version is not on the EOL list	family="alpine" version="3.24"
-2026-08-13T15:00:43+03:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.24" repository="3.24" pkg_num=53
-2026-08-13T15:00:44+03:00	INFO	Number of language-specific files	num=1
-2026-08-13T15:00:44+03:00	INFO	[gobinary] Detecting vulnerabilities...
-2026-08-13T15:00:44+03:00	WARN	Using severities from other vendors for some vulnerabilities. Read https://trivy.dev/docs/v0.73/guide/scanner/vulnerability#severity-selection for details.
+2026-08-14T14:47:04+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-08-14T14:47:04+03:00	INFO	[secret] Secret scanning is enabled
+2026-08-14T14:47:04+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-08-14T14:47:04+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-08-14T14:47:51+03:00	INFO	Detected OS	family="alpine" version="3.24.1"
+2026-08-14T14:47:51+03:00	WARN	This OS version is not on the EOL list	family="alpine" version="3.24"
+2026-08-14T14:47:51+03:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.24" repository="3.24" pkg_num=53
+2026-08-14T14:47:51+03:00	INFO	Number of language-specific files	num=1
+2026-08-14T14:47:51+03:00	INFO	[gobinary] Detecting vulnerabilities...
+2026-08-14T14:47:51+03:00	WARN	Using severities from other vendors for some vulnerabilities. Read https://trivy.dev/docs/v0.73/guide/scanner/vulnerability#severity-selection for details.
+
+📣 [34mNotices:[0m
+  - Version 0.74.0 of Trivy is now available, current version is 0.73.0
+
+To suppress version checks, run Trivy scans with the --skip-version-check flag
+

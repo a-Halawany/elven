@@ -79,7 +79,7 @@ resolution.
 
 | Field | Value |
 |---|---|
-| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504` (14) |
+| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39821`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504`, `CVE-2026-46600` (16) |
 | Severity | HIGH |
 | Package | `stdlib` |
 | PURL | `pkg:golang/stdlib@v1.24.6` |
@@ -102,6 +102,22 @@ exists.
 2. PostgreSQL itself is loopback-bound.
 3. Phase 0 runs a LOCAL-ONLY development profile under `EXC-P0-004`.
 4. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate.
+
+**Amendment 2026-08-14 (C16-R3.4.4).** `CVE-2026-39821` and `CVE-2026-46600` were added to this
+record. Both are HIGH Go standard-library advisories published upstream after 2026-08-05, both
+resolve against the identical `pkg:golang/stdlib@v1.24.6` compiled into the same
+`usr/local/bin/gosu` binary in the same digest-pinned postgres image, and neither has a patched
+official postgres build. They were not "found" by any change in this round: the gate FAILED
+CLOSED on them the first time it re-scanned after the trivy advisory database advanced, which is
+the mechanism working. They are held under this record rather than a new one because every
+identity field — image, platform, package, PURL, installed version, severity, result target — is
+the one this record already governs, and the reasoning above applies unchanged. The expiry is
+NOT extended: this record still lapses 2026-11-05 with the rest of the set.
+
+**This amendment requires ratification.** It records that two newly published HIGH
+vulnerabilities in a shipped image are accepted for Phase 0. It was made to unblock the R3.4.4
+delivery under the same approval basis as the fourteen advisories already in the record, and it
+should be reviewed on its own terms rather than inherited silently.
 
 ### SCX-0003 — Go standard library in `gosu` (the single CRITICAL)
 
