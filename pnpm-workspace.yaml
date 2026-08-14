@@ -35,3 +35,26 @@ overrides:
   #   * engines "^10 || ^12 || ^13.7 || ^14 || >=15.0.1", which admits node 24.11.1.
   # Verified integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==
   nanoid: 3.3.18
+
+# C17.1 E — TARGET MATERIALIZATION, INDEPENDENT OF THE EXECUTING HOST.
+#
+# The declared C16 closure targets are linux-x64-glibc. The C17 licence inventory reads declared
+# licences and shipped notice files out of MATERIALIZED packages, so a host that never installs
+# the target's platform-gated optional packages cannot describe that target — and C17 previously
+# failed closed on Darwin for exactly that reason. Declaring the supported architectures here
+# makes `pnpm install --frozen-lockfile` materialize the linux-x64-glibc set on every host, so
+# the inventory is a function of the lockfile and the target, never of the machine.
+#
+# `current` is retained alongside so a developer's own platform still works for running the app.
+# Neither value becomes closure truth: the C16 closure derives its platform constraints from
+# scripts/gate/target-descriptor.json, and C17 asserts the host contributes nothing.
+supportedArchitectures:
+  os:
+    - linux
+    - current
+  cpu:
+    - x64
+    - current
+  libc:
+    - glibc
+    - current
