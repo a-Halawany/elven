@@ -767,8 +767,14 @@ describe('C16 control — exclusion governance is code-owned, enforced AND appli
   });
 
   it('rejects an entry that never applied to the declared target', () => {
+    // The NAME must be absent from production, not merely this bomRef. A package present in
+    // production at a different version is rejected by 'version_changed' first, so selecting on
+    // bomRef alone would silently test a different rule the moment such a package appears.
+    const prodNames = new Set(
+      [...closures.production!.nodes.values()].map((n) => n.name),
+    );
     const devOnly = [...closures.development!.nodes.values()].find(
-      (n) => n.kind !== 'workspace' && !closures.production!.nodes.has(n.bomRef) && n.peerSuffix === '',
+      (n) => n.kind !== 'workspace' && !prodNames.has(n.name) && n.peerSuffix === '',
     )!;
     const r = govern([{ ...base, resolution_key: `${devOnly.name}@${devOnly.version}`, parent_edge: 'x -> y' }]);
     expect(r.problems.join('\n')).toContain("rejected by 'unused_never_applied'");

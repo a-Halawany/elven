@@ -23,6 +23,8 @@
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "ajv": "8.18.0",
+    "ajv-formats": "3.0.1",
     "dependency-cruiser": "18.1.1",
     "packageurl-js": "2.0.1",
     "yaml": "2.9.0"

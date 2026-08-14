@@ -47,7 +47,7 @@ govern a finding on any other platform.
 
 ## 3. Findings and their dispositions
 
-Sixteen findings on the `linux/amd64` postgres child, governed by three records.
+Eighteen findings on the `linux/amd64` postgres child, governed by four records.
 
 ### SCX-0001 — c-ares (OS package)
 
@@ -165,8 +165,8 @@ never saw them, not because they did not exist.
 **Why a separate record, and why not SCX-0002.** SCX-0002 is a *risk-accepted* disposition: it
 records that reachable-but-unexercised HIGH advisories in `gosu` are tolerated for Phase 0 on
 operational grounds. These two are a different KIND of claim — the vulnerable code is not
-present in the binary at all — and that claim rests on different evidence and expires
-differently. Folding them into SCX-0002 (as R3.4.4 did) conflated "we accept this risk" with
+present in the binary at all — and that claim carries its own separate approval and its own
+evidence, under the same 2026-11-05 expiry as the rest of the set. Folding them into SCX-0002 (as R3.4.4 did) conflated "we accept this risk" with
 "this risk does not apply", which is precisely the collapse SCX-0003 was split out to avoid.
 
 **Basis — symbol-aware analysis of the exact binary.** `govulncheck` was run in binary mode

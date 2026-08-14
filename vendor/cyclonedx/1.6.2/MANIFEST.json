@@ -1,0 +1,48 @@
+{
+  "$comment": [
+    "C17 VENDORED OFFICIAL CYCLONEDX SCHEMA CLOSURE.",
+    "",
+    "The gate validates its SBOMs against the OFFICIAL schema, and an official schema fetched at",
+    "validation time is an unpinned network dependency inside a gate whose premise is that it has",
+    "none. The complete closure is vendored here and verified byte-for-byte before any schema is",
+    "compiled: bom-1.6 references jsf-0.82 and spdx, and both are resolved from this directory.",
+    "",
+    "Nothing in the gate, the tests, CI or evidence generation may download a schema. A missing or",
+    "altered file fails the preflight, before Ajv sees anything."
+  ],
+  "upstream": {
+    "repository": "https://github.com/CycloneDX/specification",
+    "release_tag": "1.6.2",
+    "commit": "e833d732337dd33aceb45ff1991f896796f1e5e7"
+  },
+  "acquired_on": "2026-08-14",
+  "licence": {
+    "spdx_id": "Apache-2.0",
+    "holder": "OWASP Foundation / CycloneDX contributors",
+    "notice": "The CycloneDX specification and its JSON schemas are published under Apache-2.0. The files are vendored verbatim; no modification is permitted, and any modification fails the digest preflight.",
+    "url": "https://github.com/CycloneDX/specification/blob/e833d732337dd33aceb45ff1991f896796f1e5e7/LICENSE"
+  },
+  "files": [
+    {
+      "file": "bom-1.6.schema.json",
+      "path": "vendor/cyclonedx/1.6.2/bom-1.6.schema.json",
+      "url": "https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/bom-1.6.schema.json",
+      "bytes": 262666,
+      "sha256": "18f57f7482593bad9f21b4feed09084640cbeff419d62ad5090c5ceccca5b37d"
+    },
+    {
+      "file": "jsf-0.82.schema.json",
+      "path": "vendor/cyclonedx/1.6.2/jsf-0.82.schema.json",
+      "url": "https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/jsf-0.82.schema.json",
+      "bytes": 8058,
+      "sha256": "8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae"
+    },
+    {
+      "file": "spdx.schema.json",
+      "path": "vendor/cyclonedx/1.6.2/spdx.schema.json",
+      "url": "https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/spdx.schema.json",
+      "bytes": 14830,
+      "sha256": "c41917196639055e9f9670811bac23ef777732144f3ff5a2f39686f61580dbe6"
+    }
+  ]
+}

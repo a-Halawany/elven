@@ -29,7 +29,14 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
+      "evidence_sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10"
+        }
+      ]
     },
     {
       "id": "SCX-0002",
@@ -70,7 +77,14 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
+      "evidence_sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10"
+        }
+      ]
     },
     {
       "id": "SCX-0003",
@@ -98,7 +112,14 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
+      "evidence_sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10"
+        }
+      ]
     },
     {
       "id": "SCX-0004",
@@ -129,7 +150,22 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-14",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
+      "evidence_sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "cb8afd9f312720760dedd609a8273b6ac03726320606eca496c38f906739cd10"
+        },
+        {
+          "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
+          "sha256": "8c2f1364d3362551eecbfdfdb8152df5029dec4185999828a04ad8d8ae38b6e8"
+        },
+        {
+          "path": "docs/evidence/govulncheck-gosu-b6a16ed0.txt",
+          "sha256": "903c95aa50ca6d3b39ec6db96ea7aecc8fbdded09a9cc81d632a34ec68dcee1c"
+        }
+      ]
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions."

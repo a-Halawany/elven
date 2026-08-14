@@ -23,7 +23,7 @@
  * the package, and a PURL prefix. A record with no package/PURL scope is OVERBROAD and
  * rejected — that is precisely what a bare CVE ID was.
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
@@ -35,9 +35,20 @@ export const REQUIRED_FIELDS = Object.freeze([
   'id', 'advisory_ids', 'image', 'scan_platform', 'package_name', 'package_purl',
   'installed_version', 'severities', 'result_target',
   'reason', 'compensating_controls', 'owner', 'approver',
-  'evidence', 'evidence_sha256',
+  'evidence', 'evidence_sha256', 'evidence_files',
+  'classification',
   'approved_on', 'expires_on',
 ]);
+
+/**
+ * C17 step 0: the CLASSIFICATION is machine-readable and TOTAL.
+ *
+ * A disposition that says "we accept this risk" and one that says "this does not apply to us"
+ * are different decisions with different review obligations, and until now the difference lived
+ * only in prose. It is a required, enumerated field: an absent, unknown or mistyped value makes
+ * the record structurally invalid, so it can never govern a finding.
+ */
+export const ALLOWED_CLASSIFICATIONS = Object.freeze(['RISK_ACCEPTED', 'NOT_AFFECTED']);
 
 /**
  * CODE-OWNED type and format contract for every required field.
@@ -64,6 +75,8 @@ export const FIELD_TYPES = Object.freeze({
   approver: 'string',
   evidence: 'string',
   evidence_sha256: 'string',
+  evidence_files: 'object[]',
+  classification: 'string',
   approved_on: 'string',
   expires_on: 'string',
 });
@@ -129,6 +142,14 @@ export function validateRecords(doc, { runDate, root, isTracked, readEvidence })
       if (want === 'string' && typeof v !== 'string') {
         problems.push(`${where}: field '${field}' must be a string, got ${describeType(v)}`);
         typeFatal = true;
+      } else if (want === 'object[]') {
+        if (!Array.isArray(v)) {
+          problems.push(`${where}: field '${field}' must be an array, got ${describeType(v)}`);
+          typeFatal = true;
+        } else if (v.some((e) => e === null || typeof e !== 'object' || Array.isArray(e))) {
+          problems.push(`${where}: field '${field}' must contain only objects`);
+          typeFatal = true;
+        }
       } else if (want === 'string[]') {
         if (!Array.isArray(v)) {
           problems.push(`${where}: field '${field}' must be an array of strings, got ${describeType(v)}`);
@@ -164,6 +185,79 @@ export function validateRecords(doc, { runDate, root, isTracked, readEvidence })
             `${where}: evidence digest mismatch — '${r.evidence}' hashes to ${actual}, the ` +
             `record claims ${r.evidence_sha256}`,
           );
+          recordFatal.add(i);
+        }
+      }
+    }
+
+    // CLASSIFICATION: enumerated, and fatal when it is not one of the code-owned values.
+    if (!ALLOWED_CLASSIFICATIONS.includes(r.classification)) {
+      problems.push(
+        `${where}: classification ${JSON.stringify(r.classification)} is not one of ` +
+        `${ALLOWED_CLASSIFICATIONS.join(', ')}`,
+      );
+      recordFatal.add(i);
+    }
+
+    // TECHNICAL EVIDENCE FILES: a typed array, each entry a tracked, regular, in-tree file
+    // whose bytes hash to the digest the record declares. Prose citing an analysis is not the
+    // analysis; this is what makes the claim checkable without reading the document.
+    const seenEvidencePaths = new Set();
+    for (const [j, e] of (Array.isArray(r.evidence_files) ? r.evidence_files : []).entries()) {
+      const at = `${where}: evidence_files[${j}]`;
+      const rel = e.path;
+      const want = e.sha256;
+      if (typeof rel !== 'string' || rel === '') {
+        problems.push(`${at} has no 'path'`);
+        recordFatal.add(i);
+        continue;
+      }
+      if (typeof want !== 'string' || !SHA256_HEX.test(want)) {
+        problems.push(`${at} ('${rel}') sha256 must be a lowercase 64-character hex digest`);
+        recordFatal.add(i);
+        continue;
+      }
+      if (seenEvidencePaths.has(rel)) {
+        problems.push(`${at} repeats '${rel}'`);
+        recordFatal.add(i);
+        continue;
+      }
+      seenEvidencePaths.add(rel);
+      // Traversal safety BEFORE any filesystem access: an absolute path or a `..` segment
+      // could name a file outside the repository entirely.
+      if (rel.startsWith('/') || rel.split('/').includes('..')) {
+        problems.push(`${at} '${rel}' must be a repository-relative path with no '..' segment`);
+        recordFatal.add(i);
+        continue;
+      }
+      const abs = join(root, rel);
+      let st = null;
+      try { st = lstatSync(abs); } catch { st = null; }
+      if (st === null) {
+        problems.push(`${at} '${rel}' does not exist`);
+        recordFatal.add(i);
+        continue;
+      }
+      if (!st.isFile()) {
+        problems.push(`${at} '${rel}' is not a regular file`);
+        recordFatal.add(i);
+        continue;
+      }
+      if (isTracked !== undefined && !isTracked(rel)) {
+        problems.push(`${at} '${rel}' is not tracked in version control`);
+        recordFatal.add(i);
+        continue;
+      }
+      if (readEvidence !== undefined) {
+        const bytes = readEvidence(rel);
+        if (bytes === null) {
+          problems.push(`${at} '${rel}' could not be read`);
+          recordFatal.add(i);
+          continue;
+        }
+        const actual = createHash('sha256').update(bytes).digest('hex');
+        if (actual !== want) {
+          problems.push(`${at} '${rel}' hashes to ${actual}, the record claims ${want}`);
           recordFatal.add(i);
         }
       }
