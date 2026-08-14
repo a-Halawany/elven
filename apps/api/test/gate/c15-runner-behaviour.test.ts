@@ -703,7 +703,10 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
       scanner_exclusions: { declared: number };
       image_finding_reconciliation: { total_findings: number; unmatched: string[]; unused_records: string[] };
     };
-    expect(m.scanner_exclusions.declared).toBe(3);
+    // Four since R3.4.5 split SCX-0004 (NOT_AFFECTED, symbol-analysed) out of SCX-0002
+    // (risk-accepted). The literal is deliberate: a record appearing or vanishing must fail
+    // here until someone changes this number on purpose.
+    expect(m.scanner_exclusions.declared).toBe(4);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);

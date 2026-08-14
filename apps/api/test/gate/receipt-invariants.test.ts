@@ -140,7 +140,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
         AnalyzedBy: 'pnpm',
       });
     });
-    closesFalsePass(/absent from the \d+-package lockfile universe/);
+    closesFalsePass(/absent from the \d+-package universe derived from pnpm-lock\.yaml/);
   });
 
   // ── §A2: PURLs are parsed, not glanced at ────────────────────────────────────
@@ -163,7 +163,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
       const p = d.Results[0].Packages[0];
       p.Identifier.PURL = `pkg:golang/${p.Name}@${p.Version}`;
     });
-    closesFalsePass(/PURL type is "golang", but an analyzer of "pnpm" produces "npm"/);
+    closesFalsePass(/PURL type is "golang", but a "pnpm" result carries "npm" packages/);
   });
 
   // ── §A4 / §B6: image results ─────────────────────────────────────────────────
@@ -179,7 +179,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
     editRaw('trivy-image-0.stdout.txt', (d) => {
       d.Results.find((r: any) => r.Class === 'os-pkgs').Type = 'debian';
     });
-    closesFalsePass(/Type "debian" but Metadata\.OS\.Family is "alpine"|Type "debian" is not valid/);
+    closesFalsePass(/no result contract for \("os-pkgs", "debian"\)/);
   });
 
   // This and the next control use `trivy-image-1`, the image with NO findings. Mutating a
@@ -191,7 +191,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
       const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
       r.Target = `${d.Metadata.Reference}-attacker (alpine 3.23.5)`;
     });
-    closesFalsePass(/no os-pkgs result targeting exactly/);
+    closesFalsePass(/os-pkgs target is .*expected exactly/);
   });
 
   it('rejects a duplicated JSON result', () => {
@@ -205,19 +205,19 @@ describe('C16-R3.4.4 receipt invariants', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => {
       d.Results[0].Vulnerabilities = [{ VulnerabilityID: 'CVE-2026-0001', PkgName: 'x', Severity: 'LOW' }];
     });
-    closesFalsePass(/reports 1 Vulnerabilities; the blocking filesystem scan PASSED/);
+    closesFalsePass(/carries 1 entr\(ies\) under "Vulnerabilities"; the blocking filesystem scan PASSED/);
   });
 
   it('rejects a lowercase-severity filesystem finding', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => {
       d.Results[0].Vulnerabilities = [{ VulnerabilityID: 'CVE-2026-0002', PkgName: 'x', Severity: 'critical' }];
     });
-    closesFalsePass(/reports 1 Vulnerabilities; the blocking filesystem scan PASSED/);
+    closesFalsePass(/carries 1 entr\(ies\) under "Vulnerabilities"; the blocking filesystem scan PASSED/);
   });
 
   it('rejects a malformed filesystem finding', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => { d.Results[0].Secrets = [{}]; });
-    closesFalsePass(/reports 1 Secrets; the blocking filesystem scan PASSED/);
+    closesFalsePass(/carries 1 entr\(ies\) under "Secrets"; the blocking filesystem scan PASSED/);
   });
 
   it('rejects a CRITICAL secret finding in an image', () => {

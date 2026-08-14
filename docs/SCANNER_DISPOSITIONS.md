@@ -79,7 +79,7 @@ resolution.
 
 | Field | Value |
 |---|---|
-| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39821`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504`, `CVE-2026-46600` (16) |
+| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504` (14) |
 | Severity | HIGH |
 | Package | `stdlib` |
 | PURL | `pkg:golang/stdlib@v1.24.6` |
@@ -102,22 +102,6 @@ exists.
 2. PostgreSQL itself is loopback-bound.
 3. Phase 0 runs a LOCAL-ONLY development profile under `EXC-P0-004`.
 4. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate.
-
-**Amendment 2026-08-14 (C16-R3.4.4).** `CVE-2026-39821` and `CVE-2026-46600` were added to this
-record. Both are HIGH Go standard-library advisories published upstream after 2026-08-05, both
-resolve against the identical `pkg:golang/stdlib@v1.24.6` compiled into the same
-`usr/local/bin/gosu` binary in the same digest-pinned postgres image, and neither has a patched
-official postgres build. They were not "found" by any change in this round: the gate FAILED
-CLOSED on them the first time it re-scanned after the trivy advisory database advanced, which is
-the mechanism working. They are held under this record rather than a new one because every
-identity field — image, platform, package, PURL, installed version, severity, result target — is
-the one this record already governs, and the reasoning above applies unchanged. The expiry is
-NOT extended: this record still lapses 2026-11-05 with the rest of the set.
-
-**This amendment requires ratification.** It records that two newly published HIGH
-vulnerabilities in a shipped image are accepted for Phase 0. It was made to unblock the R3.4.4
-delivery under the same approval basis as the fourteen advisories already in the record, and it
-should be reviewed on its own terms rather than inherited silently.
 
 ### SCX-0003 — Go standard library in `gosu` (the single CRITICAL)
 
@@ -142,6 +126,102 @@ single-value severity array, so a severity escalation cannot be inherited.
 **Compensating controls.** As SCX-0002, plus: this disposition is explicitly invalid for any
 external or customer-data use, and re-review is required before any such use regardless of
 the expiry date.
+
+
+### SCX-0004 — Go standard library in `gosu`, NOT_AFFECTED by symbol analysis
+
+| Field | Value |
+|---|---|
+| Advisories | `CVE-2026-39821`, `CVE-2026-46600` (2) |
+| Severity | HIGH |
+| Classification | **NOT_AFFECTED — vulnerable_code_not_present** (version-only match) |
+| Image (index) | `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` |
+| Scanned child | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b` |
+| Platform | `linux/amd64` |
+| Package | `stdlib` |
+| PURL | `pkg:golang/stdlib@v1.24.6` |
+| Installed version | `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Binary sha256 | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved | 2026-08-14 |
+| Expires | 2026-11-05 |
+
+**Publication timeline — correcting the R3.4.4 record.** The C16-R3.4.4 amendment stated these
+two advisories were "published upstream after 2026-08-05". **That was false.** Their NVD
+publication dates, read from the scan output itself, are:
+
+| Advisory | Published | Last modified |
+|---|---|---|
+| `CVE-2026-39821` | 2026-05-22 | 2026-08-13 |
+| `CVE-2026-46600` | 2026-07-21 | 2026-08-13 |
+
+Both predate the 2026-08-05 approval of SCX-0002. What changed on 2026-08-13 was the **scanner
+advisory database**, which ingested them; the gate then failed closed on the next run. The
+distinction matters: it means these were not governed by SCX-0002's review because that review
+never saw them, not because they did not exist.
+
+**Why a separate record, and why not SCX-0002.** SCX-0002 is a *risk-accepted* disposition: it
+records that reachable-but-unexercised HIGH advisories in `gosu` are tolerated for Phase 0 on
+operational grounds. These two are a different KIND of claim — the vulnerable code is not
+present in the binary at all — and that claim rests on different evidence and expires
+differently. Folding them into SCX-0002 (as R3.4.4 did) conflated "we accept this risk" with
+"this risk does not apply", which is precisely the collapse SCX-0003 was split out to avoid.
+
+**Basis — symbol-aware analysis of the exact binary.** `govulncheck` was run in binary mode
+against `/usr/local/bin/gosu` extracted from the exact `linux/amd64` child manifest scanned by
+the gate. It performs call-graph reachability from the binary's symbol table, not version
+matching. Verdict:
+
+```
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 3 vulnerabilities in packages you import and 43
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+```
+
+Both advisories appear in that "modules you require" tail and in neither of the reachable sets:
+
+| Advisory | Go advisory | Vulnerable symbol called? |
+|---|---|---|
+| `CVE-2026-39821` | `GO-2026-5026` | no |
+| `CVE-2026-46600` | `GO-2026-5942` | no |
+
+`govulncheck` reported **0** called vulnerable symbols across all 49 findings and 168 advisories
+it considered. Trivy's finding is therefore a version-only match against the Go toolchain
+stamped in the binary, with no corresponding reachable code.
+
+**Bound evidence artifacts** (tracked, and bound transitively by this document's own digest):
+
+| Artifact | sha256 |
+|---|---|
+| `docs/evidence/govulncheck-gosu-b6a16ed0.json` | `8c2f1364d3362551eecbfdfdb8152df5029dec4185999828a04ad8d8ae38b6e8` |
+| `docs/evidence/govulncheck-gosu-b6a16ed0.txt` | `903c95aa50ca6d3b39ec6db96ea7aecc8fbdded09a9cc81d632a34ec68dcee1c` |
+
+The JSON artifact carries the scanner configuration (govulncheck `v1.7.0`, Go `go1.25.13`,
+`https://vuln.go.dev` as of 2026-08-13), the binary's identity and digest, every advisory
+considered with its aliases and affected ranges, and every finding with its complete call
+trace. Advisory prose is the only thing omitted.
+
+**Compensating controls.** The NOT_AFFECTED classification is the primary basis; SCX-0002's
+operational controls apply as defence in depth (`gosu` runs once at container start and exits;
+PostgreSQL is loopback-bound; Phase 0 is a LOCAL-ONLY profile under `EXC-P0-004`; ADR-P0-01
+re-pins and re-scans monthly as a blocking gate).
+
+**Limits, stated.** `govulncheck` reachability is a static over-approximation of what a binary
+can call; it does not prove unreachability under reflection or dynamic dispatch. It also
+reflects the Go vulnerability database as of the run date. This record therefore expires with
+the rest of the set on **2026-11-05** and is not extended by its stronger basis.
+
+**Current reconciliation.** The postgres image scan reports **18** findings, governed as:
+SCX-0001 (1, `c-ares`) + SCX-0002 (14, `stdlib` risk-accepted) + SCX-0003 (1, `stdlib`
+CRITICAL) + SCX-0004 (2, `stdlib` NOT_AFFECTED) = 18, with 0 unmatched and 0 unused.
+
 
 ## 4. Prohibited exposure
 

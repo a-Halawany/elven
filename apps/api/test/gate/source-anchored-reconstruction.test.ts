@@ -381,7 +381,7 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
       s.stdout_bytes = b.length; s.stdout_sha256 = sha256(b);
     });
     rebind(c15(), 'supply-chain-manifest.json', 'pnpm-audit-json.stdout.txt');
-    closesFalsePass(/dependency audit reports 1 high vulnerability/);
+    closesFalsePass(/carries 1 advisory record\(s\) while the human receipt says the tree is clean/);
   });
 
   it('a filesystem scan carrying blocking results is rejected', () => {
@@ -712,7 +712,7 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
   });
 
   it.each([
-    ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /no 'metadata' object|no 'metadata\.vulnerabilities' counters/],
+    ['pnpm audit JSON replaced with {}', 'pnpm-audit-json.stdout.txt', '{}', /top-level keys are \[\], expected exactly|has no metadata object/],
     ['trivy filesystem JSON replaced with {}', 'trivy-fs-json.stdout.txt', '{}', /SchemaVersion is undefined, expected 2|ArtifactName is undefined/],
   ])('§A2 %s is rejected', (_label, rel, body, expected) => {
     substitute(rel as string, body as string);
@@ -817,7 +817,7 @@ describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verif
     const problems = check();
     expect(problems.some((p) => /ArtifactName is "\/attacker\/decoy-source", expected "\."/.test(p))).toBe(true);
     expect(problems.some((p) => /ArtifactType is "", expected "repository"/.test(p))).toBe(true);
-    expect(problems.some((p) => /Results is EMPTY/.test(p))).toBe(true);
+    expect(problems.some((p) => /but the source contract derives exactly/.test(p))).toBe(true);
     const stale = frozen341();
     expect(stale, `frozen R3.4.1 must ACCEPT this:\n${stale.join('\n')}`).toEqual([]);
   });
@@ -833,7 +833,7 @@ describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verif
     const r = JSON.parse(readFileSync(join(built.c15Dir, 'trivy-fs-json.stdout.txt'), 'utf8'));
     r.Results = [{ Target: 'somewhere/else.txt', Class: 'lang-pkgs', Type: 'pnpm' }];
     rebindRaw('trivy-fs-json.stdout.txt', `${JSON.stringify(r)}\n`);
-    closes(/has no 'pnpm-lock\.yaml' result/);
+    closes(/but the source contract derives exactly/);
   });
 
   it('§2 an image report named for a DECOY repository with the correct digest is rejected', () => {

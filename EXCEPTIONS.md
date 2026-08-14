@@ -367,6 +367,44 @@ absolute-path argv convention that its controls exercise, and it carries a note 
 
 *Status.* closed.
 
+### G6 — a false publication timeline and a conflated disposition (closed at R3.4.5)
+
+**G6a — the timeline was wrong.** The C16-R3.4.4 amendment to SCX-0002, and the delivery report
+that accompanied it, both stated that `CVE-2026-39821` and `CVE-2026-46600` were "published
+upstream since the previous scan" / "after 2026-08-05". **That was false.** Read from the scan
+output itself, `CVE-2026-39821` was published 2026-05-22 and `CVE-2026-46600` on 2026-07-21 —
+both well before the 2026-08-05 approval of SCX-0002. What changed on 2026-08-13 was the
+scanner's advisory database, which ingested them.
+
+The distinction is not pedantic. "Published after the review" implies the review could not have
+seen them. "Published before the review but invisible to the scanner until later" says something
+different and worse: the approval was granted against an incomplete picture, and the same is
+true of any advisory the database has not yet caught up with. The corrected timeline is stated
+in `docs/SCANNER_DISPOSITIONS.md` under SCX-0004, with both dates.
+
+**G6b — two kinds of claim were conflated.** R3.4.4 folded the two advisories into SCX-0002, a
+*risk-accepted* record: it says reachable-but-unexercised HIGH advisories in `gosu` are tolerated
+on operational grounds. But the actual basis for these two is different in kind — the vulnerable
+code is not present in the binary at all. Folding them together is the same collapse SCX-0003
+was originally split out to prevent, and it would have let a risk acceptance inherit the weight
+of a technical exemption.
+
+**Closure at R3.4.5.** The two ids are removed from SCX-0002, which returns to its approved 14.
+`SCX-0004` carries them under classification **NOT_AFFECTED (vulnerable_code_not_present)**,
+approved 2026-08-14, expiring 2026-11-05 with the rest of the set — the stronger basis does not
+buy a longer life. Its evidence is a symbol-aware `govulncheck` binary-mode analysis of the exact
+`gosu` executable extracted from the exact `linux/amd64` child manifest the gate scans, reporting
+**0** called vulnerable symbols across 49 findings and 168 advisories, including both. The full
+analysis is tracked at `docs/evidence/govulncheck-gosu-b6a16ed0.json` and bound by digest from
+the disposition document, which is itself bound by every record. The record states its own limit:
+reachability analysis is a static over-approximation and does not cover reflection or dynamic
+dispatch, so SCX-0002's operational controls still apply as defence in depth.
+
+The postgres image reconciles at **18** findings: SCX-0001 (1) + SCX-0002 (14) + SCX-0003 (1) +
+SCX-0004 (2), with 0 unmatched and 0 unused.
+
+*Status.* closed.
+
 ### Deferred to C19 (explicitly NOT in this patch)
 
 * Replace Node-20 actions.

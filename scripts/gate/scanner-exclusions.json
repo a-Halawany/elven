@@ -29,7 +29,7 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
+      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
     },
     {
       "id": "SCX-0002",
@@ -44,12 +44,10 @@
         "CVE-2026-33811",
         "CVE-2026-33814",
         "CVE-2026-39820",
-        "CVE-2026-39821",
         "CVE-2026-39822",
         "CVE-2026-39836",
         "CVE-2026-42499",
-        "CVE-2026-42504",
-        "CVE-2026-46600"
+        "CVE-2026-42504"
       ],
       "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
       "scan_platform": "linux/amd64",
@@ -72,7 +70,7 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
+      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
     },
     {
       "id": "SCX-0003",
@@ -100,7 +98,38 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "175f63fc26bbe86c8fad422d364401511f870fe848a7f34f65ce3e4593f26171"
+      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
+    },
+    {
+      "id": "SCX-0004",
+      "advisory_ids": [
+        "CVE-2026-39821",
+        "CVE-2026-46600"
+      ],
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "NOT_AFFECTED (vulnerable_code_not_present). Two HIGH Go standard-library advisories that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, extracted from the linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b) reports 0 called vulnerable symbols across all 49 findings, including GO-2026-5026 (CVE-2026-39821) and GO-2026-5942 (CVE-2026-46600). Held separately from SCX-0002 because \"the vulnerable code is not present\" is a different claim from \"the risk is accepted\", rests on different evidence, and must not be conflated with it.",
+      "compensating_controls": [
+        "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-13) reports 0 called vulnerable symbols in the exact scanned binary.",
+        "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-08-14",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "1a8f84a275de8628c49c801803319f8992f87017c14d9ba50c68ad33436db7f1"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions."

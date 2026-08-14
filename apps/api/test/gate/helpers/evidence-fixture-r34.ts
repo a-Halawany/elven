@@ -182,7 +182,9 @@ export function buildPassingR34Evidence(
   mkdirSync(c16, { recursive: true });
   mkdirSync(cache, { recursive: true });
 
-  const runDate = '2026-08-13';
+  // R3.4.5: SCX-0004 is approved 2026-08-14, and a record approved in the future of the run
+  // date is correctly refused, so the fixture's run window must not predate it.
+  const runDate = '2026-08-14';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;

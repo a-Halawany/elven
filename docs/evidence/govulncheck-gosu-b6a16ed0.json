@@ -1,0 +1,8628 @@
+{
+ "advisories": [
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "toValidName"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-27919"
+   ],
+   "id": "GO-2021-0067"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "math/big",
+       "symbols": [
+        "nat.divRecursiveStep"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.14.0-0"
+        },
+        {
+         "fixed": "1.14.12"
+        },
+        {
+         "introduced": "1.15.0-0"
+        },
+        {
+         "fixed": "1.15.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-28362"
+   ],
+   "id": "GO-2021-0069"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/binary",
+       "symbols": [
+        "ReadUvarint",
+        "ReadVarint"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.13.15"
+        },
+        {
+         "introduced": "1.14.0-0"
+        },
+        {
+         "fixed": "1.14.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-16845",
+    "GHSA-q6gq-997w-f55g"
+   ],
+   "id": "GO-2021-0142"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "checkForResumption",
+        "decryptTicket"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.1.0-0"
+        },
+        {
+         "fixed": "1.3.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2014-7189"
+   ],
+   "id": "GO-2021-0154"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "CanonicalMIMEHeaderKey",
+        "body.readLocked",
+        "canonicalMIMEHeaderKey",
+        "chunkWriter.writeHeader",
+        "fixLength",
+        "fixTransferEncoding",
+        "readTransfer",
+        "transferWriter.shouldSendContentLength",
+        "validHeaderFieldByte"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.4.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2015-5739",
+    "CVE-2015-5740",
+    "CVE-2015-5741"
+   ],
+   "id": "GO-2021-0159"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "math/big",
+       "symbols": [
+        "nat.expNNMontgomery",
+        "nat.montgomery"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.5.0-0"
+        },
+        {
+         "fixed": "1.5.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2015-8618"
+   ],
+   "id": "GO-2021-0160"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "syscall",
+       "symbols": [
+        "LoadLibrary"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.5.4"
+        },
+        {
+         "introduced": "1.6.0-0"
+        },
+        {
+         "fixed": "1.6.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2016-3958"
+   ],
+   "id": "GO-2021-0163"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "mime/multipart",
+       "symbols": [
+        "Reader.readForm"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.6.4"
+        },
+        {
+         "introduced": "1.7.0-0"
+        },
+        {
+         "fixed": "1.7.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2017-1000098"
+   ],
+   "id": "GO-2021-0172"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/smtp",
+       "symbols": [
+        "plainAuth.Start"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.1.0-0"
+        },
+        {
+         "fixed": "1.8.4"
+        },
+        {
+         "introduced": "1.9.0-0"
+        },
+        {
+         "fixed": "1.9.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2017-15042"
+   ],
+   "id": "GO-2021-0178"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.systemVerify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.13.13"
+        },
+        {
+         "introduced": "1.14.0-0"
+        },
+        {
+         "fixed": "1.14.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-14039"
+   ],
+   "id": "GO-2021-0223"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "expectContinueReader.Read"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.13.13"
+        },
+        {
+         "introduced": "1.14.0-0"
+        },
+        {
+         "fixed": "1.14.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-15586"
+   ],
+   "id": "GO-2021-0224"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/cgi",
+       "symbols": [
+        "response.Write",
+        "response.WriteHeader",
+        "response.writeCGIHeader"
+       ]
+      },
+      {
+       "path": "net/http/fcgi",
+       "symbols": [
+        "response.Write",
+        "response.WriteHeader",
+        "response.writeCGIHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.14.8"
+        },
+        {
+         "introduced": "1.15.0-0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-24553"
+   ],
+   "id": "GO-2021-0226"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/xml",
+       "symbols": [
+        "Decoder.Token"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.9"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-27918"
+   ],
+   "id": "GO-2021-0234"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/elliptic",
+       "symbols": [
+        "p224Contract"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.14.14"
+        },
+        {
+         "introduced": "1.15.0-0"
+        },
+        {
+         "fixed": "1.15.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-3114"
+   ],
+   "id": "GO-2021-0235"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net",
+       "symbols": [
+        "Resolver.LookupAddr",
+        "Resolver.LookupCNAME",
+        "Resolver.LookupMX",
+        "Resolver.LookupNS",
+        "Resolver.LookupSRV"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.13"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-33195"
+   ],
+   "id": "GO-2021-0239"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "Reader.init"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.13"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-33196"
+   ],
+   "id": "GO-2021-0240"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/httputil",
+       "symbols": [
+        "ReverseProxy.ServeHTTP"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.13"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-33197"
+   ],
+   "id": "GO-2021-0241"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "math/big",
+       "symbols": [
+        "Rat.SetString"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.13"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-33198"
+   ],
+   "id": "GO-2021-0242"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "rsaKeyAgreement.generateClientKeyExchange"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.14"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-34558"
+   ],
+   "id": "GO-2021-0243"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/httputil",
+       "symbols": [
+        "ReverseProxy.ServeHTTP"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.15"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-36221"
+   ],
+   "id": "GO-2021-0245"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "debug/macho",
+       "symbols": [
+        "NewFile"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.10"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-41771"
+   ],
+   "id": "GO-2021-0263"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "Reader.Open",
+        "split"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.10"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-41772"
+   ],
+   "id": "GO-2021-0264"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "math/big",
+       "symbols": [
+        "Rat.SetString"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.14"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-23772"
+   ],
+   "id": "GO-2021-0317"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/elliptic",
+       "symbols": [
+        "CurveParams.IsOnCurve",
+        "p384PointFromAffine",
+        "p521PointFromAffine"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.14"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-23806"
+   ],
+   "id": "GO-2021-0319"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "regexp",
+       "symbols": [
+        "regexp.Compile"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.15"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.8"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-24921"
+   ],
+   "id": "GO-2021-0347"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/dsa",
+       "symbols": [
+        "Verify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.5.4"
+        },
+        {
+         "introduced": "1.6.0-0"
+        },
+        {
+         "fixed": "1.6.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2016-3959"
+   ],
+   "id": "GO-2022-0166"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "darwin"
+       ],
+       "path": "crypto/x509",
+       "symbols": [
+        "FetchPEMRoots",
+        "execSecurityRoots"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.6.4"
+        },
+        {
+         "introduced": "1.7.0-0"
+        },
+        {
+         "fixed": "1.7.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2017-1000097"
+   ],
+   "id": "GO-2022-0171"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goarch": [
+        "amd64"
+       ],
+       "path": "crypto/elliptic",
+       "symbols": [
+        "p256SubInternal"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.6.0-0"
+        },
+        {
+         "fixed": "1.7.6"
+        },
+        {
+         "introduced": "1.8.0-0"
+        },
+        {
+         "fixed": "1.8.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2017-8932"
+   ],
+   "id": "GO-2022-0187"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "CertPool.findVerifiedParents",
+        "Certificate.buildChains"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.10.6"
+        },
+        {
+         "introduced": "1.11.0-0"
+        },
+        {
+         "fixed": "1.11.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2018-16875"
+   ],
+   "id": "GO-2022-0191"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "URL.Hostname",
+        "URL.Port",
+        "parseHost"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.11.13"
+        },
+        {
+         "introduced": "1.12.0-0"
+        },
+        {
+         "fixed": "1.12.8"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-14809"
+   ],
+   "id": "GO-2022-0211"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Reader.ReadMimeHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.12.10"
+        },
+        {
+         "introduced": "1.13.0-0"
+        },
+        {
+         "fixed": "1.13.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-16276"
+   ],
+   "id": "GO-2022-0212"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/dsa",
+       "symbols": [
+        "Verify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.12.11"
+        },
+        {
+         "introduced": "1.13.0-0"
+        },
+        {
+         "fixed": "1.13.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-17596"
+   ],
+   "id": "GO-2022-0213"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/elliptic",
+       "symbols": [
+        "curve.doubleJacobian"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.10.8"
+        },
+        {
+         "introduced": "1.11.0-0"
+        },
+        {
+         "fixed": "1.11.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-6486"
+   ],
+   "id": "GO-2022-0217"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "runtime"
+      },
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "syscall",
+       "symbols": [
+        "LoadDLL"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.11.10"
+        },
+        {
+         "introduced": "1.12.0-0"
+        },
+        {
+         "fixed": "1.12.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-9634"
+   ],
+   "id": "GO-2022-0220"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509"
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.12.16"
+        },
+        {
+         "introduced": "1.13.0-0"
+        },
+        {
+         "fixed": "1.13.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/crypto/cryptobyte"
+      }
+     ],
+     "module": "golang.org/x/crypto",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20200124225646-8b5121be2f68"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-7919",
+    "GHSA-cjjc-xp8v-855w"
+   ],
+   "id": "GO-2022-0229"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "http2clientStream.writeRequest",
+        "http2isConnectionCloseRequest",
+        "isProtocolSwitchHeader",
+        "shouldClose"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.15.12"
+        },
+        {
+         "introduced": "1.16.0-0"
+        },
+        {
+         "fixed": "1.16.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http/httpguts",
+       "symbols": [
+        "HeaderValuesContainsToken",
+        "headerValueContainsToken"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20210428140749-89ef3d95e781"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-31525",
+    "GHSA-h86h-8ppg-mxmh"
+   ],
+   "id": "GO-2022-0236"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "NewReader",
+        "OpenReader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.8"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-39293"
+   ],
+   "id": "GO-2022-0273"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "http2serverConn.canonicalHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.12"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Server.ServeConn",
+        "serverConn.canonicalHeader"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20211209124913-491a49abca63"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-44716",
+    "GHSA-vc3p-29h2-gpcp"
+   ],
+   "id": "GO-2022-0288"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "syscall",
+       "symbols": [
+        "ForkExec"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.16.12"
+        },
+        {
+         "introduced": "1.17.0-0"
+        },
+        {
+         "fixed": "1.17.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2021-44717"
+   ],
+   "id": "GO-2022-0289"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/pem",
+       "symbols": [
+        "Decode"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.9"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-24675"
+   ],
+   "id": "GO-2022-0433"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "darwin"
+       ],
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-27536"
+   ],
+   "id": "GO-2022-0434"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/elliptic",
+       "symbols": [
+        "CurveParams.ScalarBaseMult",
+        "CurveParams.ScalarMult",
+        "p256Curve.CombinedMult",
+        "p256Curve.ScalarBaseMult",
+        "p256Curve.ScalarMult",
+        "p256GetScalar"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.9"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-28327"
+   ],
+   "id": "GO-2022-0435"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "crypto/rand",
+       "symbols": [
+        "Read"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.11"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30634"
+   ],
+   "id": "GO-2022-0477"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "syscall",
+       "symbols": [
+        "Faccessat"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.10"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/sys/unix",
+       "symbols": [
+        "Faccessat"
+       ]
+      }
+     ],
+     "module": "golang.org/x/sys",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20220412211240-33da011f77ad"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-29526",
+    "GHSA-p782-xgp4-8hr8"
+   ],
+   "id": "GO-2022-0493"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "go/parser",
+       "symbols": [
+        "ParseExprFrom",
+        "ParseFile",
+        "parser.parseBinaryExpr",
+        "parser.parseIfStmt",
+        "parser.parsePrimaryExpr",
+        "parser.parseStmt",
+        "parser.parseUnaryExpr",
+        "parser.tryIdentOrType",
+        "resolver.closeScope",
+        "resolver.openScope"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-1962"
+   ],
+   "id": "GO-2022-0515"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Header.Clone"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-32148"
+   ],
+   "id": "GO-2022-0520"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/xml",
+       "symbols": [
+        "Decoder.Skip"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-28131"
+   ],
+   "id": "GO-2022-0521"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "path/filepath",
+       "symbols": [
+        "Glob"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30632"
+   ],
+   "id": "GO-2022-0522"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/xml",
+       "symbols": [
+        "Decoder.DecodeElement",
+        "Decoder.unmarshal",
+        "Decoder.unmarshalPath"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30633"
+   ],
+   "id": "GO-2022-0523"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "compress/gzip",
+       "symbols": [
+        "Reader.Read"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30631"
+   ],
+   "id": "GO-2022-0524"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "transferReader.parseTransferEncoding"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-1705"
+   ],
+   "id": "GO-2022-0525"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/gob",
+       "symbols": [
+        "Decoder.compileDec",
+        "Decoder.compileIgnoreSingle",
+        "Decoder.decIgnoreOpFor"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30635"
+   ],
+   "id": "GO-2022-0526"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "io/fs",
+       "symbols": [
+        "Glob"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.12"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30630"
+   ],
+   "id": "GO-2022-0527"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "serverHandshakeStateTLS13.sendSessionTickets"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.11"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30629"
+   ],
+   "id": "GO-2022-0531"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "os/exec",
+       "symbols": [
+        "Cmd.Start"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.11"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-30580"
+   ],
+   "id": "GO-2022-0532"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "path/filepath",
+       "symbols": [
+        "Clean"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.11"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-29804"
+   ],
+   "id": "GO-2022-0533"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.systemVerify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.12.16"
+        },
+        {
+         "introduced": "1.13.0-0"
+        },
+        {
+         "fixed": "1.13.7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2020-0601"
+   ],
+   "id": "GO-2022-0535"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "http2serverConn.scheduleFrameWrite",
+        "http2serverConn.serve",
+        "http2serverConn.writeFrame"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.11.13"
+        },
+        {
+         "introduced": "1.12.0-0"
+        },
+        {
+         "fixed": "1.12.8"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Server.ServeConn",
+        "serverConn.scheduleFrameWrite",
+        "serverConn.serve",
+        "serverConn.writeFrame"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20190813141303-74dc4d7220e7"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2019-9512",
+    "CVE-2019-9514",
+    "GHSA-39qc-96h7-956f",
+    "GHSA-hgr8-6h9x-f7q9"
+   ],
+   "id": "GO-2022-0536"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "math/big",
+       "symbols": [
+        "Float.GobDecode",
+        "Rat.GobDecode"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.17.13"
+        },
+        {
+         "introduced": "1.18.0-0"
+        },
+        {
+         "fixed": "1.18.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-32189"
+   ],
+   "id": "GO-2022-0537"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Handler.ServeHTTP"
+       ]
+      },
+      {
+       "path": "net/http/cgi",
+       "symbols": [
+        "ProxyFromEnvironment"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.6.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2016-5386"
+   ],
+   "id": "GO-2022-0761"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "Serve",
+        "ServeTLS",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "http2Server.ServeConn",
+        "http2serverConn.goAway"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.6"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Server.ServeConn",
+        "serverConn.goAway"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.0.0-20220906165146-f3363e06e74c"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-27664",
+    "GHSA-69cg-p879-7622"
+   ],
+   "id": "GO-2022-0969"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "JoinPath",
+        "URL.JoinPath"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-32190"
+   ],
+   "id": "GO-2022-0988"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/tar",
+       "symbols": [
+        "Reader.Next",
+        "Reader.next",
+        "Writer.WriteHeader",
+        "Writer.writePAXHeader",
+        "parsePAX"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.7"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-2879"
+   ],
+   "id": "GO-2022-1037"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/httputil",
+       "symbols": [
+        "ReverseProxy.ServeHTTP"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.7"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-2880"
+   ],
+   "id": "GO-2022-1038"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "regexp/syntax",
+       "symbols": [
+        "Parse",
+        "parse",
+        "parser.factor",
+        "parser.push",
+        "parser.repeat"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.7"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41715"
+   ],
+   "id": "GO-2022-1039"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "syscall",
+       "symbols": [
+        "StartProcess"
+       ]
+      },
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "os/exec",
+       "symbols": [
+        "Cmd.CombinedOutput",
+        "Cmd.Environ",
+        "Cmd.Output",
+        "Cmd.Run",
+        "Cmd.Start",
+        "Cmd.environ",
+        "dedupEnv",
+        "dedupEnvCase"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.8"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41716"
+   ],
+   "id": "GO-2022-1095"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "os",
+       "symbols": [
+        "DirFS",
+        "dirFS.Open",
+        "dirFS.Stat"
+       ]
+      },
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "net/http",
+       "symbols": [
+        "Dir.Open",
+        "ServeFile",
+        "fileHandler.ServeHTTP",
+        "fileTransport.RoundTrip"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.9"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41720"
+   ],
+   "id": "GO-2022-1143"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "Serve",
+        "ServeTLS",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "http2Server.ServeConn",
+        "http2serverConn.canonicalHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.18.9"
+        },
+        {
+         "introduced": "1.19.0-0"
+        },
+        {
+         "fixed": "1.19.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Server.ServeConn",
+        "serverConn.canonicalHeader"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.4.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41717",
+    "GHSA-xrjj-mj9h-534m"
+   ],
+   "id": "GO-2022-1144"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "path/filepath",
+       "symbols": [
+        "Abs",
+        "Clean",
+        "Dir",
+        "EvalSymlinks",
+        "Glob",
+        "IsLocal",
+        "Join",
+        "Rel",
+        "Walk",
+        "WalkDir"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.6"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41722"
+   ],
+   "id": "GO-2023-1568"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "mime/multipart",
+       "symbols": [
+        "Reader.ReadForm"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.6"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41725"
+   ],
+   "id": "GO-2023-1569"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.clientHandshake",
+        "Conn.handleKeyUpdate",
+        "Conn.handlePostHandshakeMessage",
+        "Conn.handleRenegotiation",
+        "Conn.loadSession",
+        "Conn.readClientHello",
+        "Conn.readHandshake",
+        "Conn.writeRecord",
+        "ConnectionState.ExportKeyingMaterial",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "certificateMsg.marshal",
+        "certificateMsgTLS13.marshal",
+        "certificateRequestMsg.marshal",
+        "certificateRequestMsgTLS13.marshal",
+        "certificateStatusMsg.marshal",
+        "certificateVerifyMsg.marshal",
+        "cipherSuiteTLS13.expandLabel",
+        "clientHandshakeState.doFullHandshake",
+        "clientHandshakeState.handshake",
+        "clientHandshakeState.readFinished",
+        "clientHandshakeState.readSessionTicket",
+        "clientHandshakeState.sendFinished",
+        "clientHandshakeStateTLS13.handshake",
+        "clientHandshakeStateTLS13.processHelloRetryRequest",
+        "clientHandshakeStateTLS13.readServerCertificate",
+        "clientHandshakeStateTLS13.readServerFinished",
+        "clientHandshakeStateTLS13.readServerParameters",
+        "clientHandshakeStateTLS13.sendClientCertificate",
+        "clientHandshakeStateTLS13.sendClientFinished",
+        "clientHandshakeStateTLS13.sendDummyChangeCipherSpec",
+        "clientHelloMsg.marshal",
+        "clientHelloMsg.marshalWithoutBinders",
+        "clientHelloMsg.updateBinders",
+        "clientKeyExchangeMsg.marshal",
+        "encryptedExtensionsMsg.marshal",
+        "endOfEarlyDataMsg.marshal",
+        "finishedMsg.marshal",
+        "handshakeMessage.marshal",
+        "helloRequestMsg.marshal",
+        "keyUpdateMsg.marshal",
+        "newSessionTicketMsg.marshal",
+        "newSessionTicketMsgTLS13.marshal",
+        "serverHandshakeState.doFullHandshake",
+        "serverHandshakeState.doResumeHandshake",
+        "serverHandshakeState.readFinished",
+        "serverHandshakeState.sendFinished",
+        "serverHandshakeState.sendSessionTicket",
+        "serverHandshakeStateTLS13.checkForResumption",
+        "serverHandshakeStateTLS13.doHelloRetryRequest",
+        "serverHandshakeStateTLS13.readClientCertificate",
+        "serverHandshakeStateTLS13.readClientFinished",
+        "serverHandshakeStateTLS13.sendDummyChangeCipherSpec",
+        "serverHandshakeStateTLS13.sendServerCertificate",
+        "serverHandshakeStateTLS13.sendServerFinished",
+        "serverHandshakeStateTLS13.sendServerParameters",
+        "serverHandshakeStateTLS13.sendSessionTickets",
+        "serverHelloDoneMsg.marshal",
+        "serverHelloMsg.marshal",
+        "serverKeyExchangeMsg.marshal",
+        "sessionState.marshal",
+        "sessionStateTLS13.marshal"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.6"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41724"
+   ],
+   "id": "GO-2023-1570"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Get",
+        "Head",
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "Post",
+        "PostForm",
+        "Serve",
+        "ServeTLS",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "Transport.RoundTrip"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.6"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "ClientConn.Close",
+        "ClientConn.Ping",
+        "ClientConn.RoundTrip",
+        "ClientConn.Shutdown",
+        "ConfigureServer",
+        "ConfigureTransport",
+        "ConfigureTransports",
+        "ConnectionError.Error",
+        "ErrCode.String",
+        "FrameHeader.String",
+        "FrameType.String",
+        "FrameWriteRequest.String",
+        "Framer.ReadFrame",
+        "Framer.WriteContinuation",
+        "Framer.WriteData",
+        "Framer.WriteDataPadded",
+        "Framer.WriteGoAway",
+        "Framer.WriteHeaders",
+        "Framer.WritePing",
+        "Framer.WritePriority",
+        "Framer.WritePushPromise",
+        "Framer.WriteRSTStream",
+        "Framer.WriteRawFrame",
+        "Framer.WriteSettings",
+        "Framer.WriteSettingsAck",
+        "Framer.WriteWindowUpdate",
+        "GoAwayError.Error",
+        "ReadFrameHeader",
+        "Server.ServeConn",
+        "Setting.String",
+        "SettingID.String",
+        "SettingsFrame.ForeachSetting",
+        "StreamError.Error",
+        "Transport.CloseIdleConnections",
+        "Transport.NewClientConn",
+        "Transport.RoundTrip",
+        "Transport.RoundTripOpt",
+        "bufferedWriter.Flush",
+        "bufferedWriter.Write",
+        "chunkWriter.Write",
+        "clientConnPool.GetClientConn",
+        "connError.Error",
+        "dataBuffer.Read",
+        "duplicatePseudoHeaderError.Error",
+        "gzipReader.Close",
+        "gzipReader.Read",
+        "headerFieldNameError.Error",
+        "headerFieldValueError.Error",
+        "noDialClientConnPool.GetClientConn",
+        "noDialH2RoundTripper.RoundTrip",
+        "pipe.Read",
+        "priorityWriteScheduler.CloseStream",
+        "priorityWriteScheduler.OpenStream",
+        "pseudoHeaderError.Error",
+        "requestBody.Close",
+        "requestBody.Read",
+        "responseWriter.Flush",
+        "responseWriter.FlushError",
+        "responseWriter.Push",
+        "responseWriter.SetReadDeadline",
+        "responseWriter.SetWriteDeadline",
+        "responseWriter.Write",
+        "responseWriter.WriteHeader",
+        "responseWriter.WriteString",
+        "serverConn.CloseConn",
+        "serverConn.Flush",
+        "stickyErrWriter.Write",
+        "transportResponseBody.Close",
+        "transportResponseBody.Read",
+        "writeData.String"
+       ]
+      },
+      {
+       "path": "golang.org/x/net/http2/hpack",
+       "symbols": [
+        "Decoder.DecodeFull",
+        "Decoder.Write",
+        "Decoder.parseFieldLiteral",
+        "Decoder.readString"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.7.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2022-41723",
+    "GHSA-vvpx-j8f3-3w6h"
+   ],
+   "id": "GO-2023-1571"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/internal/nistec",
+       "symbols": [
+        "P256OrdInverse",
+        "P256Point.ScalarBaseMult",
+        "P256Point.ScalarMult"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.7"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24532"
+   ],
+   "id": "GO-2023-1621"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "go/scanner",
+       "symbols": [
+        "Scanner.Scan",
+        "Scanner.updateLineInfo"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.8"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24537"
+   ],
+   "id": "GO-2023-1702"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "tJS",
+        "tJSDelimited"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.8"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24538"
+   ],
+   "id": "GO-2023-1703"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Reader.ReadMIMEHeader",
+        "Reader.upcomingHeaderNewlines",
+        "readMIMEHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.8"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24534"
+   ],
+   "id": "GO-2023-1704"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "mime/multipart",
+       "symbols": [
+        "Part.populateHeaders",
+        "Reader.NextPart",
+        "Reader.NextRawPart",
+        "Reader.ReadForm",
+        "Reader.nextPart",
+        "Reader.readForm",
+        "mimeHeaderSize",
+        "newPart",
+        "readMIMEHeader"
+       ]
+      },
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Reader.ReadMIMEHeader",
+        "readMIMEHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.8"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24536"
+   ],
+   "id": "GO-2023-1705"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "cssValueFilter",
+        "escaper.commit"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.9"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24539"
+   ],
+   "id": "GO-2023-1751"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "nextJSCtx"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.9"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-24540"
+   ],
+   "id": "GO-2023-1752"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "appendCmd",
+        "htmlNospaceEscaper"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.9"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-29400"
+   ],
+   "id": "GO-2023-1753"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "runtime"
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.10"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-29403"
+   ],
+   "id": "GO-2023-1840"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.CloseIdleConnections",
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "Request.Write",
+        "Request.WriteProxy",
+        "Request.write",
+        "Transport.CancelRequest",
+        "Transport.CloseIdleConnections",
+        "Transport.RoundTrip"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.11"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-29406"
+   ],
+   "id": "GO-2023-1878"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.processCertsFromClient",
+        "Conn.verifyServerCertificate",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.19.12"
+        },
+        {
+         "introduced": "1.20.0-0"
+        },
+        {
+         "fixed": "1.20.7"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.0-rc.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-29409"
+   ],
+   "id": "GO-2023-1987"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "escaper.escapeText",
+        "isComment",
+        "tJS",
+        "tLineCmt"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.8"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39318"
+   ],
+   "id": "GO-2023-2041"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "escaper.escapeText",
+        "indexTagEnd",
+        "tSpecialTagEnd"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.8"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39319"
+   ],
+   "id": "GO-2023-2043"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "QUICConn.HandleData"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39321"
+   ],
+   "id": "GO-2023-2044"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "QUICConn.HandleData"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39322"
+   ],
+   "id": "GO-2023-2045"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "Serve",
+        "ServeTLS",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "http2Server.ServeConn",
+        "http2serverConn.processHeaders",
+        "http2serverConn.runHandler",
+        "http2serverConn.serve",
+        "http2serverConn.upgradeRequest"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.10"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Server.ServeConn",
+        "serverConn.processHeaders",
+        "serverConn.runHandler",
+        "serverConn.serve",
+        "serverConn.upgradeRequest"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.17.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39325",
+    "GHSA-4374-p667-p6c8"
+   ],
+   "id": "GO-2023-2102"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "path/filepath",
+       "symbols": [
+        "Abs",
+        "Base",
+        "Clean",
+        "Dir",
+        "EvalSymlinks",
+        "Glob",
+        "IsLocal",
+        "Join",
+        "Rel",
+        "Split",
+        "VolumeName",
+        "Walk",
+        "WalkDir",
+        "join",
+        "volumeNameLen"
+       ]
+      },
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "internal/safefilepath",
+       "symbols": [
+        "FromFS",
+        "fromFS"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.11"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "path/filepath",
+       "symbols": [
+        "Abs",
+        "Base",
+        "Clean",
+        "Dir",
+        "EvalSymlinks",
+        "Glob",
+        "IsLocal",
+        "Join",
+        "Rel",
+        "Split",
+        "VolumeName",
+        "Walk",
+        "WalkDir",
+        "volumeNameLen"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.20.11"
+        },
+        {
+         "fixed": "1.20.12"
+        },
+        {
+         "introduced": "1.21.4"
+        },
+        {
+         "fixed": "1.21.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45283"
+   ],
+   "id": "GO-2023-2185"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "path/filepath",
+       "symbols": [
+        "IsLocal"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.11"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45284"
+   ],
+   "id": "GO-2023-2186"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "rsaKeyAgreement.generateClientKeyExchange",
+        "rsaKeyAgreement.processClientKeyExchange"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45287"
+   ],
+   "id": "GO-2023-2375"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/internal",
+       "symbols": [
+        "chunkedReader.Read",
+        "chunkedReader.beginChunk",
+        "readChunkLine"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.20.12"
+        },
+        {
+         "introduced": "1.21.0-0"
+        },
+        {
+         "fixed": "1.21.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-39326"
+   ],
+   "id": "GO-2023-2382"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "Certificate.buildChains"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.8"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24783"
+   ],
+   "id": "GO-2024-2598"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Reader.ReadCodeLine",
+        "Reader.ReadContinuedLine",
+        "Reader.ReadContinuedLineBytes",
+        "Reader.ReadDotLines",
+        "Reader.ReadLine",
+        "Reader.ReadLineBytes",
+        "Reader.ReadMIMEHeader",
+        "Reader.ReadResponse",
+        "Reader.readContinuedLineSlice",
+        "Reader.readLineSlice"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.8"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45290"
+   ],
+   "id": "GO-2024-2599"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "isDomainOrSubdomain"
+       ]
+      },
+      {
+       "path": "net/http/cookiejar",
+       "symbols": [
+        "Jar.Cookies",
+        "Jar.SetCookies",
+        "isIP"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.8"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45289"
+   ],
+   "id": "GO-2024-2600"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/mail",
+       "symbols": [
+        "Address.String",
+        "AddressParser.Parse",
+        "AddressParser.ParseList",
+        "Header.AddressList",
+        "ParseAddress",
+        "ParseAddressList",
+        "addrParser.consumeGroupList",
+        "addrParser.consumePhrase",
+        "isAtext"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.8"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24784"
+   ],
+   "id": "GO-2024-2609"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "escaper.commit",
+        "jsValEscaper"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.8"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24785"
+   ],
+   "id": "GO-2024-2610"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "CanonicalHeaderKey",
+        "Client.CloseIdleConnections",
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Cookie.String",
+        "Cookie.Valid",
+        "Dir.Open",
+        "Error",
+        "Get",
+        "HandlerFunc.ServeHTTP",
+        "Head",
+        "Header.Add",
+        "Header.Del",
+        "Header.Get",
+        "Header.Set",
+        "Header.Values",
+        "Header.Write",
+        "Header.WriteSubset",
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "NewRequest",
+        "NewRequestWithContext",
+        "NotFound",
+        "ParseTime",
+        "Post",
+        "PostForm",
+        "ProxyFromEnvironment",
+        "ReadRequest",
+        "ReadResponse",
+        "Redirect",
+        "Request.AddCookie",
+        "Request.BasicAuth",
+        "Request.FormFile",
+        "Request.FormValue",
+        "Request.MultipartReader",
+        "Request.ParseForm",
+        "Request.ParseMultipartForm",
+        "Request.PostFormValue",
+        "Request.Referer",
+        "Request.SetBasicAuth",
+        "Request.UserAgent",
+        "Request.Write",
+        "Request.WriteProxy",
+        "Response.Cookies",
+        "Response.Location",
+        "Response.Write",
+        "ResponseController.EnableFullDuplex",
+        "ResponseController.Flush",
+        "ResponseController.Hijack",
+        "ResponseController.SetReadDeadline",
+        "ResponseController.SetWriteDeadline",
+        "Serve",
+        "ServeContent",
+        "ServeFile",
+        "ServeMux.ServeHTTP",
+        "ServeTLS",
+        "Server.Close",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "Server.SetKeepAlivesEnabled",
+        "Server.Shutdown",
+        "SetCookie",
+        "Transport.CancelRequest",
+        "Transport.Clone",
+        "Transport.CloseIdleConnections",
+        "Transport.RoundTrip",
+        "body.Close",
+        "body.Read",
+        "bodyEOFSignal.Close",
+        "bodyEOFSignal.Read",
+        "bodyLocked.Read",
+        "bufioFlushWriter.Write",
+        "cancelTimerBody.Close",
+        "cancelTimerBody.Read",
+        "checkConnErrorWriter.Write",
+        "chunkWriter.Write",
+        "connReader.Read",
+        "connectMethodKey.String",
+        "expectContinueReader.Close",
+        "expectContinueReader.Read",
+        "extraHeader.Write",
+        "fileHandler.ServeHTTP",
+        "fileTransport.RoundTrip",
+        "globalOptionsHandler.ServeHTTP",
+        "gzipReader.Close",
+        "gzipReader.Read",
+        "http2ClientConn.Close",
+        "http2ClientConn.Ping",
+        "http2ClientConn.RoundTrip",
+        "http2ClientConn.Shutdown",
+        "http2ConnectionError.Error",
+        "http2ErrCode.String",
+        "http2FrameHeader.String",
+        "http2FrameType.String",
+        "http2FrameWriteRequest.String",
+        "http2Framer.ReadFrame",
+        "http2Framer.WriteContinuation",
+        "http2Framer.WriteData",
+        "http2Framer.WriteDataPadded",
+        "http2Framer.WriteGoAway",
+        "http2Framer.WriteHeaders",
+        "http2Framer.WritePing",
+        "http2Framer.WritePriority",
+        "http2Framer.WritePushPromise",
+        "http2Framer.WriteRSTStream",
+        "http2Framer.WriteRawFrame",
+        "http2Framer.WriteSettings",
+        "http2Framer.WriteSettingsAck",
+        "http2Framer.WriteWindowUpdate",
+        "http2Framer.readMetaFrame",
+        "http2GoAwayError.Error",
+        "http2Server.ServeConn",
+        "http2Setting.String",
+        "http2SettingID.String",
+        "http2SettingsFrame.ForeachSetting",
+        "http2StreamError.Error",
+        "http2Transport.CloseIdleConnections",
+        "http2Transport.NewClientConn",
+        "http2Transport.RoundTrip",
+        "http2Transport.RoundTripOpt",
+        "http2bufferedWriter.Flush",
+        "http2bufferedWriter.Write",
+        "http2chunkWriter.Write",
+        "http2clientConnPool.GetClientConn",
+        "http2connError.Error",
+        "http2dataBuffer.Read",
+        "http2duplicatePseudoHeaderError.Error",
+        "http2gzipReader.Close",
+        "http2gzipReader.Read",
+        "http2headerFieldNameError.Error",
+        "http2headerFieldValueError.Error",
+        "http2noDialClientConnPool.GetClientConn",
+        "http2noDialH2RoundTripper.RoundTrip",
+        "http2pipe.Read",
+        "http2priorityWriteScheduler.CloseStream",
+        "http2priorityWriteScheduler.OpenStream",
+        "http2pseudoHeaderError.Error",
+        "http2requestBody.Close",
+        "http2requestBody.Read",
+        "http2responseWriter.Flush",
+        "http2responseWriter.FlushError",
+        "http2responseWriter.Push",
+        "http2responseWriter.SetReadDeadline",
+        "http2responseWriter.SetWriteDeadline",
+        "http2responseWriter.Write",
+        "http2responseWriter.WriteHeader",
+        "http2responseWriter.WriteString",
+        "http2roundRobinWriteScheduler.OpenStream",
+        "http2serverConn.CloseConn",
+        "http2serverConn.Flush",
+        "http2stickyErrWriter.Write",
+        "http2transportResponseBody.Close",
+        "http2transportResponseBody.Read",
+        "http2writeData.String",
+        "initALPNRequest.ServeHTTP",
+        "loggingConn.Close",
+        "loggingConn.Read",
+        "loggingConn.Write",
+        "maxBytesReader.Close",
+        "maxBytesReader.Read",
+        "onceCloseListener.Close",
+        "persistConn.Read",
+        "persistConnWriter.ReadFrom",
+        "persistConnWriter.Write",
+        "populateResponse.Write",
+        "populateResponse.WriteHeader",
+        "readTrackingBody.Close",
+        "readTrackingBody.Read",
+        "readWriteCloserBody.Read",
+        "redirectHandler.ServeHTTP",
+        "response.Flush",
+        "response.FlushError",
+        "response.Hijack",
+        "response.ReadFrom",
+        "response.Write",
+        "response.WriteHeader",
+        "response.WriteString",
+        "serverHandler.ServeHTTP",
+        "socksDialer.DialWithConn",
+        "socksUsernamePassword.Authenticate",
+        "stringWriter.WriteString",
+        "timeoutHandler.ServeHTTP",
+        "timeoutWriter.Write",
+        "timeoutWriter.WriteHeader",
+        "transportReadFromServerError.Error"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.9"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "ClientConn.Close",
+        "ClientConn.Ping",
+        "ClientConn.RoundTrip",
+        "ClientConn.Shutdown",
+        "ConfigureServer",
+        "ConfigureTransport",
+        "ConfigureTransports",
+        "ConnectionError.Error",
+        "ErrCode.String",
+        "FrameHeader.String",
+        "FrameType.String",
+        "FrameWriteRequest.String",
+        "Framer.ReadFrame",
+        "Framer.WriteContinuation",
+        "Framer.WriteData",
+        "Framer.WriteDataPadded",
+        "Framer.WriteGoAway",
+        "Framer.WriteHeaders",
+        "Framer.WritePing",
+        "Framer.WritePriority",
+        "Framer.WritePushPromise",
+        "Framer.WriteRSTStream",
+        "Framer.WriteRawFrame",
+        "Framer.WriteSettings",
+        "Framer.WriteSettingsAck",
+        "Framer.WriteWindowUpdate",
+        "Framer.readMetaFrame",
+        "GoAwayError.Error",
+        "ReadFrameHeader",
+        "Server.ServeConn",
+        "Setting.String",
+        "SettingID.String",
+        "SettingsFrame.ForeachSetting",
+        "StreamError.Error",
+        "Transport.CloseIdleConnections",
+        "Transport.NewClientConn",
+        "Transport.RoundTrip",
+        "Transport.RoundTripOpt",
+        "bufferedWriter.Flush",
+        "bufferedWriter.Write",
+        "chunkWriter.Write",
+        "clientConnPool.GetClientConn",
+        "connError.Error",
+        "dataBuffer.Read",
+        "duplicatePseudoHeaderError.Error",
+        "gzipReader.Close",
+        "gzipReader.Read",
+        "headerFieldNameError.Error",
+        "headerFieldValueError.Error",
+        "noDialClientConnPool.GetClientConn",
+        "noDialH2RoundTripper.RoundTrip",
+        "pipe.Read",
+        "priorityWriteScheduler.CloseStream",
+        "priorityWriteScheduler.OpenStream",
+        "pseudoHeaderError.Error",
+        "requestBody.Close",
+        "requestBody.Read",
+        "responseWriter.Flush",
+        "responseWriter.FlushError",
+        "responseWriter.Push",
+        "responseWriter.SetReadDeadline",
+        "responseWriter.SetWriteDeadline",
+        "responseWriter.Write",
+        "responseWriter.WriteHeader",
+        "responseWriter.WriteString",
+        "roundRobinWriteScheduler.OpenStream",
+        "serverConn.CloseConn",
+        "serverConn.Flush",
+        "stickyErrWriter.Write",
+        "transportResponseBody.Close",
+        "transportResponseBody.Read",
+        "writeData.String"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.23.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2023-45288",
+    "GHSA-4v7x-pqxf-cx7m"
+   ],
+   "id": "GO-2024-2687"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net",
+       "symbols": [
+        "Dial",
+        "DialTimeout",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "Listen",
+        "ListenConfig.Listen",
+        "ListenConfig.ListenPacket",
+        "ListenPacket",
+        "LookupAddr",
+        "LookupCNAME",
+        "LookupHost",
+        "LookupIP",
+        "LookupMX",
+        "LookupNS",
+        "LookupSRV",
+        "LookupTXT",
+        "ResolveIPAddr",
+        "ResolveTCPAddr",
+        "ResolveUDPAddr",
+        "Resolver.LookupAddr",
+        "Resolver.LookupCNAME",
+        "Resolver.LookupHost",
+        "Resolver.LookupIP",
+        "Resolver.LookupIPAddr",
+        "Resolver.LookupMX",
+        "Resolver.LookupNS",
+        "Resolver.LookupNetIP",
+        "Resolver.LookupSRV",
+        "Resolver.LookupTXT",
+        "extractExtendedRCode"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24788"
+   ],
+   "id": "GO-2024-2824"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/netip",
+       "symbols": [
+        "Addr.IsGlobalUnicast",
+        "Addr.IsInterfaceLocalMulticast",
+        "Addr.IsLinkLocalMulticast",
+        "Addr.IsLoopback",
+        "Addr.IsMulticast",
+        "Addr.IsPrivate"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.11"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24790"
+   ],
+   "id": "GO-2024-2887"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "NewReader",
+        "OpenReader",
+        "findSignatureInBlock"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.11"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24789"
+   ],
+   "id": "GO-2024-2888"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.CloseIdleConnections",
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "Transport.CancelRequest",
+        "Transport.CloseIdleConnections",
+        "Transport.RoundTrip",
+        "persistConn.readResponse"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.21.12"
+        },
+        {
+         "introduced": "1.22.0-0"
+        },
+        {
+         "fixed": "1.22.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-24791"
+   ],
+   "id": "GO-2024-2963"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "go/parser",
+       "symbols": [
+        "ParseDir",
+        "ParseExpr",
+        "ParseExprFrom",
+        "ParseFile",
+        "parser.parseLiteralValue"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.7"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-34155"
+   ],
+   "id": "GO-2024-3105"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/gob",
+       "symbols": [
+        "Decoder.Decode",
+        "Decoder.DecodeValue",
+        "Decoder.decIgnoreOpFor"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.7"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-34156"
+   ],
+   "id": "GO-2024-3106"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "go/build/constraint",
+       "symbols": [
+        "Parse",
+        "exprParser.not",
+        "parsePlusBuildExpr"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.7"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-34158"
+   ],
+   "id": "GO-2024-3107"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "CertPool.AppendCertsFromPEM",
+        "Certificate.CheckCRLSignature",
+        "Certificate.CheckSignature",
+        "Certificate.CheckSignatureFrom",
+        "Certificate.CreateCRL",
+        "Certificate.Verify",
+        "Certificate.VerifyHostname",
+        "CertificateRequest.CheckSignature",
+        "CreateCertificate",
+        "CreateCertificateRequest",
+        "CreateRevocationList",
+        "DecryptPEMBlock",
+        "EncryptPEMBlock",
+        "HostnameError.Error",
+        "MarshalECPrivateKey",
+        "MarshalPKCS1PrivateKey",
+        "MarshalPKCS1PublicKey",
+        "MarshalPKCS8PrivateKey",
+        "MarshalPKIXPublicKey",
+        "ParseCRL",
+        "ParseCertificate",
+        "ParseCertificateRequest",
+        "ParseCertificates",
+        "ParseDERCRL",
+        "ParseECPrivateKey",
+        "ParsePKCS1PrivateKey",
+        "ParsePKCS1PublicKey",
+        "ParsePKCS8PrivateKey",
+        "ParsePKIXPublicKey",
+        "ParseRevocationList",
+        "RevocationList.CheckSignatureFrom",
+        "SetFallbackRoots",
+        "SystemCertPool",
+        "matchURIConstraint"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.11"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.5"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.0-rc.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-45341"
+   ],
+   "id": "GO-2025-3373"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Client.do",
+        "Client.makeHeadersCopier",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "shouldCopyHeaderOnRedirect"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.11"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.5"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.0-rc.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-45336"
+   ],
+   "id": "GO-2025-3420"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "ParsePKCS1PrivateKey"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.0-rc.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22865"
+   ],
+   "id": "GO-2025-3421"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goarch": [
+        "ppc64le"
+       ],
+       "path": "crypto/internal/nistec",
+       "symbols": [
+        "P256Point.ScalarBaseMult",
+        "P256Point.ScalarMult",
+        "P256Point.SetBytes",
+        "p256NegCond"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.22.12"
+        },
+        {
+         "introduced": "1.23.0-0"
+        },
+        {
+         "fixed": "1.23.6"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22866"
+   ],
+   "id": "GO-2025-3447"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "ProxyFromEnvironment",
+        "envProxyFunc"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.7"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http/httpproxy",
+       "symbols": [
+        "config.useProxy",
+        "domainMatch.match"
+       ]
+      },
+      {
+       "path": "golang.org/x/net/proxy",
+       "symbols": [
+        "Dial",
+        "FromEnvironment",
+        "FromEnvironmentUsing",
+        "PerHost.AddFromString",
+        "PerHost.Dial",
+        "PerHost.DialContext",
+        "PerHost.dialerForRequest"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.36.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22870",
+    "GHSA-qxp5-gwg8-xv66"
+   ],
+   "id": "GO-2025-3503"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/internal",
+       "symbols": [
+        "chunkedReader.Read",
+        "readChunkLine"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.8"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22871"
+   ],
+   "id": "GO-2025-3563"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22874"
+   ],
+   "id": "GO-2025-3749"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "syscall",
+       "symbols": [
+        "Open"
+       ]
+      },
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "os",
+       "symbols": [
+        "Chdir",
+        "Chmod",
+        "Chown",
+        "CopyFS",
+        "Create",
+        "CreateTemp",
+        "File.ReadDir",
+        "File.Readdir",
+        "File.Readdirnames",
+        "Getwd",
+        "Lchown",
+        "Link",
+        "Lstat",
+        "Mkdir",
+        "MkdirAll",
+        "MkdirTemp",
+        "NewFile",
+        "Open",
+        "OpenFile",
+        "OpenInRoot",
+        "OpenRoot",
+        "Pipe",
+        "ReadDir",
+        "ReadFile",
+        "Remove",
+        "RemoveAll",
+        "Rename",
+        "Root.Create",
+        "Root.Lstat",
+        "Root.Mkdir",
+        "Root.Open",
+        "Root.OpenFile",
+        "Root.OpenRoot",
+        "Root.Remove",
+        "Root.Stat",
+        "StartProcess",
+        "Stat",
+        "Symlink",
+        "Truncate",
+        "WriteFile",
+        "dirFS.Open",
+        "dirFS.ReadDir",
+        "dirFS.ReadFile",
+        "dirFS.Stat",
+        "rootFS.Open",
+        "rootFS.ReadDir",
+        "rootFS.ReadFile",
+        "rootFS.Stat",
+        "unixDirent.Info"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.10"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-0913"
+   ],
+   "id": "GO-2025-3750"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Client.makeHeadersCopier",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.10"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-4673"
+   ],
+   "id": "GO-2025-3751"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "database/sql",
+       "symbols": [
+        "Row.Scan",
+        "Rows.Scan"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.12"
+        },
+        {
+         "introduced": "1.24.0"
+        },
+        {
+         "fixed": "1.24.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-47907"
+   ],
+   "id": "GO-2025-3849"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "CrossOriginProtection.AddInsecureBypassPattern"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-47910",
+    "CVE-2025-47910"
+   ],
+   "id": "GO-2025-3955"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "os/exec",
+       "symbols": [
+        "LookPath"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.12"
+        },
+        {
+         "introduced": "1.24.0"
+        },
+        {
+         "fixed": "1.24.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-47906",
+    "CVE-2025-47906"
+   ],
+   "id": "GO-2025-3956"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/mail",
+       "symbols": [
+        "AddressParser.Parse",
+        "AddressParser.ParseList",
+        "Header.AddressList",
+        "ParseAddress",
+        "ParseAddressList",
+        "addrParser.consumeDomainLiteral"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61725",
+    "CVE-2025-61725"
+   ],
+   "id": "GO-2025-4006"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "CertPool.AppendCertsFromPEM",
+        "Certificate.CheckCRLSignature",
+        "Certificate.CheckSignature",
+        "Certificate.CheckSignatureFrom",
+        "Certificate.CreateCRL",
+        "Certificate.Verify",
+        "CertificateRequest.CheckSignature",
+        "CreateCertificate",
+        "CreateCertificateRequest",
+        "CreateRevocationList",
+        "DecryptPEMBlock",
+        "EncryptPEMBlock",
+        "MarshalECPrivateKey",
+        "MarshalPKCS1PrivateKey",
+        "MarshalPKCS1PublicKey",
+        "MarshalPKCS8PrivateKey",
+        "MarshalPKIXPublicKey",
+        "ParseCRL",
+        "ParseCertificate",
+        "ParseCertificateRequest",
+        "ParseCertificates",
+        "ParseDERCRL",
+        "ParseECPrivateKey",
+        "ParsePKCS1PrivateKey",
+        "ParsePKCS1PublicKey",
+        "ParsePKCS8PrivateKey",
+        "ParsePKIXPublicKey",
+        "ParseRevocationList",
+        "RevocationList.CheckSignatureFrom",
+        "SetFallbackRoots",
+        "SystemCertPool",
+        "domainToReverseLabels",
+        "parseSANExtension"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.9"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58187",
+    "CVE-2025-58187"
+   ],
+   "id": "GO-2025-4007"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.Start",
+        "negotiateALPN"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58189",
+    "CVE-2025-58189"
+   ],
+   "id": "GO-2025-4008"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/pem",
+       "symbols": [
+        "Decode",
+        "getLine"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61723",
+    "CVE-2025-61723"
+   ],
+   "id": "GO-2025-4009"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "JoinPath",
+        "Parse",
+        "ParseRequestURI",
+        "URL.Parse",
+        "URL.UnmarshalBinary",
+        "parseHost"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-47912",
+    "CVE-2025-47912"
+   ],
+   "id": "GO-2025-4010"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/asn1",
+       "symbols": [
+        "Unmarshal",
+        "UnmarshalWithParams",
+        "parseSequenceOf"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58185",
+    "CVE-2025-58185"
+   ],
+   "id": "GO-2025-4011"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "Get",
+        "Head",
+        "ParseCookie",
+        "Post",
+        "PostForm",
+        "Request.Cookie",
+        "Request.Cookies",
+        "Request.CookiesNamed",
+        "Response.Cookies",
+        "readCookies",
+        "readSetCookies"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58186",
+    "CVE-2025-58186"
+   ],
+   "id": "GO-2025-4012"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "alreadyInChain"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58188",
+    "CVE-2025-58188"
+   ],
+   "id": "GO-2025-4013"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/tar",
+       "symbols": [
+        "Reader.Next",
+        "readGNUSparseMap1x0"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-58183",
+    "CVE-2025-58183"
+   ],
+   "id": "GO-2025-4014"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Reader.ReadResponse"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.8"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61724",
+    "CVE-2025-61724"
+   ],
+   "id": "GO-2025-4015"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "Certificate.VerifyHostname"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.11"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61729",
+    "CVE-2025-61729"
+   ],
+   "id": "GO-2025-4155"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.11"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.5"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61727"
+   ],
+   "id": "GO-2025-4175"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.handshakeContext",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.Start"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.13"
+        },
+        {
+         "introduced": "1.25.0-0"
+        },
+        {
+         "fixed": "1.25.7"
+        },
+        {
+         "introduced": "1.26.0-rc.1"
+        },
+        {
+         "fixed": "1.26.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-68121"
+   ],
+   "id": "GO-2026-4337"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.handleKeyUpdate",
+        "Conn.handshakeContext",
+        "Conn.quicSetReadSecret",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.HandleData",
+        "QUICConn.Start",
+        "clientHandshakeStateTLS13.establishHandshakeKeys",
+        "clientHandshakeStateTLS13.readServerFinished",
+        "clientHandshakeStateTLS13.sendClientFinished",
+        "serverHandshakeStateTLS13.checkForResumption",
+        "serverHandshakeStateTLS13.doHelloRetryRequest",
+        "serverHandshakeStateTLS13.readClientFinished",
+        "serverHandshakeStateTLS13.sendServerFinished",
+        "serverHandshakeStateTLS13.sendServerParameters"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.12"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61730",
+    "CVE-2025-61730"
+   ],
+   "id": "GO-2026-4340"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "ParseQuery",
+        "URL.Query",
+        "parseQuery"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.12"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61726",
+    "CVE-2025-61726"
+   ],
+   "id": "GO-2026-4341"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/zip",
+       "symbols": [
+        "Reader.Open",
+        "Reader.initFileList"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.24.12"
+        },
+        {
+         "introduced": "1.25.0"
+        },
+        {
+         "fixed": "1.25.6"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-61728",
+    "CVE-2025-61728"
+   ],
+   "id": "GO-2026-4342"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "os",
+       "symbols": [
+        "checkPathEscapesInternal",
+        "doInRoot",
+        "splitPathInRoot"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.23.9"
+        },
+        {
+         "introduced": "1.24.0-0"
+        },
+        {
+         "fixed": "1.24.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-22873"
+   ],
+   "id": "GO-2026-4403"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "checkChainConstraints",
+        "checkConstraints",
+        "emailConstraints.query",
+        "newEmailConstraints",
+        "parseMailboxes"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-27137"
+   ],
+   "id": "GO-2026-4599"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "dnsConstraints.query"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-27138"
+   ],
+   "id": "GO-2026-4600"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "JoinPath",
+        "Parse",
+        "ParseRequestURI",
+        "URL.Parse",
+        "URL.UnmarshalBinary",
+        "parseHost"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.8"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-25679"
+   ],
+   "id": "GO-2026-4601"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "os",
+       "symbols": [
+        "File.ReadDir",
+        "File.Readdir",
+        "ReadDir",
+        "dirFS.ReadDir",
+        "rootFS.ReadDir"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.8"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-27139"
+   ],
+   "id": "GO-2026-4602"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "escaper.escapeAction",
+        "tTag"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.8"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-27142"
+   ],
+   "id": "GO-2026-4603"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "linux"
+       ],
+       "path": "internal/syscall/unix",
+       "symbols": [
+        "Fchmodat"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32282"
+   ],
+   "id": "GO-2026-4864"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Error.Error",
+        "HTMLEscaper",
+        "JSEscape",
+        "JSEscapeString",
+        "JSEscaper",
+        "ParseFS",
+        "ParseFiles",
+        "ParseGlob",
+        "Template.AddParseTree",
+        "Template.Clone",
+        "Template.DefinedTemplates",
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "Template.Funcs",
+        "Template.Parse",
+        "Template.ParseFS",
+        "Template.ParseFiles",
+        "Template.ParseGlob",
+        "URLQueryEscaper",
+        "context.String",
+        "context.mangle",
+        "escaper.escapeBranch"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32289"
+   ],
+   "id": "GO-2026-4865"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "dnsConstraints.query",
+        "newDNSConstraints"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-33810"
+   ],
+   "id": "GO-2026-4866"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "archive/tar",
+       "symbols": [
+        "Reader.Next",
+        "Reader.readOldGNUSparseMap",
+        "readGNUSparseMap1x0"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32288"
+   ],
+   "id": "GO-2026-4869"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.handleKeyUpdate",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.HandleData",
+        "QUICConn.Start",
+        "clientHandshakeStateTLS13.establishHandshakeKeys",
+        "clientHandshakeStateTLS13.readServerFinished",
+        "serverHandshakeStateTLS13.readClientFinished",
+        "serverHandshakeStateTLS13.sendServerParameters"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32283"
+   ],
+   "id": "GO-2026-4870"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/http2",
+       "symbols": [
+        "Transport.NewClientConn",
+        "Transport.RoundTrip",
+        "Transport.RoundTripOpt",
+        "clientConnPool.GetClientConn",
+        "clientConnReadLoop.processSettingsNoWrite",
+        "noDialClientConnPool.GetClientConn",
+        "noDialH2RoundTripper.NewClientConn",
+        "noDialH2RoundTripper.RoundTrip",
+        "unencryptedTransport.RoundTrip"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.53.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.CloseIdleConnections",
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "ClientConn.Close",
+        "ClientConn.RoundTrip",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "Transport.CloseIdleConnections",
+        "Transport.NewClientConn",
+        "Transport.RoundTrip",
+        "http1ClientConn.Close",
+        "http1ClientConn.RoundTrip",
+        "http2Transport.NewClientConn",
+        "http2Transport.RoundTrip",
+        "http2Transport.RoundTripOpt",
+        "http2clientConnPool.GetClientConn",
+        "http2clientConnReadLoop.processSettingsNoWrite",
+        "http2noDialClientConnPool.GetClientConn",
+        "http2noDialH2RoundTripper.NewClientConn",
+        "http2noDialH2RoundTripper.RoundTrip",
+        "http2unencryptedTransport.RoundTrip"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-33814"
+   ],
+   "id": "GO-2026-4918"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "policiesValid"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32281"
+   ],
+   "id": "GO-2026-4946"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "Certificate.buildChains"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.9"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-32280"
+   ],
+   "id": "GO-2026-4947"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "os",
+       "symbols": [
+        "OpenInRoot",
+        "Root.Create",
+        "Root.Open",
+        "Root.OpenFile",
+        "Root.OpenRoot",
+        "Root.ReadFile",
+        "Root.WriteFile",
+        "openRootInRoot",
+        "rootFS.Open",
+        "rootFS.ReadDir",
+        "rootFS.ReadFile",
+        "rootOpenFileNolog"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.12"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.5"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39822"
+   ],
+   "id": "GO-2026-4970"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net",
+       "symbols": [
+        "Dial",
+        "DialTimeout",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "Listen",
+        "ListenConfig.Listen",
+        "ListenConfig.ListenPacket",
+        "ListenPacket",
+        "LookupAddr",
+        "LookupCNAME",
+        "LookupHost",
+        "LookupIP",
+        "LookupMX",
+        "LookupNS",
+        "LookupPort",
+        "LookupSRV",
+        "LookupTXT",
+        "ResolveIPAddr",
+        "ResolveTCPAddr",
+        "ResolveUDPAddr",
+        "Resolver.LookupAddr",
+        "Resolver.LookupCNAME",
+        "Resolver.LookupHost",
+        "Resolver.LookupIP",
+        "Resolver.LookupIPAddr",
+        "Resolver.LookupMX",
+        "Resolver.LookupNS",
+        "Resolver.LookupNetIP",
+        "Resolver.LookupPort",
+        "Resolver.LookupSRV",
+        "Resolver.LookupTXT",
+        "Resolver.lookupAddr",
+        "Resolver.lookupMX",
+        "Resolver.lookupNS",
+        "Resolver.lookupPort",
+        "Resolver.lookupSRV",
+        "Resolver.lookupTXT"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39836"
+   ],
+   "id": "GO-2026-4971"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http/httputil",
+       "symbols": [
+        "ReverseProxy.ServeHTTP",
+        "cleanQueryParams"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39825"
+   ],
+   "id": "GO-2026-4976"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/mail",
+       "symbols": [
+        "AddressParser.Parse",
+        "AddressParser.ParseList",
+        "Header.AddressList",
+        "ParseAddress",
+        "ParseAddressList",
+        "addrParser.consumePhrase"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42499"
+   ],
+   "id": "GO-2026-4977"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "isJSType"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39826"
+   ],
+   "id": "GO-2026-4980"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net",
+       "symbols": [
+        "LookupCNAME",
+        "Resolver.LookupCNAME",
+        "cgoResSearch"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-33811"
+   ],
+   "id": "GO-2026-4981"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "tMetaContent"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39823"
+   ],
+   "id": "GO-2026-4982"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/mail",
+       "symbols": [
+        "AddressParser.Parse",
+        "AddressParser.ParseList",
+        "Header.AddressList",
+        "Header.Date",
+        "ParseAddress",
+        "ParseAddressList",
+        "ParseDate",
+        "addrParser.consumeComment"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.10"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39820"
+   ],
+   "id": "GO-2026-4986"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "goos": [
+        "windows"
+       ],
+       "path": "golang.org/x/sys/windows",
+       "symbols": [
+        "NewNTUnicodeString"
+       ]
+      }
+     ],
+     "module": "golang.org/x/sys",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.44.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39824"
+   ],
+   "id": "GO-2026-5024"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "Client.CloseIdleConnections",
+        "Client.Do",
+        "Client.Get",
+        "Client.Head",
+        "Client.Post",
+        "Client.PostForm",
+        "ClientConn.Close",
+        "ClientConn.RoundTrip",
+        "Get",
+        "Head",
+        "Post",
+        "PostForm",
+        "Transport.CloseIdleConnections",
+        "Transport.NewClientConn",
+        "Transport.RoundTrip",
+        "http1ClientConn.Close",
+        "http1ClientConn.RoundTrip",
+        "http2ClientConn.RoundTrip",
+        "http2RoundTripper.RoundTrip",
+        "idnaASCII"
+       ]
+      },
+      {
+       "path": "net/http/internal/http2",
+       "symbols": [
+        "Transport.AddConn",
+        "Transport.RoundTrip",
+        "Transport.RoundTripOpt",
+        "authorityAddr"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/idna",
+       "symbols": [
+        "Profile.ToASCII",
+        "Profile.ToUnicode",
+        "Profile.process",
+        "ToASCII",
+        "ToUnicode"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.55.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-39821"
+   ],
+   "id": "GO-2026-5026"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/x509",
+       "symbols": [
+        "Certificate.Verify",
+        "Certificate.VerifyHostname",
+        "HostnameError.Error",
+        "matchHostnames"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.11"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-27145"
+   ],
+   "id": "GO-2026-5037"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "mime",
+       "symbols": [
+        "WordDecoder.DecodeHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.11"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42504"
+   ],
+   "id": "GO-2026-5038"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/textproto",
+       "symbols": [
+        "Error.Error",
+        "Reader.ReadCodeLine",
+        "Reader.ReadMIMEHeader",
+        "Reader.ReadResponse",
+        "parseCodeLine",
+        "readMIMEHeader"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.11"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.4"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42507"
+   ],
+   "id": "GO-2026-5039"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.HandleData",
+        "QUICConn.SendSessionTicket",
+        "QUICConn.Start",
+        "clientHelloMsg.marshalMsg"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.12"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.5"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42505"
+   ],
+   "id": "GO-2026-5856"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net",
+       "symbols": [
+        "LookupCNAME",
+        "Resolver.LookupCNAME",
+        "cgoResSearch"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "imports": [
+      {
+       "path": "golang.org/x/net/dns/dnsmessage",
+       "symbols": [
+        "Message.Unpack",
+        "Parser.Additional",
+        "Parser.AllAdditionals",
+        "Parser.AllAnswers",
+        "Parser.AllAuthorities",
+        "Parser.Answer",
+        "Parser.Authority",
+        "Parser.HTTPSResource",
+        "Parser.SVCBResource",
+        "unpackSVCBResource"
+       ]
+      }
+     ],
+     "module": "golang.org/x/net",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.56.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-46600"
+   ],
+   "id": "GO-2026-5942"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/asn1",
+       "symbols": [
+        "Unmarshal",
+        "UnmarshalWithParams",
+        "parseField",
+        "parseSequenceOf"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-33818"
+   ],
+   "id": "GO-2026-5972"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "encoding/xml",
+       "symbols": [
+        "Decoder.Decode",
+        "Decoder.DecodeElement",
+        "Decoder.RawToken",
+        "Decoder.Skip",
+        "Decoder.Token",
+        "Decoder.pop",
+        "Decoder.push",
+        "Decoder.unmarshal",
+        "Decoder.unmarshalPath",
+        "Unmarshal"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-56859"
+   ],
+   "id": "GO-2026-6088"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/http",
+       "symbols": [
+        "ListenAndServe",
+        "ListenAndServeTLS",
+        "Serve",
+        "ServeTLS",
+        "Server.ListenAndServe",
+        "Server.ListenAndServeTLS",
+        "Server.Serve",
+        "Server.ServeTLS",
+        "conn.readRequest",
+        "conn.serve"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-56853"
+   ],
+   "id": "GO-2026-6089"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "crypto/tls",
+       "symbols": [
+        "Conn.Handshake",
+        "Conn.HandshakeContext",
+        "Conn.Read",
+        "Conn.Write",
+        "Conn.readRecordOrCCS",
+        "Dial",
+        "DialWithDialer",
+        "Dialer.Dial",
+        "Dialer.DialContext",
+        "QUICConn.HandleData",
+        "QUICConn.Start"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-56862"
+   ],
+   "id": "GO-2026-6090"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "html/template",
+       "symbols": [
+        "Template.Execute",
+        "Template.ExecuteTemplate",
+        "tJS"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-56858"
+   ],
+   "id": "GO-2026-6091"
+  },
+  {
+   "affected": [
+    {
+     "imports": [
+      {
+       "path": "net/url",
+       "symbols": [
+        "URL.Parse",
+        "URL.ResolveReference",
+        "resolvePath"
+       ]
+      }
+     ],
+     "module": "stdlib",
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "1.25.13"
+        },
+        {
+         "introduced": "1.26.0-0"
+        },
+        {
+         "fixed": "1.26.6"
+        },
+        {
+         "introduced": "1.27.0-0"
+        },
+        {
+         "fixed": "1.27.0-rc.3"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-56860"
+   ],
+   "id": "GO-2026-6218"
+  }
+ ],
+ "binary": {
+  "bytes": 1769900,
+  "image_index": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+  "path_in_image": "/usr/local/bin/gosu",
+  "platform": "linux/amd64",
+  "scanned_child": "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b",
+  "sha256": "52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0"
+ },
+ "findings": [
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4006",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.9",
+   "osv": "GO-2025-4007",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4008",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4009",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4010",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4011",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4012",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4013",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4014",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.8",
+   "osv": "GO-2025-4015",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.11",
+   "osv": "GO-2025-4155",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.11",
+   "osv": "GO-2025-4175",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.13",
+   "osv": "GO-2026-4337",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.12",
+   "osv": "GO-2026-4340",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.12",
+   "osv": "GO-2026-4341",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.24.12",
+   "osv": "GO-2026-4342",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.8",
+   "osv": "GO-2026-4601",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.8",
+   "osv": "GO-2026-4602",
+   "trace": [
+    {
+     "module": "stdlib",
+     "package": "os",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.8",
+   "osv": "GO-2026-4602",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.8",
+   "osv": "GO-2026-4603",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4864",
+   "trace": [
+    {
+     "module": "stdlib",
+     "package": "internal/syscall/unix",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4864",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4865",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4869",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4870",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4918",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4946",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.9",
+   "osv": "GO-2026-4947",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.12",
+   "osv": "GO-2026-4970",
+   "trace": [
+    {
+     "module": "stdlib",
+     "package": "os",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.12",
+   "osv": "GO-2026-4970",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4971",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4976",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4977",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4980",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4981",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4982",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.10",
+   "osv": "GO-2026-4986",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-5026",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.11",
+   "osv": "GO-2026-5037",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.11",
+   "osv": "GO-2026-5038",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.11",
+   "osv": "GO-2026-5039",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.12",
+   "osv": "GO-2026-5856",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.26.6",
+   "osv": "GO-2026-5942",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-5972",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-6088",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-6089",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-6090",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-6091",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  },
+  {
+   "fixed_version": "v1.25.13",
+   "osv": "GO-2026-6218",
+   "trace": [
+    {
+     "module": "stdlib",
+     "version": "v1.24.6"
+    }
+   ]
+  }
+ ],
+ "sbom": {
+  "go_version": "go1.24.6",
+  "modules": [
+   {
+    "path": "github.com/tianon/gosu",
+    "version": "v1.19.0"
+   },
+   {
+    "path": "github.com/moby/sys/user",
+    "version": "v0.1.0"
+   },
+   {
+    "path": "golang.org/x/sys",
+    "version": "v0.1.0"
+   },
+   {
+    "path": "stdlib",
+    "version": "go1.24.6"
+   }
+  ],
+  "roots": [
+   "github.com/tianon/gosu"
+  ]
+ },
+ "scanner": {
+  "db": "https://vuln.go.dev",
+  "db_last_modified": "2026-08-13T21:43:54Z",
+  "protocol_version": "v1.0.0",
+  "scan_level": "symbol",
+  "scan_mode": "binary",
+  "scanner_name": "govulncheck",
+  "scanner_version": "v1.7.0"
+ },
+ "verdict": {
+  "advisory_count": 168,
+  "called_count": 0,
+  "finding_count": 49,
+  "govulncheck_text": "Your code is affected by 0 vulnerabilities.",
+  "symbols_called_from_vulnerable_code": []
+ },
+ "what": "govulncheck symbol-aware binary analysis of the gosu executable extracted from the linux/amd64 child manifest of the digest-pinned postgres image"
+}

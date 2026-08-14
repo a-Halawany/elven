@@ -111,7 +111,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => {
       d.Results = [{ Target: 'pnpm-lock.yaml', Class: 'lang-pkgs' }];
     });
-    closesFalsePass(/Results\[0\] has no Type|lists ZERO packages|Packages is undefined/);
+    closesFalsePass(/but the source contract derives exactly/);
   });
 
   it('rejects a filesystem result whose packages carry no identity', () => {
@@ -130,7 +130,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
 
   it('rejects a filesystem report whose Type is not pnpm', () => {
     editRaw('trivy-fs-json.stdout.txt', (d) => { d.Results[0].Type = 'npm'; });
-    closesFalsePass(/pnpm-lock\.yaml Type is "npm", expected "pnpm"/);
+    closesFalsePass(/but the source contract derives exactly/);
   });
 
   // These four use `trivy-image-1`, the image with NO tracked dispositions. Emptying an image
@@ -155,7 +155,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       d.Results[0].Target = `elsewhere@sha256:${'c'.repeat(64)} (alpine 3.24.1)`;
     });
-    closesFalsePass(/is not the derived reference|no os-pkgs result targeting exactly/);
+    closesFalsePass(/os-pkgs target is .*expected exactly/);
   });
 
   // ── §B — the scanner banner is the only proof of coverage ────────────────────
@@ -220,6 +220,6 @@ describe('C16-R3.4.3 receipt semantics', () => {
 
   it('rejects an advisory container shaped as an array', () => {
     editRaw('pnpm-audit-json.stdout.txt', (d) => { d.advisories = []; });
-    closesFalsePass(/advisory container is an ARRAY/);
+    closesFalsePass(/advisories is an ARRAY/);
   });
 });
