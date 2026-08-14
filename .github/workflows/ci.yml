@@ -223,6 +223,20 @@ jobs:
         run: node scripts/gate/assert-final-manifests.mjs "$C15_OUT" "$C16_OUT" "$GITHUB_SHA"
       - name: License inventory (allowlist-checked over PRODUCTION AND DEVELOPMENT, blocking)
         run: node scripts/license-inventory.mjs
+      # C17. Official CycloneDX 1.6 validation against the VENDORED schema closure plus the
+      # target-specific licence inventory, obligations and notices. Entirely offline: the
+      # schema is verified byte-for-byte before compilation and nothing is downloaded. Any
+      # generation, compilation, validation, reconciliation, governance or write failure
+      # exits nonzero and fails the job.
+      - name: C17 official CycloneDX validation + licence obligations (blocking)
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          C17_OUT="$(mktemp -d)"
+          echo "C17_OUT=$C17_OUT" >> "$GITHUB_ENV"
+          node scripts/gate/licence-obligations.mjs \
+            --out "$C17_OUT" \
+            --expected-sha "$GITHUB_SHA"
       # Package the final evidence as ONE inspectable ZIP with its own SHA-256, so an
       # unsigned public reviewer can download it and verify the bytes they received.
       - name: Package final C15 + C16 evidence as an inspectable ZIP
@@ -259,7 +273,7 @@ jobs:
           echo "evidence ZIP sha256: $DIGEST"
       # ALWAYS upload: a red run must remain auditable. The runner writes a failure
       # manifest and RESULT-FAIL.txt before exiting, so these paths exist either way.
-      - name: Upload C15 + C16 raw gate evidence
+      - name: Upload C15 + C16 + C17 raw gate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -267,6 +281,14 @@ jobs:
           path: |
             ${{ env.C15_OUT }}
             ${{ env.C16_OUT }}
+            ${{ env.C17_OUT }}
+          if-no-files-found: warn
+      - name: Upload C17 licence + schema evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c17-licence-evidence
+          path: ${{ env.C17_OUT }}
           if-no-files-found: warn
       - name: Upload the inspectable final-evidence ZIP
         if: always()

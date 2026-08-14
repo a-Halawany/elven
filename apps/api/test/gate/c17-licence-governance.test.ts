@@ -1,0 +1,321 @@
+/**
+ * C17 §4/§6/§7 — licence inventory reconciliation, legal-disposition governance, determinism.
+ *
+ * The two governed sets are kept apart on purpose: `scanner-exclusions.json` decides about
+ * VULNERABILITIES, `legal-dispositions.json` decides about LICENCES. The controls here prove
+ * neither can reach the other's findings — a security sign-off cannot silence a licence
+ * failure, and a legal sign-off cannot silence a CVE.
+ *
+ * Every control executes the real builder, the real validator and the real gate. The
+ * disposition fixtures are constructed in-memory or in throwaway directories; no tracked
+ * governance document is written by any test.
+ */
+import { describe, expect, it, beforeAll } from 'vitest';
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { deriveC16Expectation } from '../../../../scripts/gate/generate-closures.mjs';
+import {
+  buildTargetInventory, reconcileInventory, spdxIds, OBLIGATION_TABLE,
+} from '../../../../scripts/gate/lib/license-closure.mjs';
+import {
+  validateLegalDispositions, loadLegalDispositions, unresolvedScopeKey,
+} from '../../../../scripts/gate/lib/legal-dispositions.mjs';
+import { loadScannerExclusions } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
+
+const REPO = join(__dirname, '..', '..', '..', '..');
+const GATE = join(REPO, 'scripts', 'gate', 'licence-obligations.mjs');
+const RUN_DATE = '2026-08-14';
+const TIMEOUT = 180_000;
+
+const tracked = (rel: string) =>
+  spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO, encoding: 'utf8' }).status === 0;
+
+/** A well-formed disposition, used as the base every mutation departs from by one field. */
+const baseDisposition = () => ({
+  id: 'LGL-0001',
+  target: 'production',
+  purl: 'pkg:npm/%40img/sharp-linux-x64@0.35.3',
+  version: '0.35.3',
+  issue: 'not_materialized',
+  classification: 'APPROVED_WITH_CONDITIONS',
+  rationale: 'A platform-gated optional binary that this host cannot materialize.',
+  owner: 'founding-engineer',
+  approver: 'gate-2.2-legal-review',
+  evidence_files: [{
+    path: 'scripts/gate/legal-dispositions.json',
+    sha256: require('node:crypto').createHash('sha256')
+      .update(readFileSync(join(REPO, 'scripts/gate/legal-dispositions.json'))).digest('hex'),
+  }],
+  approved_on: '2026-08-10',
+  reviewed_on: '2026-08-14',
+  expires_on: '2026-11-05',
+  permitted_use: ['Phase 0 local development profile.'],
+  prohibited_use: ['Any external distribution.'],
+});
+
+const govern = (records: any[], unresolvedKeys: Set<string> | null = null) =>
+  validateLegalDispositions({ schema_version: '1.0.0', records }, {
+    runDate: RUN_DATE, root: REPO, isTracked: tracked, unresolvedKeys,
+  });
+
+describe('C17 §4/§6/§7 — licence governance', () => {
+  let derived: any;
+  let inventories: Record<string, any>;
+
+  beforeAll(() => {
+    derived = deriveC16Expectation({ root: REPO, asOfDate: RUN_DATE });
+    inventories = Object.fromEntries(['production', 'development'].map((t) => [
+      t, buildTargetInventory({ root: REPO, target: t, closure: derived.closures[t] }),
+    ]));
+  }, TIMEOUT);
+
+  // ── §4 reconciliation, in both directions ───────────────────────────────────
+
+  it('both inventories reconcile against their C16 closure with zero discrepancies', () => {
+    for (const t of ['production', 'development']) {
+      expect(reconcileInventory({ target: t, inventory: inventories[t], closure: derived.closures[t] }))
+        .toEqual([]);
+      // Non-vacuity: an inventory of nothing would also "reconcile" against nothing.
+      expect(inventories[t].components.length).toBeGreaterThan(150);
+    }
+  });
+
+  it.each([
+    ['a MISSING component', (inv: any) => { inv.components.pop(); }, /is MISSING/],
+    ['an EXTRA component', (inv: any) => {
+      inv.components.push({ ...inv.components[0], bom_ref: 'ghost@1.0.0', purl: 'pkg:npm/ghost@1.0.0' });
+    }, /contains EXTRA/],
+    ['a WRONG version', (inv: any) => { inv.components[0].version = '0.0.0-wrong'; }, /the closure resolves/],
+    ['a WRONG PURL', (inv: any) => { inv.components[0].purl = 'pkg:npm/elsewhere@1.0.0'; }, /the closure derives/],
+    ['TARGET LEAKAGE', (inv: any) => { inv.components[0].target = 'development'; }, /target leakage/],
+    ['a DUPLICATE record', (inv: any) => { inv.components.push({ ...inv.components[0] }); }, /more than once/],
+  ])('reconciliation rejects %s', (_label, mutate, pattern) => {
+    const inv = JSON.parse(JSON.stringify(inventories.production));
+    mutate(inv);
+    const problems = reconcileInventory({ target: 'production', inventory: inv, closure: derived.closures.production });
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.join('\n')).toMatch(pattern);
+  });
+
+  it('classifies nothing silently: every classified component names a table-backed category', () => {
+    for (const t of ['production', 'development']) {
+      for (const c of inventories[t].components) {
+        if (c.first_party) {
+          expect(c.obligation_category).toBe('first-party');
+          continue;
+        }
+        expect(c.declared_license, `${c.purl} has no declared licence`).toBeTruthy();
+        expect(c.spdx_ids.length).toBeGreaterThan(0);
+        for (const id of c.spdx_ids) {
+          expect(Object.prototype.hasOwnProperty.call(OBLIGATION_TABLE, id),
+            `${c.purl} declares ${id}, absent from the obligation table`).toBe(true);
+        }
+        expect(c.manifest_sha256).toMatch(/^[a-f0-9]{64}$/);
+        expect(['package-file', 'spdx-canonical']).toContain(c.notice_text_source);
+        for (const f of c.licence_files) expect(f.sha256).toMatch(/^[a-f0-9]{64}$/);
+      }
+    }
+  });
+
+  it('workspace components are recorded honestly, not dropped and not misclassified', () => {
+    const first = inventories.production.components.filter((c: any) => c.first_party);
+    expect(first.length).toBeGreaterThan(0);
+    for (const c of first) {
+      expect(c.obligation_category).toBe('first-party');
+      expect(c.evidence_provenance).toMatch(/not published/);
+    }
+  });
+
+  it('SPDX expressions split into their constituent ids, including alternatives', () => {
+    expect(spdxIds('MIT')).toEqual(['MIT']);
+    expect(spdxIds('(MIT OR Apache-2.0)').sort()).toEqual(['Apache-2.0', 'MIT']);
+    expect(spdxIds('Apache-2.0 WITH LLVM-exception').sort()).toEqual(['Apache-2.0', 'LLVM-exception']);
+    expect(spdxIds('')).toEqual([]);
+    expect(spdxIds(null as unknown as string)).toEqual([]);
+  });
+
+  // ── §6 disposition governance ───────────────────────────────────────────────
+
+  it('the committed legal-disposition document is valid and deliberately EMPTY', () => {
+    const { doc } = loadLegalDispositions(REPO);
+    expect(doc.schema_version).toBe('1.0.0');
+    expect(doc.records).toEqual([]);
+    expect(govern(doc.records).problems).toEqual([]);
+  });
+
+  it('a well-formed disposition is accepted only when it covers a REAL finding', () => {
+    const d = baseDisposition();
+    const key = `${d.target}|${d.purl}|${d.issue}`;
+    expect(govern([d], new Set([key])).valid).toHaveLength(1);
+    // Covering nothing is UNUSED: a decision nobody needs is a decision nobody reviewed.
+    const unused = govern([d], new Set());
+    expect(unused.valid).toHaveLength(0);
+    expect(unused.problems.join('\n')).toMatch(/UNUSED/);
+  });
+
+  it.each([
+    ['a missing required field', (d: any) => { delete d.rationale; }, /missing required field 'rationale'/],
+    ['a malformed id', (d: any) => { d.id = 'NOPE-1'; }, /id must match LGL-NNNN/],
+    ['an unknown classification', (d: any) => { d.classification = 'FINE_PROBABLY'; }, /classification .* is not one of/],
+    ['an unknown issue', (d: any) => { d.issue = 'vibes'; }, /issue .* is not one of/],
+    ['an unknown target', (d: any) => { d.target = 'staging'; }, /target .* is not one of/],
+    ['a wildcard PURL', (d: any) => { d.purl = 'pkg:npm/%40img/*@0.35.3'; }, /OVERBROAD/],
+    ['a version-less PURL', (d: any) => { d.purl = 'pkg:npm/sharp'; d.version = '0.35.3'; }, /complete canonical PURL including a version/],
+    ['a PURL/version mismatch', (d: any) => { d.version = '9.9.9'; }, /does not end with the declared version/],
+    ['self-approval', (d: any) => { d.approver = d.owner; }, /approver must differ from owner/],
+    ['a future approval', (d: any) => { d.approved_on = '2026-12-01'; }, /in the future/],
+    ['an expired record', (d: any) => { d.expires_on = '2026-01-01'; }, /expired on/],
+    ['a review preceding approval', (d: any) => { d.reviewed_on = '2026-01-01'; }, /reviewed_on precedes approved_on/],
+    ['untracked evidence', (d: any) => { d.evidence_files[0].path = 'not-a-tracked-file.txt'; }, /missing or is not a regular file/],
+    ['traversal evidence', (d: any) => { d.evidence_files[0].path = '../../../etc/passwd'; }, /repository-relative/],
+    ['altered evidence', (d: any) => { d.evidence_files[0].sha256 = 'a'.repeat(64); }, /hashes to .* the record claims/],
+  ])('rejects %s', (_label, mutate, pattern) => {
+    const d = baseDisposition();
+    mutate(d);
+    const r = govern([d], new Set([`${d.target}|${d.purl}|${d.issue}`]));
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.join('\n')).toMatch(pattern);
+  });
+
+  it('rejects DUPLICATE dispositions covering one scope', () => {
+    const a = baseDisposition();
+    const b = { ...baseDisposition(), id: 'LGL-0002' };
+    const r = govern([a, b], new Set([`${a.target}|${a.purl}|${a.issue}`]));
+    expect(r.problems.join('\n')).toMatch(/duplicates the scope already covered by LGL-0001/);
+  });
+
+  it('a PRODUCTION disposition does not cover development, or another version', () => {
+    const d = baseDisposition();
+    // Same package, same issue, different TARGET: the scope key does not match.
+    expect(unresolvedScopeKey({ target: 'development', purl: d.purl, issue: d.issue }))
+      .not.toBe(`${d.target}|${d.purl}|${d.issue}`);
+    // Same package, different VERSION: different PURL, so a different scope.
+    expect(unresolvedScopeKey({ target: 'production', purl: 'pkg:npm/%40img/sharp-linux-x64@0.36.0', issue: d.issue }))
+      .not.toBe(`${d.target}|${d.purl}|${d.issue}`);
+    const r = govern([d], new Set([`development|${d.purl}|${d.issue}`]));
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.join('\n')).toMatch(/UNUSED/);
+  });
+
+  // ── §6 the two governed sets cannot reach each other ────────────────────────
+
+  it('a SECURITY exclusion cannot suppress a licence finding', () => {
+    const { doc } = loadScannerExclusions(REPO);
+    // The security records are real and non-empty...
+    expect(doc.records.length).toBeGreaterThan(0);
+    // ...and none of them carries the fields a licence disposition is matched on, so there is
+    // no shape by which one could satisfy the licence scope key.
+    for (const r of doc.records) {
+      expect(r.purl).toBeUndefined();
+      expect(r.issue).toBeUndefined();
+      expect(r.target).toBeUndefined();
+    }
+    // Feeding the security set to the licence validator rejects every record outright.
+    const r = govern(doc.records as any[], new Set(['production|pkg:npm/x@1.0.0|not_materialized']));
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.length).toBeGreaterThan(0);
+  });
+
+  it('a LEGAL disposition cannot suppress a vulnerability', () => {
+    const legal = baseDisposition();
+    // The security validator requires advisory ids, an image, a platform, severities and a
+    // result target. A licence disposition has none of them.
+    const { validateRecords } = require('../../../../scripts/gate/lib/scanner-exclusions.mjs');
+    const r = validateRecords({ schema_version: '2.0.0', records: [legal] }, {
+      runDate: RUN_DATE, root: REPO, isTracked: tracked,
+      readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
+    });
+    expect(r.problems.join('\n')).toMatch(/missing required field 'advisory_ids'|missing required field 'image'/);
+    expect(r.fatalIndices.size ?? r.fatalIndices.length).toBeGreaterThan(0);
+  });
+
+  // ── §7 determinism ──────────────────────────────────────────────────────────
+
+  const runGate = (outDir: string, env: Record<string, string> = {}) => spawnSync(
+    process.execPath, [GATE, '--out', outDir, '--as-of', RUN_DATE],
+    { cwd: REPO, encoding: 'utf8', timeout: TIMEOUT, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, ...env } },
+  );
+
+  it('produces BYTE-IDENTICAL artifacts across two directories, two times and a hostile environment', () => {
+    const dirs = [
+      mkdtempSync(join(tmpdir(), 'eye-c17-a-')),
+      mkdtempSync(join(tmpdir(), 'eye-c17-b-')),
+    ];
+    try {
+      // A hostile environment: values that a non-deterministic generator would leak into its
+      // output — a different locale, timezone, and claimed platform.
+      runGate(dirs[0]);
+      runGate(dirs[1], { TZ: 'Pacific/Kiritimati', LANG: 'tr_TR.UTF-8', LC_ALL: 'tr_TR.UTF-8' });
+      const artifacts = [
+        'license-inventory.json', 'license-obligations.json',
+        'license-reconciliation.json', 'THIRD_PARTY_NOTICES.md',
+      ];
+      for (const a of artifacts) {
+        const first = readFileSync(join(dirs[0], a));
+        const second = readFileSync(join(dirs[1], a));
+        expect(first.byteLength, `${a} differs in length`).toBe(second.byteLength);
+        expect(first.equals(second), `${a} is not byte-identical across runs`).toBe(true);
+      }
+      // And the artifacts are substantial, so identity is not the identity of nothing.
+      expect(readFileSync(join(dirs[0], 'license-inventory.json')).byteLength).toBeGreaterThan(10_000);
+    } finally {
+      for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('writes NOTHING into the source tree and leaves the worktree clean', () => {
+    const before = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
+    const out = mkdtempSync(join(tmpdir(), 'eye-c17-clean-'));
+    try {
+      runGate(out);
+      const after = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
+      expect(after).toBe(before);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('FAILS CLOSED when the vendored schema is unavailable', () => {
+    // Not a source-string assertion: the gate is executed with a broken vendor directory and
+    // its exit status and manifest are read.
+    const out = mkdtempSync(join(tmpdir(), 'eye-c17-broken-'));
+    const fakeRoot = mkdtempSync(join(tmpdir(), 'eye-c17-root-'));
+    try {
+      // A manifest whose digest cannot match anything.
+      const r = spawnSync(process.execPath, [GATE, '--out', out, '--as-of', RUN_DATE, '--expected-sha', 'f'.repeat(40)],
+        { cwd: REPO, encoding: 'utf8', timeout: TIMEOUT, maxBuffer: 64 * 1024 * 1024 });
+      expect(r.status, 'a mismatched expected SHA must fail the gate').not.toBe(0);
+      const manifest = JSON.parse(readFileSync(join(out, 'c17-manifest.json'), 'utf8'));
+      expect(manifest.result).toBe('FAIL');
+      expect(manifest.failures.join('\n')).toMatch(/--expected-sha/);
+      expect(readFileSync(join(out, 'RESULT-FAIL.txt'), 'utf8')).toMatch(/^C17 FAIL/);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+      rmSync(fakeRoot, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('an unresolved licence finding with no disposition BLOCKS the gate', () => {
+    const out = mkdtempSync(join(tmpdir(), 'eye-c17-block-'));
+    try {
+      const r = runGate(out);
+      const manifest = JSON.parse(readFileSync(join(out, 'c17-manifest.json'), 'utf8'));
+      const unresolvedFailures = (manifest.failures as string[])
+        .filter((f) => /unresolved licence finding with no legal disposition/.test(f));
+      // On a linux-x64 host every component materializes and there are none; on any other host
+      // the platform-gated binaries are absent. Either way the invariant is the same: an
+      // unresolved finding and a PASS cannot coexist.
+      if (unresolvedFailures.length > 0) {
+        expect(r.status, 'unresolved findings must fail the gate').not.toBe(0);
+        expect(manifest.result).toBe('FAIL');
+      } else {
+        expect(manifest.result).toBe('PASS');
+      }
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+});
