@@ -769,7 +769,7 @@ const purlPackageName = (u) => (
  * somewhere else, collapsed to the same string and compared equal. The whole canonical string is
  * the identity now, and it is what is compared against the source-derived sets.
  */
-function packageProblems(label, at, pkg, { contract, seen }) {
+function packageProblems(label, at, pkg, { contract, seen, purls }) {
   const problems = [];
   if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
     problems.push(`C15 ${label} ${at} is not an object`);
@@ -821,12 +821,22 @@ function packageProblems(label, at, pkg, { contract, seen }) {
   if (typeof pkg.Version === 'string' && parsed.version !== pkg.Version) {
     problems.push(`C15 ${label} ${at} PURL version is ${JSON.stringify(parsed.version)} but the package is ${JSON.stringify(pkg.Version)}`);
   }
-  // Duplicates are detected on the COMPLETE canonical string, so two packages differing only
-  // in a qualifier are two packages, not one.
-  if (seen.has(raw)) {
-    problems.push(`C15 ${label} ${at} repeats the canonical PURL ${raw}; a scan reports each package once`);
+  // Duplicate detection is on the package's FULL identity, not its PURL.
+  //
+  // A canonical PURL is NOT unique within a lockfile: `ajv-formats@3.0.1` resolves twice, once
+  // against each `ajv` it peers with, and both are real distinct installations that trivy
+  // reports separately. Keying on the PURL alone would call the second a forgery. Trivy's `ID`
+  // carries the lock key including peer context, so it distinguishes them; where it is absent
+  // the PURL is the best identity available and is used instead.
+  // The canonical PURL is collected SEPARATELY, for the source-coverage comparison: coverage
+  // asks which packages were analysed, and two peer-context installations of one package cover
+  // the same package.
+  purls.add(raw);
+  const identity = typeof pkg.ID === 'string' && pkg.ID.length > 0 ? `${pkg.ID}\u0000${raw}` : raw;
+  if (seen.has(identity)) {
+    problems.push(`C15 ${label} ${at} repeats the package identity ${identity.replace('\u0000', ' / ')}; a scan reports each installation once`);
   } else {
-    seen.add(raw);
+    seen.add(identity);
   }
   return problems;
 }
@@ -835,6 +845,7 @@ function packageProblems(label, at, pkg, { contract, seen }) {
 function packagesProblems(label, where, packages, { contract }) {
   const problems = [];
   const purls = new Set();
+  const seen = new Set();
   if (!Array.isArray(packages)) {
     problems.push(`C15 ${label} ${where} Packages is ${typeof packages}, not an array`);
     return { problems, purls };
@@ -844,7 +855,7 @@ function packagesProblems(label, where, packages, { contract }) {
     return { problems, purls };
   }
   for (const [i, pkg] of packages.entries()) {
-    problems.push(...packageProblems(label, `${where} Packages[${i}]`, pkg, { contract, seen: purls }));
+    problems.push(...packageProblems(label, `${where} Packages[${i}]`, pkg, { contract, seen, purls }));
   }
   return { problems, purls };
 }

@@ -207,4 +207,26 @@ describe('C16-R3.4.5 receipt contract', () => {
     });
     closesFalsePass(/categories cover 3 package\(s\) but claim a total of \d+/);
   });
+
+  it('two installations sharing one canonical PURL are TWO packages, not a duplicate', () => {
+    // `ajv-formats@3.0.1` genuinely resolves twice, once per peered `ajv`. A rule keyed on the
+    // PURL alone would call the second a forgery and fail a sound scan — which is exactly what
+    // it did until trivy's peer-bearing `ID` was made the identity.
+    editRaw('trivy-fs-json.stdout.txt', (d) => {
+      const first = d.Results[0].Packages[0];
+      d.Results[0].Packages.push({
+        ...first,
+        ID: `${first.Name}@${first.Version}(peer@1.0.0)`,
+      });
+    });
+    const problems = check();
+    expect(problems.filter((p) => /repeats the package identity/.test(p))).toEqual([]);
+  });
+
+  it('but a byte-identical package record REPEATED is still rejected', () => {
+    editRaw('trivy-fs-json.stdout.txt', (d) => {
+      d.Results[0].Packages.push({ ...d.Results[0].Packages[0] });
+    });
+    expect(check().some((p) => /repeats the package identity/.test(p))).toBe(true);
+  });
 });
