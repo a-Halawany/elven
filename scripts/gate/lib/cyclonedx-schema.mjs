@@ -30,6 +30,7 @@ import { createRequire } from 'node:module';
 
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import addDraft2019Formats from 'ajv-formats-draft2019';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,39 @@ export const SCHEMA_FILES = Object.freeze([
   'bom-1.6.schema.json', 'jsf-0.82.schema.json', 'spdx.schema.json',
 ]);
 export const ROOT_SCHEMA = 'bom-1.6.schema.json';
+
+/**
+ * C17.1 A2 — the provenance is CODE-OWNED, not read from the manifest.
+ *
+ * Previously the manifest declared the repository, tag, commit, URLs, lengths and digests, and
+ * the verifier checked the FILES against the MANIFEST. That is self-authenticating: rewrite both
+ * together and the pair agrees with itself. Everything that identifies which upstream artifact
+ * this is now lives here, in tracked code, and the manifest is checked against IT.
+ */
+export const SCHEMA_PROVENANCE = Object.freeze({
+  repository: 'https://github.com/CycloneDX/specification',
+  release_tag: '1.6.2',
+  commit: 'e833d732337dd33aceb45ff1991f896796f1e5e7',
+  acquired_on: '2026-08-14',
+  licence_spdx: 'Apache-2.0',
+  files: Object.freeze({
+    'bom-1.6.schema.json': Object.freeze({
+      sha256: '18f57f7482593bad9f21b4feed09084640cbeff419d62ad5090c5ceccca5b37d',
+      bytes: 262666,
+      url: 'https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/bom-1.6.schema.json',
+    }),
+    'jsf-0.82.schema.json': Object.freeze({
+      sha256: '8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae',
+      bytes: 8058,
+      url: 'https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/jsf-0.82.schema.json',
+    }),
+    'spdx.schema.json': Object.freeze({
+      sha256: 'c41917196639055e9f9670811bac23ef777732144f3ff5a2f39686f61580dbe6',
+      bytes: 14830,
+      url: 'https://raw.githubusercontent.com/CycloneDX/specification/e833d732337dd33aceb45ff1991f896796f1e5e7/schema/spdx.schema.json',
+    }),
+  }),
+});
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const SHA256_HEX = /^[a-f0-9]{64}$/;
@@ -65,8 +99,29 @@ export function verifyVendoredSchemas(root = ROOT) {
   } catch (e) {
     return { ok: false, problems: [`C17 vendored schema manifest does not parse: ${e instanceof Error ? e.message : e}`], manifest: null, bytes: null };
   }
+
+  // The manifest is checked against CODE, not consulted as the source of truth. Forging a tag,
+  // commit, URL or licence in the document is therefore a mismatch, not a redefinition.
+  const up = manifest.upstream ?? {};
+  const expectUpstream = {
+    repository: SCHEMA_PROVENANCE.repository,
+    release_tag: SCHEMA_PROVENANCE.release_tag,
+    commit: SCHEMA_PROVENANCE.commit,
+  };
+  for (const [field, want] of Object.entries(expectUpstream)) {
+    if (up[field] !== want) {
+      problems.push(`C17 manifest upstream.${field} is ${JSON.stringify(up[field])}, the code-owned provenance requires ${JSON.stringify(want)}`);
+    }
+  }
+  if (manifest.acquired_on !== SCHEMA_PROVENANCE.acquired_on) {
+    problems.push(`C17 manifest acquired_on is ${JSON.stringify(manifest.acquired_on)}, expected ${JSON.stringify(SCHEMA_PROVENANCE.acquired_on)}`);
+  }
+  if (manifest.licence?.spdx_id !== SCHEMA_PROVENANCE.licence_spdx) {
+    problems.push(`C17 manifest licence.spdx_id is ${JSON.stringify(manifest.licence?.spdx_id)}, expected ${JSON.stringify(SCHEMA_PROVENANCE.licence_spdx)}`);
+  }
+
   const entries = Array.isArray(manifest.files) ? manifest.files : [];
-  const declared = entries.map((e) => e.file).sort();
+  const declared = entries.map((e) => e?.file).sort();
   if (declared.join(',') !== [...SCHEMA_FILES].sort().join(',')) {
     problems.push(
       `C17 manifest declares ${JSON.stringify(declared)}, but the code-owned closure is `
@@ -74,23 +129,28 @@ export function verifyVendoredSchemas(root = ROOT) {
     );
     return { ok: false, problems, manifest, bytes: null };
   }
-  for (const field of ['repository', 'release_tag', 'commit']) {
-    if (typeof manifest.upstream?.[field] !== 'string' || manifest.upstream[field].length === 0) {
-      problems.push(`C17 manifest upstream.${field} is missing; the schema has no stated provenance`);
-    }
-  }
+
   const bytes = new Map();
   for (const e of entries) {
-    // The manifest names a file; it may not name a PATH. The location is code-owned, so a
-    // manifest cannot redirect the loader at bytes elsewhere on disk.
-    if (typeof e.file !== 'string' || e.file.includes('/') || e.file.includes('..')) {
-      problems.push(`C17 manifest entry ${JSON.stringify(e.file)} is not a bare file name`);
+    const want = SCHEMA_PROVENANCE.files[e.file];
+    if (typeof e.file !== 'string' || e.file.includes('/') || e.file.includes('..') || want === undefined) {
+      problems.push(`C17 manifest entry ${JSON.stringify(e.file)} is not a bare file name in the code-owned closure`);
       continue;
     }
-    if (typeof e.sha256 !== 'string' || !SHA256_HEX.test(e.sha256)) {
-      problems.push(`C17 manifest entry '${e.file}' has no lowercase hex sha256`);
+    // The manifest must agree with CODE about the digest, the length and the URL...
+    if (e.sha256 !== want.sha256) {
+      problems.push(`C17 manifest declares '${e.file}' sha256 ${JSON.stringify(e.sha256)}, the code-owned provenance requires ${want.sha256}`);
       continue;
     }
+    if (e.bytes !== want.bytes) {
+      problems.push(`C17 manifest declares '${e.file}' as ${JSON.stringify(e.bytes)} bytes, the code-owned provenance requires ${want.bytes}`);
+      continue;
+    }
+    if (e.url !== want.url) {
+      problems.push(`C17 manifest declares '${e.file}' url ${JSON.stringify(e.url)}, the code-owned provenance requires ${want.url}`);
+      continue;
+    }
+    // ...and the FILE must agree with code too, so changing bytes and manifest together fails.
     const abs = join(dir, e.file);
     let st = null;
     try { st = lstatSync(abs); } catch { st = null; }
@@ -100,14 +160,12 @@ export function verifyVendoredSchemas(root = ROOT) {
     }
     const buf = readFileSync(abs);
     const actual = sha256(buf);
-    if (actual !== e.sha256) {
-      problems.push(
-        `C17 vendored schema '${e.file}' hashes to ${actual}, the manifest declares ${e.sha256}`,
-      );
+    if (actual !== want.sha256) {
+      problems.push(`C17 vendored schema '${e.file}' hashes to ${actual}, the code-owned provenance requires ${want.sha256}`);
       continue;
     }
-    if (typeof e.bytes === 'number' && e.bytes !== buf.byteLength) {
-      problems.push(`C17 vendored schema '${e.file}' is ${buf.byteLength} bytes, the manifest declares ${e.bytes}`);
+    if (buf.byteLength !== want.bytes) {
+      problems.push(`C17 vendored schema '${e.file}' is ${buf.byteLength} bytes, the code-owned provenance requires ${want.bytes}`);
       continue;
     }
     bytes.set(e.file, buf);
@@ -158,31 +216,43 @@ export function compileBomValidator(root = ROOT) {
     // turning strict off to accommodate one known annotation would also silence a genuinely
     // misspelled keyword, which is exactly the class of defect strict mode exists to catch.
     ajv.addKeyword({ keyword: 'meta:enum', metaSchema: { type: 'object' } });
-    // The CycloneDX schema uses two INTERNATIONALISED formats that `ajv-formats` does not ship:
-    // `iri-reference` and `idn-email`. They are defined here rather than switched off, because
-    // an unknown format under strict mode is a compile error and the alternative — disabling
-    // format validation — would silently drop `date-time` and `uri` checking as well.
+    // C17.1 A1 — INTERNATIONALISED formats from an exact-pinned implementation.
     //
-    // Both are deliberately CONSERVATIVE and their limits are stated. An IRI reference is a URI
-    // reference generalised to Unicode, so what is enforced is the structural part that matters
-    // here: a nonempty string with no whitespace and no control characters. `idn-email` is an
-    // email address whose parts may be Unicode: exactly one '@', with nonempty sides and no
-    // whitespace. Neither is a full RFC 3987 / RFC 6531 parser, and neither claims to be; they
-    // reject the malformed values a generator can plausibly emit, and they do not pretend to
-    // validate deliverability or normalisation.
-    const NO_SPACE_OR_CONTROL = /^[^\s\u0000-\u001f\u007f]+$/u;
+    // `ajv-formats` ships neither `iri-reference` nor `idn-email`, and under strict mode an
+    // unknown format is a compile error. The previous round defined both by hand; the hand-
+    // rolled `iri-reference` accepted `http://[bad` and `%%%%`, which is exactly the laxity a
+    // format check exists to prevent.
+    //
+    // `ajv-formats-draft2019@1.6.1` (exact-pinned) supplies both. Its `idn-email` is correct.
+    // Its `iri-reference` is deliberately permissive because a RELATIVE reference is legal, so
+    // it is composed with two standards-grounded structural checks that a relative reference
+    // must also satisfy:
+    //   * percent-encoding must be `%` followed by two hex digits (RFC 3986 §2.1), which
+    //     rejects `%%%%`;
+    //   * anything carrying a scheme must parse as an absolute URL, which rejects the invalid
+    //     IP-literal host in `http://[bad`.
+    // Both are evaluated by the WHATWG parser built into Node, not by a regex approximation.
+    addDraft2019Formats(ajv);
+    const draftIri = ajv.formats['iri-reference'];
+    const draftIriValidate = typeof draftIri === 'function' ? draftIri : draftIri?.validate;
+    const BAD_PERCENT = /%(?![0-9A-Fa-f]{2})/;
+    const HAS_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+    // `addFormat` REPLACES an existing format, so the draft2019 validator is captured above
+    // and then wrapped rather than the plugin being re-registered (re-registering would
+    // redefine `formatMaximum` and fail).
     ajv.addFormat('iri-reference', {
       type: 'string',
-      validate: (v) => NO_SPACE_OR_CONTROL.test(v),
-    });
-    ajv.addFormat('idn-email', {
-      type: 'string',
       validate: (v) => {
-        if (!NO_SPACE_OR_CONTROL.test(v)) return false;
-        const at = v.indexOf('@');
-        return at > 0 && at === v.lastIndexOf('@') && at < v.length - 1;
+        if (typeof v !== 'string' || v.length === 0) return false;
+        if (BAD_PERCENT.test(v)) return false;
+        if (HAS_SCHEME.test(v)) {
+          try { return new URL(v) !== null; } catch { return false; }
+        }
+        if (draftIriValidate !== undefined && !draftIriValidate(v)) return false;
+        try { return new URL(v, 'https://example.invalid/') !== null; } catch { return false; }
       },
     });
+
     // The referenced schemas are registered FIRST, under the exact `$id` the root refers to, so
     // resolution is satisfied from memory and never from a URL.
     for (const file of SCHEMA_FILES) {
