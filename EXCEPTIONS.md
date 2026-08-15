@@ -405,6 +405,41 @@ SCX-0004 (2), with 0 unmatched and 0 unused.
 
 *Status.* closed.
 
+### G7 — a legal deliverable that promised, and an archive assembled by hand (closed at C17.1)
+
+**G7a — the notices file stated obligations instead of discharging them.** C17's
+`THIRD_PARTY_NOTICES.md` truncated its own evidence (`.slice(0, 8)` on the copyright lines a
+package could carry, `.slice(0, 3)` on those printed), so `serve-static@2.2.1` showed one of its
+four holders and Douglas Christopher Wilson never appeared. It printed that canonical licence text
+"must be reproduced" and reproduced none, and that source "must be offered" and offered none. It
+then reported **zero unresolved obligations**. Counting a promise as a satisfied obligation is the
+defect; the truncation only hid how much was missing.
+
+Closed at C17.1 C: every copyright line, 475 shipped-text blocks and 25 canonical-text blocks each
+bound by SHA-256, 16 canonical SPDX texts vendored at a pinned tag and commit with code-owned
+provenance, named attribution for attribution licences, and three concrete source-offer records
+for the weak-copyleft components. An attribution licence with no recorded author, or a
+source-offer obligation with no record, now FAILS the gate.
+
+**G7b — the archive was assembled by hand.** It reported 13 ZIP entries as though they were files
+when only 11 were regular files, omitted **both SBOMs**, and carried no receipt binding it to the
+run that produced it. None of this was testable, because the assembly was shell typed into a
+session.
+
+Closed at C17.1 F: `scripts/gate/package-c17-evidence.mjs` packs and verifies against a code-owned
+19-file payload contract, reports entry and regular-file counts separately so the two cannot be
+conflated again, generates a machine-readable hosted-run receipt from the real Actions environment,
+and — with `--online` — checks that receipt against GitHub's public API. Fourteen controls execute
+the real packer and verifier.
+
+**G7c — a licence identity was trusted on a directory name, and dates were strings.** A store
+directory named `foo@1.0.0` holding a manifest saying `attacker@9.9.9` would have contributed the
+attacker's licence and notices under the real component's identity (closed at C17.1 B1). A
+disposition expiry of `2026-99-99` compared as a string is greater than any plausible run date, so
+an impossible expiry read as "not yet expired" (closed at C17.1 D).
+
+*Status.* closed.
+
 ### Deferred to C19 (explicitly NOT in this patch)
 
 * Replace Node-20 actions.
