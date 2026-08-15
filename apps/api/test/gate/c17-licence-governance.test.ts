@@ -22,7 +22,7 @@ import {
   familiesInText, familyOf, OBLIGATION_TABLE,
 } from '../../../../scripts/gate/lib/license-closure.mjs';
 import {
-  validateLegalDispositions, loadLegalDispositions, unresolvedScopeKey,
+  validateLegalDispositions, loadLegalDispositions, unresolvedScopeKey, isRealDate,
 } from '../../../../scripts/gate/lib/legal-dispositions.mjs';
 import { loadScannerExclusions } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
@@ -395,5 +395,63 @@ describe('C17 §4/§6/§7 — licence governance', () => {
     expect(familiesInText(mplBody), 'a body mention must not register').toEqual(['MPL']);
     expect(familyOf('MPL-2.0')).toBe('MPL');
     expect(familyOf('MIT')).toBeNull();
+  });
+
+  // ── C17.1 D — typed fields and REAL calendar dates ──────────────────────────
+
+  it.each([
+    ['2026-08-15', true], ['2024-02-29', true],
+    ['2026-99-99', false], ['2026-02-31', false], ['2026-02-29', false],
+    ['2026-13-01', false], ['2026-00-10', false], ['not-a-date', false], ['', false],
+  ])('isRealDate(%s) === %s', (value, expected) => {
+    expect(isRealDate(value)).toBe(expected);
+  });
+
+  it('an IMPOSSIBLE expiry cannot make a record look current', () => {
+    // '2026-99-99' > any plausible run date as a STRING, so a shape-only check read it as
+    // "not yet expired" and the record governed indefinitely.
+    const d = { ...baseDisposition(), expires_on: '2026-99-99' };
+    const r = govern([d], new Set([`${d.target}|${d.purl}|${d.issue}`]));
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.join('\n')).toMatch(/expires_on.*not a real calendar date/);
+  });
+
+  it.each([
+    ['a non-array evidence_files', (d: any) => { d.evidence_files = 'scripts/gate/legal-dispositions.json'; },
+      /must be an array of \{path, sha256\} records, got string/],
+    ['evidence_files holding strings', (d: any) => { d.evidence_files = ['some/path']; },
+      /must contain only \{path, sha256\} objects/],
+    ['a non-array permitted_use', (d: any) => { d.permitted_use = 'anything'; },
+      /permitted_use' must be an array of strings, got string/],
+    ['permitted_use with an empty entry', (d: any) => { d.permitted_use = ['ok', '  ']; },
+      /permitted_use' must contain only nonempty strings/],
+    ['prohibited_use holding a number', (d: any) => { d.prohibited_use = [42]; },
+      /prohibited_use' must contain only nonempty strings/],
+    ['a numeric rationale', (d: any) => { d.rationale = 7; }, /rationale' must be a string, got number/],
+    ['an array id', (d: any) => { d.id = ['LGL-0001']; }, /id' must be a string, got array/],
+    ['an impossible approval date', (d: any) => { d.approved_on = '2026-02-31'; },
+      /approved_on.*not a real calendar date/],
+    ['an impossible review date', (d: any) => { d.reviewed_on = '2026-13-40'; },
+      /reviewed_on.*not a real calendar date/],
+    ['an expiry not after approval', (d: any) => { d.expires_on = d.approved_on; },
+      /expired on|is not after approved_on/],
+    ['a future review date', (d: any) => { d.reviewed_on = '2026-12-31'; },
+      /reviewed_on .* is in the future/],
+  ])('rejects %s', (_label, mutate, pattern) => {
+    const d = baseDisposition();
+    mutate(d);
+    const r = govern([d], new Set([`${d.target}|${d.purl}|${d.issue}`]));
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.join('\n')).toMatch(pattern);
+  });
+
+  it('a rubbish RUN DATE cannot make every record look current', () => {
+    const d = baseDisposition();
+    const r = validateLegalDispositions({ schema_version: '1.0.0', records: [d] }, {
+      runDate: '2026-99-99', root: REPO, isTracked: tracked,
+      unresolvedKeys: new Set([`${d.target}|${d.purl}|${d.issue}`]),
+    });
+    expect(r.valid).toHaveLength(0);
+    expect(r.problems.join('\n')).toMatch(/run date .* is not a real calendar date/);
   });
 });

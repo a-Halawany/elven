@@ -37,6 +37,49 @@ const SHA256_HEX = /^[a-f0-9]{64}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^LGL-\d{4}$/;
 
+/**
+ * C17.1 D — a REAL CALENDAR DATE, not a string that looks like one.
+ *
+ * The shape test alone accepts `2026-99-99` and `2026-02-31`. Both would then be compared as
+ * strings — and `'2026-99-99' > runDate` is true for any plausible run date, so an impossible
+ * expiry read as "not yet expired" and the record governed indefinitely. The date must round-trip
+ * through `Date.UTC`: a month or day the calendar does not have changes under normalisation and
+ * is rejected.
+ */
+export function isRealDate(value) {
+  if (typeof value !== 'string' || !ISO_DATE.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const t = Date.UTC(y, m - 1, d);
+  const back = new Date(t);
+  return back.getUTCFullYear() === y && back.getUTCMonth() === m - 1 && back.getUTCDate() === d;
+}
+
+/**
+ * CODE-OWNED type contract. Presence alone is not enough: a field of the wrong type reaches the
+ * semantic checks as a value they cannot reason about, which is how `severities: 'HIGH'` once
+ * passed a substring test in the security document.
+ */
+export const FIELD_TYPES = Object.freeze({
+  id: 'string',
+  target: 'string',
+  purl: 'string',
+  version: 'string',
+  issue: 'string',
+  classification: 'string',
+  rationale: 'string',
+  owner: 'string',
+  approver: 'string',
+  evidence_files: 'evidence[]',
+  approved_on: 'date',
+  reviewed_on: 'date',
+  expires_on: 'date',
+  permitted_use: 'string[]',
+  prohibited_use: 'string[]',
+});
+
+const describeType = (v) => (Array.isArray(v) ? 'array' : (v === null ? 'null' : typeof v));
+
 export function loadLegalDispositions(root) {
   const path = join(root, 'scripts/gate/legal-dispositions.json');
   const raw = readFileSync(path, 'utf8');
@@ -79,7 +122,34 @@ export function validateLegalDispositions(doc, { runDate, root, isTracked, unres
       const empty = v === undefined || v === null
         || (typeof v === 'string' && v.trim() === '')
         || (Array.isArray(v) && v.length === 0);
-      if (empty) { problems.push(`${where}: missing required field '${f}'`); fatal = true; }
+      if (empty) { problems.push(`${where}: missing required field '${f}'`); fatal = true; continue; }
+      // TYPE, before any semantic check can reason about the value.
+      const want = FIELD_TYPES[f];
+      if (want === 'string' || want === 'date') {
+        if (typeof v !== 'string') {
+          problems.push(`${where}: field '${f}' must be a string, got ${describeType(v)}`);
+          fatal = true;
+        } else if (want === 'date' && !isRealDate(v)) {
+          problems.push(`${where}: field '${f}' is ${JSON.stringify(v)}, which is not a real calendar date (YYYY-MM-DD)`);
+          fatal = true;
+        }
+      } else if (want === 'string[]') {
+        if (!Array.isArray(v)) {
+          problems.push(`${where}: field '${f}' must be an array of strings, got ${describeType(v)}`);
+          fatal = true;
+        } else if (v.some((e) => typeof e !== 'string' || e.trim() === '')) {
+          problems.push(`${where}: field '${f}' must contain only nonempty strings`);
+          fatal = true;
+        }
+      } else if (want === 'evidence[]') {
+        if (!Array.isArray(v)) {
+          problems.push(`${where}: field '${f}' must be an array of {path, sha256} records, got ${describeType(v)}`);
+          fatal = true;
+        } else if (v.some((e) => e === null || typeof e !== 'object' || Array.isArray(e))) {
+          problems.push(`${where}: field '${f}' must contain only {path, sha256} objects`);
+          fatal = true;
+        }
+      }
     }
     if (fatal) continue;
 
@@ -113,13 +183,18 @@ export function validateLegalDispositions(doc, { runDate, root, isTracked, unres
       problems.push(`${where}: approver must differ from owner (both '${r.owner}')`);
       fatal = true;
     }
-    for (const f of ['approved_on', 'reviewed_on', 'expires_on']) {
-      if (!ISO_DATE.test(r[f])) { problems.push(`${where}: ${f} must be YYYY-MM-DD`); fatal = true; }
-    }
-    if (!fatal) {
+    // Dates are already known to be REAL calendar dates by the type pass, so ordering can be
+    // compared. The run date is validated too: a caller passing rubbish must not make every
+    // record look current.
+    if (!isRealDate(runDate)) {
+      problems.push(`legal-dispositions: run date ${JSON.stringify(runDate)} is not a real calendar date`);
+      fatal = true;
+    } else {
       if (r.approved_on > runDate) { problems.push(`${where}: approved_on ${r.approved_on} is in the future relative to ${runDate}`); fatal = true; }
       if (r.expires_on <= runDate) { problems.push(`${where}: expired on ${r.expires_on} (run date ${runDate})`); fatal = true; }
       if (r.reviewed_on < r.approved_on) { problems.push(`${where}: reviewed_on precedes approved_on`); fatal = true; }
+      if (r.expires_on <= r.approved_on) { problems.push(`${where}: expires_on ${r.expires_on} is not after approved_on ${r.approved_on}`); fatal = true; }
+      if (r.reviewed_on > runDate) { problems.push(`${where}: reviewed_on ${r.reviewed_on} is in the future relative to ${runDate}`); fatal = true; }
     }
     // Evidence: typed, tracked, in-tree, byte-equal.
     for (const [j, e] of (Array.isArray(r.evidence_files) ? r.evidence_files : []).entries()) {
