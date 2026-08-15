@@ -47,7 +47,7 @@ govern a finding on any other platform.
 
 ## 3. Findings and their dispositions
 
-Eighteen findings on the `linux/amd64` postgres child, governed by four records.
+Twenty-three findings on the `linux/amd64` postgres child, governed by four records.
 
 ### SCX-0001 — c-ares (OS package)
 
@@ -132,7 +132,7 @@ the expiry date.
 
 | Field | Value |
 |---|---|
-| Advisories | `CVE-2026-39821`, `CVE-2026-46600` (2) |
+| Advisories | `CVE-2026-33818`, `CVE-2026-39821`, `CVE-2026-56853`, `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862` (7) |
 | Severity | HIGH |
 | Classification | **NOT_AFFECTED — vulnerable_code_not_present** (version-only match) |
 | Image (index) | `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` |
@@ -155,7 +155,7 @@ publication dates, read from the scan output itself, are:
 | Advisory | Published | Last modified |
 |---|---|---|
 | `CVE-2026-39821` | 2026-05-22 | 2026-08-13 |
-| `CVE-2026-46600` | 2026-07-21 | 2026-08-13 |
+| `CVE-2026-46600` | 2026-07-21 | 2026-08-13 | *(withdrawn from the scanner database, see below)* |
 
 Both predate the 2026-08-05 approval of SCX-0002. What changed on 2026-08-13 was the **scanner
 advisory database**, which ingested them; the gate then failed closed on the next run. The
@@ -168,6 +168,44 @@ operational grounds. These two are a different KIND of claim — the vulnerable 
 present in the binary at all — and that claim carries its own separate approval and its own
 evidence, under the same 2026-11-05 expiry as the rest of the set. Folding them into SCX-0002 (as R3.4.4 did) conflated "we accept this risk" with
 "this risk does not apply", which is precisely the collapse SCX-0003 was split out to avoid.
+
+**Amendment 2026-08-15 — the advisory database moved, and the gate said so.**
+
+The image reference is digest-pinned and its bytes have not changed. The trivy advisory database
+has: a scan of the identical child manifest now reports **23** findings where it reported 18 on
+2026-08-14. The gate failed closed on the difference rather than absorbing it, which is the whole
+point of reconciling the complete finding set against governed records.
+
+Two changes, both in the scanner's data rather than in this repository:
+
+* `CVE-2026-46600` is **no longer reported** for this image. It was governed by SCX-0004 and became
+  a STALE record — an approval covering nothing — which the gate rejects. It is removed from
+  SCX-0004. It is not a resolved vulnerability: the advisory left the database, and if it returns
+  it must be reviewed again on its merits.
+* **Six new HIGH `stdlib` advisories appeared**: `CVE-2026-33818`, `CVE-2026-56853`,
+  `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862`. All six are the same
+  kind of finding as the rest of the `gosu` set — a version match against the Go toolchain stamped
+  in the binary.
+
+They are added to SCX-0004, not to SCX-0002, because the basis is the same NOT_AFFECTED claim and
+it was re-established by measurement, not assumed: `govulncheck` was re-run against the same
+binary (sha256 `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0`) with the Go
+vulnerability database as of 2026-08-14, and reports **0 called vulnerable symbols** across 48
+findings and 168 advisories. Each new advisory is present in that analysis and none is reachable:
+
+| Advisory | Go advisory | Vulnerable symbol called? |
+|---|---|---|
+| `CVE-2026-33818` | `GO-2026-5972` | no |
+| `CVE-2026-56853` | `GO-2026-6089` | no |
+| `CVE-2026-56858` | `GO-2026-6091` | no |
+| `CVE-2026-56859` | `GO-2026-6088` | no |
+| `CVE-2026-56860` | `GO-2026-6218` | no |
+| `CVE-2026-56862` | `GO-2026-6090` | no |
+
+The bound evidence artifacts are regenerated from that run and their digests below are updated
+accordingly. The expiry is unchanged at **2026-11-05**: a re-measured basis does not buy a longer
+life, and this amendment is itself evidence that the advisory set moves faster than the review
+cycle.
 
 **Basis — symbol-aware analysis of the exact binary.** `govulncheck` was run in binary mode
 against `/usr/local/bin/gosu` extracted from the exact `linux/amd64` child manifest scanned by
@@ -192,7 +230,7 @@ Both advisories appear in that "modules you require" tail and in neither of the 
 | `CVE-2026-39821` | `GO-2026-5026` | no |
 | `CVE-2026-46600` | `GO-2026-5942` | no |
 
-`govulncheck` reported **0** called vulnerable symbols across all 49 findings and 168 advisories
+`govulncheck` reported **0** called vulnerable symbols across all 48 findings and 168 advisories
 it considered. Trivy's finding is therefore a version-only match against the Go toolchain
 stamped in the binary, with no corresponding reachable code.
 
@@ -200,11 +238,11 @@ stamped in the binary, with no corresponding reachable code.
 
 | Artifact | sha256 |
 |---|---|
-| `docs/evidence/govulncheck-gosu-b6a16ed0.json` | `8c2f1364d3362551eecbfdfdb8152df5029dec4185999828a04ad8d8ae38b6e8` |
-| `docs/evidence/govulncheck-gosu-b6a16ed0.txt` | `903c95aa50ca6d3b39ec6db96ea7aecc8fbdded09a9cc81d632a34ec68dcee1c` |
+| `docs/evidence/govulncheck-gosu-b6a16ed0.json` | `e7d06bcc9da3181c417f1287b1bfc14bc0446a167a82733464e3fa619553be26` |
+| `docs/evidence/govulncheck-gosu-b6a16ed0.txt` | `cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab` |
 
 The JSON artifact carries the scanner configuration (govulncheck `v1.7.0`, Go `go1.25.13`,
-`https://vuln.go.dev` as of 2026-08-13), the binary's identity and digest, every advisory
+`https://vuln.go.dev` as of 2026-08-14), the binary's identity and digest, every advisory
 considered with its aliases and affected ranges, and every finding with its complete call
 trace. Advisory prose is the only thing omitted.
 
@@ -218,9 +256,9 @@ can call; it does not prove unreachability under reflection or dynamic dispatch.
 reflects the Go vulnerability database as of the run date. This record therefore expires with
 the rest of the set on **2026-11-05** and is not extended by its stronger basis.
 
-**Current reconciliation.** The postgres image scan reports **18** findings, governed as:
+**Current reconciliation.** The postgres image scan reports **23** findings, governed as:
 SCX-0001 (1, `c-ares`) + SCX-0002 (14, `stdlib` risk-accepted) + SCX-0003 (1, `stdlib`
-CRITICAL) + SCX-0004 (2, `stdlib` NOT_AFFECTED) = 18, with 0 unmatched and 0 unused.
+CRITICAL) + SCX-0004 (7, `stdlib` NOT_AFFECTED) = 23, with 0 unmatched and 0 unused.
 
 
 ## 4. Prohibited exposure

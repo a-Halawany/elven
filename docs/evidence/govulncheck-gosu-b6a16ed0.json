@@ -7726,7 +7726,7 @@
       {
        "events": [
         {
-         "introduced": "0"
+         "introduced": "1.26.0-0"
         },
         {
          "fixed": "1.26.6"
@@ -8514,16 +8514,6 @@
    ]
   },
   {
-   "fixed_version": "v1.26.6",
-   "osv": "GO-2026-5942",
-   "trace": [
-    {
-     "module": "stdlib",
-     "version": "v1.24.6"
-    }
-   ]
-  },
-  {
    "fixed_version": "v1.25.13",
    "osv": "GO-2026-5972",
    "trace": [
@@ -8610,7 +8600,7 @@
  },
  "scanner": {
   "db": "https://vuln.go.dev",
-  "db_last_modified": "2026-08-13T21:43:54Z",
+  "db_last_modified": "2026-08-14T16:22:54Z",
   "protocol_version": "v1.0.0",
   "scan_level": "symbol",
   "scan_mode": "binary",
@@ -8620,7 +8610,7 @@
  "verdict": {
   "advisory_count": 168,
   "called_count": 0,
-  "finding_count": 49,
+  "finding_count": 48,
   "govulncheck_text": "Your code is affected by 0 vulnerabilities.",
   "symbols_called_from_vulnerable_code": []
  },

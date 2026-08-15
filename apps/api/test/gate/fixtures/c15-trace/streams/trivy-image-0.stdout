@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a00019-94cd-762e-be35-399c5f44967e",
-  "CreatedAt": "2026-08-14T14:47:51.629406+03:00",
+  "ReportID": "01a005f6-5c81-73ef-8df8-23931981fa95",
+  "CreatedAt": "2026-08-15T18:07:06.753259+03:00",
   "ArtifactID": "sha256:1977c200e44c52c984f9f50ce0eaaaec38e3cb58fe16d9cd95bf5fac562525b2",
   "ArtifactName": "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b",
   "ArtifactType": "container_image",
@@ -26,6 +26,9 @@
       "sha256:1c6f9164d0ab2319422d20fd632cb6d45d207255b40818938fd5c2811cd5f9e5",
       "sha256:9ab41b380d0135836c2cc5dfec98bc2f191fd207c7e4b828cf27d80e2788c2eb"
     ],
+    "RepoTags": [
+      "eye-gosu-extract:local"
+    ],
     "RepoDigests": [
       "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b"
     ],
@@ -35,124 +38,124 @@
       "created": "2026-07-07T17:46:12.778761801Z",
       "history": [
         {
-          "created": "2026-06-16T00:01:29.967161902Z",
+          "created": "2026-06-16T00:01:29Z",
           "created_by": "ADD alpine-minirootfs-3.24.1-x86_64.tar.gz / # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-06-16T00:01:29.967161902Z",
+          "created": "2026-06-16T00:01:29Z",
           "created_by": "CMD [\"/bin/sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:01.665439451Z",
+          "created": "2026-07-07T17:44:01Z",
           "created_by": "RUN /bin/sh -c set -eux; \taddgroup -g 70 -S postgres; \tadduser -u 70 -S -D -G postgres -H -h /var/lib/postgresql -s /bin/sh postgres; \tinstall --verbose --directory --owner postgres --group postgres --mode 1777 /var/lib/postgresql # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04.163404538Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV GOSU_VERSION=1.19",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04.163404538Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "RUN /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .gosu-deps \t\tca-certificates \t\tdpkg \t\tgnupg \t; \t\tdpkgArch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \twget -O /usr/local/bin/gosu \"https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch\"; \twget -O /usr/local/bin/gosu.asc \"https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch.asc\"; \t\texport GNUPGHOME=\"$(mktemp -d)\"; \tgpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4; \tgpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu; \tgpgconf --kill all; \trm -rf \"$GNUPGHOME\" /usr/local/bin/gosu.asc; \t\tapk del --no-network .gosu-deps; \t\tchmod +x /usr/local/bin/gosu; \tgosu --version; \tgosu nobody true # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04.163404538Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV LANG=en_US.utf8",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04.24776757Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "RUN /bin/sh -c mkdir /docker-entrypoint-initdb.d # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04.24776757Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV PG_MAJOR=18",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04.24776757Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV PG_VERSION=18.4",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04.24776757Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04.24776757Z",
+          "created": "2026-07-07T17:44:04Z",
           "created_by": "ENV DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.524049728Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "RUN /bin/sh -c set -eux; \t\twget -O postgresql.tar.bz2 \"https://ftp.postgresql.org/pub/source/v$PG_VERSION/postgresql-$PG_VERSION.tar.bz2\"; \techo \"$PG_SHA256 *postgresql.tar.bz2\" | sha256sum -c -; \tmkdir -p /usr/src/postgresql; \ttar \t\t--extract \t\t--file postgresql.tar.bz2 \t\t--directory /usr/src/postgresql \t\t--strip-components 1 \t; \trm postgresql.tar.bz2; \t\tapk add --no-cache --virtual .build-deps \t\t$DOCKER_PG_LLVM_DEPS \t\tbison \t\tcoreutils \t\tdpkg-dev dpkg \t\tflex \t\tg++ \t\tgcc \t\tkrb5-dev \t\tlibc-dev \t\tlibedit-dev \t\tlibxml2-dev \t\tlibxslt-dev \t\tlinux-headers \t\tmake \t\topenldap-dev \t\topenssl-dev \t\tperl-dev \t\tperl-ipc-run \t\tperl-utils \t\tpython3-dev \t\ttcl-dev \t\tutil-linux-dev \t\tzlib-dev \t\ticu-dev \t\tlz4-dev \t\tzstd-dev \t\tcurl-dev \t\tliburing-dev \t; \t\tcd /usr/src/postgresql; \tawk '$1 == \"#define\" \u0026\u0026 $2 == \"DEFAULT_PGSOCKET_DIR\" \u0026\u0026 $3 == \"\\\"/tmp\\\"\" { $3 = \"\\\"/var/run/postgresql\\\"\"; print; next } { print }' src/include/pg_config_manual.h \u003e src/include/pg_config_manual.h.new; \tgrep '/var/run/postgresql' src/include/pg_config_manual.h.new; \tmv src/include/pg_config_manual.h.new src/include/pg_config_manual.h; \tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \t\texport LLVM_CONFIG=\"/usr/lib/llvm21/bin/llvm-config\"; \texport CLANG=clang-21; \t\t./configure \t\t--enable-option-checking=fatal \t\t--build=\"$gnuArch\" \t\t--enable-integer-datetimes \t\t--enable-tap-tests \t\t--disable-rpath \t\t--with-uuid=e2fs \t\t--with-pgport=5432 \t\t--with-system-tzdata=/usr/share/zoneinfo \t\t--prefix=/usr/local \t\t--with-includes=/usr/local/include \t\t--with-libraries=/usr/local/lib \t\t--with-gssapi \t\t--with-icu \t\t--with-ldap \t\t--with-libcurl \t\t--with-liburing \t\t--with-libxml \t\t--with-libxslt \t\t--with-llvm \t\t--with-lz4 \t\t--with-openssl \t\t--with-perl \t\t--with-python \t\t--with-tcl \t\t--with-zstd \t; \tmake -j \"$(nproc)\" world-bin; \tmake install-world-bin; \tmake -C contrib install; \t\trunDeps=\"$( \t\tscanelf --needed --nobanner --format '%n#p' --recursive /usr/local \t\t\t| tr ',' '\\n' \t\t\t| sort -u \t\t\t| awk 'system(\"[ -e /usr/local/lib/\" $1 \" ]\") == 0 { next } { print \"so:\" $1 }' \t\t\t| grep -v -e perl -e python -e tcl \t)\"; \tapk add --no-cache --virtual .postgresql-rundeps \t\t$runDeps \t\tbash \t\ttzdata \t\tzstd \t\ticu-data-full \t\t$([ \"$(apk --print-arch)\" != 'ppc64le' ] \u0026\u0026 echo 'nss_wrapper') \t; \tapk del --no-network .build-deps; \tcd /; \trm -rf \t\t/usr/src/postgresql \t\t/usr/local/share/doc \t\t/usr/local/share/man \t; \t\tpostgres --version # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12.602999759Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "RUN /bin/sh -c set -eux; \tcp -v /usr/local/share/postgresql/postgresql.conf.sample /usr/local/share/postgresql/postgresql.conf.sample.orig; \tsed -ri \"s!^#?(listen_addresses)\\s*=\\s*\\S+.*!\\1 = '*'!\" /usr/local/share/postgresql/postgresql.conf.sample; \tgrep -F \"listen_addresses = '*'\" /usr/local/share/postgresql/postgresql.conf.sample # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12.684201579Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "RUN /bin/sh -c install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12.684201579Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "ENV PGDATA=/var/lib/postgresql/18/docker",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.684201579Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "VOLUME [/var/lib/postgresql]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.711626057Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12.778761801Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "RUN /bin/sh -c ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12.778761801Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.778761801Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "STOPSIGNAL SIGINT",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.778761801Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "EXPOSE map[5432/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12.778761801Z",
+          "created": "2026-07-07T17:46:12Z",
           "created_by": "CMD [\"postgres\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
@@ -203,47 +206,38 @@
     "Layers": [
       {
         "Size": 8697856,
-        "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
         "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
       },
       {
         "Size": 11264,
-        "Digest": "sha256:d5392b8b24862d469f15ad1aaeba0f44a4ba2642a2d69a900ac67f40798a88eb",
         "DiffID": "sha256:b0efa1a0f321b1ea76da290fc0185c6b5d68f6f7f9e6ab7a0a69795714997cf4"
       },
       {
         "Size": 1988096,
-        "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
         "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
       },
       {
         "Size": 1536,
-        "Digest": "sha256:8c4cf0b707976369d21105d81f76d5a3ea5971feea2b4a12664edc51a785ecf0",
         "DiffID": "sha256:ab2f5df74059b3552268af9d38ef21a588e756e376175b63113a9c3b6ed54f56"
       },
       {
         "Size": 295705600,
-        "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
         "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
       },
       {
         "Size": 69632,
-        "Digest": "sha256:76b8b44efa5a302bcb89ec7f2a9466a5b7c911471b67335b10ff21ce34a27c81",
         "DiffID": "sha256:9642acdcbdf21470a2e37f67e9fdf9de21b8a9c00ea4f90b439697b5a497816f"
       },
       {
         "Size": 2048,
-        "Digest": "sha256:9530417d1dbb2980a602f4df87068adde0d9e26153dba3cf8ce3304015238146",
         "DiffID": "sha256:3f9ba2ab413c4086a9efcd0ef8cde0253d34244819ed777553a512fe0574210b"
       },
       {
         "Size": 20992,
-        "Digest": "sha256:c24407d2ec97a8dcbbdbe3998a380db5a782b7f26d8ec311fd042577b3b3b5e7",
         "DiffID": "sha256:1c6f9164d0ab2319422d20fd632cb6d45d207255b40818938fd5c2811cd5f9e5"
       },
       {
         "Size": 3072,
-        "Digest": "sha256:21225587b6ee43c56ce136493234e6b46bc7755576194fbc1c2c96e9014d9848",
         "DiffID": "sha256:9ab41b380d0135836c2cc5dfec98bc2f191fd207c7e4b828cf27d80e2788c2eb"
       }
     ]
@@ -289,7 +283,6 @@
             "zstd@1.5.7-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:291002379b42ee6ebf3bf78dfd25ccd044a86084",
@@ -315,7 +308,6 @@
             "busybox-binsh@1.37.0-r31"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:f0fcfdc2f4da058af6473bc45c4eab62916225b2",
@@ -352,7 +344,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:c6f9bded17d844b6f1b0bb5766d2c35c0d5c8508",
@@ -391,7 +382,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:d8d6b80e53c059a77e4915da78ba964f3ffea240",
@@ -459,7 +449,6 @@
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:bc6912a25cdc7733e0035ed509eceaa4026946e3",
@@ -495,7 +484,6 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:043333589798a1f52e09ae63f026c6c8fa676d34",
@@ -525,7 +513,6 @@
             "readline@8.3.3-r1"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:2ce9606f1c31438297b40df5875dbceb66afb675",
@@ -595,7 +582,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:82f881516c045f06f22d7dc0a83cc64ca554ef10",
@@ -628,7 +614,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:b5405ebc02f7dd8be95b6265c54b243d5456ab8f",
@@ -662,7 +647,6 @@
             "busybox@1.37.0-r31"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:5cbd14acc6f1804c5bac6c77dc2c492f010b0fc7",
@@ -690,7 +674,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:acf16d6295be396b5acf0133c3ce37b01af2d374",
@@ -717,7 +700,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:c9534a03750bdfae341f10969016090fc11febbd",
@@ -748,7 +730,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:619493d8124fe49a8ee1d8f7a1372cf7e3977337",
@@ -776,7 +757,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:1a2db5e6bc16c62c85c29cfc8897570f9051cf14",
@@ -807,7 +787,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:46bd3617f6d112f035d806d24c5cf8ea6e597f50",
@@ -843,7 +822,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:b7331c96f077fc3522ee4361a441d1097204cd90",
@@ -869,7 +847,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:40a11e0690a59e110367b62a80661024e9942a2d",
@@ -903,7 +880,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:ef02346e21b817ff379e4601e5b1fc9760e5e31a",
@@ -956,7 +932,6 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:523a8f58104589f74f743d501c81bf6517155378",
@@ -987,7 +962,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:4b9fb5899ea0b1c0cfbb2a2c5952704437d4ecef",
@@ -1016,7 +990,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:481afbc52bcf06f2316c93a0a81ce8f72bed503e",
@@ -1063,7 +1036,6 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:c59133673bdba0fcc92c897d9de682c2301b5d7f",
@@ -1093,7 +1065,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:4084f8ff8e83fe17ce0c9ec3f313604d6adc7481",
@@ -1122,7 +1093,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:2f7b261f7fcecc4eebd8b330e7f6fb80713bfe3a",
@@ -1152,7 +1122,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:379c156c53e0cc140e87c79c0a3dd22b6ee51552",
@@ -1182,7 +1151,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:5800d14ce89e16148f4ccc2df74235ce7aedf800",
@@ -1214,7 +1182,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:ccd1a11305b3f0b138cc42c484ac9cd987acac66",
@@ -1247,7 +1214,6 @@
             "ncurses-terminfo-base@6.6_p20260516-r0"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:9f318e6e324d6827274829194cf6ac6afbaded12",
@@ -1278,7 +1244,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:a551ddd5d6cb3913e1a1f47b02f21ae068b5e90a",
@@ -1309,7 +1274,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:422ebe8defd4a2d2aaea34662f6ff853cfc2f95f",
@@ -1348,7 +1312,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:240c8252d1ca145873c03c997966698eb509f745",
@@ -1378,7 +1341,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:5f7a2ad7646128ba02cc0d6fb94672b6845648d5",
@@ -1408,7 +1370,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:f509c801d070f8ea9f7400d5093c888ff1fee02e",
@@ -1438,7 +1399,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:04cf16eab3372632a1c7d8395568c141b33c3ab4",
@@ -1467,7 +1427,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:6acb0e27112dfb784e6f7ccceb0e968fafa09713",
@@ -1496,7 +1455,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:73233059338142e4ac6d8fb8bb0074e93da75dc1",
@@ -1527,7 +1485,6 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:c2c2cb44647ddc8c82ae78c8aca9bd4ad5a736da",
@@ -1557,7 +1514,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:a78a1c96aa4f4a763ab8d2eeb285734c0387eb31",
@@ -1595,7 +1551,6 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:d9f9cafee3a86cc6103c92614ea769b3a169cff3",
@@ -1626,7 +1581,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:d63bb2e1707aa4ca0b75a867706ea03df70bc5bd",
@@ -1652,7 +1606,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:0f7e5827e4e1a73631beda27b78431a8ba240e05",
@@ -1684,7 +1637,6 @@
             "scanelf@1.3.9-r1"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:75ada3c48d63ec5d87c42fdf934a3fdd11298dc5",
@@ -1713,7 +1665,6 @@
           ],
           "Maintainer": "Milan P. Stanić \u003cmps@arvanta.net\u003e",
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:9d551d828e9c8ee52c5801c1d6046828ebf15752",
@@ -1781,7 +1732,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:5331b8c641f7a9091ce2f43dad2a99851c4f4b12",
@@ -1810,7 +1760,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:46b34dd323a8388eb2480dc65ee56d9179148ffe",
@@ -1841,7 +1790,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:945b16e378bc00e44d89d4de8124bba7647fdf4d",
@@ -1871,7 +1819,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:013f903d0ba219673aebbdd04f74bb5ed82b01f0",
@@ -1901,7 +1848,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:c220f4a5125a313af733e98def94132bb1e9d40d",
@@ -1926,7 +1872,6 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:c40d8eda63eeafd4460f25f5da45f824b3df277d",
@@ -2559,7 +2504,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:4c92c5be0c5bef404e93c880eba9037a9b147347",
@@ -2588,7 +2532,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4",
             "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
           },
           "Digest": "sha1:dd4c3d102acaef2a71a1495951d55fabc8680613",
@@ -2621,7 +2564,6 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:ff3000882c17e89e5e13c020554b5bccc1bfd4df",
@@ -2656,7 +2598,6 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "Digest": "sha1:9569ce3a97c4109e8e53ddde9f3e1bd272613540",
@@ -2680,7 +2621,6 @@
           "FixedVersion": "1.34.8-r0",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:d5c3772878dae79c2b133130ce08b2756016ea1b2f810df9674cba0c80d2d77d",
             "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33630",
@@ -2745,7 +2685,6 @@
             "stdlib@v1.24.6"
           ],
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "AnalyzedBy": "gobinary"
@@ -2760,7 +2699,6 @@
           "Version": "v1.24.6",
           "Relationship": "direct",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "AnalyzedBy": "gobinary"
@@ -2774,7 +2712,6 @@
           },
           "Version": "v0.1.0",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "AnalyzedBy": "gobinary"
@@ -2788,7 +2725,6 @@
           },
           "Version": "v0.1.0",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "AnalyzedBy": "gobinary"
@@ -2810,7 +2746,6 @@
           "FixedVersion": "1.24.13, 1.25.7, 1.26.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -2895,7 +2830,6 @@
           "FixedVersion": "1.24.12, 1.25.6",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-61726",
@@ -2913,7 +2847,7 @@
           ],
           "VendorSeverity": {
             "alma": 3,
-            "amazon": 3,
+            "amazon": 2,
             "azure": 2,
             "bitnami": 3,
             "cbl-mariner": 2,
@@ -3160,6 +3094,7 @@
             "https://access.redhat.com/errata/RHSA-2026:5452",
             "https://access.redhat.com/errata/RHSA-2026:5461",
             "https://access.redhat.com/errata/RHSA-2026:5463",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/errata/RHSA-2026:5533",
             "https://access.redhat.com/errata/RHSA-2026:5544",
             "https://access.redhat.com/errata/RHSA-2026:5549",
@@ -3230,7 +3165,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-61726"
           ],
           "PublishedDate": "2026-01-28T20:16:09.713Z",
-          "LastModifiedDate": "2026-08-13T13:17:18.54Z"
+          "LastModifiedDate": "2026-08-14T13:17:15.67Z"
         },
         {
           "VulnerabilityID": "CVE-2025-61729",
@@ -3247,7 +3182,6 @@
           "FixedVersion": "1.24.11, 1.25.5",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-61729",
@@ -3326,7 +3260,6 @@
           "FixedVersion": "1.25.8, 1.26.1",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-25679",
@@ -3345,7 +3278,7 @@
           ],
           "VendorSeverity": {
             "alma": 3,
-            "amazon": 2,
+            "amazon": 3,
             "azure": 3,
             "bitnami": 3,
             "oracle-oval": 3,
@@ -3518,6 +3451,7 @@
             "https://access.redhat.com/errata/RHSA-2026:52390",
             "https://access.redhat.com/errata/RHSA-2026:52391",
             "https://access.redhat.com/errata/RHSA-2026:54191",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/errata/RHSA-2026:5549",
             "https://access.redhat.com/errata/RHSA-2026:5941",
             "https://access.redhat.com/errata/RHSA-2026:5942",
@@ -3627,7 +3561,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-25679"
           ],
           "PublishedDate": "2026-03-06T22:16:00.72Z",
-          "LastModifiedDate": "2026-08-13T13:17:58.22Z"
+          "LastModifiedDate": "2026-08-14T13:17:46.517Z"
         },
         {
           "VulnerabilityID": "CVE-2026-27145",
@@ -3644,7 +3578,6 @@
           "FixedVersion": "1.25.11, 1.26.4",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-27145",
@@ -3744,6 +3677,8 @@
             "https://access.redhat.com/errata/RHSA-2026:54441",
             "https://access.redhat.com/errata/RHSA-2026:54500",
             "https://access.redhat.com/errata/RHSA-2026:54525",
+            "https://access.redhat.com/errata/RHSA-2026:54531",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/security/cve/CVE-2026-27145",
             "https://bugzilla.redhat.com/2445356",
             "https://bugzilla.redhat.com/2484207",
@@ -3765,7 +3700,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-27145"
           ],
           "PublishedDate": "2026-06-02T23:16:35.57Z",
-          "LastModifiedDate": "2026-08-13T13:18:09.84Z"
+          "LastModifiedDate": "2026-08-14T13:17:49.537Z"
         },
         {
           "VulnerabilityID": "CVE-2026-32280",
@@ -3782,7 +3717,6 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-32280",
@@ -3946,6 +3880,7 @@
             "https://access.redhat.com/errata/RHSA-2026:34197",
             "https://access.redhat.com/errata/RHSA-2026:34365",
             "https://access.redhat.com/errata/RHSA-2026:36319",
+            "https://access.redhat.com/errata/RHSA-2026:36625",
             "https://access.redhat.com/errata/RHSA-2026:36651",
             "https://access.redhat.com/errata/RHSA-2026:36796",
             "https://access.redhat.com/errata/RHSA-2026:39810",
@@ -3977,6 +3912,7 @@
             "https://access.redhat.com/errata/RHSA-2026:51033",
             "https://access.redhat.com/errata/RHSA-2026:51288",
             "https://access.redhat.com/errata/RHSA-2026:54191",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/errata/RHSA-2026:9385",
             "https://access.redhat.com/security/cve/CVE-2026-32280",
             "https://bugzilla.redhat.com/2456333",
@@ -3999,7 +3935,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-32280"
           ],
           "PublishedDate": "2026-04-08T02:16:03.247Z",
-          "LastModifiedDate": "2026-08-13T13:18:12.293Z"
+          "LastModifiedDate": "2026-08-14T13:17:52.587Z"
         },
         {
           "VulnerabilityID": "CVE-2026-32281",
@@ -4016,7 +3952,6 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4096,7 +4031,6 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4249,6 +4183,7 @@
             "https://access.redhat.com/errata/RHSA-2026:51288",
             "https://access.redhat.com/errata/RHSA-2026:54191",
             "https://access.redhat.com/errata/RHSA-2026:54435",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/errata/RHSA-2026:7291",
             "https://access.redhat.com/errata/RHSA-2026:7385",
             "https://access.redhat.com/security/cve/CVE-2026-32283",
@@ -4278,7 +4213,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-32283"
           ],
           "PublishedDate": "2026-04-08T02:16:03.58Z",
-          "LastModifiedDate": "2026-08-13T13:18:14.367Z"
+          "LastModifiedDate": "2026-08-14T13:17:54.66Z"
         },
         {
           "VulnerabilityID": "CVE-2026-33811",
@@ -4295,7 +4230,6 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4424,6 +4358,7 @@
             "https://access.redhat.com/errata/RHSA-2026:54435",
             "https://access.redhat.com/errata/RHSA-2026:54441",
             "https://access.redhat.com/errata/RHSA-2026:54500",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/security/cve/CVE-2026-33811",
             "https://bugzilla.redhat.com/2467822",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
@@ -4442,7 +4377,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-33811"
           ],
           "PublishedDate": "2026-05-07T20:16:42.77Z",
-          "LastModifiedDate": "2026-08-13T13:18:23.987Z"
+          "LastModifiedDate": "2026-08-14T13:18:12Z"
         },
         {
           "VulnerabilityID": "CVE-2026-33814",
@@ -4459,7 +4394,6 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4543,6 +4477,57 @@
           "LastModifiedDate": "2026-08-13T13:18:25.52Z"
         },
         {
+          "VulnerabilityID": "CVE-2026-33818",
+          "VendorIDs": [
+            "GO-2026-5972"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33818",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:f4230512392138e4dbdcf5fa23fb279c0fccace58a9fda7701a4d403a2425866",
+          "Title": "encoding/asn1: golang: Go encoding/asn1: Denial of Service via excessive recursion in Unmarshal",
+          "Description": "Enforce a recursion limit in Unmarshal to prevent stack exhaustion when parsing deeply-nested, recursive structures.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-400"
+          ],
+          "VendorSeverity": {
+            "redhat": 3
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-33818",
+            "https://go.dev/cl/814980",
+            "https://go.dev/issue/80405",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-33818",
+            "https://pkg.go.dev/vuln/GO-2026-5972",
+            "https://www.cve.org/CVERecord?id=CVE-2026-33818"
+          ],
+          "PublishedDate": "2026-08-13T22:17:19.84Z",
+          "LastModifiedDate": "2026-08-14T16:16:55.317Z"
+        },
+        {
           "VulnerabilityID": "CVE-2026-39820",
           "VendorIDs": [
             "GO-2026-4986"
@@ -4557,7 +4542,6 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4631,6 +4615,7 @@
             "https://access.redhat.com/errata/RHSA-2026:54285",
             "https://access.redhat.com/errata/RHSA-2026:54286",
             "https://access.redhat.com/errata/RHSA-2026:54287",
+            "https://access.redhat.com/errata/RHSA-2026:54531",
             "https://access.redhat.com/security/cve/CVE-2026-39820",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
             "https://go.dev/cl/759940",
@@ -4644,7 +4629,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-39820"
           ],
           "PublishedDate": "2026-05-07T20:16:43.187Z",
-          "LastModifiedDate": "2026-08-13T13:18:34.913Z"
+          "LastModifiedDate": "2026-08-14T13:18:23.657Z"
         },
         {
           "VulnerabilityID": "CVE-2026-39821",
@@ -4661,7 +4646,6 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39821",
@@ -4803,6 +4787,8 @@
             "https://access.redhat.com/errata/RHSA-2026:54401",
             "https://access.redhat.com/errata/RHSA-2026:54435",
             "https://access.redhat.com/errata/RHSA-2026:54441",
+            "https://access.redhat.com/errata/RHSA-2026:54531",
+            "https://access.redhat.com/errata/RHSA-2026:54757",
             "https://access.redhat.com/security/cve/CVE-2026-39821",
             "https://bugzilla.redhat.com/2480756",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
@@ -4826,7 +4812,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-39821"
           ],
           "PublishedDate": "2026-05-22T16:16:20.41Z",
-          "LastModifiedDate": "2026-08-13T22:17:19.973Z"
+          "LastModifiedDate": "2026-08-14T13:18:24.667Z"
         },
         {
           "VulnerabilityID": "CVE-2026-39822",
@@ -4843,7 +4829,6 @@
           "FixedVersion": "1.25.12, 1.26.5, 1.27.0-rc.2",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39822",
@@ -4915,7 +4900,6 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "SeveritySource": "nvd",
@@ -4982,7 +4966,6 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42499",
@@ -5048,6 +5031,7 @@
             "https://access.redhat.com/errata/RHSA-2026:54285",
             "https://access.redhat.com/errata/RHSA-2026:54286",
             "https://access.redhat.com/errata/RHSA-2026:54287",
+            "https://access.redhat.com/errata/RHSA-2026:54531",
             "https://access.redhat.com/security/cve/CVE-2026-42499",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
             "https://go.dev/cl/771520",
@@ -5061,7 +5045,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-42499"
           ],
           "PublishedDate": "2026-05-07T20:16:44.54Z",
-          "LastModifiedDate": "2026-08-13T13:18:53.703Z"
+          "LastModifiedDate": "2026-08-14T13:18:47.497Z"
         },
         {
           "VulnerabilityID": "CVE-2026-42504",
@@ -5078,7 +5062,6 @@
           "FixedVersion": "1.25.11, 1.26.4",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42504",
@@ -5123,9 +5106,9 @@
           "LastModifiedDate": "2026-07-22T19:10:00.12Z"
         },
         {
-          "VulnerabilityID": "CVE-2026-46600",
+          "VulnerabilityID": "CVE-2026-56853",
           "VendorIDs": [
-            "GO-2026-5942"
+            "GO-2026-6089"
           ],
           "PkgID": "stdlib@v1.24.6",
           "PkgName": "stdlib",
@@ -5134,24 +5117,23 @@
             "UID": "5a9b484fa87e1a00"
           },
           "InstalledVersion": "v1.24.6",
-          "FixedVersion": "1.26.6, 1.27.0-rc.3",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "Digest": "sha256:c789cfcee1a878ab23c08038ff83307a571beae30bd8130d2f9096a434b0eefb",
             "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
           },
-          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-46600",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56853",
           "DataSource": {
             "ID": "govulndb",
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:75270a0595923201a87f5c67eed9b321c91ae7884a7e158aa952f3660d8c9c6c",
-          "Title": "golang.org/x/net/dns/dnsmessage: golang.org/x/net/dns/dnsmessage: Denial of Service via invalid DNS record parsing",
-          "Description": "Parsing an invalid SVCB or HTTPS RR can panic when the size of a parameter value overflows the message buffer.",
+          "Fingerprint": "sha256:781faed0558975fdac97e6e050d8402d0861c5892cb70c1a099db1ee8e085965",
+          "Title": "net/http: golang: Go net/http: Unencrypted HTTP/2 connections vulnerable to Denial of Service",
+          "Description": "When a server is configured to support unencrypted HTTP/2, it reads a few bytes from each new connection to see if they contain the HTTP/2 client preface. ReadHeaderTimeout is unexpectedly not being applied when doing this.",
           "Severity": "HIGH",
           "CweIDs": [
-            "CWE-125"
+            "CWE-770"
           ],
           "VendorSeverity": {
             "redhat": 3
@@ -5163,16 +5145,220 @@
             }
           },
           "References": [
-            "https://access.redhat.com/security/cve/CVE-2026-46600",
-            "https://go.dev/cl/786345",
-            "https://go.dev/issue/79795",
+            "https://access.redhat.com/security/cve/CVE-2026-56853",
+            "https://go.dev/cl/795540",
+            "https://go.dev/issue/80205",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
-            "https://nvd.nist.gov/vuln/detail/CVE-2026-46600",
-            "https://pkg.go.dev/vuln/GO-2026-5942",
-            "https://www.cve.org/CVERecord?id=CVE-2026-46600"
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56853",
+            "https://pkg.go.dev/vuln/GO-2026-6089",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56853"
           ],
-          "PublishedDate": "2026-07-21T20:17:01.213Z",
-          "LastModifiedDate": "2026-08-13T22:17:21.913Z"
+          "PublishedDate": "2026-08-13T22:17:22.093Z",
+          "LastModifiedDate": "2026-08-14T16:16:57.21Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-56858",
+          "VendorIDs": [
+            "GO-2026-6091"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56858",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:0f782d8fb53efca5168fd0077542072e6b05f6c99ff5e55a99df6baaabc65c55",
+          "Title": "html/template: golang: Go html/template: Cross-Site Scripting via pathological input",
+          "Description": "Previously, pathological inputs could close an unescaped '/' early, allowing for attack-controlled data to inject arbitrary content, potentially leading to XSS.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-79"
+          ],
+          "VendorSeverity": {
+            "redhat": 3
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+              "V3Score": 8.1
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-56858",
+            "https://go.dev/cl/807100",
+            "https://go.dev/issue/80435",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56858",
+            "https://pkg.go.dev/vuln/GO-2026-6091",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56858"
+          ],
+          "PublishedDate": "2026-08-13T22:17:22.207Z",
+          "LastModifiedDate": "2026-08-14T16:16:57.367Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-56859",
+          "VendorIDs": [
+            "GO-2026-6088"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56859",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:3faaacc0fe8e78b79da4d34419a66b1f2c6e24e113bb8fbec719006b5600c1f9",
+          "Title": "encoding/xml: golang: Go: Denial of Service via XML decoding recursion depth issue",
+          "Description": "Previously, DecodeElement would reset the depth counter causing it to never fire; this could lead to stack exhaustion.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-770"
+          ],
+          "VendorSeverity": {
+            "redhat": 3
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-56859",
+            "https://go.dev/cl/803320",
+            "https://go.dev/issue/80481",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56859",
+            "https://pkg.go.dev/vuln/GO-2026-6088",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56859"
+          ],
+          "PublishedDate": "2026-08-13T22:17:22.32Z",
+          "LastModifiedDate": "2026-08-14T16:16:57.523Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-56860",
+          "VendorIDs": [
+            "GO-2026-6218"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56860",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:c1494db5fc1f74b404a74bf67eeccbba1f2f86ce7ef6107c23cc34391099b167",
+          "Title": "net/url: golang: golang net/url: Denial of Service from quadratic complexity in path resolution",
+          "Description": "Previously, resolving relative paths containing parent directory ('..') segments performed string conversions and buffer rewrites on each step, resulting in quadratic time complexity and high memory allocation overhead. Now, path resolution operates on a byte buffer using index-based backtracking for '..' segments, eliminating the quadratic time complexity and significantly reducing memory allocations.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-407"
+          ],
+          "VendorSeverity": {
+            "redhat": 3
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-56860",
+            "https://go.dev/cl/803681",
+            "https://go.dev/issue/80494",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56860",
+            "https://pkg.go.dev/vuln/GO-2026-6218",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56860"
+          ],
+          "PublishedDate": "2026-08-13T22:17:22.44Z",
+          "LastModifiedDate": "2026-08-14T17:19:13.91Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-56862",
+          "VendorIDs": [
+            "GO-2026-6090"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56862",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:f0e262f10d33c6890365adf5496e9519bd93b3416d08f1d97d2cf55939c646a3",
+          "Title": "crypto/tls: golang: Golang crypto/tls: Denial of Service via indefinite KeyUpdate messages",
+          "Description": "Handshake messages, such as KeyUpdate, are always considered as state-advancing, regardless of whether a handshake has been completed or not. As a result, a malicious client can keep sending KeyUpdate messages to force the server to keep performing key derivation operations indefinitely.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-770"
+          ],
+          "VendorSeverity": {
+            "redhat": 3
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-56862",
+            "https://go.dev/cl/804261",
+            "https://go.dev/issue/80528",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56862",
+            "https://pkg.go.dev/vuln/GO-2026-6090",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56862"
+          ],
+          "PublishedDate": "2026-08-13T22:17:22.55Z",
+          "LastModifiedDate": "2026-08-14T16:16:57.717Z"
         }
       ]
     }

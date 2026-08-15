@@ -10,6 +10,12 @@
 
 /** Licences accepted in ANY dependency scope. */
 export const LICENSE_ALLOWLIST = new Set([
+  // C17.1: spdx-exceptions@2.5.0, a DEVELOPMENT-only dependency of the SPDX expression parser
+  // added in C17.1 B3. CC-BY-3.0 is an attribution licence, and the attribution is DISCHARGED in
+  // THIRD_PARTY_NOTICES.md, which names The Linux Foundation and Kyle E. Mitchell and reproduces
+  // the canonical CC-BY-3.0 text. The package is a build-time data table of SPDX exception ids;
+  // it ships in nothing. Recorded here rather than waved through by widening the check.
+  'CC-BY-3.0',
   'MIT', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', 'Apache-2.0', '0BSD',
   'BlueOak-1.0.0', 'CC-BY-4.0', 'CC0-1.0', 'Unlicense', 'Python-2.0',
   'MIT OR Apache-2.0', '(MIT OR CC0-1.0)', 'Apache-2.0 OR MIT', '(Apache-2.0 OR MPL-1.1)',

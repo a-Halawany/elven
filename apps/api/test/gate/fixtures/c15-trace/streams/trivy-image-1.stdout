@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a00019-dfd4-79f6-a741-ff6b98275f59",
-  "CreatedAt": "2026-08-14T14:48:10.836654+03:00",
+  "ReportID": "01a005f6-77f2-75df-8e3f-21a3bb88b7c9",
+  "CreatedAt": "2026-08-15T18:07:13.778385+03:00",
   "ArtifactID": "sha256:0f406df217907599a24fdc7215e22bb0aaf3e8204c2d32eb4dfdd3792a6f215b",
   "ArtifactName": "redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a",
   "ArtifactType": "container_image",
