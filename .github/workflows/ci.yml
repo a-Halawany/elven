@@ -283,6 +283,26 @@ jobs:
             ${{ env.C16_OUT }}
             ${{ env.C17_OUT }}
           if-no-files-found: warn
+      # C17.1 F. The archive is built by TRACKED code, inside the run that produced the
+      # evidence, so its hosted-run receipt is generated from the real Actions environment
+      # rather than asserted afterwards. The verifier then re-checks it in place.
+      - name: Package + verify the C17 evidence archive (tracked packager, blocking)
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          C17_PKG="$(mktemp -d)"
+          echo "C17_PKG=$C17_PKG" >> "$GITHUB_ENV"
+          node scripts/gate/package-c17-evidence.mjs pack \
+            --c16 "$C16_OUT" --c17 "$C17_OUT" --out "$C17_PKG"
+          node scripts/gate/package-c17-evidence.mjs verify \
+            --zip "$(ls "$C17_PKG"/c17-evidence-*.zip)" --root "$PWD"
+      - name: Upload the C17 evidence archive
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c17-evidence-archive
+          path: ${{ env.C17_PKG }}
+          if-no-files-found: warn
       - name: Upload C17 licence + schema evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
