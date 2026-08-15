@@ -173,9 +173,82 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     }
   }, TIMEOUT);
 
-  it('a LOCAL package is reported as local, not passed off as hosted', () => {
-    const r = verify({ zipPath: zip, root: REPO });
-    expect(r.notes.join('\n')).toMatch(/run_receipt=LOCAL/);
+  /**
+   * The receipt must describe the environment it was ACTUALLY built in — and both branches are
+   * exercised deliberately rather than left to whatever host runs the suite.
+   *
+   * The first version of this control assumed a local host and asserted LOCAL unconditionally. In
+   * CI the packer correctly produced a HOSTED receipt from the real Actions variables and the
+   * control failed. The control was wrong, not the packer: a receipt that reports the truth in
+   * both environments is the property worth testing, so the environment is now controlled.
+   */
+  const packWithEnv = (env: Record<string, string | undefined>) => {
+    const saved = new Map<string, string | undefined>();
+    for (const k of Object.keys(env)) { saved.set(k, process.env[k]); }
+    // Every GITHUB_* the packer reads, so a real CI environment cannot leak into the local case.
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith('GITHUB_') || k.startsWith('RUNNER_')) {
+        if (!saved.has(k)) saved.set(k, process.env[k]);
+        delete process.env[k];
+      }
+    }
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    const d = mkdtempSync(join(tmpdir(), 'eye-c17f-env-'));
+    try {
+      const r = pack({ c16Dir: c16, c17Dir: c17, outDir: d, root: REPO });
+      expect(r.ok, r.problems.join('\n')).toBe(true);
+      return { dir: d, zip: r.zip as string };
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+
+  it('a package built OUTSIDE Actions is reported as LOCAL, never passed off as hosted', () => {
+    const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
+    try {
+      const r = verify({ zipPath: z, root: REPO });
+      expect(r.notes.join('\n')).toMatch(/run_receipt=LOCAL/);
+      const receipt = JSON.parse(
+        spawnSync('unzip', ['-p', z, 'receipt/run-receipt.json'], { encoding: 'utf8' }).stdout,
+      );
+      expect(receipt.hosted).toBe(false);
+      expect(receipt.run_id).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('a package built INSIDE Actions carries the run identity, from the environment', () => {
+    const { dir, zip: z } = packWithEnv({
+      GITHUB_RUN_ID: '424242', GITHUB_RUN_ATTEMPT: '2', GITHUB_RUN_NUMBER: '7',
+      GITHUB_REPOSITORY: 'a-Halawany/elven', GITHUB_WORKFLOW: 'CI', GITHUB_JOB: 'supply-chain',
+      GITHUB_SHA: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim(),
+      GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'push',
+      RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64',
+    });
+    try {
+      const receipt = JSON.parse(
+        spawnSync('unzip', ['-p', z, 'receipt/run-receipt.json'], { encoding: 'utf8' }).stdout,
+      );
+      expect(receipt.hosted).toBe(true);
+      expect(receipt.run_id).toBe('424242');
+      expect(receipt.run_attempt).toBe('2');
+      expect(receipt.job).toBe('supply-chain');
+      expect(receipt.api_url).toBe('https://api.github.com/repos/a-Halawany/elven/actions/runs/424242');
+      // The head SHA must agree with the source receipt, and it does because both come from the
+      // same checkout rather than from anything the archive asserts about itself.
+      const r = verify({ zipPath: z, root: REPO });
+      expect(r.notes.join('\n')).toMatch(/run_receipt=a-Halawany\/elven#424242 attempt 2 job supply-chain/);
+      expect(r.problems.join('\n')).not.toMatch(/run receipt has no/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, TIMEOUT);
 
   it('a HOSTED receipt must carry every identifying field', () => {
