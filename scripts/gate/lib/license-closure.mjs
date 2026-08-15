@@ -362,6 +362,25 @@ export function buildTargetInventory({ root, target, closure }) {
     }
     const files = licenceFiles(dir);
     const parsed = parseSpdxExpression(declared);
+    // C17.1 C — attribution needs a NAMED party. An attribution licence (CC-BY) requires
+    // crediting the author as specified, and C17 printed the obligation without ever recording
+    // who the author was. npm allows the field as a string or an object, so both are read.
+    const personName = (v) => {
+      if (typeof v === 'string') return v;
+      if (v !== null && typeof v === 'object' && typeof v.name === 'string') {
+        return v.email ? `${v.name} <${v.email}>` : v.name;
+      }
+      return null;
+    };
+    const attribution = {
+      author: personName(manifest.author),
+      contributors: (Array.isArray(manifest.contributors) ? manifest.contributors : [])
+        .map(personName).filter(Boolean),
+      homepage: typeof manifest.homepage === 'string' ? manifest.homepage : null,
+      repository: typeof manifest.repository === 'string'
+        ? manifest.repository
+        : (manifest.repository?.url ?? null),
+    };
     const record = {
       ...base,
       first_party: false,
@@ -369,6 +388,7 @@ export function buildTargetInventory({ root, target, closure }) {
       spdx_ids: parsed.ok ? parsed.ids : [],
       spdx_exceptions: parsed.ok ? parsed.exceptions : [],
       manifest_sha256: sha256(manifestBytes),
+      attribution,
       licence_files: files,
       copyright: [...new Set(files.flatMap((f) => f.copyright))].sort(),
       evidence_provenance: `package.json + ${files.length} licence/notice file(s) read from the `

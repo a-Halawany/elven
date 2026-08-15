@@ -1,0 +1,113 @@
+{
+  "$comment": [
+    "C17.1 C — SOURCE-OFFER RECORDS for components whose licence requires offering the",
+    "corresponding source to recipients.",
+    "",
+    "C17 emitted an obligation line saying source 'must be offered' and offered nothing. That is a",
+    "promise, not a deliverable, and a gate reporting zero unresolved obligations while required",
+    "material remains merely promised is reporting the wrong thing.",
+    "",
+    "Each record names the exact component, the exact upstream repository and tag the binary was",
+    "built from, and a concrete route by which a recipient obtains that source. The values are",
+    "taken from the package's OWN manifest (repository, version, author) — not invented — and the",
+    "gate checks each record against the materialized package before accepting it.",
+    "",
+    "A component that requires a source offer and has no record here is an unresolved obligation",
+    "and fails the gate."
+  ],
+  "schema_version": "1.0.0",
+  "records": [
+    {
+      "id": "SRC-0001",
+      "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.2",
+      "name": "@img/sharp-libvips-linux-x64",
+      "version": "1.3.2",
+      "declared_license": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer",
+      "why": [
+        "This package ships a PREBUILT libvips shared library for linux-x64. libvips is licensed",
+        "LGPL-2.1-or-later and this distribution is declared LGPL-3.0-or-later, so a recipient of",
+        "the binary is entitled to the corresponding source of the licensed library, and to relink",
+        "the work against a modified version of it."
+      ],
+      "corresponding_source": {
+        "upstream_repository": "https://github.com/lovell/sharp-libvips",
+        "upstream_directory": "npm/linux-x64",
+        "build_recipe_tag": "v1.3.2",
+        "libvips_upstream": "https://github.com/libvips/libvips",
+        "author": "Lovell Fuller <npm@lovell.info>",
+        "obtain": [
+          "The complete build recipe for this exact artifact is the sharp-libvips repository at tag",
+          "v1.3.2, directory npm/linux-x64, which pins the libvips version and every bundled",
+          "dependency it links.",
+          "git clone https://github.com/lovell/sharp-libvips && cd sharp-libvips && git checkout v1.3.2",
+          "The libvips sources themselves are at https://github.com/libvips/libvips at the tag that",
+          "recipe pins."
+        ],
+        "relinking": [
+          "The library is a standalone shared object under lib/ in the installed package, so a",
+          "recipient may replace it with a compatible build of libvips without rebuilding sharp."
+        ]
+      },
+      "modification_statement": "This project distributes the binary UNMODIFIED, exactly as published on the npm registry at the version the lockfile pins. No changes have been made to libvips or to this package.",
+      "owner": "founding-engineer",
+      "recorded_on": "2026-08-15",
+      "limits": [
+        "This record states where the corresponding source is and that the artifact is unmodified.",
+        "It is not legal advice and does not assert that any particular distribution scenario is",
+        "compliant. Phase 0 is a LOCAL-ONLY profile under EXC-P0-004 and distributes nothing."
+      ]
+    },
+    {
+      "id": "SRC-0002",
+      "purl": "pkg:npm/lightningcss@1.33.0",
+      "name": "lightningcss",
+      "version": "1.33.0",
+      "declared_license": "MPL-2.0",
+      "obligation": "weak-copyleft-file source offer",
+      "why": [
+        "MPL-2.0 requires that the source of any MODIFIED licensed file be made available to",
+        "recipients. It is a per-file obligation, not a whole-work one."
+      ],
+      "corresponding_source": {
+        "upstream_repository": "https://github.com/parcel-bundler/lightningcss",
+        "build_recipe_tag": "v1.33.0",
+        "obtain": [
+          "git clone https://github.com/parcel-bundler/lightningcss && cd lightningcss && git checkout v1.33.0"
+        ]
+      },
+      "modification_statement": "This project distributes the package UNMODIFIED at the version the lockfile pins, so no MPL-2.0 file has been modified and the per-file source obligation is satisfied by the upstream repository above.",
+      "owner": "founding-engineer",
+      "recorded_on": "2026-08-15",
+      "limits": [
+        "Not legal advice. Phase 0 distributes nothing."
+      ]
+    },
+    {
+      "id": "SRC-0003",
+      "purl": "pkg:npm/lightningcss-linux-x64-gnu@1.33.0",
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "declared_license": "MPL-2.0",
+      "obligation": "weak-copyleft-file source offer",
+      "why": [
+        "The prebuilt linux-x64 native binding for lightningcss, under the same MPL-2.0 per-file",
+        "source obligation as the package that loads it."
+      ],
+      "corresponding_source": {
+        "upstream_repository": "https://github.com/parcel-bundler/lightningcss",
+        "build_recipe_tag": "v1.33.0",
+        "obtain": [
+          "git clone https://github.com/parcel-bundler/lightningcss && cd lightningcss && git checkout v1.33.0",
+          "The napi build for linux-x64-gnu is produced from that tree."
+        ]
+      },
+      "modification_statement": "Distributed UNMODIFIED at the pinned version.",
+      "owner": "founding-engineer",
+      "recorded_on": "2026-08-15",
+      "limits": [
+        "Not legal advice. Phase 0 distributes nothing."
+      ]
+    }
+  ]
+}

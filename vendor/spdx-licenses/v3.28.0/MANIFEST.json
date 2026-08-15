@@ -1,0 +1,141 @@
+{
+  "$comment": [
+    "C17.1 C \u2014 CANONICAL SPDX LICENCE TEXTS, VENDORED AND PINNED.",
+    "",
+    "A notice obligation is to reproduce the licence TEXT, and 22 MIT packages, 2 LGPL-3.0-or-later,",
+    "2 CC0-1.0 and 1 CC-BY-3.0 package in the declared targets ship no licence file of their own.",
+    "C17 recorded that the canonical text \"must be reproduced\" without reproducing it, which is a",
+    "promise rather than a deliverable. These are the authoritative texts, fetched once from the SPDX",
+    "license-list-data repository at a pinned tag and commit, verified byte-for-byte before use, and",
+    "never fetched at generation time.",
+    "",
+    "Provenance is code-owned in scripts/gate/lib/licence-texts.mjs, exactly as the CycloneDX schema",
+    "closure is: this manifest is checked AGAINST that table, so rewriting both together fails."
+  ],
+  "upstream": {
+    "repository": "https://github.com/spdx/license-list-data",
+    "release_tag": "v3.28.0",
+    "commit": "c4a7237ec8f4654e867546f9f409749300f1bf4c"
+  },
+  "acquired_on": "2026-08-15",
+  "licence": {
+    "spdx_id": "CC0-1.0",
+    "holder": "SPDX Workgroup, a Linux Foundation Project",
+    "notice": "The SPDX License List, including these licence texts, is published under CC0-1.0. Files are vendored verbatim; any modification fails the digest preflight.",
+    "url": "https://github.com/spdx/license-list-data/blob/c4a7237ec8f4654e867546f9f409749300f1bf4c/README.md"
+  },
+  "files": [
+    {
+      "file": "0BSD.txt",
+      "spdx_id": "0BSD",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/0BSD.txt",
+      "bytes": 643,
+      "sha256": "e3f18c71e10d673590eb9856c1d79dd3b4b0d65404efb5e8584dbede7edd608b"
+    },
+    {
+      "file": "Apache-2.0.txt",
+      "spdx_id": "Apache-2.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Apache-2.0.txt",
+      "bytes": 10280,
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+    },
+    {
+      "file": "BSD-2-Clause.txt",
+      "spdx_id": "BSD-2-Clause",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/BSD-2-Clause.txt",
+      "bytes": 1267,
+      "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df"
+    },
+    {
+      "file": "BSD-3-Clause.txt",
+      "spdx_id": "BSD-3-Clause",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/BSD-3-Clause.txt",
+      "bytes": 1460,
+      "sha256": "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d"
+    },
+    {
+      "file": "BlueOak-1.0.0.txt",
+      "spdx_id": "BlueOak-1.0.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/BlueOak-1.0.0.txt",
+      "bytes": 1552,
+      "sha256": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004"
+    },
+    {
+      "file": "CC-BY-3.0.txt",
+      "spdx_id": "CC-BY-3.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/CC-BY-3.0.txt",
+      "bytes": 19467,
+      "sha256": "e6bc9e9c474700b708f568bac9e5a8a9bcb2b1dad53442f5ba449fcb848b8e76"
+    },
+    {
+      "file": "CC-BY-4.0.txt",
+      "spdx_id": "CC-BY-4.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/CC-BY-4.0.txt",
+      "bytes": 17023,
+      "sha256": "d557539df68e771cc1eedcc91d13f70fca930e508d11eedcafa4b15db49e3744"
+    },
+    {
+      "file": "CC0-1.0.txt",
+      "spdx_id": "CC0-1.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/CC0-1.0.txt",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    {
+      "file": "ISC.txt",
+      "spdx_id": "ISC",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/ISC.txt",
+      "bytes": 823,
+      "sha256": "f2ec607f67bb0dd3053b49835b02110d5cd0f8eb6da3aac4dc0b142a6b299be9"
+    },
+    {
+      "file": "LGPL-2.1-or-later.txt",
+      "spdx_id": "LGPL-2.1-or-later",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/LGPL-2.1-or-later.txt",
+      "bytes": 26001,
+      "sha256": "5749785c8bdefafcb5d798270ed0a967036fe2ca63dcedade1627565dfef81d2"
+    },
+    {
+      "file": "LGPL-3.0-or-later.txt",
+      "spdx_id": "LGPL-3.0-or-later",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/LGPL-3.0-or-later.txt",
+      "bytes": 42098,
+      "sha256": "996af0513df21f7496288951c41428a03c174e9e4a9d63665c57d670f845ccb1"
+    },
+    {
+      "file": "MIT-0.txt",
+      "spdx_id": "MIT-0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/MIT-0.txt",
+      "bytes": 915,
+      "sha256": "59746d6285ffa44bfc7ecada352aa5d6a20dc8eab418a60ce091cc739012c135"
+    },
+    {
+      "file": "MIT.txt",
+      "spdx_id": "MIT",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/MIT.txt",
+      "bytes": 1078,
+      "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
+    },
+    {
+      "file": "MPL-2.0.txt",
+      "spdx_id": "MPL-2.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/MPL-2.0.txt",
+      "bytes": 16727,
+      "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+    },
+    {
+      "file": "Python-2.0.txt",
+      "spdx_id": "Python-2.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Python-2.0.txt",
+      "bytes": 9411,
+      "sha256": "893c2bafbb8133f7aa97e1f79a3ee3241ebca7025f56278e9e1f72bb98592f9d"
+    },
+    {
+      "file": "Unlicense.txt",
+      "spdx_id": "Unlicense",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Unlicense.txt",
+      "bytes": 1211,
+      "sha256": "0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240"
+    }
+  ]
+}
