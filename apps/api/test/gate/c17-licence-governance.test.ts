@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { deriveC16Expectation } from '../../../../scripts/gate/generate-closures.mjs';
 import {
   buildTargetInventory, reconcileInventory, spdxIds, parseSpdxExpression, resetStoreIndex,
-  familiesInText, familyOf, OBLIGATION_TABLE,
+  familiesInText, familyOf, OBLIGATION_TABLE, isLegalFileName, classifyLegalFile,
 } from '../../../../scripts/gate/lib/license-closure.mjs';
 import {
   validateLegalDispositions, loadLegalDispositions, unresolvedScopeKey, isRealDate,
@@ -378,7 +378,7 @@ describe('C17 §4/§6/§7 — licence governance', () => {
       resetStoreIndex();
       expect(inv.components, 'it must NOT classify cleanly as MIT').toHaveLength(0);
       expect(inv.unresolved[0].issue).toBe('contradictory_licence');
-      expect(inv.unresolved[0].detail).toMatch(/declares 'MIT' but its shipped licence text identifies GPL/);
+      expect(inv.unresolved[0].detail).toMatch(/declares 'MIT' but its ROOT licence text identifies GPL/);
     } finally {
       rmSync(root, { recursive: true, force: true });
       resetStoreIndex();
@@ -454,4 +454,55 @@ describe('C17 §4/§6/§7 — licence governance', () => {
     expect(r.valid).toHaveLength(0);
     expect(r.problems.join('\n')).toMatch(/run date .* is not a real calendar date/);
   });
+
+  it('a BUNDLED nested licence is additional material, NOT a contradiction', () => {
+    // Recursive discovery surfaced this on the real tree: next@16.2.12 declares MIT and ships
+    // dist/compiled/@vercel/og/LICENSE, an MPL text belonging to a bundled dependency.
+    const root = mkdtempSync(join(tmpdir(), 'eye-c172-nested-'));
+    try {
+      const node = { bomRef: 'bundler@1.0.0', purl: 'pkg:npm/bundler@1.0.0', name: 'bundler', version: '1.0.0', kind: 'npm' };
+      const dir = join(root, 'node_modules', '.pnpm', 'bundler@1.0.0', 'node_modules', 'bundler');
+      require('node:fs').mkdirSync(join(dir, 'dist', 'compiled', 'vendored'), { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'bundler', version: '1.0.0', license: 'MIT' }));
+      writeFileSync(join(dir, 'LICENSE'), 'MIT License\n\nCopyright (c) bundler\n');
+      // A bundled dependency's MPL text, nested.
+      writeFileSync(join(dir, 'dist', 'compiled', 'vendored', 'LICENSE'),
+        'Mozilla Public License Version 2.0\n\n1. Definitions\n');
+      resetStoreIndex();
+      const inv = buildTargetInventory({
+        root, target: 'production', closure: { nodes: new Map([[node.bomRef, node]]) },
+      });
+      resetStoreIndex();
+      expect(inv.unresolved, 'a nested bundled licence must NOT be a contradiction').toEqual([]);
+      const c = inv.components[0];
+      expect(c.declared_license).toBe('MIT');
+      // But it IS discovered, recorded as nested, and therefore emittable.
+      const nested = c.licence_files.filter((f: any) => f.nested === true);
+      expect(nested.map((f: any) => f.file)).toEqual(['dist/compiled/vendored/LICENSE']);
+      expect(c.bundled_legal_files).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      resetStoreIndex();
+    }
+  });
+
+  it.each([
+    ['ThirdPartyNotices.txt', 'third-party-notices'],
+    ['ThirdPartyNoticeText.txt', 'third-party-notices'],
+    ['THIRD-PARTY-LICENSE', 'third-party-notices'],
+    ['CopyrightNotice.txt', 'copyright-notice'],
+    ['AUTHORS', 'authors'],
+    ['AUTHORS.md', 'authors'],
+    ['utilsBundle.js.LICENSE', 'bundled-sidecar-licence'],
+  ])('the legal-name contract classifies %s as %s', (name, kind) => {
+    // Every one of these is a real shipped filename the C17.1 matcher missed.
+    expect(isLegalFileName(name), `${name} must be recognised`).toBe(true);
+    expect(classifyLegalFile(name)).toBe(kind);
+  });
+
+  it.each([['README.md'], ['index.js'], ['package.json'], ['licence-utils.ts']])(
+    'and does NOT claim %s is a legal file', (name) => {
+      expect(isLegalFileName(name)).toBe(false);
+    },
+  );
 });

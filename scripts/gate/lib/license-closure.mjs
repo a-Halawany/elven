@@ -143,7 +143,25 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '.bin', 'test', 'tests', '__t
 const MAX_DEPTH = 6;
 const MAX_LEGAL_FILES = 400;
 
-export const isLegalFileName = (name) => LEGAL_NAME_PATTERNS.some((re) => re.test(name));
+/**
+ * A legal file is TEXT. Source files are not, and the `licen[cs]e-*` pattern would otherwise
+ * claim `licence-utils.ts` — found by a control, not by inspection. Extensions are excluded
+ * explicitly rather than by narrowing the name patterns, because upstream names genuinely vary
+ * (`LICENSE-MIT`, `LICENSE.txt`, `LICENCE.md`, bare `COPYING`) and constraining the suffix would
+ * start dropping real files.
+ */
+const SOURCE_EXTENSIONS = Object.freeze([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.json', '.map', '.d.ts',
+  '.css', '.scss', '.html', '.sh', '.py', '.rs', '.go', '.wasm', '.node', '.yml', '.yaml',
+]);
+
+export const isLegalFileName = (name) => {
+  const lower = name.toLowerCase();
+  // A recognised sidecar is exempt: `utilsBundle.js.LICENSE` legitimately carries `.js` inside.
+  const sidecar = /\.licen[cs]e(\.txt)?$/i.test(name);
+  if (!sidecar && SOURCE_EXTENSIONS.some((e) => lower.endsWith(e))) return false;
+  return LEGAL_NAME_PATTERNS.some((re) => re.test(name));
+};
 
 /** Classify a legal file, so nothing is emitted as an unlabelled blob. */
 export function classifyLegalFile(name) {
