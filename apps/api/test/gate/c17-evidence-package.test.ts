@@ -73,10 +73,10 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     for (const l of lines) expect(l).toMatch(/^[a-f0-9]{64} {2}\S/);
   });
 
-  it('ENTRIES and REGULAR FILES are reported separately, so the two cannot be confused', () => {
+  it('ENTRIES and REGULAR FILES are reported separately, so the two cannot be confused', async () => {
     // The C17 report said "13 files" from an entry count that included directories. The verifier
     // now states both numbers, which is what makes the discrepancy visible rather than latent.
-    const r = verify({ zipPath: zip, root: REPO });
+    const r = await verify({ zipPath: zip, root: REPO });
     const note = r.notes.find((n) => n.startsWith('entries=')) as string;
     expect(note).toBeDefined();
     const m = /entries=(\d+) regular_files=(\d+) payload=(\d+)/.exec(note) as RegExpExecArray;
@@ -88,8 +88,8 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     expect(Number(entries)).toBeGreaterThan(Number(regular));
   }, TIMEOUT);
 
-  it('verification re-derives BOTH SBOMs and reruns licence reconciliation', () => {
-    const r = verify({ zipPath: zip, root: REPO });
+  it('verification re-derives BOTH SBOMs and reruns licence reconciliation', async () => {
+    const r = await verify({ zipPath: zip, root: REPO });
     const joined = r.notes.join('\n');
     expect(joined).toMatch(/production_sbom=[a-f0-9]{64} schema_errors=0/);
     expect(joined).toMatch(/development_sbom=[a-f0-9]{64} schema_errors=0/);
@@ -132,10 +132,10 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       writeFileSync(f, JSON.stringify(j, null, 2));
     }, /hashes to|is bound to f{40}/],
     ['a REMOVED run receipt', (p: string) => { rmSync(join(p, 'receipt/run-receipt.json')); }, /is MISSING 'receipt\/run-receipt/],
-  ])('verification rejects %s', (_label, mutate, pattern) => {
+  ])('verification rejects %s', async (_label, mutate, pattern) => {
     const { dir, zip: z } = repack(mutate);
     try {
-      const r = verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO });
       expect(r.ok, 'the mutation must be rejected').toBe(false);
       expect(r.problems.join('\n')).toMatch(pattern);
     } finally {
@@ -143,7 +143,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     }
   }, TIMEOUT);
 
-  it('verification rejects an UNSAFE path and a SYMLINK before extracting anything', () => {
+  it('verification rejects an UNSAFE path and a SYMLINK before extracting anything', async () => {
     const d = mkdtempSync(join(tmpdir(), 'eye-c17f-unsafe-'));
     try {
       // Traversal entry.
@@ -165,7 +165,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       symlinkSync('real.txt', join(sdir, 'link.txt'));
       const zSym = join(d, 'sym.zip');
       expect(spawnSync('zip', ['-qyrX', zSym, '.'], { cwd: sdir, encoding: 'utf8' }).status).toBe(0);
-      const r = verify({ zipPath: zSym, root: REPO });
+      const r = await verify({ zipPath: zSym, root: REPO });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/symlink/i);
     } finally {
@@ -209,10 +209,10 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     }
   };
 
-  it('a package built OUTSIDE Actions is reported as LOCAL, never passed off as hosted', () => {
+  it('a package built OUTSIDE Actions is reported as LOCAL, never passed off as hosted', async () => {
     const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
     try {
-      const r = verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO });
       expect(r.notes.join('\n')).toMatch(/run_receipt=LOCAL/);
       const receipt = JSON.parse(
         spawnSync('unzip', ['-p', z, 'receipt/run-receipt.json'], { encoding: 'utf8' }).stdout,
@@ -224,7 +224,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     }
   }, TIMEOUT);
 
-  it('a package built INSIDE Actions carries the run identity, from the environment', () => {
+  it('a package built INSIDE Actions carries the run identity, from the environment', async () => {
     const { dir, zip: z } = packWithEnv({
       GITHUB_RUN_ID: '424242', GITHUB_RUN_ATTEMPT: '2', GITHUB_RUN_NUMBER: '7',
       GITHUB_REPOSITORY: 'a-Halawany/elven', GITHUB_WORKFLOW: 'CI', GITHUB_JOB: 'supply-chain',
@@ -243,7 +243,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       expect(receipt.api_url).toBe('https://api.github.com/repos/a-Halawany/elven/actions/runs/424242');
       // The head SHA must agree with the source receipt, and it does because both come from the
       // same checkout rather than from anything the archive asserts about itself.
-      const r = verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO });
       expect(r.notes.join('\n')).toMatch(/run_receipt=a-Halawany\/elven#424242 attempt 2 job supply-chain/);
       expect(r.problems.join('\n')).not.toMatch(/run receipt has no/);
     } finally {
@@ -251,7 +251,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     }
   }, TIMEOUT);
 
-  it('a HOSTED receipt must carry every identifying field', () => {
+  it('a HOSTED receipt must carry every identifying field', async () => {
     const { dir, zip: z } = repack((p) => {
       writeFileSync(join(p, 'receipt/run-receipt.json'), JSON.stringify({
         hosted: true, api_url: 'https://api.github.com/x', repository: 'a/b',
@@ -260,7 +260,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       }, null, 2));
     });
     try {
-      const r = verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       // The digest check fires too; what matters is the receipt fields are named.

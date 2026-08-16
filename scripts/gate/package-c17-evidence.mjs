@@ -32,6 +32,7 @@ import {
   compileBomValidator, validateBom, verifyVendoredSchemas, VENDOR_DIR, SCHEMA_FILES,
 } from './lib/cyclonedx-schema.mjs';
 import { deriveC16Expectation } from './generate-closures.mjs';
+import { verifyHostedRun, validateReceiptShape } from './lib/hosted-run.mjs';
 import { buildTargetInventory, reconcileInventory } from './lib/license-closure.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -208,7 +209,7 @@ function walk(dir, base = dir) {
   return out;
 }
 
-export function verify({ zipPath, root = ROOT, online = false }) {
+export async function verify({ zipPath, root = ROOT, online = false, requireHosted = false }) {
   const problems = [];
   const notes = [];
   if (!existsSync(zipPath)) return { ok: false, problems: [`archive ${zipPath} does not exist`], notes };
@@ -451,37 +452,35 @@ export function verify({ zipPath, root = ROOT, online = false }) {
     const prov = verifyVendoredSchemas(root);
     if (!prov.ok) problems.push(...prov.problems);
 
-    // ── HOSTED-RUN RECEIPT ──────────────────────────────────────────────────
+    // ── HOSTED-RUN RECEIPT — verified by scripts/gate/lib/hosted-run.mjs ─────
+    //
+    // The endpoint is CONSTRUCTED there from a code-owned repository and a strictly numeric run
+    // id; nothing the receipt says can choose which server is asked. See that module's header for
+    // the forgery this replaces.
     const runPath = join(tmp, 'receipt/run-receipt.json');
     if (!existsSync(runPath)) {
       problems.push('archive has no run receipt');
     } else {
       const run = JSON.parse(readFileSync(runPath, 'utf8'));
-      if (run.hosted !== true) {
-        notes.push('run_receipt=LOCAL (not produced by a hosted run)');
+      const hosted = await verifyHostedRun(run, {
+        expectedHeadSha: receipt?.source_sha,
+        requireHosted,
+        requireArtifact: online,
+        fetchImpl: online ? globalThis.fetch : (async () => { throw new Error('offline'); }),
+        // Rate-limit credential only. It cannot influence WHICH endpoint is contacted: the URL
+        // is constructed in hosted-run.mjs from a code-owned repository and a validated id.
+        token: process.env.GITHUB_TOKEN ?? null,
+      });
+      if (online || requireHosted) {
+        problems.push(...hosted.problems);
+        notes.push(...hosted.notes);
       } else {
-        for (const field of ['repository', 'run_id', 'run_attempt', 'workflow', 'job', 'head_sha', 'api_url']) {
-          if (typeof run[field] !== 'string' || run[field].length === 0) {
-            problems.push(`run receipt has no '${field}'`);
-          }
-        }
-        if (receipt !== null && run.head_sha !== receipt.source_sha) {
-          problems.push(`run receipt head_sha ${run.head_sha} != the source receipt's ${receipt.source_sha}`);
-        }
-        notes.push(`run_receipt=${run.repository}#${run.run_id} attempt ${run.run_attempt} job ${run.job}`);
-        if (online) {
-          // Checked against GitHub's PUBLIC API, so the claim is not self-attested.
-          const api = spawnSync('curl', ['-fsSL', '-H', 'Accept: application/vnd.github+json', run.api_url], { encoding: 'utf8' });
-          if (api.status !== 0) {
-            problems.push(`run receipt could not be verified against ${run.api_url}`);
-          } else {
-            const body = JSON.parse(api.stdout);
-            if (String(body.id) !== String(run.run_id)) problems.push('GitHub reports a different run id');
-            if (body.head_sha !== run.head_sha) problems.push(`GitHub reports head_sha ${body.head_sha}, the receipt claims ${run.head_sha}`);
-            if (body.conclusion !== 'success') problems.push(`GitHub reports run conclusion ${body.conclusion}`);
-            notes.push(`github_api=verified id=${body.id} head_sha=${body.head_sha} conclusion=${body.conclusion}`);
-          }
-        }
+        // Offline: shape only, so a malformed receipt is still caught without a network.
+        const shape = validateReceiptShape(run, { requireHosted: false });
+        problems.push(...shape.problems);
+        notes.push(shape.local === true
+          ? 'run_receipt=LOCAL (not produced by a hosted run)'
+          : `run_receipt=${run.repository}#${run.run_id} attempt ${run.run_attempt} job ${run.job} (shape only; --online not requested)`);
       }
     }
   } finally {
@@ -490,7 +489,7 @@ export function verify({ zipPath, root = ROOT, online = false }) {
   return { ok: problems.length === 0, problems, notes };
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const mode = argv[0];
   if (mode === 'pack') {
@@ -515,10 +514,11 @@ function main() {
     return;
   }
   if (mode === 'verify') {
-    const r = verify({
+    const r = await verify({
       zipPath: argOf(argv, '--zip'),
       root: argOf(argv, '--root') ?? ROOT,
       online: argv.includes('--online'),
+      requireHosted: argv.includes('--require-hosted'),
     });
     for (const n of r.notes) console.log(`  ${n}`);
     if (!r.ok) {
@@ -535,7 +535,8 @@ function main() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    main();
+    // top-level await is available in ESM; verification is async because it contacts the API.
+    await main();
   } catch (e) {
     console.error(`=== C17 PACKAGER FAILED (uncaught) ===\n  ${e instanceof Error ? e.stack : e}`);
     process.exit(1);
