@@ -24,9 +24,9 @@
  *
  * Nothing here is legal advice, and the generated artifacts say so.
  */
-import { readFileSync, readdirSync, existsSync, lstatSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 import parseSpdx from 'spdx-expression-parse';
 
@@ -86,8 +86,138 @@ export const CATEGORY_OBLIGATIONS = Object.freeze({
   ],
 });
 
-const LICENCE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|AUTHORS|COPYRIGHT)([-._].*)?$/i;
+/**
+ * C17.2 D — the CODE-OWNED legal-name contract, and RECURSIVE discovery.
+ *
+ * ── WHAT WAS MISSED ──────────────────────────────────────────────────────────────
+ * The old matcher was `^(LICENCE|LICENSE|COPYING|NOTICE|AUTHORS|COPYRIGHT)([-._].*)?$` applied to
+ * the package's TOP LEVEL only. Six real shipped files in the declared targets were therefore
+ * invisible, every one of them a third-party notice this project is obliged to reproduce:
+ *
+ *   playwright-core@1.62.1/ThirdPartyNotices.txt      (676 B)
+ *   playwright@1.62.1/ThirdPartyNotices.txt           (705 B)
+ *   reflect-metadata@0.2.2/CopyrightNotice.txt        (834 B)
+ *   rolldown@1.2.1/THIRD-PARTY-LICENSE              (2,209 B)
+ *   tslib@2.8.1/CopyrightNotice.txt                   (822 B)
+ *   typescript@5.9.3/ThirdPartyNoticeText.txt      (37,824 B)
+ *
+ * `ThirdPartyNotices.txt` fails the old pattern because the name does not START with a known
+ * token; `CopyrightNotice.txt` fails because `COPYRIGHT` had to be followed by a separator, not a
+ * letter; `THIRD-PARTY-LICENSE` fails because it starts with `THIRD`. And Playwright's bundled
+ * `lib/*.LICENSE` sidecars were unreachable at any pattern, because discovery never descended.
+ *
+ * ── THE CONTRACT ─────────────────────────────────────────────────────────────────
+ * Names are matched against one code-owned table, anchored to the WHOLE name so a partial match
+ * cannot smuggle something in, and discovery walks the package tree. The walk is traversal-safe
+ * (it refuses to leave the package root and never follows a symlink), bounded, and deterministic:
+ * entries are sorted, so the same tree always yields the same list in the same order.
+ */
+export const LEGAL_NAME_PATTERNS = Object.freeze([
+  // Licence and copying texts, with or without an extension or suffix.
+  /^licen[cs]e(-|_|\.).*$/i,
+  /^licen[cs]e$/i,
+  /^licen[cs]es$/i,
+  /^copying(-|_|\.).*$/i,
+  /^copying$/i,
+  /^unlicen[cs]e$/i,
+  // Notices, in every capitalisation and word order upstream actually ships.
+  /^notice(-|_|\.).*$/i,
+  /^notice$/i,
+  /^notices$/i,
+  /^third[-_]?party[-_]?notices?(\.[a-z0-9]+)?$/i,
+  /^third[-_]?party[-_]?notice[-_]?text(\.[a-z0-9]+)?$/i,
+  /^third[-_]?party[-_]?licen[cs]es?(\.[a-z0-9]+)?$/i,
+  // Copyright and authorship.
+  /^copyright[-_]?notice(\.[a-z0-9]+)?$/i,
+  /^copyright(-|_|\.).*$/i,
+  /^copyright$/i,
+  /^authors?(\.[a-z0-9]+)?$/i,
+  /^contributors?(\.[a-z0-9]+)?$/i,
+  // Recognised sidecars: a bundled artifact's licence carried beside it, as Playwright ships.
+  /^.+\.licen[cs]e$/i,
+  /^.+\.licen[cs]e\.txt$/i,
+]);
+
+/** Directories never worth walking: they contain code, not notices, and can be enormous. */
+const SKIP_DIRS = new Set(['node_modules', '.git', '.bin', 'test', 'tests', '__tests__']);
+const MAX_DEPTH = 6;
+const MAX_LEGAL_FILES = 400;
+
+export const isLegalFileName = (name) => LEGAL_NAME_PATTERNS.some((re) => re.test(name));
+
+/** Classify a legal file, so nothing is emitted as an unlabelled blob. */
+export function classifyLegalFile(name) {
+  if (/^third[-_]?party/i.test(name)) return 'third-party-notices';
+  if (/\.licen[cs]e(\.txt)?$/i.test(name)) return 'bundled-sidecar-licence';
+  if (/^copyright[-_]?notice/i.test(name)) return 'copyright-notice';
+  if (/^authors?/i.test(name) || /^contributors?/i.test(name)) return 'authors';
+  if (/^notice/i.test(name)) return 'notice';
+  if (/^copying/i.test(name) || /^licen[cs]e/i.test(name) || /^unlicen[cs]e/i.test(name)) return 'licence';
+  if (/^copyright/i.test(name)) return 'copyright';
+  return null;
+}
+
 const COPYRIGHT_LINE = /^.*copyright.*$/gim;
+
+/**
+ * Every legal file a package ships, walked recursively, with a digest and the COMPLETE text.
+ *
+ * The text is retained in full: C17.1 truncated copyright lines and C17 truncated the notices,
+ * and an obligation to reproduce a notice is not discharged by a sample of it.
+ */
+function licenceFiles(dir) {
+  const out = [];
+  const rootReal = (() => { try { return realpathSync(dir); } catch { return null; } })();
+  if (rootReal === null) return out;
+  const walk = (current, depth) => {
+    if (depth > MAX_DEPTH || out.length >= MAX_LEGAL_FILES) return;
+    let entries = [];
+    try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (out.length >= MAX_LEGAL_FILES) return;
+      const abs = join(current, e.name);
+      // Never follow a symlink, and never leave the package root.
+      let st = null;
+      try { st = lstatSync(abs); } catch { continue; }
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) {
+        if (SKIP_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+        const real = (() => { try { return realpathSync(abs); } catch { return null; } })();
+        if (real === null || !real.startsWith(rootReal)) continue;
+        walk(abs, depth + 1);
+        continue;
+      }
+      if (!st.isFile() || !isLegalFileName(e.name)) continue;
+      const kind = classifyLegalFile(e.name);
+      const rel = relative(rootReal, abs).split(sep).join('/');
+      const bytes = readFileSync(abs);
+      const text = bytes.toString('utf8');
+      if (kind === null) {
+        // A name the patterns matched but the classifier does not recognise would be emitted
+        // unlabelled, so it fails closed instead.
+        out.push({ file: rel, kind: 'UNCLASSIFIED', bytes: bytes.byteLength, sha256: sha256(bytes), copyright: [], text });
+        continue;
+      }
+      out.push({
+        file: rel,
+        kind,
+        // Root-level or nested. The distinction is load-bearing: a licence file at the package
+        // root states what THIS package is; one under `dist/compiled/...` is a BUNDLED
+        // dependency's licence, which is additional third-party material to reproduce and says
+        // nothing about the declaring package's own terms.
+        nested: rel.includes('/'),
+        bytes: bytes.byteLength,
+        sha256: sha256(bytes),
+        // EVERY copyright line. No truncation.
+        copyright: [...new Set((text.match(COPYRIGHT_LINE) ?? []).map((l) => l.trim()))],
+        families: familiesInText(text),
+        text,
+      });
+    }
+  };
+  walk(rootReal, 0);
+  return out;
+}
 
 /**
  * C17.1 B3 — a REAL SPDX expression parser.
@@ -240,32 +370,6 @@ function storeDir(root, name, version) {
   return null;
 }
 
-/** Read the licence/notice files a package ships, with a digest for each. */
-function licenceFiles(dir) {
-  const out = [];
-  let entries = [];
-  try { entries = readdirSync(dir); } catch { return out; }
-  for (const name of entries.sort()) {
-    if (!LICENCE_FILE.test(name)) continue;
-    const abs = join(dir, name);
-    let st = null;
-    try { st = lstatSync(abs); } catch { st = null; }
-    if (st === null || !st.isFile()) continue;
-    const bytes = readFileSync(abs);
-    const text = bytes.toString('utf8');
-    out.push({
-      file: name,
-      bytes: bytes.byteLength,
-      sha256: sha256(bytes),
-      // C17.1 C — every copyright line, not the first eight. A distribution obligation is not
-      // satisfied by a sample of the notices it requires.
-      copyright: [...new Set((text.match(COPYRIGHT_LINE) ?? []).map((l) => l.trim()))],
-      families: familiesInText(text),
-      text,
-    });
-  }
-  return out;
-}
 
 /**
  * Build the inventory for ONE target closure.
@@ -402,19 +506,30 @@ export function buildTargetInventory({ root, target, closure }) {
       unresolved.push({ ...record, issue: 'unclassified_licence', detail: `'${declared}' is ${parsed.error}` });
       continue;
     }
-    // B2: shipped text that positively identifies another family contradicts the declaration.
+    // B2: shipped text that positively identifies another family contradicts the declaration —
+    // but only text at the package ROOT, which is where a package states its own terms.
+    //
+    // Recursive discovery (C17.2 D) surfaced this: `next@16.2.12` declares MIT and ships
+    // `dist/compiled/@vercel/og/LICENSE`, an MPL text belonging to a BUNDLED dependency. Reading
+    // that as next redeclaring itself MPL would be the same error as treating a mention of the
+    // GPL inside the MPL as a redeclaration. Nested licences are additional material to
+    // reproduce, recorded and emitted as such, and are not evidence about the declaring package.
     const declaredFamilies = new Set(parsed.ids.map(familyOf).filter(Boolean));
-    const shippedFamilies = [...new Set(files.flatMap((f) => f.families))];
+    const rootFiles = files.filter((f) => f.nested !== true);
+    const shippedFamilies = [...new Set(rootFiles.flatMap((f) => f.families ?? []))];
     const conflicting = shippedFamilies.filter((f) => !declaredFamilies.has(f));
     if (shippedFamilies.length > 0 && conflicting.length > 0) {
       unresolved.push({
         ...record,
         issue: 'contradictory_licence',
-        detail: `declares '${declared}' but its shipped licence text identifies `
-          + `${conflicting.join(', ')} (files: ${files.filter((f) => f.families.some((x) => conflicting.includes(x))).map((f) => f.file).join(', ')})`,
+        detail: `declares '${declared}' but its ROOT licence text identifies `
+          + `${conflicting.join(', ')} (files: ${rootFiles.filter((f) => (f.families ?? []).some((x) => conflicting.includes(x))).map((f) => f.file).join(', ')})`,
       });
       continue;
     }
+    // Bundled third-party licences found below the root are recorded so the notices generator
+    // must emit them; they are an obligation, not a contradiction.
+    record.bundled_legal_files = files.filter((f) => f.nested === true).length;
     const ids = record.spdx_ids;
     const unknown = ids.filter((id) => !Object.prototype.hasOwnProperty.call(OBLIGATION_TABLE, id));
     if (ids.length === 0 || unknown.length > 0) {
@@ -437,6 +552,21 @@ export function buildTargetInventory({ root, target, closure }) {
     record.requires_source_offer = cats.some((c) => c.source_offer);
     record.requires_modification_notice = cats.some((c) => c.modification_notice);
     record.alternative_licences = ids.length > 1 && /\sOR\s/i.test(declared);
+    const unclassified = files.filter((f) => f.kind === 'UNCLASSIFIED');
+    if (unclassified.length > 0) {
+      unresolved.push({
+        ...record,
+        issue: 'unclassified_legal_file',
+        detail: `ships legal file(s) the code-owned contract cannot classify: ${unclassified.map((f) => f.file).join(', ')}`,
+      });
+      continue;
+    }
+    // C17.2 E — AUTHORS and third-party notices are legal material in their own right, and they
+    // were collected and then never emitted. They are counted here so the notices generator can
+    // be required to emit every one.
+    record.legal_file_kinds = [...new Set(files.map((f) => f.kind))].sort();
+    record.legal_file_count = files.length;
+
     // A package that DECLARES a known SPDX id but ships no licence file is not an unknown
     // licence — the licence is known exactly. What is missing is the text to reproduce, and the
     // mechanical consequence is that the notice must carry the canonical SPDX text instead of a
