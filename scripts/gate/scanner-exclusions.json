@@ -29,14 +29,15 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee",
+      "evidence_sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee"
+          "sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67"
         }
-      ]
+      ],
+      "reviewed_on": "2026-08-14"
     },
     {
       "id": "SCX-0002",
@@ -77,14 +78,15 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee",
+      "evidence_sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee"
+          "sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67"
         }
-      ]
+      ],
+      "reviewed_on": "2026-08-14"
     },
     {
       "id": "SCX-0003",
@@ -112,20 +114,66 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee",
+      "evidence_sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee"
+          "sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67"
         }
-      ]
+      ],
+      "reviewed_on": "2026-08-14"
     },
     {
       "id": "SCX-0004",
       "advisory_ids": [
+        "CVE-2026-39821"
+      ],
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "NOT_AFFECTED (vulnerable_code_not_present). A HIGH Go standard-library advisory that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0) reports 0 called vulnerable symbols, and CVE-2026-39821 (GO-2026-5026) is present in that analysis and unreachable. CVE-2026-46600 was removed on 2026-08-15 because the advisory database no longer reports it for this image; a record covering nothing is stale, not satisfied. The six advisories that appeared on 2026-08-15 are held by SCX-0005 rather than here, because this record was approved before they were known and an approval date cannot precede what it approves.",
+      "compensating_controls": [
+        "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
+        "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-08-05",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67"
+        },
+        {
+          "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
+          "sha256": "e7d06bcc9da3181c417f1287b1bfc14bc0446a167a82733464e3fa619553be26"
+        },
+        {
+          "path": "docs/evidence/govulncheck-gosu-b6a16ed0.txt",
+          "sha256": "cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab"
+        }
+      ],
+      "reviewed_on": "2026-08-14"
+    },
+    {
+      "id": "SCX-0005",
+      "advisory_ids": [
         "CVE-2026-33818",
-        "CVE-2026-39821",
         "CVE-2026-56853",
         "CVE-2026-56858",
         "CVE-2026-56859",
@@ -141,7 +189,7 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "NOT_AFFECTED (vulnerable_code_not_present). Seven HIGH Go standard-library advisories that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, extracted from the linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b) reports 0 called vulnerable symbols across all 48 findings and 168 advisories, and each of the seven is present in that analysis and unreachable: CVE-2026-33818 (GO-2026-5972), CVE-2026-39821 (GO-2026-5026), CVE-2026-56853 (GO-2026-6089), CVE-2026-56858 (GO-2026-6091), CVE-2026-56859 (GO-2026-6088), CVE-2026-56860 (GO-2026-6218), CVE-2026-56862 (GO-2026-6090). CVE-2026-46600 was removed on 2026-08-15 because the advisory database no longer reports it for this image; a record covering nothing is stale, not satisfied. Held separately from SCX-0002 because \"the vulnerable code is not present\" is a different claim from \"the risk is accepted\".",
+      "reason": "NOT_AFFECTED (vulnerable_code_not_present). Six HIGH Go standard-library advisories that entered the scanner database on 2026-08-14 and were first observed by this project on 2026-08-15. Held separately from SCX-0004, which was approved on 2026-08-05: an approval date is a claim about when a human looked and cannot precede the advisory. govulncheck binary-mode symbol analysis of the exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, Go vuln DB as of 2026-08-14) reports 0 called vulnerable symbols across 48 findings and 168 advisories, and each of the six is present and unreachable: CVE-2026-33818 (GO-2026-5972), CVE-2026-56853 (GO-2026-6089), CVE-2026-56858 (GO-2026-6091), CVE-2026-56859 (GO-2026-6088), CVE-2026-56860 (GO-2026-6218), CVE-2026-56862 (GO-2026-6090).",
       "compensating_controls": [
         "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
         "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
@@ -153,14 +201,14 @@
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-08-14",
+      "approved_on": "2026-08-15",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee",
+      "evidence_sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "8e5542efd4b6b1bd116d0b3c2ec51274af79b1f1e5427a94346afb8d10af14ee"
+          "sha256": "be042fd2c3a32427748f98b5191a508ea40abc9c1b7e2b1bc3c41d85c455fc67"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",

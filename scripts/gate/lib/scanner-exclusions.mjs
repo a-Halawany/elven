@@ -37,7 +37,7 @@ export const REQUIRED_FIELDS = Object.freeze([
   'reason', 'compensating_controls', 'owner', 'approver',
   'evidence', 'evidence_sha256', 'evidence_files',
   'classification',
-  'approved_on', 'expires_on',
+  'approved_on', 'reviewed_on', 'expires_on',
 ]);
 
 /**
@@ -78,6 +78,7 @@ export const FIELD_TYPES = Object.freeze({
   evidence_files: 'object[]',
   classification: 'string',
   approved_on: 'string',
+  reviewed_on: 'string',
   expires_on: 'string',
 });
 const SHA256_HEX = /^[a-f0-9]{64}$/;
@@ -85,6 +86,23 @@ export const SUPPORTED_SCHEMA_VERSIONS = Object.freeze(['2.0.0']);
 /** The only severities a governed record may name. */
 export const ALLOWED_SEVERITIES = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * C17.2 H — a REAL calendar date.
+ *
+ * `reviewed_on` was not in REQUIRED_FIELDS or FIELD_TYPES at all, so it was ignored: C17.1 could
+ * record any value, or none, and nothing checked it. That is how six advisories came to sit in a
+ * record approved before they existed without the gate objecting. It is now required, typed, and
+ * must be a date the calendar actually has — `2026-99-99` compares greater than any run date as a
+ * string and would otherwise read as "reviewed recently".
+ */
+const isRealDate = (v) => {
+  if (typeof v !== 'string' || !ISO_DATE.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+};
 const ADVISORY_ID = /^(CVE-\d{4}-\d{4,}|GHSA-[a-z0-9-]+|[A-Z]+-\d{4}-\d+)$/;
 
 export function loadScannerExclusions(root) {
@@ -260,6 +278,29 @@ export function validateRecords(doc, { runDate, root, isTracked, readEvidence })
           problems.push(`${at} '${rel}' hashes to ${actual}, the record claims ${want}`);
           recordFatal.add(i);
         }
+      }
+    }
+
+    // H: dates must be REAL, and an amendment cannot have been reviewed before it was approved
+    // or in the future. An advisory added later than the approval belongs in its own record.
+    for (const f of ['approved_on', 'reviewed_on', 'expires_on']) {
+      if (!isRealDate(r[f])) {
+        problems.push(`${where}: ${f} is ${JSON.stringify(r[f])}, which is not a real calendar date (YYYY-MM-DD)`);
+        recordFatal.add(i);
+      }
+    }
+    if (!recordFatal.has(i)) {
+      if (r.reviewed_on < r.approved_on) {
+        problems.push(`${where}: reviewed_on ${r.reviewed_on} precedes approved_on ${r.approved_on}`);
+        recordFatal.add(i);
+      }
+      if (r.reviewed_on > runDate) {
+        problems.push(`${where}: reviewed_on ${r.reviewed_on} is in the future relative to ${runDate}`);
+        recordFatal.add(i);
+      }
+      if (r.expires_on <= r.approved_on) {
+        problems.push(`${where}: expires_on ${r.expires_on} is not after approved_on ${r.approved_on}`);
+        recordFatal.add(i);
       }
     }
 

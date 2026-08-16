@@ -28,7 +28,7 @@ import { loadScannerExclusions } from '../../../../scripts/gate/lib/scanner-excl
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const GATE = join(REPO, 'scripts', 'gate', 'licence-obligations.mjs');
-const RUN_DATE = '2026-08-14';
+const RUN_DATE = '2026-08-15';
 const TIMEOUT = 180_000;
 
 const tracked = (rel: string) =>

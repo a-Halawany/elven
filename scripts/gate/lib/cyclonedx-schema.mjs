@@ -52,6 +52,22 @@ export const ROOT_SCHEMA = 'bom-1.6.schema.json';
  * this is now lives here, in tracked code, and the manifest is checked against IT.
  */
 export const SCHEMA_PROVENANCE = Object.freeze({
+  // C17.2 G — the REMAINING fields, code-owned. R3.4.4 pinned the repository, tag, commit,
+  // acquisition date and the licence's SPDX id, but the manifest still supplied its own per-file
+  // PATH and the licence HOLDER, NOTICE and URL. Those are claims about where the bytes live and
+  // the terms under which we redistribute them inside our own evidence archive, so they belong in
+  // code like the rest.
+  paths: Object.freeze({
+    'bom-1.6.schema.json': 'vendor/cyclonedx/1.6.2/bom-1.6.schema.json',
+    'jsf-0.82.schema.json': 'vendor/cyclonedx/1.6.2/jsf-0.82.schema.json',
+    'spdx.schema.json': 'vendor/cyclonedx/1.6.2/spdx.schema.json',
+  }),
+  licence_holder: 'OWASP Foundation / CycloneDX contributors',
+  licence_notice: 'The CycloneDX specification and its JSON schemas are published under '
+    + 'Apache-2.0. The files are vendored verbatim; no modification is permitted, and any '
+    + 'modification fails the digest preflight.',
+  licence_url: 'https://github.com/CycloneDX/specification/blob/'
+    + 'e833d732337dd33aceb45ff1991f896796f1e5e7/LICENSE',
   repository: 'https://github.com/CycloneDX/specification',
   release_tag: '1.6.2',
   commit: 'e833d732337dd33aceb45ff1991f896796f1e5e7',
@@ -116,6 +132,18 @@ export function verifyVendoredSchemas(root = ROOT) {
   if (manifest.acquired_on !== SCHEMA_PROVENANCE.acquired_on) {
     problems.push(`C17 manifest acquired_on is ${JSON.stringify(manifest.acquired_on)}, expected ${JSON.stringify(SCHEMA_PROVENANCE.acquired_on)}`);
   }
+  for (const [field, want] of [
+    ['holder', SCHEMA_PROVENANCE.licence_holder],
+    ['notice', SCHEMA_PROVENANCE.licence_notice],
+    ['url', SCHEMA_PROVENANCE.licence_url],
+  ]) {
+    if (manifest.licence?.[field] !== want) {
+      problems.push(
+        `C17 manifest licence.${field} is ${JSON.stringify(manifest.licence?.[field])}, the `
+        + `code-owned provenance requires ${JSON.stringify(want)}`,
+      );
+    }
+  }
   if (manifest.licence?.spdx_id !== SCHEMA_PROVENANCE.licence_spdx) {
     problems.push(`C17 manifest licence.spdx_id is ${JSON.stringify(manifest.licence?.spdx_id)}, expected ${JSON.stringify(SCHEMA_PROVENANCE.licence_spdx)}`);
   }
@@ -144,6 +172,11 @@ export function verifyVendoredSchemas(root = ROOT) {
     }
     if (e.bytes !== want.bytes) {
       problems.push(`C17 manifest declares '${e.file}' as ${JSON.stringify(e.bytes)} bytes, the code-owned provenance requires ${want.bytes}`);
+      continue;
+    }
+    const wantPath = SCHEMA_PROVENANCE.paths[e.file];
+    if (e.path !== wantPath) {
+      problems.push(`C17 manifest declares '${e.file}' path ${JSON.stringify(e.path)}, the code-owned provenance requires ${JSON.stringify(wantPath)}`);
       continue;
     }
     if (e.url !== want.url) {
