@@ -834,7 +834,7 @@ describe('AC-13/14/15: repo-level conformance evidence', () => {
       // …and the scanners those runners require are installed at exact versions.
       'gitleaks', 'trivy', 'GITLEAKS_VERSION: 8.30.1', 'TRIVY_VERSION: 0.73.0',
       'node --version', '24.11.1',
-      // The installer is a single tracked script shared by both jobs.
+      // The authoritative scanner job uses one tracked installer.
       'scripts/gate/install-scanners.sh',
     ]) {
       expect(active.toLowerCase(), needle).toContain(needle.toLowerCase());

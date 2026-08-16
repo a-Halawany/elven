@@ -2,10 +2,8 @@
 # Install the PINNED scanner binaries, authenticated against the tracked upstream
 # checksums in scripts/gate/scanner-pins.json.
 #
-# Single source of truth for both CI jobs. `build-test` needs them because the C15
-# BEHAVIOURAL controls under `pnpm test` spawn the real runner, and `supply-chain` needs
-# them because it runs the gate itself. Duplicating this shell inline in two jobs is how
-# the two drift apart.
+# Single source of truth for the authoritative `supply-chain` CI job and local final
+# integration runs. `build-test` is intentionally scanner- and network-hermetic.
 #
 # TWO digests are verified, not one:
 #   1. the release ARCHIVE, against the upstream published checksum;
@@ -130,7 +128,9 @@ install_tool() {
   fi
   echo "  archive digest verified:    $got_archive"
 
-  tar -xzf "$work/archive.tar.gz" -C "$work" "$tool"
+  # Release archives may carry an upstream uid/gid. Never try to restore that ownership:
+  # rootless/user-namespace environments can authenticate the bytes but cannot chown them.
+  tar --no-same-owner -xzf "$work/archive.tar.gz" -C "$work" "$tool"
   got_binary="$(sha256_of "$work/$tool")"
   if [ "$got_binary" != "$want_binary" ]; then
     echo "::error::${tool} EXECUTABLE digest ${got_binary} does not match the tracked ${want_binary}"

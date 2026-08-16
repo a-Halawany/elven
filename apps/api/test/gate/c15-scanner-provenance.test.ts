@@ -546,6 +546,7 @@ describe('C16-R3 — acquisition failure and tracked executable digests', () => 
     expect(sh).toContain('ARCHIVE digest');
     expect(sh).toContain('EXECUTABLE digest');
     expect(sh).toContain('executable_sha256');
+    expect(sh).toContain('tar --no-same-owner');
     // Both checks must exit non-zero.
     expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
