@@ -7,7 +7,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "dev": "node --watch --enable-source-maps -r ts-node/register src/main.ts",
-    "test": "vitest run",
+    "test": "vitest run --exclude test/gate/hermetic-suite-meta.test.ts && vitest run test/gate/hermetic-suite-meta.test.ts --no-file-parallelism",
     "test:int": "vitest run --config vitest.int.config.ts",
     "lint": "echo 'api: typecheck + depcruise cover lint (Phase 0)'",
     "db:migrate": "node scripts/migrate.mjs",

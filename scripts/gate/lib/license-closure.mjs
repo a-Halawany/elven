@@ -54,6 +54,11 @@ export const OBLIGATION_TABLE = Object.freeze({
   'LGPL-2.1-or-later': { category: 'weak-copyleft', notice: true, source_offer: true, modification_notice: true },
   'LGPL-3.0-or-later': { category: 'weak-copyleft', notice: true, source_offer: true, modification_notice: true },
   'MPL-2.0': { category: 'weak-copyleft-file', notice: true, source_offer: true, modification_notice: true },
+  FTL: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
+  IJG: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
+  Libpng: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
+  libtiff: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
+  Zlib: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
 });
 
 /** Human-readable obligations per category, kept beside the table so they cannot drift. */
@@ -138,10 +143,10 @@ export const LEGAL_NAME_PATTERNS = Object.freeze([
   /^.+\.licen[cs]e\.txt$/i,
 ]);
 
-/** Directories never worth walking: they contain code, not notices, and can be enormous. */
-const SKIP_DIRS = new Set(['node_modules', '.git', '.bin', 'test', 'tests', '__tests__']);
-const MAX_DEPTH = 6;
+/** Only dependency/control directories are skipped. Test trees are shipped bytes too and may carry notices. */
+const SKIP_DIRS = new Set(['node_modules', '.git', '.bin']);
 const MAX_LEGAL_FILES = 400;
+const MAX_WALK_ENTRIES = 100_000;
 
 /**
  * A legal file is TEXT. Source files are not, and the `licen[cs]e-*` pattern would otherwise
@@ -183,26 +188,58 @@ const COPYRIGHT_LINE = /^.*copyright.*$/gim;
  * The text is retained in full: C17.1 truncated copyright lines and C17 truncated the notices,
  * and an obligation to reproduce a notice is not discharged by a sample of it.
  */
-function licenceFiles(dir) {
+export function discoverLegalFiles(dir) {
   const out = [];
+  const problems = [];
+  let walkedEntries = 0;
   const rootReal = (() => { try { return realpathSync(dir); } catch { return null; } })();
-  if (rootReal === null) return out;
-  const walk = (current, depth) => {
-    if (depth > MAX_DEPTH || out.length >= MAX_LEGAL_FILES) return;
+  if (rootReal === null) return { files: out, problems: [`cannot resolve package root '${dir}'`] };
+  const walk = (current) => {
+    if (out.length >= MAX_LEGAL_FILES) {
+      problems.push(`legal-file discovery exceeded the code-owned file limit ${MAX_LEGAL_FILES}`);
+      return;
+    }
     let entries = [];
-    try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+    try { entries = readdirSync(current, { withFileTypes: true }); } catch (e) {
+      problems.push(`cannot read package directory '${relative(rootReal, current) || '.'}': ${e instanceof Error ? e.message : e}`);
+      return;
+    }
     for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      if (out.length >= MAX_LEGAL_FILES) return;
+      walkedEntries += 1;
+      if (walkedEntries > MAX_WALK_ENTRIES) {
+        problems.push(`legal-file discovery exceeded the code-owned walk limit ${MAX_WALK_ENTRIES}`);
+        return;
+      }
+      if (out.length >= MAX_LEGAL_FILES) {
+        problems.push(`legal-file discovery exceeded the code-owned file limit ${MAX_LEGAL_FILES}`);
+        return;
+      }
       const abs = join(current, e.name);
       // Never follow a symlink, and never leave the package root.
       let st = null;
-      try { st = lstatSync(abs); } catch { continue; }
-      if (st.isSymbolicLink()) continue;
+      try { st = lstatSync(abs); } catch (err) {
+        problems.push(`cannot inspect '${relative(rootReal, abs)}': ${err instanceof Error ? err.message : err}`);
+        continue;
+      }
+      if (st.isSymbolicLink()) {
+        problems.push(
+          `package path '${relative(rootReal, abs)}' is a symlink and was refused; legal-file `
+          + 'discovery cannot prove what a skipped link contains',
+        );
+        continue;
+      }
       if (st.isDirectory()) {
-        if (SKIP_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+        if (SKIP_DIRS.has(e.name)) continue;
         const real = (() => { try { return realpathSync(abs); } catch { return null; } })();
-        if (real === null || !real.startsWith(rootReal)) continue;
-        walk(abs, depth + 1);
+        if (real === null) {
+          problems.push(`cannot resolve package directory '${relative(rootReal, abs)}'`);
+          continue;
+        }
+        if (real !== rootReal && !real.startsWith(`${rootReal}${sep}`)) {
+          problems.push(`package directory '${relative(rootReal, abs)}' resolves outside the package root`);
+          continue;
+        }
+        walk(abs);
         continue;
       }
       if (!st.isFile() || !isLegalFileName(e.name)) continue;
@@ -233,8 +270,8 @@ function licenceFiles(dir) {
       });
     }
   };
-  walk(rootReal, 0);
-  return out;
+  walk(rootReal);
+  return { files: out, problems: [...new Set(problems)] };
 }
 
 /**
@@ -482,7 +519,8 @@ export function buildTargetInventory({ root, target, closure }) {
       const ids = manifest.licenses.map((l) => (typeof l === 'string' ? l : l?.type)).filter(Boolean);
       declared = ids.length > 1 ? `(${ids.join(' OR ')})` : (ids[0] ?? null);
     }
-    const files = licenceFiles(dir);
+    const discovery = discoverLegalFiles(dir);
+    const files = discovery.files;
     const parsed = parseSpdxExpression(declared);
     // C17.1 C — attribution needs a NAMED party. An attribution licence (CC-BY) requires
     // crediting the author as specified, and C17 printed the obligation without ever recording
@@ -516,6 +554,14 @@ export function buildTargetInventory({ root, target, closure }) {
       evidence_provenance: `package.json + ${files.length} licence/notice file(s) read from the `
         + 'materialized package under node_modules/.pnpm',
     };
+    if (discovery.problems.length > 0) {
+      unresolved.push({
+        ...record,
+        issue: 'legal_discovery_incomplete',
+        detail: discovery.problems.join('; '),
+      });
+      continue;
+    }
     if (declared === null || declared.trim() === '') {
       unresolved.push({ ...record, issue: 'no_declared_licence', detail: 'the package declares no licence' });
       continue;

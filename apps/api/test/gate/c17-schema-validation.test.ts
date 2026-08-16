@@ -63,6 +63,7 @@ describe('C17 §3 — official CycloneDX schema validation', () => {
     expect(validator.ok, validator.problems.join('\n')).toBe(true);
     expect(validator.versions!.schema_tag).toBe('1.6.2');
     expect(validator.versions!.schema_commit).toBe('e833d732337dd33aceb45ff1991f896796f1e5e7');
+    expect(validator.versions!.ajv_formats_draft2019).toBe('1.6.1');
   });
 
   // ── §3.4 both REAL SBOMs are actually evaluated ──────────────────────────────
@@ -263,6 +264,58 @@ describe('C17 §3 — official CycloneDX schema validation', () => {
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(pattern);
       expect(r.validate, 'nothing may compile once provenance fails').toBeNull();
+    });
+  });
+
+  it.each([
+    [
+      'a forged per-file path',
+      (m: any) => { m.files[0].path = 'vendor/cyclonedx/1.6.2/attacker.schema.json'; },
+      /path .* the code-owned provenance requires/,
+    ],
+    [
+      'a forged Apache licence holder',
+      (m: any) => { m.licence.holder = 'Attacker-controlled publisher'; },
+      /licence\.holder .* the code-owned provenance requires/,
+    ],
+    [
+      'a forged Apache licence notice',
+      (m: any) => { m.licence.notice = 'No redistribution obligations apply.'; },
+      /licence\.notice .* the code-owned provenance requires/,
+    ],
+    [
+      'a forged Apache licence URL',
+      (m: any) => { m.licence.url = 'https://attacker.example/LICENSE'; },
+      /licence\.url .* the code-owned provenance requires/,
+    ],
+  ])('verifyVendoredSchemas rejects %s', (_label, mutate, pattern) => {
+    withVendorCopy((root, dir) => {
+      const mp = join(dir, 'MANIFEST.json');
+      const m = JSON.parse(readFileSync(mp, 'utf8'));
+      mutate(m);
+      writeFileSync(mp, JSON.stringify(m, null, 2));
+
+      // Exercise the provenance preflight directly: failure cannot be an incidental Ajv
+      // compilation error, and no manifest-supplied value becomes its own expectation.
+      const r = verifyVendoredSchemas(root);
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(pattern);
+    });
+  });
+
+  it.each([
+    ['upstream', (m: any) => { m.upstream.attacker_provenance = 'https://attacker.example'; }],
+    ['licence', (m: any) => { m.licence.waiver = 'all obligations waived'; }],
+    ['file', (m: any) => { m.files[0].mirror = 'https://attacker.example/schema'; }],
+  ])('rejects an undeclared %s provenance field instead of silently ignoring it', (_label, mutate) => {
+    withVendorCopy((root, dir) => {
+      const mp = join(dir, 'MANIFEST.json');
+      const m = JSON.parse(readFileSync(mp, 'utf8'));
+      mutate(m);
+      writeFileSync(mp, JSON.stringify(m, null, 2));
+      const r = verifyVendoredSchemas(root);
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/fields .* are not the exact code-owned set/);
     });
   });
 

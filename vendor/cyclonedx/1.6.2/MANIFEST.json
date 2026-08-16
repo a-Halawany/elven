@@ -18,8 +18,8 @@
   "acquired_on": "2026-08-14",
   "licence": {
     "spdx_id": "Apache-2.0",
-    "holder": "OWASP Foundation / CycloneDX contributors",
-    "notice": "The CycloneDX specification and its JSON schemas are published under Apache-2.0. The files are vendored verbatim; no modification is permitted, and any modification fails the digest preflight.",
+    "holder": "OWASP Foundation",
+    "notice": "Copyright OWASP Foundation\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.",
     "url": "https://github.com/CycloneDX/specification/blob/e833d732337dd33aceb45ff1991f896796f1e5e7/LICENSE"
   },
   "files": [

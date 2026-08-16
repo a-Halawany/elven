@@ -24,8 +24,15 @@ import { createHash } from 'node:crypto';
 export const REPOSITORY = 'a-Halawany/elven';
 export const API_ORIGIN = 'https://api.github.com';
 export const WORKFLOW_PATH = '.github/workflows/ci.yml';
+export const WORKFLOW_NAME = 'ci';
 export const EXPECTED_EVENT = 'push';
 export const EXPECTED_BRANCH = 'main';
+export const EXPECTED_REF = `refs/heads/${EXPECTED_BRANCH}`;
+export const EXPECTED_JOB = 'supply-chain';
+export const EXPECTED_RUNNER_OS = 'Linux';
+export const EXPECTED_RUNNER_ARCH = 'X64';
+export const EXPECTED_RUNNER_LABEL = 'ubuntu-latest';
+export const EXPECTED_WORKFLOW_REF = `${REPOSITORY}/${WORKFLOW_PATH}@${EXPECTED_REF}`;
 
 /** Every job that must exist and must have succeeded. */
 export const REQUIRED_JOBS = Object.freeze(['build-test', 'supply-chain', 'browser-regression']);
@@ -36,8 +43,13 @@ export const REQUIRED_SUPPLY_CHAIN_STEPS = Object.freeze([
   'Package + verify the C17 evidence archive (tracked packager, blocking)',
 ]);
 
-/** The artifact the finalizer must find bound to the same run. */
-export const REQUIRED_ARTIFACT = 'c17-evidence-archive';
+/**
+ * Bind the exact INNER evidence ZIP digest into GitHub's authoritative artifact name. The REST
+ * `digest` describes Actions' wrapper ZIP, not the file inside it, so a fixed artifact name proves
+ * only that something was uploaded. The digest suffix proves which C17 ZIP it contained.
+ */
+export const REQUIRED_ARTIFACT_PREFIX = 'c17-evidence-archive-';
+export const artifactNameForDigest = (digest) => `${REQUIRED_ARTIFACT_PREFIX}${digest}`;
 
 const NUMERIC = /^[1-9][0-9]{0,17}$/;
 const SHA40 = /^[0-9a-f]{40}$/;
@@ -62,7 +74,10 @@ export function validateReceiptShape(receipt, { requireHosted }) {
     }
     return { ok: problems.length === 0, problems, ids: null, local: true };
   }
-  for (const field of ['run_id', 'run_attempt', 'head_sha', 'repository', 'workflow', 'job']) {
+  for (const field of [
+    'api_url', 'html_url', 'repository', 'run_id', 'run_number', 'run_attempt', 'workflow',
+    'workflow_ref', 'job', 'head_sha', 'ref', 'event', 'runner_os', 'runner_arch',
+  ]) {
     if (typeof receipt[field] !== 'string' || receipt[field].length === 0) {
       problems.push(`run receipt has no '${field}'`);
     }
@@ -77,6 +92,9 @@ export function validateReceiptShape(receipt, { requireHosted }) {
   if (!NUMERIC.test(receipt.run_attempt)) {
     problems.push(`run receipt run_attempt ${JSON.stringify(receipt.run_attempt)} is not a positive integer`);
   }
+  if (!NUMERIC.test(receipt.run_number)) {
+    problems.push(`run receipt run_number ${JSON.stringify(receipt.run_number)} is not a positive integer`);
+  }
   if (!SHA40.test(receipt.head_sha)) {
     problems.push(`run receipt head_sha ${JSON.stringify(receipt.head_sha)} is not a 40-character git object id`);
   }
@@ -87,12 +105,18 @@ export function validateReceiptShape(receipt, { requireHosted }) {
       + `evidence from ${REPOSITORY}`,
     );
   }
-  if (!REQUIRED_JOBS.includes(receipt.job)) {
-    problems.push(
-      `run receipt names job ${JSON.stringify(receipt.job)}, which is not one of the required jobs `
-      + `(${REQUIRED_JOBS.join(', ')})`,
-    );
-  }
+  const exact = (field, want) => {
+    if (receipt[field] !== want) {
+      problems.push(`run receipt ${field} is ${JSON.stringify(receipt[field])}; expected ${JSON.stringify(want)}`);
+    }
+  };
+  exact('workflow', WORKFLOW_NAME);
+  exact('workflow_ref', EXPECTED_WORKFLOW_REF);
+  exact('job', EXPECTED_JOB);
+  exact('ref', EXPECTED_REF);
+  exact('event', EXPECTED_EVENT);
+  exact('runner_os', EXPECTED_RUNNER_OS);
+  exact('runner_arch', EXPECTED_RUNNER_ARCH);
   // An api_url in the receipt is IGNORED for fetching. If present it must at least agree with
   // what this module would construct, so a mismatch is reported rather than silently tolerated.
   if (receipt.api_url !== undefined) {
@@ -104,6 +128,7 @@ export function validateReceiptShape(receipt, { requireHosted }) {
       );
     }
   }
+  exact('html_url', `https://github.com/${REPOSITORY}/actions/runs/${receipt.run_id}`);
   if (problems.length > 0) return { ok: false, problems, ids: null };
   return {
     ok: true,
@@ -115,6 +140,7 @@ export function validateReceiptShape(receipt, { requireHosted }) {
       headSha: receipt.head_sha,
       job: receipt.job,
       workflow: receipt.workflow,
+      runNumber: receipt.run_number,
     },
   };
 }
@@ -164,7 +190,7 @@ export async function apiGet(url, { fetchImpl = globalThis.fetch, token = null }
  */
 export async function verifyHostedRun(receipt, {
   expectedHeadSha, requireHosted = true, fetchImpl = globalThis.fetch, token = null,
-  requireArtifact = true,
+  requireArtifact = true, expectedArtifactDigest = null,
 } = {}) {
   const problems = [];
   const notes = [];
@@ -174,7 +200,7 @@ export async function verifyHostedRun(receipt, {
     notes.push('run_receipt=LOCAL (not produced by a hosted run)');
     return { ok: true, problems, notes, local: true };
   }
-  const { runId, runAttempt, headSha } = shape.ids;
+  const { runId, runAttempt, runNumber, headSha } = shape.ids;
   if (expectedHeadSha !== undefined && headSha !== expectedHeadSha) {
     problems.push(`run receipt head_sha ${headSha} != the source receipt's ${expectedHeadSha}`);
   }
@@ -189,15 +215,15 @@ export async function verifyHostedRun(receipt, {
   };
   check('run id', b.id, runId);
   check('run attempt', b.run_attempt, runAttempt);
+  check('run number', b.run_number, runNumber);
   check('head_sha', b.head_sha, headSha);
   check('repository', b.repository?.full_name, REPOSITORY);
   check('event', b.event, EXPECTED_EVENT);
   check('head_branch', b.head_branch, EXPECTED_BRANCH);
   check('status', b.status, 'completed');
   check('conclusion', b.conclusion, 'success');
-  if (typeof b.path === 'string' && b.path !== WORKFLOW_PATH) {
-    problems.push(`GitHub reports workflow path ${JSON.stringify(b.path)}; the evidence requires ${WORKFLOW_PATH}`);
-  }
+  check('workflow name', b.name, WORKFLOW_NAME);
+  check('workflow path', b.path, WORKFLOW_PATH);
   notes.push(
     `github_run=${b.id} attempt=${b.run_attempt} head_sha=${b.head_sha} event=${b.event} `
     + `branch=${b.head_branch} path=${b.path} conclusion=${b.conclusion}`,
@@ -208,26 +234,64 @@ export async function verifyHostedRun(receipt, {
   if (!jobs.ok) {
     problems.push(`jobs endpoint failed: ${jobs.error}`);
   } else {
-    const byName = new Map((jobs.body.jobs ?? []).map((j) => [j.name, j]));
+    const allJobs = Array.isArray(jobs.body?.jobs) ? jobs.body.jobs : [];
+    if (!Array.isArray(jobs.body?.jobs)) {
+      problems.push('GitHub jobs response has no jobs array');
+    }
+    if (!Number.isInteger(jobs.body?.total_count)
+      || jobs.body.total_count !== allJobs.length) {
+      problems.push(
+        `GitHub jobs response total_count ${JSON.stringify(jobs.body?.total_count)} does not equal `
+        + `the returned jobs length ${allJobs.length}`,
+      );
+    }
+    const byName = new Map();
+    for (const j of allJobs) {
+      if (byName.has(j.name)) problems.push(`GitHub reports duplicate jobs named '${j.name}'`);
+      else byName.set(j.name, j);
+    }
     for (const name of REQUIRED_JOBS) {
       const j = byName.get(name);
       if (j === undefined) { problems.push(`GitHub reports no job named '${name}' for this run`); continue; }
       if (j.conclusion !== 'success') {
         problems.push(`GitHub reports job '${name}' concluded ${JSON.stringify(j.conclusion)}, not success`);
       }
-      if (j.head_sha !== undefined && j.head_sha !== headSha) {
-        problems.push(`GitHub reports job '${name}' at head_sha ${j.head_sha}, not ${headSha}`);
+      if (j.head_sha !== headSha) {
+        problems.push(`GitHub reports job '${name}' at head_sha ${JSON.stringify(j.head_sha)}, not ${headSha}`);
       }
     }
     const sc = byName.get('supply-chain');
     if (sc !== undefined) {
-      const steps = new Map((sc.steps ?? []).map((s) => [s.name, s]));
+      if (sc.status !== 'completed') {
+        problems.push(`GitHub reports supply-chain job status ${JSON.stringify(sc.status)}, not completed`);
+      }
+      if (!Array.isArray(sc.labels) || !sc.labels.includes(EXPECTED_RUNNER_LABEL)) {
+        problems.push(
+          `GitHub reports supply-chain job labels ${JSON.stringify(sc.labels)}; `
+          + `the code-owned '${EXPECTED_RUNNER_LABEL}' label is required`,
+        );
+      }
+      const steps = new Map();
+      if (!Array.isArray(sc.steps)) {
+        problems.push('GitHub supply-chain job has no steps array');
+      }
+      for (const s of Array.isArray(sc.steps) ? sc.steps : []) {
+        if (steps.has(s.name)) problems.push(`GitHub reports duplicate supply-chain steps named '${s.name}'`);
+        else steps.set(s.name, s);
+      }
       for (const name of REQUIRED_SUPPLY_CHAIN_STEPS) {
         const st = steps.get(name);
         if (st === undefined) {
           problems.push(`GitHub reports no supply-chain step named '${name}'`);
-        } else if (st.conclusion !== 'success') {
-          problems.push(`GitHub reports supply-chain step '${name}' concluded ${JSON.stringify(st.conclusion)}`);
+        } else {
+          if (st.status !== 'completed') {
+            problems.push(
+              `GitHub reports supply-chain step '${name}' status ${JSON.stringify(st.status)}, not completed`,
+            );
+          }
+          if (st.conclusion !== 'success') {
+            problems.push(`GitHub reports supply-chain step '${name}' concluded ${JSON.stringify(st.conclusion)}`);
+          }
         }
       }
     }
@@ -236,21 +300,67 @@ export async function verifyHostedRun(receipt, {
 
   // ── ARTIFACTS: the evidence archive must be bound to THIS run ───────────────
   if (requireArtifact) {
+    let requiredArtifact = null;
+    if (typeof expectedArtifactDigest !== 'string' || !/^[0-9a-f]{64}$/.test(expectedArtifactDigest)) {
+      problems.push(
+        `hosted evidence requires the exact inner archive SHA-256; got ${JSON.stringify(expectedArtifactDigest)}`,
+      );
+    } else {
+      requiredArtifact = artifactNameForDigest(expectedArtifactDigest);
+    }
     const arts = await apiGet(artifactsUrl(runId), { fetchImpl, token });
     if (!arts.ok) {
       problems.push(`artifacts endpoint failed: ${arts.error}`);
     } else {
-      const found = (arts.body.artifacts ?? []).filter((a) => a.name === REQUIRED_ARTIFACT);
-      if (found.length === 0) {
-        problems.push(`GitHub reports no '${REQUIRED_ARTIFACT}' artifact for run ${runId}`);
+      const all = Array.isArray(arts.body?.artifacts) ? arts.body.artifacts : [];
+      if (!Array.isArray(arts.body?.artifacts)) {
+        problems.push('GitHub artifacts response has no artifacts array');
+      }
+      if (!Number.isInteger(arts.body?.total_count)
+        || arts.body.total_count !== all.length) {
+        problems.push(
+          `GitHub artifacts response total_count ${JSON.stringify(arts.body?.total_count)} does not equal `
+          + `the returned artifacts length ${all.length}`,
+        );
+      }
+      const family = all.filter((a) => typeof a?.name === 'string'
+        && a.name.startsWith(REQUIRED_ARTIFACT_PREFIX));
+      const found = requiredArtifact === null ? [] : family.filter((a) => a.name === requiredArtifact);
+      if (family.length !== 1) {
+        problems.push(
+          `GitHub reports ${family.length} '${REQUIRED_ARTIFACT_PREFIX}<sha256>' artifacts; exactly one is required`,
+        );
+      }
+      if (requiredArtifact !== null && found.length === 0) {
+        problems.push(`GitHub reports no artifact named '${requiredArtifact}' for the supplied evidence ZIP`);
+      } else if (found.length !== 1) {
+        problems.push(`GitHub reports ${found.length} exact evidence artifacts; exactly one is required`);
       } else {
         for (const a of found) {
+          if (a.expired !== false) {
+            problems.push(`artifact '${a.name}' is expired or does not declare expired=false`);
+          }
+          if (!Number.isInteger(a.size_in_bytes) || a.size_in_bytes <= 0) {
+            problems.push(`artifact '${a.name}' has invalid size_in_bytes ${JSON.stringify(a.size_in_bytes)}`);
+          }
           const sha = a.workflow_run?.head_sha;
-          if (sha !== undefined && sha !== headSha) {
-            problems.push(`artifact '${a.name}' is bound to head_sha ${sha}, not ${headSha}`);
+          if (sha !== headSha) {
+            problems.push(`artifact '${a.name}' is bound to head_sha ${JSON.stringify(sha)}, not ${headSha}`);
+          }
+          if (a.workflow_run?.id !== Number(runId)) {
+            problems.push(
+              `artifact '${a.name}' is bound to workflow_run.id ${JSON.stringify(a.workflow_run?.id)}, `
+              + `not ${runId}`,
+            );
+          }
+          if (typeof a.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(a.digest)) {
+            problems.push(`artifact '${a.name}' has no valid GitHub wrapper digest`);
           }
         }
-        notes.push(`github_artifact=${REQUIRED_ARTIFACT} count=${found.length}`);
+        notes.push(
+          `github_artifact=${requiredArtifact} inner_sha256=${expectedArtifactDigest} `
+          + `wrapper_digest=${found[0]?.digest} count=${found.length}`,
+        );
       }
     }
   }

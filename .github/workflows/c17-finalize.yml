@@ -1,22 +1,18 @@
-# C17.2 C — POST-RUN EVIDENCE FINALIZATION.
+# C17.2 I — POST-RUN, CROSS-HOST EVIDENCE FINALIZATION.
 #
-# ── WHY A SECOND WORKFLOW ────────────────────────────────────────────────────────
-# The evidence archive is built inside the CI run so its receipt comes from the real Actions
-# environment. But at that moment the run is still in progress: its own job conclusions do not
-# exist yet, and neither does its artifact listing. A verifier asked to confirm "all three jobs
-# succeeded" from inside one of those jobs would be asking about the future.
+# The Linux source run cannot prove its own eventual conclusion or artifact listing. This
+# workflow starts only after that run completes successfully, downloads that run's exact C17
+# archive, independently regenerates C16/C17 on GitHub's macOS-14 ARM64 runner, compares the
+# code-owned nine-artifact set byte-for-byte, and uploads one deterministic finalized ZIP.
 #
-# So verification of the hosted claim happens HERE, after the source run has completed, triggered
-# by `workflow_run`. This workflow re-reads the archive the source run produced and verifies it in
-# required-hosted online mode against GitHub's public API — at which point job conclusions,
-# steps and artifacts are all real facts about a finished run.
-#
-# Nothing here pretends information was known earlier than it was: the source run records what it
-# can observe, and this run records what only it can observe.
+# The finalizer itself cannot query its own future conclusion/artifact while it is running.
+# Reviewers therefore run `c17-cross-host-finalization.mjs verify --online` after completion; that
+# command verifies BOTH the source run and this finalizer run/job/steps/artifact against code-owned
+# GitHub API endpoints.
 name: C17 finalize
 on:
   workflow_run:
-    workflows: ['CI']
+    workflows: ['ci']
     types: [completed]
 
 permissions:
@@ -25,13 +21,12 @@ permissions:
 
 jobs:
   finalize:
-    # Only a SUCCESSFUL run on main can produce final evidence.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - name: Check out the EXACT source the run was made from
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -39,69 +34,80 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version-file: .nvmrc
+          node-version: 24.11.1
           cache: pnpm
       - name: Install dependencies (materializes the declared linux-x64-glibc target)
         run: pnpm install --frozen-lockfile
       - name: Download the archive the SOURCE run produced
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: c17-evidence-archive
+          pattern: c17-evidence-archive-*
+          merge-multiple: true
           path: incoming
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify the archive in REQUIRED-HOSTED ONLINE mode against the public API
+      - name: Verify the source C17 archive online and hosted
         env:
-          # Used only for API rate limiting; the endpoint is constructed in code and this token
-          # cannot redirect it. See scripts/gate/lib/hosted-run.mjs.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          ZIP="$(ls incoming/c17-evidence-*.zip)"
-          echo "verifying $ZIP against run ${{ github.event.workflow_run.id }}"
+          COUNT="$(find incoming -type f -name 'c17-evidence-*.zip' | wc -l | tr -d ' ')"
+          test "$COUNT" = 1
+          SOURCE_ZIP="$(find incoming -type f -name 'c17-evidence-*.zip')"
+          echo "C17_SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
           node scripts/gate/package-c17-evidence.mjs verify \
-            --zip "$ZIP" --root "$PWD" --online --require-hosted
-          {
-            echo "### C17 evidence finalization"
-            echo
-            echo "| field | value |"
-            echo "|---|---|"
-            echo "| source run | ${{ github.event.workflow_run.id }} |"
-            echo "| head SHA | \`${{ github.event.workflow_run.head_sha }}\` |"
-            echo "| archive | \`$(basename "$ZIP")\` |"
-            echo "| archive sha256 | \`$(sha256sum "$ZIP" | cut -d' ' -f1)\` |"
-            echo "| verification | required-hosted online: PASS |"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Write the finalization receipt
+            --zip "$SOURCE_ZIP" --root "$PWD" --online --require-hosted
+      - name: Generate FINAL C16 + C17 artifacts on macOS ARM64
         run: |
           set -euo pipefail
-          ZIP="$(ls incoming/c17-evidence-*.zip)"
-          mkdir -p finalized
-          cat > finalized/finalization-receipt.json <<JSON
+          C16_OUT="$(mktemp -d)"
+          C17_OUT="$(mktemp -d)"
+          RECEIPT="$(mktemp -d)/finalizer-receipt.json"
+          AS_OF="$(node scripts/gate/c17-cross-host-finalization.mjs receipt \
+            --source-zip "$C17_SOURCE_ZIP" --out "$RECEIPT")"
+          echo "C17_DARWIN_C16=$C16_OUT" >> "$GITHUB_ENV"
+          echo "C17_DARWIN_C17=$C17_OUT" >> "$GITHUB_ENV"
+          node scripts/gate/generate-closures.mjs \
+            --out "$C16_OUT" --final --expected-sha "${{ github.event.workflow_run.head_sha }}"
+          node scripts/gate/licence-obligations.mjs \
+            --out "$C17_OUT" --as-of "$AS_OF" \
+            --final --expected-sha "${{ github.event.workflow_run.head_sha }}"
+      - name: Create + verify the finalized cross-host evidence
+        run: |
+          set -euo pipefail
+          FINALIZED="$(mktemp -d)"
+          node scripts/gate/c17-cross-host-finalization.mjs create \
+            --source-zip "$C17_SOURCE_ZIP" \
+            --darwin-c16 "$C17_DARWIN_C16" \
+            --darwin-c17 "$C17_DARWIN_C17" \
+            --finalizer-receipt "$C17_FINALIZER_RECEIPT" \
+            --out "$FINALIZED"
+          COUNT="$(find "$FINALIZED" -type f -name 'c17-cross-host-finalized-*.zip' | wc -l | tr -d ' ')"
+          test "$COUNT" = 1
+          FINAL_ZIP="$(find "$FINALIZED" -type f -name 'c17-cross-host-finalized-*.zip')"
+          FINAL_DIGEST="$(cut -d' ' -f1 "$FINAL_ZIP.sha256")"
+          node scripts/gate/c17-cross-host-finalization.mjs verify \
+            --zip "$FINAL_ZIP" --root "$PWD"
           {
-            "finalized_by_run": "${{ github.run_id }}",
-            "finalized_by_attempt": "${{ github.run_attempt }}",
-            "finalizer_workflow": "${{ github.workflow }}",
-            "source_run": "${{ github.event.workflow_run.id }}",
-            "source_run_attempt": "${{ github.event.workflow_run.run_attempt }}",
-            "source_conclusion": "${{ github.event.workflow_run.conclusion }}",
-            "head_sha": "${{ github.event.workflow_run.head_sha }}",
-            "head_branch": "${{ github.event.workflow_run.head_branch }}",
-            "event": "${{ github.event.workflow_run.event }}",
-            "archive": "$(basename "$ZIP")",
-            "archive_sha256": "$(sha256sum "$ZIP" | cut -d' ' -f1)",
-            "archive_bytes": $(stat -c%s "$ZIP"),
-            "verification_mode": "online+require-hosted",
-            "verification_result": "PASS"
-          }
-          JSON
-          cp "$ZIP" finalized/
-          cat finalized/finalization-receipt.json
-      - name: Upload the FINALIZED evidence
+            echo '### C17.2 cross-host finalization'
+            echo
+            echo "- source run: ${{ github.event.workflow_run.id }} attempt ${{ github.event.workflow_run.run_attempt }}"
+            echo "- source SHA: \`${{ github.event.workflow_run.head_sha }}\`"
+            echo "- final ZIP: \`$(basename "$FINAL_ZIP")\`"
+            echo "- final ZIP SHA-256: \`$FINAL_DIGEST\`"
+            echo '- Linux/macOS exact-nine comparison: PASS'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the FINALIZED cross-host evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c17-evidence-finalized
-          path: finalized
+          # The API-authenticated artifact name commits to the exact INNER finalized ZIP bytes.
+          # The REST `digest` is also required by the verifier, but describes Actions' wrapper ZIP.
+          name: c17-evidence-finalized-${{ env.C17_FINALIZED_SHA256 }}
+          path: |
+            ${{ env.C17_FINALIZED_ZIP }}
+            ${{ env.C17_FINALIZED_SIDECAR }}
           if-no-files-found: error

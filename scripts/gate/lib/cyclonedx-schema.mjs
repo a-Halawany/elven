@@ -62,10 +62,17 @@ export const SCHEMA_PROVENANCE = Object.freeze({
     'jsf-0.82.schema.json': 'vendor/cyclonedx/1.6.2/jsf-0.82.schema.json',
     'spdx.schema.json': 'vendor/cyclonedx/1.6.2/spdx.schema.json',
   }),
-  licence_holder: 'OWASP Foundation / CycloneDX contributors',
-  licence_notice: 'The CycloneDX specification and its JSON schemas are published under '
-    + 'Apache-2.0. The files are vendored verbatim; no modification is permitted, and any '
-    + 'modification fails the digest preflight.',
+  licence_holder: 'OWASP Foundation',
+  licence_notice: 'Copyright OWASP Foundation\n\n'
+    + 'Licensed under the Apache License, Version 2.0 (the "License");\n'
+    + 'you may not use this file except in compliance with the License.\n'
+    + 'You may obtain a copy of the License at\n\n'
+    + '    http://www.apache.org/licenses/LICENSE-2.0\n\n'
+    + 'Unless required by applicable law or agreed to in writing, software\n'
+    + 'distributed under the License is distributed on an "AS IS" BASIS,\n'
+    + 'WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n'
+    + 'See the License for the specific language governing permissions and\n'
+    + 'limitations under the License.',
   licence_url: 'https://github.com/CycloneDX/specification/blob/'
     + 'e833d732337dd33aceb45ff1991f896796f1e5e7/LICENSE',
   repository: 'https://github.com/CycloneDX/specification',
@@ -116,6 +123,24 @@ export function verifyVendoredSchemas(root = ROOT) {
     return { ok: false, problems: [`C17 vendored schema manifest does not parse: ${e instanceof Error ? e.message : e}`], manifest: null, bytes: null };
   }
 
+  const requireExactKeys = (value, expected, label) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      problems.push(`C17 vendored schema ${label} is not an object`);
+      return;
+    }
+    const actual = Object.keys(value).sort();
+    const wanted = [...expected].sort();
+    if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+      problems.push(
+        `C17 vendored schema ${label} fields ${JSON.stringify(actual)} are not the exact `
+        + `code-owned set ${JSON.stringify(wanted)}`,
+      );
+    }
+  };
+  requireExactKeys(manifest, ['$comment', 'upstream', 'acquired_on', 'licence', 'files'], 'manifest');
+  requireExactKeys(manifest.upstream, ['repository', 'release_tag', 'commit'], 'upstream provenance');
+  requireExactKeys(manifest.licence, ['spdx_id', 'holder', 'notice', 'url'], 'licence provenance');
+
   // The manifest is checked against CODE, not consulted as the source of truth. Forging a tag,
   // commit, URL or licence in the document is therefore a mismatch, not a redefinition.
   const up = manifest.upstream ?? {};
@@ -160,6 +185,7 @@ export function verifyVendoredSchemas(root = ROOT) {
 
   const bytes = new Map();
   for (const e of entries) {
+    requireExactKeys(e, ['file', 'path', 'url', 'bytes', 'sha256'], `file provenance ${JSON.stringify(e?.file)}`);
     const want = SCHEMA_PROVENANCE.files[e.file];
     if (typeof e.file !== 'string' || e.file.includes('/') || e.file.includes('..') || want === undefined) {
       problems.push(`C17 manifest entry ${JSON.stringify(e.file)} is not a bare file name in the code-owned closure`);
@@ -203,10 +229,10 @@ export function verifyVendoredSchemas(root = ROOT) {
     }
     bytes.set(e.file, buf);
   }
-  if (bytes.size !== SCHEMA_FILES.length) {
+  if (bytes.size !== SCHEMA_FILES.length || problems.length > 0) {
     return { ok: false, problems, manifest, bytes: null };
   }
-  return { ok: problems.length === 0, problems, manifest, bytes };
+  return { ok: true, problems, manifest, bytes };
 }
 
 /**
@@ -276,7 +302,10 @@ export function compileBomValidator(root = ROOT) {
     ajv.addFormat('iri-reference', {
       type: 'string',
       validate: (v) => {
-        if (typeof v !== 'string' || v.length === 0) return false;
+        // The empty string is a valid path-empty relative reference under RFC 3986. Any
+        // particular CycloneDX field that forbids it does so with its own minLength; the format
+        // implementation must not silently redefine the standard.
+        if (typeof v !== 'string') return false;
         if (BAD_PERCENT.test(v)) return false;
         if (HAS_SCHEME.test(v)) {
           try { return new URL(v) !== null; } catch { return false; }
@@ -302,6 +331,7 @@ export function compileBomValidator(root = ROOT) {
       versions: {
         ajv: require('ajv/package.json').version,
         ajv_formats: require('ajv-formats/package.json').version,
+        ajv_formats_draft2019: require('ajv-formats-draft2019/package.json').version,
         node: process.version,
         schema_tag: pre.manifest.upstream.release_tag,
         schema_commit: pre.manifest.upstream.commit,

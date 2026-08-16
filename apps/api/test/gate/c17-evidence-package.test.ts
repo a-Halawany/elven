@@ -9,9 +9,10 @@
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import {
-  readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync, existsSync, symlinkSync,
+  readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync, existsSync, symlinkSync, cpSync,
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
@@ -108,6 +109,244 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     expect(spawnSync('zip', ['-qrX', z, '.'], { cwd: payload, encoding: 'utf8' }).status).toBe(0);
     return { dir: d, zip: z };
   };
+
+  /** Rebind every archive-owned claim after a semantic mutation. */
+  const rebind = (payload: string, artifactRel: string | null = null) => {
+    const digest = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+    if (artifactRel !== null) {
+      const manifestPath = join(payload, 'licence/c17-manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      const entry = manifest.artifacts.find((a: any) => a.path === artifactRel);
+      expect(entry, `c17-manifest must bind ${artifactRel}`).toBeDefined();
+      const bytes = readFileSync(join(payload, 'licence', artifactRel));
+      entry.bytes = bytes.byteLength;
+      entry.sha256 = digest(bytes);
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    }
+    const lines = PAYLOAD.map(({ path }) => {
+      const bytes = readFileSync(join(payload, path));
+      return `${digest(bytes)}  ${path}`;
+    }).sort();
+    writeFileSync(join(payload, 'SHA256SUMS.txt'), `${lines.join('\n')}\n`);
+  };
+
+  it.each([
+    ['THIRD_PARTY_NOTICES.md', 'TAMPERED LEGAL NOTICE\n'],
+    ['license-inventory.json', '{}\n'],
+    ['license-obligations.json', '{}\n'],
+    ['license-reconciliation.json', '{}\n'],
+  ])('rejects a fully rebound semantic substitution of %s', async (artifact, replacement) => {
+    const { dir, zip: z } = repack((p) => {
+      writeFileSync(join(p, 'licence', artifact), replacement);
+      rebind(p, artifact);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/NOT what this checkout regenerates/);
+      expect(r.problems.join('\n')).not.toMatch(/the manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('rejects a fully rebound C16 RESULT-PASS receipt and its correspondingly forged closure binding', async () => {
+    const { dir, zip: z } = repack((p) => {
+      const resultPath = join(p, 'sbom/RESULT-PASS.txt');
+      writeFileSync(resultPath, 'outcome: PASS\nmode: preliminary\nATTACKER RECEIPT\n');
+      const closurePath = join(p, 'sbom/closure-reconciliation.json');
+      const closure = JSON.parse(readFileSync(closurePath, 'utf8'));
+      const record = closure.evidence_artifacts.find((item: any) => item.path === 'RESULT-PASS.txt');
+      const bytes = readFileSync(resultPath);
+      record.bytes = bytes.byteLength;
+      record.sha256 = createHash('sha256').update(bytes).digest('hex');
+      writeFileSync(closurePath, `${JSON.stringify(closure, null, 2)}\n`);
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/RESULT-PASS receipt does not match the exact code-owned PASS contract/);
+      expect(r.problems.join('\n')).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it.each([
+    ['an undeclared attacker field', (receipt: any) => { receipt.attacker_provenance = 'trusted'; }],
+    ['a contradictory final posture', (receipt: any) => {
+      receipt.final_source_posture = { ...receipt.final_source_posture, worktree_clean_after: false };
+    }],
+    ['a contradictory SBOM claim', (receipt: any) => {
+      receipt.sboms.production.sha256 = 'a'.repeat(64);
+    }],
+  ])('rejects a fully rebound source receipt carrying %s', async (_label, mutate) => {
+    const { dir, zip: z } = repack((p) => {
+      const f = join(p, 'receipt/source-receipt.json');
+      const receipt = JSON.parse(readFileSync(f, 'utf8'));
+      mutate(receipt);
+      writeFileSync(f, `${JSON.stringify(receipt, null, 2)}\n`);
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      const joined = r.problems.join('\n');
+      expect(joined).toMatch(/source receipt (fields|final_source_posture|sboms)/);
+      expect(joined).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('rejects a fully rebound c17-manifest with an empty artifact table', async () => {
+    const { dir, zip: z } = repack((p) => {
+      const f = join(p, 'licence/c17-manifest.json');
+      const manifest = JSON.parse(readFileSync(f, 'utf8'));
+      manifest.artifacts = [];
+      writeFileSync(f, `${JSON.stringify(manifest, null, 2)}\n`);
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/c17-manifest\.json.*NOT what this checkout regenerates/);
+      expect(r.problems.join('\n')).not.toMatch(/the manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('rejects a checksum manifest that repeats one real payload while leaving the others unbound', async () => {
+    const { dir, zip: z } = repack((p) => {
+      const one = PAYLOAD[0].path;
+      const digest = createHash('sha256').update(readFileSync(join(p, one))).digest('hex');
+      // Preserve the expected line count and use only a genuine in-archive regular file. A
+      // count-only verifier used to accept this while twenty payloads had no checksum entry.
+      writeFileSync(join(p, 'SHA256SUMS.txt'), `${Array(PAYLOAD.length).fill(`${digest}  ${one}`).join('\n')}\n`);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      const joined = r.problems.join('\n');
+      expect(joined).toMatch(/DUPLICATE checksum path/);
+      expect(joined).toMatch(/does not bind payload/);
+      expect(joined).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('rejects a fully rebound result receipt with contradictory trailing text', async () => {
+    const { dir, zip: z } = repack((p) => {
+      const f = join(p, 'receipt/RESULT.txt');
+      writeFileSync(f, `${readFileSync(f, 'utf8')}C17 FAIL — TAMPERED TRAILER\n`);
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/receipt\/RESULT\.txt is not byte-identical/);
+      expect(r.problems.join('\n')).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('rejects a fully rebound substituted C16 closure-reconciliation payload', async () => {
+    const { dir, zip: z } = repack((p) => {
+      writeFileSync(join(p, 'sbom/closure-reconciliation.json'), '{}\n');
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      const joined = r.problems.join('\n');
+      expect(joined).toMatch(/C16 closure reconciliation.*source|target set/);
+      expect(joined).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it.each([
+    ['status', (doc: any) => { doc.status = 'ATTACKER-CONTROLLED PASS'; }],
+    ['artifact', (doc: any) => { doc.artifact = 'attacker-authored closure'; }],
+    ['final_source_posture', (doc: any) => {
+      doc.final_source_posture = { worktree_clean: true, attacker: true };
+    }],
+  ])('rejects a fully rebound C16 %s claim even when every SBOM remains genuine', async (_field, mutate) => {
+    const { dir, zip: z } = repack((p) => {
+      const f = join(p, 'sbom/closure-reconciliation.json');
+      const doc = JSON.parse(readFileSync(f, 'utf8'));
+      mutate(doc);
+      writeFileSync(f, `${JSON.stringify(doc, null, 2)}\n`);
+      rebind(p);
+    });
+    try {
+      const r = await verify({ zipPath: z, root: REPO });
+      expect(r.ok).toBe(false);
+      const joined = r.problems.join('\n');
+      expect(joined).toMatch(/complete source-derived report differs/);
+      expect(joined).not.toMatch(/hashes to .* manifest claims/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('requireFinal refuses a preliminary posture relabelled by changing only mode', () => {
+    const d = mkdtempSync(join(tmpdir(), 'eye-c17f-forged-final-'));
+    try {
+      const forgedC17 = join(d, 'c17');
+      const packageOut = join(d, 'package');
+      cpSync(c17, forgedC17, { recursive: true });
+      mkdirSync(packageOut);
+      const f = join(forgedC17, 'c17-manifest.json');
+      const manifest = JSON.parse(readFileSync(f, 'utf8'));
+      expect(manifest.final_source_posture.mode).toBe('preliminary');
+      manifest.mode = 'final';
+      writeFileSync(f, `${JSON.stringify(manifest, null, 2)}\n`);
+
+      const r = pack({ c16Dir: c16, c17Dir: forgedC17, outDir: packageOut, root: REPO, requireFinal: true });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/final_source_posture\.mode.*preliminary/);
+      expect(r.zip).toBeNull();
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it('the packer refuses a symlinked payload input even when its target has genuine bytes', () => {
+    const d = mkdtempSync(join(tmpdir(), 'eye-c17f-input-link-'));
+    try {
+      const linkedC17 = join(d, 'c17');
+      const packageOut = join(d, 'package');
+      cpSync(c17, linkedC17, { recursive: true });
+      mkdirSync(packageOut);
+      const victim = join(linkedC17, 'license-inventory.json');
+      rmSync(victim);
+      symlinkSync(join(c17, 'license-inventory.json'), victim);
+      const r = pack({ c16Dir: c16, c17Dir: linkedC17, outDir: packageOut, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/license-inventory\.json.*not a real regular file/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it('the verifier refuses a symlink supplied as the archive path', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'eye-c17f-archive-link-'));
+    try {
+      const link = join(d, 'evidence.zip');
+      symlinkSync(zip, link);
+      const r = await verify({ zipPath: link, root: REPO });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/not a real regular file/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
 
   it.each([
     ['a MISSING payload file', (p: string) => { rmSync(join(p, 'sbom/sbom-linux-x64-glibc-dev.cdx.json')); }, /is MISSING 'sbom\/sbom-linux-x64-glibc-dev/],
@@ -227,7 +466,9 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   it('a package built INSIDE Actions carries the run identity, from the environment', async () => {
     const { dir, zip: z } = packWithEnv({
       GITHUB_RUN_ID: '424242', GITHUB_RUN_ATTEMPT: '2', GITHUB_RUN_NUMBER: '7',
-      GITHUB_REPOSITORY: 'a-Halawany/elven', GITHUB_WORKFLOW: 'CI', GITHUB_JOB: 'supply-chain',
+      GITHUB_REPOSITORY: 'a-Halawany/elven', GITHUB_WORKFLOW: 'ci',
+      GITHUB_WORKFLOW_REF: 'a-Halawany/elven/.github/workflows/ci.yml@refs/heads/main',
+      GITHUB_JOB: 'supply-chain',
       GITHUB_SHA: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim(),
       GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'push',
       RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64',
@@ -246,6 +487,17 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       const r = await verify({ zipPath: z, root: REPO });
       expect(r.notes.join('\n')).toMatch(/run_receipt=a-Halawany\/elven#424242 attempt 2 job supply-chain/);
       expect(r.problems.join('\n')).not.toMatch(/run receipt has no/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('online verification refuses a local receipt without attempting to promote it', async () => {
+    const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
+    try {
+      const r = await verify({ zipPath: z, root: REPO, online: true });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/hosted=false/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

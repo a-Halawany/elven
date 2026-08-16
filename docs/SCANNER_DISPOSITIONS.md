@@ -185,7 +185,7 @@ Six new HIGH `stdlib` advisories appeared. C17.1 added them to THIS record while
 `approved_on` at 2026-08-14 — approving, on paper, advisories that did not exist in our evidence
 until the following day. That is a backdated approval and it is corrected here: the six are held by
 **SCX-0005**, approved and reviewed on 2026-08-15, the date the review actually happened. This
-record keeps its original single advisory and its original 2026-08-05 approval.
+record keeps its original single advisory and its actual 2026-08-14 approval.
 
 **Basis — symbol-aware analysis of the exact binary.** `govulncheck` was run in binary mode
 against `/usr/local/bin/gosu` extracted from the exact `linux/amd64` child manifest scanned by
@@ -264,11 +264,11 @@ CRITICAL) + SCX-0004 (1, `stdlib` NOT_AFFECTED) + SCX-0005 (6, `stdlib` NOT_AFFE
 | Expires | 2026-11-05 |
 
 **Why a separate record.** These six advisories entered the scanner's database on 2026-08-14 and
-were first seen by this project on 2026-08-15. SCX-0004 was approved on 2026-08-05 and amended on
-2026-08-14. Adding them to SCX-0004 — which C17.1 did — meant an approval dated before the
-advisories were known covered them anyway. A record's approval date is a claim about when a human
-looked; it cannot precede the thing being looked at. So the six are approved here, on the date the
-review happened, and SCX-0004 keeps its own chronology.
+were first seen by this project on 2026-08-15. SCX-0004 was created and approved on 2026-08-14
+for the advisory its evidence then contained. Adding these six to that record on the following
+day — which C17.1 did — made the earlier approval appear to cover evidence it had never reviewed.
+A record's approval date is a claim about the reviewed scope, not a reusable timestamp. So the
+six are approved here, on the date their review happened, and SCX-0004 keeps its own chronology.
 
 **Basis.** `govulncheck` binary-mode symbol analysis of the exact `gosu` binary (sha256
 `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0`, extracted from the

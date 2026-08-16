@@ -11,8 +11,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
+import {
+  FINALIZER_ARTIFACT, FINALIZER_JOB, FINALIZER_RUNNER_LABEL, FINALIZER_WORKFLOW_NAME,
+  REQUIRED_FINALIZER_STEPS,
+} from '../../../../scripts/gate/c17-cross-host-finalization.mjs';
+import { REQUIRED_ARTIFACT_PREFIX } from '../../../../scripts/gate/lib/hosted-run.mjs';
+
 const REPO = join(__dirname, '..', '..', '..', '..');
 const WORKFLOW = join(REPO, '.github', 'workflows', 'ci.yml');
+const FINALIZER_WORKFLOW = join(REPO, '.github', 'workflows', 'c17-finalize.yml');
+const API_PACKAGE = join(REPO, 'apps', 'api', 'package.json');
+const HERMETIC_META = 'test/gate/hermetic-suite-meta.test.ts';
 
 /** The only job permitted to reach a scanner mirror, registry or vulnerability database. */
 const LIVE_SCAN_JOB = 'supply-chain';
@@ -27,13 +36,25 @@ const FORBIDDEN = [
   { pattern: /\bskopeo\b|\bcrane\b/, why: 'resolves remote image references' },
 ];
 
-type Job = { steps?: Array<{ name?: string; run?: string; uses?: string }> };
+type Step = { name?: string; run?: string; uses?: string; with?: Record<string, unknown> };
+type Job = { steps?: Step[] };
 
 function jobs(): Record<string, Job> {
   return (parseYaml(readFileSync(WORKFLOW, 'utf8')) as { jobs: Record<string, Job> }).jobs;
 }
 
 describe('C16-R3.4.2 §5 — only supply-chain performs live scanning', () => {
+  it('runs the nested hermetic meta-suite in a separate, non-parallel Vitest phase', () => {
+    const pkg = JSON.parse(readFileSync(API_PACKAGE, 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const test = pkg.scripts?.test ?? '';
+    const phases = test.split(/\s*&&\s*/);
+    expect(phases, 'the API test command must have exactly two ordered phases').toHaveLength(2);
+    expect(phases[0]).toBe(`vitest run --exclude ${HERMETIC_META}`);
+    expect(phases[1]).toBe(`vitest run ${HERMETIC_META} --no-file-parallelism`);
+  });
+
   it('the workflow parses and declares the three expected jobs', () => {
     const j = jobs();
     expect(Object.keys(j).sort()).toEqual(['browser-regression', 'build-test', 'supply-chain']);
@@ -73,5 +94,57 @@ describe('C16-R3.4.2 §5 — only supply-chain performs live scanning', () => {
   it('a rerun needs no source change: workflow_dispatch is declared', () => {
     const raw = readFileSync(WORKFLOW, 'utf8');
     expect(raw).toMatch(/^\s*workflow_dispatch:/m);
+  });
+
+  it('the workflow_run finalizer exactly matches the verifier-owned job and step names', () => {
+    const doc = parseYaml(readFileSync(FINALIZER_WORKFLOW, 'utf8')) as {
+      name: string;
+      on: { workflow_run: { workflows: string[]; types: string[] } };
+      jobs: Record<string, Job & { 'runs-on'?: string; 'timeout-minutes'?: number }>;
+    };
+    expect(doc.name).toBe(FINALIZER_WORKFLOW_NAME);
+    expect(doc.on.workflow_run).toEqual({ workflows: ['ci'], types: ['completed'] });
+    expect(Object.keys(doc.jobs)).toEqual([FINALIZER_JOB]);
+    const job = doc.jobs[FINALIZER_JOB];
+    expect(job['runs-on']).toBe(FINALIZER_RUNNER_LABEL);
+    expect(job['timeout-minutes']).toBe(45);
+    const names = (job.steps ?? []).map((step) => step.name).filter((name): name is string => name !== undefined);
+    expect(names).toEqual([...REQUIRED_FINALIZER_STEPS]);
+  });
+
+  it('the finalizer has exactly five immutable actions and uploads the verifier-owned artifact', () => {
+    const doc = parseYaml(readFileSync(FINALIZER_WORKFLOW, 'utf8')) as {
+      jobs: Record<string, Job>;
+    };
+    const steps = doc.jobs[FINALIZER_JOB].steps ?? [];
+    const actions = steps.filter((step) => step.uses !== undefined);
+    expect(actions, 'checkout, pnpm, node, source download and finalized upload').toHaveLength(5);
+    for (const step of actions) {
+      expect(step.uses, `${step.uses} must be commit-pinned`).toMatch(/^[^@]+@[0-9a-f]{40}$/);
+    }
+    const pnpm = actions.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
+    expect(pnpm?.with).toEqual({ version: '11.9.0' });
+    const node = actions.find((step) => step.uses?.startsWith('actions/setup-node@'));
+    expect(node?.with).toEqual({ 'node-version': '24.11.1', cache: 'pnpm' });
+    const upload = steps.find((step) => step.name === 'Upload the FINALIZED cross-host evidence');
+    expect(upload?.with?.name).toBe(
+      `${FINALIZER_ARTIFACT}-${'${{ env.C17_FINALIZED_SHA256 }}'}`,
+    );
+    const download = steps.find((step) => step.name === 'Download the archive the SOURCE run produced');
+    expect(download?.with?.pattern).toBe(`${REQUIRED_ARTIFACT_PREFIX}*`);
+    expect(download?.with?.['merge-multiple']).toBe(true);
+    const runs = steps.map((step) => step.run ?? '').join('\n');
+    expect(runs).toContain('c17-cross-host-finalization.mjs receipt');
+    expect(runs).toContain('c17-cross-host-finalization.mjs create');
+    expect(runs).toContain('c17-cross-host-finalization.mjs verify');
+    expect(runs).toContain('--root "$PWD"');
+  });
+
+  it('the source workflow publishes an API-visible artifact name bound to the inner ZIP digest', () => {
+    const steps = jobs()['supply-chain'].steps ?? [];
+    const upload = steps.find((step) => step.name === 'Upload the C17 evidence archive');
+    expect(upload?.with?.name).toBe(
+      `${REQUIRED_ARTIFACT_PREFIX}${'${{ env.C17_ZIP_SHA256 }}'}`,
+    );
   });
 });

@@ -24,6 +24,7 @@
  */
 import { describe, expect, it, afterAll } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,7 +36,7 @@ import { platformPinnedRef, classifyStepPolicies, INFORMATIONAL_DUPLICATES, enfo
 import { enforce, frozenCacheArgs, fingerprint, acquire } from '../../../../scripts/gate/lib/trivy-cache.mjs';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { reconcileFindings, REQUIRED_FIELDS, FIELD_TYPES } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
+import { reconcileFindings, validateRecords, REQUIRED_FIELDS, FIELD_TYPES } from '../../../../scripts/gate/lib/scanner-exclusions.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 /** Module-level scratch directories, removed at the end of the file's run. */
@@ -652,6 +653,86 @@ describe('C16-R3.1 — the disposition matcher never skips a field because of it
     expect((FIELD_TYPES as Record<string, string>)['severities']).toBe('string[]');
     expect((FIELD_TYPES as Record<string, string>)['result_target']).toBe('string');
     expect((FIELD_TYPES as Record<string, string>)['evidence_sha256']).toBe('string');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('C17.2-H — scanner amendments carry a real, chronological review date', () => {
+  const evidencePath = 'docker-compose.yml';
+  const evidenceBytes = readFileSync(join(REPO, evidencePath));
+  const evidenceSha256 = createHash('sha256').update(evidenceBytes).digest('hex');
+
+  const record = () => ({
+    id: 'SCX-TEST-REVIEW',
+    advisory_ids: ['CVE-2026-99999'],
+    image: `example.invalid/image@sha256:${'a'.repeat(64)}`,
+    scan_platform: 'linux/amd64',
+    package_name: 'example',
+    package_purl: 'pkg:npm/example@1.0.0',
+    installed_version: '1.0.0',
+    severities: ['HIGH'],
+    result_target: 'usr/bin/example',
+    reason: 'Synthetic complete record used only to exercise amendment chronology.',
+    compensating_controls: ['The fixture is not used to govern a real finding.'],
+    owner: 'gate-owner',
+    approver: 'independent-reviewer',
+    evidence: evidencePath,
+    evidence_sha256: evidenceSha256,
+    evidence_files: [{ path: evidencePath, sha256: evidenceSha256 }],
+    classification: 'RISK_ACCEPTED',
+    approved_on: '2026-08-15',
+    reviewed_on: '2026-08-15',
+    expires_on: '2026-11-05',
+  });
+
+  const validate = (r: Record<string, unknown>, runDate = '2026-08-16') => validateRecords(
+    { schema_version: '2.0.0', records: [r] },
+    {
+      runDate,
+      root: REPO,
+      isTracked: () => true,
+      readEvidence: (rel: string) => rel === evidencePath ? evidenceBytes : null,
+    },
+  ) as { problems: string[]; fatalIndices: number[] };
+
+  it('POSITIVE: an amendment reviewed on its approval date is valid', () => {
+    const r = validate(record());
+    expect(r.problems).toEqual([]);
+    expect(r.fatalIndices).toEqual([]);
+  });
+
+  it.each([
+    [
+      'a missing reviewed_on',
+      (r: Record<string, unknown>) => { delete r.reviewed_on; },
+      /missing required field 'reviewed_on'/,
+    ],
+    [
+      'a malformed reviewed_on',
+      (r: Record<string, unknown>) => { r.reviewed_on = '2026\/08\/15'; },
+      /reviewed_on .*not a real calendar date/,
+    ],
+    [
+      'an impossible reviewed_on',
+      (r: Record<string, unknown>) => { r.reviewed_on = '2026-02-31'; },
+      /reviewed_on .*not a real calendar date/,
+    ],
+    [
+      'a future reviewed_on',
+      (r: Record<string, unknown>) => { r.reviewed_on = '2026-08-17'; },
+      /reviewed_on 2026-08-17 is in the future relative to 2026-08-16/,
+    ],
+    [
+      'a reviewed_on date before approval',
+      (r: Record<string, unknown>) => { r.reviewed_on = '2026-08-14'; },
+      /reviewed_on 2026-08-14 precedes approved_on 2026-08-15/,
+    ],
+  ])('validateRecords rejects %s', (_label, mutate, pattern) => {
+    const candidate = record() as Record<string, unknown>;
+    mutate(candidate);
+    const r = validate(candidate);
+    expect(r.problems.join('\n')).toMatch(pattern);
+    expect(r.fatalIndices).toContain(0);
   });
 });
 

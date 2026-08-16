@@ -1,0 +1,3 @@
+# Exact upstream legal bytes include their original trailing whitespace and newline posture.
+# Treat them as opaque vendored evidence so Git never normalizes or "fixes" those bytes.
+vendor/sharp-libvips/1.3.2/legal/** binary

@@ -236,6 +236,7 @@ jobs:
           echo "C17_OUT=$C17_OUT" >> "$GITHUB_ENV"
           node scripts/gate/licence-obligations.mjs \
             --out "$C17_OUT" \
+            --final \
             --expected-sha "$GITHUB_SHA"
       # Package the final evidence as ONE inspectable ZIP with its own SHA-256, so an
       # unsigned public reviewer can download it and verify the bytes they received.
@@ -293,14 +294,16 @@ jobs:
           C17_PKG="$(mktemp -d)"
           echo "C17_PKG=$C17_PKG" >> "$GITHUB_ENV"
           node scripts/gate/package-c17-evidence.mjs pack \
-            --c16 "$C16_OUT" --c17 "$C17_OUT" --out "$C17_PKG"
+            --c16 "$C16_OUT" --c17 "$C17_OUT" --out "$C17_PKG" --require-final
           node scripts/gate/package-c17-evidence.mjs verify \
             --zip "$(ls "$C17_PKG"/c17-evidence-*.zip)" --root "$PWD"
       - name: Upload the C17 evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c17-evidence-archive
+          # The suffix binds the exact INNER evidence ZIP to GitHub's API-visible artifact
+          # metadata. Actions' own artifact digest covers its wrapper ZIP, not this file.
+          name: c17-evidence-archive-${{ env.C17_ZIP_SHA256 }}
           path: ${{ env.C17_PKG }}
           if-no-files-found: warn
       - name: Upload C17 licence + schema evidence
