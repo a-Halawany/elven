@@ -8,9 +8,9 @@
  * Usage: node scripts/gate/licence-obligations.mjs --out <DIR> [--as-of YYYY-MM-DD]
  *                                                  [--expected-sha <SHA>]
  */
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -39,7 +39,7 @@ function canonicalJson(value) {
 }
 
 function parseArgs(argv) {
-  const out = { outDir: null, asOf: null, expectedSha: null };
+  const out = { outDir: null, asOf: null, expectedSha: null, final: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => {
@@ -51,11 +51,16 @@ function parseArgs(argv) {
     if (a === '--out') out.outDir = next();
     else if (a === '--as-of') out.asOf = next();
     else if (a === '--expected-sha') out.expectedSha = next();
+    else if (a === '--final') out.final = true;
     else throw new Error(`unknown argument ${JSON.stringify(a)}`);
   }
   if (out.outDir === null) throw new Error('--out <DIR> is required');
   if (out.asOf === null) out.asOf = new Date().toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(out.asOf)) throw new Error('--as-of must be YYYY-MM-DD');
+  // C17.2 B: --final is a POSTURE, and a posture with no subject is meaningless.
+  if (out.final && out.expectedSha === null) {
+    throw new Error('--final requires --expected-sha: a final run must name the source it claims to describe');
+  }
   return out;
 }
 
@@ -221,12 +226,73 @@ function main() {
   };
 
   console.log('=== C17 LICENCE + OFFICIAL SCHEMA GATE ===');
-  const headSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
+  const git = (...a) => spawnSync('git', a, { cwd: ROOT, encoding: 'utf8' });
+  const headProbe = git('rev-parse', 'HEAD');
+  const headSha = headProbe.stdout.trim();
   if (args.expectedSha !== null && headSha !== args.expectedSha) {
-    failures.push(`HEAD is ${headSha}, --expected-sha is ${args.expectedSha}`);
+    failures.push(`HEAD is ${JSON.stringify(headSha)}, --expected-sha is ${args.expectedSha}`);
   }
   console.log(`source SHA:  ${headSha}`);
   console.log(`as-of date:  ${args.asOf}`);
+  console.log(`mode:        ${args.final ? 'FINAL' : 'preliminary'}`);
+
+  /**
+   * C17.2 B — REAL final mode.
+   *
+   * C17 rejected `--final` as an unknown argument while the packager wrote `final_mode: true` into
+   * every receipt regardless. The posture was therefore asserted by the packager about a run that
+   * had never been asked to take it. `--final` now means something, and the packager derives the
+   * posture from what this gate RECORDS rather than manufacturing it.
+   */
+  const finalPosture = {
+    mode: args.final ? 'final' : 'preliminary',
+    expected_sha: args.expectedSha,
+    head_sha: headSha,
+    worktree_clean_before: null,
+    worktree_clean_after: null,
+    output_outside_repo: null,
+    target_materialization: null,
+    test_seams: null,
+  };
+  if (args.final) {
+    if (headProbe.status !== 0 || !/^[0-9a-f]{40}$/.test(headSha)) {
+      failures.push('final mode requires a git checkout: HEAD could not be resolved');
+    }
+    const dirtyBefore = git('status', '--porcelain').stdout.trim();
+    finalPosture.worktree_clean_before = dirtyBefore === '';
+    if (dirtyBefore !== '') {
+      failures.push(`final mode requires a clean worktree; ${dirtyBefore.split('\n').length} path(s) are modified`);
+    }
+    // Output must not be inside the repository: evidence written into the tree would itself
+    // dirty the source it claims to describe.
+    const rel = relative(ROOT, resolve(args.outDir));
+    const inside = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+    finalPosture.output_outside_repo = !inside;
+    if (inside) {
+      failures.push(`final mode requires --out OUTSIDE the repository; '${args.outDir}' resolves inside it`);
+    }
+    // The declared targets' platform-gated packages must be materialized, or the inventory is
+    // describing a machine rather than a target.
+    const missing = [];
+    for (const probe of ['@img/sharp-libvips-linux-x64', '@next/swc-linux-x64-gnu']) {
+      const enc = probe.replace(/\//g, '+');
+      let found = false;
+      try {
+        found = readdirSync(join(ROOT, 'node_modules', '.pnpm')).some((e) => e.startsWith(`${enc}@`));
+      } catch { found = false; }
+      if (!found) missing.push(probe);
+    }
+    finalPosture.target_materialization = missing.length === 0;
+    if (missing.length > 0) {
+      failures.push(`final mode requires the declared linux-x64-glibc target to be materialized; missing ${missing.join(', ')}`);
+    }
+    // No test seam may be active.
+    const seams = Object.keys(process.env).filter((k) => /^EYE_(GATE|SCANNER|SECRET|TEST)_/.test(k));
+    finalPosture.test_seams = seams;
+    if (seams.length > 0) {
+      failures.push(`final mode refuses to run with test seams set: ${seams.join(', ')}`);
+    }
+  }
 
   // 1. Official schema, offline.
   const compiled = compileBomValidator(ROOT);
@@ -424,8 +490,17 @@ function main() {
     })),
   ];
 
+  if (args.final) {
+    const dirtyAfter = git('status', '--porcelain').stdout.trim();
+    finalPosture.worktree_clean_after = dirtyAfter === '';
+    if (dirtyAfter !== '') {
+      failures.push(`final mode: generation DIRTIED the worktree (${dirtyAfter.split('\n').length} path(s))`);
+    }
+  }
   const manifest = {
     result: failures.length === 0 ? 'PASS' : 'FAIL',
+    mode: finalPosture.mode,
+    final_source_posture: finalPosture,
     generated_from: { source_sha: headSha, as_of: args.asOf },
     schema: compiled.ok ? compiled.versions : null,
     sboms: sbomResults,

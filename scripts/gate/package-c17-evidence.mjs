@@ -19,14 +19,18 @@
  *   node scripts/gate/package-c17-evidence.mjs verify --zip <FILE> --root <REPO> [--online]
  */
 import {
-  readFileSync, writeFileSync, mkdirSync, readdirSync, lstatSync, existsSync, rmSync, cpSync,
+  readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, lstatSync, existsSync, rmSync,
+  cpSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-import { compileBomValidator, validateBom, VENDOR_DIR, SCHEMA_FILES } from './lib/cyclonedx-schema.mjs';
+import {
+  compileBomValidator, validateBom, verifyVendoredSchemas, VENDOR_DIR, SCHEMA_FILES,
+} from './lib/cyclonedx-schema.mjs';
 import { deriveC16Expectation } from './generate-closures.mjs';
 import { buildTargetInventory, reconcileInventory } from './lib/license-closure.mjs';
 
@@ -103,7 +107,7 @@ function runReceipt(explicitPath) {
   };
 }
 
-export function pack({ c16Dir, c17Dir, outDir, runReceiptPath = null, root = ROOT }) {
+export function pack({ c16Dir, c17Dir, outDir, runReceiptPath = null, root = ROOT, requireFinal = false }) {
   const problems = [];
   const staging = join(outDir, 'payload');
   rmSync(staging, { recursive: true, force: true });
@@ -113,11 +117,29 @@ export function pack({ c16Dir, c17Dir, outDir, runReceiptPath = null, root = ROO
   const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout.trim();
   const c17Manifest = JSON.parse(readFileSync(join(c17Dir, 'c17-manifest.json'), 'utf8'));
 
+  // C17.2 B — the posture is DERIVED from what the C17 gate recorded. The previous version
+  // wrote `final_mode: true` unconditionally, so the archive asserted a posture no run had been
+  // asked to take. A manifest that does not record final mode cannot be packaged as final.
+  const posture = c17Manifest.final_source_posture ?? null;
+  if (posture === null || c17Manifest.mode === undefined) {
+    problems.push(
+      'C17 packaging: the C17 manifest records no mode or final-source posture. It was produced by '
+      + 'a gate that predates real --final support, and a posture cannot be manufactured here.',
+    );
+  } else if (requireFinal && c17Manifest.mode !== 'final') {
+    problems.push(
+      `C17 packaging: the C17 manifest records mode '${c17Manifest.mode}'. A PRELIMINARY result `
+      + 'cannot be packaged as final evidence.',
+    );
+  }
+  if (problems.length > 0) return { ok: false, problems, zip: null };
+
   const generated = {
     'receipt/source-receipt.json': `${JSON.stringify({
       source_sha: headSha,
       worktree_clean: dirty === '',
-      final_mode: true,
+      mode: c17Manifest.mode,
+      final_source_posture: posture,
       c17_result: c17Manifest.result,
       c17_as_of: c17Manifest.generated_from.as_of,
       schema: c17Manifest.schema,
@@ -299,15 +321,135 @@ export function verify({ zipPath, root = ROOT, online = false }) {
       }
     }
 
-    // ── SCHEMA PROVENANCE: delivered bytes equal the tracked bytes ───────────
-    for (const f of SCHEMA_FILES) {
+    // ── C17.2 A — REGENERATE, then compare BYTES ────────────────────────────
+    //
+    // The previous verifier recomputed the checksum manifest against the payload and re-derived
+    // only the SBOMs. Every licence artifact was therefore authenticated by a digest the archive
+    // supplied about itself: replacing THIRD_PARTY_NOTICES.md with "TAMPERED LEGAL NOTICE" and
+    // license-inventory.json with `{}`, then rebinding SHA256SUMS.txt, PASSED. Proved by
+    // execution before this was written.
+    //
+    // A digest can only authenticate bytes against an INDEPENDENT expectation. So the gate is
+    // re-run here, into a fresh temporary directory outside the tree, at the archive's own
+    // governed as-of date and expected SHA, and every delivered artifact is compared byte for
+    // byte with what this checkout produces.
+    if (receipt !== null) {
+      const regen = mkdtempSync(join(tmpdir(), 'c17-verify-regen-'));
+      try {
+        const gate = join(root, 'scripts', 'gate', 'licence-obligations.mjs');
+        const args = [gate, '--out', regen, '--as-of', receipt.c17_as_of];
+        if (receipt.source_sha !== undefined) args.push('--expected-sha', receipt.source_sha);
+        if (receipt.mode === 'final') args.push('--final');
+        const r = spawnSync(process.execPath, args, {
+          cwd: root, encoding: 'utf8', timeout: 20 * 60_000, maxBuffer: 128 * 1024 * 1024,
+        });
+        if (r.status !== 0) {
+          problems.push(
+            'C17 could not be REGENERATED for comparison, so the delivered artifacts cannot be '
+            + `authenticated: ${(r.stdout ?? '').slice(-600)}${(r.stderr ?? '').slice(-400)}`,
+          );
+        } else {
+          // Every C17 artifact in the payload, mapped to its regenerated counterpart.
+          const REGEN_COMPARE = [
+            ['licence/license-inventory.json', 'license-inventory.json'],
+            ['licence/license-obligations.json', 'license-obligations.json'],
+            ['licence/license-reconciliation.json', 'license-reconciliation.json'],
+            ['licence/license-texts.json', 'license-texts.json'],
+            ['licence/source-offers.json', 'source-offers.json'],
+            ['licence/THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'],
+          ];
+          for (const [inZip, produced] of REGEN_COMPARE) {
+            const a = join(tmp, inZip);
+            const b = join(regen, produced);
+            if (!existsSync(a)) { problems.push(`archive is missing '${inZip}'`); continue; }
+            if (!existsSync(b)) { problems.push(`regeneration produced no '${produced}'`); continue; }
+            const delivered = readFileSync(a);
+            const expected = readFileSync(b);
+            if (!delivered.equals(expected)) {
+              problems.push(
+                `'${inZip}' is NOT what this checkout regenerates: delivered ${delivered.byteLength} `
+                + `bytes / ${sha256(delivered)}, regenerated ${expected.byteLength} bytes / `
+                + `${sha256(expected)}. A rebound checksum cannot make substituted content genuine.`,
+              );
+            }
+          }
+          notes.push(`regenerated_and_compared=${REGEN_COMPARE.length}`);
+
+          // The c17-manifest's OWN artifact table must agree with the delivered bytes, length
+          // and digest — the manifest is a claim about the artifacts and is checked against them.
+          const deliveredManifestPath = join(tmp, 'licence/c17-manifest.json');
+          if (existsSync(deliveredManifestPath)) {
+            const dm = JSON.parse(readFileSync(deliveredManifestPath, 'utf8'));
+            for (const a of dm.artifacts ?? []) {
+              const abs = join(tmp, 'licence', a.path);
+              if (!existsSync(abs)) {
+                problems.push(`c17-manifest claims artifact '${a.path}', absent from the archive`);
+                continue;
+              }
+              const bytes = readFileSync(abs);
+              if (bytes.byteLength !== a.bytes) {
+                problems.push(`c17-manifest claims '${a.path}' is ${a.bytes} bytes; it is ${bytes.byteLength}`);
+              }
+              if (sha256(bytes) !== a.sha256) {
+                problems.push(`c17-manifest claims '${a.path}' hashes to ${a.sha256}; it hashes to ${sha256(bytes)}`);
+              }
+            }
+            // The regenerated manifest must agree on result and posture.
+            const rm = JSON.parse(readFileSync(join(regen, 'c17-manifest.json'), 'utf8'));
+            if (rm.result !== dm.result) {
+              problems.push(`c17-manifest records result '${dm.result}'; regeneration produces '${rm.result}'`);
+            }
+            if (rm.mode !== dm.mode) {
+              problems.push(`c17-manifest records mode '${dm.mode}'; regeneration produces '${rm.mode}'`);
+            }
+            notes.push(`c17_manifest_artifacts=${(dm.artifacts ?? []).length} mode=${dm.mode} result=${dm.result}`);
+          } else {
+            problems.push('archive is missing licence/c17-manifest.json');
+          }
+
+          // The result receipt must agree with the regenerated verdict, not merely exist.
+          const rr = join(tmp, 'receipt/RESULT.txt');
+          if (existsSync(rr)) {
+            const text = readFileSync(rr, 'utf8').trim();
+            const wantResult = JSON.parse(readFileSync(join(regen, 'c17-manifest.json'), 'utf8')).result;
+            if (!text.startsWith(`C17 ${wantResult} at ${receipt.source_sha}`)) {
+              problems.push(`receipt/RESULT.txt says ${JSON.stringify(text)}, which is not 'C17 ${wantResult} at ${receipt.source_sha}'`);
+            }
+          } else {
+            problems.push('archive is missing receipt/RESULT.txt');
+          }
+        }
+      } finally {
+        rmSync(regen, { recursive: true, force: true });
+      }
+    }
+
+    // ── GOVERNANCE BYTES: the archive's copies must equal the TRACKED source ──
+    for (const [inZip, trackedRel] of [
+      ['governance/legal-dispositions.json', 'scripts/gate/legal-dispositions.json'],
+      ['governance/source-offers.json', 'scripts/gate/source-offers.json'],
+    ]) {
+      const a = join(tmp, inZip);
+      const b = join(root, trackedRel);
+      if (!existsSync(a)) { problems.push(`archive is missing '${inZip}'`); continue; }
+      if (!readFileSync(a).equals(readFileSync(b))) {
+        problems.push(`'${inZip}' differs from the tracked '${trackedRel}'`);
+      }
+    }
+
+    // ── SCHEMA PROVENANCE: delivered bytes equal the tracked/code-owned bytes ─
+    for (const f of [...SCHEMA_FILES, 'MANIFEST.json']) {
       const inZip = join(tmp, 'schema', f);
-      const tracked = join(root, VENDOR_DIR, f);
+      const trackedPath = join(root, VENDOR_DIR, f);
       if (!existsSync(inZip)) { problems.push(`archive is missing schema/${f}`); continue; }
-      if (sha256(readFileSync(inZip)) !== sha256(readFileSync(tracked))) {
+      if (!readFileSync(inZip).equals(readFileSync(trackedPath))) {
         problems.push(`schema/${f} in the archive differs from the tracked vendored bytes`);
       }
     }
+    // And the tracked schema closure must itself still satisfy its CODE-OWNED provenance, so a
+    // matching pair of archive and tree cannot both be wrong together.
+    const prov = verifyVendoredSchemas(root);
+    if (!prov.ok) problems.push(...prov.problems);
 
     // ── HOSTED-RUN RECEIPT ──────────────────────────────────────────────────
     const runPath = join(tmp, 'receipt/run-receipt.json');
@@ -357,6 +499,7 @@ function main() {
       c17Dir: argOf(argv, '--c17'),
       outDir: argOf(argv, '--out'),
       runReceiptPath: argOf(argv, '--run-receipt'),
+      requireFinal: argv.includes('--require-final'),
     });
     if (!r.ok) {
       console.error('=== C17 PACKAGING FAILED ===');
