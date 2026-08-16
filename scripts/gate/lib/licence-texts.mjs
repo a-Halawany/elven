@@ -41,14 +41,19 @@ export const SPDX_TEXTS = Object.freeze({
   'CC-BY-3.0': Object.freeze({ file: 'CC-BY-3.0.txt', bytes: 19467, sha256: 'e6bc9e9c474700b708f568bac9e5a8a9bcb2b1dad53442f5ba449fcb848b8e76' }),
   'CC-BY-4.0': Object.freeze({ file: 'CC-BY-4.0.txt', bytes: 17023, sha256: 'd557539df68e771cc1eedcc91d13f70fca930e508d11eedcafa4b15db49e3744' }),
   'CC0-1.0': Object.freeze({ file: 'CC0-1.0.txt', bytes: 7048, sha256: 'a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499' }),
+  'FTL': Object.freeze({ file: 'FTL.txt', bytes: 5979, sha256: 'ced6622122ce451cb1ea0c3c3f507a640e2a44c075c04900ddd9fae8acb5369f' }),
+  'IJG': Object.freeze({ file: 'IJG.txt', bytes: 4244, sha256: '7658542977bfdced9e1059a6c934ce4281de76d103b831007b825917dc62511a' }),
   'ISC': Object.freeze({ file: 'ISC.txt', bytes: 823, sha256: 'f2ec607f67bb0dd3053b49835b02110d5cd0f8eb6da3aac4dc0b142a6b299be9' }),
   'LGPL-2.1-or-later': Object.freeze({ file: 'LGPL-2.1-or-later.txt', bytes: 26001, sha256: '5749785c8bdefafcb5d798270ed0a967036fe2ca63dcedade1627565dfef81d2' }),
   'LGPL-3.0-or-later': Object.freeze({ file: 'LGPL-3.0-or-later.txt', bytes: 42098, sha256: '996af0513df21f7496288951c41428a03c174e9e4a9d63665c57d670f845ccb1' }),
+  'Libpng': Object.freeze({ file: 'Libpng.txt', bytes: 4218, sha256: '7667a8c88c7a63690244988d626bcddd27ed895526e2c3ab1a9adb463a5fa287' }),
   'MIT-0': Object.freeze({ file: 'MIT-0.txt', bytes: 915, sha256: '59746d6285ffa44bfc7ecada352aa5d6a20dc8eab418a60ce091cc739012c135' }),
   'MIT': Object.freeze({ file: 'MIT.txt', bytes: 1078, sha256: 'b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5' }),
   'MPL-2.0': Object.freeze({ file: 'MPL-2.0.txt', bytes: 16727, sha256: '66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172' }),
   'Python-2.0': Object.freeze({ file: 'Python-2.0.txt', bytes: 9411, sha256: '893c2bafbb8133f7aa97e1f79a3ee3241ebca7025f56278e9e1f72bb98592f9d' }),
   'Unlicense': Object.freeze({ file: 'Unlicense.txt', bytes: 1211, sha256: '0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240' }),
+  'Zlib': Object.freeze({ file: 'Zlib.txt', bytes: 838, sha256: 'bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d' }),
+  'libtiff': Object.freeze({ file: 'libtiff.txt', bytes: 1139, sha256: 'a6ecaa20c8c1b7a8215ed05e5f58764f821596e36d31acc05282c6154cf0dc44' }),
 });
 
 /**

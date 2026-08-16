@@ -1,0 +1,414 @@
+{
+  "$comment": [
+    "C17.2 F \u2014 BUNDLED THIRD-PARTY STACK of @img/sharp-libvips-linux-x64.",
+    "",
+    "This package ships ONE prebuilt shared library that statically bundles roughly thirty",
+    "third-party libraries. C17 recorded only the package-level LGPL-3.0-or-later declaration,",
+    "so every bundled library's own terms \u2014 MPL, BSD, MIT, zlib, IJG, the AOM patent grant,",
+    "and the fontconfig, freetype, libpng and libtiff licences \u2014 went unrecorded, along with",
+    "their notice and source-offer obligations.",
+    "",
+    "Component versions come from the shipped versions.json; the component LIST and its terms",
+    "come from the shipped README table. Both are bound by digest below. Prose terms are mapped",
+    "to SPDX through a code-owned table, and any term the table does not cover FAILS CLOSED",
+    "rather than being guessed \u2014 a licence is not something to infer.",
+    "",
+    "These libraries are deliberately NOT added to the C16 npm SBOM: they are not npm",
+    "components and the SBOM describes the npm closure. They are a separate C17 legal",
+    "subcomponent inventory, which is what the obligations actually attach to."
+  ],
+  "schema_version": "1.0.0",
+  "package": {
+    "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.2",
+    "name": "@img/sharp-libvips-linux-x64",
+    "version": "1.3.2",
+    "declared_license": "LGPL-3.0-or-later",
+    "author": "Lovell Fuller <npm@lovell.info>"
+  },
+  "build_recipe": {
+    "repository": "https://github.com/lovell/sharp-libvips",
+    "directory": "npm/linux-x64",
+    "tag": "v1.3.2",
+    "note": "The immutable commit for this tag is recorded in commit_binding below and is what the source offer resolves to; a tag alone is mutable.",
+    "commit_binding": {
+      "commit": "4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6",
+      "resolved_from": "https://api.github.com/repos/lovell/sharp-libvips/commits/v1.3.2",
+      "why": "A tag is mutable; the commit is not. The source offer resolves to this commit, so a recipient obtains the exact recipe this binary was built from even if the tag moves."
+    }
+  },
+  "shipped_evidence": {
+    "versions_json_sha256": "71e22ad5154a3891e09291e2f316b3d9b0d0f405459144a94897a203580df055",
+    "readme_sha256": "4f87b4934d26d52ed65a42e96bfe88e75ac98dbd3bc302b50fe6c07d22e42630",
+    "shared_libraries": [
+      {
+        "path": "lib/libvips-cpp.so.8.18.3",
+        "bytes": 18195640,
+        "sha256": "0c1a1560417bbcdac38ce83151e52e56711deb70c5373053822c3301a19a4496"
+      }
+    ]
+  },
+  "bundled_components": [
+    {
+      "name": "aom",
+      "version": "3.14.1",
+      "version_source": "versions.json:aom",
+      "declared_terms_upstream": "BSD 2-Clause + [Alliance for Open Media Patent License 1.0](https://aomedia.org/license/patent-license/)",
+      "spdx_expression": "BSD-2-Clause",
+      "licence_note": "Alliance for Open Media Patent License 1.0"
+    },
+    {
+      "name": "cairo",
+      "version": "1.18.4",
+      "version_source": "versions.json:cairo",
+      "declared_terms_upstream": "Mozilla Public License 2.0",
+      "spdx_expression": "MPL-2.0",
+      "licence_note": null
+    },
+    {
+      "name": "cgif",
+      "version": "0.5.3",
+      "version_source": "versions.json:cgif",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "expat",
+      "version": "2.8.2",
+      "version_source": "versions.json:expat",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "fontconfig",
+      "version": "2.18.1",
+      "version_source": "versions.json:fontconfig",
+      "declared_terms_upstream": "[fontconfig License](https://gitlab.freedesktop.org/fontconfig/fontconfig/blob/main/COPYING) (BSD-like)",
+      "spdx_expression": "MIT",
+      "licence_note": "fontconfig licence (an MIT-style permissive licence with an explicit no-advertising clause)"
+    },
+    {
+      "name": "freetype",
+      "version": "2.14.3",
+      "version_source": "versions.json:freetype",
+      "declared_terms_upstream": "[freetype License](https://git.savannah.gnu.org/cgit/freetype/freetype2.git/tree/docs/FTL.TXT) (BSD-like)",
+      "spdx_expression": "FTL",
+      "licence_note": "the FreeType Project LICENSE (FTL); the project dual-licenses under FTL or GPLv2"
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.16",
+      "version_source": "versions.json:fribidi",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "glib",
+      "version": "2.89.1",
+      "version_source": "versions.json:glib",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "harfbuzz",
+      "version": "14.2.1",
+      "version_source": "versions.json:harfbuzz",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "highway",
+      "version": "1.4.0",
+      "version_source": "versions.json:highway",
+      "declared_terms_upstream": "BSD 3-Clause",
+      "spdx_expression": "BSD-3-Clause",
+      "licence_note": null
+    },
+    {
+      "name": "lcms",
+      "version": "2.19.1",
+      "version_source": "versions.json:lcms",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.8",
+      "version_source": "versions.json:archive",
+      "declared_terms_upstream": "BSD 2-Clause",
+      "spdx_expression": "BSD-2-Clause",
+      "licence_note": null
+    },
+    {
+      "name": "libexif",
+      "version": "0.6.26",
+      "version_source": "versions.json:exif",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "libffi",
+      "version": "3.6.0",
+      "version_source": "versions.json:ffi",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "libheif",
+      "version": "1.23.1",
+      "version_source": "versions.json:heif",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "libimagequant",
+      "version": "2.4.1",
+      "version_source": "versions.json:imagequant",
+      "declared_terms_upstream": "[BSD 2-Clause](https://github.com/lovell/libimagequant/blob/main/COPYRIGHT)",
+      "spdx_expression": "BSD-2-Clause",
+      "licence_note": null
+    },
+    {
+      "name": "libnsgif",
+      "version": null,
+      "version_source": "not independently versioned upstream",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.58",
+      "version_source": "versions.json:png",
+      "declared_terms_upstream": "[libpng License](https://github.com/pnggroup/libpng/blob/master/LICENSE)",
+      "spdx_expression": "Libpng",
+      "licence_note": "the libpng licence (permissive, notice-preserving)"
+    },
+    {
+      "name": "librsvg",
+      "version": "2.62.90",
+      "version_source": "versions.json:rsvg",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "libtiff",
+      "version": "d01a94b",
+      "version_source": "versions.json:tiff",
+      "declared_terms_upstream": "[libtiff License](https://gitlab.com/libtiff/libtiff/blob/master/LICENSE.md) (BSD-like)",
+      "spdx_expression": "libtiff",
+      "licence_note": "the libtiff licence (BSD-like, notice-preserving)"
+    },
+    {
+      "name": "libultrahdr",
+      "version": "1acdbed",
+      "version_source": "versions.json:uhdr",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "libvips",
+      "version": "8.18.3",
+      "version_source": "versions.json:vips",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "libwebp",
+      "version": "1.6.0",
+      "version_source": "versions.json:webp",
+      "declared_terms_upstream": "New BSD License",
+      "spdx_expression": "BSD-3-Clause",
+      "licence_note": null
+    },
+    {
+      "name": "libxml2",
+      "version": "2.15.3",
+      "version_source": "versions.json:xml2",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "mozjpeg",
+      "version": "0826579",
+      "version_source": "versions.json:mozjpeg",
+      "declared_terms_upstream": "[zlib License, IJG License, BSD 3-Clause](https://github.com/mozilla/mozjpeg/blob/master/LICENSE.md)",
+      "spdx_expression": "Zlib AND IJG AND BSD-3-Clause",
+      "licence_note": "mozjpeg combines zlib, IJG and BSD-3-Clause terms"
+    },
+    {
+      "name": "pango",
+      "version": "1.58.0",
+      "version_source": "versions.json:pango",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "pixman",
+      "version": "0.46.4",
+      "version_source": "versions.json:pixman",
+      "declared_terms_upstream": "MIT License",
+      "spdx_expression": "MIT",
+      "licence_note": null
+    },
+    {
+      "name": "proxy-libintl",
+      "version": "0.5",
+      "version_source": "versions.json:proxy-libintl",
+      "declared_terms_upstream": "LGPLv3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "licence_note": null
+    },
+    {
+      "name": "zlib-ng",
+      "version": "2.3.3",
+      "version_source": "versions.json:zlib-ng",
+      "declared_terms_upstream": "[zlib License](https://github.com/zlib-ng/zlib-ng/blob/develop/LICENSE.md)",
+      "spdx_expression": "Zlib",
+      "licence_note": "the zlib licence (permissive, notice-preserving)"
+    }
+  ],
+  "versions_without_readme_entry": [],
+  "limits": [
+    "Component identity is taken from what the package itself ships. This inventory does not independently rebuild the binary and cannot prove which code paths were compiled in.",
+    "Not legal advice. Phase 0 is LOCAL-ONLY under EXC-P0-004 and distributes nothing."
+  ],
+  "source_offers": [
+    {
+      "component": "cairo",
+      "version": "1.18.4",
+      "spdx_expression": "MPL-2.0",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://gitlab.freedesktop.org/cairo/cairo",
+      "obtain": [
+        "The exact version bundled is recorded as 1.18.4 in the shipped versions.json.",
+        "Upstream source: https://gitlab.freedesktop.org/cairo/cairo",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "MPL-2.0 obliges source only for MODIFIED files; nothing here is modified, so the upstream source above satisfies it."
+    },
+    {
+      "component": "fribidi",
+      "version": "1.0.16",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://github.com/fribidi/fribidi",
+      "obtain": [
+        "The exact version bundled is recorded as 1.0.16 in the shipped versions.json.",
+        "Upstream source: https://github.com/fribidi/fribidi",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "glib",
+      "version": "2.89.1",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://gitlab.gnome.org/GNOME/glib",
+      "obtain": [
+        "The exact version bundled is recorded as 2.89.1 in the shipped versions.json.",
+        "Upstream source: https://gitlab.gnome.org/GNOME/glib",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "libexif",
+      "version": "0.6.26",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://github.com/libexif/libexif",
+      "obtain": [
+        "The exact version bundled is recorded as 0.6.26 in the shipped versions.json.",
+        "Upstream source: https://github.com/libexif/libexif",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "libheif",
+      "version": "1.23.1",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://github.com/strukturag/libheif",
+      "obtain": [
+        "The exact version bundled is recorded as 1.23.1 in the shipped versions.json.",
+        "Upstream source: https://github.com/strukturag/libheif",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "librsvg",
+      "version": "2.62.90",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://gitlab.gnome.org/GNOME/librsvg",
+      "obtain": [
+        "The exact version bundled is recorded as 2.62.90 in the shipped versions.json.",
+        "Upstream source: https://gitlab.gnome.org/GNOME/librsvg",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "libvips",
+      "version": "8.18.3",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://github.com/libvips/libvips",
+      "obtain": [
+        "The exact version bundled is recorded as 8.18.3 in the shipped versions.json.",
+        "Upstream source: https://github.com/libvips/libvips",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "pango",
+      "version": "1.58.0",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://gitlab.gnome.org/GNOME/pango",
+      "obtain": [
+        "The exact version bundled is recorded as 1.58.0 in the shipped versions.json.",
+        "Upstream source: https://gitlab.gnome.org/GNOME/pango",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    },
+    {
+      "component": "proxy-libintl",
+      "version": "0.5",
+      "spdx_expression": "LGPL-3.0-or-later",
+      "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
+      "upstream_source": "https://github.com/frida/proxy-libintl",
+      "obtain": [
+        "The exact version bundled is recorded as 0.5 in the shipped versions.json.",
+        "Upstream source: https://github.com/frida/proxy-libintl",
+        "The build recipe that pins and compiles it is sharp-libvips at commit 4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6, directory npm/linux-x64."
+      ],
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+    }
+  ],
+  "aom_patent_grant": {
+    "applies_to": "aom",
+    "note": "The Alliance for Open Media Patent License 1.0 accompanies aom's BSD-2-Clause grant. SPDX publishes no identifier for it, so no canonical text is vendored and the licence text obligation is discharged by the upstream document named below rather than by a pinned SPDX text. Recorded explicitly instead of being silently dropped.",
+    "url": "https://aomedia.org/license/patent-license/",
+    "upstream_source": "https://aomedia.googlesource.com/aom/+/refs/heads/main/PATENTS"
+  }
+}

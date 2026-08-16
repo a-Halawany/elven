@@ -82,6 +82,20 @@
       "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
     },
     {
+      "file": "FTL.txt",
+      "spdx_id": "FTL",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/FTL.txt",
+      "bytes": 5979,
+      "sha256": "ced6622122ce451cb1ea0c3c3f507a640e2a44c075c04900ddd9fae8acb5369f"
+    },
+    {
+      "file": "IJG.txt",
+      "spdx_id": "IJG",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/IJG.txt",
+      "bytes": 4244,
+      "sha256": "7658542977bfdced9e1059a6c934ce4281de76d103b831007b825917dc62511a"
+    },
+    {
       "file": "ISC.txt",
       "spdx_id": "ISC",
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/ISC.txt",
@@ -101,6 +115,13 @@
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/LGPL-3.0-or-later.txt",
       "bytes": 42098,
       "sha256": "996af0513df21f7496288951c41428a03c174e9e4a9d63665c57d670f845ccb1"
+    },
+    {
+      "file": "Libpng.txt",
+      "spdx_id": "Libpng",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Libpng.txt",
+      "bytes": 4218,
+      "sha256": "7667a8c88c7a63690244988d626bcddd27ed895526e2c3ab1a9adb463a5fa287"
     },
     {
       "file": "MIT-0.txt",
@@ -136,6 +157,20 @@
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Unlicense.txt",
       "bytes": 1211,
       "sha256": "0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240"
+    },
+    {
+      "file": "Zlib.txt",
+      "spdx_id": "Zlib",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/Zlib.txt",
+      "bytes": 838,
+      "sha256": "bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d"
+    },
+    {
+      "file": "libtiff.txt",
+      "spdx_id": "libtiff",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/libtiff.txt",
+      "bytes": 1139,
+      "sha256": "a6ecaa20c8c1b7a8215ed05e5f58764f821596e36d31acc05282c6154cf0dc44"
     }
   ]
 }

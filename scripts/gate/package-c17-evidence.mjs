@@ -53,6 +53,7 @@ export const PAYLOAD = Object.freeze([
   { path: 'licence/license-reconciliation.json', from: 'c17', file: 'license-reconciliation.json' },
   { path: 'licence/license-texts.json', from: 'c17', file: 'license-texts.json' },
   { path: 'licence/source-offers.json', from: 'c17', file: 'source-offers.json' },
+  { path: 'licence/bundled-components.json', from: 'c17', file: 'bundled-components.json' },
   { path: 'licence/THIRD_PARTY_NOTICES.md', from: 'c17', file: 'THIRD_PARTY_NOTICES.md' },
   { path: 'licence/c17-manifest.json', from: 'c17', file: 'c17-manifest.json' },
   { path: 'schema/bom-1.6.schema.json', from: 'schema', file: 'bom-1.6.schema.json' },
@@ -61,6 +62,7 @@ export const PAYLOAD = Object.freeze([
   { path: 'schema/MANIFEST.json', from: 'schema', file: 'MANIFEST.json' },
   { path: 'governance/legal-dispositions.json', from: 'repo', file: 'scripts/gate/legal-dispositions.json' },
   { path: 'governance/source-offers.json', from: 'repo', file: 'scripts/gate/source-offers.json' },
+  { path: 'governance/bundled-components.json', from: 'repo', file: 'scripts/gate/bundled-components.json' },
   { path: 'receipt/source-receipt.json', from: 'generated' },
   { path: 'receipt/run-receipt.json', from: 'generated' },
   { path: 'receipt/RESULT.txt', from: 'generated' },
@@ -357,6 +359,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
             ['licence/license-reconciliation.json', 'license-reconciliation.json'],
             ['licence/license-texts.json', 'license-texts.json'],
             ['licence/source-offers.json', 'source-offers.json'],
+            ['licence/bundled-components.json', 'bundled-components.json'],
             ['licence/THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'],
           ];
           for (const [inZip, produced] of REGEN_COMPARE) {
@@ -429,6 +432,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
     for (const [inZip, trackedRel] of [
       ['governance/legal-dispositions.json', 'scripts/gate/legal-dispositions.json'],
       ['governance/source-offers.json', 'scripts/gate/source-offers.json'],
+      ['governance/bundled-components.json', 'scripts/gate/bundled-components.json'],
     ]) {
       const a = join(tmp, inZip);
       const b = join(root, trackedRel);

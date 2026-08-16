@@ -18,6 +18,7 @@ import { deriveC16Expectation } from './generate-closures.mjs';
 import { compileBomValidator, validateBom, VENDOR_DIR } from './lib/cyclonedx-schema.mjs';
 import { buildTargetInventory, reconcileInventory, OBLIGATION_TABLE, CATEGORY_OBLIGATIONS } from './lib/license-closure.mjs';
 import { loadCanonicalTexts, SPDX_TEXT_PROVENANCE } from './lib/licence-texts.mjs';
+import { verifyBundledComponents } from './lib/bundled-components.mjs';
 import {
   loadLegalDispositions, validateLegalDispositions, unresolvedScopeKey,
 } from './lib/legal-dispositions.mjs';
@@ -393,6 +394,12 @@ function main() {
     }
   }
 
+  // 2c. The BUNDLED native stack: ~30 libraries inside one shared object.
+  console.log('\n-- bundled native stack (@img/sharp-libvips-linux-x64) --');
+  const bundled = verifyBundledComponents(ROOT, { texts });
+  if (!bundled.ok) failures.push(...bundled.problems);
+  for (const n of bundled.notes) console.log(`  ${n}`);
+
   // 3. Legal dispositions — separate document, separate governance.
   console.log('\n-- legal dispositions --');
   const unresolvedKeys = new Set(allUnresolved.map(unresolvedScopeKey));
@@ -508,6 +515,13 @@ function main() {
       texts: Object.fromEntries([...texts.entries()].map(([id, t]) => [id, {
         file: t.file, url: t.url, bytes: t.bytes, sha256: t.sha256,
       }])),
+    })),
+    write('bundled-components.json', canonicalJson({
+      $comment: 'The bundled native third-party stack of @img/sharp-libvips-linux-x64, reconciled '
+        + 'against the versions.json and README.md the package itself ships. Not npm components, '
+        + 'so deliberately not in the C16 SBOM; these are what the obligations attach to.',
+      reconciled: bundled.ok,
+      manifest: bundled.manifest ?? null,
     })),
     write('source-offers.json', canonicalJson({
       $comment: 'Source-offer records discharging weak-copyleft obligations. Each is bound to a '
