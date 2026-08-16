@@ -48,12 +48,13 @@ type RunResult = {
  * The child ceiling is what actually stops work; the per-test ceiling is slightly larger so a
  * killed child surfaces as a named assertion failure instead of a vanished worker.
  */
-// C16-R3.4.2 §6: measured ceilings for an 18-second suite. The slowest control builds a
-// disposable repository copy and takes ~3s; 30s of child budget and 45s per test is generous
-// against that without letting anything hang for minutes. The long bounded timeout belongs
-// only to the authoritative live supply-chain job in CI.
-const GATE_CHILD_TIMEOUT_MS = 30_000;
-const GATE_TEST_TIMEOUT_MS = 45_000;
+// C16-R3.4.2 §6: measured ceilings for an 18-second suite. A clean full-history checkout under
+// heavy concurrent verification exposed that a 30-second child ceiling could expire while a
+// hermetic child was CPU-starved, before it could write its manifest. Sixty seconds remains a
+// short, hard ceiling while leaving enough scheduling margin for a loaded hosted runner; the
+// test ceiling is slightly larger so timeout diagnostics are reported by this file.
+const GATE_CHILD_TIMEOUT_MS = 60_000;
+const GATE_TEST_TIMEOUT_MS = 75_000;
 
 const HERMETIC_ADAPTER = join(__dirname, 'helpers', 'hermetic-adapter.mjs');
 
@@ -106,6 +107,12 @@ function runGateIn(repoDir: string, args: string[] = []): RunResult {
   const manifest = existsSync(manifestPath)
     ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { outcome: string; failures: string[] })
     : null;
+  if (res.error) {
+    throw new Error(
+      `C15 disposable-repository child failed before producing evidence: ${res.error.message}; ` +
+      `status=${res.status} signal=${res.signal}; stderr=${(res.stderr ?? '').slice(-2000)}`,
+    );
+  }
   const failFile = join(out, 'RESULT-FAIL.txt');
   const passFile = join(out, 'RESULT-PASS.txt');
   return {
@@ -159,6 +166,12 @@ function runGate(
   const manifest = existsSync(manifestPath)
     ? (JSON.parse(readFileSync(manifestPath, 'utf8')) as { outcome: string; failures: string[] })
     : null;
+  if (res.error) {
+    throw new Error(
+      `C15 hermetic child failed before producing evidence: ${res.error.message}; ` +
+      `status=${res.status} signal=${res.signal}; stderr=${(res.stderr ?? '').slice(-2000)}`,
+    );
+  }
   const failFile = join(out, 'RESULT-FAIL.txt');
   const passFile = join(out, 'RESULT-PASS.txt');
   return {

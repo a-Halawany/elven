@@ -8,8 +8,8 @@ export default defineConfig({
     passWithNoTests: true,
 
     // ── C16-R3.4: EXPLICIT, BOUNDED CEILINGS ──────────────────────────────────
-    // The C15 behavioural controls spawn the real gate, which performs network image scans.
-    // With vitest's 5s default they would all fail, so each carried its own 15-minute
+    // The C15 behavioural controls spawn the real gate against a hermetic recorded trace.
+    // Before that boundary existed, each control performed live image scans and carried a 15-minute
     // override — 28 of them — and nothing bounded the suite as a whole. One run could
     // therefore continue for hours and be killed mid-test by the surrounding harness, which
     // is how a governed disposition document was twice left corrupted on disk.
