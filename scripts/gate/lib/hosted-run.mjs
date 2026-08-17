@@ -49,7 +49,122 @@ export const REQUIRED_SUPPLY_CHAIN_STEPS = Object.freeze([
  * only that something was uploaded. The digest suffix proves which C17 ZIP it contained.
  */
 export const REQUIRED_ARTIFACT_PREFIX = 'c17-evidence-archive-';
-export const artifactNameForDigest = (digest) => `${REQUIRED_ARTIFACT_PREFIX}${digest}`;
+export const FINALIZED_ARTIFACT_PREFIX = 'c17-evidence-finalized-';
+
+/**
+ * THE artifact contract, attempt-aware, in one place.
+ *
+ *   c17-evidence-archive-a<source_run_attempt>-<inner_sha256>
+ *   c17-evidence-finalized-a<finalizer_run_attempt>-<inner_sha256>
+ *
+ * The attempt is part of the NAME for two reasons that pull the same way. Actions refuses to
+ * overwrite an existing artifact name, so a rerun of a job whose upload already succeeded would
+ * die on the collision; and an unscoped name leaves a superseded attempt's bytes
+ * indistinguishable from the current attempt's, which is worse — it would let an artifact built
+ * from a different job set satisfy this receipt.
+ *
+ * There is deliberately no second helper. An earlier revision added a parallel
+ * `attemptArtifactName` beside the unscoped `artifactNameForDigest`, so the workflow uploaded one
+ * shape while the verifier demanded the other; the run would have failed delivery verification
+ * with both halves believing they were right.
+ */
+export const artifactPrefixForAttempt = (attempt) => `${REQUIRED_ARTIFACT_PREFIX}a${attempt}-`;
+export const artifactNameForDigest = (attempt, digest) => `${artifactPrefixForAttempt(attempt)}${digest}`;
+export const finalizerArtifactPrefixForAttempt = (attempt) => `${FINALIZED_ARTIFACT_PREFIX}a${attempt}-`;
+export const finalizerArtifactName = (attempt, digest) => `${finalizerArtifactPrefixForAttempt(attempt)}${digest}`;
+
+/**
+ * Select the ONE artifact this receipt's attempt must have produced.
+ *
+ * `all` is the complete API response array, already total_count-validated by the caller. Older
+ * attempts are ignored — they are legitimately present after a rerun — but they can never satisfy
+ * the current receipt, and an older artifact with the right digest cannot rescue a current
+ * attempt whose artifact is wrong.
+ */
+export function selectAttemptArtifact(all, { prefixForAttempt, attempt, digest, familyPrefix, label }) {
+  const problems = [];
+  const notes = [];
+  const family = all.filter((a) => typeof a?.name === 'string' && a.name.startsWith(familyPrefix));
+  const currentPrefix = prefixForAttempt(attempt);
+  const current = family.filter((a) => a.name.startsWith(currentPrefix));
+  const older = family.filter((a) => !a.name.startsWith(currentPrefix));
+  if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/.test(digest)) {
+    problems.push(`${label} requires the exact inner archive SHA-256; got ${JSON.stringify(digest)}`);
+    return { problems, notes, artifact: null };
+  }
+  const required = `${currentPrefix}${digest}`;
+  if (current.length === 0) {
+    problems.push(
+      `GitHub reports no '${currentPrefix}*' artifact for attempt ${attempt}`
+      + (older.length > 0
+        ? `; ${older.length} artifact(s) from a superseded attempt (${older.map((a) => a.name).join(', ')}) `
+          + 'cannot satisfy this receipt'
+        : ''),
+    );
+    return { problems, notes, artifact: null };
+  }
+  if (current.length !== 1) {
+    problems.push(
+      `GitHub reports ${current.length} '${currentPrefix}*' artifacts for attempt ${attempt} `
+      + `(${current.map((a) => a.name).join(', ')}); exactly one is required`,
+    );
+    return { problems, notes, artifact: null };
+  }
+  if (current[0].name !== required) {
+    problems.push(
+      `GitHub reports '${current[0].name}' for attempt ${attempt}, but the delivered archive `
+      + `requires '${required}'`,
+    );
+    return { problems, notes, artifact: null };
+  }
+  if (older.length > 0) notes.push(`${label}_older_attempts_ignored=${older.length}`);
+  return { problems, notes, artifact: current[0] };
+}
+
+/**
+ * C17.2 — TWO CONTRACTS, because a candidate preflight and a delivery are different questions.
+ *
+ * The single contract required `event: push` and `ref: refs/heads/main` unconditionally, even for
+ * OFFLINE verification of a candidate. That made a branch `workflow_dispatch` run — the only kind
+ * this repository can produce before `main` moves — impossible to verify at all, so the preflight
+ * that is supposed to gate the fast-forward could never run. The artifact-service timeout hid
+ * this: the packager never executed, so nothing ever asked the question.
+ *
+ * CANDIDATE  (offline preflight): a structurally valid `workflow_dispatch` receipt on any branch
+ *            is acceptable, because it is not being offered as evidence. What it MUST still do is
+ *            bind: run-receipt.head_sha has to equal source-receipt.source_sha, so a preflight
+ *            cannot vouch for a different commit than the one packaged.
+ * DELIVERY   (online / --require-hosted): strictly `push` on `main`, and every claim
+ *            authenticated against the GitHub API. Nothing is relaxed here.
+ */
+/**
+ * PROFILE — what KIND of run produced the receipt. Caller-owned, never inferred from the
+ * receipt: an untrusted document must not choose which rules it is judged by.
+ *
+ *   candidate : `workflow_dispatch` on a canonical branch ref. Offline preflight ONLY. Used to
+ *               gate a fast-forward; never offered as evidence.
+ *   delivery  : `push` on refs/heads/main. The evidence-bearing case.
+ *
+ * LEVEL — HOW MUCH is checked. Orthogonal to profile, which is the distinction the previous
+ * single `mode` collapsed:
+ *
+ *   offline   : structure, code-owned identity, and the head_sha binding. No network.
+ *   online    : everything offline does, plus authoritative GitHub API verification of the run,
+ *               its jobs, its attempt, its artifacts and the inner archive digest.
+ *
+ * The four combinations are NOT all legal, and the illegal ones fail closed:
+ *   candidate+offline  → the preflight. Legal.
+ *   candidate+online   → REFUSED. A dispatch receipt can never be authoritative evidence, so
+ *                        asking the API about it would lend it standing it must not have.
+ *   delivery+offline   → legal, and necessary: the source CI run verifies its OWN archive before
+ *                        uploading it, at which point its own conclusions do not yet exist.
+ *   delivery+online    → the authoritative check a reviewer runs afterwards.
+ */
+export const RECEIPT_PROFILES = Object.freeze(['candidate', 'delivery']);
+export const VERIFICATION_LEVELS = Object.freeze(['offline', 'online']);
+/** A candidate receipt is a dispatch, and only a dispatch. */
+export const CANDIDATE_EVENT = 'workflow_dispatch';
+const BRANCH_REF = /^refs\/heads\/[A-Za-z0-9._\/-]+$/;
 
 const NUMERIC = /^[1-9][0-9]{0,17}$/;
 const SHA40 = /^[0-9a-f]{40}$/;
@@ -58,7 +173,18 @@ const SHA40 = /^[0-9a-f]{40}$/;
  * Validate the receipt's own shape BEFORE any network use, and return only the identifiers this
  * module is willing to act on. A field that fails here is never used to build a URL.
  */
-export function validateReceiptShape(receipt, { requireHosted }) {
+export function validateReceiptShape(receipt, { requireHosted, profile }) {
+  if (!RECEIPT_PROFILES.includes(profile)) {
+    return {
+      ok: false,
+      problems: [
+        `receipt profile ${JSON.stringify(profile)} is not one of ${RECEIPT_PROFILES.join(', ')}. `
+        + 'The profile is caller-owned and must be stated explicitly; it is never inferred from the '
+        + 'receipt, because an untrusted document must not choose the rules it is judged by.',
+      ],
+      ids: null,
+    };
+  }
   const problems = [];
   if (receipt === null || typeof receipt !== 'object' || Array.isArray(receipt)) {
     return { ok: false, problems: ['run receipt is not an object'], ids: null };
@@ -111,12 +237,41 @@ export function validateReceiptShape(receipt, { requireHosted }) {
     }
   };
   exact('workflow', WORKFLOW_NAME);
-  exact('workflow_ref', EXPECTED_WORKFLOW_REF);
   exact('job', EXPECTED_JOB);
-  exact('ref', EXPECTED_REF);
-  exact('event', EXPECTED_EVENT);
   exact('runner_os', EXPECTED_RUNNER_OS);
   exact('runner_arch', EXPECTED_RUNNER_ARCH);
+  if (profile === 'delivery') {
+    // Delivery is the evidence-bearing case: push, on main, from the exact workflow ref.
+    exact('workflow_ref', EXPECTED_WORKFLOW_REF);
+    exact('ref', EXPECTED_REF);
+    exact('event', EXPECTED_EVENT);
+  } else {
+    // Candidate preflight: a dispatch on a branch is legitimate and must still be well formed.
+    // What is NOT relaxed is the head_sha binding, checked by the caller against the source
+    // receipt, and the shape of everything else.
+    if (receipt.event !== CANDIDATE_EVENT) {
+      problems.push(
+        `run receipt event is ${JSON.stringify(receipt.event)}; a candidate preflight is `
+        + `${CANDIDATE_EVENT} and nothing else`,
+      );
+    }
+    if (!BRANCH_REF.test(receipt.ref)) {
+      problems.push(`run receipt ref ${JSON.stringify(receipt.ref)} is not a branch ref`);
+    }
+    const wantPrefix = `${REPOSITORY}/${WORKFLOW_PATH}@`;
+    if (!receipt.workflow_ref.startsWith(wantPrefix)) {
+      problems.push(
+        `run receipt workflow_ref ${JSON.stringify(receipt.workflow_ref)} does not name `
+        + `${wantPrefix}<ref>`,
+      );
+    }
+    if (receipt.workflow_ref !== `${wantPrefix}${receipt.ref}`) {
+      problems.push(
+        `run receipt workflow_ref ${JSON.stringify(receipt.workflow_ref)} disagrees with its own `
+        + `ref ${JSON.stringify(receipt.ref)}`,
+      );
+    }
+  }
   // An api_url in the receipt is IGNORED for fetching. If present it must at least agree with
   // what this module would construct, so a mismatch is reported rather than silently tolerated.
   if (receipt.api_url !== undefined) {
@@ -190,19 +345,70 @@ export async function apiGet(url, { fetchImpl = globalThis.fetch, token = null }
  */
 export async function verifyHostedRun(receipt, {
   expectedHeadSha, requireHosted = true, fetchImpl = globalThis.fetch, token = null,
-  requireArtifact = true, expectedArtifactDigest = null,
+  requireArtifact = true, expectedArtifactDigest = null, profile, level,
 } = {}) {
   const problems = [];
   const notes = [];
-  const shape = validateReceiptShape(receipt, { requireHosted });
+  if (!RECEIPT_PROFILES.includes(profile)) {
+    return {
+      ok: false,
+      problems: [`receipt profile ${JSON.stringify(profile)} is not one of ${RECEIPT_PROFILES.join(', ')}`],
+      notes,
+    };
+  }
+  if (!VERIFICATION_LEVELS.includes(level)) {
+    return {
+      ok: false,
+      problems: [`verification level ${JSON.stringify(level)} is not one of ${VERIFICATION_LEVELS.join(', ')}`],
+      notes,
+    };
+  }
+  // The illegal combinations, refused before anything else happens.
+  if (profile === 'candidate' && (level === 'online' || requireHosted)) {
+    return {
+      ok: false,
+      problems: [
+        'a candidate preflight cannot be verified online or with --require-hosted. A '
+        + 'workflow_dispatch receipt is not evidence, and asking the API about it would lend it '
+        + 'standing it must not have.',
+      ],
+      notes,
+    };
+  }
+  if (requireHosted && level !== 'online') {
+    return {
+      ok: false,
+      problems: [
+        'requiring hosted evidence demands authoritative online verification of the run, its jobs '
+        + 'and its artifacts. Select online verification as well, or drop the hosted requirement; '
+        + 'an offline pass under --require-hosted would claim an authority it never checked.',
+      ],
+      notes,
+    };
+  }
+  const shape = validateReceiptShape(receipt, { requireHosted, profile });
   if (!shape.ok) return { ok: false, problems: shape.problems, notes };
   if (shape.local === true) {
     notes.push('run_receipt=LOCAL (not produced by a hosted run)');
     return { ok: true, problems, notes, local: true };
   }
   const { runId, runAttempt, runNumber, headSha } = shape.ids;
-  if (expectedHeadSha !== undefined && headSha !== expectedHeadSha) {
+  // THE BINDING, in every profile and at every level, stated exactly once. A verification that
+  // vouched for a different commit than the one packaged would be worse than none.
+  if (expectedHeadSha === undefined || expectedHeadSha === null) {
+    problems.push('no source SHA was supplied to bind the run receipt against');
+  } else if (headSha !== expectedHeadSha) {
     problems.push(`run receipt head_sha ${headSha} != the source receipt's ${expectedHeadSha}`);
+  }
+  notes.push(`profile=${profile} level=${level} event=${receipt.event} ref=${receipt.ref}`);
+  if (level === 'offline') {
+    // Structural self-verification. Legal for BOTH profiles: a candidate preflight is offline by
+    // contract, and the source CI run must verify its own archive before its conclusions exist.
+    // The verifier returns HERE, before any network access, rather than leaving a caller to
+    // discard problems it did not want.
+    return {
+      ok: problems.length === 0, problems, notes, local: false, profile, level,
+    };
   }
 
   const run = await apiGet(runUrl(runId), { fetchImpl, token });
@@ -300,14 +506,6 @@ export async function verifyHostedRun(receipt, {
 
   // ── ARTIFACTS: the evidence archive must be bound to THIS run ───────────────
   if (requireArtifact) {
-    let requiredArtifact = null;
-    if (typeof expectedArtifactDigest !== 'string' || !/^[0-9a-f]{64}$/.test(expectedArtifactDigest)) {
-      problems.push(
-        `hosted evidence requires the exact inner archive SHA-256; got ${JSON.stringify(expectedArtifactDigest)}`,
-      );
-    } else {
-      requiredArtifact = artifactNameForDigest(expectedArtifactDigest);
-    }
     const arts = await apiGet(artifactsUrl(runId), { fetchImpl, token });
     if (!arts.ok) {
       problems.push(`artifacts endpoint failed: ${arts.error}`);
@@ -316,55 +514,49 @@ export async function verifyHostedRun(receipt, {
       if (!Array.isArray(arts.body?.artifacts)) {
         problems.push('GitHub artifacts response has no artifacts array');
       }
-      if (!Number.isInteger(arts.body?.total_count)
-        || arts.body.total_count !== all.length) {
+      // total_count is validated over the COMPLETE response, before any filtering, so a truncated
+      // or padded page cannot hide or invent an artifact.
+      if (!Number.isInteger(arts.body?.total_count) || arts.body.total_count !== all.length) {
         problems.push(
           `GitHub artifacts response total_count ${JSON.stringify(arts.body?.total_count)} does not equal `
           + `the returned artifacts length ${all.length}`,
         );
       }
-      const family = all.filter((a) => typeof a?.name === 'string'
-        && a.name.startsWith(REQUIRED_ARTIFACT_PREFIX));
-      const found = requiredArtifact === null ? [] : family.filter((a) => a.name === requiredArtifact);
-      if (family.length !== 1) {
-        problems.push(
-          `GitHub reports ${family.length} '${REQUIRED_ARTIFACT_PREFIX}<sha256>' artifacts; exactly one is required`,
-        );
-      }
-      if (requiredArtifact !== null && found.length === 0) {
-        problems.push(`GitHub reports no artifact named '${requiredArtifact}' for the supplied evidence ZIP`);
-      } else if (found.length !== 1) {
-        problems.push(`GitHub reports ${found.length} exact evidence artifacts; exactly one is required`);
-      } else {
-        for (const a of found) {
-          if (a.expired !== false) {
-            problems.push(`artifact '${a.name}' is expired or does not declare expired=false`);
-          }
-          if (!Number.isInteger(a.size_in_bytes) || a.size_in_bytes <= 0) {
-            problems.push(`artifact '${a.name}' has invalid size_in_bytes ${JSON.stringify(a.size_in_bytes)}`);
-          }
-          const sha = a.workflow_run?.head_sha;
-          if (sha !== headSha) {
-            problems.push(`artifact '${a.name}' is bound to head_sha ${JSON.stringify(sha)}, not ${headSha}`);
-          }
-          if (a.workflow_run?.id !== Number(runId)) {
-            problems.push(
-              `artifact '${a.name}' is bound to workflow_run.id ${JSON.stringify(a.workflow_run?.id)}, `
-              + `not ${runId}`,
-            );
-          }
-          if (typeof a.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(a.digest)) {
-            problems.push(`artifact '${a.name}' has no valid GitHub wrapper digest`);
-          }
+      const picked = selectAttemptArtifact(all, {
+        prefixForAttempt: artifactPrefixForAttempt,
+        attempt: runAttempt,
+        digest: expectedArtifactDigest,
+        familyPrefix: REQUIRED_ARTIFACT_PREFIX,
+        label: 'source evidence artifact',
+      });
+      problems.push(...picked.problems);
+      notes.push(...picked.notes);
+      const a = picked.artifact;
+      if (a !== null) {
+        if (a.expired !== false) {
+          problems.push(`artifact '${a.name}' is expired or does not declare expired=false`);
+        }
+        if (!Number.isInteger(a.size_in_bytes) || a.size_in_bytes <= 0) {
+          problems.push(`artifact '${a.name}' has invalid size_in_bytes ${JSON.stringify(a.size_in_bytes)}`);
+        }
+        if (a.workflow_run?.head_sha !== headSha) {
+          problems.push(`artifact '${a.name}' is bound to head_sha ${JSON.stringify(a.workflow_run?.head_sha)}, not ${headSha}`);
+        }
+        if (a.workflow_run?.id !== Number(runId)) {
+          problems.push(
+            `artifact '${a.name}' is bound to workflow_run.id ${JSON.stringify(a.workflow_run?.id)}, not ${runId}`,
+          );
+        }
+        if (typeof a.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(a.digest)) {
+          problems.push(`artifact '${a.name}' has no valid GitHub wrapper digest`);
         }
         notes.push(
-          `github_artifact=${requiredArtifact} inner_sha256=${expectedArtifactDigest} `
-          + `wrapper_digest=${found[0]?.digest} count=${found.length}`,
+          `github_artifact=${a.name} inner_sha256=${expectedArtifactDigest} wrapper_digest=${a.digest}`,
         );
       }
     }
   }
-  return { ok: problems.length === 0, problems, notes, local: false };
+  return { ok: problems.length === 0, problems, notes, local: false, profile, level };
 }
 
 export const digestOf = (b) => createHash('sha256').update(b).digest('hex');

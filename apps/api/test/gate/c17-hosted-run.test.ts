@@ -62,7 +62,7 @@ const facts = () => ({
   },
   artifacts: {
     artifacts: [{
-      name: artifactNameForDigest(ARTIFACT_DIGEST), expired: false, size_in_bytes: 123,
+      name: artifactNameForDigest(ATTEMPT, ARTIFACT_DIGEST), expired: false, size_in_bytes: 123,
       digest: WRAPPER_DIGEST,
       workflow_run: { id: Number(RUN), head_sha: SHA },
     }],
@@ -84,7 +84,7 @@ describe('C17.2 C — non-forgeable hosted-run verification', () => {
   it('accepts the complete code-owned run/job/step/artifact contract', async () => {
     const r = await verifyHostedRun(receipt(), {
       expectedHeadSha: SHA, requireHosted: true, requireArtifact: true,
-      expectedArtifactDigest: ARTIFACT_DIGEST,
+      expectedArtifactDigest: ARTIFACT_DIGEST, profile: 'delivery', level: 'online',
       fetchImpl: transport(),
     });
     expect(r.problems).toEqual([]);
@@ -108,7 +108,7 @@ describe('C17.2 C — non-forgeable hosted-run verification', () => {
     forged[field] = value;
     const r = await verifyHostedRun(forged, {
       expectedHeadSha: SHA, requireHosted: true, requireArtifact: true,
-      expectedArtifactDigest: ARTIFACT_DIGEST,
+      expectedArtifactDigest: ARTIFACT_DIGEST, profile: 'delivery', level: 'online',
       fetchImpl: transport(),
     });
     expect(r.ok).toBe(false);
@@ -116,7 +116,7 @@ describe('C17.2 C — non-forgeable hosted-run verification', () => {
   });
 
   it('rejects hosted:false when hosted evidence is required', () => {
-    const r = validateReceiptShape({ hosted: false }, { requireHosted: true });
+    const r = validateReceiptShape({ hosted: false }, { requireHosted: true, profile: 'delivery' });
     expect(r.ok).toBe(false);
     expect(r.problems.join('\n')).toMatch(/hosted=false/);
   });
@@ -142,21 +142,21 @@ describe('C17.2 C — non-forgeable hosted-run verification', () => {
     ['required step did not succeed', (b: any) => {
       b.jobs.jobs.find((j: any) => j.name === EXPECTED_JOB).steps[0].conclusion = 'failure';
     }, /supply-chain step .*concluded .*failure/],
-    ['missing artifact', (b: any) => { b.artifacts.artifacts = []; }, /exactly one is required/],
+    ['missing artifact', (b: any) => { b.artifacts.artifacts = []; }, /no 'c17-evidence-archive-a2-\*' artifact for attempt 2/],
     ['duplicate artifact', (b: any) => { b.artifacts.artifacts.push({ ...b.artifacts.artifacts[0] }); }, /exactly one/],
     ['artifacts member is not an array', (b: any) => { b.artifacts.artifacts = {}; }, /no artifacts array/],
     ['artifacts total_count does not match the response', (b: any) => { b.artifacts.total_count += 1; }, /total_count .*returned artifacts length/],
     ['expired artifact', (b: any) => { b.artifacts.artifacts[0].expired = true; }, /expired/],
     ['missing artifact SHA binding', (b: any) => { delete b.artifacts.artifacts[0].workflow_run; }, /head_sha/],
     ['artifact is bound to another run id', (b: any) => { b.artifacts.artifacts[0].workflow_run.id = 7; }, /workflow_run\.id/],
-    ['wrong inner artifact digest', (b: any) => { b.artifacts.artifacts[0].name = artifactNameForDigest('c'.repeat(64)); }, /supplied evidence ZIP/],
+    ['wrong inner artifact digest', (b: any) => { b.artifacts.artifacts[0].name = artifactNameForDigest(ATTEMPT, 'c'.repeat(64)); }, /delivered archive requires 'c17-evidence-archive-a2-/],
     ['missing wrapper digest', (b: any) => { delete b.artifacts.artifacts[0].digest; }, /wrapper digest/],
   ] as const)('rejects authoritative API facts: %s', async (_label, mutate, pattern) => {
     const b: any = facts();
     mutate(b);
     const r = await verifyHostedRun(receipt(), {
       expectedHeadSha: SHA, requireHosted: true, requireArtifact: true,
-      expectedArtifactDigest: ARTIFACT_DIGEST,
+      expectedArtifactDigest: ARTIFACT_DIGEST, profile: 'delivery', level: 'online',
       fetchImpl: transport(b),
     });
     expect(r.ok).toBe(false);
@@ -176,6 +176,7 @@ describe('C17.2 C — non-forgeable hosted-run verification', () => {
     expect(file.ok).toBe(false);
     expect(file.error).toMatch(/non-HTTPS/);
     expect(API_ORIGIN).toBe('https://api.github.com');
-    expect(artifactNameForDigest(ARTIFACT_DIGEST)).toBe(`${REQUIRED_ARTIFACT_PREFIX}${ARTIFACT_DIGEST}`);
+    expect(artifactNameForDigest(ATTEMPT, ARTIFACT_DIGEST))
+      .toBe(`${REQUIRED_ARTIFACT_PREFIX}a${ATTEMPT}-${ARTIFACT_DIGEST}`);
   });
 });

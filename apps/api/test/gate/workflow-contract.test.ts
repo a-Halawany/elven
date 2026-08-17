@@ -12,10 +12,12 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 import {
-  FINALIZER_ARTIFACT, FINALIZER_JOB, FINALIZER_RUNNER_LABEL, FINALIZER_WORKFLOW_NAME,
+  FINALIZER_JOB, FINALIZER_RUNNER_LABEL, FINALIZER_WORKFLOW_NAME,
   REQUIRED_FINALIZER_STEPS,
 } from '../../../../scripts/gate/c17-cross-host-finalization.mjs';
-import { REQUIRED_ARTIFACT_PREFIX } from '../../../../scripts/gate/lib/hosted-run.mjs';
+import {
+  FINALIZED_ARTIFACT_PREFIX, REQUIRED_ARTIFACT_PREFIX,
+} from '../../../../scripts/gate/lib/hosted-run.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const WORKFLOW = join(REPO, '.github', 'workflows', 'ci.yml');
@@ -127,11 +129,14 @@ describe('C16-R3.4.2 §5 — only supply-chain performs live scanning', () => {
     const node = actions.find((step) => step.uses?.startsWith('actions/setup-node@'));
     expect(node?.with).toEqual({ 'node-version': '24.11.1', cache: 'pnpm' });
     const upload = steps.find((step) => step.name === 'Upload the FINALIZED cross-host evidence');
+    // The finalizer's OWN attempt scopes its upload; the SOURCE run's attempt scopes the download.
     expect(upload?.with?.name).toBe(
-      `${FINALIZER_ARTIFACT}-${'${{ env.C17_FINALIZED_SHA256 }}'}`,
+      `${FINALIZED_ARTIFACT_PREFIX}a${'${{ github.run_attempt }}'}-${'${{ env.C17_FINALIZED_SHA256 }}'}`,
     );
     const download = steps.find((step) => step.name === 'Download the archive the SOURCE run produced');
-    expect(download?.with?.pattern).toBe(`${REQUIRED_ARTIFACT_PREFIX}*`);
+    expect(download?.with?.pattern).toBe(
+      `${REQUIRED_ARTIFACT_PREFIX}a${'${{ github.event.workflow_run.run_attempt }}'}-*`,
+    );
     expect(download?.with?.['merge-multiple']).toBe(true);
     const runs = steps.map((step) => step.run ?? '').join('\n');
     expect(runs).toContain('c17-cross-host-finalization.mjs receipt');
@@ -144,7 +149,7 @@ describe('C16-R3.4.2 §5 — only supply-chain performs live scanning', () => {
     const steps = jobs()['supply-chain'].steps ?? [];
     const upload = steps.find((step) => step.name === 'Upload the C17 evidence archive');
     expect(upload?.with?.name).toBe(
-      `${REQUIRED_ARTIFACT_PREFIX}${'${{ env.C17_ZIP_SHA256 }}'}`,
+      `${REQUIRED_ARTIFACT_PREFIX}a${'${{ github.run_attempt }}'}-${'${{ env.C17_ZIP_SHA256 }}'}`,
     );
   });
 });

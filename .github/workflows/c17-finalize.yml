@@ -45,7 +45,10 @@ jobs:
       - name: Download the archive the SOURCE run produced
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: c17-evidence-archive-*
+          # Scoped to the SOURCE workflow's run attempt: after a full re-run, artifacts from the
+          # superseded attempt legitimately remain on the run, and an unscoped pattern would merge
+          # them into `incoming` beside the current attempt's archive.
+          pattern: c17-evidence-archive-a${{ github.event.workflow_run.run_attempt }}-*
           merge-multiple: true
           path: incoming
           run-id: ${{ github.event.workflow_run.id }}
@@ -60,7 +63,7 @@ jobs:
           SOURCE_ZIP="$(find incoming -type f -name 'c17-evidence-*.zip')"
           echo "C17_SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
           node scripts/gate/package-c17-evidence.mjs verify \
-            --zip "$SOURCE_ZIP" --root "$PWD" --online --require-hosted
+            --zip "$SOURCE_ZIP" --root "$PWD" --profile delivery --online --require-hosted
       - name: Generate FINAL C16 + C17 artifacts on macOS ARM64
         run: |
           set -euo pipefail
@@ -77,9 +80,14 @@ jobs:
             --out "$C17_OUT" --as-of "$AS_OF" \
             --final --expected-sha "${{ github.event.workflow_run.head_sha }}"
       - name: Create + verify the finalized cross-host evidence
+        id: finalize_package
         run: |
           set -euo pipefail
-          FINALIZED="$(mktemp -d)"
+          # Deterministic path under the runner temp root, so the upload's path input is
+          # statically nonempty. The finalizer requires this directory to be empty and it is
+          # created fresh here.
+          FINALIZED="$RUNNER_TEMP/finalized"
+          mkdir -p "$FINALIZED"
           node scripts/gate/c17-cross-host-finalization.mjs create \
             --source-zip "$C17_SOURCE_ZIP" \
             --darwin-c16 "$C17_DARWIN_C16" \
@@ -102,12 +110,13 @@ jobs:
             echo '- Linux/macOS exact-nine comparison: PASS'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the FINALIZED cross-host evidence
+        # Guarded on the producing step: the name embeds a digest that step computes.
+        if: always() && steps.finalize_package.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          # The API-authenticated artifact name commits to the exact INNER finalized ZIP bytes.
+          # The API-authenticated artifact name commits to the exact INNER finalized ZIP bytes
+          # and to this finalizer run's OWN attempt (the source attempt is scoped at download).
           # The REST `digest` is also required by the verifier, but describes Actions' wrapper ZIP.
-          name: c17-evidence-finalized-${{ env.C17_FINALIZED_SHA256 }}
-          path: |
-            ${{ env.C17_FINALIZED_ZIP }}
-            ${{ env.C17_FINALIZED_SIDECAR }}
+          name: c17-evidence-finalized-a${{ github.run_attempt }}-${{ env.C17_FINALIZED_SHA256 }}
+          path: ${{ runner.temp }}/finalized
           if-no-files-found: error

@@ -16,7 +16,9 @@
  * Usage:
  *   node scripts/gate/package-c17-evidence.mjs pack   --c16 <DIR> --c17 <DIR> --out <DIR> \
  *                                                     [--run-receipt <FILE>]
- *   node scripts/gate/package-c17-evidence.mjs verify --zip <FILE> --root <REPO> [--online]
+ *   node scripts/gate/package-c17-evidence.mjs verify --zip <FILE> --root <REPO> \
+ *                                                     --profile candidate|delivery \
+ *                                                     [--online] [--require-hosted]
  */
 import {
   readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, lstatSync, existsSync, rmSync,
@@ -32,7 +34,7 @@ import {
   compileBomValidator, validateBom, verifyVendoredSchemas, VENDOR_DIR, SCHEMA_FILES,
 } from './lib/cyclonedx-schema.mjs';
 import { deriveC16Expectation, generatorDigest } from './generate-closures.mjs';
-import { verifyHostedRun, validateReceiptShape } from './lib/hosted-run.mjs';
+import { RECEIPT_PROFILES, verifyHostedRun } from './lib/hosted-run.mjs';
 import { buildTargetInventory, reconcileInventory } from './lib/license-closure.mjs';
 import {
   EXCLUSION_REQUIRED_FIELDS, FORBIDDEN_RESIDUALS, findVulnerableResiduals,
@@ -384,9 +386,34 @@ function walk(dir, base = dir) {
   return out;
 }
 
-export async function verify({ zipPath, root = ROOT, online = false, requireHosted = false }) {
+export async function verify({ zipPath, root = ROOT, online = false, requireHosted = false, profile }) {
   const problems = [];
   const notes = [];
+  // C17.2 — the receipt PROFILE is caller-owned and mandatory. It states which contract the
+  // archive's run receipt is judged by (candidate dispatch preflight vs push/main delivery);
+  // an unknown or missing profile fails closed rather than defaulting to the laxer contract.
+  if (!RECEIPT_PROFILES.includes(profile)) {
+    return {
+      ok: false,
+      problems: [
+        `verification profile ${JSON.stringify(profile)} is not one of ${RECEIPT_PROFILES.join(', ')}. `
+        + 'State --profile explicitly; it is never inferred from the archive under test.',
+      ],
+      notes,
+    };
+  }
+  // A candidate is an offline preflight and nothing else. Refused here, before the archive is
+  // even opened — and in particular before any fetch could occur.
+  if (profile === 'candidate' && (online || requireHosted)) {
+    return {
+      ok: false,
+      problems: [
+        'a candidate archive cannot be verified --online or --require-hosted. A workflow_dispatch '
+        + 'preflight is not delivery evidence; verify the push/main delivery archive instead.',
+      ],
+      notes,
+    };
+  }
   if (!existsSync(zipPath)) return { ok: false, problems: [`archive ${zipPath} does not exist`], notes };
   const archiveStat = lstatSync(zipPath);
   if (archiveStat.isSymbolicLink() || !archiveStat.isFile()) {
@@ -879,21 +906,20 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
         requireHosted: requireHosted || online,
         requireArtifact: online,
         expectedArtifactDigest: online ? sha256(readFileSync(zipPath)) : null,
+        profile,
+        level: online ? 'online' : 'offline',
         fetchImpl: online ? globalThis.fetch : (async () => { throw new Error('offline'); }),
         // Rate-limit credential only. It cannot influence WHICH endpoint is contacted: the URL
         // is constructed in hosted-run.mjs from a code-owned repository and a validated id.
         token: process.env.GITHUB_TOKEN ?? null,
       });
-      if (online || requireHosted) {
-        problems.push(...hosted.problems);
-        notes.push(...hosted.notes);
-      } else {
-        // Offline: shape only, so a malformed receipt is still caught without a network.
-        const shape = validateReceiptShape(run, { requireHosted: false });
-        problems.push(...shape.problems);
-        notes.push(shape.local === true
-          ? 'run_receipt=LOCAL (not produced by a hosted run)'
-          : `run_receipt=${run.repository}#${run.run_id} attempt ${run.run_attempt} job ${run.job} (shape only; --online not requested)`);
+      problems.push(...hosted.problems);
+      notes.push(...hosted.notes);
+      if (!online && hosted.local !== true) {
+        notes.push(
+          `run_receipt=${run.repository}#${run.run_id} attempt ${run.run_attempt} job ${run.job} `
+          + `(${profile} profile, offline: shape + SHA binding, no API call)`,
+        );
       }
     }
   } finally {
@@ -932,6 +958,7 @@ async function main() {
       root: argOf(argv, '--root') ?? ROOT,
       online: argv.includes('--online'),
       requireHosted: argv.includes('--require-hosted'),
+      profile: argOf(argv, '--profile') ?? undefined,
     });
     for (const n of r.notes) console.log(`  ${n}`);
     if (!r.ok) {

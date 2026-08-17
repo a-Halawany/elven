@@ -33,9 +33,24 @@ on:
   push:
     branches: [main]
   pull_request:
-  # C16-R3.4 §7: a transient upstream failure (a 404 from the trivy checks-bundle mirror has
-  # reddened three runs) must be rerunnable WITHOUT touching source. Empty retry-only commits
-  # pollute the candidate history and change the SHA the evidence is bound to.
+  # ── RECOVERY CONTRACT (corrected at C17.2) ──────────────────────────────────────
+  # A transient upstream failure — a 404 from the trivy checks-bundle mirror, or a timeout from
+  # GitHub's own ArtifactService, both of which have reddened runs here — must be recoverable
+  # WITHOUT touching source. Empty retry-only commits pollute candidate history and change the SHA
+  # the evidence is bound to.
+  #
+  # But the two recovery routes are NOT interchangeable, and conflating them produced a run that
+  # could never be verified:
+  #
+  #   * `workflow_dispatch` is CANDIDATE PREFLIGHT ONLY. Its receipt carries
+  #     event=workflow_dispatch on a branch ref, which delivery verification rejects by design. Use
+  #     it to gate a fast-forward; never offer its archive as final evidence.
+  #   * An EVIDENCE-BEARING run is a `push` on `main`. If one fails, re-run the ENTIRE workflow,
+  #     never only the failed jobs: the verifier requires build-test, supply-chain and
+  #     browser-regression to have all succeeded in the SAME attempt, and a partial re-run leaves
+  #     the other two jobs recorded against the previous attempt.
+  #
+  # Artifact names are attempt-scoped for exactly this reason — see the upload steps.
   workflow_dispatch:
 
 permissions:
@@ -49,6 +64,9 @@ env:
 
 jobs:
   build-test:
+    # C17.2 — an explicit JOB bound. No job had one; a hung step could only be stopped
+    # by the 6-hour platform default, which is not a bound anyone reviews.
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -82,9 +100,13 @@ jobs:
       # C16 closure gate, BLOCKING, into an explicit per-run temporary directory so no
       # step and no test depends on gitignored state.
       - name: C16 target-resolved closure gate (tracked runner, blocking)
+        # C17.2 — a DETERMINISTIC path under the runner's temp root, not mktemp. The upload
+        # below runs always(), and an `${{ env.* }}` path is EMPTY when this step never ran;
+        # `if-no-files-found: warn` does not protect against an empty path input.
         run: |
           set -euo pipefail
-          C16_OUT="$(mktemp -d)"
+          C16_OUT="$RUNNER_TEMP/c16-out"
+          mkdir -p "$C16_OUT"
           echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
           node scripts/gate/generate-closures.mjs --out "$C16_OUT"
           test -s "$C16_OUT/closure-reconciliation.json"
@@ -113,11 +135,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c16-closure-evidence
-          path: ${{ env.C16_OUT }}
+          name: c16-closure-evidence-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/c16-out
           if-no-files-found: warn
 
   browser-regression:
+    # C17.2 — an explicit JOB bound. No job had one; a hung step could only be stopped
+    # by the 6-hour platform default, which is not a bound anyone reviews.
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -154,9 +179,17 @@ jobs:
         run: pnpm exec playwright test
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
-        with: { name: playwright-traces, path: test-results/, if-no-files-found: warn }
+        with:
+          name: playwright-traces-a${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: warn
 
   supply-chain:
+    # C17.2 — an explicit JOB bound. No job had one; a hung step could only be stopped
+    # by the 6-hour platform default, which is not a bound anyone reviews. This job runs
+    # four gates plus scanner acquisition, packaging and full offline self-verification
+    # (which regenerates C16 + C17 from source), so its bound is deliberately the widest.
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -198,11 +231,16 @@ jobs:
       # FINAL MODE, bound to the Actions head SHA. Final mode requires an explicit expected
       # SHA, HEAD equal to it, a real git worktree and a clean tree — so the uploaded
       # manifests state `final` and carry the exact commit this run describes.
+      # C17.2 — every gate output lives at a DETERMINISTIC path under the runner's temp root.
+      # The diagnostic uploads below run always(), and an `${{ env.* }}` path is EMPTY when the
+      # producing step never ran; `if-no-files-found: warn` does not protect against an empty
+      # path input, it only tolerates a nonempty path that matched nothing.
       - name: C15 supply-chain gate (tracked pinned runner, FINAL, blocking)
         run: |
           set -euo pipefail
-          C15_OUT="$(mktemp -d)"
-          C15_CACHE="$(mktemp -d)"
+          C15_OUT="$RUNNER_TEMP/c15-out"
+          C15_CACHE="$RUNNER_TEMP/c15-cache"
+          mkdir -p "$C15_OUT" "$C15_CACHE"
           echo "C15_OUT=$C15_OUT" >> "$GITHUB_ENV"
           echo "C15_CACHE=$C15_CACHE" >> "$GITHUB_ENV"
           node scripts/gate/supply-chain.mjs \
@@ -213,7 +251,8 @@ jobs:
       - name: C16 target-resolved closure gate (tracked runner, FINAL, blocking)
         run: |
           set -euo pipefail
-          C16_OUT="$(mktemp -d)"
+          C16_OUT="$RUNNER_TEMP/c16-out"
+          mkdir -p "$C16_OUT"
           echo "C16_OUT=$C16_OUT" >> "$GITHUB_ENV"
           node scripts/gate/generate-closures.mjs \
             --out "$C16_OUT" \
@@ -232,7 +271,8 @@ jobs:
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          C17_OUT="$(mktemp -d)"
+          C17_OUT="$RUNNER_TEMP/c17-out"
+          mkdir -p "$C17_OUT"
           echo "C17_OUT=$C17_OUT" >> "$GITHUB_ENV"
           node scripts/gate/licence-obligations.mjs \
             --out "$C17_OUT" \
@@ -241,6 +281,7 @@ jobs:
       # Package the final evidence as ONE inspectable ZIP with its own SHA-256, so an
       # unsigned public reviewer can download it and verify the bytes they received.
       - name: Package final C15 + C16 evidence as an inspectable ZIP
+        id: evidence_zip
         if: always()
         # The packaging logic lives in the tracked `scripts/gate/package-evidence.sh` so a
         # behavioural control can execute it. Inline runner shell cannot be tested, and the
@@ -248,7 +289,8 @@ jobs:
         # assertion made by reading this file.
         run: |
           set -euo pipefail
-          DEST="$(mktemp -d)"
+          DEST="$RUNNER_TEMP/final-evidence"
+          mkdir -p "$DEST"
           OUT="$(bash scripts/gate/package-evidence.sh \
                    "${C15_OUT:-/nonexistent}" "${C16_OUT:-/nonexistent}" "$GITHUB_SHA" "$DEST")"
           ZIP="$(printf '%s\n' "$OUT" | sed -n 1p)"
@@ -274,49 +316,73 @@ jobs:
           echo "evidence ZIP sha256: $DIGEST"
       # ALWAYS upload: a red run must remain auditable. The runner writes a failure
       # manifest and RESULT-FAIL.txt before exiting, so these paths exist either way.
-      - name: Upload C15 + C16 + C17 raw gate evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: supply-chain-gate-evidence
-          path: |
-            ${{ env.C15_OUT }}
-            ${{ env.C16_OUT }}
-            ${{ env.C17_OUT }}
-          if-no-files-found: warn
-      # C17.1 F. The archive is built by TRACKED code, inside the run that produced the
-      # evidence, so its hosted-run receipt is generated from the real Actions environment
-      # rather than asserted afterwards. The verifier then re-checks it in place.
+      # C17.2 — the BLOCKING packager runs BEFORE every artifact upload. It used to sit after
+      # the raw-evidence upload, so when GitHub's artifact service timed out the packager was
+      # SKIPPED and the job reported failure without ever having run the check that matters.
+      # An auxiliary upload outage must not be able to skip a blocking gate.
+      #
+      # DELIBERATELY SKIPPED on pull_request: a PR run still executes every C15–C17 gate above,
+      # but its receipt is neither a candidate dispatch nor a push/main delivery, so no release
+      # archive is packaged or uploaded from it. On the two real events the caller-owned receipt
+      # profile is stated explicitly: a branch dispatch is a CANDIDATE preflight, a push on main
+      # is DELIVERY evidence. Offline self-verification here checks structure, code-owned
+      # identity and the head_sha binding; it never contacts the API.
       - name: Package + verify the C17 evidence archive (tracked packager, blocking)
+        id: c17_package
+        if: github.event_name != 'pull_request'
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          C17_PKG="$(mktemp -d)"
+          C17_PKG="$RUNNER_TEMP/c17-pkg"
+          mkdir -p "$C17_PKG"
           echo "C17_PKG=$C17_PKG" >> "$GITHUB_ENV"
           node scripts/gate/package-c17-evidence.mjs pack \
             --c16 "$C16_OUT" --c17 "$C17_OUT" --out "$C17_PKG" --require-final
           node scripts/gate/package-c17-evidence.mjs verify \
-            --zip "$(ls "$C17_PKG"/c17-evidence-*.zip)" --root "$PWD"
-      - name: Upload the C17 evidence archive
+            --zip "$(ls "$C17_PKG"/c17-evidence-*.zip)" --root "$PWD" \
+            --profile ${{ github.event_name == 'push' && 'delivery' || 'candidate' }}
+      # RAW DIAGNOSTIC upload: a red run must remain auditable, so always(). Its path is
+      # STATICALLY nonempty — deterministic directories under the runner temp root — so a step
+      # that never ran cannot turn the path input into the empty string.
+      - name: Upload C15 + C16 + C17 raw gate evidence
         if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: supply-chain-gate-evidence-a${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/c15-out
+            ${{ runner.temp }}/c16-out
+            ${{ runner.temp }}/c17-out
+          if-no-files-found: warn
+      # C17.1 F. The archive is built by TRACKED code, inside the run that produced the
+      # evidence, so its hosted-run receipt is generated from the real Actions environment
+      # rather than asserted afterwards. The verifier then re-checks it in place.
+      # GUARDED on the packager's own outcome: this artifact name embeds a digest the packager
+      # computes, so uploading after a failed or skipped packager would publish a name bound to
+      # nothing. `always() &&` keeps the guard decisive even when a later-ordered step failed.
+      - name: Upload the C17 evidence archive
+        if: always() && steps.c17_package.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           # The suffix binds the exact INNER evidence ZIP to GitHub's API-visible artifact
           # metadata. Actions' own artifact digest covers its wrapper ZIP, not this file.
-          name: c17-evidence-archive-${{ env.C17_ZIP_SHA256 }}
-          path: ${{ env.C17_PKG }}
-          if-no-files-found: warn
+          # Attempt-scoped: Actions refuses to overwrite an existing artifact name, so a
+          # rerun would collide; and an unscoped name is indistinguishable from a
+          # superseded attempt's. The verifier matches this exact attempt.
+          name: c17-evidence-archive-a${{ github.run_attempt }}-${{ env.C17_ZIP_SHA256 }}
+          path: ${{ runner.temp }}/c17-pkg
+          if-no-files-found: error
       - name: Upload C17 licence + schema evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c17-licence-evidence
-          path: ${{ env.C17_OUT }}
+          name: c17-licence-evidence-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/c17-out
           if-no-files-found: warn
       - name: Upload the inspectable final-evidence ZIP
-        if: always()
+        if: always() && steps.evidence_zip.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c16-r34-final-evidence-zip
-          path: ${{ env.EVIDENCE_ZIP }}
-          if-no-files-found: warn
+          name: c16-r34-final-evidence-zip-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/final-evidence
+          if-no-files-found: error

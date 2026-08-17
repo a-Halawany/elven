@@ -19,10 +19,13 @@ import { parse as parseYaml } from 'yaml';
 
 import {
   canonicalJson, createCrossHostFinalization, verifyCrossHostFinalization,
+  verifyFinalizerHostedRun,
   CROSS_HOST_ARTIFACTS, DEVELOPMENT_COMPONENTS, FINALIZED_PAYLOAD,
   REQUIRED_FINALIZER_STEPS, finalizerRunUrl, finalizerJobsUrl, finalizerArtifactsUrl,
-  finalizerArtifactName, writeFinalizerReceipt,
+  writeFinalizerReceipt,
 } from '../../../../scripts/gate/c17-cross-host-finalization.mjs';
+// The artifact naming contract is centralized: the finalizer module owns no second copy.
+import { finalizerArtifactName } from '../../../../scripts/gate/lib/hosted-run.mjs';
 
 const SHA = 'a'.repeat(40);
 const AS_OF = '2026-08-16';
@@ -241,7 +244,7 @@ function passingApi(finalizedZip = hostedFinalizedZip): ApiSet {
     artifacts: {
       total_count: 1,
       artifacts: [{
-        name: finalizerArtifactName(finalizedDigest), expired: false, size_in_bytes: 12345,
+        name: finalizerArtifactName('1', finalizedDigest), expired: false, size_in_bytes: 12345,
         digest: `sha256:${'d'.repeat(64)}`,
         workflow_run: { id: 525252, head_sha: SHA },
       }],
@@ -309,10 +312,11 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     expect(create).toContain('--zip "$FINAL_ZIP" --root "$PWD"');
     const upload: any = named.get('Upload the FINALIZED cross-host evidence');
     expect(upload.with.name).toBe(
-      `c17-evidence-finalized-${'${{ env.C17_FINALIZED_SHA256 }}'}`,
+      `c17-evidence-finalized-a${'${{ github.run_attempt }}'}-${'${{ env.C17_FINALIZED_SHA256 }}'}`,
     );
-    expect(upload.with.path).toContain('${{ env.C17_FINALIZED_ZIP }}');
-    expect(upload.with.path).toContain('${{ env.C17_FINALIZED_SIDECAR }}');
+    // Statically nonempty upload path: a deterministic directory under the runner temp root,
+    // never an `${{ env.* }}` value that is empty when the producing step did not run.
+    expect(upload.with.path).toBe('${{ runner.temp }}/finalized');
   });
 
   it('derives the finalizer receipt from the real Actions event/env and refuses a forged event', () => {
@@ -638,7 +642,7 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     expect(seen.every((url) => url.startsWith('https://api.github.com/repos/a-Halawany/elven/'))).toBe(true);
     expect(result.notes.join('\n')).toMatch(/github_finalizer_run=525252/);
     expect(result.notes.join('\n')).toMatch(
-      /github_finalizer_artifact=c17-evidence-finalized-[0-9a-f]{64} count=1/,
+      /github_finalizer_artifact=c17-evidence-finalized-a1-[0-9a-f]{64}/,
     );
   });
 
@@ -657,7 +661,7 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
       });
       expect(online.ok).toBe(false);
       expect(online.problems.join('\n')).toMatch(
-        /0 'c17-evidence-finalized-[0-9a-f]{64}' artifacts/,
+        /but the delivered archive requires 'c17-evidence-finalized-a1-[0-9a-f]{64}'/,
       );
     } finally { rmSync(m.root, { recursive: true, force: true }); }
   });
@@ -673,7 +677,7 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     ['wrong runner label', (api: ApiSet) => { api.jobs.jobs[0].labels = ['ubuntu-latest']; }, /macos-14/],
     ['missing required step', (api: ApiSet) => { api.jobs.jobs[0].steps.pop(); }, /no finalizer step/],
     ['failed required step', (api: ApiSet) => { api.jobs.jobs[0].steps[0].conclusion = 'failure'; }, /step.*conclusion/],
-    ['missing final artifact', (api: ApiSet) => { api.artifacts.artifacts = []; api.artifacts.total_count = 0; }, /0 'c17-evidence-finalized-[0-9a-f]{64}'/],
+    ['missing final artifact', (api: ApiSet) => { api.artifacts.artifacts = []; api.artifacts.total_count = 0; }, /no 'c17-evidence-finalized-a1-\*' artifact for attempt 1/],
     ['expired final artifact', (api: ApiSet) => { api.artifacts.artifacts[0].expired = true; }, /expired/],
     ['artifact bound to wrong SHA', (api: ApiSet) => { api.artifacts.artifacts[0].workflow_run.head_sha = 'b'.repeat(40); }, /artifact head SHA/],
     ['missing wrapper digest', (api: ApiSet) => { delete api.artifacts.artifacts[0].digest; }, /wrapper digest/],
@@ -682,13 +686,13 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     ['duplicate final artifact', (api: ApiSet) => {
       api.artifacts.artifacts.push(structuredClone(api.artifacts.artifacts[0]));
       api.artifacts.total_count = 2;
-    }, /2 'c17-evidence-finalized-[0-9a-f]{64}'/],
+    }, /2 'c17-evidence-finalized-a1-\*' artifacts for attempt 1/],
     ['extra different-digest finalized artifact', (api: ApiSet) => {
       const extra = structuredClone(api.artifacts.artifacts[0]);
-      extra.name = finalizerArtifactName('0'.repeat(64));
+      extra.name = finalizerArtifactName('1', '0'.repeat(64));
       api.artifacts.artifacts.push(extra);
       api.artifacts.total_count = 2;
-    }, /2 artifacts in the 'c17-evidence-finalized-\*' family/],
+    }, /2 'c17-evidence-finalized-a1-\*' artifacts for attempt 1/],
   ])('rejects API mutation: %s', async (_label, mutate, expected) => {
     const api = passingApi();
     mutate(api);
@@ -697,6 +701,99 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.problems.join('\n')).toMatch(expected);
+  });
+
+  /**
+   * Attempt scoping for the FINALIZER artifact — the same centralized selector the source
+   * archive uses. After a full re-run of the finalizer, attempt 1's artifact legitimately
+   * remains on the run; it may be ignored but must never satisfy or rescue attempt 2.
+   */
+  describe('finalizer artifact attempt scoping', () => {
+    const finalArtifact = (name: string) => ({
+      name, expired: false, size_in_bytes: 12345,
+      digest: `sha256:${'d'.repeat(64)}`,
+      workflow_run: { id: 525252, head_sha: SHA },
+    });
+    const attempt2Verify = (build: (digest: string) => Array<Record<string, unknown>>) => {
+      const digest = hash(readFileSync(hostedFinalizedZip));
+      const artifacts = build(digest);
+      const receipt = { ...finalizerReceipt(), run_attempt: '2' };
+      const bodies = new Map<string, unknown>([
+        [finalizerRunUrl('525252'), {
+          id: 525252, run_attempt: 2, repository: { full_name: 'a-Halawany/elven' },
+          name: 'C17 finalize', path: '.github/workflows/c17-finalize.yml', event: 'workflow_run',
+          head_branch: 'main', head_sha: SHA, status: 'completed', conclusion: 'success',
+        }],
+        [finalizerJobsUrl('525252', '2'), {
+          total_count: 1,
+          jobs: [{
+            name: 'finalize', head_sha: SHA, status: 'completed',
+            conclusion: 'success', labels: ['macos-14'],
+            steps: REQUIRED_FINALIZER_STEPS.map((name) => ({
+              name, status: 'completed', conclusion: 'success',
+            })),
+          }],
+        }],
+        [finalizerArtifactsUrl('525252'), { total_count: artifacts.length, artifacts }],
+      ]);
+      return verifyFinalizerHostedRun(receipt, {
+        sourceReceipt: sourceReceipt(), sourceRun: sourceRunReceipt(),
+        finalizedZipSha256: digest,
+        fetchImpl: (async (input: string | URL) => ({
+          ok: true, status: 200, headers: { get: () => null },
+          json: async () => structuredClone(bodies.get(String(input)) ?? {}),
+        })) as never,
+      });
+    };
+
+    it('accepts the exact digest-bound artifact of the finalizer\'s OWN attempt', async () => {
+      const result = await attempt2Verify((d) => [finalArtifact(finalizerArtifactName('2', d))]);
+      expect(result.problems).toEqual([]);
+      expect(result.ok).toBe(true);
+    });
+
+    it('ignores an older attempt beside the current exact artifact, and says so', async () => {
+      const result = await attempt2Verify((d) => [
+        finalArtifact(finalizerArtifactName('1', d)),
+        finalArtifact(finalizerArtifactName('2', d)),
+      ]);
+      expect(result.problems).toEqual([]);
+      expect(result.ok).toBe(true);
+      expect(result.notes.join('\n')).toMatch(/older_attempts_ignored=1/);
+    });
+
+    it('REJECTS when only a superseded attempt\'s artifact exists, even with the right digest', async () => {
+      const result = await attempt2Verify((d) => [finalArtifact(finalizerArtifactName('1', d))]);
+      expect(result.ok).toBe(false);
+      expect(result.problems.join('\n')).toMatch(/no 'c17-evidence-finalized-a2-\*' artifact for attempt 2/);
+      expect(result.problems.join('\n')).toMatch(/superseded attempt.*cannot satisfy this receipt/s);
+    });
+
+    it('an old exact artifact cannot rescue a wrong current one', async () => {
+      const result = await attempt2Verify((d) => [
+        finalArtifact(finalizerArtifactName('1', d)),
+        finalArtifact(finalizerArtifactName('2', '0'.repeat(64))),
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.problems.join('\n')).toMatch(
+        /but the delivered archive requires 'c17-evidence-finalized-a2-/,
+      );
+    });
+
+    it('REJECTS multiple current-attempt artifacts', async () => {
+      const result = await attempt2Verify((d) => [
+        finalArtifact(finalizerArtifactName('2', d)),
+        finalArtifact(finalizerArtifactName('2', '0'.repeat(64))),
+      ]);
+      expect(result.ok).toBe(false);
+      expect(result.problems.join('\n')).toMatch(/2 'c17-evidence-finalized-a2-\*' artifacts for attempt 2/);
+    });
+
+    it('REJECTS a legacy unscoped artifact name', async () => {
+      const result = await attempt2Verify((d) => [finalArtifact(`c17-evidence-finalized-${d}`)]);
+      expect(result.ok).toBe(false);
+      expect(result.problems.join('\n')).toMatch(/no 'c17-evidence-finalized-a2-\*' artifact for attempt 2/);
+    });
   });
 
   it('retains an injectable hosted verifier only as a non-vacuous test seam', async () => {

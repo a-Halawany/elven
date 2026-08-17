@@ -77,7 +77,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   it('ENTRIES and REGULAR FILES are reported separately, so the two cannot be confused', async () => {
     // The C17 report said "13 files" from an entry count that included directories. The verifier
     // now states both numbers, which is what makes the discrepancy visible rather than latent.
-    const r = await verify({ zipPath: zip, root: REPO });
+    const r = await verify({ zipPath: zip, root: REPO, profile: 'delivery' });
     const note = r.notes.find((n) => n.startsWith('entries=')) as string;
     expect(note).toBeDefined();
     const m = /entries=(\d+) regular_files=(\d+) payload=(\d+)/.exec(note) as RegExpExecArray;
@@ -90,7 +90,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   }, TIMEOUT);
 
   it('verification re-derives BOTH SBOMs and reruns licence reconciliation', async () => {
-    const r = await verify({ zipPath: zip, root: REPO });
+    const r = await verify({ zipPath: zip, root: REPO, profile: 'delivery' });
     const joined = r.notes.join('\n');
     expect(joined).toMatch(/production_sbom=[a-f0-9]{64} schema_errors=0/);
     expect(joined).toMatch(/development_sbom=[a-f0-9]{64} schema_errors=0/);
@@ -141,7 +141,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p, artifact);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/NOT what this checkout regenerates/);
       expect(r.problems.join('\n')).not.toMatch(/the manifest claims/);
@@ -164,7 +164,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/RESULT-PASS receipt does not match the exact code-owned PASS contract/);
       expect(r.problems.join('\n')).not.toMatch(/hashes to .* manifest claims/);
@@ -190,7 +190,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       expect(joined).toMatch(/source receipt (fields|final_source_posture|sboms)/);
@@ -209,7 +209,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/c17-manifest\.json.*NOT what this checkout regenerates/);
       expect(r.problems.join('\n')).not.toMatch(/the manifest claims/);
@@ -227,7 +227,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       writeFileSync(join(p, 'SHA256SUMS.txt'), `${Array(PAYLOAD.length).fill(`${digest}  ${one}`).join('\n')}\n`);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       expect(joined).toMatch(/DUPLICATE checksum path/);
@@ -245,7 +245,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/receipt\/RESULT\.txt is not byte-identical/);
       expect(r.problems.join('\n')).not.toMatch(/hashes to .* manifest claims/);
@@ -260,7 +260,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       expect(joined).toMatch(/C16 closure reconciliation.*source|target set/);
@@ -285,7 +285,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       rebind(p);
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       expect(joined).toMatch(/complete source-derived report differs/);
@@ -340,7 +340,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     try {
       const link = join(d, 'evidence.zip');
       symlinkSync(zip, link);
-      const r = await verify({ zipPath: link, root: REPO });
+      const r = await verify({ zipPath: link, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/not a real regular file/);
     } finally {
@@ -374,7 +374,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   ])('verification rejects %s', async (_label, mutate, pattern) => {
     const { dir, zip: z } = repack(mutate);
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok, 'the mutation must be rejected').toBe(false);
       expect(r.problems.join('\n')).toMatch(pattern);
     } finally {
@@ -404,7 +404,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       symlinkSync('real.txt', join(sdir, 'link.txt'));
       const zSym = join(d, 'sym.zip');
       expect(spawnSync('zip', ['-qyrX', zSym, '.'], { cwd: sdir, encoding: 'utf8' }).status).toBe(0);
-      const r = await verify({ zipPath: zSym, root: REPO });
+      const r = await verify({ zipPath: zSym, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/symlink/i);
     } finally {
@@ -451,7 +451,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   it('a package built OUTSIDE Actions is reported as LOCAL, never passed off as hosted', async () => {
     const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.notes.join('\n')).toMatch(/run_receipt=LOCAL/);
       const receipt = JSON.parse(
         spawnSync('unzip', ['-p', z, 'receipt/run-receipt.json'], { encoding: 'utf8' }).stdout,
@@ -484,7 +484,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       expect(receipt.api_url).toBe('https://api.github.com/repos/a-Halawany/elven/actions/runs/424242');
       // The head SHA must agree with the source receipt, and it does because both come from the
       // same checkout rather than from anything the archive asserts about itself.
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.notes.join('\n')).toMatch(/run_receipt=a-Halawany\/elven#424242 attempt 2 job supply-chain/);
       expect(r.problems.join('\n')).not.toMatch(/run receipt has no/);
     } finally {
@@ -495,11 +495,88 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
   it('online verification refuses a local receipt without attempting to promote it', async () => {
     const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
     try {
-      const r = await verify({ zipPath: z, root: REPO, online: true });
+      const r = await verify({ zipPath: z, root: REPO, online: true, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/hosted=false/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  }, TIMEOUT);
+
+  it('verification without a caller-owned profile fails closed before opening the archive', async () => {
+    const r = await verify({ zipPath: zip, root: REPO });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join('\n')).toMatch(/profile undefined is not one of candidate, delivery/);
+    const unknown = await verify({ zipPath: zip, root: REPO, profile: 'production' });
+    expect(unknown.ok).toBe(false);
+    expect(unknown.problems.join('\n')).toMatch(/profile "production" is not one of candidate, delivery/);
+  });
+
+  it.each([
+    ['--online', { online: true }],
+    ['--require-hosted', { requireHosted: true }],
+  ])('a candidate archive combined with %s is refused before any fetch', async (_label, flags) => {
+    const originalFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      fetches += 1;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      const r = await verify({ zipPath: zip, root: REPO, profile: 'candidate', ...flags });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/candidate archive cannot be verified/);
+      expect(fetches, 'the refusal must precede any network access').toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects a run-receipt SHA swap with EVERY archive checksum repaired, offline, with zero fetches', async () => {
+    // The full-package tamper: the hosted run receipt is rebound to a different commit, the
+    // c17-manifest is untouched (its artifacts are genuine), and SHA256SUMS.txt is completely
+    // repaired. The archive is internally self-consistent; only the cross-receipt head_sha
+    // binding can catch it — and it must do so without asking the network anything.
+    const hostedEnv = {
+      GITHUB_RUN_ID: '424242', GITHUB_RUN_ATTEMPT: '2', GITHUB_RUN_NUMBER: '7',
+      GITHUB_REPOSITORY: 'a-Halawany/elven', GITHUB_WORKFLOW: 'ci',
+      GITHUB_WORKFLOW_REF: 'a-Halawany/elven/.github/workflows/ci.yml@refs/heads/main',
+      GITHUB_JOB: 'supply-chain',
+      GITHUB_SHA: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim(),
+      GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'push',
+      RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64',
+    };
+    const { dir: hostedDir, zip: hostedZip } = packWithEnv(hostedEnv);
+    const d = mkdtempSync(join(tmpdir(), 'eye-c17f-sha-tamper-'));
+    const originalFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      fetches += 1;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      const payload = join(d, 'payload');
+      mkdirSync(payload, { recursive: true });
+      expect(spawnSync('unzip', ['-q', hostedZip, '-d', payload], { encoding: 'utf8' }).status).toBe(0);
+      const f = join(payload, 'receipt/run-receipt.json');
+      const receipt = JSON.parse(readFileSync(f, 'utf8'));
+      expect(receipt.hosted).toBe(true);
+      receipt.head_sha = 'f'.repeat(40);
+      writeFileSync(f, `${JSON.stringify(receipt, null, 2)}\n`);
+      rebind(payload);
+      const z = join(d, 'tampered.zip');
+      expect(spawnSync('zip', ['-qrX', z, '.'], { cwd: payload, encoding: 'utf8' }).status).toBe(0);
+
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
+      expect(r.ok).toBe(false);
+      expect(r.problems.join('\n')).toMatch(/head_sha f{40} != the source receipt's/);
+      // The repaired checksums must NOT be what failed it: the manifest is genuinely consistent.
+      expect(r.problems.join('\n')).not.toMatch(/hashes to .* manifest claims/);
+      expect(fetches, 'offline verification must make zero fetch calls').toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(d, { recursive: true, force: true });
+      rmSync(hostedDir, { recursive: true, force: true });
     }
   }, TIMEOUT);
 
@@ -512,7 +589,7 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       }, null, 2));
     });
     try {
-      const r = await verify({ zipPath: z, root: REPO });
+      const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.ok).toBe(false);
       const joined = r.problems.join('\n');
       // The digest check fires too; what matters is the receipt fields are named.

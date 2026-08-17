@@ -28,7 +28,10 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { apiGet, API_ORIGIN } from './lib/hosted-run.mjs';
+import {
+  apiGet, API_ORIGIN, FINALIZED_ARTIFACT_PREFIX, finalizerArtifactPrefixForAttempt,
+  selectAttemptArtifact,
+} from './lib/hosted-run.mjs';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const SHA40 = /^[0-9a-f]{40}$/;
@@ -46,14 +49,13 @@ export const FINALIZER_WORKFLOW_PATH = '.github/workflows/c17-finalize.yml';
 export const FINALIZER_WORKFLOW_NAME = 'C17 finalize';
 export const FINALIZER_JOB = 'finalize';
 /**
- * The uploaded artifact name carries the SHA-256 of the INNER finalized ZIP. GitHub authenticates
- * this name through its API, which binds the exact ZIP a reviewer verifies to the completed run.
- * The API's own `digest` describes GitHub's wrapper archive, not this inner ZIP, so existence plus
- * a fixed name would not be a byte-level provenance claim.
+ * The uploaded artifact name carries the finalizer's OWN run attempt and the SHA-256 of the
+ * INNER finalized ZIP. GitHub authenticates this name through its API, which binds the exact ZIP
+ * a reviewer verifies to the completed run and attempt. The API's own `digest` describes GitHub's
+ * wrapper archive, not this inner ZIP, so existence plus a fixed name would not be a byte-level
+ * provenance claim. The naming contract itself is CENTRALIZED in lib/hosted-run.mjs — this module
+ * deliberately owns no second implementation of it.
  */
-export const FINALIZER_ARTIFACT = 'c17-evidence-finalized';
-export const finalizerArtifactName = (finalizedZipSha256) =>
-  `${FINALIZER_ARTIFACT}-${finalizedZipSha256}`;
 export const FINALIZER_EVENT = 'workflow_run';
 export const FINALIZER_BRANCH = 'main';
 export const FINALIZER_REF = `refs/heads/${FINALIZER_BRANCH}`;
@@ -962,46 +964,40 @@ export async function verifyFinalizerHostedRun(receipt, {
           + `does not equal returned artifacts ${artifacts.length}; paginated or incomplete evidence is refused`,
         );
       }
-      const expectedArtifact = finalizerArtifactName(finalizedZipSha256);
-      const finalizedFamily = artifacts.filter(
-        (artifact) => typeof artifact?.name === 'string'
-          && artifact.name.startsWith(`${FINALIZER_ARTIFACT}-`),
-      );
-      if (finalizedFamily.length !== 1) {
-        problems.push(
-          `GitHub reports ${finalizedFamily.length} artifacts in the `
-          + `'${FINALIZER_ARTIFACT}-*' family for finalizer run ${runId}; exactly one is required`,
-        );
-      }
-      const named = artifacts.filter((artifact) => artifact?.name === expectedArtifact);
-      if (named.length !== 1) {
-        problems.push(
-          `GitHub reports ${named.length} '${expectedArtifact}' artifacts for finalizer run ${runId}; `
-          + 'exactly one is required',
-        );
-      } else {
-        const artifact = named[0];
+      // ONE attempt-aware selection, shared with the source-archive verifier. Only the
+      // finalizer's OWN attempt may satisfy this receipt; a superseded attempt's artifact is
+      // ignored and can neither satisfy nor rescue the current one.
+      const picked = selectAttemptArtifact(artifacts, {
+        prefixForAttempt: finalizerArtifactPrefixForAttempt,
+        attempt,
+        digest: finalizedZipSha256,
+        familyPrefix: FINALIZED_ARTIFACT_PREFIX,
+        label: 'finalizer evidence artifact',
+      });
+      problems.push(...picked.problems);
+      notes.push(...picked.notes);
+      const artifact = picked.artifact;
+      if (artifact !== null) {
         if (artifact.expired !== false) {
-          problems.push(`finalizer artifact '${expectedArtifact}' is expired or lacks expired=false`);
+          problems.push(`finalizer artifact '${artifact.name}' is expired or lacks expired=false`);
         }
         if (!Number.isInteger(artifact.size_in_bytes) || artifact.size_in_bytes <= 0) {
           problems.push(
-            `finalizer artifact '${expectedArtifact}' has invalid size_in_bytes `
+            `finalizer artifact '${artifact.name}' has invalid size_in_bytes `
             + JSON.stringify(artifact.size_in_bytes),
           );
         }
         if (!/^sha256:[0-9a-f]{64}$/.test(artifact.digest ?? '')) {
           problems.push(
-            `finalizer artifact '${expectedArtifact}' has no valid GitHub wrapper digest`,
+            `finalizer artifact '${artifact.name}' has no valid GitHub wrapper digest`,
           );
         }
         check('artifact workflow run id', artifact.workflow_run?.id, runId);
         check('artifact head SHA', artifact.workflow_run?.head_sha, receipt.source_sha);
+        notes.push(
+          `github_finalizer_artifact=${artifact.name} wrapper_digest=${artifact.digest ?? '(missing)'}`,
+        );
       }
-      notes.push(
-        `github_finalizer_artifact=${expectedArtifact} count=${named.length} `
-        + `wrapper_digest=${named[0]?.digest ?? '(missing)'}`,
-      );
     }
   }
   return { ok: problems.length === 0, problems, notes };
@@ -1192,8 +1188,10 @@ async function main() {
     const online = args['--online'] === true;
     const result = await verifyCrossHostFinalization({
       zipPath: args['--zip'],
+      // The embedded source archive is always DELIVERY evidence: a candidate preflight is never
+      // finalized across hosts.
       sourceArchiveVerifier: ({ zipPath }) => sourceModule.verify({
-        zipPath, root: args['--root'], online, requireHosted: online,
+        zipPath, root: args['--root'], online, requireHosted: online, profile: 'delivery',
       }),
       requireOnline: online,
       token: process.env.GITHUB_TOKEN ?? null,
