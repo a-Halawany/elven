@@ -412,21 +412,31 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
 
   it('rejects a duplicate ZIP member before extraction', async () => {
     const root = unzip(f.finalized, 'eye-c17-cross-host-duplicate-entry-');
-    const duplicate = 'duplicate-copy.json';
-    write(root, duplicate, readFileSync(join(root, 'cross-host-comparison.json')));
     const zip = join(dirname(root), `${root.split('/').pop()}-duplicate.zip`);
-    zipExact(root, zip);
-    // Info-ZIP normally replaces a member with the same name. `zipnote` renames the second
-    // local entry after creation, yielding two genuine central-directory members with the same
-    // path — the ambiguity the verifier must reject before extraction.
-    const notes = spawnSync('zipnote', [zip], { encoding: 'utf8' });
-    expect(notes.status).toBe(0);
-    const rewritten = notes.stdout.replace(
-      `@ ${duplicate}\n`, `@ ${duplicate}\n@=cross-host-comparison.json\n`,
-    );
-    expect(rewritten).not.toBe(notes.stdout);
-    const renamed = spawnSync('zipnote', ['-w', zip], { input: rewritten, encoding: 'utf8' });
-    expect(renamed.status, renamed.stderr).toBe(0);
+    // Two genuine central-directory members with the SAME path — the ambiguity the verifier must
+    // reject before extraction, because which of the two a consumer reads is unspecified.
+    //
+    // Built with python's zipfile rather than `zipnote -w`. zipnote exits 10 with "Bad file
+    // descriptor" on macOS 14 (Info-ZIP 3.0, 2008), so the original construction failed on the
+    // host rather than on the code under test — a control that cannot run proves nothing. python3
+    // is present on this host and on both GitHub runner images in play.
+    const build = spawnSync('python3', ['-c', [
+      'import sys, zipfile, os',
+      'src, dst = sys.argv[1], sys.argv[2]',
+      'names = []',
+      'with zipfile.ZipFile(src) as z:',
+      '    items = [(i.filename, z.read(i.filename)) for i in z.infolist() if not i.is_dir()]',
+      'dup = "cross-host-comparison.json"',
+      'with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as o:',
+      '    for name, data in items:',
+      '        o.writestr(name, data)',
+      '    o.writestr(dup, [d for n, d in items if n == dup][0])',
+    ].join('\n'), f.finalized, zip], { encoding: 'utf8' });
+    expect(build.status, build.stderr).toBe(0);
+    // Non-vacuity: the archive really does carry the same path twice.
+    const listed = spawnSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).stdout
+      .split('\n').filter((l) => l.trim() === 'cross-host-comparison.json');
+    expect(listed.length, 'the fixture must contain a genuine duplicate member').toBe(2);
     try {
       const result = await verifyFinal(zip);
       expect(result.ok).toBe(false);
