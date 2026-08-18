@@ -221,3 +221,45 @@ node scripts/gate/package-c17-evidence.mjs verify --zip <archive> --root "$PWD" 
 ```
 
 The child changes no executable file, so the gates' verdicts at `084ce19f4edef71825b0d34dfe230c4915a1b3fb` are unaffected by it.
+
+## C17.2 evidence provenance (no SHA cycle)
+
+The evidence-bearing source is **`cb9022a4f2684431c9531aded212377cb8c1c855`**.
+
+* Source run **`32124967274`** (push, `main`, attempt 1) ran at exactly that SHA; all three jobs
+  (`build-test`, `browser-regression`, `supply-chain`) succeeded in the same attempt, and the
+  blocking C17 packager built and self-verified the archive inside the run. The uploaded artifact
+  **`c17-evidence-archive-a1-a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`**
+  carries the inner ZIP `c17-evidence-cb9022a4f2684431c9531aded212377cb8c1c855.zip`
+  (1,206,092 bytes, sha256 `a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`).
+* The automatic macOS finalizer, run **`32125285602`** (workflow_run, `macos-14`, attempt 1),
+  bound that exact source run and SHA, regenerated C16 + C17 on Darwin/ARM64, compared the
+  code-owned nine-artifact set byte-for-byte, and uploaded
+  **`c17-evidence-finalized-a1-89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`**
+  containing `c17-cross-host-finalized-cb9022a4f2684431c9531aded212377cb8c1c855.zip`
+  (9,470,293 bytes, sha256 `89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`).
+
+**Superseded predecessor, recorded honestly.** `c757e0fb6a019ac6da37fbbcb23b9335e01790e6` carried
+the same verifier and gate logic and its own push/main CI run `32116234678` was fully green — but
+its first real finalizer run `32116543012` failed deterministically, because that commit's
+immutable finalizer workflow downloaded the source artifact into a repository-relative
+`incoming/` directory whose non-gitignored contents dirtied the checkout that final-mode
+regeneration requires to be clean. `c757e0f` was superseded **solely** because of that
+repository-relative download defect; `cb9022a` changes exactly the download destination
+(`${{ runner.temp }}/incoming`) plus one parsed-YAML regression control.
+
+Verification must be performed against `cb9022a4f2684431c9531aded212377cb8c1c855`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout cb9022a4f2684431c9531aded212377cb8c1c855
+pnpm install --frozen-lockfile
+node scripts/gate/package-c17-evidence.mjs verify --zip <source archive> --root "$PWD" \
+  --profile delivery --online --require-hosted
+node scripts/gate/c17-cross-host-finalization.mjs verify --zip <finalized archive> --root "$PWD" --online
+```
+
+This document is written in a **docs-only child commit** recording those values; the child cannot
+be the evidence source, because a commit cannot contain the digest of an archive produced from
+itself. The child changes no executable file, so the gates' verdicts at
+`cb9022a4f2684431c9531aded212377cb8c1c855` are unaffected by it.

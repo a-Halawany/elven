@@ -1313,3 +1313,73 @@ build 0; boundaries clean. Migrations `0001`–`0021` byte-identical to `e3a0b1f
 **Still open.** C17, C18, C19, the freeze protocol and external independent review. Node-20
 action replacement, branch protection, signed freeze provenance and durable public artifact
 hosting remain C19. Phase 0 is not approved; the source is not frozen.
+
+## 13. C17.2 — TWO-CONTRACT RECEIPTS, ATTEMPT-SCOPED EVIDENCE, CROSS-HOST FINALIZATION (delivered)
+
+**Evidence-bearing source `cb9022a4f2684431c9531aded212377cb8c1c855`.**
+Source run `32124967274` (push/`main`, attempt 1, 3/3 jobs green in the same attempt) · automatic
+macOS finalizer run `32125285602` (workflow_run, `macos-14`, attempt 1, green).
+
+**Delivered artifacts (attempt-scoped, digest-in-name, none expired).**
+* `c17-evidence-archive-a1-a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`
+  (wrapper 2,401,735 B, wrapper digest `sha256:393b02505d2709d47b9434beb8434f0fb7b8070bdbe815d93f7ae3922330c924`) —
+  inner `c17-evidence-cb9022a….zip`, 1,206,092 B,
+  sha256 `a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`, sidecar verified.
+* `c17-evidence-finalized-a1-89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`
+  (wrapper 2,331,613 B, wrapper digest `sha256:8d4e6293a62979c057bd6171587a360db15bee8312967c3d65ae894a614bd225`) —
+  inner `c17-cross-host-finalized-cb9022a….zip`, 9,470,293 B,
+  sha256 `89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`, sidecar verified.
+
+**What C17.2 corrected.** Caller-owned receipt profiles (candidate = exact `workflow_dispatch`
+branch receipt, offline only; delivery = exact push/`main`) with fail-closed unknown/missing
+profile or level and a refused candidate+online/`--require-hosted` combination; online
+verification intrinsically rejects `hosted:false` regardless of `requireHosted`; structured
+`local`/`profile`/`level` standing through the package boundary; a mandatory head-SHA binding in
+every hosted profile, stated exactly once; ONE attempt-aware artifact naming contract
+(`c17-evidence-archive-a<source_attempt>-<sha256>`,
+`c17-evidence-finalized-a<finalizer_attempt>-<sha256>`) with one shared selector — `total_count`
+validated over the complete response, exactly one exact digest-bound artifact per attempt, older
+attempts ignored but never able to satisfy or rescue the current one, legacy unscoped names
+rejected; a complete deterministic git-check-ref-format branch validator; job bounds 30/30/120;
+the blocking packager ahead of every upload and deliberately skipped only on `pull_request`
+while the C15–C17 gates run everywhere; all seven uploads attempt-scoped with deterministic
+`runner.temp` paths and producer-outcome guards.
+
+**Measured counts (re-derived independently at verification).** production classified 195,
+development classified 312, unresolved 0 in both; SBOM digests prod
+`8f3f5e0b7bc19c90e468ea6ca5f5864aee0acc8125962a8ce1ae20a7c134d685`, dev
+`4459d6d54cb5d7c0d39643c25ab0a7e2500de95a5f6b732f8388a83c9f99b3c3`; archive payload 22 files +
+checksum manifest; 7 licence artifacts regenerated and byte-compared; cross-host comparison 9/9
+byte-identical Linux/X64 ↔ macOS/ARM64. Vendored legal closure independently re-fetched from its
+pinned upstreams: 24/24 byte-identical (3 CycloneDX 1.6.2 schemas @ `e833d732`, 21 SPDX v3.28.0
+texts @ `c4a7237e`). Migrations `0001`–`0021` (21 files) digest-immutable via `migrate.mjs`;
+aggregate sha256-of-sha256s `ea8a1e09866efae83855d97c3d9a109e875a4c6406e53f591e2cbd3941acf0bf`.
+
+**Suites at the evidence SHA.** tokens 3/3; contracts 203/203; api unit+gate 939/939 +
+hermetic-meta 9/9; acceptance 58/58; integration 297/297; Playwright 10/10 on a virgin database;
+typecheck, build, lint, boundaries clean; `git diff --check` clean.
+
+**The superseded predecessor, recorded honestly.** `c757e0fb6a019ac6da37fbbcb23b9335e01790e6`
+carried identical verifier/gate logic. Its push/`main` CI run `32116234678` (attempt 1) was fully
+green and its archive
+`c17-evidence-archive-a1-beb24985162f82745ee5a2ae02e8554e72fa840c74ae535f15942f153b722601`
+passed full delivery `--online --require-hosted` verification from a foreign checkout. Its FIRST
+real finalizer, run `32116543012`, failed deterministically: the finalizer workflow downloaded
+the source artifact into a repository-relative `incoming/` directory, and the artifact's
+non-gitignored contents (the `.zip.sha256` sidecar and the packager's `payload/` staging tree)
+dirtied the checkout that final-mode regeneration requires to be clean. Because a rerun replays
+the same immutable workflow snapshot, no finalizer for `c757e0f` could ever pass. It was
+superseded **solely** for that reason; `cb9022a` changes exactly the download destination to
+`${{ runner.temp }}/incoming` plus one parsed-YAML regression control pinning it.
+
+**Non-blocking hardening notes (deferred to the C19/hardening ledger, not acted on here).**
+1. `isCanonicalBranchRef` over-rejects some refs git accepts that contain an `@` path component —
+   denial-only; differential review found no false acceptance, and no literal git equivalence is
+   claimed.
+2. The upload-path structural control checks the `${{ runner.temp }}/` prefix and could
+   additionally reject `..` components; every current workflow path is a fixed safe constant.
+
+**Still open.** C18, C19, the freeze protocol and external independent review. Phase 0 is not
+approved; the source is not frozen. This section is written in a docs-only child commit; the
+child changes no executable file and cannot contain the digest of an archive produced from
+itself, so verification runs against `cb9022a4f2684431c9531aded212377cb8c1c855`.
