@@ -389,6 +389,13 @@ function walk(dir, base = dir) {
 export async function verify({ zipPath, root = ROOT, online = false, requireHosted = false, profile }) {
   const problems = [];
   const notes = [];
+  const level = online ? 'online' : 'offline';
+  // Structured standing, carried THROUGH the package boundary rather than conveyed only as a
+  // text note: `local` is the run receipt's provenance (true = packed outside Actions; null
+  // until a receipt has been inspected), `profile` and `level` are the caller-owned contract
+  // this verification was judged by.
+  let local = null;
+  const result = (ok) => ({ ok, problems, notes, local, profile, level });
   // C17.2 — the receipt PROFILE is caller-owned and mandatory. It states which contract the
   // archive's run receipt is judged by (candidate dispatch preflight vs push/main delivery);
   // an unknown or missing profile fails closed rather than defaulting to the laxer contract.
@@ -400,29 +407,36 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
         + 'State --profile explicitly; it is never inferred from the archive under test.',
       ],
       notes,
+      local: null,
+      profile: null,
+      level,
     };
   }
   // A candidate is an offline preflight and nothing else. Refused here, before the archive is
   // even opened — and in particular before any fetch could occur.
   if (profile === 'candidate' && (online || requireHosted)) {
-    return {
-      ok: false,
-      problems: [
-        'a candidate archive cannot be verified --online or --require-hosted. A workflow_dispatch '
-        + 'preflight is not delivery evidence; verify the push/main delivery archive instead.',
-      ],
-      notes,
-    };
+    problems.push(
+      'a candidate archive cannot be verified --online or --require-hosted. A workflow_dispatch '
+      + 'preflight is not delivery evidence; verify the push/main delivery archive instead.',
+    );
+    return result(false);
   }
-  if (!existsSync(zipPath)) return { ok: false, problems: [`archive ${zipPath} does not exist`], notes };
+  if (!existsSync(zipPath)) {
+    problems.push(`archive ${zipPath} does not exist`);
+    return result(false);
+  }
   const archiveStat = lstatSync(zipPath);
   if (archiveStat.isSymbolicLink() || !archiveStat.isFile()) {
-    return { ok: false, problems: [`archive ${zipPath} is not a real regular file`], notes };
+    problems.push(`archive ${zipPath} is not a real regular file`);
+    return result(false);
   }
 
   // ── ZIP SAFETY, before extraction ─────────────────────────────────────────
   const listing = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' });
-  if (listing.status !== 0) return { ok: false, problems: ['archive is not readable as a zip'], notes };
+  if (listing.status !== 0) {
+    problems.push('archive is not readable as a zip');
+    return result(false);
+  }
   const entries = listing.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
   const seen = new Set();
   for (const e of entries) {
@@ -435,7 +449,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
   if (/^\s*l/m.test(spawnSync('unzip', ['-Z', zipPath], { encoding: 'utf8' }).stdout)) {
     problems.push('archive contains a symlink');
   }
-  if (problems.length > 0) return { ok: false, problems, notes };
+  if (problems.length > 0) return result(false);
 
   // Never extract beside an attacker-supplied archive path: that parent may be writable by a
   // different principal and race a predictable `.verify-<timestamp>` directory. mkdtemp gives
@@ -443,7 +457,10 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
   const tmp = mkdtempSync(join(tmpdir(), 'c17-archive-verify-'));
   try {
     const x = spawnSync('unzip', ['-q', zipPath, '-d', tmp], { encoding: 'utf8' });
-    if (x.status !== 0) return { ok: false, problems: ['extraction failed'], notes };
+    if (x.status !== 0) {
+      problems.push('extraction failed');
+      return result(false);
+    }
 
     const files = walk(tmp);
     let unsafeExtractedMember = false;
@@ -452,7 +469,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
       else if (!f.st.isFile()) { problems.push(`extracted non-regular file '${f.rel}'`); unsafeExtractedMember = true; }
     }
     // Do not follow or inspect an unsafe member after detecting it.
-    if (unsafeExtractedMember) return { ok: false, problems, notes };
+    if (unsafeExtractedMember) return result(false);
     // EXACT inventory: the code-owned contract plus the manifest, nothing else.
     const want = [...PAYLOAD.map((p) => p.path), CHECKSUM_FILE].sort();
     const got = files.map((f) => f.rel).sort();
@@ -915,6 +932,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
       });
       problems.push(...hosted.problems);
       notes.push(...hosted.notes);
+      local = hosted.local === true;
       if (!online && hosted.local !== true) {
         notes.push(
           `run_receipt=${run.repository}#${run.run_id} attempt ${run.run_attempt} job ${run.job} `
@@ -925,7 +943,7 @@ export async function verify({ zipPath, root = ROOT, online = false, requireHost
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
-  return { ok: problems.length === 0, problems, notes };
+  return result(problems.length === 0);
 }
 
 async function main() {

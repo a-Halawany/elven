@@ -176,12 +176,14 @@ jobs:
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
-        run: pnpm exec playwright test
+        # C17.2 — failure evidence goes to a DETERMINISTIC directory under the runner temp
+        # root, the same contract as every other upload path in this pipeline.
+        run: pnpm exec playwright test --output="$RUNNER_TEMP/playwright-traces"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: playwright-traces-a${{ github.run_attempt }}
-          path: test-results/
+          path: ${{ runner.temp }}/playwright-traces
           if-no-files-found: warn
 
   supply-chain:

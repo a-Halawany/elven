@@ -453,6 +453,28 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     try {
       const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.notes.join('\n')).toMatch(/run_receipt=LOCAL/);
+      // STRUCTURED standing through the package boundary — not just a text note.
+      expect(r.local).toBe(true);
+      expect(r.level).toBe('offline');
+      expect(r.profile).toBe('delivery');
+      // Local OFFLINE verification is legitimate: on a clean checkout (CI) it passes outright.
+      // On a dirty dev tree the archive-level dirty-worktree checks legitimately fire — but the
+      // receipt's LOCAL standing itself must never be what fails it.
+      const clean = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' })
+        .stdout.trim() === '';
+      if (clean) {
+        expect(r.ok, r.problems.join('\n')).toBe(true);
+      } else {
+        expect(r.problems.join('\n')).toMatch(/DIRTY worktree/);
+      }
+      expect(r.problems.join('\n')).not.toMatch(/hosted=false|run receipt/);
+      // The profile is caller-owned; the same archive judged as a candidate reports candidate.
+      const asCandidate = await verify({ zipPath: z, root: REPO, profile: 'candidate' });
+      expect(asCandidate.local).toBe(true);
+      expect(asCandidate.profile).toBe('candidate');
+      expect(asCandidate.level).toBe('offline');
+      if (clean) expect(asCandidate.ok, asCandidate.problems.join('\n')).toBe(true);
+      expect(asCandidate.problems.join('\n')).not.toMatch(/hosted=false|run receipt/);
       const receipt = JSON.parse(
         spawnSync('unzip', ['-p', z, 'receipt/run-receipt.json'], { encoding: 'utf8' }).stdout,
       );
@@ -487,6 +509,10 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
       const r = await verify({ zipPath: z, root: REPO, profile: 'delivery' });
       expect(r.notes.join('\n')).toMatch(/run_receipt=a-Halawany\/elven#424242 attempt 2 job supply-chain/);
       expect(r.problems.join('\n')).not.toMatch(/run receipt has no/);
+      // A HOSTED receipt verified offline reports structured non-local standing.
+      expect(r.local).toBe(false);
+      expect(r.level).toBe('offline');
+      expect(r.profile).toBe('delivery');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -494,11 +520,22 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
 
   it('online verification refuses a local receipt without attempting to promote it', async () => {
     const { dir, zip: z } = packWithEnv({ GITHUB_RUN_ID: undefined });
+    const originalFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      fetches += 1;
+      return originalFetch(...args);
+    }) as typeof fetch;
     try {
       const r = await verify({ zipPath: z, root: REPO, online: true, profile: 'delivery' });
       expect(r.ok).toBe(false);
       expect(r.problems.join('\n')).toMatch(/hosted=false/);
+      // Structured, never promoted, and zero fetches: there is no run the API could vouch for.
+      expect(r.local).toBe(true);
+      expect(r.level).toBe('online');
+      expect(fetches).toBe(0);
     } finally {
+      globalThis.fetch = originalFetch;
       rmSync(dir, { recursive: true, force: true });
     }
   }, TIMEOUT);

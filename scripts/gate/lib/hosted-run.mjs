@@ -164,7 +164,36 @@ export const RECEIPT_PROFILES = Object.freeze(['candidate', 'delivery']);
 export const VERIFICATION_LEVELS = Object.freeze(['offline', 'online']);
 /** A candidate receipt is a dispatch, and only a dispatch. */
 export const CANDIDATE_EVENT = 'workflow_dispatch';
-const BRANCH_REF = /^refs\/heads\/[A-Za-z0-9._\/-]+$/;
+
+/**
+ * A COMPLETE deterministic validator for `refs/heads/<branch>`, implementing
+ * git-check-ref-format(1) rather than approximating it with a character class. The previous
+ * permissive regex accepted refs git itself refuses — `refs/heads/..`, `refs/heads/foo.lock`,
+ * `refs/heads/foo@{bar` — and a ref no real dispatch can carry is exactly the kind of value an
+ * attacker-authored receipt would.
+ *
+ * Rules enforced (git-check-ref-format): no empty components (so no leading, trailing or double
+ * slash); no component beginning with '.' or ending with '.lock'; no '..' anywhere; no ASCII
+ * control characters, space, '~', '^', ':', '?', '*', '[' or '\'; no '@{'; not the single
+ * component '@'; the branch cannot end with '.'.
+ */
+export function isCanonicalBranchRef(ref) {
+  if (typeof ref !== 'string' || !ref.startsWith('refs/heads/')) return false;
+  const branch = ref.slice('refs/heads/'.length);
+  if (branch.length === 0 || branch.endsWith('.')) return false;
+  if (branch.includes('..') || branch.includes('@{') || branch.includes('\\')) return false;
+  for (const ch of branch) {
+    const code = ch.codePointAt(0);
+    if (code < 0x20 || code === 0x7f) return false;
+    if (' ~^:?*['.includes(ch)) return false;
+  }
+  for (const component of branch.split('/')) {
+    if (component.length === 0) return false;
+    if (component.startsWith('.') || component.endsWith('.lock')) return false;
+    if (component === '@') return false;
+  }
+  return true;
+}
 
 const NUMERIC = /^[1-9][0-9]{0,17}$/;
 const SHA40 = /^[0-9a-f]{40}$/;
@@ -255,8 +284,8 @@ export function validateReceiptShape(receipt, { requireHosted, profile }) {
         + `${CANDIDATE_EVENT} and nothing else`,
       );
     }
-    if (!BRANCH_REF.test(receipt.ref)) {
-      problems.push(`run receipt ref ${JSON.stringify(receipt.ref)} is not a branch ref`);
+    if (!isCanonicalBranchRef(receipt.ref)) {
+      problems.push(`run receipt ref ${JSON.stringify(receipt.ref)} is not a canonical branch ref`);
     }
     const wantPrefix = `${REPOSITORY}/${WORKFLOW_PATH}@`;
     if (!receipt.workflow_ref.startsWith(wantPrefix)) {
@@ -387,10 +416,32 @@ export async function verifyHostedRun(receipt, {
     };
   }
   const shape = validateReceiptShape(receipt, { requireHosted, profile });
-  if (!shape.ok) return { ok: false, problems: shape.problems, notes };
+  if (!shape.ok) {
+    return {
+      ok: false, problems: shape.problems, notes, local: shape.local === true, profile, level,
+    };
+  }
   if (shape.local === true) {
+    // ONLINE verification is intrinsically about a hosted run: there is nothing the GitHub API
+    // could authenticate for a locally packaged archive, so a local receipt fails online
+    // verification REGARDLESS of the caller's requireHosted value. A caller must not be able to
+    // reach a green online verdict by forgetting the second flag.
+    if (level === 'online') {
+      return {
+        ok: false,
+        problems: [
+          'run receipt declares hosted=false. Online verification authenticates a hosted run '
+          + 'against the GitHub API, and a locally packaged archive has no run the API could '
+          + 'vouch for — this fails regardless of --require-hosted.',
+        ],
+        notes,
+        local: true,
+        profile,
+        level,
+      };
+    }
     notes.push('run_receipt=LOCAL (not produced by a hosted run)');
-    return { ok: true, problems, notes, local: true };
+    return { ok: true, problems, notes, local: true, profile, level };
   }
   const { runId, runAttempt, runNumber, headSha } = shape.ids;
   // THE BINDING, in every profile and at every level, stated exactly once. A verification that

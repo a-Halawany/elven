@@ -214,14 +214,19 @@ describe('C17.2 — workflow structure', () => {
     }
   });
 
-  it('every upload path is statically nonempty — no ${{ env.* }} paths anywhere', () => {
+  it('every upload path line is a deterministic ${{ runner.temp }} directory', () => {
     for (const { where, step } of allUploads()) {
       const path = String(step.with?.path ?? '');
-      expect(path.trim().length, `upload in ${where} must declare a path`).toBeGreaterThan(0);
+      const lines = path.split('\n').map((line) => line.trim()).filter(Boolean);
+      expect(lines.length, `upload in ${where} must declare a path`).toBeGreaterThan(0);
       // `if-no-files-found: warn` tolerates a nonempty path that matched nothing; it does NOT
       // protect against the path INPUT itself collapsing to the empty string when the step
-      // that would have populated an env var never ran.
-      expect(path, `upload path in ${where} must not depend on env`).not.toContain('${{ env.');
+      // that would have populated an env var never ran. The contract is stronger than "no env":
+      // every path is a deterministic directory under the runner temp root.
+      for (const line of lines) {
+        expect(line, `upload path '${line}' in ${where} must live under runner.temp`)
+          .toMatch(/^\$\{\{ runner\.temp \}\}\//);
+      }
     }
   });
 
@@ -354,13 +359,58 @@ describe('C17.2 — the two receipt contracts', () => {
   it.each([
     ['workflow_ref disagreeing with its own ref', { workflow_ref: `${REPOSITORY}/${WORKFLOW_PATH}@refs/heads/other` }, /disagrees with its own ref/],
     ['a workflow_ref for another workflow', { workflow_ref: `${REPOSITORY}/.github/workflows/other.yml@refs/heads/c17.2` }, /does not name/],
-    ['a tag rather than a branch', { ref: 'refs/tags/v1' }, /is not a branch ref/],
-    ['a malformed branch ref', { ref: 'refs/heads/evil branch' }, /is not a branch ref/],
+    ['a tag rather than a branch', { ref: 'refs/tags/v1' }, /is not a canonical branch ref/],
+    ['a branch with a space', { ref: 'refs/heads/evil branch' }, /is not a canonical branch ref/],
+    ['a dot-dot branch', { ref: 'refs/heads/..' }, /is not a canonical branch ref/],
+    ['an embedded dot-dot', { ref: 'refs/heads/foo..bar' }, /is not a canonical branch ref/],
+    ['a trailing slash', { ref: 'refs/heads/foo/' }, /is not a canonical branch ref/],
+    ['an empty component', { ref: 'refs/heads//foo' }, /is not a canonical branch ref/],
+    ['a dot-leading component', { ref: 'refs/heads/.hidden' }, /is not a canonical branch ref/],
+    ['a .lock suffix', { ref: 'refs/heads/foo.lock' }, /is not a canonical branch ref/],
+    ['a reflog-style @{', { ref: 'refs/heads/foo@{bar' }, /is not a canonical branch ref/],
     ['a pull_request event', { event: 'pull_request' }, /is workflow_dispatch and nothing else/],
   ])('CANDIDATE offline still rejects %s', (_label, over, pattern) => {
     const r = validateReceiptShape(dispatchReceipt(over), { requireHosted: false, profile: 'candidate' });
     expect(r.ok).toBe(false);
     expect(r.problems.join('\n')).toMatch(pattern);
+  });
+
+  it('CANDIDATE accepts normal and nested canonical branch names', () => {
+    for (const ref of ['refs/heads/c17.2', 'refs/heads/feature/c17.2-fixups']) {
+      const r = validateReceiptShape(
+        dispatchReceipt({ ref, workflow_ref: `${REPOSITORY}/${WORKFLOW_PATH}@${ref}` }),
+        { requireHosted: false, profile: 'candidate' },
+      );
+      expect(r.problems, `${ref} is canonical and must be accepted`).toEqual([]);
+      expect(r.ok).toBe(true);
+    }
+  });
+
+  it('ONLINE verification intrinsically rejects hosted:false, regardless of requireHosted', async () => {
+    // The exported core must be authoritative on its own: a caller passing requireHosted:false
+    // with level online must NOT be able to reach a green verdict for a local package. The
+    // package verifier maps requireHosted for its own callers, but that mapping must never be
+    // what stands between a local archive and a hosted claim.
+    const { state, fetchImpl } = countingFetch();
+    const r = await verifyHostedRun({ hosted: false }, {
+      expectedHeadSha: 'a'.repeat(40), profile: 'delivery', level: 'online',
+      requireHosted: false, requireArtifact: true, fetchImpl,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.local).toBe(true);
+    expect(r.problems.join('\n')).toMatch(/hosted=false/);
+    expect(state.calls, 'the rejection must precede any fetch').toBe(0);
+  });
+
+  it('OFFLINE local verification remains legitimate — flagged, never promoted', async () => {
+    const { state, fetchImpl } = countingFetch();
+    const r = await verifyHostedRun({ hosted: false }, {
+      expectedHeadSha: 'a'.repeat(40), profile: 'delivery', level: 'offline',
+      requireHosted: false, requireArtifact: false, fetchImpl,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.local).toBe(true);
+    expect(state.calls).toBe(0);
   });
 
   it('an unknown or missing PROFILE is refused rather than defaulting to the laxer contract', async () => {
