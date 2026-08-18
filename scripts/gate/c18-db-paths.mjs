@@ -870,7 +870,8 @@ export async function verifyEvidence({
     // ── SOURCE BINDING: HEAD, cleanliness, migrations from the CHECKOUT ───────
     const rootHead = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim();
     const rootDirty = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout.trim();
-    if (shaped && manifest.source_sha !== rootHead) {
+    // A malformed manifest must never SUPPRESS the source binding finding.
+    if (typeof manifest.source_sha === 'string' && manifest.source_sha !== rootHead) {
       problems.push(`manifest source_sha ${manifest.source_sha} is not this checkout's HEAD ${rootHead}`);
     }
     if (rootDirty !== '') problems.push('the verifier checkout is not clean; verification must run from the exact source');
@@ -911,21 +912,21 @@ export async function verifyEvidence({
       decisions: finalSnap.tables['policy.policy_decisions']?.rows ?? [],
       outbox: finalSnap.tables['objects.object_outbox']?.rows ?? [],
     }));
-    problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: shaped ? manifest.post_upgrade_operation : null }));
+    problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: manifest.post_upgrade_operation ?? null }));
     problems.push(...comparePosture(after.posture, virgin.posture));
-    if (shaped) {
-      problems.push(...verifyIsolation(manifest.receipts?.['path-a-upgraded'], manifest.receipts?.['path-b-virgin']));
-      problems.push(...verifySuiteReceipts(SUITE_MATRIX, manifest.suite_receipts, {
-        commands: Array.isArray(commands) ? commands : [],
-        readFile: (rel) => {
-          const abs = contained(rel, 'suite receipt');
-          return abs !== null && existsSync(abs) ? readFileSync(abs) : null;
-        },
-      }));
-      const resultAbs = join(tmp, 'RESULT-PASS.txt');
-      if (!existsSync(resultAbs)) problems.push('archive has no RESULT-PASS receipt');
-      else problems.push(...parseResultReceipt(readFileSync(resultAbs, 'utf8'), manifest));
-    }
+    // Receipt, isolation and RESULT judgements run regardless of manifest shape — a
+    // malformed manifest must not suppress deeper findings.
+    problems.push(...verifyIsolation(manifest.receipts?.['path-a-upgraded'], manifest.receipts?.['path-b-virgin']));
+    problems.push(...verifySuiteReceipts(SUITE_MATRIX, Array.isArray(manifest.suite_receipts) ? manifest.suite_receipts : [], {
+      commands: Array.isArray(commands) ? commands : [],
+      readFile: (rel) => {
+        const abs = contained(rel, 'suite receipt');
+        return abs !== null && existsSync(abs) ? readFileSync(abs) : null;
+      },
+    }));
+    const resultAbs = join(tmp, 'RESULT-PASS.txt');
+    if (!existsSync(resultAbs)) problems.push('archive has no RESULT-PASS receipt');
+    else problems.push(...parseResultReceipt(readFileSync(resultAbs, 'utf8'), manifest));
 
     // ── DELIVERY STANDING (online): the hosted run, the blocking step, the artifact ──
     if (requireHosted && !online) {

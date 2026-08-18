@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import {
-  cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
+  lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -32,7 +32,7 @@ type Mutator = (dir: string) => void;
 function walkFiles(d: string, base: string, out: string[]) {
   for (const name of readdirSync(d).sort()) {
     const abs = join(d, name);
-    if (spawnSync('test', ['-d', abs]).status === 0) walkFiles(abs, base, out);
+    if (lstatSync(abs).isDirectory()) walkFiles(abs, base, out);
     else out.push(relative(base, abs));
   }
 }
