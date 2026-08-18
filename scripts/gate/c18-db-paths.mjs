@@ -435,11 +435,14 @@ function runSuites(ev, inst, labels, receipts, { skip }) {
       continue;
     }
     const timeoutMs = 900_000;
+    // NO_COLOR: hosted runners force ANSI colour into vitest output, which is noise in
+    // evidence and defeats summary parsing. Plain output everywhere, deterministically.
     const r = ev.run(`${inst.letter}-suite-${suite}`, spec.command,
-      { env: inst.envFor(), timeoutMs, allowFail: true });
+      { env: inst.envFor({ NO_COLOR: '1', FORCE_COLOR: '0' }), timeoutMs, allowFail: true });
     const stdoutBytes = readFileSync(join(ev.raw, `${r.id}.stdout.txt`));
     const stderrBytes = readFileSync(join(ev.raw, `${r.id}.stderr.txt`));
-    const text = stdoutBytes.toString('utf8') + stderrBytes.toString('utf8');
+    const text = (stdoutBytes.toString('utf8') + stderrBytes.toString('utf8'))
+      .replace(/\x1b\[[0-9;]*m/g, '');
     const m = /Tests {2}(\d+) passed \((\d+)\)/.exec(text);
     receipts.push({
       suite, path: where, command_id: r.id, argv_redacted: [...spec.command],

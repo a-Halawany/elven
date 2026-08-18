@@ -540,7 +540,9 @@ export function verifySuiteReceipts(matrix, receipts, { readFile = null, command
         problems.push(`receipt ${tuple} raw exit receipt is ${JSON.stringify(exitTxt.toString('utf8').trim())}, not 0`);
       }
       if (spec.framework === 'vitest') {
-        const text = stdout.toString('utf8') + stderr.toString('utf8');
+        // ANSI-stripped: hosted runners force colour codes into the raw stream evidence.
+        const text = (stdout.toString('utf8') + stderr.toString('utf8'))
+          .replace(/\x1b\[[0-9;]*m/g, '');
         const m = /Tests {2}(\d+) passed \((\d+)\)/.exec(text);
         const failed = /\d+ failed/.test(text);
         if (m === null || failed) {
