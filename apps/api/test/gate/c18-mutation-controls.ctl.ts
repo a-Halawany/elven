@@ -187,8 +187,12 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
       });
     }, /added column 'consumed' is true, expected the DDL default false/, {}],
     ['a changed FK definition (retarget with identical local values)', (d: string) => {
+      const before = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+      const preserved = new Set(before.fks.map((f: { constraint: string }) => f.constraint));
       editJson(d, 'path-a-after.json', (doc) => {
-        doc.fks[0].definition = doc.fks[0].definition.replace(/REFERENCES [a-z_.]+/, 'REFERENCES evil.shadow');
+        // Mutate a PRESERVED constraint — an after-only 0013 FK would never be compared.
+        const target = doc.fks.find((f: { constraint: string }) => preserved.has(f.constraint));
+        target.definition = target.definition.replace(/REFERENCES [a-z_.]+/, 'REFERENCES evil.shadow');
       });
     }, /DEFINITION changed across the upgrade/, {}],
     ['a missing primary key', (d: string) => {
