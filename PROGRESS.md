@@ -263,3 +263,33 @@ This document is written in a **docs-only child commit** recording those values;
 be the evidence source, because a commit cannot contain the digest of an archive produced from
 itself. The child changes no executable file, so the gates' verdicts at
 `cb9022a4f2684431c9531aded212377cb8c1c855` are unaffected by it.
+
+## C18 evidence provenance (no SHA cycle)
+
+The C18 evidence-bearing source is **`d5061b8add0f9d138110816ff504e0dfd4967aee`**. Source run
+**`32150089911`** (push, `main`, attempt 1) ran at exactly that SHA with the BLOCKING C18
+dual-path gate green inside `build-test`; the finalizer run **`32150603136`** (`macos-14`,
+attempt 1) completed green. The uploaded evidence:
+
+* `c18-db-paths-evidence-a1` → `c18-db-paths-evidence-d5061b8….zip`
+  (sha256 `2233af31fc71433500a9c3995f3f58b122434a1e5bccc44f7e02aca274ef6278`);
+* `c17-evidence-archive-a1-535e44c80b00f92a6c7a66798c4a2970ee7e26048420e0dcff26caf6328ab457`;
+* `c17-evidence-finalized-a1-65a49b5bcbef4d9174081f3f0a1a96999dc33a5bde03ef4255d8e63d1a257e4a`.
+
+Full details, the two superseded predecessors (`8d22235`, `695fb84`) with their honestly
+recorded hosted failures, and the complete claim inventory live in
+[GATE2_2_FINAL_CLOSURE_PLAN.md](GATE2_2_FINAL_CLOSURE_PLAN.md) §14. Verification runs against
+`d5061b8add0f9d138110816ff504e0dfd4967aee`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout d5061b8add0f9d138110816ff504e0dfd4967aee
+pnpm install --frozen-lockfile
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD"
+node scripts/gate/package-c17-evidence.mjs verify --zip <source archive> --root "$PWD" \
+  --profile delivery --online --require-hosted
+node scripts/gate/c17-cross-host-finalization.mjs verify --zip <finalized archive> --root "$PWD" --online
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so
+the gates' verdicts at `d5061b8add0f9d138110816ff504e0dfd4967aee` are unaffected by it.

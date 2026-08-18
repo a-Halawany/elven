@@ -1383,3 +1383,84 @@ superseded **solely** for that reason; `cb9022a` changes exactly the download de
 approved; the source is not frozen. This section is written in a docs-only child commit; the
 child changes no executable file and cannot contain the digest of an archive produced from
 itself, so verification runs against `cb9022a4f2684431c9531aded212377cb8c1c855`.
+
+## 14. C18 — HONEST DUAL-PATH DATABASE HISTORY PROOF (delivered)
+
+**Evidence-bearing source `d5061b8add0f9d138110816ff504e0dfd4967aee`.**
+Source run `32150089911` (push/`main`, attempt 1, 3/3 jobs green including the BLOCKING C18
+gate inside `build-test`) · finalizer run `32150603136` (`macos-14`, attempt 1, green).
+
+**What C18 replaced.** `scripts/verify-db-paths.sh` moved tracked migrations into a temp HOLD
+directory, hardcoded 0012 as the latest migration, seeded through superuser DML, compared only
+row counts and one aggregate hash, inferred suite success by tailing logs, and reused one
+database and one credential set across both paths. It is deleted; its replacement is the
+tracked deterministic runner `scripts/gate/c18-db-paths.mjs`, judged by the code-owned contract
+`scripts/gate/lib/c18-contract.mjs`, which was written BEFORE the implementation together with
+the negative-control list.
+
+**Path A (rebuild-forward).** An isolated per-run postgres+redis pair (image digest-pinned from
+compose) received byte-verified copies of migrations 0001–0012 applied by an unchanged copy of
+the tracked migration runner; was seeded ONLY through the historically valid governed ports —
+audited single-use bootstrap claim with forced credential rotation, identity principal/session
+ports, operation-specific capability minters, tenancy/policy/audit admission ports,
+canonical-object admission with the application's own JCS header digest, outbox
+enqueue/lease/ack; no direct DML anywhere (`scripts/gate/lib/c18-seed-0012.mjs`) — then
+completely snapshotted, upgraded with the unchanged 0013–0021, snapshotted again, and proved:
+every pre-upgrade row preserved with exact values, identities, relationships and cardinalities;
+audit hash-chain continuity with byte-identical pre-upgrade canonical rows; policy → operation →
+effect linkage; outbox state; the historical ledger rows never re-recorded; and EXACTLY the
+pinned intentional transforms (`ctx.operation` + `ctx.operation_effect` from 0013;
+`identity.bootstrap_claim` nonce/consumed/consumed_at from 0016). Hosted seed:
+2 tenants, 3 domains, 4 principals, 2 sessions, 2 canonical objects, 2 outbox events
+(1 published, 1 pending), 12 policy decisions. Tables 26 → 28 across the upgrade.
+
+**Path B (virgin latest).** A second fully disjoint instance received 0001–0021 directly; its
+migration ledger and NORMALIZED CATALOG POSTURE (role attributes, memberships, table grants,
+routine ACLs + security, RLS enablement/force + policies, columns, constraints, indexes) equal
+Path A's upgraded posture EXACTLY (`comparePosture`, zero deltas). Isolation is structural and
+verified: distinct containers, database names (`eye_a_7ed94d45` / `eye_b_c6b0674c`), ports and
+per-path generated credentials whose digests are compared for disjointness.
+
+**Suite matrix (code-owned, honest).** acceptance 58/58 and integration 297/297 ran on BOTH
+paths (integration directly against each path's database — the upgraded seeded one on A;
+acceptance on each isolated instance in its own pristine per-run database by its
+deterministic-isolation design, stated in the matrix rather than papered over);
+unit/gate-hermetic and browser-regression are recorded once-only with reasons.
+
+**Delivered evidence (all sidecars verified; inner digests match artifact-name suffixes).**
+* `c18-db-paths-evidence-a1` → `c18-db-paths-evidence-d5061b8….zip`, sha256
+  `2233af31fc71433500a9c3995f3f58b122434a1e5bccc44f7e02aca274ef6278` — raw stdout/stderr/exit
+  for every command, both path receipts, before/after/virgin snapshots, catalog and privilege
+  evidence, migration digests, suite receipts, checksummed and source-bound; offline verifier
+  re-runs the comparison from RAW SNAPSHOTS (`c18-db-paths.mjs verify --zip --root`): PASS from
+  a fresh foreign checkout at exactly `d5061b8`.
+* `c17-evidence-archive-a1-535e44c80b00f92a6c7a66798c4a2970ee7e26048420e0dcff26caf6328ab457`
+  (inner 1,206,169 B-class archive; full `--profile delivery --online --require-hosted`: PASS).
+* `c17-evidence-finalized-a1-65a49b5bcbef4d9174081f3f0a1a96999dc33a5bde03ef4255d8e63d1a257e4a`
+  (cross-host `verify --online`: PASS; 9/9 byte-identical Linux/X64 ↔ macOS/ARM64).
+
+**Two hosted defects this round's own process found and fixed (both recorded honestly).**
+1. `695fb84` (superseded): the C18 gate correctly refused final mode because build-test's
+   clean-typecheck step regenerates the TRACKED `evidence/clean-typecheck.txt`; the gate now
+   restores exactly that one file after asserting nothing else is dirty, and the refusal names
+   the dirty paths. Its candidate run `32148262770` was green; push run `32148862787` red on
+   exactly this.
+2. `8d22235` (superseded): first hosted C18 execution failed on the official postgres image's
+   initdb race — the temporary init-phase server answers `pg_isready` on the unix socket before
+   the real server starts. The readiness probe now requires TCP `pg_isready` plus an
+   authenticated `select 1`. Diagnosed from the run's own uploaded failure evidence, which
+   survives because the C18 evidence upload is deliberately diagnostic-grade (`always()`).
+
+**52 negative controls** (`apps/api/test/gate/c18-db-paths.test.ts`) prove detection of altered
+data, lost rows, re-keyed identities, dropped tables/columns/FKs, un-allow-listed transforms,
+chain gaps/breaks/rewrites, broken policy linkage, orphaned outbox effects, ledger
+digest/order/omission/re-record violations, posture divergence, missing/failing/out-of-matrix
+suite receipts, shared credentials or instances, archive tampering bound and rebound, smuggled
+files, self-referential manifests, the refused `--skip-suites` seam, and fail-closed CLI
+validation. The C17.2 upload-completeness pin moved 7 → 8 deliberately for the C18 evidence
+upload; C15–C17 verifier logic, migrations 0001–0021 and their evidence mechanisms are
+otherwise untouched.
+
+**Still open.** C19, the freeze protocol and external independent review. Phase 0 is not
+approved; the source is not frozen. This section is written in a docs-only child commit;
+verification runs against `d5061b8add0f9d138110816ff504e0dfd4967aee`.
