@@ -50,7 +50,12 @@ jobs:
           # them into `incoming` beside the current attempt's archive.
           pattern: c17-evidence-archive-a${{ github.event.workflow_run.run_attempt }}-*
           merge-multiple: true
-          path: incoming
+          # OUTSIDE the repository workspace. The artifact carries a `.zip.sha256` sidecar and
+          # the packager's `payload/` staging tree, which are not gitignored; an in-tree
+          # download therefore dirties the checkout, and the final-mode C17 regeneration inside
+          # source-archive verification REQUIRES a clean worktree. Proved by the first live
+          # finalizer run (32116543012), which failed on exactly this before any comparison ran.
+          path: ${{ runner.temp }}/incoming
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify the source C17 archive online and hosted
@@ -58,9 +63,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          COUNT="$(find incoming -type f -name 'c17-evidence-*.zip' | wc -l | tr -d ' ')"
+          INCOMING="$RUNNER_TEMP/incoming"
+          COUNT="$(find "$INCOMING" -type f -name 'c17-evidence-*.zip' | wc -l | tr -d ' ')"
           test "$COUNT" = 1
-          SOURCE_ZIP="$(find incoming -type f -name 'c17-evidence-*.zip')"
+          SOURCE_ZIP="$(find "$INCOMING" -type f -name 'c17-evidence-*.zip')"
           echo "C17_SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
           node scripts/gate/package-c17-evidence.mjs verify \
             --zip "$SOURCE_ZIP" --root "$PWD" --profile delivery --online --require-hosted

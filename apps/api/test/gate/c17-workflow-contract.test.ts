@@ -253,6 +253,26 @@ describe('C17.2 — workflow structure', () => {
     }
   });
 
+  it('the finalizer download lands OUTSIDE the repository workspace and is consumed from there', () => {
+    // The first live finalizer run (32116543012) failed because the source artifact was
+    // downloaded to a repository-relative `incoming` directory: the artifact's sidecar and
+    // staging tree are not gitignored, so the checkout was dirty and the final-mode C17
+    // regeneration inside source-archive verification correctly refused. The download must be
+    // a runner-temp path, the verification step must consume exactly that path, and no bare
+    // repository-relative `find incoming` may remain anywhere in the finalizer.
+    const steps = FINALIZE.jobs.finalize.steps as Step[];
+    const download = stepNamed(steps, 'Download the archive the SOURCE run produced');
+    expect(download.with?.path).toBe('${{ runner.temp }}/incoming');
+    const verify = stepNamed(steps, 'Verify the source C17 archive online and hosted');
+    const run = String(verify.run);
+    expect(run).toContain('INCOMING="$RUNNER_TEMP/incoming"');
+    expect(run.match(/find "\$INCOMING"/g) ?? []).toHaveLength(2);
+    for (const step of steps) {
+      expect(String(step.run ?? ''), `step '${step.name}' must not use a repo-relative incoming path`)
+        .not.toMatch(/find\s+incoming/);
+    }
+  });
+
   it('the finalizer downloads the SOURCE attempt and uploads its OWN attempt', () => {
     const steps = FINALIZE.jobs.finalize.steps as Step[];
     const download = stepNamed(steps, 'Download the archive the SOURCE run produced');
