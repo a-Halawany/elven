@@ -143,19 +143,33 @@ jobs:
         timeout-minutes: 20
         run: |
           set -euo pipefail
+          # The clean-typecheck step above regenerates the TRACKED evidence/clean-typecheck.txt
+          # with a fresh timestamp (its bytes are committed only in evidence-attestation child
+          # commits, never from CI). C18's final mode requires the tree to EQUAL the SHA under
+          # test, so restore that ONE file to its committed bytes — and fail loudly if anything
+          # else is dirty, because any other modification is a real problem this step must not
+          # paper over.
+          DIRTY="$(git status --porcelain)"
+          if [ -n "$DIRTY" ] && [ "$DIRTY" != " M evidence/clean-typecheck.txt" ]; then
+            echo "::error::unexpected dirty worktree before the C18 gate:"; git status --porcelain; exit 1
+          fi
+          git restore evidence/clean-typecheck.txt 2>/dev/null || true
           C18_OUT="$RUNNER_TEMP/c18-out"
           mkdir -p "$C18_OUT"
           node scripts/gate/c18-db-paths.mjs run --out "$C18_OUT" \
             --final --expected-sha "$GITHUB_SHA"
           node scripts/gate/c18-db-paths.mjs verify \
             --zip "$(ls "$C18_OUT"/c18-db-paths-evidence-*.zip)" --root "$PWD"
+      # DIAGNOSTIC-grade upload: always(), so a red C18 run's failure evidence (RESULT-FAIL,
+      # commands.json, raw outputs) survives. The artifact NAME carries no digest, and the
+      # path is statically nonempty under the runner temp root.
       - name: Upload C18 dual-path evidence
-        if: always() && steps.c18_gate.outcome == 'success'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: c18-db-paths-evidence-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/c18-out
-          if-no-files-found: error
+          if-no-files-found: warn
       - name: Upload C16 gate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

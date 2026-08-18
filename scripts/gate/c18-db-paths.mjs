@@ -389,7 +389,11 @@ async function runCommand(args) {
   const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
   if (final) {
     if (head !== expectedSha) throw new Error(`final mode: HEAD ${head} != --expected-sha ${expectedSha}`);
-    if (dirty !== '') throw new Error(`final mode requires a clean worktree; ${dirty.split('\n').length} path(s) are dirty`);
+    if (dirty !== '') {
+      throw new Error(
+        `final mode requires a clean worktree; ${dirty.split('\n').length} path(s) are dirty:\n${dirty}`,
+      );
+    }
     const rel = relative(ROOT, resolve(outDir));
     if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
       throw new Error('final mode requires --out OUTSIDE the repository');

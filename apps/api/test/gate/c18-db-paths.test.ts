@@ -448,14 +448,25 @@ describe('C18 — CI wiring and replacement of the obsolete script', () => {
     expect(run).toContain('$RUNNER_TEMP/c18-out');
   });
 
-  it('the C18 evidence upload is attempt-scoped, runner-temp, and guarded on the gate outcome', () => {
+  it('the C18 evidence upload is attempt-scoped, runner-temp, and DIAGNOSTIC (always)', () => {
     const steps = CI.jobs['build-test']!.steps;
     const upload = steps.find((s) => String(s['name'] ?? '') === 'Upload C18 dual-path evidence');
     expect(upload).toBeDefined();
     const w = upload!['with'] as Record<string, unknown>;
     expect(w['name']).toBe('c18-db-paths-evidence-a${{ github.run_attempt }}');
     expect(w['path']).toBe('${{ runner.temp }}/c18-out');
-    expect(w['if-no-files-found']).toBe('error');
-    expect(upload!['if']).toBe("always() && steps.c18_gate.outcome == 'success'");
+    // always(): a RED C18 run's failure evidence must survive; the artifact name carries no
+    // digest, so there is nothing a failed producer could leave dangling.
+    expect(upload!['if']).toBe('always()');
+    expect(w['if-no-files-found']).toBe('warn');
+  });
+
+  it('the gate restores ONLY the regenerated clean-typecheck evidence, failing on anything else', () => {
+    const steps = CI.jobs['build-test']!.steps;
+    const gate = steps.find((s) => String(s['name'] ?? '').includes('C18 dual-path database history gate'));
+    const run = String(gate!['run']);
+    expect(run).toContain('git restore evidence/clean-typecheck.txt');
+    expect(run).toContain('unexpected dirty worktree before the C18 gate');
+    expect(run).toContain('[ "$DIRTY" != " M evidence/clean-typecheck.txt" ]');
   });
 });
