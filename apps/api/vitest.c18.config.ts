@@ -1,0 +1,16 @@
+/**
+ * C18.1 mutation-control suite config. These controls verify a GENUINE evidence archive
+ * (path supplied via C18_ARCHIVE) and mutated copies of it, so they run inside the C18 gate
+ * step — after the producer — never in the hermetic unit phase. The .ctl.ts suffix keeps the
+ * file out of every default vitest collection.
+ */
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['test/gate/c18-mutation-controls.ctl.ts'],
+    fileParallelism: false,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+  },
+});

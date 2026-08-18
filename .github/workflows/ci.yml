@@ -140,7 +140,7 @@ jobs:
       # checksummed evidence archive it packaged.
       - name: C18 dual-path database history gate (tracked runner, blocking)
         id: c18_gate
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           # The clean-typecheck step above regenerates the TRACKED evidence/clean-typecheck.txt
@@ -155,19 +155,35 @@ jobs:
           fi
           git restore evidence/clean-typecheck.txt 2>/dev/null || true
           C18_OUT="$RUNNER_TEMP/c18-out"
-          mkdir -p "$C18_OUT"
           node scripts/gate/c18-db-paths.mjs run --out "$C18_OUT" \
             --final --expected-sha "$GITHUB_SHA"
+          # GITHUB_ENV exports apply to LATER steps; within this one, resolve the zip directly.
+          C18_ZIP="$(ls "$C18_OUT"/c18-db-paths-evidence-*.zip)"
           node scripts/gate/c18-db-paths.mjs verify \
-            --zip "$(ls "$C18_OUT"/c18-db-paths-evidence-*.zip)" --root "$PWD"
+            --zip "$C18_ZIP" --root "$PWD"
+          # The mutation + differential control suite verifies THIS genuine archive and proves
+          # every single-defect mutation is rejected (and that the frozen d5061b8 verifier
+          # accepted the false passes C18.1 closes).
+          C18_ARCHIVE="$C18_ZIP" pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts
+          # The digest-bound artifact carries EXACTLY the archive and its sidecar.
+          mkdir -p "$RUNNER_TEMP/c18-artifact"
+          cp "$C18_ZIP" "$C18_ZIP.sha256" "$RUNNER_TEMP/c18-artifact/"
+      # The DELIVERY artifact: digest-bound name (the verifier's online hosted standing checks
+      # this exact name), guarded on the producing gate.
+      - name: Upload the C18 evidence archive
+        if: always() && steps.c18_gate.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c18-db-paths-evidence-a${{ github.run_attempt }}-${{ env.C18_ZIP_SHA256 }}
+          path: ${{ runner.temp }}/c18-artifact
+          if-no-files-found: error
       # DIAGNOSTIC-grade upload: always(), so a red C18 run's failure evidence (RESULT-FAIL,
-      # commands.json, raw outputs) survives. The artifact NAME carries no digest, and the
-      # path is statically nonempty under the runner temp root.
-      - name: Upload C18 dual-path evidence
+      # commands.json, raw outputs) survives. No digest in the name; static runner-temp path.
+      - name: Upload C18 diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c18-db-paths-evidence-a${{ github.run_attempt }}
+          name: c18-diagnostics-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/c18-out
           if-no-files-found: warn
       - name: Upload C16 gate evidence

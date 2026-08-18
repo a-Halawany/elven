@@ -204,13 +204,14 @@ describe('C17.2 — workflow structure', () => {
     );
   });
 
-  it('exactly EIGHT uploads exist across both workflows, every one attempt-scoped', () => {
-    // Seven were pinned at C17.2; C18 ADDS its dual-path evidence upload (same contract:
-    // attempt-scoped name, deterministic runner.temp path, producer-outcome guard). This count
-    // is the completeness pin — a new upload must be added HERE deliberately, with the same
-    // properties, never silently.
+  it('exactly NINE uploads exist across both workflows, every one attempt-scoped', () => {
+    // Seven were pinned at C17.2; C18 added its evidence upload; C18.1 splits it into the
+    // digest-bound delivery artifact plus the always() diagnostics artifact (same contract:
+    // attempt-scoped names, deterministic runner.temp paths). This count is the completeness
+    // pin — a new upload must be added HERE deliberately, with the same properties, never
+    // silently.
     const uploads = allUploads();
-    expect(uploads).toHaveLength(8);
+    expect(uploads).toHaveLength(9);
     for (const { where, step } of uploads) {
       const name = String(step.with?.name ?? '');
       expect(name, `upload '${name}' in ${where} must scope an attempt`)
