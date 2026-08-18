@@ -32,7 +32,9 @@ export type AnyDb = Kysely<any>;
 export function mkDb(user: string, password: string, max = 8): AnyDb {
   return new Kysely({
     dialect: new PostgresDialect({
-      pool: new pg.Pool({ host: HOST, port: PORT, database: 'eye', user, password, max }),
+      // C18: the database NAME is environment-driven like host/port, so the same suites can
+      // prove both governed histories on isolated per-run databases. Default unchanged.
+      pool: new pg.Pool({ host: HOST, port: PORT, database: process.env['EYE_DB_NAME'] ?? 'eye', user, password, max }),
     }),
   });
 }

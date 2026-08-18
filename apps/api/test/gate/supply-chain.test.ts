@@ -340,7 +340,10 @@ describe('G21-§9 — the secret handoff is COMPLETE and internally consistent',
   it('the virgin-run verifiers release pinned container names BEFORE tearing down', () => {
     // Otherwise `docker compose down -v` removes neither the containers nor the
     // volumes, and a "virgin" run silently reuses a stale database.
-    for (const script of ['verify-db-paths.sh', 'verify-demo.sh']) {
+    // C18 replaced verify-db-paths.sh; its runner never touches the pinned compose
+    // containers at all (fresh per-run containers with generated names), so only
+    // verify-demo.sh still carries this hazard.
+    for (const script of ['verify-demo.sh']) {
       // Executable lines only: both strings also appear in the comments that
       // explain why the order matters.
       const lines = readFileSync(join(REPO, 'scripts', script), 'utf8')
@@ -355,9 +358,14 @@ describe('G21-§9 — the secret handoff is COMPLETE and internally consistent',
     }
   });
 
-  it('the database-path verifier PROVES the volume is virgin rather than assuming it', () => {
-    const src = readFileSync(join(REPO, 'scripts', 'verify-db-paths.sh'), 'utf8');
-    expect(src).toContain('the database is not virgin');
-    expect(src).toContain('virgin volume verified');
+  it('the database-path verifier PROVES virginity structurally rather than assuming it', () => {
+    // C18 replaced verify-db-paths.sh. Its runner cannot reuse a stale database BY
+    // CONSTRUCTION: every path gets a freshly created container with per-run generated
+    // names and credentials, and the migration-ledger contract requires the EXACT
+    // expected row set, which any pre-used database fails.
+    const src = readFileSync(join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs'), 'utf8');
+    expect(src).not.toContain('eye-postgres');
+    expect(src).toContain('fresh container, fresh credentials, fresh names');
+    expect(src).toContain("'docker', 'run', '-d', '--name'");
   });
 });

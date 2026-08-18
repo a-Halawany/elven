@@ -131,6 +131,31 @@ jobs:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: pnpm --filter @eye/api test:int
+      # C18 — BLOCKING dual-path database history proof. The tracked runner provisions two
+      # fully isolated postgres+redis instances with per-run names, ports and credentials
+      # (never the compose stack, never shared between paths), applies 0001-0012, seeds only
+      # through the historically valid governed ports, upgrades with the unchanged 0013-0021,
+      # proves preservation + intentional transformation + posture equivalence against the
+      # code-owned contract, runs the suite matrix on both paths, and self-verifies the
+      # checksummed evidence archive it packaged.
+      - name: C18 dual-path database history gate (tracked runner, blocking)
+        id: c18_gate
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          C18_OUT="$RUNNER_TEMP/c18-out"
+          mkdir -p "$C18_OUT"
+          node scripts/gate/c18-db-paths.mjs run --out "$C18_OUT" \
+            --final --expected-sha "$GITHUB_SHA"
+          node scripts/gate/c18-db-paths.mjs verify \
+            --zip "$(ls "$C18_OUT"/c18-db-paths-evidence-*.zip)" --root "$PWD"
+      - name: Upload C18 dual-path evidence
+        if: always() && steps.c18_gate.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c18-db-paths-evidence-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/c18-out
+          if-no-files-found: error
       - name: Upload C16 gate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

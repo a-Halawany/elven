@@ -236,7 +236,8 @@ beforeAll(async () => {
     new Kysely({
       dialect: new PostgresDialect({
         // Gate-2.2: this run's OWN database, not the shared one.
-        pool: new pg.Pool({ host: ENV.EYE_DB_HOST, port: 5432, database: ACCEPT_DB, user, password, max: 4 }),
+        // C18: honour EYE_DB_PORT exactly as every other client in this file already does.
+        pool: new pg.Pool({ host: ENV.EYE_DB_HOST, port: Number(process.env['EYE_DB_PORT'] ?? 5432), database: ACCEPT_DB, user, password, max: 4 }),
       }),
     });
   db = mkPool('eye_app', ENV.EYE_DB_APP_PASSWORD) as never;
