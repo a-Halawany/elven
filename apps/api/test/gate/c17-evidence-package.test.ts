@@ -36,9 +36,13 @@ describe('C17.1 F — tracked evidence packaging and verification', () => {
     c17 = join(work, 'c17');
     out = join(work, 'out');
     mkdirSync(out, { recursive: true });
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
     for (const [script, dir, extra] of [
       ['generate-closures.mjs', c16, []],
-      ['licence-obligations.mjs', c17, ['--as-of', RUN_DATE]],
+      // C18.1 discovery: verify()'s regeneration always passes --expected-sha from the packed
+      // receipt, so a fixture generated WITHOUT it can never byte-match its own regeneration —
+      // the clean-checkout ok:true branch of the LOCAL-package control was unreachable.
+      ['licence-obligations.mjs', c17, ['--as-of', RUN_DATE, '--expected-sha', head]],
     ] as Array<[string, string, string[]]>) {
       const r = spawnSync(process.execPath,
         [join(REPO, 'scripts', 'gate', script), '--out', dir, ...extra],
