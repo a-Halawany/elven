@@ -124,12 +124,22 @@ function startInstance(ev, letter, images) {
   };
   const port = portOf(`${name}-pg`, 5432);
   const redisPort = portOf(`${name}-redis`, 6379);
-  // Readiness, bounded: pg_isready inside the container against the target database.
+  // Readiness, bounded — and proofed against the official image's init race: the entrypoint
+  // runs a TEMPORARY initdb-phase server that answers on the UNIX SOCKET and then restarts.
+  // Probing over TCP (which the temporary server never opens) plus a real authenticated
+  // `select 1` guarantees the REAL server is the one answering before anything connects.
   let ready = false;
-  for (let i = 0; i < 60 && !ready; i += 1) {
-    const r = ev.run(`${letter}-pg-wait-${i}`, ['docker', 'exec', `${name}-pg`, 'pg_isready', '-U', 'eye', '-d', database],
+  for (let i = 0; i < 90 && !ready; i += 1) {
+    const probe = ev.run(`${letter}-pg-wait-${i}`,
+      ['docker', 'exec', `${name}-pg`, 'pg_isready', '-h', '127.0.0.1', '-p', '5432', '-U', 'eye', '-d', database],
       { allowFail: true, timeoutMs: 10_000 });
-    ready = r.exit === 0;
+    if (probe.exit === 0) {
+      const confirm = ev.run(`${letter}-pg-confirm-${i}`,
+        ['docker', 'exec', '-e', `PGPASSWORD=${passwords.EYE_DB_PASSWORD}`, `${name}-pg`,
+          'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', database, '-c', 'select 1'],
+        { allowFail: true, timeoutMs: 10_000 });
+      ready = confirm.exit === 0 && confirm.stdout.trim() === '1';
+    }
     if (!ready) spawnSync('sleep', ['1']);
   }
   if (!ready) throw new Error(`postgres instance ${name}-pg never became ready`);
