@@ -13,16 +13,20 @@ import {
   lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence } from '../../../../scripts/gate/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import { commandIdFor } from '../../../../scripts/gate/lib/c18-contract.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyVerify } from './fixtures/c18-legacy-d5061b8/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy8a } from './fixtures/c18-legacy-8a23526/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy567 } from './fixtures/c18-legacy-567a70f/c18-db-paths.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -171,7 +175,7 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
           if (head) { head.head_hash = prev; head.next_seq = part.length + 1; }
         }
       });
-    }, /actor differs from the recorded actor|canonical bytes or hash changed/, {}],
+    }, /closing audit event actor is .*principal:forged|canonical bytes or hash changed/, {}],
     ['a deleted audit world', (d: string) => {
       for (const f of ['path-a-before.json', 'path-a-after.json', 'path-a-final.json']) {
         editJson(d, f, (doc) => { doc.audit.events = []; doc.audit.heads = []; });
@@ -451,7 +455,7 @@ describe('C18.1.1 — new single-defect mutations against the genuine archive ar
     }, /'identity\.credentials' is MISSING|table set differs/],
     ['an emptied seed record', (d: string) => {
       writeFileSync(join(d, 'path-a-seed-record.json'), '{}\n');
-    }, /seed record .* is empty or missing|seed record .* count/],
+    }, /seed record fields are not the exact closed schema/],
     ['a false manifest source_tree', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => { doc.source_tree = 'b'.repeat(40); });
     }, /source_tree .* is not this checkout/],
@@ -460,7 +464,7 @@ describe('C18.1.1 — new single-defect mutations against the genuine archive ar
     }, /suite_matrix is not exactly the code-owned matrix/],
     ['a false seed_summary count', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => { doc.seed_summary.tenants = 99; });
-    }, /seed record tenants count .* != manifest seed_summary 99|!= pre-upgrade table/],
+    }, /seed_summary .* is not the record-derived/],
     ['a wrong cleanup removal set', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.removed = ['x', 'y', 'z', 'w']; });
     }, /cleanup\.removed is not exactly the four/],
@@ -560,6 +564,204 @@ describe('C18.1.1 — DIFFERENTIAL: the frozen 8a23526 verifier ACCEPTED what C1
   });
 });
 
+/** Rewrite a processed snapshot table AND its command-bound raw receipt consistently, with
+ * the ledger's stream digest rebound — the full-rebinding discipline every C18.1.2 mutation
+ * follows so only the SEMANTIC layer can reject. */
+function setStream(dir: string, label: string, stream: 'stdout' | 'stderr' | 'exit', content: Buffer) {
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    const c = cmds.find((x) => x.label === label);
+    expect(c, `ledger command '${label}'`).toBeDefined();
+    writeFileSync(join(dir, 'raw', `${c.id}.${stream}.txt`), content);
+    c[`${stream}_bytes`] = content.byteLength;
+    c[`${stream}_sha256`] = sha256(content);
+  });
+}
+function rewriteRowsAndRaw(dir: string, snapFile: string, pfx: string, table: string, editRows: (rows: any[]) => void) {
+  editJson(dir, snapFile, (doc) => {
+    editRows(doc.tables[table].rows);
+    doc.tables[table].row_count = doc.tables[table].rows.length;
+    setStream(dir, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout', Buffer.from(JSON.stringify(doc.tables[table].rows)));
+  });
+}
+/** Renumber the whole ledger after an insertion/deletion: position-bound ids, renamed raw
+ * streams, and manifest suite receipts all rebound — the id-sequence check alone must NOT be
+ * what stops a doctored ledger. */
+function renumberCommands(dir: string) {
+  const cmds = JSON.parse(readFileSync(join(dir, 'commands.json'), 'utf8')) as any[];
+  const staged = cmds.map((c) => ({
+    c,
+    streams: Object.fromEntries((['stdout', 'stderr', 'exit'] as const).map((s) => [
+      s, readFileSync(join(dir, 'raw', `${c.id}.${s}.txt`)),
+    ])),
+  }));
+  const idMap = new Map<string, string>();
+  staged.forEach(({ c }, i) => {
+    const nid = commandIdFor(i + 1, c.label);
+    if (!idMap.has(c.id)) idMap.set(c.id, nid);
+    c.id = nid;
+  });
+  rmSync(join(dir, 'raw'), { recursive: true, force: true });
+  mkdirSync(join(dir, 'raw'));
+  for (const { c, streams } of staged) {
+    for (const s of ['stdout', 'stderr', 'exit'] as const) {
+      writeFileSync(join(dir, 'raw', `${c.id}.${s}.txt`), streams[s] as Buffer);
+    }
+  }
+  writeFileSync(join(dir, 'commands.json'), `${JSON.stringify(cmds, null, 2)}\n`);
+  editJson(dir, 'c18-manifest.json', (doc) => {
+    for (const r of doc.suite_receipts) {
+      r.command_id = idMap.get(r.command_id) ?? r.command_id;
+      r.stdout_file = `raw/${r.command_id}.stdout.txt`;
+      r.stderr_file = `raw/${r.command_id}.stderr.txt`;
+      r.exit_file = `raw/${r.command_id}.exit.txt`;
+    }
+  });
+}
+
+describe('C18.1.2 — DIFFERENTIAL: the TEN false passes the frozen 567a70f verifier ACCEPTED', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 567a70f verifier accepts the GENUINE archive', async () => {
+    const r = await legacy567({ zipPath: ARCHIVE, root: REPO });
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it.each([
+    ['1: a DUPLICATE command-ledger entry', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        const i = c.findIndex((x) => x.label === 'a-port-5432');
+        c.splice(i + 1, 0, { ...c[i] });
+      });
+      renumberCommands(d);
+    }, /DUPLICATE command label 'a-port-5432'/],
+    ['2: a DELETED provisioning command and its three streams', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        const i = c.findIndex((x) => x.label === 'a-redis-run');
+        for (const ext of ['stdout', 'stderr', 'exit']) rmSync(join(d, 'raw', `${c[i].id}.${ext}.txt`));
+        c.splice(i, 1);
+      });
+      renumberCommands(d);
+    }, /command graph: expected 'a-redis-run'/],
+    ['3: a non-suite command and its raw exit changed to 97', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => { c.find((x) => x.label === 'a-migrate-historical').exit = 97; });
+      setStream(d, 'a-migrate-historical', 'exit', Buffer.from('97\n'));
+    }, /'a-migrate-historical' recorded exit 97 signal null; the graph requires success/],
+    ['4: a tampered a-port-5432 stdout receipt', (d: string) => {
+      setStream(d, 'a-port-5432', 'stdout', Buffer.from('0.0.0.0:1\n127.0.0.1:1\n'));
+    }, /'a-port-5432' port-discovery output does not equal the recorded path-a-upgraded port/],
+    ['5: a FORGED seeded principal id', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => {
+        doc.principals[0].principalId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      });
+    }, /seed record principal ffffffff-ffff-4fff-8fff-ffffffffffff is not in the snapshot/],
+    ['6: manifest seed_summary.principals set to 999', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.seed_summary.principals = 999; });
+    }, /manifest seed_summary .* is not the record-derived/],
+    ['7: a FORGED post-upgrade eventId in manifest AND seed record', (d: string) => {
+      const forged = 'ffffffff-ffff-4fff-8fff-fffffffffffe';
+      editJson(d, 'c18-manifest.json', (doc) => { doc.post_upgrade_operation.eventId = forged; });
+      editJson(d, 'path-a-seed-record.json', (doc) => { doc.post_upgrade_operation.eventId = forged; });
+    }, /does not name its recorded eventId|has no objects\.object_outbox row|final-outbox event/],
+    ['8: identical attacker posture.roles on BOTH paths with genuine raw retained', (d: string) => {
+      const forged = { role: 'eye_attacker', login: true, super: true, createrole: true, createdb: true, bypassrls: true, inherit: true, connlimit: -1 };
+      editJson(d, 'path-a-after.json', (doc) => { doc.posture.roles = [...doc.posture.roles, forged]; });
+      editJson(d, 'path-b-virgin.json', (doc) => {
+        const after = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'));
+        doc.posture.roles = after.posture.roles;
+      });
+    }, /posture category 'roles' differs from its raw receipt/],
+    ['9: the closure decision flipped to evidence_only=true (raw rebound)', (d: string) => {
+      const po = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8')).post_upgrade_operation;
+      rewriteRowsAndRaw(d, 'path-a-final.json', 'a-a-final', 'policy.policy_decisions', (rows) => {
+        rows.find((r) => r.id === po.decisionId).evidence_only = true;
+      });
+    }, /evidence_only=true; an ENFORCED closure requires evidence_only=false/],
+    ['10: the closure decision principal changed to principal:attacker (raw rebound)', (d: string) => {
+      const po = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8')).post_upgrade_operation;
+      rewriteRowsAndRaw(d, 'path-a-final.json', 'a-a-final', 'policy.policy_decisions', (rows) => {
+        rows.find((r) => r.id === po.decisionId).principal_id = 'principal:attacker';
+      });
+    }, /decision principal is "principal:attacker"/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)(
+    'case %s — 567a70f ACCEPTS it; C18.1.2 REJECTS it for its semantic reason',
+    async (_label, mutate, pattern) => {
+      const { dir, zip } = mutateArchive(mutate);
+      try {
+        const old = await legacy567({ zipPath: zip, root: REPO });
+        expect(old.ok, `the frozen 567a70f verifier must accept this rebound false package; problems: ${old.problems.join('; ')}`).toBe(true);
+        const now = await verifyEvidence({ zipPath: zip, root: REPO });
+        expect(now.ok).toBe(false);
+        expect(now.problems.join('\n')).toMatch(pattern);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe('C18.1.2 — command-graph, binding and projection controls (new-verifier rejections)', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['two adjacent snapshot commands REORDERED (renumbered)', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        const i = c.findIndex((x) => x.label === 'a-a-before-roles');
+        [c[i], c[i + 1]] = [c[i + 1], c[i]];
+      });
+      renumberCommands(d);
+    }, /command graph: expected 'a-a-before-roles'/],
+    ['an extra unknown trailing command with bound streams', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        const id = commandIdFor(c.length + 1, 'attacker-extra');
+        const out = Buffer.from('');
+        writeFileSync(join(d, 'raw', `${id}.stdout.txt`), out);
+        writeFileSync(join(d, 'raw', `${id}.stderr.txt`), out);
+        writeFileSync(join(d, 'raw', `${id}.exit.txt`), '0\n');
+        c.push({
+          id, label: 'attacker-extra', argv: ['true'], cwd: '.', env: {}, timeout_ms: 1000,
+          exit: 0, signal: null, stdout_bytes: 0, stdout_sha256: sha256(out),
+          stderr_bytes: 0, stderr_sha256: sha256(out), exit_bytes: 3, exit_sha256: sha256('0\n'),
+        });
+      });
+    }, /unauthorized trailing command|expected .* found 'attacker-extra'/],
+    ['a command relocated to a foreign cwd', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => { c.find((x) => x.label === 'a-migrate-historical').cwd = '/tmp'; });
+    }, /cwd "\/tmp" is not the repository root/],
+    ['a suite command bound to the WRONG database', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        c.find((x) => x.label === 'a-suite-integration').env.EYE_DB_NAME = 'eye_b_00000000';
+      });
+    }, /'a-suite-integration' env EYE_DB_NAME .* database binding requires/],
+    ['a suite command with an unredacted-looking secret env', (d: string) => {
+      editJson(d, 'commands.json', (c: any[]) => {
+        c.find((x) => x.label === 'a-suite-integration').env.EYE_DB_PASSWORD = 'not-a-placeholder';
+      });
+    }, /env EYE_DB_PASSWORD is not a redacted placeholder/],
+    ['a pg-run container id contradicting the isolation receipt', (d: string) => {
+      setStream(d, 'a-pg-run', 'stdout', Buffer.from(`${'f'.repeat(64)}\n`));
+    }, /'a-pg-run' raw container id does not match the path-a-upgraded isolation receipt/],
+    ['a forged audit-table projection over a genuine JCS body (raw rebound)', (d: string) => {
+      rewriteRowsAndRaw(d, 'path-a-final.json', 'a-a-final', 'audit.audit_events', (rows) => {
+        rows.find((r) => r.partition_id === 'platform').actor = 'principal:attacker';
+      });
+    }, /generated projection 'actor' disagrees with its canonical event_jcs/],
+    ['an audit-table row diverging from the audit view (raw rebound)', (d: string) => {
+      rewriteRowsAndRaw(d, 'path-a-final.json', 'a-a-final', 'audit.audit_events', (rows) => {
+        rows.pop();
+      });
+    }, /audit view row .* has no audit\.audit_events table row|rows differ from their raw query receipt/],
+    ['a tampered tables-meta receipt hiding a table (ledger rebound)', (d: string) => {
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const c = cmds.find((x: any) => x.label === 'a-a-before-tables-meta');
+      const meta = JSON.parse(readFileSync(join(d, 'raw', `${c.id}.stdout.txt`), 'utf8'));
+      setStream(d, 'a-a-before-tables-meta', 'stdout', Buffer.from(JSON.stringify(meta.slice(1))));
+    }, /not the source-owned 26-table universe|table set differs/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
 describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)', () => {
   const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
   const cli = (args: string[], env: Record<string, string> = {}) => spawnSync('node', [RUNNER, ...args], {
@@ -588,6 +790,52 @@ describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)'
     } finally {
       rmSync(holder, { recursive: true, force: true });
       rmSync(inside, { recursive: true, force: true });
+    }
+  });
+
+  it('REFUSES a hidden untracked file: status.showUntrackedFiles=no cannot fool final mode', () => {
+    const stealth = join(REPO, '.c18-stealth-untracked.txt');
+    const prior = spawnSync('git', ['config', '--get', 'status.showUntrackedFiles'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+    try {
+      spawnSync('git', ['config', 'status.showUntrackedFiles', 'no'], { cwd: REPO });
+      writeFileSync(stealth, 'hidden');
+      // The repo config HIDES the file from a plain porcelain status — the exact seam.
+      expect(spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout).not.toContain('.c18-stealth-untracked');
+      const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+      const out = join(tmpdir(), `c18-stealth-${process.pid}`);
+      const r = cli(['run', '--final', '--expected-sha', head, '--out', out]);
+      rmSync(out, { recursive: true, force: true });
+      expect(r.status).not.toBe(0);
+      expect(`${r.stderr}${r.stdout}`).toMatch(/requires a clean worktree[\s\S]*\.c18-stealth-untracked\.txt/);
+    } finally {
+      rmSync(stealth, { force: true });
+      if (prior === '') spawnSync('git', ['config', '--unset', 'status.showUntrackedFiles'], { cwd: REPO });
+      else spawnSync('git', ['config', 'status.showUntrackedFiles', prior], { cwd: REPO });
+    }
+  });
+
+  it('SIGTERM mid-provisioning: checked cleanup runs and failure evidence is written', async () => {
+    const c18Containers = () => spawnSync('docker', ['ps', '-a', '--format', '{{.Names}}'], { encoding: 'utf8' })
+      .stdout.split('\n').filter((n) => /^c18-[ab]-[0-9a-f]{8}-(pg|redis)$/.test(n));
+    expect(c18Containers(), 'no concurrent c18 run may be active for this control').toEqual([]);
+    const out = join(tmpdir(), `c18-sigterm-${process.pid}`);
+    rmSync(out, { recursive: true, force: true });
+    const child = spawn('node', [RUNNER, 'run', '--out', out], { cwd: REPO, stdio: 'ignore' });
+    try {
+      const started = Date.now();
+      while (Date.now() - started < 90_000 && c18Containers().length === 0) {
+        await new Promise((resolve) => { setTimeout(resolve, 1000); });
+      }
+      expect(c18Containers().length, 'provisioning must be underway before the signal').toBeGreaterThan(0);
+      child.kill('SIGTERM');
+      const code = await new Promise<number | null>((resolve) => { child.once('exit', (c) => resolve(c)); });
+      expect(code).not.toBe(0);
+      expect(readFileSync(join(out, 'RESULT-FAIL.txt'), 'utf8')).toContain('interrupted by SIGTERM; checked cleanup executed');
+      // The checked docker rm -fv teardown ran: zero c18 containers survive the signal.
+      expect(c18Containers()).toEqual([]);
+    } finally {
+      try { child.kill('SIGKILL'); } catch { /* already exited */ }
+      rmSync(out, { recursive: true, force: true });
     }
   });
 

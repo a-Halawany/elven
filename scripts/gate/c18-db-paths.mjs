@@ -1,10 +1,36 @@
 #!/usr/bin/env node
 /**
- * C18.1 — DUAL-PATH DATABASE HISTORY PROOF (tracked, deterministic runner + verifier).
+ * C18.1.2 — DUAL-PATH DATABASE HISTORY PROOF (tracked, deterministic runner + verifier).
  *
- * Supersedes the d5061b8 runner, whose evidence exposed ephemeral secrets (raw ctx signing
- * secret in snapshots; PostgreSQL/Redis passwords in the command ledger) and whose verifier
- * accepted synthetic archives. This revision:
+ * Supersedes the d5061b8 runner (secret exposure + synthetic acceptance), the 8a23526 runner
+ * (raw ctx secret leak) and the 567a70f runner, whose evidence was authentic and leak-free
+ * but whose verifier still accepted fully-rebound false packages. This revision adds:
+ *
+ *   CLOSED COMMAND LEDGER + SOURCE-OWNED COMMAND GRAPH — every executed command is a closed
+ *   typed record (position-bound id, unique label, redacted argv, exact cwd, typed redacted
+ *   env binding, timeout/exit/signal, byte length + SHA-256 for all three raw streams), and
+ *   the verifier walks the whole ledger against a state machine derived from source alone:
+ *   missing, duplicate, unknown or reordered commands, forged exits, tampered port/container
+ *   receipts and unbound streams all fail.
+ *
+ *   RAW RECONSTRUCTION EVERYWHERE — all fifteen posture categories and the provisioning and
+ *   isolation facts are reconstructed from command-bound raw receipts and value-compared
+ *   before any A/B comparison, alongside the existing table/FK/ledger/audit reconstruction.
+ *
+ *   CLOSED SEED RECORD + EXACT CLOSURE — the seed record is a closed schema bound
+ *   bidirectionally (ids, counts, relationships) against the authenticated snapshots; the
+ *   manifest seed_summary is derived, never trusted; the closure decision must be a real
+ *   enforced allow (decision='allow', evidence_only=false) carrying the exact principal,
+ *   tenant, domain, scope, action, object target and correlation of the one finalized
+ *   operation, whose eventId/effectRef/target-suffix identity is bound to a real outbox row;
+ *   audit table rows are cross-checked against the audit view with every generated projection
+ *   derived from canonical event_jcs.
+ *
+ *   LIFECYCLE HONESTY — git cleanliness uses --untracked-files=all explicitly; SIGINT and
+ *   SIGTERM run the same checked teardown and leave failure evidence; SIGKILL cannot run any
+ *   in-process cleanup and that limit is stated rather than papered over.
+ *
+ * Retained from earlier revisions:
  *
  *   SECRET-FREE EVIDENCE — every recorded argv and captured stream is redacted with structured
  *   `<REDACTED:CLASS>` placeholders; secret-valued snapshot columns are replaced by
@@ -45,13 +71,15 @@ import { spawnSync } from 'node:child_process';
 
 import {
   AUDIT_HASH_VERSION, C18_ARTIFACT_PREFIX, C18_GATE_STEP, HISTORICAL_LAST, LATEST_LAST,
-  MANIFEST_FIELDS, POSTURE_CATEGORIES, SECRET_CLASSES, SEED_FLOOR, SNAPSHOT_SCHEMAS,
-  SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL, TABLE_UNIVERSE_LATEST,
-  authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt, compareSnapshots,
-  comparePosture, deriveIntentionalTransforms, orderedMigrations, parseResultReceipt, redactArgv,
-  redactString, secretDigest, verifyAuditShapes, verifyChainRows, verifyIsolation, verifyLinkage,
-  verifyManifestShape, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
-  verifySuiteReceipts, verifyTableUniverse,
+  MANIFEST_FIELDS, POSTURE_CATEGORIES, POSTURE_COMMAND_LABELS, SECRET_CLASSES, SEED_FLOOR,
+  SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL,
+  TABLE_UNIVERSE_LATEST, authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt,
+  commandIdFor, compareSnapshots, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
+  deriveSeedSummary, orderedMigrations, parseResultReceipt, redactArgv, redactString, secretDigest,
+  verifyAuditShapes, verifyChainRows, verifyCommandGraph, verifyCommandRecords,
+  verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape, verifyMigrationLedger,
+  verifyOperationClosure, verifySeedFloor, verifySeedRecordClosed, verifySuiteReceipts,
+  verifyTableUniverse,
 } from './lib/c18-contract.mjs';
 import { seedThroughEraPorts, runPostUpgradeOperation } from './lib/c18-seed-0012.mjs';
 import {
@@ -105,21 +133,33 @@ class Evidence {
     for (const [cls, value] of Object.entries(passwords)) this.secrets.push([`${prefix}:${cls}`, value]);
   }
 
-  /** Run one command; record REDACTED argv + redacted raw streams + exit + signal. */
+  /** Run one command; record a CLOSED typed ledger entry — redacted argv, exact cwd, typed
+   * redacted env binding, timeout/exit/signal, and byte length + SHA-256 for all three
+   * redacted raw streams — plus the raw stream files themselves. */
   run(label, argv, { env = {}, cwd = ROOT, timeoutMs = 120_000, allowFail = false } = {}) {
     this.seq += 1;
-    const id = `${String(this.seq).padStart(3, '0')}-${label.replace(/[^a-z0-9-]+/gi, '_').slice(0, 60)}`;
+    const id = commandIdFor(this.seq, label);
     const r = spawnSync(argv[0], argv.slice(1), {
       cwd, env: { ...process.env, ...env }, encoding: 'utf8',
       timeout: timeoutMs, maxBuffer: 256 * 1024 * 1024,
     });
     const exit = r.status;
     const signal = r.signal ?? null;
-    writeFileSync(join(this.raw, `${id}.stdout.txt`), redactString(r.stdout ?? '', this.secrets));
-    writeFileSync(join(this.raw, `${id}.stderr.txt`), redactString(r.stderr ?? '', this.secrets));
-    writeFileSync(join(this.raw, `${id}.exit.txt`), `${exit ?? `signal:${signal}`}\n`);
+    const stdoutRed = Buffer.from(redactString(r.stdout ?? '', this.secrets));
+    const stderrRed = Buffer.from(redactString(r.stderr ?? '', this.secrets));
+    const exitText = Buffer.from(`${exit ?? `signal:${signal}`}\n`);
+    writeFileSync(join(this.raw, `${id}.stdout.txt`), stdoutRed);
+    writeFileSync(join(this.raw, `${id}.stderr.txt`), stderrRed);
+    writeFileSync(join(this.raw, `${id}.exit.txt`), exitText);
+    const relCwd = relative(ROOT, cwd);
     this.commands.push({
-      id, label, argv: redactArgv(argv, this.secrets), exit, signal, timeout_ms: timeoutMs,
+      id, label, argv: redactArgv(argv, this.secrets),
+      cwd: relCwd === '' ? '.' : relCwd,
+      env: Object.fromEntries(Object.entries(env).map(([k, v]) => [k, redactString(String(v), this.secrets)])),
+      timeout_ms: timeoutMs, exit, signal,
+      stdout_bytes: stdoutRed.byteLength, stdout_sha256: sha256(stdoutRed),
+      stderr_bytes: stderrRed.byteLength, stderr_sha256: sha256(stderrRed),
+      exit_bytes: exitText.byteLength, exit_sha256: sha256(exitText),
     });
     if (!allowFail && (exit !== 0 || signal !== null)) {
       throw new Error(`${label} failed (exit ${exit}, signal ${signal}): `
@@ -559,6 +599,24 @@ async function runCommand(args) {
   let outDir = null;
   let phase = 'argument-validation';
   const keep = args?.['--keep-containers'] === true;
+  // SIGINT/SIGTERM run the SAME checked teardown and leave failure evidence. SIGKILL cannot
+  // be handled by any process — no in-process cleanup can run under it; that limit is stated
+  // honestly rather than papered over. (Signals are delivered between spawnSync calls, which
+  // is exactly where container state changes.)
+  const onSignal = (sig) => {
+    try {
+      if (outDir !== null) {
+        writeFileSync(join(outDir, 'RESULT-FAIL.txt'),
+          `outcome: FAIL\ngate: C18\nphase: ${phase}\nerror: interrupted by ${sig}; checked cleanup executed\n`);
+        writeFileSync(join(outDir, 'commands.json'), `${JSON.stringify(ev?.commands ?? [], null, 2)}\n`);
+      }
+    } catch { /* teardown still runs */ }
+    const cleaned = teardown(cleanup, keep);
+    if (cleaned.failures.length > 0) console.error(`C18 ${sig} cleanup FAILED: ${cleaned.failures.join('; ')}`);
+    process.exit(1);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   try {
     const allowed = new Set(['--out', '--final', '--expected-sha', '--skip-suites', '--keep-containers']);
     for (const k of Object.keys(args)) if (k.startsWith('--') && !allowed.has(k) && k !== '_') throw new Error(`unknown argument ${k}`);
@@ -586,7 +644,9 @@ async function runCommand(args) {
     phase = 'final-mode-preflight';
     const head = gitOut(['rev-parse', 'HEAD']);
     const treeBefore = gitOut(['rev-parse', 'HEAD^{tree}']);
-    const dirtyBefore = gitOut(['status', '--porcelain']);
+    // `--untracked-files=all` explicitly: a repo-local status.showUntrackedFiles=no config
+    // must not be able to hide an untracked file from the cleanliness judgement.
+    const dirtyBefore = gitOut(['status', '--porcelain', '--untracked-files=all']);
     if (final) {
       if (head !== expectedSha) throw new Error(`final mode: HEAD ${head} != --expected-sha ${expectedSha}`);
       if (dirtyBefore !== '') {
@@ -642,7 +702,9 @@ async function runCommand(args) {
       problems.push(...verifyTableUniverse(snap, universe, lbl));
       problems.push(...verifyAuditShapes(snap.audit, lbl));
       problems.push(...authenticateProjections(snap.audit.events, audit.jcs).map((p) => `${lbl}: ${p}`));
+      problems.push(...crossCheckAuditTable(snap, lbl));
     }
+    problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
     problems.push(...compareSnapshots(before, after, transforms).map((p) => `path-a: ${p}`));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }).map((p) => `path-a-before: ${p}`));
     problems.push(...verifyChainRows({
@@ -676,6 +738,7 @@ async function runCommand(args) {
     writeFileSync(join(outDir, 'path-b-virgin.json'), `${JSON.stringify(virgin, null, 2)}\n`);
     problems.push(...verifyTableUniverse(virgin, TABLE_UNIVERSE_LATEST, 'b-virgin'));
     problems.push(...verifyAuditShapes(virgin.audit, 'b-virgin'));
+    problems.push(...crossCheckAuditTable(virgin, 'b-virgin'));
     problems.push(...verifyMigrationLedger({
       trackedDigests: tracked.digests, ledger: virgin.ledger, expectLast: LATEST_LAST,
     }).map((p) => `path-b-ledger: ${p}`));
@@ -716,7 +779,7 @@ async function runCommand(args) {
     }
 
     phase = 'worktree-postcondition';
-    const dirtyAfter = gitOut(['status', '--porcelain']);
+    const dirtyAfter = gitOut(['status', '--porcelain', '--untracked-files=all']);
     const treeAfter = gitOut(['rev-parse', 'HEAD^{tree}']);
     if (final && dirtyAfter !== '') throw new Error(`the run DIRTIED the worktree:\n${dirtyAfter}`);
     if (treeAfter !== treeBefore) throw new Error('the tracked tree digest changed during the run');
@@ -732,12 +795,7 @@ async function runCommand(args) {
       suite_matrix: SUITE_MATRIX,
       receipts: { 'path-a-upgraded': receiptA, 'path-b-virgin': receiptB },
       suite_receipts: suiteReceipts,
-      seed_summary: {
-        tenants: seedRecord.tenants.length, domains: seedRecord.domains.length,
-        principals: seedRecord.principals.length + 1, sessions: seedRecord.sessions.length,
-        objects: seedRecord.objects.length, outbox: seedRecord.outbox.length,
-        decisions: seedRecord.decisions.length,
-      },
+      seed_summary: deriveSeedSummary(seedRecord),
       post_upgrade_operation: postOp,
       hosted_receipt: hostedReceipt(),
       cleanup: { removed: cleaned.removed, failures: cleaned.failures, kept: cleaned.kept },
@@ -776,6 +834,8 @@ async function runCommand(args) {
     }
     throw e;
   } finally {
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
     const cleaned = teardown(cleanup, keep);
     if (cleaned.failures.length > 0) {
       // A cleanup failure on the success path must fail the run.
@@ -829,50 +889,17 @@ function reconstructSnapshot(snap, pfx, rawFor) {
     });
     if (!eq(rebuilt, snap.fks)) problems.push('FK set reconstructed from raw differs from the processed snapshot');
   } else problems.push('fk-meta raw receipt is missing or not JSON');
+  // ALL FIFTEEN posture categories, value-compared against their own command-bound raw
+  // receipts BEFORE any A/B comparison — identical attacker posture on both paths fails here.
+  for (const cat of POSTURE_CATEGORIES) {
+    const raw = rawFor(`${pfx}-${POSTURE_COMMAND_LABELS[cat]}`);
+    if (raw === undefined) { problems.push(`posture category '${cat}' has no raw receipt`); continue; }
+    if (!eq(raw, snap.posture?.[cat])) problems.push(`posture category '${cat}' differs from its raw receipt`);
+  }
   // Ledger + audit views.
   if (!eq(rawFor(`${pfx}-ledger`) ?? [], snap.ledger)) problems.push('migration ledger differs from its raw receipt');
   if (!eq(rawFor(`${pfx}-audit-events`) ?? [], snap.audit.events)) problems.push('audit events differ from their raw receipt');
   if (!eq(rawFor(`${pfx}-audit-heads`) ?? [], snap.audit.heads)) problems.push('audit heads differ from their raw receipt');
-  return problems;
-}
-
-/** Strict seed-record binding: recorded IDs/counts bound bidirectionally to snapshots + manifest. */
-function verifySeedRecord(seedRecord, before, after, manifest) {
-  const problems = [];
-  if (seedRecord === null || typeof seedRecord !== 'object') return ['seed record is not an object'];
-  const s = manifest.seed_summary;
-  const counts = [
-    ['tenants', seedRecord.tenants?.length, s.tenants, before.tables['tenancy.tenants']?.row_count],
-    ['domains', seedRecord.domains?.length, s.domains, before.tables['tenancy.domains']?.row_count],
-    ['sessions', seedRecord.sessions?.length, s.sessions, null],
-    ['decisions', seedRecord.decisions?.length, s.decisions, null],
-    ['outbox', seedRecord.outbox?.length, s.outbox, before.tables['objects.object_outbox']?.row_count],
-    ['objects', seedRecord.objects?.length, s.objects, before.tables['objects.canonical_objects']?.row_count],
-  ];
-  for (const [name, recCount, sumCount, tableCount] of counts) {
-    if (recCount !== sumCount) problems.push(`seed record ${name} count ${recCount} != manifest seed_summary ${sumCount}`);
-    if (tableCount !== null && recCount !== tableCount) {
-      problems.push(`seed record ${name} count ${recCount} != pre-upgrade table row_count ${tableCount}`);
-    }
-    if (!Number.isInteger(recCount) || recCount <= 0) problems.push(`seed record ${name} is empty or missing`);
-  }
-  // Every recorded tenant/domain/principal id must actually exist in the pre-upgrade snapshot.
-  const idsIn = (table, col) => new Set((before.tables[table]?.rows ?? []).map((r) => r[col]));
-  const tenantIds = idsIn('tenancy.tenants', 'id');
-  for (const t of seedRecord.tenants ?? []) {
-    if (!tenantIds.has(t.tenantId)) problems.push(`seed record tenant ${t.tenantId} is not in the pre-upgrade snapshot`);
-  }
-  const domainIds = idsIn('tenancy.domains', 'id');
-  for (const d of seedRecord.domains ?? []) {
-    if (!domainIds.has(d.domainId)) problems.push(`seed record domain ${d.domainId} is not in the pre-upgrade snapshot`);
-  }
-  if (seedRecord.admin?.principalId && !idsIn('identity.principals', 'id').has(seedRecord.admin.principalId)) {
-    problems.push('seed record admin principal is not in the pre-upgrade snapshot');
-  }
-  // The post-upgrade operation the closure proof consumes must be the one recorded here.
-  if (JSON.stringify(seedRecord.post_upgrade_operation) !== JSON.stringify(manifest.post_upgrade_operation)) {
-    problems.push('seed record post_upgrade_operation differs from the manifest');
-  }
   return problems;
 }
 
@@ -983,9 +1010,12 @@ export async function verifyEvidence({
     })();
     if (!Array.isArray(commands)) problems.push('commands.json is missing or not an array');
     else {
+      // CLOSED typed records with position-bound ids — a duplicated, reordered or
+      // renumber-forged ledger fails here before any semantics are consulted.
+      problems.push(...verifyCommandRecords(commands));
       const expectedRaw = new Set();
       for (const c of commands) {
-        if (typeof c.id !== 'string' || !Array.isArray(c.argv)) { problems.push('command ledger entry is malformed'); continue; }
+        if (typeof c.id !== 'string' || !Array.isArray(c.argv)) continue;
         for (const ext of ['stdout', 'stderr', 'exit']) expectedRaw.add(`raw/${c.id}.${ext}.txt`);
       }
       const actualRaw = files.filter((f) => f.startsWith('raw/'));
@@ -996,11 +1026,17 @@ export async function verifyEvidence({
       if (JSON.stringify(nonRaw) !== JSON.stringify(want)) {
         problems.push(`archive top-level inventory ${JSON.stringify(nonRaw)} is not the exact contract set`);
       }
+      // Every ledger record binds its three streams by BYTES, and the raw exit receipt must
+      // restate the ledger's exit exactly.
+      problems.push(...verifyCommandStreams(commands, (rel) => {
+        const abs = contained(rel, 'command stream');
+        return abs !== null && existsSync(abs) ? readFileSync(abs) : null;
+      }));
     }
 
     // ── SOURCE BINDING: HEAD, cleanliness, migrations from the CHECKOUT ───────
     const rootHead = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim();
-    const rootDirty = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+    const rootDirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).stdout.trim();
     // A malformed manifest must never SUPPRESS the source binding finding.
     if (typeof manifest.source_sha === 'string' && manifest.source_sha !== rootHead) {
       problems.push(`manifest source_sha ${manifest.source_sha} is not this checkout's HEAD ${rootHead}`);
@@ -1044,6 +1080,9 @@ export async function verifyEvidence({
       problems.push(...verifyTableUniverse(snap, universe, lbl));
       problems.push(...verifyAuditShapes(snap.audit, lbl));
       problems.push(...authenticateProjections(snap.audit.events, audit.jcs).map((p) => `${lbl}: ${p}`));
+      // The audit TABLE rows and the audit view must be the same world, with every generated
+      // projection column derived exactly from the canonical event_jcs.
+      problems.push(...crossCheckAuditTable(snap, lbl));
     }
 
     // ── BIND PROCESSED SNAPSHOTS TO THEIR COMMAND-BOUND RAW RECEIPTS ──────────
@@ -1055,7 +1094,7 @@ export async function verifyEvidence({
       const rawFor = (label) => {
         const cmd = commands.find((c) => c.label === label);
         if (cmd === undefined) return undefined;
-        const abs = contained(cmd.stdout_file ?? `raw/${cmd.id}.stdout.txt`, 'raw receipt');
+        const abs = contained(`raw/${cmd.id}.stdout.txt`, 'raw receipt');
         if (abs === null || !existsSync(abs)) return undefined;
         const text = readFileSync(abs, 'utf8').trim();
         try { return text === '' ? null : JSON.parse(text); } catch { return undefined; }
@@ -1066,6 +1105,21 @@ export async function verifyEvidence({
         const recon = reconstructSnapshot(snap, pfx, rawFor);
         for (const p of recon) problems.push(`raw-binding ${snapLabel}: ${p}`);
       }
+      // ── THE SOURCE-OWNED COMMAND GRAPH over the whole ledger ─────────────────
+      // Missing, duplicate, unknown or reordered commands, exit-forged must-succeed
+      // commands, and evidence-bearing outputs (container ids, discovered ports,
+      // tables/fk metadata, readiness) that contradict the rest of the evidence all
+      // fail HERE, bound to the isolation receipts and the pinned Compose images.
+      problems.push(...verifyCommandGraph({
+        commands,
+        receiptA: manifest.receipts?.['path-a-upgraded'] ?? null,
+        receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
+        images: composeImages(),
+        rawText: (cmd, stream) => {
+          const abs = contained(`raw/${cmd.id}.${stream}.txt`, 'graph stream');
+          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+        },
+      }));
     }
 
     // ── EXACT MANIFEST-VS-SOURCE BINDINGS ────────────────────────────────────
@@ -1083,7 +1137,7 @@ export async function verifyEvidence({
       if (JSON.stringify(manifest.cleanup?.removed) !== JSON.stringify(wantCleanup)) {
         problems.push('manifest cleanup.removed is not exactly the four isolation container names');
       }
-      problems.push(...verifySeedRecord(seedRecord, before, after, manifest));
+      problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest }));
     }
     problems.push(...compareSnapshots(before, after, transforms));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }));
