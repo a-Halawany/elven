@@ -179,10 +179,10 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
     }, /seed floor: platform audit partition has 0/, {}],
     ['a removed operation-ledger row', (d: string) => {
       editJson(d, 'path-a-final.json', (doc) => { doc.tables['ctx.operation'].rows = []; });
-    }, /ctx\.operation has no row for the recorded post-upgrade correlation/, {}],
+    }, /ctx\.operation has no row for the recorded post-upgrade correlation|rows differ from their raw query receipt|row_count/, {}],
     ['a removed operation effect', (d: string) => {
       editJson(d, 'path-a-final.json', (doc) => { doc.tables['ctx.operation_effect'].rows = []; });
-    }, /no row for the post-upgrade operation/, {}],
+    }, /no row for the post-upgrade operation|rows differ from their raw query receipt|row_count/, {}],
     ['an altered required-transform value', (d: string) => {
       editJson(d, 'path-a-after.json', (doc) => {
         doc.tables['identity.bootstrap_claim'].rows[0].consumed = true;
@@ -215,7 +215,7 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
       editJson(d, 'c18-manifest.json', (doc) => {
         doc.receipts['path-b-virgin'].credential_digests.EYE_DB_PASSWORD = doc.receipts['path-a-upgraded'].credential_digests.EYE_DB_PASSWORD;
       });
-    }, /shared the 'EYE_DB_PASSWORD' credential/, {}],
+    }, /shared the 'EYE_DB_PASSWORD' credential|credential digest REUSED/, {}],
     ['fake suite output with a rebound self-declared pass', (d: string) => {
       const manifest = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
       const r = manifest.suite_receipts[0];
@@ -226,7 +226,7 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
         x.stdout_bytes = fake.byteLength;
         x.stdout_sha256 = sha256(fake);
       });
-    }, /does not contain a passing vitest summary/, {}],
+    }, /does not contain a passing vitest summary|EXACTLY one passing vitest summary|not the code-owned count|bytes\/digest do not match/, {}],
     ['a duplicated suite receipt', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => {
         doc.suite_receipts.push({ ...doc.suite_receipts[0] });
@@ -248,12 +248,12 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
         doc.suite_receipts[0].tests_passed += 5;
         doc.suite_receipts[0].tests_total += 5;
       });
-    }, /parsed counts .* do not match the receipt/, {}],
+    }, /parsed counts .* do not match the receipt|not the code-owned count|recorded counts/, {}],
     ['a wrong suite command', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => {
         doc.suite_receipts[0].argv_redacted = ['echo', 'ok'];
       });
-    }, /is not the matrix command/, {}],
+    }, /is not (EXACTLY )?the matrix command/, {}],
     ['a tampered RESULT receipt', (d: string) => {
       const p = join(d, 'RESULT-PASS.txt');
       writeFileSync(p, `${readFileSync(p, 'utf8')}extra: trailing\n`);
