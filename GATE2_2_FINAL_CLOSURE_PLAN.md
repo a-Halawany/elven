@@ -1550,7 +1550,12 @@ summary; suites now run with NO_COLOR and both parsers ANSI-strip.
 approved; the source is not frozen. This section is written in a docs-only child commit;
 verification runs against `8a235263d55545bd708b5b5af200670c467a457a`.
 
-## 16. C18.1.1 — SECRET-FREE, RAW-BOUND DUAL-PATH EVIDENCE (delivered)
+## 16. C18.1.1 — SECRET-FREE, RAW-BOUND DUAL-PATH EVIDENCE (delivered; SUPERSEDED by §17)
+
+**SUPERSEDED at C18.1.2 (§17)**: the 567a70f evidence is authentic and LEAK-FREE — it is NOT
+secret-contaminated — but its verifier still accepted ten fully-rebound false packages, each
+reproduced against the frozen verbatim 567a70f verifier and now rejected for its semantic
+reason. This section stays as honest history; verification targets §17.
 
 **Evidence-bearing source `567a70f4f823a83b069460cce9e103cd80044467`.**
 Source run `32231834550` **attempt 2** (push/`main`, 3/3 jobs green with the blocking C18.1.1
@@ -1623,3 +1628,103 @@ cleanup removed all 4 containers, 0 failures.
 **Still open.** C19, the freeze protocol and external independent review. Phase 0 is not
 approved; the source is not frozen. This section is a docs-only child; verification runs against
 `567a70f4f823a83b069460cce9e103cd80044467`.
+
+## 17. C18.1.2 — SOURCE-OWNED COMMAND GRAPH, RAW POSTURE, CLOSED SEED RECORD, EXACT CLOSURE (delivered)
+
+**Evidence-bearing source `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`.**
+Candidate CI: pull-request run `32260721217` (3/3 green). Source run `32261313938`
+**attempt 1** (push/`main`, all three jobs green in ONE attempt with the blocking C18 gate —
+corrected producer + offline self-verification + the 79-test in-gate mutation/differential
+suite) · finalizer run `32261859846` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-ed6a58718575b9d3793f5de1c0df5b6dc74f8e00bf6f1659f9ba8942fadbf5b4`
+(290,893 B wrapper) — exactly the archive `c18-db-paths-evidence-15e8239….zip` (434,057 B,
+outer sha256 `ed6a58718575b9d3793f5de1c0df5b6dc74f8e00bf6f1659f9ba8942fadbf5b4`) + verified
+sidecar. Arithmetic: **264 commands; 792 raw stream files; 9 fixed top-level regular files;
+801 regular files total; + the `raw/` directory entry = 802 ZIP entries.** Verified from a
+fresh foreign checkout offline and **online-hosted** (`standing=delivery-online`).
+
+**Why 567a70f is superseded (honestly stated).** The 567a70f evidence itself is authentic and
+leak-free — it is NOT secret-contaminated — but its verifier still ACCEPTED ten fully-rebound
+false packages, each reproduced against the frozen verbatim 567a70f verifier before this
+correction and each now rejected for its semantic reason: (1) a duplicated command-ledger
+entry; (2) a deleted provisioning command with its three streams; (3) a non-suite command whose
+ledger and raw exit were both set to 97; (4) a tampered `a-port-5432` stdout receipt; (5) a
+forged seeded principal id; (6) `seed_summary.principals=999`; (7) a forged post-upgrade
+eventId in manifest AND seed record; (8) identical attacker `posture.roles` on BOTH paths with
+genuine raw receipts retained; (9) the closure policy decision flipped to `evidence_only=true`;
+(10) its principal changed to `principal:attacker` — (9) and (10) with the processed rows AND
+their raw psql receipts rewritten consistently and every checksum rebound.
+
+**The correction (A–E).**
+* **A — exact command graph.** Every ledger record is CLOSED and typed: position-bound id
+  (`commandIdFor`), unique label, exact redacted argv, exact cwd (`.`), typed redacted
+  env/connection binding, timeout/exit/signal, and byte length + SHA-256 for all three raw
+  streams (raw exit receipts must restate the ledger exit). The verifier walks the ENTIRE
+  ledger against a source-owned state machine (provisioning → readiness → migrations →
+  26/28-table snapshots → posture → ledger/audit → suites): missing, duplicate, unknown or
+  reordered commands, forged exits on must-succeed commands, unauthorized env, foreign cwd and
+  trailing commands all fail; container-run outputs must equal the isolation receipts'
+  container ids, `docker port` outputs must equal the recorded ports, tables-meta must be the
+  exact sorted source-owned universe, fk commands exactly the fk-meta set in canonical order,
+  readiness must end in an authenticated `select 1`; suite commands carry the exact matrix argv
+  and the exact per-path database/port/redis env with NO_COLOR pinned and every secret class
+  redacted.
+* **B — raw posture + provisioning reconstruction.** All fifteen posture categories are
+  reconstructed from their command-bound raw psql receipts and value-compared BEFORE any A/B
+  comparison; provisioning/isolation facts (container ids, ports, images, database names) are
+  bound between the ledger, raw outputs and the isolation receipts.
+* **C — closed seed record.** Exact top-level and per-entry schemas; every
+  tenant/domain/principal/session/object/outbox/decision/correlation id bound BIDIRECTIONALLY
+  against the authenticated snapshots (no missing and no unaccounted rows); relationships exact
+  (domain→tenant, session→principal, outbox correlation/event_type, principal
+  scope/tenancy/login plus live role bindings including the admin's platform_admin binding);
+  final-snapshot deltas exactly the one post-upgrade operation; `seed_summary` DERIVED from the
+  record, never trusted.
+* **D — exact closure decision + audit authentication.** The closure decision must be
+  `decision='allow'` with `evidence_only=false`, the exact `principal:<operation principal>`,
+  scope/tenant/domain/action/correlation/object target (`objects.outbox` / the eventId),
+  consequence/purpose/bundle/reason/revocation state and a recomputed input digest; the
+  operation row must carry the code-owned spec (scope DOMAIN, purpose, consequence C1,
+  capability class authority.commit, bundle, no causation, no obligations); the recorded
+  eventId/effectRef/target-suffix are ONE identity bound to a real pending outbox row; the one
+  closing success audit event's body is authenticated field-by-field (actor, action, tenant,
+  domain, scope, event type, result code, correlation, decision, session, purpose, policy
+  version, target type/id, authority context mode, ISO-8601Z occurred_at); audit TABLE rows
+  are cross-checked with the audit view (same world) and every generated projection column
+  (scope, tenant, domain, event type, outcome, actor, action, result code, correlation,
+  occurred_at, the `event` object itself) must derive exactly from the canonical `event_jcs`.
+* **E — lifecycle honesty.** Git cleanliness uses `--untracked-files=all` explicitly in the
+  producer (before AND after) and the verifier, so a repo-local `status.showUntrackedFiles=no`
+  cannot hide an untracked file (proven by a real-CLI control); SIGINT/SIGTERM run the SAME
+  checked `docker rm -fv` teardown and write failure evidence (proven by a real SIGTERM
+  control mid-provisioning); SIGKILL cannot run any in-process cleanup — stated honestly, not
+  papered over. Checked cleanup, post-removal verification and zero-container assertions
+  retained.
+
+**Controls.** The exact 567a70f verifier is frozen BYTE-VERBATIM
+(`apps/api/test/gate/fixtures/c18-legacy-567a70f`, per-file SHA-256 pinned and cross-checked
+against `git show 567a70f:…` when history is available; its ROOT compose lookup is satisfied by
+a tracked symlink, never by editing the frozen file). All ten differentials prove 567a70f
+ACCEPTS the rebound false package and C18.1.2 rejects it for its semantic reason, plus a
+genuine-baseline non-vacuity control on BOTH verifiers. New rejection families: reordered
+(renumbered) commands, extra trailing commands, foreign cwd, wrong suite database binding,
+unredacted env, contradicted container ids, forged audit-table projections over genuine JCS
+bodies, audit table/view divergence, tampered tables-meta, plus ledger typing and
+stream-digest forgeries. The d5061b8 and 8a23526 differential families and every
+C18.1/C18.1.1 mutation control still run: 79 in-gate controls total.
+
+**Measured this round (nothing reused).** Hermetic: tokens 3, contracts 203, API 1014 +
+hermetic-meta 9 (C18 hermetic gate controls 74). In the hosted gate: integration 297 on both
+paths; acceptance 58 on both instances; 79 mutation/differential controls. Local: acceptance
+58, integration 297, Playwright 10 on reset databases. Hosted seed: 2 tenants, 3 domains,
+4 principals, 2 sessions, 2 canonical objects, 2 outbox events, 12 decisions; tables 26 → 28;
+cleanup removed all 4 containers, 0 failures. Migrations 0001–0021 byte-identical.
+
+**Still open.** C19, the freeze protocol and external independent review. Phase 0 is not
+approved; the source is not frozen. Contaminated d5061b8/8a23526-era hosted artifacts remain
+enumerated (§16 and the memory ledger) and undeleted — targeted deletion still requires
+explicit owner authorization; the superseded 567a70f artifacts are NOT contaminated and need
+no deletion. This section is a docs-only child; verification runs against
+`15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`.
