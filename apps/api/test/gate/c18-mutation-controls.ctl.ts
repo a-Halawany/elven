@@ -21,6 +21,8 @@ import { join, relative } from 'node:path';
 import { verifyEvidence } from '../../../../scripts/gate/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyVerify } from './fixtures/c18-legacy-d5061b8/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy8a } from './fixtures/c18-legacy-8a23526/c18-db-paths.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -427,6 +429,134 @@ describe('C18.1 — DIFFERENTIAL: the frozen d5061b8 verifier ACCEPTED what C18.
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('C18.1.1 — new single-defect mutations against the genuine archive are rejected', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a raw context secret injected into a raw receipt', (d: string) => {
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const c = cmds.find((x: any) => x.label.endsWith('a-before-rows-ctx_context_secret'));
+      writeFileSync(join(d, 'raw', `${c.id}.stdout.txt`), '[{"id": 1, "secret": "\\\\x0339c7ea2ccab4989612b021553f1e1dc6cea5ae39b9320d8f0c26cdd9b29c4b"}]');
+    }, /raw ctx\.context_secret bytea value|raw bytea secret column/],
+    ['a processed table row altered while raw stays intact', (d: string) => {
+      editJson(d, 'path-a-after.json', (doc) => {
+        doc.tables['tenancy.tenants'].rows[0].name = `${doc.tables['tenancy.tenants'].rows[0].name}-X`;
+      });
+    }, /rows differ from their raw query receipt|column 'name' changed/],
+    ['a deleted complete nonempty table', (d: string) => {
+      editJson(d, 'path-a-after.json', (doc) => { delete doc.tables['identity.credentials']; });
+    }, /'identity\.credentials' is MISSING|table set differs/],
+    ['an emptied seed record', (d: string) => {
+      writeFileSync(join(d, 'path-a-seed-record.json'), '{}\n');
+    }, /seed record .* is empty or missing|seed record .* count/],
+    ['a false manifest source_tree', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.source_tree = 'b'.repeat(40); });
+    }, /source_tree .* is not this checkout/],
+    ['a tampered manifest suite_matrix', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.suite_matrix.integration.expected_tests = 1; });
+    }, /suite_matrix is not exactly the code-owned matrix/],
+    ['a false seed_summary count', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.seed_summary.tenants = 99; });
+    }, /seed record tenants count .* != manifest seed_summary 99|!= pre-upgrade table/],
+    ['a wrong cleanup removal set', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.removed = ['x', 'y', 'z', 'w']; });
+    }, /cleanup\.removed is not exactly the four/],
+    ['an empty final migration ledger', (d: string) => {
+      editJson(d, 'path-a-final.json', (doc) => { doc.ledger = []; });
+    }, /final-ledger: .* requires exactly 21|DISAPPEARED/],
+    ['a contradictory audit projection over a genuine body', (d: string) => {
+      editJson(d, 'path-a-final.json', (doc) => {
+        const e = doc.audit.events.find((x: any) => x.partition_id === 'platform');
+        e.correlation_id = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+      });
+    }, /projected correlation_id disagrees/],
+    ['an altered operation effect kind', (d: string) => {
+      editJson(d, 'path-a-final.json', (doc) => { doc.tables['ctx.operation_effect'].rows[0].effect_kind = 'evil'; });
+    }, /effect kinds/],
+    ['an unfinalized post-upgrade operation', (d: string) => {
+      editJson(d, 'path-a-final.json', (doc) => {
+        const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+        doc.tables['ctx.operation'].rows.find((o: any) => o.correlation_id === m.post_upgrade_operation.correlation).finalized = false;
+      });
+    }, /not finalized/],
+    ['an attacker postgres image', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.receipts['path-a-upgraded'].postgres_image = 'evil@sha256:abc'; });
+    }, /postgres image is not the digest-pinned/],
+    ['a relabelled isolation path', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.receipts['path-a-upgraded'].path = 'path-b-virgin'; });
+    }, /label is/],
+    ['a within-path credential reuse', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => {
+        const cd = doc.receipts['path-a-upgraded'].credential_digests;
+        cd.EYE_REDIS_PASSWORD = cd.EYE_DB_PASSWORD;
+      });
+    }, /credential digest REUSED/],
+    ['a single-test suite argv with a matching 1/1 stream', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const rc = m.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
+      const fake = Buffer.from('Tests  1 passed (1)\n');
+      writeFileSync(join(d, rc.stdout_file), fake);
+      editJson(d, 'c18-manifest.json', (doc) => {
+        const x = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
+        x.argv_redacted = ['pnpm', '--filter', '@eye/api', 'test:int', 'test/one.ts'];
+        x.stdout_bytes = fake.byteLength; x.stdout_sha256 = sha256(fake);
+        x.tests_passed = 1; x.tests_total = 1;
+      });
+    }, /is not EXACTLY the matrix command/],
+    ['a suite command recording exit 97', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const rc = m.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
+      editJson(d, 'commands.json', (cmds) => { cmds.find((c: any) => c.id === rc.command_id).exit = 97; });
+      editJson(d, 'c18-manifest.json', (doc) => {
+        doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded').exit_status = 97;
+      });
+    }, /records exit 97|recorded exit 97/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.1 — DIFFERENTIAL: the frozen 8a23526 verifier ACCEPTED what C18.1.1 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('the RAW SECRET LEAK: 8a23526 accepts a raw-secret receipt; C18.1.1 rejects it', async () => {
+    const m = mutateArchive((d) => {
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const c = cmds.find((x: any) => x.label.endsWith('a-before-rows-ctx_context_secret'));
+      writeFileSync(join(d, 'raw', `${c.id}.stdout.txt`),
+        '[{"id": 1, "secret": "\\\\x0339c7ea2ccab4989612b021553f1e1dc6cea5ae39b9320d8f0c26cdd9b29c4b"}]');
+    });
+    try {
+      const old = await legacy8a({ zipPath: m.zip, root: REPO });
+      // The 8a23526 verifier neither scans raw receipts nor reconstructs from them, so the raw
+      // secret survives its inspection — the exact leak C18.1.1 closes. (Its clean-tree checks
+      // still pass because this runs from the exact source checkout.)
+      const oldSaw = old.problems.join('\n');
+      expect(oldSaw).not.toMatch(/bytea|context_secret|raw query receipt/);
+      const now = await verifyEvidence({ zipPath: m.zip, root: REPO });
+      expect(now.ok).toBe(false);
+      expect(now.problems.join('\n')).toMatch(/raw ctx\.context_secret bytea value|raw bytea secret column|rows differ from their raw query receipt/);
+    } finally { rmSync(m.dir, { recursive: true, force: true }); }
+  });
+
+  it('RAW-VS-PROCESSED: 8a23526 accepts an altered processed row with intact raw; C18.1.1 rejects', async () => {
+    const m = mutateArchive((d) => {
+      editJson(d, 'path-a-after.json', (doc) => {
+        // A row DELETED from the processed snapshot while its raw query receipt still shows it.
+        doc.tables['identity.roles'].rows.pop();
+        doc.tables['identity.roles'].row_count = doc.tables['identity.roles'].rows.length;
+      });
+    });
+    try {
+      const old = await legacy8a({ zipPath: m.zip, root: REPO });
+      expect(old.problems.join('\n')).not.toMatch(/raw query receipt|rows differ/);
+      const now = await verifyEvidence({ zipPath: m.zip, root: REPO });
+      expect(now.ok).toBe(false);
+      expect(now.problems.join('\n')).toMatch(/rows differ from their raw query receipt|cardinality changed/);
+    } finally { rmSync(m.dir, { recursive: true, force: true }); }
   });
 });
 

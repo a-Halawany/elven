@@ -343,7 +343,7 @@ export async function runPostUpgradeOperation({ root, host, port, database, pass
     if (effects.length === 0) throw new Error('[post-upgrade-operation] ctx.operation_effect recorded no effect');
     return {
       correlation: corr, decisionId, action, target,
-      tenantId, domainId, principalId: adminId, sessionId, eventId,
+      tenantId, principalId: adminId, eventId,
       effectRef: effects[0].effect_ref, effectKinds: effects.map((e) => e.effect_kind),
     };
   } finally {
