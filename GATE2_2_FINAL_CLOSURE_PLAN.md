@@ -232,7 +232,7 @@ not inside the evidence commit.
 | C15 supply-chain gate | ✅ **CLOSED (internal verification)** — `scripts/gate/supply-chain.mjs`: pinned toolchain verified before any scan (pnpm 11.9.0, node v24.11.1, gitleaks 8.30.1, trivy 0.73.0) and fail-closed on mismatch; 8 steps / 6 blocking, with raw stdout+stderr written to disk and SHA-256 digested per step alongside exact argv, tool version, timestamps, exit code and source SHA. Real finding: **nanoid <3.3.17 / CVE-2026-67213 (HIGH)**, flagged independently by pnpm audit and trivy. Governed gitleaks config narrows scope but disables no rule; both path allowlists are proven untracked+ignored. **Carry-forward items closed under C16** (see C16 row): per-platform container digests, step-policy taxonomy, scanner-binary and vuln-DB provenance. **After independent review**, DB provenance is now ENFORCED rather than merely recorded (fail-closed on unavailable / malformed / stale / past-due, 24h ceiling), and a `--final` mode refuses to produce evidence from a dirty worktree. |
 | C16 target SBOM closure | ✅ **CLOSED** — closed by bounded independent review at `d63318e099a152cef18682e97d84ea7e1a70abd9` after five remediation rounds (R3.1–R3.4.5). Hosted run `31806239862`, all three jobs green. Evidence archive sha256 `27ba79b0681b855e710c8b82e0d95c39ff971dc7770bee601d08fe7858027e04`. Measured at closure: gate **587**, API unit + gate **601** (587 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. The verifier compares complete canonical PURLs against source-derived sets, resolves every result through one total (Class, Type) contract, requires the exact source-owned filesystem result set, and pins the pnpm audit document to a closed schema. Container findings reconcile at **18** across **4** governed records. |
 | **C17 + C17.1 CycloneDX, licences and obligations** | `vendor/{cyclonedx/1.6.2,spdx-licenses/v3.28.0}/**`, `scripts/gate/lib/{cyclonedx-schema,license-closure,licence-texts,legal-dispositions}.mjs`, `scripts/gate/{licence-obligations,package-c17-evidence}.mjs`, `scripts/gate/{legal-dispositions,source-offers}.json`, `apps/api/test/gate/c17-*.test.ts`, `pnpm-workspace.yaml`, `.github/workflows/ci.yml` | ✅ **COMPLETE (internal verification)** — evidence-bearing SHA `084ce19f4edef71825b0d34dfe230c4915a1b3fb`, hosted run `31893384717` (build-test, supply-chain, browser-regression all success). Archive `c17-evidence-084ce19f4edef71825b0d34dfe230c4915a1b3fb.zip`, **576771 bytes**, sha256 `e0a24dd12ddb4ca4f5b34bca87f075056ad8245e16c46a100206f376e6b62d6c`, built by the tracked packager inside the run: **19 payload files + 1 checksum manifest = 20 regular files across 25 ZIP entries**, **19 checksum lines**, manifest excludes itself. Verified from a genuinely foreign clean clone with `--online`: both SBOMs re-derived and schema-valid, licence reconciliation rerun, and the run receipt checked against GitHub's public API (id, head_sha, conclusion=success). SBOM digests production `c65ea1250232438fbf642920e2beb07f5497be7fe7942d847b166f8fd21de2cb` (195 components) and development `804ca78c0d63524032555571cd08f7b6802bbb5a313cb82247813623a18fbc2a` (296 components), both **0 schema errors** against the official CycloneDX 1.6.2 schema (tag `1.6.2`, commit `e833d732337dd33aceb45ff1991f896796f1e5e7`) compiled offline with Ajv **8.18.0** / ajv-formats **3.0.1** / ajv-formats-draft2019 **1.6.1**. Licence inventory: production **195** classified, development **312**, **0 unresolved**, **0 reconciliation problems** in both directions. Notices carry **475** shipped-text blocks and **25** canonical-SPDX-text blocks, every copyright line, named CC-BY attribution and **3** source-offer records; **0** legal dispositions, deliberately. **Cross-host determinism proven**: all 8 target artifacts byte-identical between a darwin/arm64 clean clone and hosted ubuntu Linux. C15, C16 and C17 all PASS in `--final` from a Darwin clean clone. Measured suites: gate **721**, API unit + gate **735** (721 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Migrations 0001–0021 byte-identical; content digest `43e15e642efaecca1be224af0936e223f14cf17ffc846b79f40896d717f65588`, Git-tree digest `47a651c95228429a5f10c497dfbd5b4a3588bce7256af65f0c90554bf3b5baca`. |
-| C18 + C18.1 dual-path proof | ✅ CLOSED (internal verification) at `8a235263d55545bd708b5b5af200670c467a457a` — see §15; `d5061b8` superseded (verifier false-passes; secret exposure) |
+| C18 → C18.1.1 dual-path proof | ✅ CLOSED (internal verification) at `567a70f4f823a83b069460cce9e103cd80044467` — see §16; `d5061b8` and `8a23526` superseded (verifier false-passes; secret exposure; leaked ctx.context_secret) |
 | C19 docs + NOLOGIN | ⏳ |
 | Freeze + evidence + ZIP | ⏳ |
 | Independent review | External independent review **pending** against the final frozen source + evidence package. Claude's own testing is verification, not independent review; Phase 0 stays unapproved until that external review. |
@@ -1549,3 +1549,77 @@ summary; suites now run with NO_COLOR and both parsers ANSI-strip.
 **Still open.** C19, the freeze protocol and external independent review. Phase 0 is not
 approved; the source is not frozen. This section is written in a docs-only child commit;
 verification runs against `8a235263d55545bd708b5b5af200670c467a457a`.
+
+## 16. C18.1.1 — SECRET-FREE, RAW-BOUND DUAL-PATH EVIDENCE (delivered)
+
+**Evidence-bearing source `567a70f4f823a83b069460cce9e103cd80044467`.**
+Source run `32231834550` **attempt 2** (push/`main`, 3/3 jobs green with the blocking C18.1.1
+gate — leak-fixed producer + offline self-verification + the 57-test in-gate
+mutation/differential suite; attempt 1 was re-run in full because a transient GitHub
+"Install Chrome" failure cancelled `browser-regression`, per the recovery contract) · finalizer
+run `32234840732` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a2-a93dc04547fa0652eeb769c5067356ad017eda92e6514b630d631b4084b93f6f`
+(277,803 B wrapper) — exactly the archive `c18-db-paths-evidence-567a70f4….zip` (outer sha256
+`a93dc04547fa0652eeb769c5067356ad017eda92e6514b630d631b4084b93f6f`) + verified sidecar.
+Arithmetic: **264 commands; 792 raw stream files; 9 fixed top-level regular files; 801 regular
+files total; + the `raw/` directory entry = 802 ZIP entries.** Verified from a fresh foreign
+checkout offline and **online-hosted** (`standing=delivery-online`).
+
+**The two corrected defect families (both proven, not asserted).**
+1. *Real secret leak.* The 8a23526 archive leaked the raw database-generated
+   `ctx.context_secret.secret` in four `raw/*ctx_context_secret.stdout.txt` receipts, because
+   snapshot digest-substitution ran AFTER `Evidence.run` wrote the raw psql output. C18.1.1
+   digest-substitutes the secret column IN THE SQL PROJECTION
+   (`encode(sha256('c18-secret-v1:<table>.<col>:' || col::text))`), so the raw receipt never
+   holds the secret and carries the same domain-separated digest the snapshot does. A producer
+   self-scan AND a verifier-side leak scan reject raw ctx.context_secret, env/argv password
+   assignments, generated-secret canaries and private-key material across every member and the
+   final ZIP bytes.
+2. *Verifier accepted rebound false evidence.* The verifier now RECONSTRUCTS every snapshot's
+   tables, FKs, migration ledger and audit views from their command-bound raw psql receipts and
+   value-compares — deleting or altering processed evidence while raw stays intact fails. Added:
+   exact source-owned table universes (26/28); typed command ledger with three distinct
+   byte/SHA-bound streams each and no unbound/duplicate/extra raw file; the final snapshot's own
+   0021 ledger; source_tree bound to `git HEAD^{tree}`; suite_matrix equals the code-owned
+   matrix; cleanup.removed equals exactly the four isolation container names; bidirectional
+   seed-record binding; JCS-derived projection authentication (correlation/decision); exact
+   operation closure (one finalized success operation with exact decision/correlation/principal/
+   tenant/domain/session/action/target, a real allow decision, the exact effect-kind multiset
+   and reference, one closing success audit event, no extra conflicting row); exact suite
+   receipts (integration 297, acceptance 58; complete argv equality; command exit/signal/timeout
+   binding; exactly one framework summary at the code-owned count); exact isolation (fixed path
+   labels, digest-pinned Compose images for postgres AND redis, grammar-checked
+   ids/names/ports/databases, pairwise-distinct credential digests); and full hosted standing
+   (workflow ci, push/main, exact SHA + attempt, all three jobs, the blocking step, a unique
+   unexpired run-id/SHA-bound artifact with a valid wrapper digest).
+
+**Controls.** The exact 8a23526 verifier is frozen verbatim; differentials prove it accepts a
+raw-secret receipt and an altered-processed/intact-raw archive that C18.1.1 rejects, alongside
+new single-defect mutations (deleted complete table, empty seed record, false
+source_tree/suite_matrix/seed_summary/cleanup, empty final ledger, contradictory projection,
+altered effect kind, unfinalized operation, attacker image, relabelled path, credential reuse,
+single-test argv, suite exit 97). The synthetic positive fixture remains deleted.
+
+**Contaminated C18.1 (8a23526) hosted artifacts (enumerated WITHOUT printing contents; NOT
+deleted — targeted deletion RECOMMENDED, requires explicit owner authorization).** Their raw
+receipts leak the database `ctx.context_secret.secret`:
+* run `32192797516` (8a23526 delivery): artifact `9344931782`
+  (`c18-db-paths-evidence-a1-35854e8b…`) and `9344932586` (`c18-diagnostics-a1`);
+* run `32194076331` (8a23526 docs-child push): artifact `9345327446`
+  (`c18-db-paths-evidence-a1-5b2db28a…`) and `9345328003` (`c18-diagnostics-a1`).
+The earlier superseded C18 (d5061b8) artifacts additionally exposed generated PostgreSQL/Redis
+passwords in their command ledger; those IDs are in the memory ledger. Deletion of all of these
+is deferred to explicit owner authorization; none have been deleted in this pass.
+
+**Measured this round (nothing reused).** Hermetic: tokens 3, contracts 203, API 975 +
+hermetic-meta 9. In the hosted gate: integration 297 on both paths; acceptance 58 on both
+instances. Local: acceptance 58, integration 297, Playwright 10 on reset databases; C18.1.1
+hermetic controls 35; mutation/differential controls 57. Hosted seed: 2 tenants, 3 domains,
+4 principals, 2 sessions, 2 canonical objects, 2 outbox events, 12 decisions; tables 26 → 28;
+cleanup removed all 4 containers, 0 failures.
+
+**Still open.** C19, the freeze protocol and external independent review. Phase 0 is not
+approved; the source is not frozen. This section is a docs-only child; verification runs against
+`567a70f4f823a83b069460cce9e103cd80044467`.
