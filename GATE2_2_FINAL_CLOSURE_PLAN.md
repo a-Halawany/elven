@@ -1852,7 +1852,14 @@ deletion. This section is a docs-only child; verification runs against
 `83d158cca00d3a85ae78c3a4e9019c483426c5a7`.
 
 
-## 19. C18.1.4 — CLASS-EXACT CREDENTIALS, MEASURED MIGRATION BYTES, SOURCE-BOUND CATALOG, COMPLETE BINDING TUPLES, DERIVED STEP IDENTITIES, AUTHENTICATED ABSENCE (delivered; awaiting independent review)
+## 19. C18.1.4 — CLASS-EXACT CREDENTIALS, MEASURED MIGRATION BYTES, SOURCE-BOUND CATALOG, COMPLETE BINDING TUPLES, DERIVED STEP IDENTITIES, AUTHENTICATED ABSENCE (delivered; SUPERSEDED by §20)
+
+**SUPERSEDED at C18.1.5 (§20)**: the 7be02b8 archive, CI chain, catalogue contract, credential
+handling and earlier corrections are authentic and leak-free, but its VERIFIER left four
+evidence-consistency gaps — an unenumerated workspace, an unparsed application sequence,
+minimum-only seed validation, multiset-blind role-binding reconciliation and revoked rows filtered
+away, and an absence probe that could diagnose an error and still certify absence. This section
+stays as honest history; verification targets §20.
 
 **Evidence-bearing source `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`.**
 Candidate CI: pull-request run `32360529728` (3/3 green). Source run `32361402701` **attempt 1**
@@ -1940,3 +1947,99 @@ artifacts remain enumerated (§16 and the memory ledger) and undeleted — targe
 requires explicit owner authorization; the 567a70f, 15e8239 and 83d158c artifacts are NOT
 contaminated. This section is a docs-only child; verification runs against
 `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`.
+
+
+## 20. C18.1.5 — COMPLETE MIGRATION INVENTORY, EXACT SEED CONTRACT, EXACT BINDING MULTISETS, UNAMBIGUOUS ABSENCE (delivered; awaiting independent review)
+
+**Evidence-bearing source `8362cba116657c9119a96f16cde40faac1727113`.**
+Candidate CI: pull-request run `32373661813` (3/3 green). Source run `32374447671` **attempt 1**
+(push/`main`, all three jobs green in ONE attempt with the blocking C18 gate — corrected producer
++ offline self-verification + the 144-test in-gate mutation/differential suite) · finalizer run
+`32375058694` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`
+(295,589 B wrapper) — exactly the archive `c18-db-paths-evidence-8362cba1….zip` (449,377 B, outer
+sha256 `7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`) + verified sidecar.
+Arithmetic, measured from the delivered archive rather than carried forward: **278 commands
+(3 workspace inventories, 3 migration attestations, 4 checked removals, 4 authenticated absence
+probes); 834 raw stream files; 9 fixed top-level regular files; 843 regular files total; + the
+`raw/` directory entry = 844 ZIP entries.** Verified from a fresh foreign checkout offline and
+**online-hosted** (`standing=delivery-online`).
+
+**Scope discipline.** The archive, CI chain, catalogue contract, credential handling and every
+previous correction were confirmed authentic and were not reopened. This pass changes verifier
+evidence-consistency only.
+
+**Why 7be02b8 is superseded (honestly stated).** Its evidence is authentic and leak-free — NOT
+secret-contaminated — but four inconsistencies passed, every one first REPRODUCED as accepted
+against the byte-verbatim frozen 7be02b8 fixture:
+
+| # | Reproduced false pass | Now rejected because |
+|---|---|---|
+| 1a | the runner applied a 13th migration on the historical path, absent from the manifest | the runner's own stdout is parsed and must equal the exact governed application sequence |
+| 1b | a 22nd `.sql` sat in the governed workspace, never enumerated or hashed | a command-bound `ls -1` inventory must equal the exact source-derived set, and the attestation hashes every DISCOVERED file |
+| 2 | an additional seeded tenant, admitted by minimum-only (`>=`) validation | the seed contract states EXACT cardinalities and relationships |
+| 3a | a duplicated active role-binding tuple | active bindings are compared as multisets, with multiplicity reported |
+| 3b | an unexpected revoked binding | every revoked row is accounted for; the deterministic seed revokes none |
+| 4 | an exit-0 absence probe that wrote a permission error to stderr | absence requires exit 0, no signal, empty stdout AND empty stderr |
+
+**The correction.**
+* **Complete migration inventory.** Every execution begins with a command-bound
+  `ls -1 <workspace>/migrations`. The enumerated list must be sorted, duplicate-free and exactly
+  the source-derived 0001–ceiling set; the receipt's own `inventory[]` must equal what the command
+  enumerated; the `shasum` attestation argv is rebuilt from the ENUMERATED directory, so a file
+  cannot escape hashing by being absent from the manifest's claim; and the runner's stdout is
+  parsed (`applying <file> ... ok` … `migrations up to date`) and must equal the exact expected
+  sequence for that execution — 0001–0012 for the historical run, 0013–0021 for the upgrade
+  (which runs against an already-migrated database), 0001–0021 for the virgin path. Missing,
+  additional, duplicate and reordered files all fail, as does a run that never confirmed
+  completion or whose `applied[]` disagrees with what the runner reported.
+* **Exact deterministic seed contract.** `SEED_CONTRACT` states 2 tenants, 3 domains,
+  4 principals, 2 sessions, 2 canonical objects, 2 outbox events (1 published, 1 pending),
+  12 decisions and 4 role bindings EXACTLY, plus the semantic records and relationships: domains
+  distributed [2,1] across tenants, exactly one PLATFORM principal, scope/tenancy coherence on
+  every principal, every session owned by a seeded principal and every canonical object by a
+  seeded domain. Generated identifiers remain dynamic. Governed step identities are derived ONLY
+  after this contract holds, so a padded record can no longer reconcile against itself. Audit
+  floors remain minima by design — the chain grows with governed activity.
+* **Exact role-binding reconciliation.** Expected and observed ACTIVE bindings are tallied and
+  compared as multisets, so a duplicated active relationship tuple is reported with its
+  multiplicity instead of producing a silent length mismatch. Every revoked row is enumerated and
+  rejected, because the deterministic seed revokes none. The complete semantic tuple — principal,
+  role, scope, tenant/domain attribution, grantor principal and grantor scope — is retained;
+  random row ids and timestamps are deliberately NOT treated as relationship identity (they are
+  bound elsewhere by preservation and raw reconstruction).
+* **Unambiguous cleanup evidence.** A successful absence receipt requires exit 0, no signal,
+  zero-byte stdout and zero-byte stderr. Daemon, permission, transport and missing-tool errors
+  make the result UNKNOWN and fail the gate, in the producer and the verifier alike.
+
+**Controls.** The exact 7be02b8 verifier is frozen BYTE-VERBATIM
+(`apps/api/test/gate/fixtures/c18-legacy-7be02b8`, six files, per-file SHA-256 pinned). Because
+C18.1.5 raises the evidence format again, each differential applies the SAME mutation to each
+verifier's own genuine archive: the predecessor judges a faithful downgrade of this run to the
+shape its own producer emitted (non-vacuously accepted with zero problems), C18.1.5 judges the
+archive as produced. In-gate controls total **144** — the six new differentials, ten new
+adjacent-field rejections (an inventory missing an authorized migration, a duplicate inventory
+entry, an unsorted inventory, an `inventory[]` contradicting the directory, a deleted inventory
+command, a runner that never reported completion, an `applied[]` disagreeing with the runner, a
+missing seeded decision, a second published outbox effect, a signalled absence probe) and every
+prior C18/C18.1.x control, all still green. Hermetic gate controls total **143**.
+
+**Measured this round (nothing carried forward).** Hermetic: tokens 3, contracts 203, API 1083 +
+hermetic-meta 9. Local: integration 297, acceptance 58, Playwright 10 on reset databases; build,
+typecheck, lint and boundaries green. Migrations 0001–0021 byte-identical. Hosted gate: 144
+mutation/differential controls; integration 297 on both paths; acceptance 58 on both instances.
+Seed rows measured in the delivered pre-upgrade snapshot: 2 tenants, 3 domains, 4 principals,
+2 sessions, 2 canonical objects, 2 outbox events, 12 decisions, 4 role bindings. Migration
+executions: historical inventory 12 / applied 12; upgrade inventory 21 / applied 9; virgin
+inventory 21 / applied 21. Cleanup: 4 removed, 4 authenticated absence proofs, 0 failures,
+0 kept.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.5 review, and no
+closure is claimed here. C19, the freeze protocol and external independent review remain open;
+Phase 0 is not approved and the source is not frozen. Contaminated d5061b8/8a23526-era hosted
+artifacts remain enumerated (§16 and the memory ledger) and undeleted — targeted deletion still
+requires explicit owner authorization; the 567a70f, 15e8239, 83d158c and 7be02b8 artifacts are
+NOT contaminated. This section is a docs-only child; verification runs against
+`8362cba116657c9119a96f16cde40faac1727113`.

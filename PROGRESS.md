@@ -58,7 +58,7 @@ from this point; further database corrections use forward migrations **0020+**.
 | **C16 CLOSED** | `scripts/gate/assert-final-manifests.mjs`, `scripts/gate/lib/*`, `docs/SCANNER_DISPOSITIONS.md`, `docs/evidence/govulncheck-gosu-b6a16ed0.{json,txt}` | ✅ **CLOSED by bounded independent review** at `d63318e099a152cef18682e97d84ea7e1a70abd9` after five remediation rounds (R3.1–R3.4.5). Hosted run `31806239862`, all three jobs green; evidence archive sha256 `27ba79b0681b855e710c8b82e0d95c39ff971dc7770bee601d08fe7858027e04`. Measured at closure: gate **587**, API unit + gate **601** (= 587 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Container findings reconcile at **18** across **4** governed records (SCX-0001/2/3 `RISK_ACCEPTED`, SCX-0004 `NOT_AFFECTED` on symbol-aware govulncheck evidence). |
 | C17 CycloneDX + obligations | *(superseded row removed at C17.1)* | ➡️ See the **C17.1** row below. The original C17 row claimed this area was NEXT and was never updated when C17 landed, so the ledger carried a stale entry alongside a completed one. |
 | **C17 + C17.1 CycloneDX, licences and obligations** | `vendor/{cyclonedx/1.6.2,spdx-licenses/v3.28.0}/**`, `scripts/gate/lib/{cyclonedx-schema,license-closure,licence-texts,legal-dispositions}.mjs`, `scripts/gate/{licence-obligations,package-c17-evidence}.mjs`, `scripts/gate/{legal-dispositions,source-offers}.json`, `apps/api/test/gate/c17-*.test.ts`, `pnpm-workspace.yaml`, `.github/workflows/ci.yml` | ✅ **COMPLETE (internal verification)** — evidence-bearing SHA `084ce19f4edef71825b0d34dfe230c4915a1b3fb`, hosted run `31893384717` (build-test, supply-chain, browser-regression all success). Archive `c17-evidence-084ce19f4edef71825b0d34dfe230c4915a1b3fb.zip`, **576771 bytes**, sha256 `e0a24dd12ddb4ca4f5b34bca87f075056ad8245e16c46a100206f376e6b62d6c`, built by the tracked packager inside the run: **19 payload files + 1 checksum manifest = 20 regular files across 25 ZIP entries**, **19 checksum lines**, manifest excludes itself. Verified from a genuinely foreign clean clone with `--online`: both SBOMs re-derived and schema-valid, licence reconciliation rerun, and the run receipt checked against GitHub's public API (id, head_sha, conclusion=success). SBOM digests production `c65ea1250232438fbf642920e2beb07f5497be7fe7942d847b166f8fd21de2cb` (195 components) and development `804ca78c0d63524032555571cd08f7b6802bbb5a313cb82247813623a18fbc2a` (296 components), both **0 schema errors** against the official CycloneDX 1.6.2 schema (tag `1.6.2`, commit `e833d732337dd33aceb45ff1991f896796f1e5e7`) compiled offline with Ajv **8.18.0** / ajv-formats **3.0.1** / ajv-formats-draft2019 **1.6.1**. Licence inventory: production **195** classified, development **312**, **0 unresolved**, **0 reconciliation problems** in both directions. Notices carry **475** shipped-text blocks and **25** canonical-SPDX-text blocks, every copyright line, named CC-BY attribution and **3** source-offer records; **0** legal dispositions, deliberately. **Cross-host determinism proven**: all 8 target artifacts byte-identical between a darwin/arm64 clean clone and hosted ubuntu Linux. C15, C16 and C17 all PASS in `--final` from a Darwin clean clone. Measured suites: gate **721**, API unit + gate **735** (721 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Migrations 0001–0021 byte-identical; content digest `43e15e642efaecca1be224af0936e223f14cf17ffc846b79f40896d717f65588`, Git-tree digest `47a651c95228429a5f10c497dfbd5b4a3588bce7256af65f0c90554bf3b5baca`. |
-| **C18 → C18.1.4 dual-path database history proof** | `scripts/gate/c18-db-paths.mjs`, `scripts/gate/lib/{c18-contract,c18-query-plan,c18-seed-0012}.mjs`, `scripts/gate/lib/c18-catalog-contract.json`, `apps/api/test/gate/c18-*.{test.ts,ctl.ts}`, `apps/api/test/gate/fixtures/c18-legacy-{d5061b8,8a23526,567a70f,15e8239,83d158c}/**`, `apps/api/vitest.c18.config.ts`, `.github/workflows/ci.yml` | ⏳ **DELIVERED, AWAITING INDEPENDENT REVIEW** — evidence-bearing SHA `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`; see the C18.1.4 provenance section below and `GATE2_2_FINAL_CLOSURE_PLAN.md` §19. C18 is NOT closed: independent review of C18.1.4 has not been granted. Interim deliveries `d5061b8`, `8a23526`, `567a70f`, `15e8239` and `83d158c` (the last two authentic and LEAK-FREE, superseded for verifier gaps only) are SUPERSEDED. |
+| **C18 → C18.1.5 dual-path database history proof** | `scripts/gate/c18-db-paths.mjs`, `scripts/gate/lib/{c18-contract,c18-query-plan,c18-seed-0012}.mjs`, `scripts/gate/lib/c18-catalog-contract.json`, `apps/api/test/gate/c18-*.{test.ts,ctl.ts}`, `apps/api/test/gate/fixtures/c18-legacy-{d5061b8,8a23526,567a70f,15e8239,83d158c,7be02b8}/**`, `apps/api/vitest.c18.config.ts`, `.github/workflows/ci.yml` | ⏳ **DELIVERED, AWAITING INDEPENDENT REVIEW** — evidence-bearing SHA `8362cba116657c9119a96f16cde40faac1727113`; see the C18.1.5 provenance section below and `GATE2_2_FINAL_CLOSURE_PLAN.md` §20. C18 is NOT closed: independent review of C18.1.5 has not been granted. Interim deliveries `d5061b8`, `8a23526`, `567a70f`, `15e8239`, `83d158c` and `7be02b8` (the last four authentic and LEAK-FREE, superseded for verifier gaps only) are SUPERSEDED. |
 | C19 docs + NOLOGIN roles | — | ⏳ (`eye_system` + legacy roles still LOGIN) |
 | **Evidence sequencing (applied)** | `.gitignore` | ✅ `evidence/authority-matrix.json`, the `evidence/supply-chain/` runner outputs, `evidence/supply-chain/c16/` and `evidence/db-paths/` are **untracked**: generated gate OUTPUTS are regenerated from the FROZEN source during the isolated run and committed only in the evidence-only attestation child commit. The GENERATORS (`scripts/authority-inventory.mjs`, `scripts/gate/authority-matrix-report.mjs`, `scripts/gate/supply-chain.mjs`, `scripts/gate/generate-closures.mjs`) remain in source. The matrix generated at `caac521` and the C16 closures generated during this pass are **preliminary** and are not final evidence — the C16 report carries a `status` field saying so, so a stray copy cannot be mistaken for final. |
 | Freeze + external-review handoff + ZIP | — | ⏳ |
@@ -488,7 +488,17 @@ node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD"
 This section is written in a docs-only child commit; the child changes no executable file, so the
 gates' verdicts at `83d158cca00d3a85ae78c3a4e9019c483426c5a7` are unaffected by it.
 
-## C18.1.4 evidence provenance (no SHA cycle)
+## C18.1.4 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.5 below
+
+**SUPERSEDED at C18.1.5**: the 7be02b8 archive, CI chain, catalogue contract, credential handling
+and earlier corrections are authentic and LEAK-FREE — it is NOT secret-contaminated — but its
+VERIFIER left four evidence-consistency gaps, each reproduced as accepted against the
+byte-verbatim frozen 7be02b8 fixture: a migration applied by the runner but absent from the
+manifest; a migration file present in the governed workspace but never enumerated or hashed; an
+additional seeded tenant admitted by minimum-only seed validation; a duplicated active
+role-binding tuple and an unexpected revoked binding; and a "successful" absence probe that wrote
+a permission error to stderr. The record below stays as honest history; verification targets
+C18.1.5.
 
 The C18 evidence-bearing source is **`7be02b8ed64bffbe22afc4b8374c21406cf73fa5`**. Candidate CI
 ran green as pull-request run **`32360529728`**; source run **`32361402701` attempt 1** (push,
@@ -527,3 +537,43 @@ node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD"
 
 This section is written in a docs-only child commit; the child changes no executable file, so the
 gates' verdicts at `7be02b8ed64bffbe22afc4b8374c21406cf73fa5` are unaffected by it.
+
+## C18.1.5 evidence provenance (no SHA cycle)
+
+The C18 evidence-bearing source is **`8362cba116657c9119a96f16cde40faac1727113`**. Candidate CI
+ran green as pull-request run **`32373661813`**; source run **`32374447671` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **144-test** in-gate
+mutation/differential suite. Finalizer run **`32375058694`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`**
+  (295,589 B wrapper) — exactly the archive `c18-db-paths-evidence-8362cba1….zip` (449,377 B,
+  outer sha256 `7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **278 commands** (3 workspace inventories, 3 migration attestations,
+  4 checked removals, 4 authenticated absence probes), **834 raw stream files**, **9 fixed
+  top-level regular files**, **843 regular files**, + the `raw/` directory entry = **844 ZIP
+  entries**. Verified from a fresh foreign checkout at exactly `8362cba` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `7be02b8` was superseded (stated honestly): its archive, CI chain, catalogue contract and
+credential handling are authentic and leak-free — it is NOT secret-contaminated — but its
+verifier did not enumerate the complete governed migration directory, did not parse the runner's
+own application sequence, validated the seed by minima rather than exactly, compared role
+bindings without multiset multiplicity or revoked-row accounting, and accepted an absence probe
+that wrote diagnostics to stderr. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §20 for the full record.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.5 review; no closure is claimed.
+
+Verification runs against `8362cba116657c9119a96f16cde40faac1727113`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 8362cba116657c9119a96f16cde40faac1727113
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `8362cba116657c9119a96f16cde40faac1727113` are unaffected by it.
