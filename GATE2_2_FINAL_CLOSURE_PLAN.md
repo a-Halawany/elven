@@ -2053,7 +2053,14 @@ NOT contaminated. This section is a docs-only child; verification runs against
 `8362cba116657c9119a96f16cde40faac1727113`.
 
 
-## 21. C18.1.6 — COMPLETE MIGRATION DISCOVERY, EXACT OUTPUT VALIDATION, SOURCE-OWNED SEED SEMANTICS (delivered; awaiting independent review)
+## 21. C18.1.6 — COMPLETE MIGRATION DISCOVERY, EXACT OUTPUT VALIDATION, SOURCE-OWNED SEED SEMANTICS (delivered; SUPERSEDED by §22)
+
+**SUPERSEDED at C18.1.7 (§22)**: independent review verified the dccfcf26 archive, promotion,
+CI, finalizer, migration immutability, sidecar, checksums, inventory, leak-free status and hosted
+bindings as authentic; C18.1.7 preserves all of them. Two verifier-completeness issues remained —
+migration receipts were parsed rather than compared byte-for-byte, and the seed specification did
+not enforce several declared or evidence-visible values. This section stays as honest history;
+verification targets §22.
 
 **Evidence-bearing source `dccfcf26b0111edeb4b5d710b6d0f707beb34f46`.**
 Candidate CI: pull-request run `32398239519` (3/3 green). Source run `32399868648` **attempt 1**
@@ -2158,3 +2165,102 @@ artifacts remain enumerated (§16 and the memory ledger) and undeleted — targe
 requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8 and 8362cba
 artifacts are NOT contaminated. This section is a docs-only child; verification runs against
 `dccfcf26b0111edeb4b5d710b6d0f707beb34f46`.
+
+
+## 22. C18.1.7 — EXACT MIGRATION-RECEIPT BYTES AND A CLOSED SOURCE-OWNED SEED SEMANTIC MODEL (delivered; awaiting independent review)
+
+**Evidence-bearing source `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`.**
+Candidate CI: pull-request run `32409590023` (3/3 green). Source run `32410169418` **attempt 1**
+(push/`main`, all three jobs green in ONE attempt with the blocking C18 gate — corrected producer
++ offline self-verification + the 193-test in-gate mutation/differential suite) · finalizer run
+`32410870143` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-fb5f93874926478fcba3ba8a0e5f1c54d35cc2dff8b446cfb63537c24353460a`
+(295,607 B wrapper) — exactly the archive `c18-db-paths-evidence-bfc8695b….zip` (449,213 B, outer
+sha256 `fb5f93874926478fcba3ba8a0e5f1c54d35cc2dff8b446cfb63537c24353460a`) + verified sidecar.
+Arithmetic, measured from the delivered archive rather than carried forward: **278 commands
+(3 workspace inventories, 3 attestations, 4 checked removals, 4 authenticated absence probes);
+834 raw stream files; 9 fixed top-level regular files; 843 regular files total; + the `raw/`
+directory entry = 844 ZIP entries.** Verified from a fresh foreign checkout offline and
+**online-hosted** (`standing=delivery-online`).
+
+**Scope discipline.** Everything independent review verified at C18.1.6 — the archive, promotion,
+CI, finalizer, migration immutability, sidecar, checksums, inventory, leak-free status and hosted
+bindings — is preserved exactly and was not reopened, as are C15–C17 and migrations 0001–0021.
+
+**Why dccfcf26 is superseded (honestly stated).** It is authentic and leak-free. Both remaining
+issues were REPRODUCED as accepted against the byte-verbatim frozen dccfcf26 fixture before any
+fix:
+
+| # | Reproduced acceptance | Now rejected because |
+|---|---|---|
+| 1 | pretty-printed inventory JSON the helper could never emit | inventory stdout must equal `encodeInventory(parsedEntries)` byte-for-byte |
+| 2 | a shasum receipt containing an impossible blank line | attestation stdout must equal the exact ordered `<digest>  <path>\n` sequence byte-for-byte |
+| 3 | a canonical-object subject rename with a derived object value | object slots resolve by the specified payload subject |
+| 4 | the same rename with a correctly recomputed production content digest | the digest is recomputed over the SPECIFIED header and payload, not the delivered ones |
+| 5 | a seeded decision flipped from allow to deny | each decision is authenticated individually against the operation plan |
+| 6 | a changed deterministic outbox payload | the outbox payload is owned by the specification |
+| 7 | an object admission re-pointed at another actor's operation (row, digest and record all rebound) | the object's audit correlation must be the correlation of the operation that admitted it |
+
+**The correction.**
+* **Exact receipt bytes.** `parseAttestation` refuses empty, unterminated and blank-line receipts,
+  and both receipts are additionally compared byte-for-byte against their code-derived encodings
+  (`encodeInventory`, `encodeAttestation`). Every existing exit/signal/stderr, helper-digest,
+  argv, complete-set, file-type, filename and migration-output check is unchanged.
+* **Canonical objects.** Slots resolve by SEMANTIC IDENTITY — the specified payload subject —
+  never by array position. The complete deterministic header moved out of the seeder into
+  `seedObjectHeader` in the shared specification: object type, version, lifecycle, scope, tenancy
+  placement, owning component, accountable owner, evidence refs, classification, purpose, schema,
+  time precision, clock quality, truth and synthetic state, fixed observation/recorded times and
+  every deterministic null/empty field. The verifier rebuilds that header and recomputes
+  `content_digest` with the production `canonicalHeaderDigest`, so a rename with a
+  self-consistently recomputed digest fails.
+* **Admitting principal.** `admittedByPrincipalSlot` is enforced through authenticated evidence:
+  `object.audit_correlation_id` → the closing audit event → its actor and session → the session's
+  owning principal → the specified slot. A complete mutation (row, digest and seed record all
+  re-pointed) is reproduced as a differential.
+* **Operations.** A source-owned operation plan names all twelve governed seed operations — the
+  entity slot each creates, its actor and session slots, scope and tenancy topology — and
+  authenticates each decision and its audit closure individually: allow outcome, evidence_only,
+  revocation state, obligations, environment, purpose, reason, bundle version, deterministic null
+  posture, a recomputed source-owned input digest, decision↔correlation↔audit linkage, and the
+  exact audit event type, action, outcome, result code, actor, session, target type and id,
+  tenancy, correlation and decision reference. The PRODUCER was corrected so each decision
+  records the CREATED ENTITY id (12/12 in the delivered archive) rather than an opaque random
+  identifier, making that field bindable rather than pretended.
+* **Outbox.** Exact payload `{seed:"c18", event:<eventType>}`, event type, scope, topology,
+  status, `attempts = 1`, and lifecycle — published effects carry a publication time and hold no
+  lease; the pending-after-lease effect holds its lease id and expiry and was never published —
+  with generated identifiers type-checked.
+* **Bidirectional completeness.** Every specification slot resolves exactly once and every
+  evidence row resolves to exactly one slot, with no unclaimed decision, audit event, object,
+  outbox record, session or entity, and no array-order fallback anywhere.
+
+**Controls.** The exact dccfcf26 verifier is frozen BYTE-VERBATIM with per-file digest pins
+(`apps/api/test/gate/fixtures/c18-legacy-dccfcf2`, eight files, cross-checked against
+`git show dccfcf26:…` when history is available). In-gate controls total **193** — the seven
+differentials above and fourteen adjacent single-defect rejections (deterministic header fields
+classification/accountable_owner/evidence_refs, a stale content digest, decision
+scope/topology/correlation/input-digest/obligations, outbox attempts and both lifecycle
+violations, an unclaimed extra decision, and a duplicate slot assignment) — plus every prior
+C18/C18.1.x control, all still green. Hermetic gate controls total **199**, including a
+META-CONTROL proving every deterministic seed literal and template originates in the shared
+specification or a named source-owned derivation.
+
+**Measured this round (nothing carried forward).** Hermetic: tokens 3, contracts 203, API 1139 +
+hermetic-meta 9. Local: integration 297, acceptance 58, Playwright 10 on reset databases; build,
+typecheck, lint and boundaries green. Migrations 0001–0021 byte-identical. Hosted gate: 193
+mutation/differential controls; integration 297 on both paths; acceptance 58 on both instances.
+Delivered archive: migration executions historical 12/12, upgrade 21 enumerated / 9 applied,
+virgin 21/21; seed rows 2 tenants, 3 domains, 4 principals, 2 sessions, 2 canonical objects,
+2 outbox events, 12 decisions (12/12 naming a real seeded entity), 4 role bindings; cleanup 4
+removed, 0 failures.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.7 review, and no
+closure is claimed here. C19, the freeze protocol and external independent review remain open;
+Phase 0 is not approved and the source is not frozen. Contaminated d5061b8/8a23526-era hosted
+artifacts remain enumerated (§16 and the memory ledger) and undeleted — targeted deletion still
+requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8, 8362cba and
+dccfcf26 artifacts are NOT contaminated. This section is a docs-only child; verification runs
+against `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`.
