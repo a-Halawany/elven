@@ -1629,7 +1629,12 @@ cleanup removed all 4 containers, 0 failures.
 approved; the source is not frozen. This section is a docs-only child; verification runs against
 `567a70f4f823a83b069460cce9e103cd80044467`.
 
-## 17. C18.1.2 — SOURCE-OWNED COMMAND GRAPH, RAW POSTURE, CLOSED SEED RECORD, EXACT CLOSURE (delivered)
+## 17. C18.1.2 — SOURCE-OWNED COMMAND GRAPH, RAW POSTURE, CLOSED SEED RECORD, EXACT CLOSURE (delivered; SUPERSEDED by §18)
+
+**SUPERSEDED at C18.1.3 (§18)**: the 15e8239 evidence is authentic and LEAK-FREE — it is NOT
+secret-contaminated — but its verifier did not authenticate exact SQL, the migration executable
+and subject, exact secret classes, several seed relationships, suite-stream ownership, governed
+seeding or cleanup execution. This section stays as honest history; verification targets §18.
 
 **Evidence-bearing source `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`.**
 Candidate CI: pull-request run `32260721217` (3/3 green). Source run `32261313938`
@@ -1728,3 +1733,115 @@ enumerated (§16 and the memory ledger) and undeleted — targeted deletion stil
 explicit owner authorization; the superseded 567a70f artifacts are NOT contaminated and need
 no deletion. This section is a docs-only child; verification runs against
 `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`.
+
+
+## 18. C18.1.3 — EXACT SQL, EXACT SECRET CLASSES, COMPLETE SEED RECONCILIATION, OWNED SUITE STREAMS, AUTHENTICATED SEEDING AND CLEANUP (delivered)
+
+**Evidence-bearing source `83d158cca00d3a85ae78c3a4e9019c483426c5a7`.**
+Candidate CI: pull-request run `32351402879` (3/3 green). Source run `32351964148` **attempt 1**
+(push/`main`, all three jobs green in ONE attempt with the blocking C18 gate — corrected producer
++ offline self-verification + the 107-test in-gate mutation/differential suite) · finalizer run
+`32352446987` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-372ffb5f73a45a26df98c4ffcb35e0c4fbeea1feb2afb0b6d8a2ca904ebf924c`
+(294,514 B wrapper) — exactly the archive `c18-db-paths-evidence-83d158cc….zip` (441,336 B, outer
+sha256 `372ffb5f73a45a26df98c4ffcb35e0c4fbeea1feb2afb0b6d8a2ca904ebf924c`) + verified sidecar.
+Arithmetic: **272 commands; 816 raw stream files; 9 fixed top-level regular files; 825 regular
+files total; + the `raw/` directory entry = 826 ZIP entries.** Verified from a fresh foreign
+checkout offline and **online-hosted** (`standing=delivery-online`).
+
+**Why 15e8239 is superseded (honestly stated).** Its evidence is authentic and leak-free — NOT
+secret-contaminated — but its verifier did not authenticate what an attacker actually controls.
+Twelve of the thirteen mandated classes were REPRODUCED as accepted false passes against the
+frozen verbatim 15e8239 verifier before this correction; the thirteenth (cleanup and seeding) was
+accepted because that evidence did not exist at all:
+(1) substituted SQL for `a-a-before-rows-tenancy_tenants`; (2) substituted SQL for
+`a-a-after-roles`; (3) any other snapshot/posture query replaced behind genuine output;
+(4) `/attacker/scripts/migrate.mjs`; (5) `EYE_DB_PASSWORD=<REDACTED:attacker:WRONG_CLASS>`;
+(6) the Redis password using the wrong class; (7) a Path-A command carrying a Path-B placeholder;
+(8) a forged session `familyId`; (9) a forged canonical-object correlation; (10) an extra unused
+correlation UUID; (11) an ADDITIONAL live role binding; (12) swapped Path-A/Path-B integration
+suite streams; (13) cleanup and governed seeding, which 15e8239 never required evidence for.
+
+**The correction (A–F).**
+* **A — genuinely exact command semantics.** A new source-owned deterministic query plan
+  (`scripts/gate/lib/c18-query-plan.mjs`) produces the SQL for every evidence-producing command,
+  and the verifier re-derives the same string and demands byte-equal argv: the authenticated
+  readiness confirmation, tables metadata, every table-row query (including the SQL-side secret
+  projection), FK metadata and every pair query, all fifteen posture queries, the migration ledger
+  and both audit queries. The unrestricted predicate that let ANY text sit in the final `psql -c`
+  position is gone; no `() => true`, no suffix match and no attacker-controlled SQL remains.
+* **B — authenticated migration executable and subject.** Every migration command carries a closed
+  typed execution receipt binding a governed workspace grammar (absolute, no traversal, mkdtemp
+  basename `c18-[ab]-XXXXXX`, resolved outside the repository), the EXECUTED runner's SHA-256
+  equal to the tracked `apps/api/scripts/migrate.mjs`, the exact ordered migration filename/digest
+  set present in that workspace, the intended historical or latest ceiling, and the command's
+  cwd, environment, exit and streams. An attacker path ending `/scripts/migrate.mjs` fails even
+  with a fully rebound ledger, and so does a governed-LOOKING workspace holding substituted runner
+  bytes.
+* **C — exact secret-class bindings.** Placeholders are exact per path AND per class
+  (`<REDACTED:<path>:<CLASS>>`) in every argv position and every environment key: the PostgreSQL
+  container password, every `PGPASSWORD`, the Redis `--requirepass`, every suite and migration
+  `EYE_*` password, the bootstrap and admin credentials, and the JWT secret's composition (admin
+  placeholder followed by bootstrap placeholder). Each placeholder's path and class must match a
+  typed credential-digest entry in that path's isolation receipt. Wrong-path, wrong-key,
+  wrong-class and swapped-class placeholders all fail. A standalone scan of every member and the
+  final ZIP finds zero generated credentials.
+* **D — complete closed-seed reconciliation.** `sessions[].familyId` must equal the snapshot
+  session family and the family of every refresh token of that session; `objects[].correlation`
+  must equal the canonical object's own `audit_correlation_id` AND have an authenticated audit
+  event; the correlation set is exact in BOTH directions, with a session's identity-op correlation
+  attributed to that session (so padding with an unused UUID fails and a session correlation
+  missing from the set fails); live role bindings are exact in both directions, so an ADDITIONAL
+  grant fails as well as a missing one. Every tenant/domain/principal/session/object/outbox/
+  decision/operation binding from C18.1.2 is preserved.
+* **E — suite receipts own their streams.** Each receipt's three files must be
+  `raw/<command_id>.{stdout,stderr,exit}.txt`, their lengths and digests must equal the
+  command-ledger record's, the command's cwd must be the repository root, and its environment must
+  be exactly the Path-A or Path-B instance the receipt declares. Swapping the Path-A and Path-B
+  integration streams fails even though both read `297/297`, and so does swapping the streams and
+  the `command_id` together.
+* **F — governed seeding and checked cleanup inside the authenticated graph.** The seed emits one
+  sanitized typed step receipt per source-owned plan step (step name, the era ports used, and the
+  identities produced — never a credential or a hash of one), and each identity must be one the
+  closed seed record accounts for. Cleanup now runs THROUGH the evidence recorder: four checked
+  `docker rm -fv` commands, then four post-removal `docker inspect` absence proofs, each a ledger
+  command with bound streams, plus a closed receipt requiring `removed` to equal exactly the four
+  source-derived container names, `failures=[]` and `kept=[]`. Packaging happens only after that
+  evidence exists. The failure and SIGTERM paths keep their existing checked teardown, and SIGKILL
+  is still stated honestly: no in-process cleanup can run under it.
+
+**Adjacent-field audit before delivery.** Seed-record and seed-step verification no longer sits
+behind a well-formed manifest — a malformed manifest could otherwise suppress every finding about
+a different archive member (the C18.1.1 anti-suppression rule, extended). The remaining
+manifest-shape gates guard only manifest-internal comparisons, each of which is already reported
+by the shape check itself.
+
+**Controls.** The exact 15e8239 verifier is frozen BYTE-VERBATIM
+(`apps/api/test/gate/fixtures/c18-legacy-15e8239`, per-file SHA-256 pinned). Because C18.1.3
+raises the evidence format, each differential applies the SAME mutation to each verifier's own
+genuine archive: the predecessor judges a faithful downgrade of this run to the shape its own
+producer emitted (proven non-vacuously to be accepted with zero problems), and C18.1.3 judges the
+archive as produced. Both describe the same run at the same source SHA. The 567a70f differential
+family judges the same downgrade for the same reason. In-gate controls total **107** (up from 79),
+including the thirteen mandated classes plus adjacent rejections: attacker runner inside a
+governed-looking workspace, a workspace holding migrations beyond its ceiling, an execution bound
+to another command, a deleted cleanup removal command, an inspection that SUCCEEDED, a cleanup
+recorded as failed, forged and reordered seeding steps, a seeding step reporting an unaccounted
+identity, and a session correlation the recorded set omits. Hermetic gate controls total **97**.
+
+**Measured this round (nothing reused).** Hermetic: tokens 3, contracts 203, API 1037 +
+hermetic-meta 9 (C18 hermetic gate controls 97). In the hosted gate: integration 297 on both
+paths; acceptance 58 on both instances; 107 mutation/differential controls. Local: integration
+297, acceptance 58, Playwright 10 on reset databases; build, typecheck, lint and boundaries green.
+Hosted seed: 2 tenants, 3 domains, 4 principals, 2 sessions, 2 canonical objects, 2 outbox events,
+12 decisions, 9 governed seeding steps; tables 26 → 28; cleanup removed all 4 containers with 4
+post-removal absence proofs, 0 failures. Migrations 0001–0021 byte-identical.
+
+**Still open.** C19, the freeze protocol and external independent review. Phase 0 is not approved;
+the source is not frozen. Contaminated d5061b8/8a23526-era hosted artifacts remain enumerated
+(§16 and the memory ledger) and undeleted — targeted deletion still requires explicit owner
+authorization; the superseded 567a70f and 15e8239 artifacts are NOT contaminated and need no
+deletion. This section is a docs-only child; verification runs against
+`83d158cca00d3a85ae78c3a4e9019c483426c5a7`.
