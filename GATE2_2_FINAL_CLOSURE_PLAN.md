@@ -1735,7 +1735,12 @@ no deletion. This section is a docs-only child; verification runs against
 `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`.
 
 
-## 18. C18.1.3 — EXACT SQL, EXACT SECRET CLASSES, COMPLETE SEED RECONCILIATION, OWNED SUITE STREAMS, AUTHENTICATED SEEDING AND CLEANUP (delivered)
+## 18. C18.1.3 — EXACT SQL, EXACT SECRET CLASSES, COMPLETE SEED RECONCILIATION, OWNED SUITE STREAMS, AUTHENTICATED SEEDING AND CLEANUP (delivered; SUPERSEDED by §19)
+
+**SUPERSEDED at C18.1.4 (§19)**: independent review returned HOLD. The 83d158c archive, leak fix,
+CI topology and delivery chain are authentic and leak-free, but its VERIFIER accepted nine
+reproduced false passes (credential class, migration bytes, catalog, role-binding tuple, seed
+step identities, absence). This section stays as honest history; verification targets §19.
 
 **Evidence-bearing source `83d158cca00d3a85ae78c3a4e9019c483426c5a7`.**
 Candidate CI: pull-request run `32351402879` (3/3 green). Source run `32351964148` **attempt 1**
@@ -1845,3 +1850,93 @@ the source is not frozen. Contaminated d5061b8/8a23526-era hosted artifacts rema
 authorization; the superseded 567a70f and 15e8239 artifacts are NOT contaminated and need no
 deletion. This section is a docs-only child; verification runs against
 `83d158cca00d3a85ae78c3a4e9019c483426c5a7`.
+
+
+## 19. C18.1.4 — CLASS-EXACT CREDENTIALS, MEASURED MIGRATION BYTES, SOURCE-BOUND CATALOG, COMPLETE BINDING TUPLES, DERIVED STEP IDENTITIES, AUTHENTICATED ABSENCE (delivered; awaiting independent review)
+
+**Evidence-bearing source `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`.**
+Candidate CI: pull-request run `32360529728` (3/3 green). Source run `32361402701` **attempt 1**
+(push/`main`, all three jobs green in ONE attempt with the blocking C18 gate — corrected producer
++ offline self-verification + the 127-test in-gate mutation/differential suite) · finalizer run
+`32361886321` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-0214f66bc43939328074145ee13a0c7aaf45eaf9674b995e36576e9363e46e77`
+(302,966 B wrapper) — exactly the archive `c18-db-paths-evidence-7be02b8e….zip` (446,319 B, outer
+sha256 `0214f66bc43939328074145ee13a0c7aaf45eaf9674b995e36576e9363e46e77`) + verified sidecar.
+Arithmetic: **275 commands (3 migration attestations, 4 authenticated absence probes); 825 raw
+stream files; 9 fixed top-level regular files; 834 regular files total; + the `raw/` directory
+entry = 835 ZIP entries.** Verified from a fresh foreign checkout offline and **online-hosted**
+(`standing=delivery-online`).
+
+**Scope discipline.** The review confirmed the archive, leak fix, CI topology and delivery chain
+as authentic; none of them was reopened. This pass changes the VERIFIER's authentication only.
+
+**Why 83d158c is superseded (honestly stated).** Its evidence is authentic and leak-free — NOT
+secret-contaminated — but its verifier accepted nine false passes, every one of which was first
+REPRODUCED as accepted against the byte-verbatim frozen 83d158c fixture:
+
+| # | Reproduced false pass | Now rejected because |
+|---|---|---|
+| 2 | `PGPASSWORD=<REDACTED:a:EYE_DB_APP_PASSWORD>` in PostgreSQL and readiness positions | every credential position requires the LITERAL placeholder for its own class |
+| 3 | a self-asserted `runner_sha256` over a foreign governed-looking workspace | the runner and every workspace migration are MEASURED by a command-bound `shasum` attestation |
+| 4a | a removed column, processed + raw + checksums rebound on both paths | the tracked catalog contract pins every table's ordinal columns |
+| 4b | a weakened FK referential action on both paths | the contract pins every FK's complete `pg_get_constraintdef` text |
+| 5 | a role binding re-scoped, re-tenanted and re-attributed | reconciliation uses the complete relationship tuple |
+| 6a | a governed seed step reporting NO identities | each step must equal its record-derived identity set |
+| 6b | a step claiming another step's identity | the derived sets are per-step and exact |
+| 6c | a duplicated identity inside a seed collection | uniqueness is enforced before any set comparison |
+| 7 | cleanup "absence" proved by a failed `docker inspect` (exit 125) | absence must be an exit-0, EMPTY `docker ps -aq --filter name=^…$` |
+
+**The correction.**
+* **Class-exact credential positions.** `exactPh` pins WHICH class belongs in each position:
+  `PGPASSWORD` and `POSTGRES_PASSWORD` must carry that path's `EYE_DB_PASSWORD` placeholder and
+  `--requirepass` its `EYE_REDIS_PASSWORD` placeholder. Path and class registration checks are
+  retained beneath it, so a wrong-path or unregistered class still fails first.
+* **Measured migration bytes.** Each execution names an attestation command
+  (`shasum -a 256 <governed runner> <every workspace migration>`) run against the same governed
+  workspace immediately before the migration. The verifier rebuilds that argv from the tracked
+  migration set, parses the digests out of the raw receipt, and requires them to equal the tracked
+  source bytes AND the receipt's own `runner_sha256`/`migrations[]` — which are therefore attested,
+  not asserted. A deleted attestation, an attestation bound to another command, and an attestation
+  that hashed foreign bytes all fail.
+* **Source-bound catalog contract.** `scripts/gate/lib/c18-catalog-contract.json` is a tracked
+  artifact carrying, for the 0012 and 0021 eras, every table's exact ordinal column list and
+  primary key and every FK's complete definition, validity and deferrability. The verifier judges
+  every snapshot against it; the PRODUCER fails on any drift, so the contract cannot rot away from
+  the migrations. Added, removed and reordered columns, changed primary keys, weakened or
+  retargeted FKs, dropped tables and extra FKs are all rejected.
+* **Complete role-binding tuples.** Reconciliation compares principal, role, scope, tenant and
+  domain attribution, and provenance (granted-by principal and scope) in both directions. The
+  bootstrap admin's self-originated platform grant is modelled explicitly.
+* **Derived seed-step identities.** `deriveSeedStepIdentities` computes each step's exact identity
+  set from the closed record (the publish step covers only the `c18.seed.published` event), and
+  uniqueness across every seed collection is enforced BEFORE any set comparison.
+* **Authenticated absence.** `docker ps -aq --filter name=^<container>$` must exit 0 with no
+  output. A nonzero exit — dead daemon, permission refusal, transport error, missing binary — is
+  reported as an UNKNOWN state rather than accepted as proof, and any returned id fails.
+
+**Controls.** The exact 83d158c verifier is frozen BYTE-VERBATIM
+(`apps/api/test/gate/fixtures/c18-legacy-83d158c`). Because C18.1.4 raises the evidence format
+again, each differential applies the SAME mutation to each verifier's own genuine archive: the
+predecessor judges a faithful downgrade of this run to the shape its own producer emitted
+(non-vacuously accepted with zero problems), C18.1.4 judges the archive as produced. In-gate
+controls total **127**, including the nine differentials and ten adjacent-field rejections
+(POSTGRES_PASSWORD and `--requirepass` class confusion, an attestation over a foreign migration,
+a digest disagreeing with its attestation, a deleted attestation, a probe returning an id, an
+altered primary key, an extra FK, a subset step identity set, a duplicated session). Hermetic gate
+controls total **120**.
+
+**Measured this round (nothing reused).** Hermetic: tokens 3, contracts 203, API 1060 +
+hermetic-meta 9. Local: integration 297, acceptance 58, Playwright 10 on reset databases; build,
+typecheck, lint and boundaries green. Migrations 0001–0021 byte-identical. Hosted gate: 127
+mutation/differential controls; integration 297 on both paths; acceptance 58 on both instances;
+cleanup removed all 4 containers with 4 authenticated absence proofs, 0 failures.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.4 review, and no
+closure is claimed here. C19, the freeze protocol and external independent review remain open;
+Phase 0 is not approved and the source is not frozen. Contaminated d5061b8/8a23526-era hosted
+artifacts remain enumerated (§16 and the memory ledger) and undeleted — targeted deletion still
+requires explicit owner authorization; the 567a70f, 15e8239 and 83d158c artifacts are NOT
+contaminated. This section is a docs-only child; verification runs against
+`7be02b8ed64bffbe22afc4b8374c21406cf73fa5`.
