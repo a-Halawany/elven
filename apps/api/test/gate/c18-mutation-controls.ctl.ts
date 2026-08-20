@@ -38,6 +38,8 @@ import { verifyEvidence as legacy7be } from './fixtures/c18-legacy-7be02b8/c18-d
 import { verifyEvidence as legacy8362 } from './fixtures/c18-legacy-8362cba/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyDcc } from './fixtures/c18-legacy-dccfcf2/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacyBfc } from './fixtures/c18-legacy-bfc8695/c18-db-paths.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -46,9 +48,73 @@ const ARCHIVE = process.env['C18_ARCHIVE'] ?? '';
 /** A fixed forged identifier: mutations must be deterministic so a failure is reproducible. */
 const FORGED_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const SNAP_FILES: ReadonlyArray<[string, string]> = [
-  ['path-a-before.json', 'a-a-before'], ['path-a-after.json', 'a-a-after'],
-  ['path-a-final.json', 'a-a-final'], ['path-b-virgin.json', 'b-b-virgin'],
+  ['path-a-preseed.json', 'a-a-preseed'], ['path-a-before.json', 'a-a-before'],
+  ['path-a-after.json', 'a-a-after'], ['path-a-final.json', 'a-a-final'],
+  ['path-b-virgin.json', 'b-b-virgin'],
 ];
+/** The SEEDED path-A snapshots: everything the governed seed wrote is visible in these. */
+/** The snapshots a given archive actually carries (predecessor formats omit the pre-seed one). */
+const presentSnaps = (d: string): ReadonlyArray<[string, string]> =>
+  SNAP_FILES.filter(([f]) => existsSync(join(d, f)));
+const SEEDED_SNAPS: ReadonlyArray<[string, string]> = [
+  ['path-a-before.json', 'a-a-before'], ['path-a-after.json', 'a-a-after'],
+  ['path-a-final.json', 'a-a-final'],
+];
+/** Rewrite a table across every SEEDED path-A snapshot AND its command-bound raw receipt. */
+function everywhereA(d: string, table: string, apply: (r: any) => void) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    editJson(d, snapFile, (doc) => {
+      for (const r of doc.tables[table].rows) apply(r);
+      doc.tables[table].row_count = doc.tables[table].rows.length;
+    });
+    const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(after.tables[table].rows)));
+  }
+}
+/** Append one row to a seeded table in every seeded snapshot, consistently. */
+function appendRow(d: string, table: string, make: (rows: any[]) => any) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    editJson(d, snapFile, (doc) => {
+      const t = doc.tables[table];
+      t.rows = [...t.rows, make(t.rows)];
+      t.row_count = t.rows.length;
+    });
+    const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(after.tables[table].rows)));
+  }
+}
+/** Remove the first matching row from a seeded table in every seeded snapshot. */
+function dropRow(d: string, table: string, match: (r: any) => boolean) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    editJson(d, snapFile, (doc) => {
+      const t = doc.tables[table];
+      const i = t.rows.findIndex(match);
+      if (i >= 0) t.rows.splice(i, 1);
+      t.row_count = t.rows.length;
+    });
+    const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(after.tables[table].rows)));
+  }
+}
+/**
+ * C18.1.8 adds an authenticated pre-seed snapshot, its command-bound receipts and a
+ * machine-readable coverage report. This produces exactly what the bfc8695 producer emitted.
+ */
+function downgradeToBfc8695(dir: string) {
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (let i = cmds.length - 1; i >= 0; i -= 1) {
+      if (!String(cmds[i].label).startsWith('a-a-preseed-')) continue;
+      for (const st of ['stdout', 'stderr', 'exit']) rmSync(join(dir, 'raw', `${cmds[i].id}.${st}.txt`), { force: true });
+      cmds.splice(i, 1);
+    }
+  });
+  rmSync(join(dir, 'path-a-preseed.json'), { force: true });
+  rmSync(join(dir, 'seed-coverage.json'), { force: true });
+  renumberCommands(dir);
+}
 
 type Mutator = (dir: string) => void;
 
@@ -839,6 +905,7 @@ function downgradeTo15e8239(dir: string) {
  * This produces exactly what the 8362cba producer emitted for the same run.
  */
 function downgradeTo8362cba(dir: string) {
+  downgradeToBfc8695(dir);
   const manifest = JSON.parse(readFileSync(join(dir, 'c18-manifest.json'), 'utf8'));
   const byLabel = new Map<string, any>((manifest.migration_executions ?? []).map((e: any) => [e.label, e]));
   editJson(dir, 'commands.json', (cmds: any[]) => {
@@ -1203,7 +1270,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     });
   }, /attestation line 1 hashed|EXECUTED runner whose measured bytes/],
   ['4a: a REMOVED column, processed + raw + checksums rebound', (d) => {
-    for (const [snapFile, pfx] of SNAP_FILES) {
+    for (const [snapFile, pfx] of presentSnaps(d)) {
       const doc = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
       if (!doc.tables['identity.principals'].columns.includes('revocation_epoch')) continue;
       editJson(d, snapFile, (dd) => {
@@ -1227,7 +1294,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /columns violate the source-owned catalog contract \(missing revocation_epoch\)/],
   ['4b: a WEAKENED foreign-key referential action on both paths', (d) => {
     const TARGET = 'identity.sessions.sessions_principal_id_fkey';
-    for (const [snapFile, pfx] of SNAP_FILES) {
+    for (const [snapFile, pfx] of presentSnaps(d)) {
       const doc = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
       const target = doc.fks.find((f: any) => f.constraint === TARGET);
       if (target === undefined) continue;
@@ -1250,7 +1317,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   ['5: a role binding re-scoped and re-attributed', (d) => {
     const seed = JSON.parse(readFileSync(join(d, 'path-a-seed-record.json'), 'utf8'));
     const victim = seed.principals.find((p: any) => p.roleCode === 'tenant_admin');
-    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+    for (const [snapFile, pfx] of SEEDED_SNAPS) {
       editJson(d, snapFile, (dd) => {
         for (const r of dd.tables['identity.role_bindings'].rows) {
           if (r.principal_id === victim.principalId && r.role_code === 'tenant_admin') {
@@ -1435,7 +1502,7 @@ const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /0022_attacker_backdoor\.sql/],
   ['2: an ADDITIONAL seeded tenant', (d) => {
     const extraTenant = 'ffffffff-1111-4fff-8fff-ffffffffff01';
-    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+    for (const [snapFile, pfx] of SEEDED_SNAPS) {
       editJson(d, snapFile, (doc) => {
         const t = doc.tables['tenancy.tenants'];
         t.rows = [...t.rows, { ...t.rows[0], id: extraTenant, name: 'c18-tenant-attacker' }];
@@ -1452,7 +1519,7 @@ const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /tenancy\.tenants has 3 row\(s\); the deterministic governed seed produces EXACTLY 2/],
   ['3a: a DUPLICATE active role-binding tuple', (d) => {
     const forgedId = 'ffffffff-2222-4fff-8fff-ffffffffff02';
-    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+    for (const [snapFile, pfx] of SEEDED_SNAPS) {
       editJson(d, snapFile, (doc) => {
         const t = doc.tables['identity.role_bindings'];
         const victim = t.rows.find((r: any) => r.role_code === 'tenant_admin');
@@ -1465,7 +1532,7 @@ const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /carries 2 copies of live role binding .*DUPLICATE active relationship tuple|identity\.role_bindings has 5 row\(s\)/],
   ['3b: an UNEXPECTED revoked role binding', (d) => {
     const forgedId = 'ffffffff-3333-4fff-8fff-ffffffffff03';
-    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+    for (const [snapFile, pfx] of SEEDED_SNAPS) {
       editJson(d, snapFile, (doc) => {
         const t = doc.tables['identity.role_bindings'];
         const victim = t.rows.find((r: any) => r.role_code === 'tenant_admin');
@@ -1552,7 +1619,7 @@ describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
       });
     }, /applied\[\] .* is not the governed sequence/],
     ['a missing seeded decision (exact cardinality)', (d: string) => {
-      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      for (const [snapFile, pfx] of SEEDED_SNAPS) {
         editJson(d, snapFile, (doc) => {
           const t = doc.tables['policy.policy_decisions'];
           t.rows = t.rows.slice(0, -1);
@@ -1563,7 +1630,7 @@ describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
       }
     }, /policy\.policy_decisions has \d+ row\(s\); the deterministic governed seed produces EXACTLY 12|LOST across the upgrade/],
     ['a second published outbox effect', (d: string) => {
-      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      for (const [snapFile, pfx] of SEEDED_SNAPS) {
         editJson(d, snapFile, (doc) => {
           const t = doc.tables['objects.object_outbox'];
           const pending = t.rows.find((r: any) => r.status === 'pending');
@@ -1593,7 +1660,7 @@ describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
 
 /** Rewrite every path-A snapshot table AND its raw receipt consistently. */
 function renameEverywhere(d: string, table: string, match: (r: any) => boolean, apply: (r: any) => void) {
-  for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
     editJson(d, snapFile, (doc) => { for (const r of doc.tables[table].rows) if (match(r)) apply(r); });
     const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
     setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
@@ -1800,15 +1867,6 @@ describe('C18.1.6 — inventory and seed-spec adjacent rejections on the genuine
   });
 });
 
-/** Rewrite a table across every path-A snapshot AND its command-bound raw receipts. */
-function everywhereA(d: string, table: string, apply: (r: any) => void) {
-  for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
-    editJson(d, snapFile, (doc) => { for (const r of doc.tables[table].rows) apply(r); });
-    const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
-    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
-      Buffer.from(JSON.stringify(after.tables[table].rows)));
-  }
-}
 /** The header exactly as ADMITTED (string version, ISO-Z times), so a digest recomputes. */
 const admittedHeader = (row: any) => {
   const { payload, content_digest, ...rest } = row;
@@ -1886,13 +1944,16 @@ describe('C18.1.7 — DIFFERENTIAL: the frozen dccfcf26 verifier ACCEPTED what C
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
   it('NON-VACUITY: the frozen dccfcf26 verifier accepts the genuine archive', async () => {
-    const r = await legacyDcc({ zipPath: ARCHIVE, root: REPO });
-    expect(r.problems).toEqual([]);
-    expect(r.ok).toBe(true);
+    const { dir, zip } = mutateArchive(downgradeToBfc8695);
+    try {
+      const r = await legacyDcc({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it.each(C1817_MUTATIONS)('%s — dccfcf26 ACCEPTS it; C18.1.7 REJECTS it', async (_label, mutate, pattern) => {
-    const legacyCase = mutateArchive(mutate);
+    const legacyCase = mutateArchive((d) => { mutate(d); downgradeToBfc8695(d); });
     try {
       const old = await legacyDcc({ zipPath: legacyCase.zip, root: REPO });
       expect(old.ok, `the frozen dccfcf26 verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
@@ -1961,7 +2022,7 @@ describe('C18.1.7 — adjacent single-defect rejections on the genuine archive',
     }, /is pending but carries a published_at/],
     ['an unclaimed extra policy decision', (d: string) => {
       everywhereA(d, 'policy.policy_decisions', () => { /* rows appended below */ });
-      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      for (const [snapFile, pfx] of SEEDED_SNAPS) {
         editJson(d, snapFile, (doc) => {
           const t = doc.tables['policy.policy_decisions'];
           t.rows = [...t.rows, { ...t.rows[0], id: 'ffffffff-3333-4fff-8fff-ffffffffff03' }];
@@ -1977,6 +2038,163 @@ describe('C18.1.7 — adjacent single-defect rejections on the genuine archive',
         r.payload = { subject: 'c18-claim-1', predicate: 'asserts', object_value: 'v-c18-claim-1' };
       });
     }, /2 canonical object row\(s\) match the source-owned slot 'claim-1'/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+/** Append one production-valid audit event to every path-A snapshot, fully rebound. */
+function appendAuditEvent(d: string) {
+  const corr = '99999999-1111-4999-8999-999999999901';
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    const doc = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    const view = doc.audit.events.filter((e: any) => e.partition_id === 'platform');
+    const last = view[view.length - 1];
+    const seq = Number(last.audit_seq) + 1;
+    const body = {
+      action: 'admin.note', actor: 'principal:c18-observer', causation_id: null,
+      clock_quality: 'trusted', context_mode: 'bootstrap', correlation_id: corr,
+      delegation_id: null, domain_id: null, event_type: 'admin.note', metadata: {},
+      occurred_at: '2026-08-24T00:00:00.000Z', outcome: 'success', policy_decision_id: null,
+      policy_version: null, purpose_id: 'observation', request_digest: null, result_code: 'OK',
+      scope: 'PLATFORM', session_id: null, target_id: null, target_type: 'SES',
+      target_version: null, tenant_id: null, trace_id: null,
+    };
+    const jcs = jcsCanonicalize(body as never);
+    const rowHash = auditRowHash({ partitionId: 'platform', auditSeq: seq, previousHash: last.row_hash, event: body as never });
+    const order = (a: any, b: any) => (a.partition_id === b.partition_id
+      ? Number(a.audit_seq) - Number(b.audit_seq) : (a.partition_id < b.partition_id ? -1 : 1));
+    doc.audit.events = [...doc.audit.events, {
+      partition_id: 'platform', audit_seq: seq, event_jcs: jcs, previous_hash: last.row_hash,
+      row_hash: rowHash, hash_alg_version: 'eye-audit-v1', correlation_id: corr, policy_decision_id: null,
+    }].sort(order);
+    const head = doc.audit.heads.find((h: any) => h.partition_id === 'platform');
+    head.next_seq = seq + 1; head.head_hash = rowHash;
+    const tbl = doc.tables['audit.audit_events'];
+    const model = tbl.rows.find((r: any) => r.partition_id === 'platform');
+    tbl.rows = [...tbl.rows, {
+      ...model, partition_id: 'platform', audit_seq: seq, event_jcs: jcs, event: body,
+      previous_hash: last.row_hash, row_hash: rowHash, hash_alg_version: 'eye-audit-v1',
+      correlation_id: corr, scope: 'PLATFORM', tenant_id: null, domain_id: null,
+      event_type: 'admin.note', outcome: 'success', actor: 'principal:c18-observer',
+      action: 'admin.note', result_code: 'OK', occurred_at: '2026-08-24T00:00:00.000Z',
+      created_at: '2026-08-24T00:00:00+00:00',
+    }].sort(order);
+    tbl.row_count = tbl.rows.length;
+    for (const h of doc.tables['audit.audit_chain_heads'].rows) {
+      if (h.partition_id === 'platform') { h.next_seq = seq + 1; h.head_hash = rowHash; }
+    }
+    writeFileSync(join(d, snapFile), `${JSON.stringify(doc, null, 2)}\n`);
+    const now = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-audit-events`, 'stdout', Buffer.from(JSON.stringify(now.audit.events)));
+    setStream(d, `${pfx}-audit-heads`, 'stdout', Buffer.from(JSON.stringify(now.audit.heads)));
+    setStream(d, `${pfx}-rows-audit_audit_events`, 'stdout', Buffer.from(JSON.stringify(now.tables['audit.audit_events'].rows)));
+    setStream(d, `${pfx}-rows-audit_audit_chain_heads`, 'stdout', Buffer.from(JSON.stringify(now.tables['audit.audit_chain_heads'].rows)));
+  }
+  editJson(d, 'path-a-seed-record.json', (doc) => { doc.correlations.push(corr); });
+}
+
+/** The five proven cases, expressible in BOTH the C18.1.8 and bfc8695 evidence shapes. */
+const C1818_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['1: a seeded tenant suspended', (d) => {
+    everywhereA(d, 'tenancy.tenants', (r) => { if (r.name === 'c18-tenant-beta') r.status = 'suspended'; });
+  }, /tenant slot 'tenant-beta' status is "suspended"/],
+  ['2: the bootstrap principal disabled', (d) => {
+    everywhereA(d, 'identity.principals', (r) => { if (r.login_name === 'platform-admin') r.status = 'disabled'; });
+  }, /principal slot 'platform-admin' status is "disabled"/],
+  ['3: a seeded session revoked', (d) => {
+    const before = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+    const victim = before.tables['identity.sessions'].rows[0];
+    everywhereA(d, 'identity.sessions', (r) => { if (r.id === victim.id) r.status = 'revoked'; });
+  }, /session slot '.*' status is "revoked"/],
+  ['4: a seeded domain retention profile changed', (d) => {
+    everywhereA(d, 'tenancy.domains', (r) => { if (String(r.name).endsWith('-dom0')) r.retention_profile = 'attacker-retention'; });
+  }, /domain slot '.*' retention_profile is "attacker-retention"/],
+  ['5: one additional production-valid audit event', appendAuditEvent,
+    /belongs to no planned seed operation or standalone event|the source-owned plan writes exactly/],
+];
+
+describe('C18.1.8 — DIFFERENTIAL: the frozen bfc8695 verifier ACCEPTED what C18.1.8 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen bfc8695 verifier accepts the genuine archive in ITS format', async () => {
+    const { dir, zip } = mutateArchive(downgradeToBfc8695);
+    try {
+      const r = await legacyBfc({ zipPath: zip, root: REPO });
+      expect(r.problems, 'the downgrade must be exactly what the bfc8695 producer emitted').toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C1818_MUTATIONS)('%s — bfc8695 ACCEPTS it; C18.1.8 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { mutate(d); downgradeToBfc8695(d); });
+    try {
+      const old = await legacyBfc({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen bfc8695 verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.8 — adjacent single-defect rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a tenant residency profile change', (d: string) => {
+      everywhereA(d, 'tenancy.tenants', (r) => { r.residency_profile = 'attacker-region'; });
+    }, /tenant slot '.*' residency_profile is "attacker-region"/],
+    ['a domain status change', (d: string) => {
+      everywhereA(d, 'tenancy.domains', (r) => { r.status = 'suspended'; });
+    }, /domain slot '.*' status is "suspended"/],
+    ['a principal revocation epoch change', (d: string) => {
+      everywhereA(d, 'identity.principals', (r) => { if (r.login_name === 'c18-alpha-admin') r.revocation_epoch = 7; });
+    }, /principal slot 'alpha-admin' revocation_epoch is 7/],
+    ['a session carrying a revocation time', (d: string) => {
+      everywhereA(d, 'identity.sessions', (r) => { r.revoked_at = '2026-08-24T00:00:00+00:00'; });
+    }, /session slot '.*' revoked_at is/],
+    ['a session bound below its owner epoch', (d: string) => {
+      everywhereA(d, 'identity.sessions', (r) => { r.bound_epoch = 0; });
+    }, /bound_epoch 0 predates its owner's revocation epoch/],
+    ['an EXTRA refresh-token row', (d: string) => {
+      everywhereA(d, 'identity.refresh_tokens', () => { /* appended below */ });
+      appendRow(d, 'identity.refresh_tokens', (rows) => ({ ...rows[0], id: 'ffffffff-0001-4fff-8fff-ffffffffff01' }));
+    }, /refresh token\(s\); the seed issues exactly 2|has 2 refresh token\(s\)/],
+    ['a MISSING refresh-token row', (d: string) => {
+      dropRow(d, 'identity.refresh_tokens', (r) => r.generation === 1);
+    }, /refresh token\(s\); the seed issues exactly 2|has 0 refresh token\(s\)/],
+    ['an invalidated refresh token', (d: string) => {
+      everywhereA(d, 'identity.refresh_tokens', (r) => { r.invalidated_at = '2026-08-24T00:00:00+00:00'; });
+    }, /refresh token .* invalidated_at is/],
+    ['a replaced refresh token', (d: string) => {
+      everywhereA(d, 'identity.refresh_tokens', (r) => { r.replaced_by = 'ffffffff-0002-4fff-8fff-ffffffffff02'; });
+    }, /refresh token .* replaced_by is/],
+    ['a credential with the wrong status', (d: string) => {
+      everywhereA(d, 'identity.credentials', (r) => { if (r.status === 'active') r.status = 'revoked'; });
+    }, /credential\(s\); the seed writes exactly one active credential|holds \d+ credential\(s\)/],
+    ['a credential owned by no seeded principal', (d: string) => {
+      everywhereA(d, 'identity.credentials', (r) => { if (r.status === 'rotated') r.principal_id = 'ffffffff-0003-4fff-8fff-ffffffffff03'; });
+    }, /belongs to no seeded principal slot|credential\(s\) \(0 rotated/],
+    ['a bootstrap claim naming another principal', (d: string) => {
+      everywhereA(d, 'identity.bootstrap_claim', (r) => { r.principal_id = 'ffffffff-0004-4fff-8fff-ffffffffff04'; });
+    }, /bootstrap claim names a principal other than the platform-admin slot/],
+    ['an EXTRA tenancy lifecycle event', (d: string) => {
+      appendRow(d, 'tenancy.lifecycle_events', (rows) => ({ ...rows[0], id: 'ffffffff-0005-4fff-8fff-ffffffffff05' }));
+    }, /lifecycle event\(s\) match the planned|matches no planned entity/],
+    ['a MISSING tenancy lifecycle event', (d: string) => {
+      dropRow(d, 'tenancy.lifecycle_events', (r) => r.event === 'domain.created');
+    }, /0 lifecycle event\(s\) match the planned 'domain.created'/],
+    ['an EXTRA ctx.issued capability row', (d: string) => {
+      appendRow(d, 'ctx.issued', (rows) => ({ ...rows[0], nonce: 'ffffffff-0006-4fff-8fff-ffffffffff06' }));
+    }, /capability row\(s\) for .*the plan mints exactly/],
+    ['a MISSING ctx.issued capability row', (d: string) => {
+      dropRow(d, 'ctx.issued', (r) => r.op_class === 'bootstrap');
+    }, /0 capability row\(s\) for "bootstrap\|identity.bootstrap.platform_admin"/],
+    ['a misattributed capability class', (d: string) => {
+      everywhereA(d, 'ctx.issued', (r) => { if (r.op_class === 'outbox') r.op_class = 'C2'; });
+    }, /capability row\(s\) for "outbox\|objects.outbox.publish"|which the capability plan does not mint/],
+    ['a consumed capability the era ports never stamp', (d: string) => {
+      everywhereA(d, 'ctx.issued', (r) => { r.consumed_at = '2026-08-24T00:00:00+00:00'; });
+    }, /records a consumption the era ports never stamp/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
     await expectReject(mutate, pattern);
   });

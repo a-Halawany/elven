@@ -21,8 +21,8 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  C18_SEED_SPEC, SEED_CARDINALITIES, seedInputDigestSource, seedObjectHeader, seedObjectPayload,
-  seedOutboxPayload,
+  C18_SEED_SPEC_FULL as C18_SEED_SPEC, SEED_CARDINALITIES, seedInputDigestSource, seedObjectHeader,
+  seedObjectPayload, seedOutboxPayload,
 } from './c18-seed-spec.mjs';
 import { encodeInventory } from './c18-inventory.mjs';
 import { readFileSync } from 'node:fs';
@@ -1433,6 +1433,174 @@ export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC, headerD
       problems.push(`seed spec: principal slot '${p.slot}' holds role(s) ${JSON.stringify(held)}; the specification grants exactly ${JSON.stringify([p.role])}`);
     }
   }
+  // ── BASE POSTURE (C18.1.8): the deterministic non-name state of every seeded row.
+  // bfc8695 bound names and placement but never status, profiles or lifecycle, so a suspended
+  // tenant, a disabled bootstrap principal or a changed retention profile reconciled. ──────
+  const posture = spec.basePosture;
+  for (const t of spec.tenants) {
+    const id = slots.tenant.get(t.slot);
+    const row = rows('tenancy.tenants').find((r) => r.id === id);
+    if (row === undefined) continue;
+    for (const [field, want] of Object.entries(posture.tenant)) {
+      if (row[field] !== want) {
+        problems.push(`seed spec: tenant slot '${t.slot}' ${field} is ${JSON.stringify(row[field])}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (row.activated_at === null || row.activated_at === undefined) {
+      problems.push(`seed spec: tenant slot '${t.slot}' was never activated`);
+    } else if (!(new Date(row.created_at) <= new Date(row.activated_at))) {
+      problems.push(`seed spec: tenant slot '${t.slot}' activation precedes its creation`);
+    }
+  }
+  for (const d of spec.domains) {
+    const id = slots.domain.get(d.slot);
+    const row = rows('tenancy.domains').find((r) => r.id === id);
+    if (row === undefined) continue;
+    for (const [field, want] of Object.entries(posture.domain)) {
+      if (row[field] !== want) {
+        problems.push(`seed spec: domain slot '${d.slot}' ${field} is ${JSON.stringify(row[field])}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (row.activated_at === null || row.activated_at === undefined) {
+      problems.push(`seed spec: domain slot '${d.slot}' was never activated`);
+    } else if (!(new Date(row.created_at) <= new Date(row.activated_at))) {
+      problems.push(`seed spec: domain slot '${d.slot}' activation precedes its creation`);
+    }
+  }
+  for (const p of [spec.admin, ...spec.principals]) {
+    const id = slots.principal.get(p.slot);
+    const row = rows('identity.principals').find((r) => r.id === id);
+    if (row === undefined) continue;
+    for (const [field, want] of Object.entries(posture.principal)) {
+      if (row[field] !== want) {
+        problems.push(`seed spec: principal slot '${p.slot}' ${field} is ${JSON.stringify(row[field])}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    // The bootstrap admin's epoch is bumped by the forced rotation; governed principals are
+    // created after it and are never revoked.
+    const wantEpoch = p.slot === spec.admin.slot
+      ? posture.principalRevocationEpoch.admin : posture.principalRevocationEpoch.governed;
+    if (row.revocation_epoch !== wantEpoch) {
+      problems.push(`seed spec: principal slot '${p.slot}' revocation_epoch is ${JSON.stringify(row.revocation_epoch)}; the specification requires ${JSON.stringify(wantEpoch)}`);
+    }
+  }
+  // ── BOOTSTRAP CLAIM: an exact singleton naming the platform admin. ──────────────────
+  const claimRows = rows('identity.bootstrap_claim');
+  if (claimRows.length !== 1) {
+    problems.push(`seed spec: ${claimRows.length} bootstrap claim row(s); the audited single-use bootstrap writes exactly one`);
+  } else {
+    const claim = claimRows[0];
+    if (claim.id !== posture.bootstrapClaim.id) {
+      problems.push(`seed spec: the bootstrap claim identity is ${JSON.stringify(claim.id)}; the single-row contract requires ${JSON.stringify(posture.bootstrapClaim.id)}`);
+    }
+    if (claim.principal_id !== (slots.principal.get(spec.admin.slot) ?? null)) {
+      problems.push('seed spec: the bootstrap claim names a principal other than the platform-admin slot');
+    }
+    if (claim.claimed_at === null || claim.claimed_at === undefined) {
+      problems.push('seed spec: the bootstrap claim carries no claim time');
+    }
+  }
+  // ── CREDENTIALS: one active per principal, plus exactly one rotated predecessor. ────
+  const credRows = rows('identity.credentials');
+  const adminId = slots.principal.get(spec.admin.slot) ?? null;
+  const wantCreds = spec.principals.length + 1 + 1; // one active each, plus the rotated bootstrap
+  if (credRows.length !== wantCreds) {
+    problems.push(`seed spec: ${credRows.length} credential row(s); the governed seed writes exactly ${wantCreds}`);
+  }
+  for (const c of credRows) {
+    if (c.type !== posture.credential.type) {
+      problems.push(`seed spec: credential ${c.id} type is ${JSON.stringify(c.type)}; the seed writes only ${JSON.stringify(posture.credential.type)}`);
+    }
+    if (typeof c.secret_hash !== 'string' || !/^\$argon2id\$/.test(c.secret_hash)) {
+      problems.push(`seed spec: credential ${c.id} does not carry an argon2id hash`);
+    }
+    const owner = [adminId, ...spec.principals.map((p) => slots.principal.get(p.slot))].includes(c.principal_id);
+    if (!owner) problems.push(`seed spec: credential ${c.id} belongs to no seeded principal slot`);
+  }
+  for (const p of spec.principals) {
+    const id = slots.principal.get(p.slot);
+    const held = credRows.filter((c) => c.principal_id === id);
+    if (held.length !== 1 || held[0]?.status !== posture.credential.activeStatus) {
+      problems.push(`seed spec: principal slot '${p.slot}' holds ${held.length} credential(s); the seed writes exactly one active credential`);
+    }
+    if (held[0] !== undefined && ((held[0].rotated_at ?? null) !== null || (held[0].expires_at ?? null) !== null)) {
+      problems.push(`seed spec: principal slot '${p.slot}' credential carries a rotation or expiry the seed never performs`);
+    }
+  }
+  const adminCreds = credRows.filter((c) => c.principal_id === adminId);
+  const rotated = adminCreds.filter((c) => c.status === posture.credential.rotatedStatus);
+  const active = adminCreds.filter((c) => c.status === posture.credential.activeStatus);
+  if (adminCreds.length !== 2 || rotated.length !== 1 || active.length !== 1) {
+    problems.push(`seed spec: the platform admin holds ${adminCreds.length} credential(s) (${rotated.length} rotated, ${active.length} active); the forced rotation leaves exactly one of each`);
+  }
+  if (rotated[0] !== undefined) {
+    if ((rotated[0].rotated_at ?? null) === null) problems.push('seed spec: the rotated bootstrap credential carries no rotation time');
+    if ((rotated[0].expires_at ?? null) === null) problems.push('seed spec: the rotated bootstrap credential carries no expiry');
+  }
+  // ── TENANCY LIFECYCLE EVENTS: the exact planned set. ────────────────────────────────
+  const lifeRows = rows('tenancy.lifecycle_events');
+  const claimedLife = new Set();
+  for (const plan of spec.lifecycleEvents) {
+    const wantTenant = slots.tenant.get(plan.tenantSlot) ?? null;
+    const wantDomain = plan.domainSlot === null ? null : (slots.domain.get(plan.domainSlot) ?? null);
+    const matches = lifeRows.filter((r) => r.event === plan.event && r.tenant_id === wantTenant
+      && (r.domain_id ?? null) === wantDomain);
+    if (matches.length !== 1) {
+      problems.push(`seed spec: ${matches.length} lifecycle event(s) match the planned '${plan.event}' for slot '${plan.entitySlot}'; exactly one is required`);
+      continue;
+    }
+    const row = matches[0];
+    claimedLife.add(row.id);
+    if (row.scope !== plan.scope) {
+      problems.push(`seed spec: lifecycle event for '${plan.entitySlot}' scope is ${JSON.stringify(row.scope)}; the plan requires ${JSON.stringify(plan.scope)}`);
+    }
+    if (row.actor !== posture.lifecycleActor) {
+      problems.push(`seed spec: lifecycle event for '${plan.entitySlot}' actor is ${JSON.stringify(row.actor)}; the specification requires ${JSON.stringify(posture.lifecycleActor)}`);
+    }
+    if (stableJson(row.details) !== stableJson(plan.details)) {
+      problems.push(`seed spec: lifecycle event for '${plan.entitySlot}' details ${JSON.stringify(row.details)} are not the planned ${JSON.stringify(plan.details)}`);
+    }
+  }
+  for (const r of lifeRows) {
+    if (!claimedLife.has(r.id)) problems.push(`seed spec: tenancy lifecycle event ${r.id} (${r.event}) matches no planned entity`);
+  }
+  // ── CAPABILITIES: the exact minted multiset. ───────────────────────────────────────
+  const issuedRows = rows('ctx.issued');
+  const issuedTally = new Map();
+  for (const r of issuedRows) {
+    const key = `${r.op_class}|${r.bound_action}`;
+    issuedTally.set(key, (issuedTally.get(key) ?? 0) + 1);
+    if ((r.consumed_at ?? null) !== null) {
+      problems.push(`seed spec: capability ${r.nonce} records a consumption the era ports never stamp`);
+    }
+    if (r.issued_at === undefined || r.expires_at === undefined || !(new Date(r.issued_at) < new Date(r.expires_at))) {
+      problems.push(`seed spec: capability ${r.nonce} has no valid issue/expiry ordering`);
+    }
+  }
+  for (const cap of spec.capabilities) {
+    const key = `${cap.op_class}|${cap.bound_action}`;
+    const have = issuedTally.get(key) ?? 0;
+    if (have !== cap.count) {
+      problems.push(`seed spec: ${have} capability row(s) for ${JSON.stringify(key)}; the plan mints exactly ${cap.count}`);
+    }
+    issuedTally.delete(key);
+  }
+  for (const [key, n] of issuedTally) {
+    problems.push(`seed spec: ${n} capability row(s) for ${JSON.stringify(key)}, which the capability plan does not mint`);
+  }
+  // ── REFRESH TOKENS: one per session, generation 1, hash- and family-linked. ─────────
+  const tokenRows = rows('identity.refresh_tokens');
+  if (tokenRows.length !== spec.sessions.length) {
+    problems.push(`seed spec: ${tokenRows.length} refresh token(s); the seed issues exactly ${spec.sessions.length}`);
+  }
+  for (const [field, want] of Object.entries(posture.refreshToken)) {
+    for (const t of tokenRows) {
+      if ((t[field] ?? null) !== want) {
+        problems.push(`seed spec: refresh token ${t.id} ${field} is ${JSON.stringify(t[field])}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+  }
+
   // ── SESSIONS: ownership by principal slot. ──────────────────────────────────────────
   const sessionRows = rows('identity.sessions');
   const claimedSessions = new Set();
@@ -1446,8 +1614,36 @@ export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC, headerD
     const row = candidates[0];
     claimedSessions.add(row.id);
     slots.session.set(sess.slot, row.id);
-    if (row.assurance !== sess.assurance) {
-      problems.push(`seed spec: session slot '${sess.slot}' assurance is ${JSON.stringify(row.assurance)}; the specification requires ${JSON.stringify(sess.assurance)}`);
+    for (const [field, want] of Object.entries(spec.basePosture.session)) {
+      if ((row[field] ?? null) !== want) {
+        problems.push(`seed spec: session slot '${sess.slot}' ${field} is ${JSON.stringify(row[field])}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (!(new Date(row.issued_at) < new Date(row.expires_at))) {
+      problems.push(`seed spec: session slot '${sess.slot}' does not expire after it was issued`);
+    }
+    for (const f of ['refresh_token_hash', 'context_key_hash']) {
+      if (typeof row[f] !== 'string' || !/^[0-9a-f]{64}$/.test(row[f])) {
+        problems.push(`seed spec: session slot '${sess.slot}' ${f} is not a sha-256 digest`);
+      }
+    }
+    // The session's bound epoch must track its OWNER's revocation epoch.
+    const ownerRow = rows('identity.principals').find((r) => r.id === owner);
+    if (ownerRow !== undefined && Number.isInteger(row.bound_epoch) && Number.isInteger(ownerRow.revocation_epoch)
+      && row.bound_epoch < ownerRow.revocation_epoch) {
+      problems.push(`seed spec: session slot '${sess.slot}' bound_epoch ${row.bound_epoch} predates its owner's revocation epoch ${ownerRow.revocation_epoch}`);
+    }
+    // Its refresh token is the one bound to this session and family, by hash.
+    const tokens = rows('identity.refresh_tokens').filter((t) => t.session_id === row.id);
+    if (tokens.length !== 1) {
+      problems.push(`seed spec: session slot '${sess.slot}' has ${tokens.length} refresh token(s); exactly one is required`);
+    } else {
+      if (tokens[0].family_id !== row.family_id) {
+        problems.push(`seed spec: session slot '${sess.slot}' refresh token belongs to a different family`);
+      }
+      if (tokens[0].token_hash !== row.refresh_token_hash) {
+        problems.push(`seed spec: session slot '${sess.slot}' refresh token hash does not match the session's`);
+      }
     }
   }
   for (const r of sessionRows) {
@@ -1674,6 +1870,81 @@ export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC, headerD
       problems.push(`seed spec: policy decision ${d.id} (${d.action}) matches no operation in the source-owned plan`);
     }
   }
+
+  // ── THE STANDALONE AUDIT EVENTS: the audited bootstrap and the forced rotation. ─────
+  for (const plan of spec.standaloneAuditEvents ?? []) {
+    const actor = slots.principal.get(plan.actorSlot) ?? null;
+    const matches = auditEvents.filter((e) => {
+      let body = null;
+      try { body = JSON.parse(e.event_jcs); } catch { return false; }
+      return body.event_type === plan.event_type && body.action === plan.action;
+    });
+    if (matches.length !== 1) {
+      problems.push(`seed spec: ${matches.length} audit event(s) match the planned '${plan.slot}' (${plan.action}); exactly one is required`);
+      continue;
+    }
+    const ev = matches[0];
+    claimedAuditEvents.add(`${ev.partition_id}#${ev.audit_seq}`);
+    if (ev.partition_id !== plan.partition) {
+      problems.push(`seed spec: the '${plan.slot}' audit event is in partition ${JSON.stringify(ev.partition_id)}; the plan places it in ${JSON.stringify(plan.partition)}`);
+    }
+    if ((ev.policy_decision_id ?? null) !== null) {
+      problems.push(`seed spec: the '${plan.slot}' audit event references a policy decision; the plan closes no decision`);
+    }
+    let body = null;
+    try { body = JSON.parse(ev.event_jcs); } catch { /* chain rejects */ }
+    if (body === null) continue;
+    for (const [field, actual, want] of [
+      ['scope', body.scope, plan.scope], ['outcome', body.outcome, plan.outcome],
+      ['result_code', body.result_code, plan.result_code],
+      ['context_mode', body.context_mode, plan.context_mode],
+      ['purpose_id', body.purpose_id, plan.purpose_id],
+      ['actor', body.actor, `principal:${actor}`],
+      ['session_id', body.session_id ?? null, plan.sessionSlot === null ? null : (slots.session.get(plan.sessionSlot) ?? null)],
+      ['target_type', body.target_type, plan.target_type],
+      ['target_id', body.target_id ?? null, plan.targetIsActor ? actor : null],
+      ['tenant_id', body.tenant_id ?? null, null], ['domain_id', body.domain_id ?? null, null],
+      ['policy_decision_id', body.policy_decision_id ?? null, null],
+    ]) {
+      if (actual !== want) {
+        problems.push(`seed spec: the '${plan.slot}' audit event ${field} is ${JSON.stringify(actual)}; the plan requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (stableJson(body.metadata ?? {}) !== stableJson(plan.metadata)) {
+      problems.push(`seed spec: the '${plan.slot}' audit event metadata is not the planned value`);
+    }
+  }
+  // ── THE EXACT AUDIT WORLD: every planned event resolves once, every delivered event
+  // belongs to exactly one plan slot. bfc8695 populated this set and never consumed it, so an
+  // entire additional production-valid event reconciled. ───────────────────────────────
+  for (const e of auditEvents) {
+    if (!claimedAuditEvents.has(`${e.partition_id}#${e.audit_seq}`)) {
+      problems.push(`seed spec: audit event ${e.partition_id}#${e.audit_seq} belongs to no planned seed operation or standalone event`);
+    }
+  }
+  if (auditEvents.length !== (spec.auditEventCount ?? auditEvents.length)) {
+    problems.push(`seed spec: the seeded audit world holds ${auditEvents.length} event(s); the source-owned plan writes exactly ${spec.auditEventCount}`);
+  }
+  // Chain heads must derive from that exact event set.
+  const headRows = rows('audit.audit_chain_heads');
+  const perPartition = new Map();
+  for (const e of auditEvents) perPartition.set(e.partition_id, (perPartition.get(e.partition_id) ?? 0) + 1);
+  for (const h of headRows) {
+    const n = perPartition.get(h.partition_id);
+    if (n === undefined) {
+      problems.push(`seed spec: chain head '${h.partition_id}' has no planned events`);
+      continue;
+    }
+    if (Number(h.next_seq) !== n + 1) {
+      problems.push(`seed spec: chain head '${h.partition_id}' next_seq ${h.next_seq} does not derive from the ${n} planned event(s)`);
+    }
+  }
+  for (const p of perPartition.keys()) {
+    if (!headRows.some((h) => h.partition_id === p)) {
+      problems.push(`seed spec: audit partition '${p}' has planned events but no chain head`);
+    }
+  }
+
   // ── THE SEED RECORD must name the SAME generated identities as the snapshot slots. ──
   const recordSays = [
     ['tenant', spec.tenants, (x) => (seedRecord.tenants ?? []).find((r) => r.name === x.name)?.tenantId, slots.tenant],

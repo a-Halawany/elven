@@ -40,9 +40,14 @@ import {
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 // eslint-disable-next-line import/no-relative-packages
 import {
-  C18_SEED_SPEC, SEED_OPERATIONS, seedInputDigestSource, seedObjectHeader, seedObjectPayload,
-  seedOutboxPayload,
+  C18_SEED_SPEC_FULL as C18_SEED_SPEC, SEED_AUDIT_EVENT_COUNT, SEED_BASE_POSTURE,
+  SEED_CAPABILITIES, SEED_LIFECYCLE_EVENTS, SEED_OPERATIONS, SEED_STANDALONE_AUDIT_EVENTS,
+  seedInputDigestSource, seedObjectHeader, seedObjectPayload, seedOutboxPayload,
 } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  COVERAGE_KINDS, SEED_COVERAGE, buildCoverageReport, deriveSeedAffectedTables, verifySeedCoverage,
+} from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
 
@@ -719,6 +724,180 @@ describe('C18.1.7 — the frozen dccfcf26 predecessor is byte-verbatim', () => {
   });
 });
 
+describe('C18.1.8 — the frozen bfc8695 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = 'bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', 'fe2881b85be0bcf2c5c3a6a401d21d2e5e40efac148de4fe63f5518cd64838d0'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '7b7564f04f779a7920489e2ece727621f1bf1a4b4970b81071bb85cca35ec27f'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '826e9e35e4ae51bba9c51bfa5e84b178adf3f159a076c08e894e54496bfa09a9'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '97af2b2605d8fd53e71f00f2b1470bfff2ec895ab4bac076c54f62c6d30acb79'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '9a51f048d0d8592196f507363f85a6d8150de7625b27b3049deea152f8e6874b'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-bfc8695/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-bfc8695', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+});
+
+describe('C18.1.8 — the source-owned seed coverage contract', () => {
+  const table = (rows: any[], columns: string[]) => ({ rows, columns, pk: ['id'], row_count: rows.length });
+  const world = () => {
+    const preseed: any = { tables: {} };
+    const before: any = { tables: {} };
+    for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
+      const columns = spec.columnsOwnedBy === undefined ? Object.keys(spec.columns) : ['object_id'];
+      preseed.tables[t] = table([], columns);
+      before.tables[t] = table([{ id: `${t}-row` }], columns);
+    }
+    // A table the seed does NOT write is identical on both sides.
+    preseed.tables['config.runtime_profile'] = table([{ id: 'p' }], ['id']);
+    before.tables['config.runtime_profile'] = table([{ id: 'p' }], ['id']);
+    return { preseed, before };
+  };
+  it('the affected universe is DERIVED from the authenticated pre-seed delta', () => {
+    const { preseed, before } = world();
+    const affected = deriveSeedAffectedTables(preseed, before);
+    expect(affected).toEqual(Object.keys(SEED_COVERAGE).sort());
+    // A table the seed never writes is not in the delta.
+    expect(affected).not.toContain('config.runtime_profile');
+    expect(verifySeedCoverage({ preseed, before }).problems).toEqual([]);
+  });
+  it('every classified column carries exactly one known kind', () => {
+    for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
+      if (spec.columnsOwnedBy !== undefined) continue;
+      for (const [c, e] of Object.entries(spec.columns) as Array<[string, any]>) {
+        expect(COVERAGE_KINDS, `${t}.${c}`).toContain(e.kind);
+        expect(typeof e.note, `${t}.${c} note`).toBe('string');
+      }
+      expect(typeof spec.rowsClaimedBy, `${t} rowsClaimedBy`).toBe('string');
+    }
+  });
+  it.each([
+    ['a seed-affected table absent from the contract', (w: any) => {
+      w.preseed.tables['identity.mfa_enrolments'] = { rows: [], columns: ['id'], row_count: 0 };
+      w.before.tables['identity.mfa_enrolments'] = { rows: [{ id: 'x' }], columns: ['id'], row_count: 1 };
+    }, /writes 'identity\.mfa_enrolments', which the coverage contract does not classify/],
+    ['an UNCLASSIFIED column on a covered table', (w: any) => {
+      w.before.tables['tenancy.tenants'].columns.push('attacker_column');
+    }, /column 'tenancy\.tenants\.attacker_column' is UNCLASSIFIED/],
+    ['a contract table the delta shows the seed does not write', (w: any) => {
+      w.preseed.tables['tenancy.tenants'] = { ...w.before.tables['tenancy.tenants'] };
+    }, /the authenticated pre-seed delta shows the seed does not write/],
+    ['a contract table absent from the delivered snapshot', (w: any) => {
+      delete w.before.tables['ctx.issued'];
+      delete w.preseed.tables['ctx.issued'];
+    }, /contract table 'ctx\.issued' is absent from the delivered snapshot/],
+  ])('rejects %s', (_l, mutate, pattern) => {
+    const w = world();
+    mutate(w);
+    expect(verifySeedCoverage(w as never).problems.join('\n')).toMatch(pattern);
+  });
+  it('the coverage report is machine-readable and derived, not asserted', () => {
+    const { preseed, before } = world();
+    const report = buildCoverageReport({ preseed, before });
+    expect(report.derived_from).toMatch(/pre-seed to post-seed delta/);
+    expect(report.seed_affected_tables).toEqual(Object.keys(SEED_COVERAGE).sort());
+    for (const t of Object.keys(SEED_COVERAGE)) {
+      expect(report.tables[t], t).toBeDefined();
+      expect(report.tables[t].rows_claimed_by, t).toBeTruthy();
+    }
+  });
+});
+
+describe('C18.1.8 — the base posture and exact audit plan are source-owned', () => {
+  it('the seed writes an exact audit world, not a floor', () => {
+    expect(SEED_AUDIT_EVENT_COUNT).toBe(SEED_OPERATIONS.length + SEED_STANDALONE_AUDIT_EVENTS.length);
+    expect(SEED_STANDALONE_AUDIT_EVENTS.map((e: any) => e.slot)).toEqual(['bootstrap-event', 'rotation-event']);
+    for (const e of SEED_STANDALONE_AUDIT_EVENTS as any[]) {
+      expect(e.actorSlot).toBe('platform-admin');
+      expect(e.outcome).toBe('success');
+      expect(e.partition).toBe('platform');
+    }
+  });
+  it('the capability plan totals the minted capability rows', () => {
+    const total = SEED_CAPABILITIES.reduce((n: number, c: any) => n + c.count, 0);
+    // bootstrap + rotation + one per session + one per governed operation + the publish.
+    expect(total).toBe(2 + C18_SEED_SPEC.sessions.length + SEED_OPERATIONS.length + 1);
+  });
+  it('the lifecycle plan covers every created tenant and domain exactly once', () => {
+    expect(SEED_LIFECYCLE_EVENTS.length).toBe(C18_SEED_SPEC.tenants.length + C18_SEED_SPEC.domains.length);
+    const slots = SEED_LIFECYCLE_EVENTS.map((e: any) => e.entitySlot);
+    expect(new Set(slots).size).toBe(slots.length);
+  });
+  it('base posture states the deterministic non-name state of every seeded row', () => {
+    expect(SEED_BASE_POSTURE.tenant.status).toBe('active');
+    expect(SEED_BASE_POSTURE.domain.status).toBe('active');
+    expect(SEED_BASE_POSTURE.principal.status).toBe('active');
+    expect(SEED_BASE_POSTURE.session.status).toBe('active');
+    expect(SEED_BASE_POSTURE.session.revoked_at).toBeNull();
+    expect(SEED_BASE_POSTURE.refreshToken.generation).toBe(1);
+    // The forced rotation bumps the admin's epoch; governed principals stay at 1.
+    expect(SEED_BASE_POSTURE.principalRevocationEpoch).toEqual({ admin: 2, governed: 1 });
+  });
+});
+
+describe('C18.1.8 — STRUCTURAL meta-controls over the single source of truth', () => {
+  const seeder = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-seed-0012.mjs'), 'utf8');
+  it('every producer seed step maps to specification slots', () => {
+    // The step plan and the slot map are the same set of steps, in the same order.
+    expect(Object.keys(C18_SEED_SPEC.stepSlots)).toEqual(SEED_STEP_PLAN.map((s: any) => s.step));
+    for (const [step, slots] of Object.entries(C18_SEED_SPEC.stepSlots) as Array<[string, string[]]>) {
+      expect(slots.length, `${step} must name at least one slot`).toBeGreaterThan(0);
+    }
+  });
+  it('every deterministic output field is covered by the coverage contract', () => {
+    // Each entity kind the specification names has a coverage entry that claims its rows.
+    for (const t of ['tenancy.tenants', 'tenancy.domains', 'identity.principals', 'identity.sessions',
+      'objects.canonical_objects', 'objects.object_outbox', 'policy.policy_decisions',
+      'audit.audit_events', 'ctx.issued', 'identity.credentials', 'identity.refresh_tokens',
+      'identity.role_bindings', 'identity.bootstrap_claim', 'tenancy.lifecycle_events',
+      'audit.audit_chain_heads']) {
+      expect(SEED_COVERAGE[t], `${t} must be classified`).toBeDefined();
+      expect(SEED_COVERAGE[t].rowsClaimedBy, `${t} rows must be claimed`).toBeTruthy();
+    }
+  });
+  it('every generated field has a declared validator kind', () => {
+    for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
+      if (spec.columnsOwnedBy !== undefined) continue;
+      for (const [c, e] of Object.entries(spec.columns) as Array<[string, any]>) {
+        if (['generated-id', 'digest', 'timestamp', 'formula'].includes(e.kind)) {
+          expect(e.note.length, `${t}.${c} needs a stated rule`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+  it('the producer imports its deterministic values instead of duplicating them', () => {
+    for (const helper of ['seedObjectHeader', 'seedObjectPayload', 'seedOutboxPayload',
+      'seedInputDigestSource', 'SEED_TENANTS', 'SEED_DOMAINS', 'SEED_PRINCIPALS', 'SEED_OBJECTS',
+      'SEED_OUTBOX', 'SEED_ADMIN']) {
+      expect(seeder, `${helper} must come from the specification`).toContain(helper);
+    }
+    expect(seeder).toContain("from './c18-seed-spec.mjs'");
+  });
+  it('CHANGING the specification changes producer AND verifier expectations together', () => {
+    // The verifier reads the same module the producer writes from: a changed slot name changes
+    // both sides at once, and the source SHA anchors the specification file itself.
+    const specPath = join(REPO, 'scripts', 'gate', 'lib', 'c18-seed-spec.mjs');
+    const specText = readFileSync(specPath, 'utf8');
+    for (const t of C18_SEED_SPEC.tenants) expect(specText).toContain(`'${t.name}'`);
+    const contract = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-contract.mjs'), 'utf8');
+    expect(contract).toContain("from './c18-seed-spec.mjs'");
+    expect(seeder).toContain("from './c18-seed-spec.mjs'");
+    // The specification is tracked source, so `git ls-files` sees it and source_sha covers it.
+    const tracked = spawnSync('git', ['ls-files', '--error-unmatch', 'scripts/gate/lib/c18-seed-spec.mjs'], { cwd: REPO });
+    expect(tracked.status).toBe(0);
+  });
+});
+
 describe('C18.1.7 — migration receipts must be byte-exact', () => {
   it('an attestation receipt is the exact ordered digest/path sequence', () => {
     const rows = [{ digest: 'a'.repeat(64), path: '/ws/scripts/migrate.mjs' },
@@ -900,7 +1079,11 @@ describe('C18.1.6 — complete migration-output validation', () => {
 });
 
 describe('C18.1.6 — the source-owned seed specification binds generated identities to slots', () => {
-  const u = (n: string) => `aaaaaaaa-${n}-4aaa-8aaa-aaaaaaaaaaaa`;
+  const u = (n: string) => `aaaaaaaa-${n.padStart(4, '0').slice(0, 4)}-4aaa-8aaa-aaaaaaaaaaaa`;
+  const T0 = '2026-08-01T00:00:00+00:00';
+  const T1 = '2026-08-01T01:00:00+00:00';
+  const ARGON = '$argon2id$v=19$m=65536,p=4,t=3$c2FsdA$aGFzaA';
+  const HASH1 = '1'.repeat(64); const HASH2 = '2'.repeat(64); const HASH3 = '3'.repeat(64);
   const ids = {
     tAlpha: u('0001'), tBeta: u('0002'), d0: u('0003'), d1: u('0004'), d2: u('0005'),
     adm: u('0006'), pa: u('0007'), pn: u('0008'), pb: u('0009'),
@@ -925,6 +1108,21 @@ describe('C18.1.6 — the source-owned seed specification binds generated identi
     const slotDomain: Record<string, string> = { 'alpha-dom0': ids.d0, 'alpha-dom1': ids.d1, 'beta-dom0': ids.d2 };
     const decisions: any[] = [];
     const events: any[] = [];
+    // The two standalone (non-decision) events the plan requires.
+    SEED_STANDALONE_AUDIT_EVENTS.forEach((plan: any, i: number) => {
+      events.push({
+        partition_id: plan.partition, audit_seq: 900 + i, correlation_id: corr(String(2000 + i)),
+        policy_decision_id: null,
+        event_jcs: jcsCanonicalize({
+          event_type: plan.event_type, action: plan.action, outcome: plan.outcome,
+          result_code: plan.result_code, context_mode: plan.context_mode,
+          purpose_id: plan.purpose_id, scope: plan.scope, actor: `principal:${ids.adm}`,
+          session_id: null, target_type: plan.target_type, target_id: null, target_version: null,
+          tenant_id: null, domain_id: null, policy_decision_id: null, causation_id: null,
+          delegation_id: null, trace_id: null, request_digest: null, metadata: plan.metadata,
+        } as never),
+      });
+    });
     SEED_OPERATIONS.forEach((op: any, i: number) => {
       const entityId = slotEntity[op.entitySlot]!;
       const c = corr(String(1000 + i));
@@ -1001,30 +1199,76 @@ describe('C18.1.6 — the source-owned seed specification binds generated identi
       },
       before: {
         tables: {
-          'tenancy.tenants': { rows: [{ id: ids.tAlpha, name: 'c18-tenant-alpha' }, { id: ids.tBeta, name: 'c18-tenant-beta' }] },
+          'tenancy.tenants': { rows: [ids.tAlpha, ids.tBeta].map((id, i) => ({
+            id, name: i === 0 ? 'c18-tenant-alpha' : 'c18-tenant-beta',
+            status: 'active', residency_profile: 'default', retention_profile: 'default',
+            created_at: T0, activated_at: T1,
+          })) },
           'tenancy.domains': { rows: [
             { id: ids.d0, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
             { id: ids.d1, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
             { id: ids.d2, tenant_id: ids.tBeta, name: 'c18-tenant-beta-dom0' },
-          ] },
+          ].map((d) => ({
+            ...d, status: 'active', residency_profile: 'local-dev', retention_profile: 'default',
+            created_at: T0, activated_at: T1,
+          })) },
           'identity.principals': { rows: [
-            { id: ids.adm, login_name: 'platform-admin', display_name: 'platform-admin', kind: 'human', scope: 'PLATFORM', tenant_id: null, domain_id: null },
-            { id: ids.pa, login_name: 'c18-alpha-admin', display_name: 'c18-alpha-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tAlpha, domain_id: null },
-            { id: ids.pn, login_name: 'c18-alpha-analyst', display_name: 'c18-alpha-analyst', kind: 'human', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-            { id: ids.pb, login_name: 'c18-beta-admin', display_name: 'c18-beta-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tBeta, domain_id: null },
+            { id: ids.adm, login_name: 'platform-admin', display_name: 'platform-admin', kind: 'human', scope: 'PLATFORM', tenant_id: null, domain_id: null, status: 'active', created_at: T0, revocation_epoch: 2 },
+            { id: ids.pa, login_name: 'c18-alpha-admin', display_name: 'c18-alpha-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tAlpha, domain_id: null, status: 'active', created_at: T0, revocation_epoch: 1 },
+            { id: ids.pn, login_name: 'c18-alpha-analyst', display_name: 'c18-alpha-analyst', kind: 'human', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0, status: 'active', created_at: T0, revocation_epoch: 1 },
+            { id: ids.pb, login_name: 'c18-beta-admin', display_name: 'c18-beta-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tBeta, domain_id: null, status: 'active', created_at: T0, revocation_epoch: 1 },
           ] },
+          'identity.bootstrap_claim': { rows: [{ id: 1, principal_id: ids.adm, claimed_at: T0 }] },
+          'identity.credentials': { rows: [
+            { id: u('0101'), principal_id: ids.adm, type: 'password', secret_hash: ARGON, status: 'rotated', created_at: T0, rotated_at: T1, expires_at: T1 },
+            { id: u('0102'), principal_id: ids.adm, type: 'password', secret_hash: ARGON, status: 'active', created_at: T1, rotated_at: null, expires_at: null },
+            ...[ids.pa, ids.pn, ids.pb].map((pid, i) => ({ id: u(`010${3 + i}`), principal_id: pid, type: 'password', secret_hash: ARGON, status: 'active', created_at: T1, rotated_at: null, expires_at: null })),
+          ] },
+          'identity.refresh_tokens': { rows: [
+            { id: u('0201'), family_id: u('0301'), session_id: ids.s1, token_hash: HASH1, generation: 1, issued_at: T0, invalidated_at: null, replaced_by: null, reuse_seen_at: null },
+            { id: u('0202'), family_id: u('0302'), session_id: ids.s2, token_hash: HASH2, generation: 1, issued_at: T0, invalidated_at: null, replaced_by: null, reuse_seen_at: null },
+          ] },
+          'tenancy.lifecycle_events': { rows: SEED_LIFECYCLE_EVENTS.map((e: any, i: number) => ({
+            id: u(`040${i}`), event: e.event, scope: e.scope, actor: 'c18-admin',
+            tenant_id: e.tenantSlot === 'tenant-alpha' ? ids.tAlpha : ids.tBeta,
+            domain_id: e.domainSlot === null ? null
+              : (e.domainSlot === 'alpha-dom0' ? ids.d0 : e.domainSlot === 'alpha-dom1' ? ids.d1 : ids.d2),
+            occurred_at: T0, details: e.details,
+          })) },
+          'ctx.issued': { rows: SEED_CAPABILITIES.flatMap((c: any, i: number) => (
+            Array.from({ length: c.count }, (_x, j) => ({
+              nonce: u(`05${String(i)}${String(j)}`), op_class: c.op_class, bound_action: c.bound_action,
+              session_id: c.sessionSlot === null ? null : (c.sessionSlot === 'admin-session' ? ids.s1 : ids.s2),
+              issued_at: T0, expires_at: T1, consumed_at: null,
+            })))) },
           'identity.role_bindings': { rows: [
             { principal_id: ids.adm, role_code: 'platform_admin', revoked_at: null },
             { principal_id: ids.pa, role_code: 'tenant_admin', revoked_at: null },
             { principal_id: ids.pn, role_code: 'domain_analyst', revoked_at: null },
             { principal_id: ids.pb, role_code: 'tenant_admin', revoked_at: null },
           ] },
-          'identity.sessions': { rows: [{ id: ids.s1, principal_id: ids.adm, assurance: 'password' }, { id: ids.s2, principal_id: ids.pa, assurance: 'password' }] },
+          'identity.sessions': { rows: [
+            { id: ids.s1, principal_id: ids.adm, family_id: u('0301'), refresh_token_hash: HASH1, bound_epoch: 2 },
+            { id: ids.s2, principal_id: ids.pa, family_id: u('0302'), refresh_token_hash: HASH2, bound_epoch: 1 },
+          ].map((x) => ({
+            ...x, assurance: 'password', status: 'active', revoked_at: null,
+            prev_refresh_token_hash: null, context_key_hash: HASH3, issued_at: T0, expires_at: T1,
+          })) },
           'objects.canonical_objects': { rows: [objectRow('claim-1', ids.o1), objectRow('claim-2', ids.o2)] },
           'objects.object_outbox': { rows: [outboxRow('outbox-published', ids.e1), outboxRow('outbox-pending', ids.e2)] },
           'policy.policy_decisions': { rows: decisions },
+          'audit.audit_chain_heads': { rows: [...new Set(events.map((e: any) => e.partition_id))].map((pid) => ({
+            partition_id: pid, next_seq: events.filter((e: any) => e.partition_id === pid).length + 1,
+            head_hash: HASH1, frozen: false, updated_at: T0,
+          })) },
         },
-        audit: { events, heads: [] },
+        audit: {
+          events,
+          heads: [...new Set(events.map((e: any) => e.partition_id))].map((pid) => ({
+            partition_id: pid, next_seq: events.filter((e: any) => e.partition_id === pid).length + 1,
+            head_hash: HASH1, frozen: false,
+          })),
+        },
       },
     };
   };

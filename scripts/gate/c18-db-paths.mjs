@@ -115,6 +115,7 @@ import {
   verifyMigrationRun, INVENTORY_HELPER_REL, INVENTORY_HELPER_WS, bindSeedSpec,
   deriveStepIdentitiesFromSlots,
 } from './lib/c18-contract.mjs';
+import { buildCoverageReport, verifySeedCoverage } from './lib/c18-seed-coverage.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
@@ -131,8 +132,9 @@ const MIGRATE_RUNNER = join(ROOT, 'apps', 'api', 'scripts', 'migrate.mjs');
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const CHECKSUM_FILE = 'SHA256SUMS.txt';
 const FIXED_MEMBERS = Object.freeze([
-  'c18-manifest.json', 'commands.json', 'path-a-before.json', 'path-a-after.json',
-  'path-a-final.json', 'path-b-virgin.json', 'path-a-seed-record.json', 'RESULT-PASS.txt',
+  'c18-manifest.json', 'commands.json', 'path-a-preseed.json', 'path-a-before.json',
+  'path-a-after.json', 'path-a-final.json', 'path-b-virgin.json', 'path-a-seed-record.json',
+  'seed-coverage.json', 'RESULT-PASS.txt',
 ]);
 
 function composeImages() {
@@ -674,6 +676,12 @@ async function runCommand(args) {
     phase = 'path-a-historical-migrate';
     const wsA = migrationWorkspace('a', HISTORICAL_LAST, tracked, cleanup);
     runMigration(ev, { label: 'a-migrate-historical', path: 'path-a-upgraded', letter: 'a', inst: a, ws: wsA, ceiling: HISTORICAL_LAST, tracked, executions: migrationExecutions });
+    // C18.1.8 — the AUTHENTICATED PRE-SEED baseline: the database as migration 0012 leaves it,
+    // before any governed seed write. The seed-affected table universe is DERIVED from the
+    // delta against it, so no table can be silently omitted from coverage.
+    phase = 'path-a-snapshot-preseed';
+    const preseed = snapshot(a, 'a-preseed');
+    writeFileSync(join(outDir, 'path-a-preseed.json'), `${JSON.stringify(preseed, null, 2)}\n`);
     phase = 'path-a-seed';
     const seedRecord = await seedThroughEraPorts({
       root: ROOT, host: '127.0.0.1', port: a.port, database: a.database,
@@ -716,7 +724,15 @@ async function runCommand(args) {
         snap, universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest', catalogContract, lbl,
       ));
     }
+    problems.push(...verifyTableUniverse(preseed, TABLE_UNIVERSE_HISTORICAL, 'a-preseed'));
+    problems.push(...verifyCatalogContract(preseed, 'historical', catalogContract, 'a-preseed'));
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
+    // C18.1.8 — the seed-affected table universe DERIVED from the authenticated delta, and the
+    // machine-readable coverage report carried in the package.
+    const coverage = verifySeedCoverage({ preseed, before });
+    problems.push(...coverage.problems.map((p) => `path-a-coverage: ${p}`));
+    writeFileSync(join(outDir, 'seed-coverage.json'),
+      `${JSON.stringify(buildCoverageReport({ preseed, before }), null, 2)}\n`);
     const boundA = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...boundA.problems.map((p) => `path-a-seed: ${p}`));
     problems.push(...verifySeedSteps({
@@ -1090,6 +1106,7 @@ export async function verifyEvidence({
 
     // ── THE PROOF, RE-RUN from raw snapshots with the PRODUCTION audit impl ───
     const readJson = (name) => { try { return JSON.parse(readFileSync(join(tmp, name), 'utf8')); } catch { return null; } };
+    const preseed = readJson('path-a-preseed.json');
     const before = readJson('path-a-before.json');
     const after = readJson('path-a-after.json');
     const finalSnap = readJson('path-a-final.json');
@@ -1098,6 +1115,7 @@ export async function verifyEvidence({
     if (before === null || after === null || finalSnap === null || virgin === null || seedRecord === null) {
       return { ok: false, problems: [...problems, 'snapshot or seed-record members are missing or not JSON'], notes };
     }
+    if (preseed === null) problems.push('path-a-preseed.json is missing or not JSON');
     const audit = await productionAudit(root);
     problems.push(...verifyMigrationLedger({ trackedDigests: tracked.digests, ledger: before.ledger, expectLast: HISTORICAL_LAST }).map((p) => `before-ledger: ${p}`));
     problems.push(...verifyMigrationLedger({ trackedDigests: tracked.digests, ledger: after.ledger, expectLast: LATEST_LAST, priorLedger: before.ledger }).map((p) => `after-ledger: ${p}`));
@@ -1108,6 +1126,7 @@ export async function verifyEvidence({
     // ── EXACT SOURCE-OWNED STRUCTURE + PROJECTION AUTHENTICATION ──────────────
     for (const [snap, lbl, universe] of [
       [before, 'before', TABLE_UNIVERSE_HISTORICAL], [after, 'after', TABLE_UNIVERSE_LATEST],
+      ...(preseed === null ? [] : [[preseed, 'preseed', TABLE_UNIVERSE_HISTORICAL]]),
       [finalSnap, 'final', TABLE_UNIVERSE_LATEST], [virgin, 'virgin', TABLE_UNIVERSE_LATEST],
     ]) {
       problems.push(...verifyTableUniverse(snap, universe, lbl));
@@ -1138,7 +1157,10 @@ export async function verifyEvidence({
         const text = readFileSync(abs, 'utf8').trim();
         try { return text === '' ? null : JSON.parse(text); } catch { return undefined; }
       };
-      for (const [snap, snapLabel] of [[before, 'a-before'], [after, 'a-after'], [finalSnap, 'a-final'], [virgin, 'b-virgin']]) {
+      for (const [snap, snapLabel] of [
+        ...(preseed === null ? [] : [[preseed, 'a-preseed']]),
+        [before, 'a-before'], [after, 'a-after'], [finalSnap, 'a-final'], [virgin, 'b-virgin'],
+      ]) {
         const letter = snapLabel[0];
         const pfx = `${letter}-${snapLabel}`;
         const recon = reconstructSnapshot(snap, pfx, rawFor);
@@ -1204,6 +1226,16 @@ export async function verifyEvidence({
     // suppress a deeper finding (the C18.1.1 rule, extended here to the seed record and its
     // governed step receipts). Only the seed_summary comparison needs a well-formed manifest.
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: shaped ? manifest : null }));
+    // C18.1.8 — SEED COVERAGE, derived from the authenticated pre-seed delta. These run
+    // whenever their members are readable: a malformed manifest must not suppress them.
+    if (preseed !== null) {
+      problems.push(...verifySeedCoverage({ preseed, before }).problems);
+      const deliveredCoverage = readJson('seed-coverage.json');
+      if (deliveredCoverage === null) problems.push('seed-coverage.json is missing or not JSON');
+      else if (JSON.stringify(deliveredCoverage) !== JSON.stringify(buildCoverageReport({ preseed, before }))) {
+        problems.push('the delivered seed-coverage report is not the source-derived coverage of this evidence');
+      }
+    }
     // THE SOURCE-OWNED SEED SPECIFICATION: every generated identity is bound to a named slot by
     // the deterministic key the specification owns, so a consistent rename cannot resolve.
     const bound = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });

@@ -480,6 +480,8 @@ export function verifyCommandGraph({
 
   walkInstance('a', receiptA);
   walkMigrate('a-migrate-historical', 'a', receiptA);
+  // C18.1.8 — the authenticated PRE-SEED baseline precedes any governed seed write.
+  walkSnapshot('a', 'a-preseed', receiptA, TABLE_UNIVERSE_HISTORICAL);
   walkSnapshot('a', 'a-before', receiptA, TABLE_UNIVERSE_HISTORICAL);
   walkMigrate('a-migrate-upgrade', 'a', receiptA);
   walkSnapshot('a', 'a-after', receiptA, TABLE_UNIVERSE_LATEST);

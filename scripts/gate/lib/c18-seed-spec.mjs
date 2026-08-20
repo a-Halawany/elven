@@ -202,6 +202,17 @@ export const C18_SEED_SPEC = Object.freeze({
   sessions: SEED_SESSIONS, objects: SEED_OBJECTS, outbox: SEED_OUTBOX,
   operations: SEED_OPERATIONS, decisionPosture: SEED_DECISION_POSTURE,
   auditPosture: SEED_AUDIT_POSTURE, stepSlots: SEED_STEP_SLOTS,
+  // C18.1.8 — base-row posture, lifecycle, capability and exact audit-world plans. These are
+  // attached lazily below because they are declared after this object.
+});
+/** C18.1.8 additions, attached after declaration so the specification stays one object. */
+export const withC1818 = (base) => Object.freeze({
+  ...base,
+  basePosture: SEED_BASE_POSTURE,
+  lifecycleEvents: SEED_LIFECYCLE_EVENTS,
+  capabilities: SEED_CAPABILITIES,
+  standaloneAuditEvents: SEED_STANDALONE_AUDIT_EVENTS,
+  auditEventCount: SEED_AUDIT_EVENT_COUNT,
 });
 
 /** Exact cardinalities DERIVED from the specification — never independently maintained. */
@@ -223,3 +234,84 @@ export const SEED_CARDINALITIES = Object.freeze({
 export const tenantSpec = (slot) => SEED_TENANTS.find((t) => t.slot === slot);
 export const domainSpec = (slot) => SEED_DOMAINS.find((d) => d.slot === slot);
 export const principalSpec = (slot) => (slot === SEED_ADMIN.slot ? SEED_ADMIN : SEED_PRINCIPALS.find((p) => p.slot === slot));
+
+/**
+ * C18.1.8 — the DETERMINISTIC BASE POSTURE of every seeded row, and the exact audit-event plan.
+ *
+ * bfc8695 owned names, placement and per-operation decisions, but never the base-row posture
+ * (status, profiles, revocation epoch, lifecycle timestamps) nor the audit world's exact
+ * membership. Both are stated here.
+ */
+export const SEED_BASE_POSTURE = Object.freeze({
+  tenant: Object.freeze({ status: 'active', residency_profile: 'default', retention_profile: 'default' }),
+  domain: Object.freeze({ status: 'active', residency_profile: 'local-dev', retention_profile: 'default' }),
+  // The FORCED bootstrap rotation bumps the admin's revocation epoch to 2; every governed
+  // principal the seed mints afterwards is created at 1 and never revoked.
+  principal: Object.freeze({ kind: 'human', status: 'active' }),
+  principalRevocationEpoch: Object.freeze({ admin: 2, governed: 1 }),
+  session: Object.freeze({ assurance: 'password', status: 'active', revoked_at: null, prev_refresh_token_hash: null }),
+  refreshToken: Object.freeze({ generation: 1, invalidated_at: null, replaced_by: null, reuse_seen_at: null }),
+  credential: Object.freeze({ type: 'password', activeStatus: 'active', rotatedStatus: 'rotated' }),
+  bootstrapClaim: Object.freeze({ id: 1 }),
+  lifecycleActor: 'c18-admin',
+});
+
+/** The tenancy lifecycle events the governed seed writes, one per created entity. */
+export const SEED_LIFECYCLE_EVENTS = Object.freeze([
+  ...SEED_TENANTS.map((t) => Object.freeze({
+    event: 'tenant.created', scope: 'TENANT', entityKind: 'tenant', entitySlot: t.slot,
+    tenantSlot: t.slot, domainSlot: null,
+    details: Object.freeze({ name: t.name, residency_profile: 'default' }),
+  })),
+  ...SEED_DOMAINS.map((d) => Object.freeze({
+    event: 'domain.created', scope: 'DOMAIN', entityKind: 'domain', entitySlot: d.slot,
+    tenantSlot: d.tenantSlot, domainSlot: d.slot,
+    details: Object.freeze({ name: d.name }),
+  })),
+]);
+
+/**
+ * Every capability the governed seed mints, by class and bound action. One row per governed
+ * operation, plus the bootstrap, rotation, session-open and publish capabilities.
+ */
+export const SEED_CAPABILITIES = Object.freeze([
+  Object.freeze({ op_class: 'bootstrap', bound_action: 'identity.bootstrap.platform_admin', sessionSlot: null, count: 1 }),
+  Object.freeze({ op_class: 'identity', bound_action: 'identity.credential.rotate', sessionSlot: null, count: 1 }),
+  Object.freeze({ op_class: 'identity', bound_action: 'identity.session.create', sessionSlot: null, count: SEED_SESSIONS.length }),
+  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.tenant.create', sessionSlot: 'admin-session', count: SEED_TENANTS.length }),
+  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.domain.create', sessionSlot: 'admin-session', count: SEED_DOMAINS.length }),
+  Object.freeze({ op_class: 'C2', bound_action: 'identity.principal.create', sessionSlot: 'admin-session', count: SEED_PRINCIPALS.length }),
+  Object.freeze({ op_class: 'C2', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OBJECTS.length }),
+  Object.freeze({ op_class: 'C1', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OUTBOX.length }),
+  Object.freeze({ op_class: 'outbox', bound_action: 'objects.outbox.publish', sessionSlot: null, count: 1 }),
+]);
+
+/**
+ * The NON-DECISION audit events: the audited single-use bootstrap and the forced credential
+ * rotation. Together with the twelve operation-plan closers these are the EXACT Path-A seeded
+ * audit world — no floor, no minimum.
+ */
+export const SEED_STANDALONE_AUDIT_EVENTS = Object.freeze([
+  Object.freeze({
+    slot: 'bootstrap-event', event_type: 'admin.bootstrap',
+    action: 'identity.bootstrap.platform_admin', scope: 'PLATFORM', context_mode: 'bootstrap',
+    actorSlot: 'platform-admin', sessionSlot: null, target_type: 'SES', targetIsActor: false,
+    outcome: 'success', result_code: 'OK', purpose_id: 'authentication',
+    metadata: Object.freeze({ note: 'C18 path-A era seed: audited single-use bootstrap' }),
+    partition: 'platform',
+  }),
+  Object.freeze({
+    slot: 'rotation-event', event_type: 'identity.credential',
+    action: 'identity.credential.rotate', scope: 'PLATFORM', context_mode: 'identity_op',
+    actorSlot: 'platform-admin', sessionSlot: null, target_type: 'SES', targetIsActor: false,
+    outcome: 'success', result_code: 'OK', purpose_id: 'authentication',
+    metadata: Object.freeze({}), partition: 'platform',
+  }),
+]);
+
+/** The exact seeded audit-event count: twelve operation closers plus the standalone events. */
+export const SEED_AUDIT_EVENT_COUNT = SEED_OPERATIONS.length + SEED_STANDALONE_AUDIT_EVENTS.length;
+
+
+/** The complete specification, including the C18.1.8 posture and plans. */
+export const C18_SEED_SPEC_FULL = withC1818(C18_SEED_SPEC);
