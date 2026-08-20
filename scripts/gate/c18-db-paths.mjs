@@ -111,7 +111,9 @@ import {
   verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
   absenceArgv, attestArgv, loadCatalogContract, parseAttestation, verifyCatalogContract,
-  EXECUTION_FLOOR, expectedApplied, inventoryArgv, parseInventory, parseMigrationRun,
+  EXECUTION_FLOOR, expectedApplied, inventoryArgv, parseInventory, verifyInventoryEntries,
+  verifyMigrationRun, INVENTORY_HELPER_REL, INVENTORY_HELPER_WS, bindSeedSpec,
+  deriveStepIdentitiesFromSlots,
 } from './lib/c18-contract.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
@@ -355,48 +357,49 @@ function runMigration(ev, { label, path, letter, inst, ws, ceiling, tracked, exe
   if (JSON.stringify(present) !== JSON.stringify(migrations.map((m) => m.filename))) {
     throw new Error(`governed workspace holds ${present.length} migrations; the ${ceiling} ceiling authorizes ${migrations.length}`);
   }
-  // C18.1.5 — ENUMERATE the complete governed migration directory through the evidence
-  // recorder first, so an unauthorized file cannot escape by being absent from our own claim.
+  // C18.1.6 — ENUMERATE the complete governed migration directory with the TRACKED helper:
+  // dot-prefixed names included, canonical JSON, file types from lstat.
   const inventoryCmd = ev.run(`${label}-inventory`, inventoryArgv(ws));
-  const { files: discovered, sorted: discoveredSorted } = parseInventory(inventoryCmd.rawStdout);
-  if (JSON.stringify(discovered) !== JSON.stringify(discoveredSorted)) {
-    throw new Error(`workspace inventory for ${label} is not sorted`);
-  }
-  if (JSON.stringify(discovered) !== JSON.stringify(migrations.map((m) => m.filename))) {
-    throw new Error(`governed workspace for ${label} holds ${discovered.length} migration file(s); `
-      + `the exact source-derived ${ceiling} set is ${migrations.length}`);
-  }
-  // C18.1.4 — MEASURE the runner and every workspace migration through the evidence recorder,
+  const { entries: discoveredEntries, problem: invProblem } = parseInventory(inventoryCmd.rawStdout);
+  if (invProblem !== null) throw new Error(`workspace inventory for ${label}: ${invProblem}`);
+  const invProblems = verifyInventoryEntries(discoveredEntries, migrations.map((m) => m.filename), label);
+  if (invProblems.length > 0) throw new Error(`workspace inventory for ${label}: ${invProblems.join('; ')}`);
+  const discovered = discoveredEntries.map((e) => e.name);
+  // C18.1.4 — MEASURE the runner and every workspace migration  // C18.1.4 — MEASURE the runner and every workspace migration through the evidence recorder,
   // immediately before executing them. The digests below are parsed back out of this command's
   // raw receipt by the verifier, so they are attested rather than self-asserted.
   const attest = ev.run(`${label}-attest`, attestArgv(ws, discovered));
   const { rows, problem } = parseAttestation(attest.rawStdout);
   if (problem !== null) throw new Error(`migration attestation for ${label}: ${problem}`);
-  if (rows.length !== migrations.length + 1) {
-    throw new Error(`migration attestation for ${label} covered ${rows.length} files, expected ${migrations.length + 1}`);
+  // runner + inventory helper + every enumerated migration
+  if (rows.length !== migrations.length + 2) {
+    throw new Error(`migration attestation for ${label} covered ${rows.length} files, expected ${migrations.length + 2}`);
   }
   if (rows[0].path !== runner || rows[0].digest !== sha256(readFileSync(runner))) {
     throw new Error(`migration attestation for ${label} did not measure the governed runner`);
   }
+  if (rows[1].path !== join(ws, INVENTORY_HELPER_WS)
+    || rows[1].digest !== sha256(readFileSync(join(ROOT, INVENTORY_HELPER_REL)))) {
+    throw new Error(`migration attestation for ${label} did not measure the governed inventory helper`);
+  }
   migrations.forEach((m, i) => {
-    if (rows[i + 1].path !== join(ws, 'migrations', m.filename) || rows[i + 1].digest !== m.digest) {
+    if (rows[i + 2].path !== join(ws, 'migrations', m.filename) || rows[i + 2].digest !== m.digest) {
       throw new Error(`migration attestation for ${label} disagrees on ${m.filename}`);
     }
   });
   const r = ev.run(label, ['node', runner], { env: inst.envFor() });
   // The runner's OWN output states which migrations it newly applied, in order.
-  const { applied, problem: runProblem } = parseMigrationRun(r.rawStdout);
-  if (runProblem !== null) throw new Error(`migration run ${label}: ${runProblem}`);
   const wantApplied = expectedApplied(discovered, ceiling, EXECUTION_FLOOR[label] ?? '0000');
-  if (JSON.stringify(applied) !== JSON.stringify(wantApplied)) {
-    throw new Error(`migration run ${label} applied ${JSON.stringify(applied)}; `
-      + `the governed sequence is ${JSON.stringify(wantApplied)}`);
-  }
+  const runProblems = verifyMigrationRun(r.rawStdout, wantApplied, `migration run ${label}`);
+  if (runProblems.length > 0) throw new Error(runProblems.join('; '));
+  const applied = wantApplied;
   executions.push({
     command_id: r.id, attest_command_id: attest.id, inventory_command_id: inventoryCmd.id,
     label, path, workspace: ws, runner_path: runner,
-    runner_sha256: rows[0].digest, ceiling, inventory: discovered,
-    migrations: migrations.map((m, i) => ({ filename: m.filename, digest: rows[i + 1].digest })),
+    runner_sha256: rows[0].digest,
+    inventory_helper_sha256: rows[1].digest,
+    ceiling, inventory: discoveredEntries,
+    migrations: migrations.map((m, i) => ({ filename: m.filename, digest: rows[i + 2].digest })),
     applied,
   });
   return r;
@@ -411,6 +414,13 @@ function migrationWorkspace(label, upTo, tracked, cleanup) {
   cpSync(MIGRATE_RUNNER, join(ws, 'scripts', 'migrate.mjs'));
   if (sha256(readFileSync(join(ws, 'scripts', 'migrate.mjs'))) !== sha256(readFileSync(MIGRATE_RUNNER))) {
     throw new Error('workspace migrate runner copy is not byte-identical');
+  }
+  // C18.1.6 — the inventory helper travels with the workspace exactly as the runner does, so
+  // its argv is workspace-relative and its executed bytes are attested alongside the runner.
+  const helperSrc = join(ROOT, INVENTORY_HELPER_REL);
+  cpSync(helperSrc, join(ws, INVENTORY_HELPER_WS));
+  if (sha256(readFileSync(join(ws, INVENTORY_HELPER_WS))) !== sha256(readFileSync(helperSrc))) {
+    throw new Error('workspace inventory helper copy is not byte-identical');
   }
   extendWorkspace(ws, '0000', upTo, tracked);
   return ws;
@@ -707,8 +717,11 @@ async function runCommand(args) {
       ));
     }
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
+    const boundA = bindSeedSpec({ seedRecord, before });
+    problems.push(...boundA.problems.map((p) => `path-a-seed: ${p}`));
     problems.push(...verifySeedSteps({
       steps: seedRecord.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
+      slots: boundA.problems.length === 0 ? boundA.slots : null,
     }).map((p) => `path-a-seed: ${p}`));
     problems.push(...compareSnapshots(before, after, transforms).map((p) => `path-a: ${p}`));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }).map((p) => `path-a-before: ${p}`));
@@ -1141,6 +1154,7 @@ export async function verifyEvidence({
         receiptA: manifest.receipts?.['path-a-upgraded'] ?? null,
         receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
         images: composeImages(),
+        repoRoot: realpathSync(root),
         migrationExecutions: Array.isArray(manifest.migration_executions) ? manifest.migration_executions : null,
         cleanup: manifest.cleanup ?? null,
         rawText: (cmd, stream) => {
@@ -1155,6 +1169,7 @@ export async function verifyEvidence({
         commands,
         trackedDigests: new Map([...tracked.digests, ['__runner__', sha256(readFileSync(join(root, 'apps', 'api', 'scripts', 'migrate.mjs')))]]),
         repoRoot: realpathSync(root),
+        helperDigest: sha256(readFileSync(join(root, INVENTORY_HELPER_REL))),
         rawText: (cmd) => {
           const abs = contained(`raw/${cmd.id}.stdout.txt`, 'attestation receipt');
           return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
@@ -1189,8 +1204,13 @@ export async function verifyEvidence({
     // suppress a deeper finding (the C18.1.1 rule, extended here to the seed record and its
     // governed step receipts). Only the seed_summary comparison needs a well-formed manifest.
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: shaped ? manifest : null }));
+    // THE SOURCE-OWNED SEED SPECIFICATION: every generated identity is bound to a named slot by
+    // the deterministic key the specification owns, so a consistent rename cannot resolve.
+    const bound = bindSeedSpec({ seedRecord, before });
+    problems.push(...bound.problems);
     problems.push(...verifySeedSteps({
       steps: seedRecord?.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
+      slots: bound.problems.length === 0 ? bound.slots : null,
     }));
     problems.push(...compareSnapshots(before, after, transforms));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }));

@@ -8,7 +8,7 @@
  * and the parsed-YAML CI wiring.
  */
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -27,7 +27,9 @@ import {
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
   absenceArgv, attestArgv, deriveSeedStepIdentities, loadCatalogContract, parseAttestation,
   verifyCatalogContract, EXECUTION_FLOOR, SEED_CONTRACT, expectedApplied, inventoryArgv,
-  parseInventory, parseMigrationRun, reconcileRoleBindings,
+  parseInventory, reconcileRoleBindings, INVENTORY_HELPER_REL, MIGRATION_TERMINAL_LINES,
+  bindSeedSpec, cleanExecution, deriveStepIdentitiesFromSlots, expectedRunLines, INVENTORY_HELPER_WS,
+  verifyInventoryEntries, verifyMigrationRun,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
 import {
@@ -35,6 +37,10 @@ import {
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-query-plan.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
+// eslint-disable-next-line import/no-relative-packages
+import { C18_SEED_SPEC } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
@@ -529,7 +535,8 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     label: 'a-migrate-historical', path: 'path-a-upgraded',
     workspace: '/tmp/c18-a-Ab12Cd', runner_path: '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
     runner_sha256: tracked().get('__runner__'), ceiling: HISTORICAL_LAST,
-    inventory: govMigrations().map((m: { filename: string }) => m.filename),
+    inventory: govMigrations().map((m: { filename: string }) => ({ name: m.filename, type: 'file' })),
+    inventory_helper_sha256: sha256(readFileSync(join(REPO, INVENTORY_HELPER_REL))),
     migrations: govMigrations(),
     applied: govMigrations().map((m: { filename: string }) => m.filename),
     ...over,
@@ -560,19 +567,25 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
   it('a MEASURED attestation passes; a self-asserted digest over foreign bytes fails', () => {
     const e = exec();
     const ws = e.workspace;
+    const helperDigest = sha256(readFileSync(join(REPO, INVENTORY_HELPER_REL)));
     const lines = [`${e.runner_sha256}  ${e.runner_path}`,
+      `${helperDigest}  ${ws}/${INVENTORY_HELPER_WS}`,
       ...e.migrations.map((m: any) => `${m.digest}  ${ws}/migrations/${m.filename}`)].join('\n');
-    const invText = `${e.inventory.join('\n')}\n`;
-    const runText = `${e.applied.map((f: string) => `applying ${f} ... ok`).join('\n')}\nmigrations up to date\n`;
+    const invText = encodeInventory(e.inventory);
+    const runText = `${expectedRunLines(e.applied).join('\n')}\n`;
     const commands = [
-      { id: e.inventory_command_id, label: 'a-migrate-historical-inventory', argv: inventoryArgv(ws), exit: 0, signal: null },
-      { id: e.attest_command_id, label: 'a-migrate-historical-attest', argv: attestArgv(ws, e.inventory), exit: 0, signal: null },
-      { id: e.command_id, label: 'a-migrate-historical', argv: ['node', e.runner_path], exit: 0, signal: null },
+      { id: e.inventory_command_id, label: 'a-migrate-historical-inventory', argv: inventoryArgv(ws), exit: 0, signal: null, stderr_bytes: 0 },
+      { id: e.attest_command_id, label: 'a-migrate-historical-attest', argv: attestArgv(ws, e.inventory.map((x: any) => x.name)), exit: 0, signal: null, stderr_bytes: 0 },
+      { id: e.command_id, label: 'a-migrate-historical', argv: ['node', e.runner_path], exit: 0, signal: null, stderr_bytes: 0 },
     ];
     const byId: Record<string, string> = {
       [e.inventory_command_id]: invText, [e.attest_command_id]: lines, [e.command_id]: runText,
     };
-    const opts = { commands, trackedDigests: tracked(), repoRoot: REPO, rawText: (c: any) => byId[c.id] ?? null };
+    const opts = {
+      commands, trackedDigests: tracked(), repoRoot: REPO,
+      helperDigest,
+      rawText: (c: any) => byId[c.id] ?? null,
+    };
     // Only this one execution is under test here; the other two governed slots are absent.
     const unrelated = /is MISSING|exactly 3 are governed/;
     expect(verifyMigrationExecutions({ executions: [e], ...opts } as never)
@@ -656,25 +669,268 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
   });
 });
 
-describe('C18.1.5 — the complete migration inventory', () => {
-  it('enumerates the governed directory and parses sorted output', () => {
-    expect(inventoryArgv('/tmp/c18-a-Ab12Cd')).toEqual(['ls', '-1', '/tmp/c18-a-Ab12Cd/migrations']);
-    const ok = parseInventory('0001_a.sql\n0002_b.sql\n');
-    expect(ok.files).toEqual(['0001_a.sql', '0002_b.sql']);
-    expect(ok.sorted).toEqual(ok.files);
-    const unsorted = parseInventory('0002_b.sql\n0001_a.sql\n');
-    expect(unsorted.files).not.toEqual(unsorted.sorted);
+describe('C18.1.6 — the frozen 8362cba predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '8362cba116657c9119a96f16cde40faac1727113';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '1413042dd90bb2a89abc2e86b28b8bfeb26e1a92fce84d636093ebc3192ccb02'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '80c40c2617112a91c186170ad5e1c0db1d97ed48ba08374f5c8544fce2bd9d39'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', 'a628c3911bf765f3ef41725ca932b4a980ded292eb23aa55d6667b82f943cabd'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', 'd2c05759ff844c5e9ae722f197ac660fffbad1f24c9c14abe60770fb011b165c'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-8362cba/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-8362cba', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
   });
-  it('parses the runner output and requires a confirmed completion', () => {
-    const good = parseMigrationRun('applying 0001_a.sql ... ok\napplying 0002_b.sql ... ok\nmigrations up to date\n');
-    expect(good.problem).toBeNull();
-    expect(good.applied).toEqual(['0001_a.sql', '0002_b.sql']);
-    expect(parseMigrationRun('applying 0001_a.sql ... ok\n').problem).toMatch(/never reported 'migrations up to date'/);
-    expect(parseMigrationRun('applying 0001_a.sql ... \nmigrations up to date\n').problem)
-      .toMatch(/started but never confirmed applied/);
-    // Nothing to apply is legitimate only when nothing was expected.
-    expect(parseMigrationRun('migrations up to date\n').applied).toEqual([]);
+});
+
+describe('C18.1.6 — the tracked cross-platform inventory helper', () => {
+  it('enumerates dot-prefixed, whitespace and Unicode names, and reports lstat types', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c18-inv-'));
+    try {
+      writeFileSync(join(dir, '0001_ok.sql'), 'x');
+      writeFileSync(join(dir, '.0022_hidden.sql'), 'x');
+      writeFileSync(join(dir, '.0023 hidden backdoor.sql'), 'x');
+      writeFileSync(join(dir, 'ünïcode_0024.sql'), 'x');
+      mkdirSync(join(dir, 'subdir'));
+      symlinkSync('/etc/hosts', join(dir, 'link.sql'));
+      const entries = readInventory(dir);
+      const byName = Object.fromEntries(entries.map((e: { name: string; type: string }) => [e.name, e.type]));
+      // `ls -1` omits every dot-prefixed name; the helper does not.
+      expect(byName['.0022_hidden.sql']).toBe('file');
+      expect(byName['.0023 hidden backdoor.sql']).toBe('file');
+      expect(byName['ünïcode_0024.sql']).toBe('file');
+      expect(byName['subdir']).toBe('directory');
+      expect(byName['link.sql']).toBe('symlink');
+      // Canonical JSON round-trips every name unambiguously.
+      const decoded = parseInventory(encodeInventory(entries));
+      expect(decoded.problem).toBeNull();
+      expect(decoded.entries).toEqual(entries);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+  it('preserves a name containing a NEWLINE without ambiguity', () => {
+    const entries = [{ name: '0001_a.sql' }, { name: 'evil\nline.sql' }]
+      .map((e) => ({ name: e.name, type: 'file' }))
+      .sort((a, b) => (a.name < b.name ? -1 : 1));
+    const decoded = parseInventory(encodeInventory(entries));
+    expect(decoded.problem).toBeNull();
+    expect(decoded.entries.map((e: { name: string }) => e.name)).toContain('evil\nline.sql');
+  });
+  it.each([
+    ['non-JSON output', '0001_a.sql\n0002_b.sql\n', /not canonical JSON/],
+    ['a non-array payload', '{"name":"x"}', /not a JSON array/],
+    ['an entry with extra keys', '[{"name":"0001_a.sql","type":"file","mode":"777"}]', /not an exact \{name,type\} record/],
+    ['an unsorted inventory', '[{"name":"0002_b.sql","type":"file"},{"name":"0001_a.sql","type":"file"}]', /not in canonical sorted order/],
+    ['a duplicate entry', '[{"name":"0001_a.sql","type":"file"},{"name":"0001_a.sql","type":"file"}]', /DUPLICATE entry/],
+  ])('refuses %s', (_l, text, pattern) => {
+    expect(parseInventory(text).problem).toMatch(pattern);
+  });
+  it('judges entries against the exact source-derived set and the filename grammar', () => {
+    const want = ['0001_a.sql', '0002_b.sql'];
+    const good = want.map((name) => ({ name, type: 'file' }));
+    expect(verifyInventoryEntries(good, want, 'x')).toEqual([]);
+    expect(verifyInventoryEntries([{ name: '.0022_hidden.sql', type: 'file' }, ...good], want, 'x').join('\n'))
+      .toMatch(/violates the migration filename grammar/);
+    expect(verifyInventoryEntries([{ name: 'subdir', type: 'directory' }, ...good], want, 'x').join('\n'))
+      .toMatch(/is a directory, not a regular file/);
+    expect(verifyInventoryEntries(good.map((e, i) => (i === 0 ? { ...e, type: 'symlink' } : e)), want, 'x').join('\n'))
+      .toMatch(/is a symlink, not a regular file/);
+    expect(verifyInventoryEntries(good.slice(0, 1), want, 'x').join('\n')).toMatch(/missing: "0002_b\.sql"/);
+  });
+  it('builds the helper argv from the repository root and the governed workspace', () => {
+    // The helper travels INSIDE the governed workspace, so the argv carries no absolute repo
+    // path and any verifier can rebuild it from the execution's workspace alone.
+    expect(inventoryArgv('/tmp/c18-a-Ab12Cd'))
+      .toEqual(['node', '/tmp/c18-a-Ab12Cd/scripts/c18-inventory.mjs', '/tmp/c18-a-Ab12Cd/migrations']);
+    expect(INVENTORY_HELPER_REL).toBe('scripts/gate/lib/c18-inventory.mjs');
+    expect(INVENTORY_HELPER_WS).toBe('scripts/c18-inventory.mjs');
+    // The attestation measures the runner AND the helper before every enumerated migration.
+    expect(attestArgv('/ws', ['0001_a.sql'])).toEqual([
+      'shasum', '-a', '256', '/ws/scripts/migrate.mjs', '/ws/scripts/c18-inventory.mjs',
+      '/ws/migrations/0001_a.sql',
+    ]);
+  });
+});
+
+describe('C18.1.6 — complete migration-output validation', () => {
+  const good = (applied: string[]) => `${expectedRunLines(applied).join('\n')}\n`;
+  it('the exact governed sequence passes', () => {
+    expect(verifyMigrationRun(good(['0001_a.sql', '0002_b.sql']), ['0001_a.sql', '0002_b.sql'], 'x')).toEqual([]);
+    expect(MIGRATION_TERMINAL_LINES).toEqual(['migrations up to date', 'role passwords synchronized from environment']);
+  });
+  it.each([
+    ['an additional application line', (t: string) => t.replace('migrations up to date', 'applying .0003_hidden.sql ... ok\nmigrations up to date'), /UNEXPECTED: "applying \.0003_hidden\.sql \.\.\. ok"/],
+    ['a whitespace-containing application line', (t: string) => t.replace('migrations up to date', 'applying .0003 hidden.sql ... ok\nmigrations up to date'), /UNEXPECTED: "applying \.0003 hidden\.sql \.\.\. ok"/],
+    ['an unknown trailing line', (t: string) => `${t}granting superuser ... done\n`, /UNEXPECTED: "granting superuser \.\.\. done"/],
+    ['a duplicated line', (t: string) => t.replace('applying 0001_a.sql ... ok\n', 'applying 0001_a.sql ... ok\napplying 0001_a.sql ... ok\n'), /runner emitted \d+ line\(s\)/],
+    ['a malformed line', (t: string) => t.replace('... ok', '... OK'), /runner output line 1 is/],
+    ['a missing terminal line', (t: string) => t.replace('role passwords synchronized from environment\n', ''), /runner emitted \d+ line\(s\)/],
+    ['a reordered sequence', (t: string) => t.split('\n').slice(0, 2).reverse().concat(t.split('\n').slice(2)).join('\n'), /runner output line 1 is/],
+    ['output that does not end with a newline', (t: string) => t.trimEnd(), /does not end with a newline/],
+  ])('rejects %s', (_l, mutate, pattern) => {
+    const applied = ['0001_a.sql', '0002_b.sql'];
+    expect(verifyMigrationRun(mutate(good(applied)), applied, 'x').join('\n')).toMatch(pattern);
+  });
+  it('a successful governed command emits nothing on stderr', () => {
+    expect(cleanExecution({ exit: 0, signal: null, stderr_bytes: 0 } as never, 'x')).toEqual([]);
+    expect(cleanExecution({ exit: 0, signal: null, stderr_bytes: 42 } as never, 'x').join('\n'))
+      .toMatch(/wrote 42 byte\(s\) to stderr/);
+    expect(cleanExecution({ exit: 1, signal: null, stderr_bytes: 0 } as never, 'x').join('\n')).toMatch(/recorded exit 1/);
+    expect(cleanExecution({ exit: null, signal: 'SIGKILL', stderr_bytes: 0 } as never, 'x').join('\n')).toMatch(/signal SIGKILL/);
+  });
+});
+
+describe('C18.1.6 — the source-owned seed specification binds generated identities to slots', () => {
+  const ids = {
+    tAlpha: 't-alpha', tBeta: 't-beta', d0: 'd-alpha0', d1: 'd-alpha1', d2: 'd-beta0',
+    adm: 'p-admin', pa: 'p-alpha-admin', pn: 'p-alpha-analyst', pb: 'p-beta-admin',
+    s1: 's-admin', s2: 's-alpha', o1: 'o-1', o2: 'o-2', e1: 'e-pub', e2: 'e-pend',
+  };
+  const world = () => ({
+    seedRecord: {
+      admin: { principalId: ids.adm, loginName: 'platform-admin' },
+      tenants: [{ tenantId: ids.tAlpha, name: 'c18-tenant-alpha' }, { tenantId: ids.tBeta, name: 'c18-tenant-beta' }],
+      domains: [
+        { domainId: ids.d0, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
+        { domainId: ids.d1, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
+        { domainId: ids.d2, tenantId: ids.tBeta, name: 'c18-tenant-beta-dom0' },
+      ],
+      principals: [
+        { principalId: ids.pa, scope: 'TENANT', tenantId: ids.tAlpha, domainId: null, loginName: 'c18-alpha-admin', roleCode: 'tenant_admin' },
+        { principalId: ids.pn, scope: 'DOMAIN', tenantId: ids.tAlpha, domainId: ids.d0, loginName: 'c18-alpha-analyst', roleCode: 'domain_analyst' },
+        { principalId: ids.pb, scope: 'TENANT', tenantId: ids.tBeta, domainId: null, loginName: 'c18-beta-admin', roleCode: 'tenant_admin' },
+      ],
+      sessions: [{ sessionId: ids.s1, principalId: ids.adm }, { sessionId: ids.s2, principalId: ids.pa }],
+      objects: [{ objectId: ids.o1, tenantId: ids.tAlpha, domainId: ids.d0 }, { objectId: ids.o2, tenantId: ids.tAlpha, domainId: ids.d0 }],
+      outbox: [{ eventId: ids.e1, eventType: 'c18.seed.published' }, { eventId: ids.e2, eventType: 'c18.seed.pending' }],
+    },
+    before: {
+      tables: {
+        'tenancy.tenants': { rows: [{ id: ids.tAlpha, name: 'c18-tenant-alpha' }, { id: ids.tBeta, name: 'c18-tenant-beta' }] },
+        'tenancy.domains': { rows: [
+          { id: ids.d0, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
+          { id: ids.d1, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
+          { id: ids.d2, tenant_id: ids.tBeta, name: 'c18-tenant-beta-dom0' },
+        ] },
+        'identity.principals': { rows: [
+          { id: ids.adm, login_name: 'platform-admin', display_name: 'platform-admin', kind: 'human', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+          { id: ids.pa, login_name: 'c18-alpha-admin', display_name: 'c18-alpha-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tAlpha, domain_id: null },
+          { id: ids.pn, login_name: 'c18-alpha-analyst', display_name: 'c18-alpha-analyst', kind: 'human', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+          { id: ids.pb, login_name: 'c18-beta-admin', display_name: 'c18-beta-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tBeta, domain_id: null },
+        ] },
+        'identity.role_bindings': { rows: [
+          { principal_id: ids.adm, role_code: 'platform_admin', revoked_at: null },
+          { principal_id: ids.pa, role_code: 'tenant_admin', revoked_at: null },
+          { principal_id: ids.pn, role_code: 'domain_analyst', revoked_at: null },
+          { principal_id: ids.pb, role_code: 'tenant_admin', revoked_at: null },
+        ] },
+        'identity.sessions': { rows: [{ id: ids.s1, principal_id: ids.adm, assurance: 'password' }, { id: ids.s2, principal_id: ids.pa, assurance: 'password' }] },
+        'objects.canonical_objects': { rows: [
+          { object_id: ids.o1, object_type: 'CLM', object_version: '1', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+          { object_id: ids.o2, object_type: 'CLM', object_version: '1', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+        ] },
+        'objects.object_outbox': { rows: [
+          { id: ids.e1, event_type: 'c18.seed.published', status: 'published', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+          { id: ids.e2, event_type: 'c18.seed.pending', status: 'pending', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+        ] },
+        'policy.policy_decisions': { rows: [
+          ...Array.from({ length: 2 }, () => ({ action: 'tenancy.tenant.create', consequence_class: 'C2', object_type: 'tenancy.tenant' })),
+          ...Array.from({ length: 3 }, () => ({ action: 'tenancy.domain.create', consequence_class: 'C2', object_type: 'tenancy.domain' })),
+          ...Array.from({ length: 3 }, () => ({ action: 'identity.principal.create', consequence_class: 'C2', object_type: 'identity.principal' })),
+          ...Array.from({ length: 2 }, () => ({ action: 'objects.create', consequence_class: 'C2', object_type: 'CLM' })),
+          ...Array.from({ length: 2 }, () => ({ action: 'objects.create', consequence_class: 'C1', object_type: 'outbox' })),
+        ] },
+      },
+    },
+  });
+  it('the specified world binds every slot with no problems', () => {
+    const r = bindSeedSpec(world() as never);
+    expect(r.problems).toEqual([]);
+    expect(r.slots.tenant.get('tenant-alpha')).toBe(ids.tAlpha);
+    expect(r.slots.session.get('alpha-admin-session')).toBe(ids.s2);
+    expect(r.slots.outbox.get('outbox-published')).toBe(ids.e1);
+  });
+  it('step identities come from the SOURCE-OWNED slot map', () => {
+    const { slots } = bindSeedSpec(world() as never);
+    const derived = deriveStepIdentitiesFromSlots(slots);
+    expect(derived['canonical-objects']).toEqual([ids.o1, ids.o2]);
+    expect(derived['outbox-publish']).toEqual([ids.e1]);
+    expect(derived['tenants-domains']).toEqual([ids.tAlpha, ids.tBeta, ids.d0, ids.d1, ids.d2]);
+  });
+  it.each([
+    ['a consistently renamed tenant', (w: any) => {
+      w.before.tables['tenancy.tenants'].rows[0].name = 'c18-tenant-attacker';
+      w.seedRecord.tenants[0].name = 'c18-tenant-attacker';
+    }, /0 tenant row\(s\) match the source-owned slot 'tenant-alpha'/],
+    ['a consistently renamed domain', (w: any) => {
+      w.before.tables['tenancy.domains'].rows[0].name = 'attacker-dom';
+      w.seedRecord.domains[0].name = 'attacker-dom';
+    }, /0 domain row\(s\) match the source-owned slot 'alpha-dom0'/],
+    ['a consistently renamed principal', (w: any) => {
+      const row = w.before.tables['identity.principals'].rows[2];
+      row.login_name = 'c18-attacker'; row.display_name = 'c18-attacker';
+      w.seedRecord.principals[1].loginName = 'c18-attacker';
+    }, /0 principal row\(s\) match the source-owned slot 'alpha-analyst'/],
+    ['a changed principal role', (w: any) => {
+      w.before.tables['identity.role_bindings'].rows[2].role_code = 'tenant_admin';
+      w.seedRecord.principals[1].roleCode = 'tenant_admin';
+    }, /principal slot 'alpha-analyst' holds role\(s\) \["tenant_admin"\]/],
+    ['a changed principal scope', (w: any) => {
+      w.before.tables['identity.principals'].rows[2].scope = 'TENANT';
+      w.seedRecord.principals[1].scope = 'TENANT';
+    }, /principal slot 'alpha-analyst' scope is "TENANT"/],
+    ['a changed session owner', (w: any) => {
+      w.before.tables['identity.sessions'].rows[1].principal_id = ids.pn;
+      w.seedRecord.sessions[1].principalId = ids.pn;
+    }, /unclaimed session\(s\) belong to principal slot 'alpha-admin'|matches no source-owned session slot/],
+    ['a moved canonical object', (w: any) => {
+      w.before.tables['objects.canonical_objects'].rows[1].domain_id = ids.d1;
+      w.seedRecord.objects[1].domainId = ids.d1;
+    }, /no canonical object matches slot 'claim-2'|matches no source-owned object slot/],
+    ['a changed outbox event type', (w: any) => {
+      w.before.tables['objects.object_outbox'].rows[1].event_type = 'c18.attacker.event';
+      w.seedRecord.outbox[1].eventType = 'c18.attacker.event';
+    }, /0 outbox row\(s\) match the source-owned slot 'outbox-pending'/],
+    ['a changed outbox status', (w: any) => {
+      w.before.tables['objects.object_outbox'].rows[1].status = 'published';
+    }, /outbox slot 'outbox-pending' status is "published"/],
+    ['a decision multiset the specification does not describe', (w: any) => {
+      w.before.tables['policy.policy_decisions'].rows[0].action = 'attacker.action';
+    }, /which the specification does not describe|match "tenancy\.tenant\.create/],
+    ['a seed record naming a different id than the snapshot slot', (w: any) => {
+      w.seedRecord.tenants[0].tenantId = 'other-id';
+    }, /the seed record's tenant for slot 'tenant-alpha' is "other-id"/],
+  ])('rejects %s', (_l, mutate, pattern) => {
+    const w = world();
+    mutate(w);
+    expect(bindSeedSpec(w as never).problems.join('\n')).toMatch(pattern);
+  });
+  it('the exact cardinalities are DERIVED from the specification, not maintained twice', () => {
+    expect(SEED_CONTRACT.tenants).toBe(C18_SEED_SPEC.tenants.length);
+    expect(SEED_CONTRACT.domains).toBe(C18_SEED_SPEC.domains.length);
+    expect(SEED_CONTRACT.principals).toBe(C18_SEED_SPEC.principals.length + 1);
+    expect(SEED_CONTRACT.decisions).toBe(C18_SEED_SPEC.decisions.reduce((n: number, d: { count: number }) => n + d.count, 0));
+    expect(SEED_CONTRACT.role_bindings).toBe(C18_SEED_SPEC.principals.length + 1);
+  });
+  it('the governed seeder reads its deterministic names from the SAME specification', () => {
+    const seeder = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-seed-0012.mjs'), 'utf8');
+    expect(seeder).toContain("from './c18-seed-spec.mjs'");
+    // No deterministic name may be duplicated as a literal in the seeder.
+    for (const t of C18_SEED_SPEC.tenants) expect(seeder).not.toContain(`'${t.name}'`);
+    for (const d of C18_SEED_SPEC.domains) expect(seeder).not.toContain(`'${d.name}'`);
+    for (const p of C18_SEED_SPEC.principals) expect(seeder).not.toContain(`'${p.loginName}'`);
+    for (const o of C18_SEED_SPEC.outbox) expect(seeder).not.toContain(`'${o.eventType}'`);
+  });
+});
+
+describe('C18.1.5 — the governed application sequence per execution', () => {
   it('derives the exact application sequence per governed execution', () => {
     const files = ['0001_a.sql', '0012_l.sql', '0013_m.sql', '0021_u.sql'];
     expect(expectedApplied(files, '0012', EXECUTION_FLOOR['a-migrate-historical'])).toEqual(['0001_a.sql', '0012_l.sql']);
@@ -860,10 +1116,11 @@ describe('C18.1.4 — credential positions are class-exact', () => {
 });
 
 describe('C18.1.4 — migration attestation is measured, not asserted', () => {
-  it('the attestation argv covers the runner and every governed migration in order', () => {
+  it('the attestation argv covers the runner, the inventory helper and every governed migration in order', () => {
     const files = ['0001_a.sql', '0002_b.sql'];
     expect(attestArgv('/tmp/c18-a-Ab12Cd', files)).toEqual([
       'shasum', '-a', '256', '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
+      '/tmp/c18-a-Ab12Cd/scripts/c18-inventory.mjs',
       '/tmp/c18-a-Ab12Cd/migrations/0001_a.sql', '/tmp/c18-a-Ab12Cd/migrations/0002_b.sql',
     ]);
   });

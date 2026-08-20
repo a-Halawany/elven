@@ -20,6 +20,7 @@
  *     the upgraded Path A posture in EVERY authority-relevant category.
  */
 import { createHash } from 'node:crypto';
+import { C18_SEED_SPEC, SEED_CARDINALITIES } from './c18-seed-spec.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -397,9 +398,8 @@ export function verifyChainRows({ events, heads, priorEvents = null, jcs = null,
  * after this contract passes.
  */
 export const SEED_CONTRACT = Object.freeze({
-  tenants: 2, domains: 3, principals: 4, sessions: 2, objects: 2, outbox: 2,
-  outbox_published: 1, outbox_pending: 1, decisions: 12,
-  role_bindings: 4, revoked_role_bindings: 0,
+  // Cardinalities are DERIVED from the source-owned specification, never maintained twice.
+  ...SEED_CARDINALITIES,
   audit_platform_min: 8, audit_tenant_partitions_min: 1, audit_total_min: 12,
 });
 /** Retained name for the pre-C18.1.5 call sites; the values are now exact, not minima. */
@@ -762,7 +762,8 @@ export function verifyCatalogContract(snapshot, era, contract, label) {
  */
 export const MIGRATION_EXECUTION_FIELDS = Object.freeze([
   'command_id', 'attest_command_id', 'inventory_command_id', 'label', 'path', 'workspace',
-  'runner_path', 'runner_sha256', 'ceiling', 'inventory', 'migrations', 'applied',
+  'runner_path', 'runner_sha256', 'inventory_helper_sha256', 'ceiling', 'inventory', 'migrations',
+  'applied',
 ]);
 
 /**
@@ -774,7 +775,20 @@ export const MIGRATION_EXECUTION_FIELDS = Object.freeze([
  * every DISCOVERED file; and the runner's own output is parsed for the exact expected
  * application sequence.
  */
-export const inventoryArgv = (workspace) => ['ls', '-1', `${workspace}/migrations`];
+/**
+ * C18.1.6 — the inventory is produced by the TRACKED cross-platform helper, not by `ls -1`.
+ * `ls -1` omits dot-prefixed entries and emits line-delimited text, so `.0022_hidden.sql` (which
+ * the runner's readdirSync WOULD apply) could not be expressed at all, and a name containing a
+ * space or newline could not be read back unambiguously.
+ */
+export const INVENTORY_HELPER_REL = 'scripts/gate/lib/c18-inventory.mjs';
+/** The helper is COPIED into the governed workspace and run from there, exactly as the migrate
+ * runner is, so the argv is workspace-relative and reproducible by any verifier — and the
+ * executed bytes are covered by the same attestation that measures the runner. */
+export const INVENTORY_HELPER_WS = 'scripts/c18-inventory.mjs';
+export const inventoryArgv = (workspace) => [
+  'node', `${workspace}/${INVENTORY_HELPER_WS}`, `${workspace}/migrations`,
+];
 
 /** Which migrations each governed execution NEWLY applies (exclusive floor per execution). */
 export const EXECUTION_FLOOR = Object.freeze({
@@ -783,27 +797,100 @@ export const EXECUTION_FLOOR = Object.freeze({
   'b-migrate-latest': '0000',
 });
 
-/** Parse `ls -1` output into a sorted file list. */
+/** The governed migration filename grammar — the same one orderedMigrations enforces. */
+export const MIGRATION_NAME_RE = /^\d{4}_[a-z0-9_]+\.sql$/;
+
+/**
+ * Decode a canonical inventory receipt. Every entry must be an exact {name, type} pair; the list
+ * must be sorted by code unit and free of duplicates. Nothing is trimmed or coerced, so a name
+ * carrying whitespace or a newline is preserved exactly as the filesystem reported it.
+ */
 export function parseInventory(text) {
-  const files = String(text ?? '').split('\n').map((l) => l.trim()).filter((l) => l !== '');
-  return { files, sorted: [...files].sort() };
+  let entries = null;
+  try { entries = JSON.parse(String(text ?? '')); } catch {
+    return { entries: [], names: [], problem: 'inventory receipt is not canonical JSON' };
+  }
+  if (!Array.isArray(entries)) return { entries: [], names: [], problem: 'inventory receipt is not a JSON array' };
+  for (const e of entries) {
+    if (e === null || typeof e !== 'object' || Array.isArray(e)
+      || JSON.stringify(Object.keys(e).sort()) !== '["name","type"]'
+      || typeof e.name !== 'string' || typeof e.type !== 'string') {
+      return { entries: [], names: [], problem: 'inventory entry is not an exact {name,type} record' };
+    }
+  }
+  const names = entries.map((e) => e.name);
+  const sorted = [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (JSON.stringify(names) !== JSON.stringify(sorted)) {
+    return { entries, names, problem: 'inventory is not in canonical sorted order' };
+  }
+  if (new Set(names).size !== names.length) {
+    return { entries, names, problem: 'inventory lists a DUPLICATE entry' };
+  }
+  return { entries, names, problem: null };
 }
 
 /**
- * Parse the tracked migrate runner's own stdout: one `applying <file> ... ok` per NEWLY applied
- * migration, in order, terminated by `migrations up to date`.
+ * Judge a decoded inventory against the exact source-derived migration set: every entry must be
+ * a REGULAR FILE (a directory, a symlink or any other node is refused outright), must satisfy the
+ * governed filename grammar, and the complete set must equal the tracked 0001–ceiling list.
  */
-export function parseMigrationRun(text) {
+export function verifyInventoryEntries(entries, wantNames, label) {
+  const problems = [];
+  for (const e of entries) {
+    if (e.type !== 'file') {
+      problems.push(`${label}: governed workspace entry ${JSON.stringify(e.name)} is a ${e.type}, not a regular file`);
+    }
+    if (!MIGRATION_NAME_RE.test(e.name)) {
+      problems.push(`${label}: governed workspace entry ${JSON.stringify(e.name)} violates the migration filename grammar`);
+    }
+  }
+  const names = entries.map((e) => e.name);
+  if (JSON.stringify(names) !== JSON.stringify(wantNames)) {
+    const extra = names.filter((n) => !wantNames.includes(n));
+    const missing = wantNames.filter((n) => !names.includes(n));
+    problems.push(`${label}: governed workspace holds ${names.length} entr(ies); the exact source-derived set is ${wantNames.length}`
+      + `${extra.length > 0 ? ` (UNAUTHORIZED: ${extra.map((n) => JSON.stringify(n)).join(', ')})` : ''}`
+      + `${missing.length > 0 ? ` (missing: ${missing.map((n) => JSON.stringify(n)).join(', ')})` : ''}`);
+  }
+  return problems;
+}
+
+/** The EXACT lines the tracked migrate runner emits for a given application sequence. */
+export const MIGRATION_TERMINAL_LINES = Object.freeze([
+  'migrations up to date',
+  'role passwords synchronized from environment',
+]);
+export const expectedRunLines = (applied) => [
+  ...applied.map((f) => `applying ${f} ... ok`),
+  ...MIGRATION_TERMINAL_LINES,
+];
+
+/**
+ * COMPLETE output validation. 8362cba matched `applying (\S+) ... ok` anywhere in the stream, so
+ * a filename containing whitespace was invisible and any additional line — a stray grant, a
+ * warning, a second copy of a legitimate line — was ignored. The runner's output must now equal
+ * the expected line sequence EXACTLY, in order, with nothing else present.
+ */
+export function verifyMigrationRun(text, applied, label) {
   const raw = String(text ?? '');
-  const applied = [...raw.matchAll(/^applying (\S+) \.\.\. ok$/gm)].map((m) => m[1]);
-  const started = [...raw.matchAll(/^applying (\S+) \.\.\./gm)].map((m) => m[1]);
-  if (started.length !== applied.length) {
-    return { applied: [], problem: 'a migration was started but never confirmed applied' };
+  const lines = raw.split('\n');
+  if (lines[lines.length - 1] !== '') {
+    return [`${label}: runner output does not end with a newline`];
   }
-  if (!/^migrations up to date$/m.test(raw)) {
-    return { applied: [], problem: "the runner never reported 'migrations up to date'" };
+  lines.pop();
+  const want = expectedRunLines(applied);
+  if (lines.length !== want.length) {
+    const extra = lines.filter((l) => !want.includes(l));
+    return [`${label}: runner emitted ${lines.length} line(s); the governed sequence is exactly ${want.length}`
+      + `${extra.length > 0 ? ` (UNEXPECTED: ${extra.slice(0, 3).map((l) => JSON.stringify(l)).join(', ')})` : ''}`];
   }
-  return { applied, problem: null };
+  const problems = [];
+  want.forEach((expect, i) => {
+    if (lines[i] !== expect) {
+      problems.push(`${label}: runner output line ${i + 1} is ${JSON.stringify(lines[i])}; the governed sequence requires ${JSON.stringify(expect)}`);
+    }
+  });
+  return problems;
 }
 
 /**
@@ -815,7 +902,7 @@ export function parseMigrationRun(text) {
  * receipt's own fields, so a self-asserted digest over a foreign runner cannot survive.
  */
 export const attestArgv = (workspace, files) => [
-  'shasum', '-a', '256', `${workspace}/scripts/migrate.mjs`,
+  'shasum', '-a', '256', `${workspace}/scripts/migrate.mjs`, `${workspace}/${INVENTORY_HELPER_WS}`,
   ...files.map((f) => `${workspace}/migrations/${f}`),
 ];
 
@@ -845,7 +932,21 @@ export function parseAttestation(text) {
  * mkdtemp name the producer creates, with no traversal and no symlink games. */
 export const WORKSPACE_BASENAME_RE = /^c18-[ab]-[A-Za-z0-9]{6}$/;
 
-export function verifyMigrationExecutions({ executions, commands, trackedDigests, repoRoot, rawText = null }) {
+/** A successful governed command: exit 0, no signal, and NOTHING on stderr. */
+export function cleanExecution(cmd, label) {
+  const problems = [];
+  if (cmd.exit !== 0 || (cmd.signal ?? null) !== null) {
+    problems.push(`${label} recorded exit ${cmd.exit} signal ${cmd.signal}`);
+  }
+  if (cmd.stderr_bytes !== 0) {
+    problems.push(`${label} wrote ${cmd.stderr_bytes} byte(s) to stderr; a governed command that succeeded emits none`);
+  }
+  return problems;
+}
+
+export function verifyMigrationExecutions({
+  executions, commands, trackedDigests, repoRoot, rawText = null, helperDigest = undefined,
+}) {
   const problems = [];
   if (!Array.isArray(executions)) return ['manifest migration_executions is not an array'];
   const expected = [
@@ -891,10 +992,13 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
     if (JSON.stringify(e.migrations) !== JSON.stringify(wantFiles)) {
       problems.push(`migration execution '${e.label}' workspace migration set is not exactly the tracked 0001–${e.ceiling} set in order`);
     }
-    // ── COMMAND-BOUND INVENTORY: the COMPLETE governed migration directory, enumerated by
-    // an executed `ls`, must be exactly the source-derived set — no extra, missing, duplicate
-    // or reordered file. ───────────────────────────────────────────────────────────────
+    // ── COMMAND-BOUND INVENTORY: the COMPLETE governed migration directory, enumerated by the
+    // TRACKED cross-platform helper — dot-prefixed names included, canonical JSON, file types
+    // reported from lstat — must be exactly the source-derived set. ─────────────────────
     const wantNames = wantFiles.map((f) => f.filename);
+    if (helperDigest !== undefined && e.inventory_helper_sha256 !== helperDigest) {
+      problems.push(`migration execution '${e.label}' enumerated the workspace with a helper whose bytes are not the tracked ${INVENTORY_HELPER_REL}`);
+    }
     const inv = Array.isArray(commands) ? commands.find((c) => c.id === e.inventory_command_id) : undefined;
     if (inv === undefined) {
       problems.push(`migration execution '${e.label}' names inventory command '${e.inventory_command_id}' which does not exist`);
@@ -902,32 +1006,22 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
       if (inv.label !== `${e.label}-inventory`) {
         problems.push(`migration execution '${e.label}' inventory is bound to command '${inv.label}'`);
       }
-      if (inv.exit !== 0 || (inv.signal ?? null) !== null) {
-        problems.push(`migration execution '${e.label}' inventory recorded exit ${inv.exit} signal ${inv.signal}`);
-      }
+      problems.push(...cleanExecution(inv, `migration execution '${e.label}' inventory`));
       if (JSON.stringify(inv.argv) !== JSON.stringify(inventoryArgv(ws))) {
-        problems.push(`migration execution '${e.label}' inventory did not enumerate the governed workspace migration directory`);
+        problems.push(`migration execution '${e.label}' inventory did not enumerate the governed workspace with the tracked helper`);
       }
       const invText = rawText === null ? null : rawText(inv);
       if (invText === null) problems.push(`migration execution '${e.label}' inventory has no readable raw receipt`);
       else {
-        const { files, sorted } = parseInventory(invText);
-        if (JSON.stringify(files) !== JSON.stringify(sorted)) {
-          problems.push(`migration execution '${e.label}' workspace inventory is not in sorted order`);
-        }
-        if (new Set(files).size !== files.length) {
-          problems.push(`migration execution '${e.label}' workspace inventory lists a DUPLICATE file`);
-        }
-        if (JSON.stringify(sorted) !== JSON.stringify(wantNames)) {
-          const extra = sorted.filter((f) => !wantNames.includes(f));
-          const missing = wantNames.filter((f) => !sorted.includes(f));
-          problems.push(`migration execution '${e.label}' governed workspace holds ${files.length} migration file(s); the exact source-derived 0001–${e.ceiling} set is ${wantNames.length}`
-            + `${extra.length > 0 ? ` (UNAUTHORIZED: ${extra.join(', ')})` : ''}`
-            + `${missing.length > 0 ? ` (missing: ${missing.join(', ')})` : ''}`);
-        }
-        // The receipt's own inventory field must equal what the command ENUMERATED.
-        if (JSON.stringify(e.inventory) !== JSON.stringify(files)) {
-          problems.push(`migration execution '${e.label}' inventory[] disagrees with the enumerated directory`);
+        const { entries, names, problem } = parseInventory(invText);
+        if (problem !== null) problems.push(`migration execution '${e.label}' ${problem}`);
+        else {
+          problems.push(...verifyInventoryEntries(entries, wantNames, `migration execution '${e.label}'`));
+          // The receipt's own inventory field must equal what the command ENUMERATED.
+          if (JSON.stringify(e.inventory) !== JSON.stringify(entries)) {
+            problems.push(`migration execution '${e.label}' inventory[] disagrees with the enumerated directory`);
+          }
+          void names;
         }
       }
     }
@@ -941,12 +1035,10 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
       if (attest.label !== `${e.label}-attest`) {
         problems.push(`migration execution '${e.label}' attestation is bound to command '${attest.label}'`);
       }
-      if (attest.exit !== 0 || (attest.signal ?? null) !== null) {
-        problems.push(`migration execution '${e.label}' attestation recorded exit ${attest.exit} signal ${attest.signal}`);
-      }
+      problems.push(...cleanExecution(attest, `migration execution '${e.label}' attestation`));
       // Hash coverage follows the ENUMERATED directory, so an unauthorized file cannot be
       // omitted from the attestation by omitting it from the manifest's claim.
-      const discovered = Array.isArray(e.inventory) ? e.inventory : wantNames;
+      const discovered = Array.isArray(e.inventory) ? e.inventory.map((x) => x?.name ?? x) : wantNames;
       const wantArgv = attestArgv(ws, discovered);
       if (JSON.stringify(attest.argv) !== JSON.stringify(wantArgv)) {
         problems.push(`migration execution '${e.label}' attestation did not hash exactly the governed runner and every enumerated migration file`);
@@ -959,6 +1051,7 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
         else {
           const wantRows = [
             { path: e.runner_path, digest: runnerDigest },
+            { path: `${ws}/${INVENTORY_HELPER_WS}`, digest: helperDigest },
             ...wantFiles.map((f) => ({ path: `${ws}/migrations/${f.filename}`, digest: f.digest })),
           ];
           if (rows.length !== wantRows.length) {
@@ -968,14 +1061,18 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
               if (rows[j].path !== w.path) {
                 problems.push(`migration execution '${e.label}' attestation line ${j + 1} hashed ${JSON.stringify(rows[j].path)}, expected ${JSON.stringify(w.path)}`);
               } else if (w.digest !== undefined && rows[j].digest !== w.digest) {
-                problems.push(`migration execution '${e.label}' EXECUTED ${j === 0 ? 'runner' : `migration ${wantFiles[j - 1].filename}`} whose measured bytes are not the tracked source bytes`);
+                const what = j === 0 ? 'runner' : j === 1 ? 'inventory helper' : `migration ${wantFiles[j - 2].filename}`;
+                problems.push(`migration execution '${e.label}' EXECUTED ${what} whose measured bytes are not the tracked source bytes`);
               }
             });
             // The receipt's own fields must equal what the execution MEASURED.
             if (rows[0] !== undefined && e.runner_sha256 !== rows[0].digest) {
               problems.push(`migration execution '${e.label}' runner_sha256 disagrees with the attested measurement`);
             }
-            const measured = rows.slice(1).map((r, j) => ({ filename: wantFiles[j]?.filename, digest: r.digest }));
+            if (rows[1] !== undefined && e.inventory_helper_sha256 !== rows[1].digest) {
+              problems.push(`migration execution '${e.label}' inventory_helper_sha256 disagrees with the attested measurement`);
+            }
+            const measured = rows.slice(2).map((r, j) => ({ filename: wantFiles[j]?.filename, digest: r.digest }));
             if (JSON.stringify(e.migrations) !== JSON.stringify(measured)) {
               problems.push(`migration execution '${e.label}' migrations[] disagrees with the attested measurement`);
             }
@@ -983,26 +1080,17 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
         }
       }
     }
-    // ── THE RUNNER'S OWN OUTPUT: the exact expected application sequence. ─────────────
+    // ── THE RUNNER'S OWN OUTPUT: the EXACT expected line sequence, nothing else. ──────
     const runCmd = Array.isArray(commands) ? commands.find((c) => c.id === e.command_id) : undefined;
     if (runCmd !== undefined) {
+      problems.push(...cleanExecution(runCmd, `migration execution '${e.label}'`));
       const runText = rawText === null ? null : rawText(runCmd);
       if (runText === null) problems.push(`migration execution '${e.label}' has no readable runner receipt`);
       else {
-        const { applied, problem } = parseMigrationRun(runText);
-        if (problem !== null) problems.push(`migration execution '${e.label}' runner output: ${problem}`);
-        else {
-          const wantApplied = expectedApplied(wantNames, e.ceiling, EXECUTION_FLOOR[e.label] ?? '0000');
-          if (JSON.stringify(applied) !== JSON.stringify(wantApplied)) {
-            const extra = applied.filter((f) => !wantApplied.includes(f));
-            const missing = wantApplied.filter((f) => !applied.includes(f));
-            problems.push(`migration execution '${e.label}' applied ${JSON.stringify(applied)}; the governed sequence is ${JSON.stringify(wantApplied)}`
-              + `${extra.length > 0 ? ` (UNAUTHORIZED: ${extra.join(', ')})` : ''}`
-              + `${missing.length > 0 ? ` (missing: ${missing.join(', ')})` : ''}`);
-          }
-          if (JSON.stringify(e.applied) !== JSON.stringify(applied)) {
-            problems.push(`migration execution '${e.label}' applied[] disagrees with what the runner reported`);
-          }
+        const wantApplied = expectedApplied(wantNames, e.ceiling, EXECUTION_FLOOR[e.label] ?? '0000');
+        problems.push(...verifyMigrationRun(runText, wantApplied, `migration execution '${e.label}'`));
+        if (JSON.stringify(e.applied) !== JSON.stringify(wantApplied)) {
+          problems.push(`migration execution '${e.label}' applied[] ${JSON.stringify(e.applied)} is not the governed sequence ${JSON.stringify(wantApplied)}`);
         }
       }
     }
@@ -1069,7 +1157,7 @@ export function deriveSeedStepIdentities(seedRecord) {
 
 /** Steps must be the exact plan, in order, with the exact era ports and the EXACT derived
  * identity set — no empty, missing, duplicate, extra or step-misattributed identity. */
-export function verifySeedSteps({ steps, seedRecord, contractHeld = true }) {
+export function verifySeedSteps({ steps, seedRecord, contractHeld = true, slots = null }) {
   // C18.1.5 — identities are derived from the record only AFTER the exact seed contract holds.
   // Deriving from a record whose cardinalities are already wrong would reconcile the forgery
   // against itself.
@@ -1081,7 +1169,9 @@ export function verifySeedSteps({ steps, seedRecord, contractHeld = true }) {
   if (steps.length !== SEED_STEP_PLAN.length) {
     problems.push(`seed record has ${steps.length} governed step receipts; the source-owned plan has ${SEED_STEP_PLAN.length}`);
   }
-  const derived = deriveSeedStepIdentities(seedRecord);
+  // C18.1.6 — when the spec slots resolved, expected identities come from the SOURCE-OWNED
+  // step→slot map, so a step that attributes another slot's identity cannot reconcile.
+  const derived = slots === null ? deriveSeedStepIdentities(seedRecord) : deriveStepIdentitiesFromSlots(slots);
   const known = new Set([
     seedRecord?.admin?.principalId,
     ...(seedRecord?.tenants ?? []).map((t) => t.tenantId),
@@ -1243,6 +1333,215 @@ export const deriveSeedSummary = (r) => ({
 
 const exactKeys = (obj, fields) => obj !== null && typeof obj === 'object' && !Array.isArray(obj)
   && JSON.stringify(Object.keys(obj).sort()) === JSON.stringify([...fields].sort());
+
+/**
+ * C18.1.6 — BIND THE GENERATED WORLD TO THE SOURCE-OWNED SEED SPECIFICATION.
+ *
+ * 8362cba fixed the seed's exact quantities, but the deterministic VALUES — tenant and domain
+ * names, principal logins, roles, session ownership, object placement, outbox event types — were
+ * only ever checked for agreement between the seed record and the snapshots. Renaming a tenant
+ * consistently everywhere therefore reconciled perfectly.
+ *
+ * Every generated UUID is now resolved to a named SLOT in `c18-seed-spec.mjs` using the
+ * deterministic key the specification owns, and the seed record, the reconstructed snapshot rows
+ * and the governed step receipts are reconciled against those slots in both directions. A
+ * consistent rename cannot resolve its slot, so it fails no matter how internally coherent it is.
+ */
+export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC }) {
+  const problems = [];
+  const slots = { tenant: new Map(), domain: new Map(), principal: new Map(), session: new Map(), object: new Map(), outbox: new Map() };
+  const rows = (t) => before.tables?.[t]?.rows ?? [];
+
+  /** Resolve exactly one row by a deterministic key; anything else is a finding. */
+  const resolveOne = (kind, slot, list, predicate, describe) => {
+    const found = list.filter(predicate);
+    if (found.length !== 1) {
+      problems.push(`seed spec: ${found.length} ${kind} row(s) match the source-owned slot '${slot}' (${describe}); exactly one is required`);
+      return null;
+    }
+    return found[0];
+  };
+
+  // ── TENANTS: exact names, one row each. ─────────────────────────────────────────────
+  for (const t of spec.tenants) {
+    const row = resolveOne('tenant', t.slot, rows('tenancy.tenants'), (r) => r.name === t.name, `name ${JSON.stringify(t.name)}`);
+    if (row !== null) slots.tenant.set(t.slot, row.id);
+  }
+  // ── DOMAINS: exact names AND the parent tenant slot. ────────────────────────────────
+  for (const d of spec.domains) {
+    const parent = slots.tenant.get(d.tenantSlot) ?? null;
+    const row = resolveOne('domain', d.slot, rows('tenancy.domains'),
+      (r) => r.name === d.name && r.tenant_id === parent,
+      `name ${JSON.stringify(d.name)} under tenant slot '${d.tenantSlot}'`);
+    if (row !== null) slots.domain.set(d.slot, row.id);
+  }
+  // ── PRINCIPALS: login AND display name, scope, tenancy placement, and live role. ────
+  const bindings = rows('identity.role_bindings').filter((b) => (b.revoked_at ?? null) === null);
+  for (const p of [spec.admin, ...spec.principals]) {
+    const wantTenant = p.tenantSlot === null ? null : (slots.tenant.get(p.tenantSlot) ?? null);
+    const wantDomain = p.domainSlot === null ? null : (slots.domain.get(p.domainSlot) ?? null);
+    const row = resolveOne('principal', p.slot, rows('identity.principals'),
+      (r) => r.login_name === p.loginName, `login ${JSON.stringify(p.loginName)}`);
+    if (row === null) continue;
+    slots.principal.set(p.slot, row.id);
+    for (const [field, actual, want] of [
+      ['display_name', row.display_name, p.loginName], ['kind', row.kind, p.kind],
+      ['scope', row.scope, p.scope], ['tenant_id', row.tenant_id ?? null, wantTenant],
+      ['domain_id', row.domain_id ?? null, wantDomain],
+    ]) {
+      if (actual !== want) {
+        problems.push(`seed spec: principal slot '${p.slot}' ${field} is ${JSON.stringify(actual)}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    const held = bindings.filter((b) => b.principal_id === row.id).map((b) => b.role_code);
+    if (JSON.stringify(held) !== JSON.stringify([p.role])) {
+      problems.push(`seed spec: principal slot '${p.slot}' holds role(s) ${JSON.stringify(held)}; the specification grants exactly ${JSON.stringify([p.role])}`);
+    }
+  }
+  // ── SESSIONS: ownership by principal slot. ──────────────────────────────────────────
+  const sessionRows = rows('identity.sessions');
+  const claimedSessions = new Set();
+  for (const sess of spec.sessions) {
+    const owner = slots.principal.get(sess.principalSlot) ?? null;
+    const candidates = sessionRows.filter((r) => r.principal_id === owner && !claimedSessions.has(r.id));
+    if (candidates.length !== 1) {
+      problems.push(`seed spec: ${candidates.length} unclaimed session(s) belong to principal slot '${sess.principalSlot}' for session slot '${sess.slot}'; exactly one is required`);
+      continue;
+    }
+    const row = candidates[0];
+    claimedSessions.add(row.id);
+    slots.session.set(sess.slot, row.id);
+    if (row.assurance !== sess.assurance) {
+      problems.push(`seed spec: session slot '${sess.slot}' assurance is ${JSON.stringify(row.assurance)}; the specification requires ${JSON.stringify(sess.assurance)}`);
+    }
+  }
+  for (const r of sessionRows) {
+    if (!claimedSessions.has(r.id)) problems.push(`seed spec: session ${r.id} matches no source-owned session slot`);
+  }
+  // ── CANONICAL OBJECTS: type, version, lifecycle and tenancy placement. ──────────────
+  const objectRows = rows('objects.canonical_objects');
+  const claimedObjects = new Set();
+  for (const o of spec.objects) {
+    const wantTenant = slots.tenant.get(o.tenantSlot) ?? null;
+    const wantDomain = slots.domain.get(o.domainSlot) ?? null;
+    const candidates = objectRows.filter((r) => r.tenant_id === wantTenant && r.domain_id === wantDomain
+      && r.object_type === o.objectType && !claimedObjects.has(r.object_id));
+    if (candidates.length === 0) {
+      problems.push(`seed spec: no canonical object matches slot '${o.slot}' (${o.objectType} in tenant slot '${o.tenantSlot}', domain slot '${o.domainSlot}')`);
+      continue;
+    }
+    const row = candidates[0];
+    claimedObjects.add(row.object_id);
+    slots.object.set(o.slot, row.object_id);
+    if (String(row.object_version) !== o.objectVersion) {
+      problems.push(`seed spec: object slot '${o.slot}' version is ${JSON.stringify(row.object_version)}; the specification requires ${JSON.stringify(o.objectVersion)}`);
+    }
+    if (row.lifecycle_state !== undefined && row.lifecycle_state !== o.lifecycleState) {
+      problems.push(`seed spec: object slot '${o.slot}' lifecycle_state is ${JSON.stringify(row.lifecycle_state)}; the specification requires ${JSON.stringify(o.lifecycleState)}`);
+    }
+  }
+  for (const r of objectRows) {
+    if (!claimedObjects.has(r.object_id)) problems.push(`seed spec: canonical object ${r.object_id} matches no source-owned object slot`);
+  }
+  // ── OUTBOX: event type, terminal status and topology. ───────────────────────────────
+  const outboxRows = rows('objects.object_outbox');
+  const claimedOutbox = new Set();
+  for (const o of spec.outbox) {
+    const row = resolveOne('outbox', o.slot, outboxRows, (r) => r.event_type === o.eventType,
+      `event_type ${JSON.stringify(o.eventType)}`);
+    if (row === null) continue;
+    claimedOutbox.add(row.id);
+    slots.outbox.set(o.slot, row.id);
+    for (const [field, actual, want] of [
+      ['status', row.status, o.status], ['scope', row.scope, o.scope],
+      ['tenant_id', row.tenant_id ?? null, slots.tenant.get(o.tenantSlot) ?? null],
+      ['domain_id', row.domain_id ?? null, slots.domain.get(o.domainSlot) ?? null],
+    ]) {
+      if (actual !== want) {
+        problems.push(`seed spec: outbox slot '${o.slot}' ${field} is ${JSON.stringify(actual)}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+  }
+  for (const r of outboxRows) {
+    if (!claimedOutbox.has(r.id)) problems.push(`seed spec: outbox event ${r.id} matches no source-owned outbox slot`);
+  }
+  // ── DECISIONS: the deterministic (action, consequence, object type) multiset. ───────
+  const decisionKey = (d) => `${d.action}|${d.consequence_class}|${d.object_type}`;
+  const haveDecisions = new Map();
+  for (const d of rows('policy.policy_decisions')) {
+    haveDecisions.set(decisionKey(d), (haveDecisions.get(decisionKey(d)) ?? 0) + 1);
+  }
+  for (const d of spec.decisions) {
+    const key = `${d.action}|${d.consequence}|${d.objectType}`;
+    const have = haveDecisions.get(key) ?? 0;
+    if (have !== d.count) {
+      problems.push(`seed spec: ${have} decision(s) match ${JSON.stringify(key)}; the specification writes exactly ${d.count}`);
+    }
+    haveDecisions.delete(key);
+  }
+  for (const [key, n] of haveDecisions) {
+    problems.push(`seed spec: ${n} decision(s) match ${JSON.stringify(key)}, which the specification does not describe`);
+  }
+  // ── THE SEED RECORD must name the SAME generated identities as the snapshot slots. ──
+  const recordSays = [
+    ['tenant', spec.tenants, (x) => (seedRecord.tenants ?? []).find((r) => r.name === x.name)?.tenantId, slots.tenant],
+    ['domain', spec.domains, (x) => (seedRecord.domains ?? []).find((r) => r.name === x.name)?.domainId, slots.domain],
+    ['principal', spec.principals, (x) => (seedRecord.principals ?? []).find((r) => r.loginName === x.loginName)?.principalId, slots.principal],
+    ['outbox', spec.outbox, (x) => (seedRecord.outbox ?? []).find((r) => r.eventType === x.eventType)?.eventId, slots.outbox],
+  ];
+  for (const [kind, list, pick, map] of recordSays) {
+    for (const item of list) {
+      const recorded = pick(item) ?? null;
+      const bound = map.get(item.slot) ?? null;
+      if (bound === null) continue; // already reported as unresolvable
+      if (recorded !== bound) {
+        problems.push(`seed spec: the seed record's ${kind} for slot '${item.slot}' is ${JSON.stringify(recorded)}; the snapshot binds that slot to ${JSON.stringify(bound)}`);
+      }
+    }
+  }
+  if ((seedRecord.admin?.principalId ?? null) !== (slots.principal.get(spec.admin.slot) ?? null)
+    && slots.principal.has(spec.admin.slot)) {
+    problems.push("seed spec: the seed record's admin is not the principal the snapshot binds to the platform-admin slot");
+  }
+  for (const p of spec.principals) {
+    const rec = (seedRecord.principals ?? []).find((r) => r.loginName === p.loginName);
+    if (rec === undefined) { problems.push(`seed spec: the seed record has no principal for slot '${p.slot}'`); continue; }
+    if (rec.roleCode !== p.role || rec.scope !== p.scope) {
+      problems.push(`seed spec: the seed record's principal slot '${p.slot}' claims role/scope ${JSON.stringify([rec.roleCode, rec.scope])}; the specification requires ${JSON.stringify([p.role, p.scope])}`);
+    }
+  }
+  for (const sess of spec.sessions) {
+    const bound = slots.session.get(sess.slot) ?? null;
+    if (bound === null) continue;
+    const rec = (seedRecord.sessions ?? []).find((r) => r.sessionId === bound);
+    if (rec === undefined) { problems.push(`seed spec: the seed record does not carry the session bound to slot '${sess.slot}'`); continue; }
+    const owner = slots.principal.get(sess.principalSlot) ?? null;
+    if (rec.principalId !== owner) {
+      problems.push(`seed spec: the seed record's session slot '${sess.slot}' is owned by ${JSON.stringify(rec.principalId)}; the specification assigns it to principal slot '${sess.principalSlot}' (${JSON.stringify(owner)})`);
+    }
+  }
+  for (const o of spec.objects) {
+    const bound = slots.object.get(o.slot) ?? null;
+    if (bound === null) continue;
+    const rec = (seedRecord.objects ?? []).find((r) => r.objectId === bound);
+    if (rec === undefined) { problems.push(`seed spec: the seed record does not carry the object bound to slot '${o.slot}'`); continue; }
+    if (rec.tenantId !== (slots.tenant.get(o.tenantSlot) ?? null) || rec.domainId !== (slots.domain.get(o.domainSlot) ?? null)) {
+      problems.push(`seed spec: the seed record's object slot '${o.slot}' is placed outside the tenancy the specification assigns it`);
+    }
+  }
+  return { slots, problems };
+}
+
+/** The identities each governed step must report, resolved through the source-owned slots. */
+export function deriveStepIdentitiesFromSlots(slots, spec = C18_SEED_SPEC) {
+  const lookup = (slot) => slots.tenant.get(slot) ?? slots.domain.get(slot) ?? slots.principal.get(slot)
+    ?? slots.session.get(slot) ?? slots.object.get(slot) ?? slots.outbox.get(slot) ?? null;
+  const out = {};
+  for (const [step, slotNames] of Object.entries(spec.stepSlots)) {
+    out[step] = slotNames.map(lookup).filter((x) => x !== null);
+  }
+  return out;
+}
 
 /**
  * EXACT role-binding reconciliation (C18.1.5). Expected and observed ACTIVE bindings are

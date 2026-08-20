@@ -12,6 +12,11 @@
  * from era-application writes.
  */
 import { createRequire } from 'node:module';
+// C18.1.6 — deterministic names come from the SOURCE-OWNED specification the verifier also
+// reads, so the seeder and the contract can never drift into separate expectations.
+import {
+  SEED_ADMIN, SEED_DOMAINS, SEED_OBJECTS, SEED_OUTBOX, SEED_PRINCIPALS, SEED_TENANTS,
+} from './c18-seed-spec.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -76,14 +81,14 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       ['select ctx.issue_bootstrap($1::uuid)', [bootCorr]],
       ['select identity.claim_bootstrap()'],
       ["select identity.create_principal($1::uuid,'human','PLATFORM',null::uuid,null::uuid,$2,$2,$3,'platform_admin')",
-        [adminId, 'platform-admin', adminHash]],
+        [adminId, SEED_ADMIN.loginName, adminHash]],
       ['select identity.bootstrap_mark_one_time($1::uuid)', [adminId]],
       ['select identity.record_bootstrap_principal($1::uuid)', [adminId]],
       ["select audit.commit_identity_event($1::uuid, null::uuid, 'admin.bootstrap',"
         + "'identity.bootstrap.platform_admin','success','OK',$2::uuid,"
         + '$3::jsonb)', [adminId, bootCorr, JSON.stringify({ note: 'C18 path-A era seed: audited single-use bootstrap' })]],
     ]);
-    record.admin = { principalId: adminId, loginName: 'platform-admin' };
+    record.admin = { principalId: adminId, loginName: SEED_ADMIN.loginName };
     record.correlations.push(bootCorr);
     step('bootstrap', ['ctx.issue_bootstrap', 'identity.claim_bootstrap', 'identity.create_principal',
       'identity.bootstrap_mark_one_time', 'identity.record_bootstrap_principal',
@@ -152,7 +157,8 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     };
 
     // ── 3. TWO TENANTS, THREE DOMAINS through tenancy admission ports (0010 signatures) ──
-    for (const [t, name] of [[0, 'c18-tenant-alpha'], [1, 'c18-tenant-beta']]) {
+    for (const tenantSpecEntry of SEED_TENANTS) {
+      const name = tenantSpecEntry.name;
       const tenantId = randomUUID();
       await governedCommit({
         session: admin, scope: 'PLATFORM', tenantId: null, domainId: null,
@@ -162,17 +168,17 @@ export async function seedThroughEraPorts({ root, host, port, database, password
         ]],
       });
       record.tenants.push({ tenantId, name });
-      const domainCount = t === 0 ? 2 : 1;
-      for (let d = 0; d < domainCount; d += 1) {
+      const domainsForTenant = SEED_DOMAINS.filter((x) => x.tenantSlot === tenantSpecEntry.slot);
+      for (const domainSpecEntry of domainsForTenant) {
         const domainId = randomUUID();
         await governedCommit({
           session: admin, scope: 'PLATFORM', tenantId: null, domainId: null,
           action: 'tenancy.domain.create', target: `tenancy.domain:${domainId}`, consequence: 'C2',
           work: () => [[
-            'select tenancy.create_domain($1::uuid,$2::uuid,$3,$4)', [domainId, tenantId, `${name}-dom${d}`, 'c18-admin'],
+            'select tenancy.create_domain($1::uuid,$2::uuid,$3,$4)', [domainId, tenantId, domainSpecEntry.name, 'c18-admin'],
           ]],
         });
-        record.domains.push({ domainId, tenantId, name: `${name}-dom${d}` });
+        record.domains.push({ domainId, tenantId, name: domainSpecEntry.name });
       }
     }
     step('tenants-domains', ['ctx.issue_commit', 'tenancy.create_tenant', 'tenancy.create_domain',
@@ -208,9 +214,19 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     const t0 = record.tenants[0].tenantId;
     const t1 = record.tenants[1].tenantId;
     const d00 = record.domains[0].domainId;
-    const tAdmin0 = await mkPrincipal({ scope: 'TENANT', tenantId: t0, domainId: null, loginName: 'c18-alpha-admin', roleCode: 'tenant_admin' });
-    await mkPrincipal({ scope: 'DOMAIN', tenantId: t0, domainId: d00, loginName: 'c18-alpha-analyst', roleCode: 'domain_analyst' });
-    await mkPrincipal({ scope: 'TENANT', tenantId: t1, domainId: null, loginName: 'c18-beta-admin', roleCode: 'tenant_admin' });
+    const tenantIdForSlot = (slot) => (slot === null ? null
+      : record.tenants[SEED_TENANTS.findIndex((x) => x.slot === slot)].tenantId);
+    const domainIdForSlot = (slot) => (slot === null ? null
+      : record.domains[SEED_DOMAINS.findIndex((x) => x.slot === slot)].domainId);
+    const mintedBySlot = new Map();
+    for (const p of SEED_PRINCIPALS) {
+      mintedBySlot.set(p.slot, await mkPrincipal({
+        scope: p.scope, tenantId: tenantIdForSlot(p.tenantSlot), domainId: domainIdForSlot(p.domainSlot),
+        loginName: p.loginName, roleCode: p.role,
+      }));
+    }
+    const tAdmin0 = mintedBySlot.get('alpha-admin');
+    void t1;
     step('principals', ['ctx.issue_commit', 'identity.create_principal', 'policy.commit_decision',
       'audit.commit_event'], record.principals.map((p) => p.principalId));
     const alphaAdmin = await openSession(tAdmin0, 'password');
@@ -249,8 +265,9 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       record.objects.push({ objectId, tenantId, domainId, correlation: cap.corr });
       return objectId;
     };
-    await admitObject(alphaAdmin, t0, d00, 'c18-claim-1');
-    await admitObject(alphaAdmin, t0, d00, 'c18-claim-2');
+    for (const o of SEED_OBJECTS) {
+      await admitObject(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o.subject);
+    }
     step('canonical-objects', ['ctx.issue_commit', 'objects.admit_version', 'policy.commit_decision',
       'audit.commit_event'], record.objects.map((o) => o.objectId));
     log('seed: 2 canonical objects admitted with real header digests');
@@ -269,8 +286,12 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       record.outbox.push({ eventId, correlation: cap.corr, eventType });
       return eventId;
     };
-    const published = await enqueue(alphaAdmin, t0, d00, 'c18.seed.published');
-    await enqueue(alphaAdmin, t0, d00, 'c18.seed.pending');
+    let published = null;
+    for (const o of SEED_OUTBOX) {
+      const id = await enqueue(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o.eventType);
+      if (o.status === 'published') published = id;
+    }
+    if (published === null) throw new Error('the seed specification names no publishable outbox effect');
     step('outbox-enqueue', ['ctx.issue_commit', 'objects.enqueue_event', 'policy.commit_decision',
       'audit.commit_event'], record.outbox.map((o) => o.eventId));
     await publisher.query('BEGIN');

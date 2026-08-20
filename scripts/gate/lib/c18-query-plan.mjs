@@ -15,7 +15,7 @@
 import {
   POSTURE_CATEGORIES, SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX,
   TABLE_UNIVERSE_HISTORICAL, TABLE_UNIVERSE_LATEST, checkPlaceholder, expectedInstanceEnv,
-  placeholder,
+  attestArgv, inventoryArgv, placeholder,
 } from './c18-contract.mjs';
 
 const schemasIn = () => SNAPSHOT_SCHEMAS.map((s) => `'${s}'`).join(',');
@@ -249,6 +249,7 @@ export function snapshotQueryPlan({ prefix, tablesMeta, fkMeta }) {
  */
 export function verifyCommandGraph({
   commands, receiptA, receiptB, images, rawText, migrationExecutions = null, cleanup = null,
+  repoRoot = null,
 }) {
   const problems = [];
   if (!Array.isArray(commands)) return ['command graph: commands.json is not an array'];
@@ -410,7 +411,7 @@ export function verifyCommandGraph({
     const inventory = next(`${label}-inventory`);
     mustSucceed(inventory); emptyEnv(inventory);
     if (exec !== undefined) {
-      matchArgv(inventory, ['ls', '-1', `${exec.workspace}/migrations`]);
+      matchArgv(inventory, inventoryArgv(exec.workspace));
       if (inventory !== null && exec.inventory_command_id !== inventory.id) {
         problems.push(`migration execution '${label}' inventory is bound to a different command than the one in the ledger`);
       }
@@ -421,8 +422,8 @@ export function verifyCommandGraph({
     if (exec === undefined) {
       problems.push(`command '${label}' has no governed migration-execution receipt`);
     } else {
-      matchArgv(attest, ['shasum', '-a', '256', `${exec.workspace}/scripts/migrate.mjs`,
-        ...(Array.isArray(exec.inventory) ? exec.inventory : []).map((f) => `${exec.workspace}/migrations/${f}`)]);
+      matchArgv(attest, attestArgv(exec.workspace,
+        (Array.isArray(exec.inventory) ? exec.inventory : []).map((f) => f?.name ?? f)));
       if (attest !== null && exec.attest_command_id !== attest.id) {
         problems.push(`migration execution '${label}' attestation is bound to a different command than the one in the ledger`);
       }
