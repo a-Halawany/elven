@@ -20,7 +20,11 @@
  *     the upgraded Path A posture in EVERY authority-relevant category.
  */
 import { createHash } from 'node:crypto';
-import { C18_SEED_SPEC, SEED_CARDINALITIES } from './c18-seed-spec.mjs';
+import {
+  C18_SEED_SPEC, SEED_CARDINALITIES, seedInputDigestSource, seedObjectHeader, seedObjectPayload,
+  seedOutboxPayload,
+} from './c18-seed-spec.mjs';
+import { encodeInventory } from './c18-inventory.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -919,15 +923,23 @@ export function expectedApplied(allFiles, ceiling, floorExclusive = '0000') {
 
 /** Parse `shasum -a 256` output into [path, digest] pairs, in emitted order. */
 export function parseAttestation(text) {
+  const raw = String(text ?? '');
+  if (raw === '') return { rows: [], problem: 'attestation receipt is empty' };
+  if (!raw.endsWith('\n')) return { rows: [], problem: 'attestation receipt is not newline-terminated' };
   const rows = [];
-  for (const line of String(text ?? '').split('\n')) {
-    if (line.trim() === '') continue;
-    const m = /^([0-9a-f]{64})\s{2}(.+)$/.exec(line);
+  // C18.1.7 — every line must be a well-formed record. dccfcf26 skipped blank lines, so a
+  // receipt carrying output the tool could never emit still parsed cleanly.
+  const lines = raw.slice(0, -1).split('\n');
+  for (const line of lines) {
+    const m = /^([0-9a-f]{64}) {2}(.+)$/.exec(line);
     if (m === null) return { rows: [], problem: `attestation line ${JSON.stringify(line.slice(0, 60))} is not shasum output` };
     rows.push({ digest: m[1], path: m[2] });
   }
   return { rows, problem: null };
 }
+
+/** The EXACT bytes `shasum -a 256` emits for an ordered (digest, path) sequence. */
+export const encodeAttestation = (rows) => rows.map((r) => `${r.digest}  ${r.path}\n`).join('');
 /** A governed workspace: an absolute path OUTSIDE the repository whose final component is the
  * mkdtemp name the producer creates, with no traversal and no symlink games. */
 export const WORKSPACE_BASENAME_RE = /^c18-[ab]-[A-Za-z0-9]{6}$/;
@@ -1016,6 +1028,12 @@ export function verifyMigrationExecutions({
         const { entries, names, problem } = parseInventory(invText);
         if (problem !== null) problems.push(`migration execution '${e.label}' ${problem}`);
         else {
+          // C18.1.7 — the receipt must be EXACTLY what the tracked helper emits, including its
+          // single terminal newline. Pretty-printed or otherwise re-encoded JSON that merely
+          // parses to the same entries is output the helper could never have produced.
+          if (invText !== encodeInventory(entries)) {
+            problems.push(`migration execution '${e.label}' inventory receipt bytes are not the canonical encoding the tracked helper emits`);
+          }
           problems.push(...verifyInventoryEntries(entries, wantNames, `migration execution '${e.label}'`));
           // The receipt's own inventory field must equal what the command ENUMERATED.
           if (JSON.stringify(e.inventory) !== JSON.stringify(entries)) {
@@ -1057,6 +1075,9 @@ export function verifyMigrationExecutions({
           if (rows.length !== wantRows.length) {
             problems.push(`migration execution '${e.label}' attestation covers ${rows.length} files; the governed set is ${wantRows.length}`);
           } else {
+            if (text !== encodeAttestation(wantRows.map((w, j) => ({ digest: rows[j]?.digest ?? w.digest, path: w.path })))) {
+              problems.push(`migration execution '${e.label}' attestation receipt bytes are not the exact ordered '<digest>  <path>' sequence`);
+            }
             wantRows.forEach((w, j) => {
               if (rows[j].path !== w.path) {
                 problems.push(`migration execution '${e.label}' attestation line ${j + 1} hashed ${JSON.stringify(rows[j].path)}, expected ${JSON.stringify(w.path)}`);
@@ -1347,7 +1368,21 @@ const exactKeys = (obj, fields) => obj !== null && typeof obj === 'object' && !A
  * and the governed step receipts are reconciled against those slots in both directions. A
  * consistent rename cannot resolve its slot, so it fails no matter how internally coherent it is.
  */
-export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC }) {
+const stableJson = (v) => JSON.stringify(v, (k, val) => (
+  val !== null && typeof val === 'object' && !Array.isArray(val)
+    ? Object.fromEntries(Object.keys(val).sort().map((kk) => [kk, val[kk]]))
+    : val
+));
+/**
+ * PostgreSQL renders timestamptz with a '+00:00' offset and drops a zero fraction, while the
+ * specification writes ISO 'Z' with milliseconds. Both are canonicalized to the same instant
+ * before comparison; nothing else about the value is relaxed.
+ */
+const normalizeTimestamp = (v) => (typeof v === 'string'
+  ? v.replace(/\+00:00$/, 'Z').replace(/\.000Z$/, 'Z')
+  : v);
+
+export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC, headerDigest = null }) {
   const problems = [];
   const slots = { tenant: new Map(), domain: new Map(), principal: new Map(), session: new Map(), object: new Map(), outbox: new Map() };
   const rows = (t) => before.tables?.[t]?.rows ?? [];
@@ -1418,26 +1453,51 @@ export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC }) {
   for (const r of sessionRows) {
     if (!claimedSessions.has(r.id)) problems.push(`seed spec: session ${r.id} matches no source-owned session slot`);
   }
-  // ── CANONICAL OBJECTS: type, version, lifecycle and tenancy placement. ──────────────
+  // ── CANONICAL OBJECTS: resolved by SEMANTIC IDENTITY (the specified subject), with the
+  // complete deterministic header, the exact payload and a recomputed production content
+  // digest. dccfcf26 selected by tenancy+type and took the first unclaimed row, so a renamed
+  // subject with a consistently derived object value and a correctly recomputed digest passed.
   const objectRows = rows('objects.canonical_objects');
   const claimedObjects = new Set();
   for (const o of spec.objects) {
-    const wantTenant = slots.tenant.get(o.tenantSlot) ?? null;
-    const wantDomain = slots.domain.get(o.domainSlot) ?? null;
-    const candidates = objectRows.filter((r) => r.tenant_id === wantTenant && r.domain_id === wantDomain
-      && r.object_type === o.objectType && !claimedObjects.has(r.object_id));
-    if (candidates.length === 0) {
-      problems.push(`seed spec: no canonical object matches slot '${o.slot}' (${o.objectType} in tenant slot '${o.tenantSlot}', domain slot '${o.domainSlot}')`);
-      continue;
-    }
-    const row = candidates[0];
+    const wantPayload = seedObjectPayload(o);
+    const row = resolveOne('canonical object', o.slot, objectRows,
+      (r) => stableJson(r.payload) === stableJson(wantPayload),
+      `payload subject ${JSON.stringify(o.subject)}`);
+    if (row === null) continue;
     claimedObjects.add(row.object_id);
     slots.object.set(o.slot, row.object_id);
-    if (String(row.object_version) !== o.objectVersion) {
-      problems.push(`seed spec: object slot '${o.slot}' version is ${JSON.stringify(row.object_version)}; the specification requires ${JSON.stringify(o.objectVersion)}`);
+    const wantTenant = slots.tenant.get(o.tenantSlot) ?? null;
+    const wantDomain = slots.domain.get(o.domainSlot) ?? null;
+    // The complete deterministic header, rebuilt from the specification.
+    const wantHeader = seedObjectHeader({
+      objectId: row.object_id, tenantId: wantTenant, domainId: wantDomain,
+      correlation: row.audit_correlation_id, spec: o,
+    });
+    for (const [field, want] of Object.entries(wantHeader)) {
+      if (field === 'audit_correlation_id') continue; // generated; bound through audit below
+      const actual = row[field];
+      const same = (field === 'object_version')
+        ? String(actual) === String(want)
+        : (typeof want === 'object' && want !== null
+          ? stableJson(actual) === stableJson(want)
+          : normalizeTimestamp(actual) === normalizeTimestamp(want));
+      if (!same) {
+        problems.push(`seed spec: object slot '${o.slot}' header field '${field}' is ${JSON.stringify(actual)}; the specification requires ${JSON.stringify(want)}`);
+      }
     }
-    if (row.lifecycle_state !== undefined && row.lifecycle_state !== o.lifecycleState) {
-      problems.push(`seed spec: object slot '${o.slot}' lifecycle_state is ${JSON.stringify(row.lifecycle_state)}; the specification requires ${JSON.stringify(o.lifecycleState)}`);
+    if (typeof row.audit_correlation_id !== 'string' || !UUID_RE.test(row.audit_correlation_id)) {
+      problems.push(`seed spec: object slot '${o.slot}' carries no generated audit correlation`);
+    }
+    // The production content digest, recomputed over the authenticated header and payload.
+    if (headerDigest !== null) {
+      let recomputed = null;
+      try { recomputed = headerDigest(wantHeader, wantPayload); } catch (err) {
+        problems.push(`seed spec: object slot '${o.slot}' content digest could not be recomputed: ${err instanceof Error ? err.message : err}`);
+      }
+      if (recomputed !== null && row.content_digest !== recomputed) {
+        problems.push(`seed spec: object slot '${o.slot}' content_digest ${JSON.stringify(row.content_digest)} does not recompute under the production canonicalizer over its specified header and payload`);
+      }
     }
   }
   for (const r of objectRows) {
@@ -1456,31 +1516,163 @@ export function bindSeedSpec({ seedRecord, before, spec = C18_SEED_SPEC }) {
       ['status', row.status, o.status], ['scope', row.scope, o.scope],
       ['tenant_id', row.tenant_id ?? null, slots.tenant.get(o.tenantSlot) ?? null],
       ['domain_id', row.domain_id ?? null, slots.domain.get(o.domainSlot) ?? null],
+      ['attempts', row.attempts, o.attempts],
     ]) {
       if (actual !== want) {
         problems.push(`seed spec: outbox slot '${o.slot}' ${field} is ${JSON.stringify(actual)}; the specification requires ${JSON.stringify(want)}`);
+      }
+    }
+    // The DETERMINISTIC payload, exactly.
+    const wantOutboxPayload = seedOutboxPayload(o);
+    if (stableJson(row.payload) !== stableJson(wantOutboxPayload)) {
+      problems.push(`seed spec: outbox slot '${o.slot}' payload ${JSON.stringify(row.payload)} is not the specification's ${JSON.stringify(wantOutboxPayload)}`);
+    }
+    // LIFECYCLE: a published effect carries a publication time and holds no lease; the
+    // pending-after-lease effect holds its lease and has never been published.
+    if (o.lifecycle === 'published') {
+      if (row.published_at === null || row.published_at === undefined) {
+        problems.push(`seed spec: outbox slot '${o.slot}' is published but carries no published_at`);
+      }
+      if ((row.lease_id ?? null) !== null || (row.leased_until ?? null) !== null) {
+        problems.push(`seed spec: outbox slot '${o.slot}' is published but still holds a lease`);
+      }
+    } else if (o.lifecycle === 'pending-after-lease') {
+      if ((row.published_at ?? null) !== null) {
+        problems.push(`seed spec: outbox slot '${o.slot}' is pending but carries a published_at`);
+      }
+      if (typeof row.lease_id !== 'string' || !UUID_RE.test(row.lease_id)) {
+        problems.push(`seed spec: outbox slot '${o.slot}' is pending-after-lease but holds no lease id`);
+      }
+      if (row.leased_until === null || row.leased_until === undefined) {
+        problems.push(`seed spec: outbox slot '${o.slot}' is pending-after-lease but carries no lease expiry`);
+      }
+    }
+    for (const f of ['correlation_id', 'causation_id']) {
+      if (typeof row[f] !== 'string' || !UUID_RE.test(row[f])) {
+        problems.push(`seed spec: outbox slot '${o.slot}' ${f} is not a generated identifier`);
       }
     }
   }
   for (const r of outboxRows) {
     if (!claimedOutbox.has(r.id)) problems.push(`seed spec: outbox event ${r.id} matches no source-owned outbox slot`);
   }
-  // ── DECISIONS: the deterministic (action, consequence, object type) multiset. ───────
-  const decisionKey = (d) => `${d.action}|${d.consequence_class}|${d.object_type}`;
-  const haveDecisions = new Map();
-  for (const d of rows('policy.policy_decisions')) {
-    haveDecisions.set(decisionKey(d), (haveDecisions.get(decisionKey(d)) ?? 0) + 1);
-  }
-  for (const d of spec.decisions) {
-    const key = `${d.action}|${d.consequence}|${d.objectType}`;
-    const have = haveDecisions.get(key) ?? 0;
-    if (have !== d.count) {
-      problems.push(`seed spec: ${have} decision(s) match ${JSON.stringify(key)}; the specification writes exactly ${d.count}`);
+  // ── GOVERNED OPERATIONS: every seeded decision and its audit closure, authenticated
+  // individually against the source-owned operation plan. dccfcf26 compared only an aggregate
+  // (action, consequence, object_type) multiset, so a decision flipped from allow to deny — or
+  // re-scoped, re-tenanted or detached from its audit event — still reconciled. ────────────
+  const decisionRows = rows('policy.policy_decisions');
+  const auditEvents = before.audit?.events ?? [];
+  const claimedDecisions = new Set();
+  const claimedAuditEvents = new Set();
+  const entitySlotId = (kind, slot) => {
+    const map = { tenant: slots.tenant, domain: slots.domain, principal: slots.principal, object: slots.object, outbox: slots.outbox };
+    return map[kind]?.get(slot) ?? null;
+  };
+  for (const op of spec.operations) {
+    const entityId = entitySlotId(op.entityKind, op.entitySlot);
+    if (entityId === null) continue; // the slot itself failed to resolve; already reported
+    const matches = decisionRows.filter((d) => d.object_id === entityId && d.action === op.action);
+    if (matches.length !== 1) {
+      problems.push(`seed spec: ${matches.length} policy decision(s) name entity slot '${op.entitySlot}' with action ${JSON.stringify(op.action)}; exactly one is required`);
+      continue;
     }
-    haveDecisions.delete(key);
+    const d = matches[0];
+    claimedDecisions.add(d.id);
+    const posture = spec.decisionPosture;
+    for (const [field, actual, want] of [
+      ['decision', d.decision, posture.decision],
+      ['evidence_only', d.evidence_only, posture.evidence_only],
+      ['revocation_state', d.revocation_state, posture.revocation_state],
+      ['purpose_id', d.purpose_id, posture.purpose_id],
+      ['reason', d.reason, posture.reason],
+      ['bundle_version', d.bundle_version, posture.bundle_version],
+      ['delegation_id', d.delegation_id ?? null, posture.delegation_id],
+      ['exception_ref', d.exception_ref ?? null, posture.exception_ref],
+      ['expires_at', d.expires_at ?? null, posture.expires_at],
+      ['consequence_class', d.consequence_class, op.consequence],
+      ['object_type', d.object_type, op.objectType],
+      ['scope', d.scope, op.scope],
+      ['tenant_id', d.tenant_id ?? null, op.tenantSlot === null ? null : (slots.tenant.get(op.tenantSlot) ?? null)],
+      ['domain_id', d.domain_id ?? null, op.domainSlot === null ? null : (slots.domain.get(op.domainSlot) ?? null)],
+      ['principal_id', d.principal_id, `principal:${slots.principal.get(op.actorSlot) ?? 'unresolved'}`],
+    ]) {
+      if (actual !== want) {
+        problems.push(`seed spec: the decision for '${op.entitySlot}' (${op.action}) ${field} is ${JSON.stringify(actual)}; the operation plan requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (stableJson(d.obligations) !== stableJson(posture.obligations)) {
+      problems.push(`seed spec: the decision for '${op.entitySlot}' carries obligations the operation plan does not`);
+    }
+    if (stableJson(d.environment) !== stableJson(posture.environment)) {
+      problems.push(`seed spec: the decision for '${op.entitySlot}' carries environment the operation plan does not`);
+    }
+    // The input digest follows a SOURCE-OWNED formula, so it is recomputed rather than trusted.
+    const wantDigest = sha256(seedInputDigestSource(op, entityId));
+    if (d.input_digest !== wantDigest) {
+      problems.push(`seed spec: the decision for '${op.entitySlot}' input_digest does not recompute under the source-owned formula`);
+    }
+    if (typeof d.correlation_id !== 'string' || !UUID_RE.test(d.correlation_id)) {
+      problems.push(`seed spec: the decision for '${op.entitySlot}' carries no generated correlation`);
+      continue;
+    }
+    // ── THE CLOSING AUDIT EVENT: exactly one, bound by decision AND correlation. ──────
+    const closers = auditEvents.filter((e) => e.policy_decision_id === d.id);
+    if (closers.length !== 1) {
+      problems.push(`seed spec: ${closers.length} audit event(s) close the decision for '${op.entitySlot}'; exactly one is required`);
+      continue;
+    }
+    const ev = closers[0];
+    claimedAuditEvents.add(`${ev.partition_id}#${ev.audit_seq}`);
+    if (ev.correlation_id !== d.correlation_id) {
+      problems.push(`seed spec: the audit event closing '${op.entitySlot}' carries a different correlation than its decision`);
+    }
+    let body = null;
+    try { body = JSON.parse(ev.event_jcs); } catch { problems.push(`seed spec: the audit event closing '${op.entitySlot}' is not canonical JSON`); }
+    if (body === null) continue;
+    const ap = spec.auditPosture;
+    for (const [field, actual, want] of [
+      ['event_type', body.event_type, op.auditEventType],
+      ['action', body.action, op.action],
+      ['outcome', body.outcome, ap.outcome],
+      ['result_code', body.result_code, ap.result_code],
+      ['context_mode', body.context_mode, ap.context_mode],
+      ['policy_version', body.policy_version, ap.policy_version],
+      ['purpose_id', body.purpose_id, ap.purpose_id],
+      ['scope', body.scope, op.scope],
+      ['actor', body.actor, `principal:${slots.principal.get(op.actorSlot) ?? 'unresolved'}`],
+      ['session_id', body.session_id, slots.session.get(op.sessionSlot) ?? null],
+      ['target_type', body.target_type, op.targetType],
+      ['target_id', body.target_id, entityId],
+      ['target_version', body.target_version ?? null, ap.target_version],
+      ['tenant_id', body.tenant_id ?? null, op.tenantSlot === null ? null : (slots.tenant.get(op.tenantSlot) ?? null)],
+      ['domain_id', body.domain_id ?? null, op.domainSlot === null ? null : (slots.domain.get(op.domainSlot) ?? null)],
+      ['policy_decision_id', body.policy_decision_id, d.id],
+      ['causation_id', body.causation_id ?? null, ap.causation_id],
+      ['delegation_id', body.delegation_id ?? null, ap.delegation_id],
+      ['trace_id', body.trace_id ?? null, ap.trace_id],
+      ['request_digest', body.request_digest ?? null, ap.request_digest],
+    ]) {
+      if (actual !== want) {
+        problems.push(`seed spec: the audit event for '${op.entitySlot}' (${op.action}) ${field} is ${JSON.stringify(actual)}; the operation plan requires ${JSON.stringify(want)}`);
+      }
+    }
+    if (stableJson(body.metadata ?? {}) !== stableJson(ap.metadata)) {
+      problems.push(`seed spec: the audit event for '${op.entitySlot}' carries metadata the operation plan does not`);
+    }
+    // ── OBJECT ADMISSION: the object's own audit correlation must be THIS operation's, so
+    // the admitting principal and session are proven by authenticated evidence rather than
+    // declared. ─────────────────────────────────────────────────────────────────────────
+    if (op.entityKind === 'object') {
+      const objRow = objectRows.find((r) => r.object_id === entityId);
+      if (objRow !== undefined && objRow.audit_correlation_id !== d.correlation_id) {
+        problems.push(`seed spec: object slot '${op.entitySlot}' names audit correlation ${JSON.stringify(objRow.audit_correlation_id)}, which is not the correlation of the operation that admitted it`);
+      }
+    }
   }
-  for (const [key, n] of haveDecisions) {
-    problems.push(`seed spec: ${n} decision(s) match ${JSON.stringify(key)}, which the specification does not describe`);
+  for (const d of decisionRows) {
+    if (!claimedDecisions.has(d.id)) {
+      problems.push(`seed spec: policy decision ${d.id} (${d.action}) matches no operation in the source-owned plan`);
+    }
   }
   // ── THE SEED RECORD must name the SAME generated identities as the snapshot slots. ──
   const recordSays = [

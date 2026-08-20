@@ -155,7 +155,7 @@ async function productionAudit(root) {
   const mod = await import(
     pathToFileURL(join(root, 'apps', 'api', 'node_modules', '@eye/contracts', 'dist', 'index.js')).href
   );
-  return { jcs: mod.jcsCanonicalize, rowHash: mod.auditRowHash };
+  return { jcs: mod.jcsCanonicalize, rowHash: mod.auditRowHash, headerDigest: mod.canonicalHeaderDigest };
 }
 
 class Evidence {
@@ -717,7 +717,7 @@ async function runCommand(args) {
       ));
     }
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
-    const boundA = bindSeedSpec({ seedRecord, before });
+    const boundA = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...boundA.problems.map((p) => `path-a-seed: ${p}`));
     problems.push(...verifySeedSteps({
       steps: seedRecord.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
@@ -1206,7 +1206,7 @@ export async function verifyEvidence({
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: shaped ? manifest : null }));
     // THE SOURCE-OWNED SEED SPECIFICATION: every generated identity is bound to a named slot by
     // the deterministic key the specification owns, so a consistent rename cannot resolve.
-    const bound = bindSeedSpec({ seedRecord, before });
+    const bound = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...bound.problems);
     problems.push(...verifySeedSteps({
       steps: seedRecord?.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,

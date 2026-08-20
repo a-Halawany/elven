@@ -59,24 +59,58 @@ export const SEED_OBJECTS = Object.freeze([
   Object.freeze({
     slot: 'claim-1', subject: 'c18-claim-1', objectType: 'CLM', objectVersion: '1',
     lifecycleState: 'admitted', tenantSlot: 'tenant-alpha', domainSlot: 'alpha-dom0',
-    admittedByPrincipalSlot: 'alpha-admin',
+    admittedByPrincipalSlot: 'alpha-admin', admittedBySessionSlot: 'alpha-admin-session',
   }),
   Object.freeze({
     slot: 'claim-2', subject: 'c18-claim-2', objectType: 'CLM', objectVersion: '1',
     lifecycleState: 'admitted', tenantSlot: 'tenant-alpha', domainSlot: 'alpha-dom0',
-    admittedByPrincipalSlot: 'alpha-admin',
+    admittedByPrincipalSlot: 'alpha-admin', admittedBySessionSlot: 'alpha-admin-session',
   }),
 ]);
+
+/**
+ * C18.1.7 — the DETERMINISTIC CANONICAL-OBJECT HEADER, owned here rather than written as
+ * literals inside the seeder. Only the generated identity fields (object/tenant/domain ids and
+ * the audit correlation) are supplied per admission; every other field is fixed by the
+ * specification, so the verifier can rebuild the exact admitted header and recompute its
+ * content digest with the production canonicalizer.
+ */
+export const SEED_OBJECT_SCOPE = 'DOMAIN';
+export const seedObjectHeader = ({ objectId, tenantId, domainId, correlation, spec }) => ({
+  object_id: objectId, object_type: spec.objectType, tenant_id: tenantId, domain_id: domainId,
+  scope: SEED_OBJECT_SCOPE, object_version: spec.objectVersion, lifecycle_state: spec.lifecycleState,
+  owning_component: 'CP-OBJ-01', accountable_owner: 'principal:c18-seed', source_object_ids: [],
+  event_time: null, observation_time: '2026-08-01T00:00:00.000Z', valid_from: null, valid_to: null,
+  recorded_at: '2026-08-01T00:00:00.000Z', time_precision: 'exact',
+  source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: false,
+  confidence: null, uncertainty: null, evidence_refs: ['evd:c18-seed'], provenance_ref: null,
+  method_ref: null, contradiction_refs: [], corroboration_refs: [], human_refs: [],
+  classification: 'internal', purpose_scope: 'c18-era-seed', rights_profile: null,
+  residency_profile: null, retention_profile: null, access_policy_ref: null,
+  quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'CLM@v1',
+  ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
+  audit_correlation_id: correlation, content_ref: null,
+});
+/** The deterministic payload admitted for an object slot. */
+export const seedObjectPayload = (spec) => ({
+  subject: spec.subject, predicate: 'asserts', object_value: `v-${spec.subject}`,
+});
+/** The deterministic outbox payload for an outbox slot. */
+export const seedOutboxPayload = (spec) => ({ seed: 'c18', event: spec.eventType });
 
 /** Outbox effects: event type, terminal status and tenancy topology. */
 export const SEED_OUTBOX = Object.freeze([
   Object.freeze({
     slot: 'outbox-published', eventType: 'c18.seed.published', status: 'published',
     tenantSlot: 'tenant-alpha', domainSlot: 'alpha-dom0', scope: 'DOMAIN',
+    attempts: 1, lifecycle: 'published',
+    enqueuedByPrincipalSlot: 'alpha-admin', enqueuedBySessionSlot: 'alpha-admin-session',
   }),
   Object.freeze({
     slot: 'outbox-pending', eventType: 'c18.seed.pending', status: 'pending',
     tenantSlot: 'tenant-alpha', domainSlot: 'alpha-dom0', scope: 'DOMAIN',
+    attempts: 1, lifecycle: 'pending-after-lease',
+    enqueuedByPrincipalSlot: 'alpha-admin', enqueuedBySessionSlot: 'alpha-admin-session',
   }),
 ]);
 
@@ -84,13 +118,70 @@ export const SEED_OUTBOX = Object.freeze([
  * The deterministic policy decisions the governed seed writes, as an exact multiset of
  * (action, consequence_class, object_type) — the observable, non-generated part of each row.
  */
-export const SEED_DECISIONS = Object.freeze([
-  Object.freeze({ action: 'tenancy.tenant.create', consequence: 'C2', objectType: 'tenancy.tenant', count: 2 }),
-  Object.freeze({ action: 'tenancy.domain.create', consequence: 'C2', objectType: 'tenancy.domain', count: 3 }),
-  Object.freeze({ action: 'identity.principal.create', consequence: 'C2', objectType: 'identity.principal', count: 3 }),
-  Object.freeze({ action: 'objects.create', consequence: 'C2', objectType: 'CLM', count: 2 }),
-  Object.freeze({ action: 'objects.create', consequence: 'C1', objectType: 'outbox', count: 2 }),
+/**
+ * THE SOURCE-OWNED OPERATION PLAN (C18.1.7). dccfcf26 checked only an aggregate
+ * (action, consequence, object_type) multiset, so a decision could be flipped from allow to deny
+ * — or re-scoped, re-tenanted, or detached from its audit event — and still reconcile. Every
+ * governed seed operation is now named, with the entity SLOT it creates, the actor and session
+ * slots that performed it, and its scope and tenancy topology. Each entry authenticates exactly
+ * one policy decision and exactly one closing audit event.
+ */
+export const SEED_OPERATIONS = Object.freeze([
+  ...SEED_TENANTS.map((t) => Object.freeze({
+    action: 'tenancy.tenant.create', consequence: 'C2', objectType: 'tenancy.tenant',
+    entityKind: 'tenant', entitySlot: t.slot, scope: 'PLATFORM',
+    tenantSlot: null, domainSlot: null,
+    actorSlot: 'platform-admin', sessionSlot: 'admin-session',
+    targetType: 'tenancy.tenant', auditEventType: 'api.request',
+  })),
+  ...SEED_DOMAINS.map((d) => Object.freeze({
+    action: 'tenancy.domain.create', consequence: 'C2', objectType: 'tenancy.domain',
+    entityKind: 'domain', entitySlot: d.slot, scope: 'PLATFORM',
+    tenantSlot: null, domainSlot: null,
+    actorSlot: 'platform-admin', sessionSlot: 'admin-session',
+    targetType: 'tenancy.domain', auditEventType: 'api.request',
+  })),
+  ...SEED_PRINCIPALS.map((p) => Object.freeze({
+    action: 'identity.principal.create', consequence: 'C2', objectType: 'identity.principal',
+    entityKind: 'principal', entitySlot: p.slot, scope: 'PLATFORM',
+    tenantSlot: null, domainSlot: null,
+    actorSlot: 'platform-admin', sessionSlot: 'admin-session',
+    targetType: 'identity.principal', auditEventType: 'api.request',
+  })),
+  ...SEED_OBJECTS.map((o) => Object.freeze({
+    action: 'objects.create', consequence: 'C2', objectType: o.objectType,
+    entityKind: 'object', entitySlot: o.slot, scope: SEED_OBJECT_SCOPE,
+    tenantSlot: o.tenantSlot, domainSlot: o.domainSlot,
+    actorSlot: o.admittedByPrincipalSlot, sessionSlot: o.admittedBySessionSlot,
+    targetType: o.objectType, auditEventType: 'api.request',
+  })),
+  ...SEED_OUTBOX.map((o) => Object.freeze({
+    action: 'objects.create', consequence: 'C1', objectType: 'outbox',
+    entityKind: 'outbox', entitySlot: o.slot, scope: o.scope,
+    tenantSlot: o.tenantSlot, domainSlot: o.domainSlot,
+    actorSlot: o.enqueuedByPrincipalSlot, sessionSlot: o.enqueuedBySessionSlot,
+    targetType: 'outbox', auditEventType: 'api.request',
+  })),
 ]);
+
+/** Deterministic, non-generated decision posture shared by every governed seed operation. */
+export const SEED_DECISION_POSTURE = Object.freeze({
+  decision: 'allow', evidence_only: false, revocation_state: 'none',
+  purpose_id: 'c18-era-seed', reason: 'C18 era seed', bundle_version: 'bundle-v1',
+  delegation_id: null, exception_ref: null, expires_at: null,
+  obligations: [], environment: {},
+});
+/** The deterministic audit posture of every governed seed operation. */
+export const SEED_AUDIT_POSTURE = Object.freeze({
+  event_type: 'api.request', outcome: 'success', result_code: 'OK',
+  context_mode: 'authority', policy_version: 'bundle-v1', purpose_id: 'c18-era-seed',
+  causation_id: null, delegation_id: null, trace_id: null, request_digest: null,
+  target_version: null, metadata: {},
+});
+/** The source-owned input-digest formula each governed seed decision records. */
+export const seedInputDigestSource = (op, entityId) => (op.entityKind === 'principal'
+  ? `c18:principal:${entityId}`
+  : `c18:${op.action}:${op.targetType}:${entityId}`);
 
 /** Which identity SLOTS each governed step produces. */
 export const SEED_STEP_SLOTS = Object.freeze({
@@ -108,8 +199,9 @@ export const SEED_STEP_SLOTS = Object.freeze({
 /** The whole specification, for callers that want one object. */
 export const C18_SEED_SPEC = Object.freeze({
   tenants: SEED_TENANTS, domains: SEED_DOMAINS, admin: SEED_ADMIN, principals: SEED_PRINCIPALS,
-  sessions: SEED_SESSIONS, objects: SEED_OBJECTS, outbox: SEED_OUTBOX, decisions: SEED_DECISIONS,
-  stepSlots: SEED_STEP_SLOTS,
+  sessions: SEED_SESSIONS, objects: SEED_OBJECTS, outbox: SEED_OUTBOX,
+  operations: SEED_OPERATIONS, decisionPosture: SEED_DECISION_POSTURE,
+  auditPosture: SEED_AUDIT_POSTURE, stepSlots: SEED_STEP_SLOTS,
 });
 
 /** Exact cardinalities DERIVED from the specification — never independently maintained. */
@@ -122,7 +214,7 @@ export const SEED_CARDINALITIES = Object.freeze({
   outbox: SEED_OUTBOX.length,
   outbox_published: SEED_OUTBOX.filter((o) => o.status === 'published').length,
   outbox_pending: SEED_OUTBOX.filter((o) => o.status === 'pending').length,
-  decisions: SEED_DECISIONS.reduce((n, d) => n + d.count, 0),
+  decisions: SEED_OPERATIONS.length,
   role_bindings: SEED_PRINCIPALS.length + 1,
   revoked_role_bindings: 0,
 });

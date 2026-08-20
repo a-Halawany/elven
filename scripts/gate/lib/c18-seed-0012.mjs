@@ -16,6 +16,7 @@ import { createRequire } from 'node:module';
 // reads, so the seeder and the contract can never drift into separate expectations.
 import {
   SEED_ADMIN, SEED_DOMAINS, SEED_OBJECTS, SEED_OUTBOX, SEED_PRINCIPALS, SEED_TENANTS,
+  seedInputDigestSource, seedObjectHeader, seedObjectPayload, seedOutboxPayload,
 } from './c18-seed-spec.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -136,7 +137,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     log('seed: admin session opened through identity.session_open');
 
     /** A COMMIT-capability operation, closed exactly as the era pipeline closed it. */
-    const governedCommit = async ({ session, scope, tenantId, domainId, action, target, consequence, work }) => {
+    const governedCommit = async ({ session, scope, tenantId, domainId, action, target, consequence, work, entityId, entityKind }) => {
       const corr = randomUUID();
       const decisionId = randomUUID();
       const cap = { corr, decisionId, bundle: 'bundle-v1' };
@@ -145,8 +146,13 @@ export async function seedThroughEraPorts({ root, host, port, database, password
           [session.sessionId, session.contextKey, scope, tenantId, domainId,
             'c18-era-seed', action, target, corr, decisionId, cap.bundle, consequence]],
         ...work(cap),
+        // C18.1.7 — the decision records the CREATED ENTITY id, so the evidence carries a
+        // bindable identity rather than an opaque random one, and its input digest follows the
+        // source-owned formula the verifier recomputes.
         ["select policy.commit_decision($1::uuid,$2,$3,$4::uuid,$5,'allow','[]'::jsonb,$6,$7,null,null,'none','C18 era seed',$8::uuid,null,'{}'::jsonb)",
-          [decisionId, action, target.split(':')[0], randomUUID(), consequence, sha256(`c18:${action}:${target}`), cap.bundle, corr]],
+          [decisionId, action, target.split(':')[0], entityId, consequence,
+            sha256(seedInputDigestSource({ action, targetType: target.split(':')[0], entityKind }, entityId)),
+            cap.bundle, corr]],
         ["select audit.commit_event('api.request',$1,'success','OK',$2,$3,null,$4::uuid,$5,$6::uuid,null::uuid,null,null,null,'{}'::jsonb)",
           [action, target.split(':')[0], target.split(':')[1] ?? null, decisionId, cap.bundle, corr]],
       ];
@@ -163,6 +169,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       await governedCommit({
         session: admin, scope: 'PLATFORM', tenantId: null, domainId: null,
         action: 'tenancy.tenant.create', target: `tenancy.tenant:${tenantId}`, consequence: 'C2',
+        entityId: tenantId, entityKind: 'tenant',
         work: () => [[
           'select tenancy.create_tenant($1::uuid,$2,$3,$4)', [tenantId, name, 'default', 'c18-admin'],
         ]],
@@ -174,6 +181,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
         await governedCommit({
           session: admin, scope: 'PLATFORM', tenantId: null, domainId: null,
           action: 'tenancy.domain.create', target: `tenancy.domain:${domainId}`, consequence: 'C2',
+          entityId: domainId, entityKind: 'domain',
           work: () => [[
             'select tenancy.create_domain($1::uuid,$2::uuid,$3,$4)', [domainId, tenantId, domainSpecEntry.name, 'c18-admin'],
           ]],
@@ -202,7 +210,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
         ["select identity.create_principal($1::uuid,'human',$2,$3::uuid,$4::uuid,$5,$5,$6,$7)",
           [pid, scope, tenantId, domainId, loginName, hash, roleCode]],
         ["select policy.commit_decision($1::uuid,'identity.principal.create','identity.principal',$2::uuid,'C2','allow','[]'::jsonb,$3,'bundle-v1',null,null,'none','C18 era seed',$4::uuid,null,'{}'::jsonb)",
-          [decisionId, pid, sha256(`c18:principal:${pid}`), corr]],
+          [decisionId, pid, sha256(seedInputDigestSource({ entityKind: 'principal' }, pid)), corr]],
         ["select audit.commit_event('api.request','identity.principal.create','success','OK','identity.principal',$1,null,$2::uuid,'bundle-v1',$3::uuid,null::uuid,null,null,null,'{}'::jsonb)",
           [pid, decisionId, corr]],
       ], `principal:${loginName}`);
@@ -234,28 +242,19 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     log(`seed: ${record.principals.length} governed principals + tenant session`);
 
     // ── 5. CANONICAL OBJECTS through the admission port, with the REAL header digest ──
-    const admitObject = async (session, tenantId, domainId, subject) => {
+    const admitObject = async (session, tenantId, domainId, objectSpec) => {
       const objectId = randomUUID();
       const cap = await governedCommit({
         session, scope: 'DOMAIN', tenantId, domainId,
         action: 'objects.create', target: `CLM:${objectId}`, consequence: 'C2',
+        entityId: objectId, entityKind: 'object',
         work: ({ corr }) => {
-          const header = {
-            object_id: objectId, object_type: 'CLM', tenant_id: tenantId, domain_id: domainId,
-            scope: 'DOMAIN', object_version: '1', lifecycle_state: 'admitted',
-            owning_component: 'CP-OBJ-01', accountable_owner: 'principal:c18-seed', source_object_ids: [],
-            event_time: null, observation_time: '2026-08-01T00:00:00.000Z', valid_from: null, valid_to: null,
-            recorded_at: '2026-08-01T00:00:00.000Z', time_precision: 'exact',
-            source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: false,
-            confidence: null, uncertainty: null, evidence_refs: ['evd:c18-seed'], provenance_ref: null,
-            method_ref: null, contradiction_refs: [], corroboration_refs: [], human_refs: [],
-            classification: 'internal', purpose_scope: 'c18-era-seed', rights_profile: null,
-            residency_profile: null, retention_profile: null, access_policy_ref: null,
-            quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'CLM@v1',
-            ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
-            audit_correlation_id: corr, content_ref: null,
-          };
-          const payload = { subject, predicate: 'asserts', object_value: `v-${subject}` };
+          // C18.1.7 — the deterministic header and payload are OWNED BY THE SPECIFICATION the
+          // verifier reads, so no admitted value can drift out of its sight.
+          const header = seedObjectHeader({
+            objectId, tenantId, domainId, correlation: corr, spec: objectSpec,
+          });
+          const payload = seedObjectPayload(objectSpec);
           return [[
             'select * from objects.admit_version($1::jsonb,$2::jsonb,$3)',
             [JSON.stringify(header), JSON.stringify(payload), canonicalHeaderDigest(header, payload)],
@@ -266,21 +265,23 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       return objectId;
     };
     for (const o of SEED_OBJECTS) {
-      await admitObject(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o.subject);
+      await admitObject(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o);
     }
     step('canonical-objects', ['ctx.issue_commit', 'objects.admit_version', 'policy.commit_decision',
       'audit.commit_event'], record.objects.map((o) => o.objectId));
     log('seed: 2 canonical objects admitted with real header digests');
 
     // ── 6. OUTBOX effects: one enqueued-and-published, one left pending ──
-    const enqueue = async (session, tenantId, domainId, eventType) => {
+    const enqueue = async (session, tenantId, domainId, outboxSpec) => {
+      const eventType = outboxSpec.eventType;
       const eventId = randomUUID();
       const cap = await governedCommit({
         session, scope: 'DOMAIN', tenantId, domainId,
         action: 'objects.create', target: `outbox:${eventId}`, consequence: 'C1',
+        entityId: eventId, entityKind: 'outbox',
         work: ({ corr }) => [[
           'select objects.enqueue_event($1::uuid,$2,$3::jsonb,$4::uuid,$5::uuid)',
-          [eventId, eventType, JSON.stringify({ seed: 'c18', event: eventType }), corr, randomUUID()],
+          [eventId, eventType, JSON.stringify(seedOutboxPayload(outboxSpec)), corr, randomUUID()],
         ]],
       });
       record.outbox.push({ eventId, correlation: cap.corr, eventType });
@@ -288,7 +289,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     };
     let published = null;
     for (const o of SEED_OUTBOX) {
-      const id = await enqueue(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o.eventType);
+      const id = await enqueue(alphaAdmin, tenantIdForSlot(o.tenantSlot), domainIdForSlot(o.domainSlot), o);
       if (o.status === 'published') published = id;
     }
     if (published === null) throw new Error('the seed specification names no publishable outbox effect');

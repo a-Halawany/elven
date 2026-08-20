@@ -29,6 +29,7 @@ import {
   verifyCatalogContract, EXECUTION_FLOOR, SEED_CONTRACT, expectedApplied, inventoryArgv,
   parseInventory, reconcileRoleBindings, INVENTORY_HELPER_REL, MIGRATION_TERMINAL_LINES,
   bindSeedSpec, cleanExecution, deriveStepIdentitiesFromSlots, expectedRunLines, INVENTORY_HELPER_WS,
+  encodeAttestation,
   verifyInventoryEntries, verifyMigrationRun,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
@@ -36,9 +37,12 @@ import {
   postureSql, snapshotQueryPlan, tableRowsSql, verifyCommandGraph,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-query-plan.mjs';
-import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
+import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 // eslint-disable-next-line import/no-relative-packages
-import { C18_SEED_SPEC } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
+import {
+  C18_SEED_SPEC, SEED_OPERATIONS, seedInputDigestSource, seedObjectHeader, seedObjectPayload,
+  seedOutboxPayload,
+} from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
 
@@ -568,9 +572,9 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     const e = exec();
     const ws = e.workspace;
     const helperDigest = sha256(readFileSync(join(REPO, INVENTORY_HELPER_REL)));
-    const lines = [`${e.runner_sha256}  ${e.runner_path}`,
+    const lines = `${[`${e.runner_sha256}  ${e.runner_path}`,
       `${helperDigest}  ${ws}/${INVENTORY_HELPER_WS}`,
-      ...e.migrations.map((m: any) => `${m.digest}  ${ws}/migrations/${m.filename}`)].join('\n');
+      ...e.migrations.map((m: any) => `${m.digest}  ${ws}/migrations/${m.filename}`)].join('\n')}\n`;
     const invText = encodeInventory(e.inventory);
     const runText = `${expectedRunLines(e.applied).join('\n')}\n`;
     const commands = [
@@ -691,6 +695,114 @@ describe('C18.1.6 — the frozen 8362cba predecessor is byte-verbatim', () => {
   });
 });
 
+describe('C18.1.7 — the frozen dccfcf26 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = 'dccfcf26b0111edeb4b5d710b6d0f707beb34f46';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '5becc72dbab7e0bd1bc48bfc0869f504c435414d7f073ba5432f96795d1a9b3e'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', 'd26a5b12afa9671b28da8a2280cb2ecf164666f0a51912391ae28c4fee990c1d'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '826e9e35e4ae51bba9c51bfa5e84b178adf3f159a076c08e894e54496bfa09a9'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', 'a2f7dad75426db80a391a5da44795a7fa1fbfcfb5fe9ac2b7da31e9144af30f3'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', 'b72ad40e6b731bd250c6267dba3fe8f543889b046b3e171901aece8ca5421d80'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-dccfcf2/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-dccfcf2', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+});
+
+describe('C18.1.7 — migration receipts must be byte-exact', () => {
+  it('an attestation receipt is the exact ordered digest/path sequence', () => {
+    const rows = [{ digest: 'a'.repeat(64), path: '/ws/scripts/migrate.mjs' },
+      { digest: 'b'.repeat(64), path: '/ws/migrations/0001_a.sql' }];
+    const text = encodeAttestation(rows);
+    expect(text).toBe(`${'a'.repeat(64)}  /ws/scripts/migrate.mjs\n${'b'.repeat(64)}  /ws/migrations/0001_a.sql\n`);
+    expect(parseAttestation(text)).toEqual({ rows, problem: null });
+  });
+  it.each([
+    ['a blank line the tool could never emit', `${'a'.repeat(64)}  /x\n\n${'b'.repeat(64)}  /y\n`, /is not shasum output/],
+    ['an unterminated receipt', `${'a'.repeat(64)}  /x`, /not newline-terminated/],
+    ['an empty receipt', '', /is empty/],
+    ['a single-space separator', `${'a'.repeat(64)} /x\n`, /is not shasum output/],
+    ['a truncated digest', `${'a'.repeat(63)}  /x\n`, /is not shasum output/],
+  ])('refuses %s', (_l, text, pattern) => {
+    expect(parseAttestation(text).problem).toMatch(pattern);
+  });
+  it('inventory bytes must be the canonical encoding, not merely equivalent JSON', () => {
+    const entries = [{ name: '0001_a.sql', type: 'file' }];
+    const canonical = encodeInventory(entries);
+    expect(parseInventory(canonical).problem).toBeNull();
+    // Pretty-printed output parses to the same entries but is NOT what the helper emits.
+    const pretty = `${JSON.stringify(entries, null, 2)}\n`;
+    expect(parseInventory(pretty).problem).toBeNull();
+    expect(pretty).not.toBe(canonical);
+  });
+});
+
+describe('C18.1.7 — the closed seed semantic model', () => {
+  it('the specification owns the object header, payloads and operation plan', () => {
+    const header = seedObjectHeader({
+      objectId: 'o1', tenantId: 't1', domainId: 'd1', correlation: 'c1', spec: C18_SEED_SPEC.objects[0],
+    });
+    expect(header.object_type).toBe('CLM');
+    expect(header.accountable_owner).toBe('principal:c18-seed');
+    expect(header.evidence_refs).toEqual(['evd:c18-seed']);
+    expect(header.observation_time).toBe('2026-08-01T00:00:00.000Z');
+    expect(seedObjectPayload(C18_SEED_SPEC.objects[0]))
+      .toEqual({ subject: 'c18-claim-1', predicate: 'asserts', object_value: 'v-c18-claim-1' });
+    expect(seedOutboxPayload(C18_SEED_SPEC.outbox[0]))
+      .toEqual({ seed: 'c18', event: 'c18.seed.published' });
+    // One operation per governed seed decision, each naming its entity slot and actor.
+    expect(SEED_OPERATIONS.length).toBe(SEED_CONTRACT.decisions);
+    for (const op of SEED_OPERATIONS) {
+      expect(op.entitySlot, JSON.stringify(op)).toBeTruthy();
+      expect(op.actorSlot).toBeTruthy();
+      expect(op.sessionSlot).toBeTruthy();
+    }
+    // Object and outbox operations are performed by the tenant admin, not the platform admin.
+    const objectOps = SEED_OPERATIONS.filter((o: { entityKind: string }) => o.entityKind === 'object');
+    expect(objectOps.every((o: { actorSlot: string }) => o.actorSlot === 'alpha-admin')).toBe(true);
+  });
+  it('the input-digest formula is source-owned and entity-kind aware', () => {
+    expect(seedInputDigestSource({ entityKind: 'principal' }, 'p1')).toBe('c18:principal:p1');
+    expect(seedInputDigestSource({ entityKind: 'tenant', action: 'tenancy.tenant.create', targetType: 'tenancy.tenant' }, 't1'))
+      .toBe('c18:tenancy.tenant.create:tenancy.tenant:t1');
+  });
+  it('META: every deterministic seed literal originates in the shared specification', () => {
+    const seeder = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-seed-0012.mjs'), 'utf8');
+    expect(seeder).toContain("from './c18-seed-spec.mjs'");
+    // Names and event types.
+    for (const t of C18_SEED_SPEC.tenants) expect(seeder).not.toContain(`'${t.name}'`);
+    for (const d of C18_SEED_SPEC.domains) expect(seeder).not.toContain(`'${d.name}'`);
+    for (const p of C18_SEED_SPEC.principals) expect(seeder).not.toContain(`'${p.loginName}'`);
+    for (const o of C18_SEED_SPEC.outbox) expect(seeder).not.toContain(`'${o.eventType}'`);
+    for (const o of C18_SEED_SPEC.objects) expect(seeder).not.toContain(`'${o.subject}'`);
+    // Deterministic header values, payload shape and digest formula live in the specification.
+    const header = seedObjectHeader({
+      objectId: 'o', tenantId: 't', domainId: 'd', correlation: 'c', spec: C18_SEED_SPEC.objects[0],
+    });
+    for (const literal of ['CP-OBJ-01', 'principal:c18-seed', 'evd:c18-seed', 'CLM@v1',
+      '2026-08-01T00:00:00.000Z', 'asserts']) {
+      expect(Object.values(header).flat().concat(['asserts']), `${literal} must be specified`).toBeTruthy();
+      expect(seeder, `${literal} must not be a seeder literal`).not.toContain(`'${literal}'`);
+    }
+    expect(seeder).not.toContain("{ seed: 'c18'");
+    expect(seeder).not.toContain('`c18:principal:');
+    expect(seeder).toContain('seedObjectHeader');
+    expect(seeder).toContain('seedObjectPayload');
+    expect(seeder).toContain('seedOutboxPayload');
+    expect(seeder).toContain('seedInputDigestSource');
+  });
+});
+
 describe('C18.1.6 — the tracked cross-platform inventory helper', () => {
   it('enumerates dot-prefixed, whitespace and Unicode names, and reports lstat types', () => {
     const dir = mkdtempSync(join(tmpdir(), 'c18-inv-'));
@@ -788,68 +900,134 @@ describe('C18.1.6 — complete migration-output validation', () => {
 });
 
 describe('C18.1.6 — the source-owned seed specification binds generated identities to slots', () => {
+  const u = (n: string) => `aaaaaaaa-${n}-4aaa-8aaa-aaaaaaaaaaaa`;
   const ids = {
-    tAlpha: 't-alpha', tBeta: 't-beta', d0: 'd-alpha0', d1: 'd-alpha1', d2: 'd-beta0',
-    adm: 'p-admin', pa: 'p-alpha-admin', pn: 'p-alpha-analyst', pb: 'p-beta-admin',
-    s1: 's-admin', s2: 's-alpha', o1: 'o-1', o2: 'o-2', e1: 'e-pub', e2: 'e-pend',
+    tAlpha: u('0001'), tBeta: u('0002'), d0: u('0003'), d1: u('0004'), d2: u('0005'),
+    adm: u('0006'), pa: u('0007'), pn: u('0008'), pb: u('0009'),
+    s1: u('000a'), s2: u('000b'), o1: u('000c'), o2: u('000d'), e1: u('000e'), e2: u('000f'),
   };
-  const world = () => ({
-    seedRecord: {
-      admin: { principalId: ids.adm, loginName: 'platform-admin' },
-      tenants: [{ tenantId: ids.tAlpha, name: 'c18-tenant-alpha' }, { tenantId: ids.tBeta, name: 'c18-tenant-beta' }],
-      domains: [
-        { domainId: ids.d0, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
-        { domainId: ids.d1, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
-        { domainId: ids.d2, tenantId: ids.tBeta, name: 'c18-tenant-beta-dom0' },
-      ],
-      principals: [
-        { principalId: ids.pa, scope: 'TENANT', tenantId: ids.tAlpha, domainId: null, loginName: 'c18-alpha-admin', roleCode: 'tenant_admin' },
-        { principalId: ids.pn, scope: 'DOMAIN', tenantId: ids.tAlpha, domainId: ids.d0, loginName: 'c18-alpha-analyst', roleCode: 'domain_analyst' },
-        { principalId: ids.pb, scope: 'TENANT', tenantId: ids.tBeta, domainId: null, loginName: 'c18-beta-admin', roleCode: 'tenant_admin' },
-      ],
-      sessions: [{ sessionId: ids.s1, principalId: ids.adm }, { sessionId: ids.s2, principalId: ids.pa }],
-      objects: [{ objectId: ids.o1, tenantId: ids.tAlpha, domainId: ids.d0 }, { objectId: ids.o2, tenantId: ids.tAlpha, domainId: ids.d0 }],
-      outbox: [{ eventId: ids.e1, eventType: 'c18.seed.published' }, { eventId: ids.e2, eventType: 'c18.seed.pending' }],
-    },
-    before: {
-      tables: {
-        'tenancy.tenants': { rows: [{ id: ids.tAlpha, name: 'c18-tenant-alpha' }, { id: ids.tBeta, name: 'c18-tenant-beta' }] },
-        'tenancy.domains': { rows: [
-          { id: ids.d0, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
-          { id: ids.d1, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
-          { id: ids.d2, tenant_id: ids.tBeta, name: 'c18-tenant-beta-dom0' },
-        ] },
-        'identity.principals': { rows: [
-          { id: ids.adm, login_name: 'platform-admin', display_name: 'platform-admin', kind: 'human', scope: 'PLATFORM', tenant_id: null, domain_id: null },
-          { id: ids.pa, login_name: 'c18-alpha-admin', display_name: 'c18-alpha-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tAlpha, domain_id: null },
-          { id: ids.pn, login_name: 'c18-alpha-analyst', display_name: 'c18-alpha-analyst', kind: 'human', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-          { id: ids.pb, login_name: 'c18-beta-admin', display_name: 'c18-beta-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tBeta, domain_id: null },
-        ] },
-        'identity.role_bindings': { rows: [
-          { principal_id: ids.adm, role_code: 'platform_admin', revoked_at: null },
-          { principal_id: ids.pa, role_code: 'tenant_admin', revoked_at: null },
-          { principal_id: ids.pn, role_code: 'domain_analyst', revoked_at: null },
-          { principal_id: ids.pb, role_code: 'tenant_admin', revoked_at: null },
-        ] },
-        'identity.sessions': { rows: [{ id: ids.s1, principal_id: ids.adm, assurance: 'password' }, { id: ids.s2, principal_id: ids.pa, assurance: 'password' }] },
-        'objects.canonical_objects': { rows: [
-          { object_id: ids.o1, object_type: 'CLM', object_version: '1', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-          { object_id: ids.o2, object_type: 'CLM', object_version: '1', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-        ] },
-        'objects.object_outbox': { rows: [
-          { id: ids.e1, event_type: 'c18.seed.published', status: 'published', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-          { id: ids.e2, event_type: 'c18.seed.pending', status: 'pending', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
-        ] },
-        'policy.policy_decisions': { rows: [
-          ...Array.from({ length: 2 }, () => ({ action: 'tenancy.tenant.create', consequence_class: 'C2', object_type: 'tenancy.tenant' })),
-          ...Array.from({ length: 3 }, () => ({ action: 'tenancy.domain.create', consequence_class: 'C2', object_type: 'tenancy.domain' })),
-          ...Array.from({ length: 3 }, () => ({ action: 'identity.principal.create', consequence_class: 'C2', object_type: 'identity.principal' })),
-          ...Array.from({ length: 2 }, () => ({ action: 'objects.create', consequence_class: 'C2', object_type: 'CLM' })),
-          ...Array.from({ length: 2 }, () => ({ action: 'objects.create', consequence_class: 'C1', object_type: 'outbox' })),
-        ] },
+  /** A complete, specification-conformant miniature: every slot, decision and audit event. */
+  const world = () => {
+    const corr = (n: string) => `cccccccc-${n}-4ccc-8ccc-cccccccccccc`;
+    const decId = (n: string) => `dddddddd-${n}-4ddd-8ddd-dddddddddddd`;
+    const slotEntity: Record<string, string> = {
+      'tenant-alpha': ids.tAlpha, 'tenant-beta': ids.tBeta,
+      'alpha-dom0': ids.d0, 'alpha-dom1': ids.d1, 'beta-dom0': ids.d2,
+      'alpha-admin': ids.pa, 'alpha-analyst': ids.pn, 'beta-admin': ids.pb,
+      'claim-1': ids.o1, 'claim-2': ids.o2,
+      'outbox-published': ids.e1, 'outbox-pending': ids.e2,
+    };
+    const slotPrincipal: Record<string, string> = {
+      'platform-admin': ids.adm, 'alpha-admin': ids.pa, 'alpha-analyst': ids.pn, 'beta-admin': ids.pb,
+    };
+    const slotSession: Record<string, string> = { 'admin-session': ids.s1, 'alpha-admin-session': ids.s2 };
+    const slotTenant: Record<string, string> = { 'tenant-alpha': ids.tAlpha, 'tenant-beta': ids.tBeta };
+    const slotDomain: Record<string, string> = { 'alpha-dom0': ids.d0, 'alpha-dom1': ids.d1, 'beta-dom0': ids.d2 };
+    const decisions: any[] = [];
+    const events: any[] = [];
+    SEED_OPERATIONS.forEach((op: any, i: number) => {
+      const entityId = slotEntity[op.entitySlot]!;
+      const c = corr(String(1000 + i));
+      const id = decId(String(1000 + i));
+      decisions.push({
+        id, action: op.action, consequence_class: op.consequence, object_type: op.objectType,
+        object_id: entityId, scope: op.scope,
+        tenant_id: op.tenantSlot === null ? null : slotTenant[op.tenantSlot],
+        domain_id: op.domainSlot === null ? null : slotDomain[op.domainSlot],
+        decision: 'allow', evidence_only: false, revocation_state: 'none',
+        purpose_id: 'c18-era-seed', reason: 'C18 era seed', bundle_version: 'bundle-v1',
+        delegation_id: null, exception_ref: null, expires_at: null,
+        obligations: [], environment: {},
+        principal_id: `principal:${slotPrincipal[op.actorSlot]}`,
+        input_digest: sha256(seedInputDigestSource(op, entityId)),
+        correlation_id: c,
+      });
+      events.push({
+        partition_id: 'platform', audit_seq: i + 1, correlation_id: c, policy_decision_id: id,
+        event_jcs: jcsCanonicalize({
+          event_type: 'api.request', action: op.action, outcome: 'success', result_code: 'OK',
+          context_mode: 'authority', policy_version: 'bundle-v1', purpose_id: 'c18-era-seed',
+          scope: op.scope, actor: `principal:${slotPrincipal[op.actorSlot]}`,
+          session_id: slotSession[op.sessionSlot], target_type: op.targetType, target_id: entityId,
+          target_version: null,
+          tenant_id: op.tenantSlot === null ? null : slotTenant[op.tenantSlot],
+          domain_id: op.domainSlot === null ? null : slotDomain[op.domainSlot],
+          policy_decision_id: id, causation_id: null, delegation_id: null, trace_id: null,
+          request_digest: null, metadata: {},
+        } as never),
+      });
+    });
+    const objectRow = (slot: string, objectId: string) => {
+      const spec = C18_SEED_SPEC.objects.find((o: any) => o.slot === slot)!;
+      const opIndex = SEED_OPERATIONS.findIndex((o: any) => o.entitySlot === slot);
+      const header = seedObjectHeader({
+        objectId, tenantId: ids.tAlpha, domainId: ids.d0, correlation: corr(String(1000 + opIndex)), spec,
+      });
+      const payload = seedObjectPayload(spec);
+      return { ...header, payload, content_digest: canonicalHeaderDigest(header as never, payload as never) };
+    };
+    const outboxRow = (slot: string, id: string) => {
+      const spec = C18_SEED_SPEC.outbox.find((o: any) => o.slot === slot)!;
+      const opIndex = SEED_OPERATIONS.findIndex((o: any) => o.entitySlot === slot);
+      return {
+        id, event_type: spec.eventType, status: spec.status, scope: spec.scope,
+        tenant_id: ids.tAlpha, domain_id: ids.d0, attempts: 1,
+        payload: seedOutboxPayload(spec),
+        lease_id: spec.lifecycle === 'pending-after-lease' ? 'eeeeeeee-1111-4eee-8eee-eeeeeeeeeeee' : null,
+        leased_until: spec.lifecycle === 'pending-after-lease' ? '2026-08-01T00:01:00+00:00' : null,
+        published_at: spec.lifecycle === 'published' ? '2026-08-01T00:00:30+00:00' : null,
+        correlation_id: corr(String(1000 + opIndex)),
+        causation_id: 'eeeeeeee-2222-4eee-8eee-eeeeeeeeeeee',
+      };
+    };
+    return {
+      headerDigest: canonicalHeaderDigest,
+      seedRecord: {
+        admin: { principalId: ids.adm, loginName: 'platform-admin' },
+        tenants: [{ tenantId: ids.tAlpha, name: 'c18-tenant-alpha' }, { tenantId: ids.tBeta, name: 'c18-tenant-beta' }],
+        domains: [
+          { domainId: ids.d0, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
+          { domainId: ids.d1, tenantId: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
+          { domainId: ids.d2, tenantId: ids.tBeta, name: 'c18-tenant-beta-dom0' },
+        ],
+        principals: [
+          { principalId: ids.pa, scope: 'TENANT', tenantId: ids.tAlpha, domainId: null, loginName: 'c18-alpha-admin', roleCode: 'tenant_admin' },
+          { principalId: ids.pn, scope: 'DOMAIN', tenantId: ids.tAlpha, domainId: ids.d0, loginName: 'c18-alpha-analyst', roleCode: 'domain_analyst' },
+          { principalId: ids.pb, scope: 'TENANT', tenantId: ids.tBeta, domainId: null, loginName: 'c18-beta-admin', roleCode: 'tenant_admin' },
+        ],
+        sessions: [{ sessionId: ids.s1, principalId: ids.adm }, { sessionId: ids.s2, principalId: ids.pa }],
+        objects: [{ objectId: ids.o1, tenantId: ids.tAlpha, domainId: ids.d0 }, { objectId: ids.o2, tenantId: ids.tAlpha, domainId: ids.d0 }],
+        outbox: [{ eventId: ids.e1, eventType: 'c18.seed.published' }, { eventId: ids.e2, eventType: 'c18.seed.pending' }],
       },
-    },
-  });
+      before: {
+        tables: {
+          'tenancy.tenants': { rows: [{ id: ids.tAlpha, name: 'c18-tenant-alpha' }, { id: ids.tBeta, name: 'c18-tenant-beta' }] },
+          'tenancy.domains': { rows: [
+            { id: ids.d0, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom0' },
+            { id: ids.d1, tenant_id: ids.tAlpha, name: 'c18-tenant-alpha-dom1' },
+            { id: ids.d2, tenant_id: ids.tBeta, name: 'c18-tenant-beta-dom0' },
+          ] },
+          'identity.principals': { rows: [
+            { id: ids.adm, login_name: 'platform-admin', display_name: 'platform-admin', kind: 'human', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+            { id: ids.pa, login_name: 'c18-alpha-admin', display_name: 'c18-alpha-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tAlpha, domain_id: null },
+            { id: ids.pn, login_name: 'c18-alpha-analyst', display_name: 'c18-alpha-analyst', kind: 'human', scope: 'DOMAIN', tenant_id: ids.tAlpha, domain_id: ids.d0 },
+            { id: ids.pb, login_name: 'c18-beta-admin', display_name: 'c18-beta-admin', kind: 'human', scope: 'TENANT', tenant_id: ids.tBeta, domain_id: null },
+          ] },
+          'identity.role_bindings': { rows: [
+            { principal_id: ids.adm, role_code: 'platform_admin', revoked_at: null },
+            { principal_id: ids.pa, role_code: 'tenant_admin', revoked_at: null },
+            { principal_id: ids.pn, role_code: 'domain_analyst', revoked_at: null },
+            { principal_id: ids.pb, role_code: 'tenant_admin', revoked_at: null },
+          ] },
+          'identity.sessions': { rows: [{ id: ids.s1, principal_id: ids.adm, assurance: 'password' }, { id: ids.s2, principal_id: ids.pa, assurance: 'password' }] },
+          'objects.canonical_objects': { rows: [objectRow('claim-1', ids.o1), objectRow('claim-2', ids.o2)] },
+          'objects.object_outbox': { rows: [outboxRow('outbox-published', ids.e1), outboxRow('outbox-pending', ids.e2)] },
+          'policy.policy_decisions': { rows: decisions },
+        },
+        audit: { events, heads: [] },
+      },
+    };
+  };
   it('the specified world binds every slot with no problems', () => {
     const r = bindSeedSpec(world() as never);
     expect(r.problems).toEqual([]);
@@ -893,7 +1071,9 @@ describe('C18.1.6 — the source-owned seed specification binds generated identi
     ['a moved canonical object', (w: any) => {
       w.before.tables['objects.canonical_objects'].rows[1].domain_id = ids.d1;
       w.seedRecord.objects[1].domainId = ids.d1;
-    }, /no canonical object matches slot 'claim-2'|matches no source-owned object slot/],
+      // Slots now resolve by SEMANTIC IDENTITY (subject), so the move surfaces as a header
+      // violation rather than an unresolvable slot.
+    }, /object slot 'claim-2' header field 'domain_id'|content_digest .* does not recompute/],
     ['a changed outbox event type', (w: any) => {
       w.before.tables['objects.object_outbox'].rows[1].event_type = 'c18.attacker.event';
       w.seedRecord.outbox[1].eventType = 'c18.attacker.event';
@@ -901,9 +1081,9 @@ describe('C18.1.6 — the source-owned seed specification binds generated identi
     ['a changed outbox status', (w: any) => {
       w.before.tables['objects.object_outbox'].rows[1].status = 'published';
     }, /outbox slot 'outbox-pending' status is "published"/],
-    ['a decision multiset the specification does not describe', (w: any) => {
+    ['a decision that matches no planned operation', (w: any) => {
       w.before.tables['policy.policy_decisions'].rows[0].action = 'attacker.action';
-    }, /which the specification does not describe|match "tenancy\.tenant\.create/],
+    }, /matches no operation in the source-owned plan/],
     ['a seed record naming a different id than the snapshot slot', (w: any) => {
       w.seedRecord.tenants[0].tenantId = 'other-id';
     }, /the seed record's tenant for slot 'tenant-alpha' is "other-id"/],
@@ -916,7 +1096,7 @@ describe('C18.1.6 — the source-owned seed specification binds generated identi
     expect(SEED_CONTRACT.tenants).toBe(C18_SEED_SPEC.tenants.length);
     expect(SEED_CONTRACT.domains).toBe(C18_SEED_SPEC.domains.length);
     expect(SEED_CONTRACT.principals).toBe(C18_SEED_SPEC.principals.length + 1);
-    expect(SEED_CONTRACT.decisions).toBe(C18_SEED_SPEC.decisions.reduce((n: number, d: { count: number }) => n + d.count, 0));
+    expect(SEED_CONTRACT.decisions).toBe(SEED_OPERATIONS.length);
     expect(SEED_CONTRACT.role_bindings).toBe(C18_SEED_SPEC.principals.length + 1);
   });
   it('the governed seeder reads its deterministic names from the SAME specification', () => {
@@ -1128,7 +1308,7 @@ describe('C18.1.4 — migration attestation is measured, not asserted', () => {
     const ok = parseAttestation(`${'a'.repeat(64)}  /tmp/x\n${'b'.repeat(64)}  /tmp/y\n`);
     expect(ok.problem).toBeNull();
     expect(ok.rows).toEqual([{ digest: 'a'.repeat(64), path: '/tmp/x' }, { digest: 'b'.repeat(64), path: '/tmp/y' }]);
-    expect(parseAttestation('not a digest  /tmp/x').problem).toMatch(/is not shasum output/);
+    expect(parseAttestation('not a digest  /tmp/x\n').problem).toMatch(/is not shasum output/);
   });
 });
 

@@ -36,7 +36,9 @@ import { verifyEvidence as legacy83d } from './fixtures/c18-legacy-83d158c/c18-d
 import { verifyEvidence as legacy7be } from './fixtures/c18-legacy-7be02b8/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy8362 } from './fixtures/c18-legacy-8362cba/c18-db-paths.mjs';
-import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacyDcc } from './fixtures/c18-legacy-dccfcf2/c18-db-paths.mjs';
+import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
@@ -1679,7 +1681,7 @@ const C1816_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     editJson(d, 'path-a-seed-record.json', (doc) => {
       for (const o of doc.objects) if (o.objectId === victim.object_id) o.domainId = otherDomain.id;
     });
-  }, /no canonical object matches slot|matches no source-owned object slot/],
+  }, /object slot 'claim-\d' header field 'domain_id'|content_digest .* does not recompute|matches no source-owned object slot/],
   ['2g: a consistently CHANGED session owner', (d) => {
     const before = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
     const analyst = before.tables['identity.principals'].rows.find((r: any) => r.login_name === 'c18-alpha-analyst');
@@ -1793,6 +1795,188 @@ describe('C18.1.6 — inventory and seed-spec adjacent rejections on the genuine
         doc.steps.find((x: any) => x.step === 'canonical-objects').ids = doc.outbox.map((o: any) => o.eventId);
       });
     }, /identities are not the record-derived set|not this step's work/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+/** Rewrite a table across every path-A snapshot AND its command-bound raw receipts. */
+function everywhereA(d: string, table: string, apply: (r: any) => void) {
+  for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+    editJson(d, snapFile, (doc) => { for (const r of doc.tables[table].rows) apply(r); });
+    const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(after.tables[table].rows)));
+  }
+}
+/** The header exactly as ADMITTED (string version, ISO-Z times), so a digest recomputes. */
+const admittedHeader = (row: any) => {
+  const { payload, content_digest, ...rest } = row;
+  void payload; void content_digest;
+  return {
+    ...rest,
+    object_version: String(rest.object_version),
+    observation_time: '2026-08-01T00:00:00.000Z',
+    recorded_at: '2026-08-01T00:00:00.000Z',
+  };
+};
+
+/** Mutations expressible in BOTH the C18.1.7 and dccfcf26 evidence shapes. */
+const C1817_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['1: pretty-printed inventory JSON the helper could never emit', (d) => {
+    const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+    const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+    setStream(d, 'a-migrate-historical-inventory', 'stdout',
+      Buffer.from(`${JSON.stringify(e.inventory, null, 2)}\n`));
+  }, /inventory receipt bytes are not the canonical encoding the tracked helper emits/],
+  ['2: an attestation receipt containing an impossible blank line', (d) => {
+    const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+    const c = cmds.find((x: any) => x.label === 'b-migrate-latest-attest');
+    const lines = readFileSync(join(d, 'raw', `${c.id}.stdout.txt`), 'utf8').trimEnd().split('\n');
+    lines.splice(2, 0, '');
+    setStream(d, 'b-migrate-latest-attest', 'stdout', Buffer.from(`${lines.join('\n')}\n`));
+  }, /attestation line "" is not shasum output|attestation receipt bytes are not the exact ordered/],
+  ['3: a canonical-object subject rename with a derived object_value', (d) => {
+    everywhereA(d, 'objects.canonical_objects', (r) => {
+      if (r.payload?.subject !== 'c18-claim-2') return;
+      r.payload = { subject: 'c18-attacker', predicate: 'asserts', object_value: 'v-c18-attacker' };
+    });
+  }, /0 canonical object row\(s\) match the source-owned slot 'claim-2'/],
+  ['4: a subject rename WITH a correctly recomputed production content digest', (d) => {
+    everywhereA(d, 'objects.canonical_objects', (r) => {
+      if (r.payload?.subject !== 'c18-claim-2') return;
+      const payload = { subject: 'c18-attacker', predicate: 'asserts', object_value: 'v-c18-attacker' };
+      r.payload = payload;
+      r.content_digest = canonicalHeaderDigest(admittedHeader(r) as never, payload as never);
+    });
+  }, /0 canonical object row\(s\) match the source-owned slot 'claim-2'/],
+  ['5: a seeded decision changed from allow to deny', (d) => {
+    everywhereA(d, 'policy.policy_decisions', (r) => {
+      if (r.object_type === 'CLM') r.decision = 'deny';
+    });
+  }, /decision is "deny"; the operation plan requires "allow"/],
+  ['6: the deterministic outbox payload changed', (d) => {
+    everywhereA(d, 'objects.object_outbox', (r) => {
+      if (r.event_type === 'c18.seed.pending') r.payload = { seed: 'attacker', event: 'c18.seed.pending' };
+    });
+  }, /outbox slot 'outbox-pending' payload .* is not the specification's/],
+  ["7: an object admission re-pointed at another actor's operation", (d) => {
+    const before = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+    const victim = before.tables['objects.canonical_objects'].rows
+      .find((r: any) => r.payload?.subject === 'c18-claim-2');
+    // A tenant-create operation: performed by platform-admin on the admin session, never by
+    // alpha-admin. The row, its digest AND the seed record are all re-pointed, so only the
+    // operation-plan relationship rule can catch it.
+    const tenantDecision = before.tables['policy.policy_decisions'].rows
+      .find((r: any) => r.action === 'tenancy.tenant.create');
+    everywhereA(d, 'objects.canonical_objects', (r) => {
+      if (r.object_id !== victim.object_id) return;
+      r.audit_correlation_id = tenantDecision.correlation_id;
+      r.content_digest = canonicalHeaderDigest(admittedHeader(r) as never, r.payload as never);
+    });
+    editJson(d, 'path-a-seed-record.json', (doc) => {
+      for (const o of doc.objects) {
+        if (o.objectId === victim.object_id) o.correlation = tenantDecision.correlation_id;
+      }
+    });
+  }, /names audit correlation .* which is not the correlation of the operation that admitted it/],
+];
+
+describe('C18.1.7 — DIFFERENTIAL: the frozen dccfcf26 verifier ACCEPTED what C18.1.7 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen dccfcf26 verifier accepts the genuine archive', async () => {
+    const r = await legacyDcc({ zipPath: ARCHIVE, root: REPO });
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it.each(C1817_MUTATIONS)('%s — dccfcf26 ACCEPTS it; C18.1.7 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive(mutate);
+    try {
+      const old = await legacyDcc({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen dccfcf26 verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.7 — adjacent single-defect rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a deterministic object header field (classification)', (d: string) => {
+      everywhereA(d, 'objects.canonical_objects', (r) => { r.classification = 'public'; });
+    }, /header field 'classification' is "public"/],
+    ['a deterministic object header field (accountable_owner)', (d: string) => {
+      everywhereA(d, 'objects.canonical_objects', (r) => { r.accountable_owner = 'principal:attacker'; });
+    }, /header field 'accountable_owner' is "principal:attacker"/],
+    ['a deterministic object header field (evidence_refs)', (d: string) => {
+      everywhereA(d, 'objects.canonical_objects', (r) => { r.evidence_refs = ['evd:attacker']; });
+    }, /header field 'evidence_refs'/],
+    ['a stale content digest left unrecomputed', (d: string) => {
+      everywhereA(d, 'objects.canonical_objects', (r) => {
+        if (r.payload?.subject === 'c18-claim-1') r.content_digest = sha256('stale');
+      });
+    }, /content_digest .* does not recompute under the production canonicalizer/],
+    ['a decision re-scoped away from its operation', (d: string) => {
+      everywhereA(d, 'policy.policy_decisions', (r) => {
+        if (r.object_type === 'tenancy.tenant') r.scope = 'DOMAIN';
+      });
+    }, /scope is "DOMAIN"; the operation plan requires "PLATFORM"/],
+    ['a decision re-tenanted away from its operation', (d: string) => {
+      const before = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+      const tenant = before.tables['tenancy.tenants'].rows[0];
+      everywhereA(d, 'policy.policy_decisions', (r) => {
+        if (r.object_type === 'identity.principal') r.tenant_id = tenant.id;
+      });
+    }, /tenant_id is .* the operation plan requires null/],
+    ['a decision detached from its audit correlation', (d: string) => {
+      everywhereA(d, 'policy.policy_decisions', (r) => {
+        if (r.object_type === 'outbox') r.correlation_id = 'ffffffff-1111-4fff-8fff-ffffffffff01';
+      });
+    }, /carries a different correlation than its decision|audit event\(s\) close the decision/],
+    ['a decision with a forged input digest', (d: string) => {
+      everywhereA(d, 'policy.policy_decisions', (r) => {
+        if (r.object_type === 'CLM') r.input_digest = sha256('forged');
+      });
+    }, /input_digest does not recompute under the source-owned formula/],
+    ['a decision carrying obligations the plan does not', (d: string) => {
+      everywhereA(d, 'policy.policy_decisions', (r) => {
+        if (r.object_type === 'tenancy.domain') r.obligations = [{ obligation: 'notify' }];
+      });
+    }, /carries obligations the operation plan does not/],
+    ['an outbox effect with the wrong attempt count', (d: string) => {
+      everywhereA(d, 'objects.object_outbox', (r) => { r.attempts = 3; });
+    }, /outbox slot .* attempts is 3; the specification requires 1/],
+    ['a published outbox effect still holding a lease', (d: string) => {
+      everywhereA(d, 'objects.object_outbox', (r) => {
+        if (r.status === 'published') r.lease_id = 'ffffffff-2222-4fff-8fff-ffffffffff02';
+      });
+    }, /is published but still holds a lease/],
+    ['a pending outbox effect carrying a publication time', (d: string) => {
+      everywhereA(d, 'objects.object_outbox', (r) => {
+        if (r.status === 'pending') r.published_at = '2026-08-20T00:00:00+00:00';
+      });
+    }, /is pending but carries a published_at/],
+    ['an unclaimed extra policy decision', (d: string) => {
+      everywhereA(d, 'policy.policy_decisions', () => { /* rows appended below */ });
+      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+        editJson(d, snapFile, (doc) => {
+          const t = doc.tables['policy.policy_decisions'];
+          t.rows = [...t.rows, { ...t.rows[0], id: 'ffffffff-3333-4fff-8fff-ffffffffff03' }];
+          t.row_count = t.rows.length;
+        });
+        const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+        setStream(d, `${pfx}-rows-policy_policy_decisions`, 'stdout',
+          Buffer.from(JSON.stringify(after.tables['policy.policy_decisions'].rows)));
+      }
+    }, /matches no operation in the source-owned plan|policy decision\(s\) name entity slot|EXACTLY 12/],
+    ['a duplicated object slot assignment', (d: string) => {
+      everywhereA(d, 'objects.canonical_objects', (r) => {
+        r.payload = { subject: 'c18-claim-1', predicate: 'asserts', object_value: 'v-c18-claim-1' };
+      });
+    }, /2 canonical object row\(s\) match the source-owned slot 'claim-1'/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
     await expectReject(mutate, pattern);
   });
