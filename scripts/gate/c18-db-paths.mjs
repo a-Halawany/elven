@@ -111,6 +111,7 @@ import {
   verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
   absenceArgv, attestArgv, loadCatalogContract, parseAttestation, verifyCatalogContract,
+  EXECUTION_FLOOR, expectedApplied, inventoryArgv, parseInventory, parseMigrationRun,
 } from './lib/c18-contract.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
@@ -304,6 +305,8 @@ function cleanupWithEvidence(ev, cleanup, containers) {
     inspections.push({ container: name, command_id: r.id, exit: r.exit });
     if (r.exit !== 0 || r.signal !== null) {
       failures.push(`absence probe for ${name} exited ${r.exit} signal ${r.signal}; its state is UNKNOWN`);
+    } else if (r.stderr.trim() !== '') {
+      failures.push(`absence probe for ${name} wrote to stderr; its state is UNKNOWN`);
     } else if (r.rawStdout.trim() !== '') {
       failures.push(`container ${name} STILL EXISTS after checked removal`);
     }
@@ -352,10 +355,21 @@ function runMigration(ev, { label, path, letter, inst, ws, ceiling, tracked, exe
   if (JSON.stringify(present) !== JSON.stringify(migrations.map((m) => m.filename))) {
     throw new Error(`governed workspace holds ${present.length} migrations; the ${ceiling} ceiling authorizes ${migrations.length}`);
   }
+  // C18.1.5 — ENUMERATE the complete governed migration directory through the evidence
+  // recorder first, so an unauthorized file cannot escape by being absent from our own claim.
+  const inventoryCmd = ev.run(`${label}-inventory`, inventoryArgv(ws));
+  const { files: discovered, sorted: discoveredSorted } = parseInventory(inventoryCmd.rawStdout);
+  if (JSON.stringify(discovered) !== JSON.stringify(discoveredSorted)) {
+    throw new Error(`workspace inventory for ${label} is not sorted`);
+  }
+  if (JSON.stringify(discovered) !== JSON.stringify(migrations.map((m) => m.filename))) {
+    throw new Error(`governed workspace for ${label} holds ${discovered.length} migration file(s); `
+      + `the exact source-derived ${ceiling} set is ${migrations.length}`);
+  }
   // C18.1.4 — MEASURE the runner and every workspace migration through the evidence recorder,
   // immediately before executing them. The digests below are parsed back out of this command's
   // raw receipt by the verifier, so they are attested rather than self-asserted.
-  const attest = ev.run(`${label}-attest`, attestArgv(ws, migrations.map((m) => m.filename)));
+  const attest = ev.run(`${label}-attest`, attestArgv(ws, discovered));
   const { rows, problem } = parseAttestation(attest.rawStdout);
   if (problem !== null) throw new Error(`migration attestation for ${label}: ${problem}`);
   if (rows.length !== migrations.length + 1) {
@@ -370,10 +384,20 @@ function runMigration(ev, { label, path, letter, inst, ws, ceiling, tracked, exe
     }
   });
   const r = ev.run(label, ['node', runner], { env: inst.envFor() });
+  // The runner's OWN output states which migrations it newly applied, in order.
+  const { applied, problem: runProblem } = parseMigrationRun(r.rawStdout);
+  if (runProblem !== null) throw new Error(`migration run ${label}: ${runProblem}`);
+  const wantApplied = expectedApplied(discovered, ceiling, EXECUTION_FLOOR[label] ?? '0000');
+  if (JSON.stringify(applied) !== JSON.stringify(wantApplied)) {
+    throw new Error(`migration run ${label} applied ${JSON.stringify(applied)}; `
+      + `the governed sequence is ${JSON.stringify(wantApplied)}`);
+  }
   executions.push({
-    command_id: r.id, attest_command_id: attest.id, label, path, workspace: ws, runner_path: runner,
-    runner_sha256: rows[0].digest, ceiling,
+    command_id: r.id, attest_command_id: attest.id, inventory_command_id: inventoryCmd.id,
+    label, path, workspace: ws, runner_path: runner,
+    runner_sha256: rows[0].digest, ceiling, inventory: discovered,
     migrations: migrations.map((m, i) => ({ filename: m.filename, digest: rows[i + 1].digest })),
+    applied,
   });
   return r;
 }
@@ -683,7 +707,9 @@ async function runCommand(args) {
       ));
     }
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
-    problems.push(...verifySeedSteps({ steps: seedRecord.steps, seedRecord }).map((p) => `path-a-seed: ${p}`));
+    problems.push(...verifySeedSteps({
+      steps: seedRecord.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
+    }).map((p) => `path-a-seed: ${p}`));
     problems.push(...compareSnapshots(before, after, transforms).map((p) => `path-a: ${p}`));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }).map((p) => `path-a-before: ${p}`));
     problems.push(...verifyChainRows({
@@ -1144,6 +1170,10 @@ export async function verifyEvidence({
           const abs = contained(`raw/${cmd.id}.stdout.txt`, 'absence receipt');
           return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
         },
+        errText: (cmd) => {
+          const abs = contained(`raw/${cmd.id}.stderr.txt`, 'absence stderr receipt');
+          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+        },
       }));
     }
 
@@ -1159,7 +1189,9 @@ export async function verifyEvidence({
     // suppress a deeper finding (the C18.1.1 rule, extended here to the seed record and its
     // governed step receipts). Only the seed_summary comparison needs a well-formed manifest.
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: shaped ? manifest : null }));
-    problems.push(...verifySeedSteps({ steps: seedRecord?.steps, seedRecord }));
+    problems.push(...verifySeedSteps({
+      steps: seedRecord?.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
+    }));
     problems.push(...compareSnapshots(before, after, transforms));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }));
     problems.push(...verifyChainRows({ events: after.audit.events, heads: after.audit.heads, priorEvents: before.audit.events, ...audit }));

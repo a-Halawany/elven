@@ -26,7 +26,8 @@ import {
   verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
   absenceArgv, attestArgv, deriveSeedStepIdentities, loadCatalogContract, parseAttestation,
-  verifyCatalogContract,
+  verifyCatalogContract, EXECUTION_FLOOR, SEED_CONTRACT, expectedApplied, inventoryArgv,
+  parseInventory, parseMigrationRun, reconcileRoleBindings,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
 import {
@@ -524,10 +525,14 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     .sort(([a], [b]) => (a < b ? -1 : 1)).map(([filename, digest]) => ({ filename, digest }));
   const exec = (over: Record<string, unknown> = {}) => ({
     command_id: '001-a-migrate-historical', attest_command_id: '001-a-migrate-historical-attest',
+    inventory_command_id: '001-a-migrate-historical-inventory',
     label: 'a-migrate-historical', path: 'path-a-upgraded',
     workspace: '/tmp/c18-a-Ab12Cd', runner_path: '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
     runner_sha256: tracked().get('__runner__'), ceiling: HISTORICAL_LAST,
-    migrations: govMigrations(), ...over,
+    inventory: govMigrations().map((m: { filename: string }) => m.filename),
+    migrations: govMigrations(),
+    applied: govMigrations().map((m: { filename: string }) => m.filename),
+    ...over,
   });
   it.each([
     ['an attacker path', { workspace: '/attacker', runner_path: '/attacker/scripts/migrate.mjs' }, /not a governed workspace path/],
@@ -557,21 +562,28 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     const ws = e.workspace;
     const lines = [`${e.runner_sha256}  ${e.runner_path}`,
       ...e.migrations.map((m: any) => `${m.digest}  ${ws}/migrations/${m.filename}`)].join('\n');
+    const invText = `${e.inventory.join('\n')}\n`;
+    const runText = `${e.applied.map((f: string) => `applying ${f} ... ok`).join('\n')}\nmigrations up to date\n`;
     const commands = [
-      { id: e.attest_command_id, label: 'a-migrate-historical-attest', argv: attestArgv(ws, e.migrations.map((m: any) => m.filename)), exit: 0, signal: null },
+      { id: e.inventory_command_id, label: 'a-migrate-historical-inventory', argv: inventoryArgv(ws), exit: 0, signal: null },
+      { id: e.attest_command_id, label: 'a-migrate-historical-attest', argv: attestArgv(ws, e.inventory), exit: 0, signal: null },
       { id: e.command_id, label: 'a-migrate-historical', argv: ['node', e.runner_path], exit: 0, signal: null },
     ];
-    const opts = { commands, trackedDigests: tracked(), repoRoot: REPO, rawText: () => lines };
+    const byId: Record<string, string> = {
+      [e.inventory_command_id]: invText, [e.attest_command_id]: lines, [e.command_id]: runText,
+    };
+    const opts = { commands, trackedDigests: tracked(), repoRoot: REPO, rawText: (c: any) => byId[c.id] ?? null };
     // Only this one execution is under test here; the other two governed slots are absent.
     const unrelated = /is MISSING|exactly 3 are governed/;
     expect(verifyMigrationExecutions({ executions: [e], ...opts } as never)
       .filter((p: string) => !unrelated.test(p))).toEqual([]);
     // The receipt claims the tracked digest while the EXECUTION measured other bytes.
     const foreign = `${sha256('elsewhere')}  ${e.runner_path}\n${lines.split('\n').slice(1).join('\n')}`;
-    expect(verifyMigrationExecutions({ executions: [e], ...opts, rawText: () => foreign } as never).join('\n'))
+    const foreignById: Record<string, string> = { ...byId, [e.attest_command_id]: foreign };
+    expect(verifyMigrationExecutions({ executions: [e], ...opts, rawText: (c: any) => foreignById[c.id] ?? null } as never).join('\n'))
       .toMatch(/EXECUTED runner whose measured bytes are not the tracked source bytes/);
     // A missing attestation command cannot be substituted by the manifest's own assertion.
-    expect(verifyMigrationExecutions({ executions: [e], ...opts, commands: [commands[1]] } as never).join('\n'))
+    expect(verifyMigrationExecutions({ executions: [e], ...opts, commands: [commands[0], commands[2]] } as never).join('\n'))
       .toMatch(/names attestation command .* which does not exist/);
   });
 
@@ -615,8 +627,8 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
   it('cleanup must be proven by EXECUTION, not asserted', () => {
     const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
     const commands = [
-      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0 })),
-      ...names.map((n, i) => ({ id: `in-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n), exit: 0, signal: null, stdout_bytes: 0 })),
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0, stderr_bytes: 0 })),
+      ...names.map((n, i) => ({ id: `in-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n), exit: 0, signal: null, stdout_bytes: 0, stderr_bytes: 0 })),
     ];
     const cleanup = {
       removed: names, failures: [], kept: [],
@@ -641,6 +653,159 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     cmds3[0]!.exit = 1; failedRm.removals[0]!.exit = 1;
     expect(verifyCleanupReceipt({ cleanup: failedRm, commands: cmds3 as never, receiptA: receiptA as never, receiptB: receiptB as never, rawText }).join('\n'))
       .toMatch(/checked removal of .* recorded exit 1/);
+  });
+});
+
+describe('C18.1.5 — the complete migration inventory', () => {
+  it('enumerates the governed directory and parses sorted output', () => {
+    expect(inventoryArgv('/tmp/c18-a-Ab12Cd')).toEqual(['ls', '-1', '/tmp/c18-a-Ab12Cd/migrations']);
+    const ok = parseInventory('0001_a.sql\n0002_b.sql\n');
+    expect(ok.files).toEqual(['0001_a.sql', '0002_b.sql']);
+    expect(ok.sorted).toEqual(ok.files);
+    const unsorted = parseInventory('0002_b.sql\n0001_a.sql\n');
+    expect(unsorted.files).not.toEqual(unsorted.sorted);
+  });
+  it('parses the runner output and requires a confirmed completion', () => {
+    const good = parseMigrationRun('applying 0001_a.sql ... ok\napplying 0002_b.sql ... ok\nmigrations up to date\n');
+    expect(good.problem).toBeNull();
+    expect(good.applied).toEqual(['0001_a.sql', '0002_b.sql']);
+    expect(parseMigrationRun('applying 0001_a.sql ... ok\n').problem).toMatch(/never reported 'migrations up to date'/);
+    expect(parseMigrationRun('applying 0001_a.sql ... \nmigrations up to date\n').problem)
+      .toMatch(/started but never confirmed applied/);
+    // Nothing to apply is legitimate only when nothing was expected.
+    expect(parseMigrationRun('migrations up to date\n').applied).toEqual([]);
+  });
+  it('derives the exact application sequence per governed execution', () => {
+    const files = ['0001_a.sql', '0012_l.sql', '0013_m.sql', '0021_u.sql'];
+    expect(expectedApplied(files, '0012', EXECUTION_FLOOR['a-migrate-historical'])).toEqual(['0001_a.sql', '0012_l.sql']);
+    expect(expectedApplied(files, '0021', EXECUTION_FLOOR['a-migrate-upgrade'])).toEqual(['0013_m.sql', '0021_u.sql']);
+    expect(expectedApplied(files, '0021', EXECUTION_FLOOR['b-migrate-latest'])).toEqual(files);
+  });
+});
+
+describe('C18.1.5 — the EXACT deterministic seed contract', () => {
+  const world = (over: Record<string, unknown[]> = {}) => ({
+    tables: {
+      'tenancy.tenants': { rows: over['tenants'] ?? [{ id: 't1' }, { id: 't2' }] },
+      'tenancy.domains': { rows: over['domains'] ?? [
+        { id: 'd1', tenant_id: 't1' }, { id: 'd2', tenant_id: 't1' }, { id: 'd3', tenant_id: 't2' }] },
+      'identity.principals': { rows: over['principals'] ?? [
+        { id: 'adm', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+        { id: 'p1', scope: 'TENANT', tenant_id: 't1', domain_id: null },
+        { id: 'p2', scope: 'DOMAIN', tenant_id: 't1', domain_id: 'd1' },
+        { id: 'p3', scope: 'TENANT', tenant_id: 't2', domain_id: null }] },
+      'identity.sessions': { rows: over['sessions'] ?? [{ id: 's1', principal_id: 'adm' }, { id: 's2', principal_id: 'p1' }] },
+      'objects.canonical_objects': { rows: over['objects'] ?? [{ object_id: 'o1', domain_id: 'd1' }, { object_id: 'o2', domain_id: 'd1' }] },
+      'objects.object_outbox': { rows: over['outbox'] ?? [{ id: 'e1', status: 'published' }, { id: 'e2', status: 'pending' }] },
+      'policy.policy_decisions': { rows: over['decisions'] ?? Array.from({ length: 12 }, (_x, i) => ({ id: `dec-${i}` })) },
+      'identity.role_bindings': { rows: over['bindings'] ?? Array.from({ length: 4 }, (_x, i) => ({ id: `rb-${i}` })) },
+    },
+    audit: {
+      events: Array.from({ length: 14 }, (_x, i) => ({ partition_id: i < 10 ? 'platform' : 'tenant:t1' })),
+      heads: [],
+    },
+  });
+  it('the deterministic world passes', () => {
+    expect(verifySeedFloor(world() as never)).toEqual([]);
+    expect(SEED_CONTRACT.tenants).toBe(2);
+    expect(SEED_CONTRACT.decisions).toBe(12);
+  });
+  it.each([
+    ['an ADDITIONAL tenant', { tenants: [{ id: 't1' }, { id: 't2' }, { id: 't3' }] }, /tenancy\.tenants has 3 row\(s\).*EXACTLY 2/],
+    ['a missing domain', { domains: [{ id: 'd1', tenant_id: 't1' }, { id: 'd2', tenant_id: 't1' }] }, /tenancy\.domains has 2 row\(s\).*EXACTLY 3/],
+    ['an ADDITIONAL decision', { decisions: Array.from({ length: 13 }, (_x, i) => ({ id: `d${i}` })) }, /policy_decisions has 13 row\(s\).*EXACTLY 12/],
+    ['an ADDITIONAL role binding', { bindings: Array.from({ length: 5 }, (_x, i) => ({ id: `rb${i}` })) }, /role_bindings has 5 row\(s\).*EXACTLY 4/],
+    ['two published outbox effects', { outbox: [{ id: 'e1', status: 'published' }, { id: 'e2', status: 'published' }] }, /2 published outbox effect\(s\).*EXACTLY 1/],
+    ['a second PLATFORM principal', { principals: [
+      { id: 'adm', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+      { id: 'adm2', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+      { id: 'p2', scope: 'DOMAIN', tenant_id: 't1', domain_id: 'd1' },
+      { id: 'p3', scope: 'TENANT', tenant_id: 't2', domain_id: null }] }, /2 PLATFORM principal\(s\)/],
+    ['a malformed scope/tenancy principal', { principals: [
+      { id: 'adm', scope: 'PLATFORM', tenant_id: null, domain_id: null },
+      { id: 'p1', scope: 'TENANT', tenant_id: null, domain_id: null },
+      { id: 'p2', scope: 'DOMAIN', tenant_id: 't1', domain_id: 'd1' },
+      { id: 'p3', scope: 'TENANT', tenant_id: 't2', domain_id: null }] }, /scope\/tenancy combination the seed never creates/],
+    ['a domain distribution the seed never produces', { domains: [
+      { id: 'd1', tenant_id: 't1' }, { id: 'd2', tenant_id: 't1' }, { id: 'd3', tenant_id: 't1' }] }, /domains are distributed/],
+    ['an orphan session', { sessions: [{ id: 's1', principal_id: 'adm' }, { id: 's2', principal_id: 'ghost' }] }, /names a principal the seed did not create/],
+  ])('rejects %s', (_l, over, pattern) => {
+    expect(verifySeedFloor(world(over as never) as never).join('\n')).toMatch(pattern);
+  });
+  it('step identities are NOT derived from a record whose contract already failed', () => {
+    const problems = verifySeedSteps({ steps: [], seedRecord: {} as never, contractHeld: false });
+    expect(problems.join('\n')).toMatch(/not a trustworthy source of expected identities/);
+  });
+});
+
+describe('C18.1.5 — exact role-binding multisets and revoked accounting', () => {
+  const seedRecord = {
+    admin: { principalId: 'adm', loginName: 'platform-admin' },
+    tenants: [{ tenantId: 't1', name: 'a' }, { tenantId: 't2', name: 'b' }],
+    domains: [{ domainId: 'd1', tenantId: 't1', name: 'a0' }],
+    principals: [{ principalId: 'p1', scope: 'TENANT', tenantId: 't1', domainId: null, loginName: 'l1', roleCode: 'tenant_admin' }],
+    sessions: [], objects: [], outbox: [], decisions: [], correlations: [],
+  };
+  const binding = (over: Record<string, unknown> = {}) => ({
+    principal_id: 'p1', role_code: 'tenant_admin', scope: 'TENANT', tenant_id: 't1',
+    domain_id: null, granted_by_principal: 'adm', granted_by_scope: 'PLATFORM',
+    revoked_at: null, id: 'rb-1', ...over,
+  });
+  const adminBinding = binding({
+    principal_id: 'adm', role_code: 'platform_admin', scope: 'PLATFORM', tenant_id: null,
+    granted_by_principal: null, id: 'rb-0',
+  });
+  const check = (rows: unknown[]) => reconcileRoleBindings({ seedRecord: seedRecord as never, bindingRows: rows as never });
+  it('the exact multiset reconciles', () => {
+    expect(check([adminBinding, binding()])).toEqual([]);
+  });
+  it('a DUPLICATE active tuple is reported with its multiplicity', () => {
+    const problems = check([adminBinding, binding(), binding({ id: 'rb-2' })]);
+    expect(problems.join('\n')).toMatch(/carries 2 copies of live role binding .*DUPLICATE active relationship tuple/);
+  });
+  it('an unexpected REVOKED binding is accounted for, not filtered away', () => {
+    const problems = check([adminBinding, binding(), binding({ id: 'rb-9', role_code: 'platform_admin', revoked_at: '2026-08-20T00:00:00Z' })]);
+    expect(problems.join('\n')).toMatch(/carries a REVOKED role binding .*revokes none/);
+  });
+  it('random row ids and timestamps are NOT part of relationship identity', () => {
+    expect(check([{ ...adminBinding, id: 'other-id', created_at: 'whenever' }, { ...binding(), id: 'x', created_at: 'whenever' }])).toEqual([]);
+  });
+});
+
+describe('C18.1.5 — cleanup absence is unambiguous', () => {
+  const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
+  const world = (over: { exit?: number; signal?: string | null; stdout?: number; stderr?: number } = {}) => {
+    const commands = [
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0, stderr_bytes: 0 })),
+      ...names.map((n, i) => ({
+        id: `ab-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n),
+        exit: i === 0 ? (over.exit ?? 0) : 0, signal: i === 0 ? (over.signal ?? null) : null,
+        stdout_bytes: i === 0 ? (over.stdout ?? 0) : 0, stderr_bytes: i === 0 ? (over.stderr ?? 0) : 0,
+      })),
+    ];
+    return {
+      cleanup: {
+        removed: names, failures: [], kept: [],
+        removals: names.map((n, i) => ({ container: n, command_id: `rm-${i}`, exit: 0 })),
+        inspections: names.map((n, i) => ({ container: n, command_id: `ab-${i}`, exit: i === 0 ? (over.exit ?? 0) : 0 })),
+      },
+      commands,
+      receiptA: { container_name: names[0], redis_container: names[1] },
+      receiptB: { container_name: names[2], redis_container: names[3] },
+      rawText: () => '',
+      errText: () => 'permission denied while trying to connect to the Docker daemon socket\n',
+    };
+  };
+  it('exit 0, no signal, and BOTH streams empty proves absence', () => {
+    expect(verifyCleanupReceipt(world() as never)).toEqual([]);
+  });
+  it.each([
+    ['a nonzero exit', { exit: 125 }, /state is UNKNOWN, not proven absent/],
+    ['a signalled probe', { signal: 'SIGKILL' }, /was signalled/],
+    ['stdout output', { stdout: 13 }, /bytes of stdout/],
+    ['stderr diagnostics', { stderr: 92 }, /wrote 92 bytes to stderr.*state is UNKNOWN/],
+  ])('refuses %s as proof of absence', (_l, over, pattern) => {
+    expect(verifyCleanupReceipt(world(over) as never).join('\n')).toMatch(pattern);
   });
 });
 
@@ -714,11 +879,11 @@ describe('C18.1.4 — authenticated absence', () => {
   const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
   const world = (over: { probeExit?: number; probeBytes?: number; probeText?: string } = {}) => {
     const commands = [
-      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0 })),
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0, stderr_bytes: 0 })),
       ...names.map((n, i) => ({
         id: `ab-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n),
         exit: i === 0 ? (over.probeExit ?? 0) : 0, signal: null,
-        stdout_bytes: i === 0 ? (over.probeBytes ?? 0) : 0,
+        stdout_bytes: i === 0 ? (over.probeBytes ?? 0) : 0, stderr_bytes: 0,
       })),
     ];
     const cleanup = {

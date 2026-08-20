@@ -32,6 +32,8 @@ import { verifyEvidence as legacy567 } from './fixtures/c18-legacy-567a70f/c18-d
 import { verifyEvidence as legacy15e } from './fixtures/c18-legacy-15e8239/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy83d } from './fixtures/c18-legacy-83d158c/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy7be } from './fixtures/c18-legacy-7be02b8/c18-db-paths.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -191,7 +193,7 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
       for (const f of ['path-a-before.json', 'path-a-after.json', 'path-a-final.json']) {
         editJson(d, f, (doc) => { doc.audit.events = []; doc.audit.heads = []; });
       }
-    }, /seed floor: platform audit partition has 0/, {}],
+    }, /seed contract: platform audit partition has 0|is missing from the audit view/, {}],
     ['a removed operation-ledger row', (d: string) => {
       editJson(d, 'path-a-final.json', (doc) => { doc.tables['ctx.operation'].rows = []; });
     }, /ctx\.operation has no row for the recorded post-upgrade correlation|rows differ from their raw query receipt|row_count/, {}],
@@ -425,7 +427,7 @@ describe('C18.1 — DIFFERENTIAL: the frozen d5061b8 verifier ACCEPTED what C18.
       expect(joined).toMatch(/field 'gate' is malformed/);
       expect(joined).toMatch(/MISSING field/);
       expect(joined).toMatch(/is not this checkout's HEAD/);
-      expect(joined).toMatch(/seed floor/);
+      expect(joined).toMatch(/seed contract|MISSING field 'seed_summary'/);
       expect(joined).toMatch(/posture categories .* are not the exact code-owned set/);
       expect(joined).toMatch(/RESULT receipt line/);
     } finally {
@@ -629,6 +631,7 @@ function renumberCommands(dir: string) {
     for (const e of doc.migration_executions ?? []) {
       e.command_id = idMap.get(e.command_id) ?? e.command_id;
       if (e.attest_command_id !== undefined) e.attest_command_id = idMap.get(e.attest_command_id) ?? e.attest_command_id;
+      if (e.inventory_command_id !== undefined) e.inventory_command_id = idMap.get(e.inventory_command_id) ?? e.inventory_command_id;
     }
     for (const phase of ['removals', 'inspections']) {
       for (const row of doc.cleanup?.[phase] ?? []) row.command_id = idMap.get(row.command_id) ?? row.command_id;
@@ -821,7 +824,44 @@ function downgradeTo15e8239(dir: string) {
  * absence probes restored to the `docker inspect`-exits-nonzero form its graph expected, and the
  * ledger renumbered so every position-bound id is correct again.
  */
+/**
+ * C18.1.5 adds a per-execution workspace INVENTORY command, rebuilds the attestation argv from
+ * the enumerated directory, and records `inventory`/`applied` on each execution receipt. This
+ * produces exactly what the 7be02b8 producer emitted for the same run.
+ */
+function downgradeTo7be02b8(dir: string) {
+  const manifest = JSON.parse(readFileSync(join(dir, 'c18-manifest.json'), 'utf8'));
+  const byLabel = new Map<string, any>((manifest.migration_executions ?? []).map((e: any) => [e.label, e]));
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (let i = cmds.length - 1; i >= 0; i -= 1) {
+      const c = cmds[i];
+      if (String(c.label).endsWith('-inventory')) {
+        for (const st of ['stdout', 'stderr', 'exit']) rmSync(join(dir, 'raw', `${c.id}.${st}.txt`), { force: true });
+        cmds.splice(i, 1);
+        continue;
+      }
+      if (String(c.label).endsWith('-attest')) {
+        // 7be02b8 built the attestation argv from the manifest's CLAIMED migration list.
+        const e = byLabel.get(String(c.label).replace(/-attest$/, ''));
+        if (e !== undefined) {
+          c.argv = ['shasum', '-a', '256', `${e.workspace}/scripts/migrate.mjs`,
+            ...e.migrations.map((m: any) => `${e.workspace}/migrations/${m.filename}`)];
+        }
+      }
+    }
+  });
+  editJson(dir, 'c18-manifest.json', (m) => {
+    for (const e of m.migration_executions ?? []) {
+      delete e.inventory_command_id;
+      delete e.inventory;
+      delete e.applied;
+    }
+  });
+  renumberCommands(dir);
+}
+
 function downgradeTo83d158c(dir: string) {
+  downgradeTo7be02b8(dir);
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (let i = cmds.length - 1; i >= 0; i -= 1) {
       const c = cmds[i];
@@ -1071,7 +1111,7 @@ describe('C18.1.3 — direct rejections on the genuine archive', () => {
         const doc = JSON.parse(readFileSync(join(d, snapFile!), 'utf8'));
         setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(doc.tables['identity.role_bindings'].rows)));
       }
-    }, /requires live role binding .*which the snapshot does not carry/],
+    }, /requires \d+ live role binding\(s\).*the snapshot carries 0|has no live 'tenant_admin' role binding/],
     ['a session correlation the recorded set omits', (d: string) => {
       editJson(d, 'path-a-seed-record.json', (doc) => {
         const victim = doc.sessions[0].correlation;
@@ -1297,6 +1337,218 @@ describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
       });
       editJson(d, 'c18-manifest.json', (m) => { m.seed_summary.sessions += 1; });
     }, /sessions contains DUPLICATE sessionId entries/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+/** Mutations expressible in BOTH the C18.1.5 and 7be02b8 evidence formats. */
+const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['1a: an ADDITIONAL migration applied by the runner', (d) => {
+    const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+    const c = cmds.find((x: any) => x.label === 'a-migrate-historical');
+    const out = readFileSync(join(d, 'raw', `${c.id}.stdout.txt`), 'utf8');
+    setStream(d, 'a-migrate-historical', 'stdout', Buffer.from(
+      out.replace('migrations up to date', 'applying 0013_attacker_backdoor.sql ... ok\nmigrations up to date'),
+    ));
+    editJson(d, 'c18-manifest.json', (m) => {
+      const e = m.migration_executions?.find((x: any) => x.label === 'a-migrate-historical');
+      if (e?.applied !== undefined) e.applied = [...e.applied, '0013_attacker_backdoor.sql'];
+    });
+  }, /applied .*0013_attacker_backdoor\.sql.*the governed sequence is|UNAUTHORIZED: 0013_attacker_backdoor\.sql/],
+  ['1b: an ADDITIONAL migration file in the governed workspace', (d) => {
+    const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+    const e = (m.migration_executions ?? []).find((x: any) => x.label === 'b-migrate-latest');
+    if (e === undefined || !Array.isArray(e.inventory)) return; // 7be02b8 records no inventory
+    const extra = '0022_attacker_backdoor.sql';
+    const inv = [...e.inventory, extra].sort();
+    const ws = e.workspace;
+    setStream(d, 'b-migrate-latest-inventory', 'stdout', Buffer.from(`${inv.join('\n')}\n`));
+    const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+    const at = cmds.find((c: any) => c.label === 'b-migrate-latest-attest');
+    const lines = readFileSync(join(d, 'raw', `${at.id}.stdout.txt`), 'utf8').trimEnd().split('\n');
+    lines.push(`${sha256('attacker backdoor')}  ${ws}/migrations/${extra}`);
+    lines.sort((x, y) => (x.split('  ')[1]! < y.split('  ')[1]! ? -1 : 1));
+    setStream(d, 'b-migrate-latest-attest', 'stdout', Buffer.from(`${lines.join('\n')}\n`));
+    editJson(d, 'commands.json', (cs: any[]) => {
+      cs.find((c) => c.label === 'b-migrate-latest-attest').argv = [
+        'shasum', '-a', '256', `${ws}/scripts/migrate.mjs`, ...inv.map((f: string) => `${ws}/migrations/${f}`),
+      ];
+    });
+    editJson(d, 'c18-manifest.json', (mm) => {
+      mm.migration_executions.find((x: any) => x.label === 'b-migrate-latest').inventory = inv;
+    });
+  }, /governed workspace holds 22 migration file\(s\).*UNAUTHORIZED: 0022_attacker_backdoor\.sql/],
+  ['2: an ADDITIONAL seeded tenant', (d) => {
+    const extraTenant = 'ffffffff-1111-4fff-8fff-ffffffffff01';
+    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      editJson(d, snapFile, (doc) => {
+        const t = doc.tables['tenancy.tenants'];
+        t.rows = [...t.rows, { ...t.rows[0], id: extraTenant, name: 'c18-tenant-attacker' }];
+        t.row_count = t.rows.length;
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      setStream(d, `${pfx}-rows-tenancy_tenants`, 'stdout', Buffer.from(JSON.stringify(after.tables['tenancy.tenants'].rows)));
+    }
+    editJson(d, 'path-a-seed-record.json', (doc) => {
+      doc.tenants.push({ tenantId: extraTenant, name: 'c18-tenant-attacker' });
+      doc.steps[3].ids = [...doc.tenants.map((t: any) => t.tenantId), ...doc.domains.map((x: any) => x.domainId)];
+    });
+    editJson(d, 'c18-manifest.json', (m) => { m.seed_summary.tenants += 1; });
+  }, /tenancy\.tenants has 3 row\(s\); the deterministic governed seed produces EXACTLY 2/],
+  ['3a: a DUPLICATE active role-binding tuple', (d) => {
+    const forgedId = 'ffffffff-2222-4fff-8fff-ffffffffff02';
+    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      editJson(d, snapFile, (doc) => {
+        const t = doc.tables['identity.role_bindings'];
+        const victim = t.rows.find((r: any) => r.role_code === 'tenant_admin');
+        t.rows = [...t.rows, { ...victim, id: forgedId }];
+        t.row_count = t.rows.length;
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(after.tables['identity.role_bindings'].rows)));
+    }
+  }, /carries 2 copies of live role binding .*DUPLICATE active relationship tuple|identity\.role_bindings has 5 row\(s\)/],
+  ['3b: an UNEXPECTED revoked role binding', (d) => {
+    const forgedId = 'ffffffff-3333-4fff-8fff-ffffffffff03';
+    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      editJson(d, snapFile, (doc) => {
+        const t = doc.tables['identity.role_bindings'];
+        const victim = t.rows.find((r: any) => r.role_code === 'tenant_admin');
+        t.rows = [...t.rows, {
+          ...victim, id: forgedId, role_code: 'platform_admin', scope: 'PLATFORM',
+          tenant_id: null, domain_id: null, revoked_at: '2026-08-20T00:00:00+00:00',
+        }];
+        t.row_count = t.rows.length;
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(after.tables['identity.role_bindings'].rows)));
+    }
+  }, /carries a REVOKED role binding .*the deterministic governed seed revokes none|identity\.role_bindings has 5 row\(s\)/],
+  ['4: a CONTRADICTORY stderr on a "successful" absence probe', (d) => {
+    const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+    const probe = m.cleanup.inspections[0];
+    const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+    const label = cmds.find((c: any) => c.id === probe.command_id).label;
+    setStream(d, label, 'stderr', Buffer.from(
+      'error during connect: permission denied while trying to connect to the Docker daemon socket\n',
+    ));
+  }, /wrote \d+ bytes to stderr.*the state is UNKNOWN/],
+];
+
+describe('C18.1.5 — DIFFERENTIAL: the frozen 7be02b8 verifier ACCEPTED what C18.1.5 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 7be02b8 verifier accepts the genuine archive in ITS format', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo7be02b8);
+    try {
+      const r = await legacy7be({ zipPath: zip, root: REPO });
+      expect(r.problems, 'the downgrade must be exactly what the 7be02b8 producer emitted').toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C1815_MUTATIONS)('%s — 7be02b8 ACCEPTS it; C18.1.5 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { downgradeTo7be02b8(d); mutate(d); });
+    try {
+      const old = await legacy7be({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 7be02b8 verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a workspace inventory missing an authorized migration', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+      const inv = e.inventory.slice(0, -1);
+      setStream(d, 'a-migrate-historical-inventory', 'stdout', Buffer.from(`${inv.join('\n')}\n`));
+      editJson(d, 'c18-manifest.json', (mm) => {
+        mm.migration_executions.find((x: any) => x.label === 'a-migrate-historical').inventory = inv;
+      });
+    }, /governed workspace holds 11 migration file\(s\).*missing:/],
+    ['a workspace inventory listing a DUPLICATE file', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+      const inv = [...e.inventory, e.inventory[0]].sort();
+      setStream(d, 'a-migrate-historical-inventory', 'stdout', Buffer.from(`${inv.join('\n')}\n`));
+      editJson(d, 'c18-manifest.json', (mm) => {
+        mm.migration_executions.find((x: any) => x.label === 'a-migrate-historical').inventory = inv;
+      });
+    }, /lists a DUPLICATE file|holds 13 migration file\(s\)/],
+    ['an inventory receipt out of sorted order', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+      const inv = [...e.inventory].reverse();
+      setStream(d, 'a-migrate-historical-inventory', 'stdout', Buffer.from(`${inv.join('\n')}\n`));
+      editJson(d, 'c18-manifest.json', (mm) => {
+        mm.migration_executions.find((x: any) => x.label === 'a-migrate-historical').inventory = inv;
+      });
+    }, /is not in sorted order/],
+    ['an execution receipt whose inventory[] contradicts the enumerated directory', (d: string) => {
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'b-migrate-latest');
+        e.inventory = e.inventory.slice(0, -1);
+      });
+    }, /inventory\[\] disagrees with the enumerated directory|did not hash exactly the governed runner/],
+    ['a deleted inventory command', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const i = cmds.findIndex((c) => c.label === 'a-migrate-upgrade-inventory');
+        for (const ext of ['stdout', 'stderr', 'exit']) rmSync(join(d, 'raw', `${cmds[i].id}.${ext}.txt`));
+        cmds.splice(i, 1);
+      });
+    }, /expected 'a-migrate-upgrade-inventory'|inventory command .* which does not exist|breaks the sequence/],
+    ['a runner that never reported completion', (d: string) => {
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const c = cmds.find((x: any) => x.label === 'b-migrate-latest');
+      const out = readFileSync(join(d, 'raw', `${c.id}.stdout.txt`), 'utf8');
+      setStream(d, 'b-migrate-latest', 'stdout', Buffer.from(out.replace(/^migrations up to date$/m, '')));
+    }, /never reported 'migrations up to date'/],
+    ['an applied\\[\\] that disagrees with the runner output', (d: string) => {
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-upgrade');
+        e.applied = e.applied.slice(0, -1);
+      });
+    }, /applied\[\] disagrees with what the runner reported/],
+    ['a missing seeded decision (exact cardinality)', (d: string) => {
+      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+        editJson(d, snapFile, (doc) => {
+          const t = doc.tables['policy.policy_decisions'];
+          t.rows = t.rows.slice(0, -1);
+          t.row_count = t.rows.length;
+        });
+        const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+        setStream(d, `${pfx}-rows-policy_policy_decisions`, 'stdout', Buffer.from(JSON.stringify(after.tables['policy.policy_decisions'].rows)));
+      }
+    }, /policy\.policy_decisions has \d+ row\(s\); the deterministic governed seed produces EXACTLY 12|LOST across the upgrade/],
+    ['a second published outbox effect', (d: string) => {
+      for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+        editJson(d, snapFile, (doc) => {
+          const t = doc.tables['objects.object_outbox'];
+          const pending = t.rows.find((r: any) => r.status === 'pending');
+          if (pending !== undefined) pending.status = 'published';
+        });
+        const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+        setStream(d, `${pfx}-rows-objects_object_outbox`, 'stdout', Buffer.from(JSON.stringify(after.tables['objects.object_outbox'].rows)));
+      }
+    }, /outbox effect\(s\); the governed seed produces EXACTLY 1|changed across the upgrade/],
+    ['an absence probe that was signalled', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const probe = m.cleanup.inspections[2];
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const label = cmds.find((c: any) => c.id === probe.command_id).label;
+      editJson(d, 'commands.json', (cs: any[]) => {
+        const c = cs.find((x) => x.id === probe.command_id);
+        c.exit = null;
+        c.signal = 'SIGKILL';
+      });
+      setStream(d, label, 'exit', Buffer.from('signal:SIGKILL\n'));
+      editJson(d, 'c18-manifest.json', (mm) => { mm.cleanup.inspections[2].exit = null; });
+    }, /was signalled|exited null/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
     await expectReject(mutate, pattern);
   });

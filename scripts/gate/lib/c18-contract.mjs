@@ -388,43 +388,92 @@ export function verifyChainRows({ events, heads, priorEvents = null, jcs = null,
 }
 
 /**
- * The SEED FLOOR: code-owned, NONEMPTY expectations, so deleting the audit world (or the seed)
- * cannot pass. Derived from what the governed 0012-era seed deterministically produces.
+ * THE EXACT DETERMINISTIC SEED CONTRACT (C18.1.5).
+ *
+ * 7be02b8 validated MINIMA (`>=`), so the governed seed could be padded — an extra tenant, an
+ * extra principal, an extra decision — and still reconcile. The 0012-era seed is deterministic:
+ * its quantities and semantic records are fixed, and only the generated identifiers vary. Those
+ * quantities are stated here EXACTLY, and every governed step's identity list is derived only
+ * after this contract passes.
  */
-export const SEED_FLOOR = Object.freeze({
+export const SEED_CONTRACT = Object.freeze({
   tenants: 2, domains: 3, principals: 4, sessions: 2, objects: 2, outbox: 2,
   outbox_published: 1, outbox_pending: 1, decisions: 12,
+  role_bindings: 4, revoked_role_bindings: 0,
   audit_platform_min: 8, audit_tenant_partitions_min: 1, audit_total_min: 12,
 });
+/** Retained name for the pre-C18.1.5 call sites; the values are now exact, not minima. */
+export const SEED_FLOOR = SEED_CONTRACT;
 
-export function verifySeedFloor(snapshot, floor = SEED_FLOOR) {
+export function verifySeedFloor(snapshot, contract = SEED_CONTRACT) {
   const problems = [];
-  const count = (t) => snapshot.tables[t]?.rows.length ?? 0;
-  const checks = [
-    ['tenancy.tenants', count('tenancy.tenants'), floor.tenants],
-    ['tenancy.domains', count('tenancy.domains'), floor.domains],
-    ['identity.principals', count('identity.principals'), floor.principals],
-    ['identity.sessions', count('identity.sessions'), floor.sessions],
-    ['objects.canonical_objects', count('objects.canonical_objects'), floor.objects],
-    ['objects.object_outbox', count('objects.object_outbox'), floor.outbox],
-    ['policy.policy_decisions', count('policy.policy_decisions'), floor.decisions],
+  const rows = (t) => snapshot.tables[t]?.rows ?? [];
+  const count = (t) => rows(t).length;
+  // EXACT cardinalities — neither fewer nor more.
+  const exact = [
+    ['tenancy.tenants', count('tenancy.tenants'), contract.tenants],
+    ['tenancy.domains', count('tenancy.domains'), contract.domains],
+    ['identity.principals', count('identity.principals'), contract.principals],
+    ['identity.sessions', count('identity.sessions'), contract.sessions],
+    ['objects.canonical_objects', count('objects.canonical_objects'), contract.objects],
+    ['objects.object_outbox', count('objects.object_outbox'), contract.outbox],
+    ['policy.policy_decisions', count('policy.policy_decisions'), contract.decisions],
+    ['identity.role_bindings', count('identity.role_bindings'), contract.role_bindings],
   ];
-  for (const [label, actual, min] of checks) {
-    if (actual < min) problems.push(`seed floor: ${label} has ${actual} row(s); the governed seed guarantees >= ${min}`);
+  for (const [label, actual, want] of exact) {
+    if (actual !== want) {
+      problems.push(`seed contract: ${label} has ${actual} row(s); the deterministic governed seed produces EXACTLY ${want}`);
+    }
   }
-  const outboxRows = snapshot.tables['objects.object_outbox']?.rows ?? [];
-  if (outboxRows.filter((r) => r.status === 'published').length < floor.outbox_published) {
-    problems.push('seed floor: no published outbox effect');
+  const outboxRows = rows('objects.object_outbox');
+  for (const [status, want] of [['published', contract.outbox_published], ['pending', contract.outbox_pending]]) {
+    const actual = outboxRows.filter((r) => r.status === status).length;
+    if (actual !== want) {
+      problems.push(`seed contract: ${actual} ${status} outbox effect(s); the governed seed produces EXACTLY ${want}`);
+    }
   }
-  if (outboxRows.filter((r) => r.status === 'pending').length < floor.outbox_pending) {
-    problems.push('seed floor: no pending outbox effect');
+  // SEMANTIC RECORDS and RELATIONSHIPS, not merely quantities.
+  const tenantIds = new Set(rows('tenancy.tenants').map((r) => r.id));
+  const domainsPerTenant = new Map();
+  for (const d of rows('tenancy.domains')) {
+    if (!tenantIds.has(d.tenant_id)) {
+      problems.push(`seed contract: domain ${d.id} names tenant ${d.tenant_id}, which the seed did not create`);
+    }
+    domainsPerTenant.set(d.tenant_id, (domainsPerTenant.get(d.tenant_id) ?? 0) + 1);
   }
+  // The governed seed creates two tenants carrying two and one domain respectively.
+  const shape = [...domainsPerTenant.values()].sort((a, b) => b - a);
+  if (tenantIds.size === contract.tenants && JSON.stringify(shape) !== JSON.stringify([2, 1])) {
+    problems.push(`seed contract: domains are distributed ${JSON.stringify(shape)} across tenants; the governed seed produces [2,1]`);
+  }
+  // Exactly one PLATFORM admin principal; the rest are scoped to a tenant or domain.
+  const principals = rows('identity.principals');
+  const platform = principals.filter((p) => p.scope === 'PLATFORM');
+  if (principals.length === contract.principals && platform.length !== 1) {
+    problems.push(`seed contract: ${platform.length} PLATFORM principal(s); the governed seed produces exactly 1`);
+  }
+  for (const p of principals) {
+    const scopedOk = (p.scope === 'PLATFORM' && p.tenant_id === null && p.domain_id === null)
+      || (p.scope === 'TENANT' && p.tenant_id !== null && p.domain_id === null)
+      || (p.scope === 'DOMAIN' && p.tenant_id !== null && p.domain_id !== null);
+    if (!scopedOk) problems.push(`seed contract: principal ${p.id} has a scope/tenancy combination the seed never creates`);
+  }
+  // Every session belongs to a seeded principal; every canonical object to a seeded domain.
+  const principalIds = new Set(principals.map((p) => p.id));
+  for (const x of rows('identity.sessions')) {
+    if (!principalIds.has(x.principal_id)) problems.push(`seed contract: session ${x.id} names a principal the seed did not create`);
+  }
+  const domainIds = new Set(rows('tenancy.domains').map((r) => r.id));
+  for (const o of rows('objects.canonical_objects')) {
+    if (!domainIds.has(o.domain_id)) problems.push(`seed contract: canonical object ${o.object_id} names a domain the seed did not create`);
+  }
+  // Audit floors stay MINIMA by design: the chain grows with governed activity.
   const events = snapshot.audit.events;
-  const platform = events.filter((e) => e.partition_id === 'platform').length;
+  const platformEvents = events.filter((e) => e.partition_id === 'platform').length;
   const tenantParts = new Set(events.map((e) => e.partition_id).filter((p) => p.startsWith('tenant:')));
-  if (platform < floor.audit_platform_min) problems.push(`seed floor: platform audit partition has ${platform} event(s); >= ${floor.audit_platform_min} required`);
-  if (tenantParts.size < floor.audit_tenant_partitions_min) problems.push('seed floor: no tenant audit partition exists');
-  if (events.length < floor.audit_total_min) problems.push(`seed floor: ${events.length} audit event(s) total; >= ${floor.audit_total_min} required`);
+  if (platformEvents < contract.audit_platform_min) problems.push(`seed contract: platform audit partition has ${platformEvents} event(s); >= ${contract.audit_platform_min} required`);
+  if (tenantParts.size < contract.audit_tenant_partitions_min) problems.push('seed contract: no tenant audit partition exists');
+  if (events.length < contract.audit_total_min) problems.push(`seed contract: ${events.length} audit event(s) total; >= ${contract.audit_total_min} required`);
   return problems;
 }
 
@@ -712,9 +761,50 @@ export function verifyCatalogContract(snapshot, era, contract, label) {
  * present in that workspace, and the intended ceiling.
  */
 export const MIGRATION_EXECUTION_FIELDS = Object.freeze([
-  'command_id', 'attest_command_id', 'label', 'path', 'workspace', 'runner_path', 'runner_sha256',
-  'ceiling', 'migrations',
+  'command_id', 'attest_command_id', 'inventory_command_id', 'label', 'path', 'workspace',
+  'runner_path', 'runner_sha256', 'ceiling', 'inventory', 'migrations', 'applied',
 ]);
+
+/**
+ * C18.1.5 — 7be02b8 hashed exactly the files the manifest CLAIMED, so a migration file sitting
+ * in the governed workspace outside that claim was never enumerated, never hashed, and — since
+ * the runner applies every `.sql` it finds — could be applied with nothing in the evidence
+ * recording it. Every execution now begins with a command-bound INVENTORY of the complete
+ * migration directory, which must equal the exact source-derived set; the attestation hashes
+ * every DISCOVERED file; and the runner's own output is parsed for the exact expected
+ * application sequence.
+ */
+export const inventoryArgv = (workspace) => ['ls', '-1', `${workspace}/migrations`];
+
+/** Which migrations each governed execution NEWLY applies (exclusive floor per execution). */
+export const EXECUTION_FLOOR = Object.freeze({
+  'a-migrate-historical': '0000',
+  'a-migrate-upgrade': HISTORICAL_LAST,
+  'b-migrate-latest': '0000',
+});
+
+/** Parse `ls -1` output into a sorted file list. */
+export function parseInventory(text) {
+  const files = String(text ?? '').split('\n').map((l) => l.trim()).filter((l) => l !== '');
+  return { files, sorted: [...files].sort() };
+}
+
+/**
+ * Parse the tracked migrate runner's own stdout: one `applying <file> ... ok` per NEWLY applied
+ * migration, in order, terminated by `migrations up to date`.
+ */
+export function parseMigrationRun(text) {
+  const raw = String(text ?? '');
+  const applied = [...raw.matchAll(/^applying (\S+) \.\.\. ok$/gm)].map((m) => m[1]);
+  const started = [...raw.matchAll(/^applying (\S+) \.\.\./gm)].map((m) => m[1]);
+  if (started.length !== applied.length) {
+    return { applied: [], problem: 'a migration was started but never confirmed applied' };
+  }
+  if (!/^migrations up to date$/m.test(raw)) {
+    return { applied: [], problem: "the runner never reported 'migrations up to date'" };
+  }
+  return { applied, problem: null };
+}
 
 /**
  * C18.1.4 — `runner_sha256` and `migrations[]` were MANIFEST ASSERTIONS: the verifier compared
@@ -728,6 +818,17 @@ export const attestArgv = (workspace, files) => [
   'shasum', '-a', '256', `${workspace}/scripts/migrate.mjs`,
   ...files.map((f) => `${workspace}/migrations/${f}`),
 ];
+
+/**
+ * The migrations a given execution must NEWLY apply: everything above the previous ceiling up
+ * to its own. Path A's upgrade re-runs against an already-migrated database, so it applies only
+ * 0013–0021; a fresh instance applies everything up to its ceiling.
+ */
+export function expectedApplied(allFiles, ceiling, floorExclusive = '0000') {
+  return allFiles
+    .filter((f) => f.slice(0, 4) > floorExclusive && f.slice(0, 4) <= ceiling)
+    .sort();
+}
 
 /** Parse `shasum -a 256` output into [path, digest] pairs, in emitted order. */
 export function parseAttestation(text) {
@@ -790,6 +891,47 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
     if (JSON.stringify(e.migrations) !== JSON.stringify(wantFiles)) {
       problems.push(`migration execution '${e.label}' workspace migration set is not exactly the tracked 0001–${e.ceiling} set in order`);
     }
+    // ── COMMAND-BOUND INVENTORY: the COMPLETE governed migration directory, enumerated by
+    // an executed `ls`, must be exactly the source-derived set — no extra, missing, duplicate
+    // or reordered file. ───────────────────────────────────────────────────────────────
+    const wantNames = wantFiles.map((f) => f.filename);
+    const inv = Array.isArray(commands) ? commands.find((c) => c.id === e.inventory_command_id) : undefined;
+    if (inv === undefined) {
+      problems.push(`migration execution '${e.label}' names inventory command '${e.inventory_command_id}' which does not exist`);
+    } else {
+      if (inv.label !== `${e.label}-inventory`) {
+        problems.push(`migration execution '${e.label}' inventory is bound to command '${inv.label}'`);
+      }
+      if (inv.exit !== 0 || (inv.signal ?? null) !== null) {
+        problems.push(`migration execution '${e.label}' inventory recorded exit ${inv.exit} signal ${inv.signal}`);
+      }
+      if (JSON.stringify(inv.argv) !== JSON.stringify(inventoryArgv(ws))) {
+        problems.push(`migration execution '${e.label}' inventory did not enumerate the governed workspace migration directory`);
+      }
+      const invText = rawText === null ? null : rawText(inv);
+      if (invText === null) problems.push(`migration execution '${e.label}' inventory has no readable raw receipt`);
+      else {
+        const { files, sorted } = parseInventory(invText);
+        if (JSON.stringify(files) !== JSON.stringify(sorted)) {
+          problems.push(`migration execution '${e.label}' workspace inventory is not in sorted order`);
+        }
+        if (new Set(files).size !== files.length) {
+          problems.push(`migration execution '${e.label}' workspace inventory lists a DUPLICATE file`);
+        }
+        if (JSON.stringify(sorted) !== JSON.stringify(wantNames)) {
+          const extra = sorted.filter((f) => !wantNames.includes(f));
+          const missing = wantNames.filter((f) => !sorted.includes(f));
+          problems.push(`migration execution '${e.label}' governed workspace holds ${files.length} migration file(s); the exact source-derived 0001–${e.ceiling} set is ${wantNames.length}`
+            + `${extra.length > 0 ? ` (UNAUTHORIZED: ${extra.join(', ')})` : ''}`
+            + `${missing.length > 0 ? ` (missing: ${missing.join(', ')})` : ''}`);
+        }
+        // The receipt's own inventory field must equal what the command ENUMERATED.
+        if (JSON.stringify(e.inventory) !== JSON.stringify(files)) {
+          problems.push(`migration execution '${e.label}' inventory[] disagrees with the enumerated directory`);
+        }
+      }
+    }
+
     // ── COMMAND-BOUND ATTESTATION: the digests must come from an EXECUTED shasum, not
     // from the manifest's own fields. ──────────────────────────────────────────────────
     const attest = Array.isArray(commands) ? commands.find((c) => c.id === e.attest_command_id) : undefined;
@@ -802,9 +944,12 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
       if (attest.exit !== 0 || (attest.signal ?? null) !== null) {
         problems.push(`migration execution '${e.label}' attestation recorded exit ${attest.exit} signal ${attest.signal}`);
       }
-      const wantArgv = attestArgv(ws, wantFiles.map((f) => f.filename));
+      // Hash coverage follows the ENUMERATED directory, so an unauthorized file cannot be
+      // omitted from the attestation by omitting it from the manifest's claim.
+      const discovered = Array.isArray(e.inventory) ? e.inventory : wantNames;
+      const wantArgv = attestArgv(ws, discovered);
       if (JSON.stringify(attest.argv) !== JSON.stringify(wantArgv)) {
-        problems.push(`migration execution '${e.label}' attestation did not hash exactly the governed runner and the tracked 0001–${e.ceiling} set`);
+        problems.push(`migration execution '${e.label}' attestation did not hash exactly the governed runner and every enumerated migration file`);
       }
       const text = rawText === null ? null : rawText(attest);
       if (text === null) problems.push(`migration execution '${e.label}' attestation has no readable raw receipt`);
@@ -838,7 +983,30 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
         }
       }
     }
-    const cmd = Array.isArray(commands) ? commands.find((c) => c.id === e.command_id) : undefined;
+    // ── THE RUNNER'S OWN OUTPUT: the exact expected application sequence. ─────────────
+    const runCmd = Array.isArray(commands) ? commands.find((c) => c.id === e.command_id) : undefined;
+    if (runCmd !== undefined) {
+      const runText = rawText === null ? null : rawText(runCmd);
+      if (runText === null) problems.push(`migration execution '${e.label}' has no readable runner receipt`);
+      else {
+        const { applied, problem } = parseMigrationRun(runText);
+        if (problem !== null) problems.push(`migration execution '${e.label}' runner output: ${problem}`);
+        else {
+          const wantApplied = expectedApplied(wantNames, e.ceiling, EXECUTION_FLOOR[e.label] ?? '0000');
+          if (JSON.stringify(applied) !== JSON.stringify(wantApplied)) {
+            const extra = applied.filter((f) => !wantApplied.includes(f));
+            const missing = wantApplied.filter((f) => !applied.includes(f));
+            problems.push(`migration execution '${e.label}' applied ${JSON.stringify(applied)}; the governed sequence is ${JSON.stringify(wantApplied)}`
+              + `${extra.length > 0 ? ` (UNAUTHORIZED: ${extra.join(', ')})` : ''}`
+              + `${missing.length > 0 ? ` (missing: ${missing.join(', ')})` : ''}`);
+          }
+          if (JSON.stringify(e.applied) !== JSON.stringify(applied)) {
+            problems.push(`migration execution '${e.label}' applied[] disagrees with what the runner reported`);
+          }
+        }
+      }
+    }
+    const cmd = runCmd;
     if (cmd === undefined) problems.push(`migration execution '${e.label}' names command id '${e.command_id}' which does not exist`);
     else {
       if (cmd.label !== e.label) problems.push(`migration execution '${e.label}' is bound to command '${cmd.label}'`);
@@ -901,7 +1069,13 @@ export function deriveSeedStepIdentities(seedRecord) {
 
 /** Steps must be the exact plan, in order, with the exact era ports and the EXACT derived
  * identity set — no empty, missing, duplicate, extra or step-misattributed identity. */
-export function verifySeedSteps({ steps, seedRecord }) {
+export function verifySeedSteps({ steps, seedRecord, contractHeld = true }) {
+  // C18.1.5 — identities are derived from the record only AFTER the exact seed contract holds.
+  // Deriving from a record whose cardinalities are already wrong would reconcile the forgery
+  // against itself.
+  if (!contractHeld) {
+    return ['governed seed steps cannot be judged: the exact seed contract did not hold, so the record is not a trustworthy source of expected identities'];
+  }
   const problems = [];
   if (!Array.isArray(steps)) return ['seed record steps is not an array'];
   if (steps.length !== SEED_STEP_PLAN.length) {
@@ -968,7 +1142,7 @@ const CLEANUP_STEP_FIELDS = Object.freeze(['container', 'command_id', 'exit']);
 /** The exact absence probe: an EXIT-0, EMPTY-OUTPUT id lookup. */
 export const absenceArgv = (container) => ['docker', 'ps', '-aq', '--filter', `name=^${container}$`];
 
-export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB, rawText = null }) {
+export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB, rawText = null, errText = null }) {
   const problems = [];
   if (cleanup === null || typeof cleanup !== 'object' || Array.isArray(cleanup)) return ['manifest cleanup is not an object'];
   if (JSON.stringify(Object.keys(cleanup).sort()) !== JSON.stringify([...CLEANUP_RECEIPT_FIELDS].sort())) {
@@ -1016,13 +1190,22 @@ export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB, ra
           ? `checked removal of '${container}' recorded exit ${cmd.exit}`
           : `absence probe for '${container}' exited ${cmd.exit}: the container's state is UNKNOWN, not proven absent`);
       } else if (phase === 'inspections') {
+        // UNAMBIGUOUS ABSENCE (C18.1.5): exit 0, no signal, and BOTH streams empty. 7be02b8
+        // checked stdout only, so a probe that exited 0 while writing a daemon/permission error
+        // to stderr certified cleanup it had not observed.
         const text = rawText === null ? null : rawText(cmd);
         if (text === null) problems.push(`absence probe for '${container}' has no readable raw receipt`);
         else if (text.trim() !== '') {
           problems.push(`absence probe for '${container}' returned a container id — it STILL EXISTS after checked removal`);
         }
         if (cmd.stdout_bytes !== 0) {
-          problems.push(`absence probe for '${container}' produced ${cmd.stdout_bytes} bytes of output; an absent container yields none`);
+          problems.push(`absence probe for '${container}' produced ${cmd.stdout_bytes} bytes of stdout; an absent container yields none`);
+        }
+        if (cmd.stderr_bytes !== 0) {
+          const err = errText === null ? null : errText(cmd);
+          problems.push(`absence probe for '${container}' wrote ${cmd.stderr_bytes} bytes to stderr`
+            + `${err === null ? '' : `: ${JSON.stringify(err.trim().slice(0, 120))}`}`
+            + ' — a diagnosing probe proves nothing; the state is UNKNOWN');
         }
       }
     });
@@ -1060,6 +1243,75 @@ export const deriveSeedSummary = (r) => ({
 
 const exactKeys = (obj, fields) => obj !== null && typeof obj === 'object' && !Array.isArray(obj)
   && JSON.stringify(Object.keys(obj).sort()) === JSON.stringify([...fields].sort());
+
+/**
+ * EXACT role-binding reconciliation (C18.1.5). Expected and observed ACTIVE bindings are
+ * compared as multisets on the complete relationship tuple — principal, role, scope,
+ * tenant/domain attribution and grantor provenance — so a duplicated active tuple is a finding
+ * rather than a silent length mismatch. Every revoked row is accounted for: the deterministic
+ * governed seed revokes none. Random row ids and timestamps are deliberately NOT part of
+ * relationship identity; they are bound elsewhere by preservation and raw reconstruction.
+ */
+export function reconcileRoleBindings({ seedRecord, bindingRows }) {
+  const problems = [];
+  // Role bindings: EXACT IN BOTH DIRECTIONS on the COMPLETE RELATIONSHIP TUPLE. 83d158c
+  // compared `principal_id|role_code` only, so a binding could be silently re-scoped, moved to
+  // another tenant or domain, or re-attributed to a different grantor and still reconcile.
+  // C18.1.4 binds scope, tenant/domain attribution and provenance as well.
+  const bindingTuple = (b) => [
+    b.principal_id, b.role_code, b.scope, b.tenant_id ?? null, b.domain_id ?? null,
+    b.granted_by_principal ?? null, b.granted_by_scope ?? null,
+  ].map((v) => JSON.stringify(v)).join('|');
+  const wantBindings = [
+    // The bootstrap admin's own platform grant is self-originated: it predates any grantor.
+    bindingTuple({
+      principal_id: seedRecord.admin.principalId, role_code: 'platform_admin', scope: 'PLATFORM',
+      tenant_id: null, domain_id: null, granted_by_principal: null, granted_by_scope: 'PLATFORM',
+    }),
+    // Every seeded principal's grant carries that principal's own scope and tenancy, and is
+    // attributed to the platform admin that minted it.
+    ...seedRecord.principals.map((p) => bindingTuple({
+      principal_id: p.principalId, role_code: p.roleCode, scope: p.scope,
+      tenant_id: p.tenantId ?? null, domain_id: p.domainId ?? null,
+      granted_by_principal: seedRecord.admin.principalId, granted_by_scope: 'PLATFORM',
+    })),
+  ].sort();
+  const activeRows = bindingRows.filter((b) => (b.revoked_at ?? null) === null);
+  const haveBindings = activeRows.map(bindingTuple).sort();
+  // EXACT MULTISET comparison, multiplicity preserved. 7be02b8 compared sorted arrays but
+  // reported differences with set semantics, so a DUPLICATE active tuple produced a mismatch
+  // with no diagnostic — and therefore no recorded problem at all.
+  const tally = (list) => {
+    const m = new Map();
+    for (const x of list) m.set(x, (m.get(x) ?? 0) + 1);
+    return m;
+  };
+  const haveCount = tally(haveBindings);
+  const wantCount = tally(wantBindings);
+  for (const [tuple, n] of haveCount) {
+    const want = wantCount.get(tuple) ?? 0;
+    if (n > want) {
+      problems.push(want === 0
+        ? `the snapshot carries live role binding ${tuple}, which the seed record does not account for`
+        : `the snapshot carries ${n} copies of live role binding ${tuple}; the seed record accounts for ${want} — a DUPLICATE active relationship tuple`);
+    }
+  }
+  for (const [tuple, n] of wantCount) {
+    const have = haveCount.get(tuple) ?? 0;
+    if (have < n) {
+      problems.push(`seed record requires ${n} live role binding(s) ${tuple}; the snapshot carries ${have}`);
+    }
+  }
+  // EVERY revoked row must be accounted for. The deterministic seed revokes nothing, so any
+  // revoked binding is unexplained evidence rather than something to silently filter away.
+  const revoked = bindingRows.filter((b) => (b.revoked_at ?? null) !== null);
+  if (revoked.length !== 0) {
+    for (const b of revoked) {
+      problems.push(`the snapshot carries a REVOKED role binding ${bindingTuple(b)} (revoked_at ${JSON.stringify(b.revoked_at)}); the deterministic governed seed revokes none`);
+    }
+  }
+  return problems;
+}
 
 /**
  * The seed record is a CLOSED schema, and every recorded identity and relationship is bound
@@ -1236,40 +1488,8 @@ export function verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest
   if (new Set(seedRecord.sessions.map((s) => s.correlation)).size !== seedRecord.sessions.length) {
     problems.push('two seeded sessions share one identity-op correlation');
   }
-  // Role bindings: EXACT IN BOTH DIRECTIONS on the COMPLETE RELATIONSHIP TUPLE. 83d158c
-  // compared `principal_id|role_code` only, so a binding could be silently re-scoped, moved to
-  // another tenant or domain, or re-attributed to a different grantor and still reconcile.
-  // C18.1.4 binds scope, tenant/domain attribution and provenance as well.
-  const bindingTuple = (b) => [
-    b.principal_id, b.role_code, b.scope, b.tenant_id ?? null, b.domain_id ?? null,
-    b.granted_by_principal ?? null, b.granted_by_scope ?? null,
-  ].map((v) => JSON.stringify(v)).join('|');
-  const wantBindings = [
-    // The bootstrap admin's own platform grant is self-originated: it predates any grantor.
-    bindingTuple({
-      principal_id: seedRecord.admin.principalId, role_code: 'platform_admin', scope: 'PLATFORM',
-      tenant_id: null, domain_id: null, granted_by_principal: null, granted_by_scope: 'PLATFORM',
-    }),
-    // Every seeded principal's grant carries that principal's own scope and tenancy, and is
-    // attributed to the platform admin that minted it.
-    ...seedRecord.principals.map((p) => bindingTuple({
-      principal_id: p.principalId, role_code: p.roleCode, scope: p.scope,
-      tenant_id: p.tenantId ?? null, domain_id: p.domainId ?? null,
-      granted_by_principal: seedRecord.admin.principalId, granted_by_scope: 'PLATFORM',
-    })),
-  ].sort();
-  const haveBindings = bindingRows
-    .filter((b) => b.revoked_at === null)
-    .map(bindingTuple)
-    .sort();
-  if (JSON.stringify(haveBindings) !== JSON.stringify(wantBindings)) {
-    for (const b of haveBindings.filter((x) => !wantBindings.includes(x))) {
-      problems.push(`the snapshot carries live role binding ${b}, which the seed record does not account for`);
-    }
-    for (const b of wantBindings.filter((x) => !haveBindings.includes(x))) {
-      problems.push(`seed record requires live role binding ${b}, which the snapshot does not carry`);
-    }
-  }
+  problems.push(...reconcileRoleBindings({ seedRecord, bindingRows }));
+
   // Post-upgrade deltas: the FINAL snapshot is exactly the seeded world plus the one operation.
   const po = seedRecord.post_upgrade_operation;
   bindSet('final-session', [po.sessionId, ...seedRecord.sessions.map((s) => s.sessionId)],

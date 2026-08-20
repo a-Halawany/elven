@@ -405,15 +405,24 @@ export function verifyCommandGraph({
    * grammar, migration set, ceiling) is judged by verifyMigrationExecutions. */
   const walkMigrate = (label, letter, r) => {
     const exec = Array.isArray(migrationExecutions) ? migrationExecutions.find((e) => e.label === label) : undefined;
-    // C18.1.4 — the ATTESTATION runs first, in the ledger, against the same governed workspace:
-    // the runner's and every workspace migration's bytes are MEASURED, never asserted.
+    // C18.1.5 — the INVENTORY runs first: the COMPLETE governed migration directory is
+    // enumerated by an executed `ls`, so a file outside the manifest's claim cannot hide.
+    const inventory = next(`${label}-inventory`);
+    mustSucceed(inventory); emptyEnv(inventory);
+    if (exec !== undefined) {
+      matchArgv(inventory, ['ls', '-1', `${exec.workspace}/migrations`]);
+      if (inventory !== null && exec.inventory_command_id !== inventory.id) {
+        problems.push(`migration execution '${label}' inventory is bound to a different command than the one in the ledger`);
+      }
+    }
+    // C18.1.4 — the ATTESTATION then measures the runner and every ENUMERATED migration.
     const attest = next(`${label}-attest`);
     mustSucceed(attest); emptyEnv(attest);
     if (exec === undefined) {
       problems.push(`command '${label}' has no governed migration-execution receipt`);
     } else {
       matchArgv(attest, ['shasum', '-a', '256', `${exec.workspace}/scripts/migrate.mjs`,
-        ...(Array.isArray(exec.migrations) ? exec.migrations : []).map((m) => `${exec.workspace}/migrations/${m.filename}`)]);
+        ...(Array.isArray(exec.inventory) ? exec.inventory : []).map((f) => `${exec.workspace}/migrations/${f}`)]);
       if (attest !== null && exec.attest_command_id !== attest.id) {
         problems.push(`migration execution '${label}' attestation is bound to a different command than the one in the ledger`);
       }
