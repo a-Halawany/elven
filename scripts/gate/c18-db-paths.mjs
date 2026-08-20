@@ -110,6 +110,7 @@ import {
   verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape,
   verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
+  absenceArgv, attestArgv, loadCatalogContract, parseAttestation, verifyCatalogContract,
 } from './lib/c18-contract.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
@@ -122,6 +123,7 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MIGRATIONS_DIR = join(ROOT, 'apps', 'api', 'migrations');
+const LIB_DIR = join(ROOT, 'scripts', 'gate', 'lib');
 const MIGRATE_RUNNER = join(ROOT, 'apps', 'api', 'scripts', 'migrate.mjs');
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const CHECKSUM_FILE = 'SHA256SUMS.txt';
@@ -296,9 +298,15 @@ function cleanupWithEvidence(ev, cleanup, containers) {
     if (r.exit !== 0 || r.signal !== null) failures.push(`docker rm -fv ${name} exited ${r.exit} signal ${r.signal}`);
   }
   for (const name of containers) {
-    const r = ev.run(`cleanup-inspect-${name}`, ['docker', 'inspect', name], { timeoutMs: 30_000, allowFail: true });
+    // AUTHENTICATED ABSENCE: the probe must SUCCEED and return nothing. A failed probe (dead
+    // daemon, permission refusal, transport error, missing binary) proves nothing at all.
+    const r = ev.run(`cleanup-absent-${name}`, absenceArgv(name), { timeoutMs: 30_000, allowFail: true });
     inspections.push({ container: name, command_id: r.id, exit: r.exit });
-    if (r.exit === 0) failures.push(`container ${name} STILL EXISTS after checked removal`);
+    if (r.exit !== 0 || r.signal !== null) {
+      failures.push(`absence probe for ${name} exited ${r.exit} signal ${r.signal}; its state is UNKNOWN`);
+    } else if (r.rawStdout.trim() !== '') {
+      failures.push(`container ${name} STILL EXISTS after checked removal`);
+    }
   }
   for (const ws of cleanup.workspaces) rmSync(ws, { recursive: true, force: true });
   return { removed: containers.slice(), failures, kept: [], removals, inspections };
@@ -344,10 +352,28 @@ function runMigration(ev, { label, path, letter, inst, ws, ceiling, tracked, exe
   if (JSON.stringify(present) !== JSON.stringify(migrations.map((m) => m.filename))) {
     throw new Error(`governed workspace holds ${present.length} migrations; the ${ceiling} ceiling authorizes ${migrations.length}`);
   }
+  // C18.1.4 — MEASURE the runner and every workspace migration through the evidence recorder,
+  // immediately before executing them. The digests below are parsed back out of this command's
+  // raw receipt by the verifier, so they are attested rather than self-asserted.
+  const attest = ev.run(`${label}-attest`, attestArgv(ws, migrations.map((m) => m.filename)));
+  const { rows, problem } = parseAttestation(attest.rawStdout);
+  if (problem !== null) throw new Error(`migration attestation for ${label}: ${problem}`);
+  if (rows.length !== migrations.length + 1) {
+    throw new Error(`migration attestation for ${label} covered ${rows.length} files, expected ${migrations.length + 1}`);
+  }
+  if (rows[0].path !== runner || rows[0].digest !== sha256(readFileSync(runner))) {
+    throw new Error(`migration attestation for ${label} did not measure the governed runner`);
+  }
+  migrations.forEach((m, i) => {
+    if (rows[i + 1].path !== join(ws, 'migrations', m.filename) || rows[i + 1].digest !== m.digest) {
+      throw new Error(`migration attestation for ${label} disagrees on ${m.filename}`);
+    }
+  });
   const r = ev.run(label, ['node', runner], { env: inst.envFor() });
   executions.push({
-    command_id: r.id, label, path, workspace: ws, runner_path: runner,
-    runner_sha256: sha256(readFileSync(runner)), ceiling, migrations,
+    command_id: r.id, attest_command_id: attest.id, label, path, workspace: ws, runner_path: runner,
+    runner_sha256: rows[0].digest, ceiling,
+    migrations: migrations.map((m, i) => ({ filename: m.filename, digest: rows[i + 1].digest })),
   });
   return r;
 }
@@ -604,6 +630,7 @@ async function runCommand(args) {
     const tracked = trackedMigrationDigests();
     const migrationExecutions = [];
     const transforms = deriveIntentionalTransforms(tracked.dir, tracked.files);
+    const catalogContract = loadCatalogContract(LIB_DIR);
     const audit = await productionAudit(ROOT);
     const problems = [];
 
@@ -649,6 +676,11 @@ async function runCommand(args) {
       problems.push(...verifyAuditShapes(snap.audit, lbl));
       problems.push(...authenticateProjections(snap.audit.events, audit.jcs).map((p) => `${lbl}: ${p}`));
       problems.push(...crossCheckAuditTable(snap, lbl));
+      // The live catalog must EQUAL the tracked source contract; drift fails the run, so the
+      // contract can never rot away from the migrations it describes.
+      problems.push(...verifyCatalogContract(
+        snap, universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest', catalogContract, lbl,
+      ));
     }
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
     problems.push(...verifySeedSteps({ steps: seedRecord.steps, seedRecord }).map((p) => `path-a-seed: ${p}`));
@@ -684,6 +716,7 @@ async function runCommand(args) {
     const virgin = snapshot(b, 'b-virgin');
     writeFileSync(join(outDir, 'path-b-virgin.json'), `${JSON.stringify(virgin, null, 2)}\n`);
     problems.push(...verifyTableUniverse(virgin, TABLE_UNIVERSE_LATEST, 'b-virgin'));
+    problems.push(...verifyCatalogContract(virgin, 'latest', catalogContract, 'b-virgin'));
     problems.push(...verifyAuditShapes(virgin.audit, 'b-virgin'));
     problems.push(...crossCheckAuditTable(virgin, 'b-virgin'));
     problems.push(...verifyMigrationLedger({
@@ -1044,6 +1077,12 @@ export async function verifyEvidence({
       // The audit TABLE rows and the audit view must be the same world, with every generated
       // projection column derived exactly from the canonical event_jcs.
       problems.push(...crossCheckAuditTable(snap, lbl));
+      // THE SOURCE-OWNED CATALOG CONTRACT, read from the verifier's own checkout: every table's
+      // ordinal columns and primary key, and every FK's complete definition.
+      problems.push(...verifyCatalogContract(
+        snap, universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest',
+        loadCatalogContract(join(root, 'scripts', 'gate', 'lib')), lbl,
+      ));
     }
 
     // ── BIND PROCESSED SNAPSHOTS TO THEIR COMMAND-BOUND RAW RECEIPTS ──────────
@@ -1090,6 +1129,10 @@ export async function verifyEvidence({
         commands,
         trackedDigests: new Map([...tracked.digests, ['__runner__', sha256(readFileSync(join(root, 'apps', 'api', 'scripts', 'migrate.mjs')))]]),
         repoRoot: realpathSync(root),
+        rawText: (cmd) => {
+          const abs = contained(`raw/${cmd.id}.stdout.txt`, 'attestation receipt');
+          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+        },
       }));
       // Checked cleanup, authenticated by execution rather than asserted.
       problems.push(...verifyCleanupReceipt({
@@ -1097,6 +1140,10 @@ export async function verifyEvidence({
         commands,
         receiptA: manifest.receipts?.['path-a-upgraded'] ?? null,
         receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
+        rawText: (cmd) => {
+          const abs = contained(`raw/${cmd.id}.stdout.txt`, 'absence receipt');
+          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+        },
       }));
     }
 

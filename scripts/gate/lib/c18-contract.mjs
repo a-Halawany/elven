@@ -637,7 +637,74 @@ export function verifyOperationClosure({ snapshot, expected, spec = POST_UPGRADE
   return problems;
 }
 
-// ── MIGRATION EXECUTION AUTHENTICATION (C18.1.3 §B) ───────────────────────────
+// ── THE SOURCE-OWNED CATALOG CONTRACT (C18.1.4 §4) ────────────────────────────
+/**
+ * 83d158c bound a snapshot's table NAMES to the source universe, but its columns, primary keys
+ * and foreign-key definitions came only from the catalog metadata the archive itself carried —
+ * so removing a column, or changing an FK's referential actions, passed as long as the processed
+ * snapshot, the raw receipts and the checksums were rebound consistently on BOTH paths.
+ *
+ * The complete catalog is now a TRACKED SOURCE ARTIFACT (lib/c18-catalog-contract.json), one
+ * era for the 0012 history and one for 0021, carrying every table's exact ordinal column list
+ * and primary key and every FK's complete `pg_get_constraintdef` text. The verifier judges every
+ * snapshot against it, and the PRODUCER fails if the live database disagrees — so the contract
+ * cannot silently rot away from the migrations it describes.
+ */
+export function loadCatalogContract(libDir) {
+  const raw = JSON.parse(readFileSync(join(libDir, 'c18-catalog-contract.json'), 'utf8'));
+  for (const era of ['historical', 'latest']) {
+    if (raw[era] === undefined || typeof raw[era].tables !== 'object' || !Array.isArray(raw[era].fks)) {
+      throw new Error(`c18-catalog-contract.json is missing a well-formed '${era}' era`);
+    }
+  }
+  return raw;
+}
+
+export const CATALOG_ERA = Object.freeze({ historical: 'historical', latest: 'latest' });
+
+export function verifyCatalogContract(snapshot, era, contract, label) {
+  const problems = [];
+  const want = contract[era];
+  if (want === undefined) return [`${label}: no catalog contract for era '${era}'`];
+  const wantTables = Object.keys(want.tables).sort();
+  const gotTables = Object.keys(snapshot.tables ?? {}).sort();
+  if (JSON.stringify(gotTables) !== JSON.stringify(wantTables)) {
+    problems.push(`${label}: catalog table set is not the source-owned ${era} contract`);
+  }
+  for (const [table, spec] of Object.entries(want.tables)) {
+    const got = snapshot.tables?.[table];
+    if (got === undefined) { problems.push(`${label}: contract table '${table}' is MISSING`); continue; }
+    if (JSON.stringify(got.columns) !== JSON.stringify(spec.columns)) {
+      const missing = spec.columns.filter((c) => !(got.columns ?? []).includes(c));
+      const extra = (got.columns ?? []).filter((c) => !spec.columns.includes(c));
+      problems.push(`${label}: '${table}' columns violate the source-owned catalog contract`
+        + `${missing.length > 0 ? ` (missing ${missing.join(', ')})` : ''}`
+        + `${extra.length > 0 ? ` (unexpected ${extra.join(', ')})` : ''}`);
+    }
+    if (JSON.stringify(got.pk) !== JSON.stringify(spec.pk)) {
+      problems.push(`${label}: '${table}' primary key ${JSON.stringify(got.pk)} is not the contract's ${JSON.stringify(spec.pk)}`);
+    }
+  }
+  const gotFks = new Map((snapshot.fks ?? []).map((f) => [f.constraint, f]));
+  for (const f of want.fks) {
+    const got = gotFks.get(f.constraint);
+    if (got === undefined) { problems.push(`${label}: contract foreign key '${f.constraint}' is MISSING`); continue; }
+    for (const field of ['from', 'to', 'definition', 'validated', 'deferrable']) {
+      if (got[field] !== f[field]) {
+        problems.push(`${label}: foreign key '${f.constraint}' ${field} violates the source-owned catalog contract`
+          + (field === 'definition' ? ` (contract: ${f.definition})` : ''));
+      }
+    }
+  }
+  for (const name of gotFks.keys()) {
+    if (!want.fks.some((f) => f.constraint === name)) {
+      problems.push(`${label}: foreign key '${name}' is not in the source-owned catalog contract`);
+    }
+  }
+  return problems;
+}
+
+// ── MIGRATION EXECUTION AUTHENTICATION (C18.1.3 §B; command-bound at C18.1.4) ──
 /**
  * The 15e8239 graph checked only that a migration command's argv ended in `/scripts/migrate.mjs`,
  * so `/attacker/scripts/migrate.mjs` passed. A migration execution is now a closed typed receipt
@@ -645,13 +712,39 @@ export function verifyOperationClosure({ snapshot, expected, spec = POST_UPGRADE
  * present in that workspace, and the intended ceiling.
  */
 export const MIGRATION_EXECUTION_FIELDS = Object.freeze([
-  'command_id', 'label', 'path', 'workspace', 'runner_path', 'runner_sha256', 'ceiling', 'migrations',
+  'command_id', 'attest_command_id', 'label', 'path', 'workspace', 'runner_path', 'runner_sha256',
+  'ceiling', 'migrations',
 ]);
+
+/**
+ * C18.1.4 — `runner_sha256` and `migrations[]` were MANIFEST ASSERTIONS: the verifier compared
+ * them to tracked source, but nothing tied them to the bytes that actually ran. Each execution
+ * now names an ATTESTATION COMMAND — `shasum -a 256 <runner> <every workspace migration>` —
+ * executed against the same governed workspace immediately before the migration itself. The
+ * digests are PARSED FROM ITS RAW RECEIPT and must equal both the tracked source digests and the
+ * receipt's own fields, so a self-asserted digest over a foreign runner cannot survive.
+ */
+export const attestArgv = (workspace, files) => [
+  'shasum', '-a', '256', `${workspace}/scripts/migrate.mjs`,
+  ...files.map((f) => `${workspace}/migrations/${f}`),
+];
+
+/** Parse `shasum -a 256` output into [path, digest] pairs, in emitted order. */
+export function parseAttestation(text) {
+  const rows = [];
+  for (const line of String(text ?? '').split('\n')) {
+    if (line.trim() === '') continue;
+    const m = /^([0-9a-f]{64})\s{2}(.+)$/.exec(line);
+    if (m === null) return { rows: [], problem: `attestation line ${JSON.stringify(line.slice(0, 60))} is not shasum output` };
+    rows.push({ digest: m[1], path: m[2] });
+  }
+  return { rows, problem: null };
+}
 /** A governed workspace: an absolute path OUTSIDE the repository whose final component is the
  * mkdtemp name the producer creates, with no traversal and no symlink games. */
 export const WORKSPACE_BASENAME_RE = /^c18-[ab]-[A-Za-z0-9]{6}$/;
 
-export function verifyMigrationExecutions({ executions, commands, trackedDigests, repoRoot }) {
+export function verifyMigrationExecutions({ executions, commands, trackedDigests, repoRoot, rawText = null }) {
   const problems = [];
   if (!Array.isArray(executions)) return ['manifest migration_executions is not an array'];
   const expected = [
@@ -697,6 +790,54 @@ export function verifyMigrationExecutions({ executions, commands, trackedDigests
     if (JSON.stringify(e.migrations) !== JSON.stringify(wantFiles)) {
       problems.push(`migration execution '${e.label}' workspace migration set is not exactly the tracked 0001–${e.ceiling} set in order`);
     }
+    // ── COMMAND-BOUND ATTESTATION: the digests must come from an EXECUTED shasum, not
+    // from the manifest's own fields. ──────────────────────────────────────────────────
+    const attest = Array.isArray(commands) ? commands.find((c) => c.id === e.attest_command_id) : undefined;
+    if (attest === undefined) {
+      problems.push(`migration execution '${e.label}' names attestation command '${e.attest_command_id}' which does not exist`);
+    } else {
+      if (attest.label !== `${e.label}-attest`) {
+        problems.push(`migration execution '${e.label}' attestation is bound to command '${attest.label}'`);
+      }
+      if (attest.exit !== 0 || (attest.signal ?? null) !== null) {
+        problems.push(`migration execution '${e.label}' attestation recorded exit ${attest.exit} signal ${attest.signal}`);
+      }
+      const wantArgv = attestArgv(ws, wantFiles.map((f) => f.filename));
+      if (JSON.stringify(attest.argv) !== JSON.stringify(wantArgv)) {
+        problems.push(`migration execution '${e.label}' attestation did not hash exactly the governed runner and the tracked 0001–${e.ceiling} set`);
+      }
+      const text = rawText === null ? null : rawText(attest);
+      if (text === null) problems.push(`migration execution '${e.label}' attestation has no readable raw receipt`);
+      else {
+        const { rows, problem } = parseAttestation(text);
+        if (problem !== null) problems.push(`migration execution '${e.label}' ${problem}`);
+        else {
+          const wantRows = [
+            { path: e.runner_path, digest: runnerDigest },
+            ...wantFiles.map((f) => ({ path: `${ws}/migrations/${f.filename}`, digest: f.digest })),
+          ];
+          if (rows.length !== wantRows.length) {
+            problems.push(`migration execution '${e.label}' attestation covers ${rows.length} files; the governed set is ${wantRows.length}`);
+          } else {
+            wantRows.forEach((w, j) => {
+              if (rows[j].path !== w.path) {
+                problems.push(`migration execution '${e.label}' attestation line ${j + 1} hashed ${JSON.stringify(rows[j].path)}, expected ${JSON.stringify(w.path)}`);
+              } else if (w.digest !== undefined && rows[j].digest !== w.digest) {
+                problems.push(`migration execution '${e.label}' EXECUTED ${j === 0 ? 'runner' : `migration ${wantFiles[j - 1].filename}`} whose measured bytes are not the tracked source bytes`);
+              }
+            });
+            // The receipt's own fields must equal what the execution MEASURED.
+            if (rows[0] !== undefined && e.runner_sha256 !== rows[0].digest) {
+              problems.push(`migration execution '${e.label}' runner_sha256 disagrees with the attested measurement`);
+            }
+            const measured = rows.slice(1).map((r, j) => ({ filename: wantFiles[j]?.filename, digest: r.digest }));
+            if (JSON.stringify(e.migrations) !== JSON.stringify(measured)) {
+              problems.push(`migration execution '${e.label}' migrations[] disagrees with the attested measurement`);
+            }
+          }
+        }
+      }
+    }
     const cmd = Array.isArray(commands) ? commands.find((c) => c.id === e.command_id) : undefined;
     if (cmd === undefined) problems.push(`migration execution '${e.label}' names command id '${e.command_id}' which does not exist`);
     else {
@@ -732,14 +873,41 @@ export const SEED_STEP_PLAN = Object.freeze([
 const SEED_STEP_FIELDS = Object.freeze(['step', 'ports', 'ids']);
 const SECRET_SHAPE_RE = /[0-9a-f]{24,}/i;
 
-/** Steps must be the exact plan, in order, with the exact era ports — and every identity a step
- * reports must be one the closed seed record already accounts for. */
+/**
+ * The EXACT identity set each governed step must report, DERIVED from the closed seed record.
+ * 83d158c only asked that reported identities were known somewhere in the record, so an empty
+ * list, a missing identity, or one step claiming another step's work all passed.
+ */
+export function deriveSeedStepIdentities(seedRecord) {
+  const sessions = seedRecord?.sessions ?? [];
+  const adminSession = sessions.filter((x) => x.principalId === seedRecord?.admin?.principalId);
+  const otherSessions = sessions.filter((x) => x.principalId !== seedRecord?.admin?.principalId);
+  const published = (seedRecord?.outbox ?? []).filter((o) => o.eventType === 'c18.seed.published');
+  return {
+    bootstrap: [seedRecord?.admin?.principalId],
+    'credential-rotation': [seedRecord?.admin?.principalId],
+    'admin-session': adminSession.map((x) => x.sessionId),
+    'tenants-domains': [
+      ...(seedRecord?.tenants ?? []).map((t) => t.tenantId),
+      ...(seedRecord?.domains ?? []).map((d) => d.domainId),
+    ],
+    principals: (seedRecord?.principals ?? []).map((p) => p.principalId),
+    'tenant-session': otherSessions.map((x) => x.sessionId),
+    'canonical-objects': (seedRecord?.objects ?? []).map((o) => o.objectId),
+    'outbox-enqueue': (seedRecord?.outbox ?? []).map((o) => o.eventId),
+    'outbox-publish': published.map((o) => o.eventId),
+  };
+}
+
+/** Steps must be the exact plan, in order, with the exact era ports and the EXACT derived
+ * identity set — no empty, missing, duplicate, extra or step-misattributed identity. */
 export function verifySeedSteps({ steps, seedRecord }) {
   const problems = [];
   if (!Array.isArray(steps)) return ['seed record steps is not an array'];
   if (steps.length !== SEED_STEP_PLAN.length) {
     problems.push(`seed record has ${steps.length} governed step receipts; the source-owned plan has ${SEED_STEP_PLAN.length}`);
   }
+  const derived = deriveSeedStepIdentities(seedRecord);
   const known = new Set([
     seedRecord?.admin?.principalId,
     ...(seedRecord?.tenants ?? []).map((t) => t.tenantId),
@@ -768,6 +936,21 @@ export function verifySeedSteps({ steps, seedRecord }) {
         problems.push(`governed seed step '${want.step}' reports identity ${id}, which the closed seed record does not account for`);
       }
     }
+    if (new Set(got.ids).size !== got.ids.length) {
+      problems.push(`governed seed step '${want.step}' reports DUPLICATE identities`);
+    }
+    // The EXACT derived set: empty, missing, extra and misattributed identities all fail.
+    const wantIds = [...(derived[want.step] ?? [])].filter((x) => x !== undefined).sort();
+    const gotIds = [...got.ids].sort();
+    if (wantIds.length === 0) {
+      problems.push(`governed seed step '${want.step}' has no derivable identity set — the record cannot attest it`);
+    } else if (JSON.stringify(gotIds) !== JSON.stringify(wantIds)) {
+      const missing = wantIds.filter((x) => !gotIds.includes(x));
+      const extra = gotIds.filter((x) => !wantIds.includes(x));
+      problems.push(`governed seed step '${want.step}' identities are not the record-derived set`
+        + `${missing.length > 0 ? ` (missing ${missing.join(', ')})` : ''}`
+        + `${extra.length > 0 ? ` (not this step's work: ${extra.join(', ')})` : ''}`);
+    }
   });
   return problems;
 }
@@ -782,7 +965,10 @@ export function verifySeedSteps({ steps, seedRecord }) {
 export const CLEANUP_RECEIPT_FIELDS = Object.freeze(['removed', 'failures', 'kept', 'removals', 'inspections']);
 const CLEANUP_STEP_FIELDS = Object.freeze(['container', 'command_id', 'exit']);
 
-export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB }) {
+/** The exact absence probe: an EXIT-0, EMPTY-OUTPUT id lookup. */
+export const absenceArgv = (container) => ['docker', 'ps', '-aq', '--filter', `name=^${container}$`];
+
+export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB, rawText = null }) {
   const problems = [];
   if (cleanup === null || typeof cleanup !== 'object' || Array.isArray(cleanup)) return ['manifest cleanup is not an object'];
   if (JSON.stringify(Object.keys(cleanup).sort()) !== JSON.stringify([...CLEANUP_RECEIPT_FIELDS].sort())) {
@@ -799,7 +985,7 @@ export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB }) 
   if (JSON.stringify(cleanup.failures) !== '[]') problems.push('manifest cleanup records removal failures');
   if (JSON.stringify(cleanup.kept) !== '[]') problems.push('manifest cleanup records kept containers');
   const find = (id) => (Array.isArray(commands) ? commands.find((c) => c.id === id) : undefined);
-  const walkPhase = (phase, expectExit) => {
+  const walkPhase = (phase) => {
     const rows = cleanup[phase];
     if (!Array.isArray(rows) || rows.length !== wanted.length) {
       problems.push(`manifest cleanup.${phase} does not carry one receipt per source-derived container`);
@@ -816,22 +1002,33 @@ export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB }) 
       }
       const cmd = find(row.command_id);
       if (cmd === undefined) { problems.push(`cleanup ${phase} receipt for '${container}' names a command id that does not exist`); return; }
-      const wantArgv = phase === 'removals' ? ['docker', 'rm', '-fv', container] : ['docker', 'inspect', container];
+      const wantArgv = phase === 'removals' ? ['docker', 'rm', '-fv', container] : absenceArgv(container);
       if (JSON.stringify(cmd.argv) !== JSON.stringify(wantArgv)) {
         problems.push(`cleanup ${phase} command for '${container}' argv ${JSON.stringify(cmd.argv)} is not the checked ${wantArgv.slice(0, 3).join(' ')} execution`);
       }
       if (cmd.exit !== row.exit) problems.push(`cleanup ${phase} receipt for '${container}' exit disagrees with its command ledger record`);
-      if (expectExit === 'zero' && cmd.exit !== 0) {
-        problems.push(`checked removal of '${container}' recorded exit ${cmd.exit}`);
-      }
-      if (expectExit === 'nonzero' && (cmd.exit === 0 || cmd.exit === null)) {
-        problems.push(`post-removal inspection of '${container}' SUCCEEDED — the container still exists`);
-      }
       if ((cmd.signal ?? null) !== null) problems.push(`cleanup ${phase} command for '${container}' was signalled`);
+      if (cmd.exit !== 0) {
+        // AUTHENTICATED ABSENCE (C18.1.4): 83d158c read ANY nonzero `docker inspect` as proof the
+        // container was gone, so a dead daemon, a permission refusal, a transport error or a
+        // missing binary all "proved" cleanup. Absence must now be a SUCCESSFUL query.
+        problems.push(phase === 'removals'
+          ? `checked removal of '${container}' recorded exit ${cmd.exit}`
+          : `absence probe for '${container}' exited ${cmd.exit}: the container's state is UNKNOWN, not proven absent`);
+      } else if (phase === 'inspections') {
+        const text = rawText === null ? null : rawText(cmd);
+        if (text === null) problems.push(`absence probe for '${container}' has no readable raw receipt`);
+        else if (text.trim() !== '') {
+          problems.push(`absence probe for '${container}' returned a container id — it STILL EXISTS after checked removal`);
+        }
+        if (cmd.stdout_bytes !== 0) {
+          problems.push(`absence probe for '${container}' produced ${cmd.stdout_bytes} bytes of output; an absent container yields none`);
+        }
+      }
     });
   };
-  walkPhase('removals', 'zero');
-  walkPhase('inspections', 'nonzero');
+  walkPhase('removals');
+  walkPhase('inspections');
   return problems;
 }
 
@@ -875,6 +1072,19 @@ export function verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest
   const problems = [];
   if (!exactKeys(seedRecord, SEED_RECORD_FIELDS)) {
     return ['seed record fields are not the exact closed schema'];
+  }
+  // C18.1.4 — UNIQUENESS FIRST. A duplicated entry makes a multiset look like a set, so every
+  // bidirectional comparison below would silently tolerate it.
+  const idField = {
+    tenants: 'tenantId', domains: 'domainId', principals: 'principalId',
+    sessions: 'sessionId', objects: 'objectId', outbox: 'eventId',
+  };
+  for (const [field, key] of Object.entries(idField)) {
+    const arr = Array.isArray(seedRecord[field]) ? seedRecord[field] : [];
+    const ids = arr.map((e) => e?.[key]);
+    if (new Set(ids).size !== ids.length) {
+      problems.push(`seed record ${field} contains DUPLICATE ${key} entries`);
+    }
   }
   for (const [field, entryFields] of Object.entries(SEED_ENTRY_FIELDS)) {
     const arr = seedRecord[field];
@@ -1026,15 +1236,31 @@ export function verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest
   if (new Set(seedRecord.sessions.map((s) => s.correlation)).size !== seedRecord.sessions.length) {
     problems.push('two seeded sessions share one identity-op correlation');
   }
-  // Role bindings: EXACT IN BOTH DIRECTIONS. 15e8239 asked only that a required binding
-  // existed, so an ADDITIONAL grant (a domain analyst handed platform_admin) passed unseen.
+  // Role bindings: EXACT IN BOTH DIRECTIONS on the COMPLETE RELATIONSHIP TUPLE. 83d158c
+  // compared `principal_id|role_code` only, so a binding could be silently re-scoped, moved to
+  // another tenant or domain, or re-attributed to a different grantor and still reconcile.
+  // C18.1.4 binds scope, tenant/domain attribution and provenance as well.
+  const bindingTuple = (b) => [
+    b.principal_id, b.role_code, b.scope, b.tenant_id ?? null, b.domain_id ?? null,
+    b.granted_by_principal ?? null, b.granted_by_scope ?? null,
+  ].map((v) => JSON.stringify(v)).join('|');
   const wantBindings = [
-    `${seedRecord.admin.principalId}|platform_admin`,
-    ...seedRecord.principals.map((p) => `${p.principalId}|${p.roleCode}`),
+    // The bootstrap admin's own platform grant is self-originated: it predates any grantor.
+    bindingTuple({
+      principal_id: seedRecord.admin.principalId, role_code: 'platform_admin', scope: 'PLATFORM',
+      tenant_id: null, domain_id: null, granted_by_principal: null, granted_by_scope: 'PLATFORM',
+    }),
+    // Every seeded principal's grant carries that principal's own scope and tenancy, and is
+    // attributed to the platform admin that minted it.
+    ...seedRecord.principals.map((p) => bindingTuple({
+      principal_id: p.principalId, role_code: p.roleCode, scope: p.scope,
+      tenant_id: p.tenantId ?? null, domain_id: p.domainId ?? null,
+      granted_by_principal: seedRecord.admin.principalId, granted_by_scope: 'PLATFORM',
+    })),
   ].sort();
   const haveBindings = bindingRows
     .filter((b) => b.revoked_at === null)
-    .map((b) => `${b.principal_id}|${b.role_code}`)
+    .map(bindingTuple)
     .sort();
   if (JSON.stringify(haveBindings) !== JSON.stringify(wantBindings)) {
     for (const b of haveBindings.filter((x) => !wantBindings.includes(x))) {

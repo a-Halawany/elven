@@ -25,6 +25,8 @@ import {
   verifyCommandRecords, verifyCommandStreams, verifyIsolation, verifyManifestShape,
   verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
   verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
+  absenceArgv, attestArgv, deriveSeedStepIdentities, loadCatalogContract, parseAttestation,
+  verifyCatalogContract,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
 import {
@@ -351,7 +353,10 @@ describe('C18.1.2 — the seed record is a closed schema bound bidirectionally',
         'tenancy.tenants': { rows: [{ id: 't1', name: 'alpha' }] },
         'tenancy.domains': { rows: [{ id: 'd1', tenant_id: 't1', name: 'alpha-dom0' }] },
         'identity.principals': { rows: [{ id: 'adm', scope: 'PLATFORM', tenant_id: null, domain_id: null, login_name: 'platform-admin', display_name: 'platform-admin' }, { id: 'p1', scope: 'TENANT', tenant_id: 't1', domain_id: null, login_name: 'l1', display_name: 'l1' }] },
-        'identity.role_bindings': { rows: [{ principal_id: 'adm', role_code: 'platform_admin', revoked_at: null }, { principal_id: 'p1', role_code: 'tenant_admin', revoked_at: null }] },
+        'identity.role_bindings': { rows: [
+          { principal_id: 'adm', role_code: 'platform_admin', scope: 'PLATFORM', tenant_id: null, domain_id: null, granted_by_principal: null, granted_by_scope: 'PLATFORM', revoked_at: null },
+          { principal_id: 'p1', role_code: 'tenant_admin', scope: 'TENANT', tenant_id: 't1', domain_id: null, granted_by_principal: 'adm', granted_by_scope: 'PLATFORM', revoked_at: null },
+        ] },
         'identity.sessions': { rows: [{ id: 's1', principal_id: 'adm', family_id: 'f1' }] },
         'identity.refresh_tokens': { rows: [{ id: 'rt1', session_id: 's1', family_id: 'f1' }] },
         'objects.canonical_objects': { rows: [{ object_id: 'o1', tenant_id: 't1', domain_id: 'd1', audit_correlation_id: CORR_OBJECT }] },
@@ -387,7 +392,10 @@ describe('C18.1.2 — the seed record is a closed schema bound bidirectionally',
     ['a broken domain->tenant relationship', (w: any) => { w.seedRecord.domains[0].tenantId = 'other'; }, /tenant relationship differs|unrecorded tenant/],
     ['a session bound to the wrong principal', (w: any) => { w.before.tables['identity.sessions'].rows[0].principal_id = 'p1'; }, /session s1 principal relationship differs/],
     ['a missing role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.pop(); }, /has no live 'tenant_admin' role binding|requires live role binding/],
-    ['an ADDITIONAL live role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.push({ principal_id: 'p1', role_code: 'platform_admin', revoked_at: null }); }, /carries live role binding p1\|platform_admin, which the seed record does not account for/],
+    ['a duplicated principal entry', (w: any) => { w.seedRecord.principals.push({ ...w.seedRecord.principals[0] }); }, /principals contains DUPLICATE principalId entries/],
+    ['an ADDITIONAL live role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.push({ principal_id: 'p1', role_code: 'platform_admin', scope: 'PLATFORM', tenant_id: null, domain_id: null, granted_by_principal: 'adm', granted_by_scope: 'PLATFORM', revoked_at: null }); }, /carries live role binding .*platform_admin.*which the seed record does not account for/],
+    ['a RE-SCOPED role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows[1].scope = 'PLATFORM'; w.before.tables['identity.role_bindings'].rows[1].tenant_id = null; }, /carries live role binding .*which the seed record does not account for/],
+    ['a RE-ATTRIBUTED role binding (forged grantor)', (w: any) => { w.before.tables['identity.role_bindings'].rows[1].granted_by_principal = 'attacker'; }, /carries live role binding .*which the seed record does not account for/],
     ['a forged session family', (w: any) => { w.before.tables['identity.sessions'].rows[0].family_id = 'other'; }, /familyId .* differs from the snapshot family/],
     ['a refresh token in a foreign family', (w: any) => { w.before.tables['identity.refresh_tokens'].rows[0].family_id = 'other'; }, /carries family other, not the recorded/],
     ['a forged object correlation', (w: any) => { w.seedRecord.objects[0].correlation = w.seedRecord.correlations[0]; }, /differs from the canonical object's audit correlation/],
@@ -511,17 +519,16 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     m.set('__runner__', sha256(readFileSync(join(REPO, 'apps', 'api', 'scripts', 'migrate.mjs'))));
     return m;
   };
-  const exec = (over: Record<string, unknown> = {}) => {
-    const t = tracked();
-    return {
-      command_id: '001-a-migrate-historical', label: 'a-migrate-historical', path: 'path-a-upgraded',
-      workspace: '/tmp/c18-a-Ab12Cd', runner_path: '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
-      runner_sha256: t.get('__runner__'), ceiling: HISTORICAL_LAST,
-      migrations: [...t.entries()].filter(([f]) => /^\d{4}_/.test(f) && f.slice(0, 4) <= HISTORICAL_LAST)
-        .sort(([a], [b]) => (a < b ? -1 : 1)).map(([filename, digest]) => ({ filename, digest })),
-      ...over,
-    };
-  };
+  const govMigrations = () => [...tracked().entries()]
+    .filter(([f]) => /^\d{4}_/.test(f) && f.slice(0, 4) <= HISTORICAL_LAST)
+    .sort(([a], [b]) => (a < b ? -1 : 1)).map(([filename, digest]) => ({ filename, digest }));
+  const exec = (over: Record<string, unknown> = {}) => ({
+    command_id: '001-a-migrate-historical', attest_command_id: '001-a-migrate-historical-attest',
+    label: 'a-migrate-historical', path: 'path-a-upgraded',
+    workspace: '/tmp/c18-a-Ab12Cd', runner_path: '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
+    runner_sha256: tracked().get('__runner__'), ceiling: HISTORICAL_LAST,
+    migrations: govMigrations(), ...over,
+  });
   it.each([
     ['an attacker path', { workspace: '/attacker', runner_path: '/attacker/scripts/migrate.mjs' }, /not a governed workspace path/],
     ['a traversal workspace', { workspace: '/tmp/../etc/c18-a-Ab12Cd', runner_path: '/tmp/../etc/c18-a-Ab12Cd/scripts/migrate.mjs' }, /not a governed workspace path/],
@@ -545,12 +552,42 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     expect(problems.join('\n')).toMatch(/resolves INSIDE the repository/);
   });
 
+  it('a MEASURED attestation passes; a self-asserted digest over foreign bytes fails', () => {
+    const e = exec();
+    const ws = e.workspace;
+    const lines = [`${e.runner_sha256}  ${e.runner_path}`,
+      ...e.migrations.map((m: any) => `${m.digest}  ${ws}/migrations/${m.filename}`)].join('\n');
+    const commands = [
+      { id: e.attest_command_id, label: 'a-migrate-historical-attest', argv: attestArgv(ws, e.migrations.map((m: any) => m.filename)), exit: 0, signal: null },
+      { id: e.command_id, label: 'a-migrate-historical', argv: ['node', e.runner_path], exit: 0, signal: null },
+    ];
+    const opts = { commands, trackedDigests: tracked(), repoRoot: REPO, rawText: () => lines };
+    // Only this one execution is under test here; the other two governed slots are absent.
+    const unrelated = /is MISSING|exactly 3 are governed/;
+    expect(verifyMigrationExecutions({ executions: [e], ...opts } as never)
+      .filter((p: string) => !unrelated.test(p))).toEqual([]);
+    // The receipt claims the tracked digest while the EXECUTION measured other bytes.
+    const foreign = `${sha256('elsewhere')}  ${e.runner_path}\n${lines.split('\n').slice(1).join('\n')}`;
+    expect(verifyMigrationExecutions({ executions: [e], ...opts, rawText: () => foreign } as never).join('\n'))
+      .toMatch(/EXECUTED runner whose measured bytes are not the tracked source bytes/);
+    // A missing attestation command cannot be substituted by the manifest's own assertion.
+    expect(verifyMigrationExecutions({ executions: [e], ...opts, commands: [commands[1]] } as never).join('\n'))
+      .toMatch(/names attestation command .* which does not exist/);
+  });
+
   it('the governed seeding plan is exact, ordered and sanitized', () => {
     const seedRecord = {
-      admin: { principalId: 'p-admin' }, tenants: [], domains: [], principals: [],
-      sessions: [], objects: [], outbox: [],
+      admin: { principalId: 'p-admin' },
+      tenants: [{ tenantId: 't1' }], domains: [{ domainId: 'd1' }],
+      principals: [{ principalId: 'p1' }],
+      sessions: [{ sessionId: 's-adm', principalId: 'p-admin' }, { sessionId: 's-ten', principalId: 'p1' }],
+      objects: [{ objectId: 'o1' }],
+      outbox: [{ eventId: 'e-pub', eventType: 'c18.seed.published' }],
     };
-    const good = SEED_STEP_PLAN.map((s: { step: string; ports: string[] }) => ({ step: s.step, ports: [...s.ports], ids: [] }));
+    const derived = deriveSeedStepIdentities(seedRecord as never);
+    const good = SEED_STEP_PLAN.map((s: { step: string; ports: string[] }) => ({
+      step: s.step, ports: [...s.ports], ids: [...(derived as Record<string, string[]>)[s.step]!],
+    }));
     expect(verifySeedSteps({ steps: good, seedRecord: seedRecord as never })).toEqual([]);
     const reordered = structuredClone(good);
     [reordered[0], reordered[1]] = [reordered[1]!, reordered[0]!];
@@ -564,36 +601,171 @@ describe('C18.1.3 — migration executions, seeding steps and executed cleanup',
     const unknown = structuredClone(good);
     unknown[0]!.ids = ['p-ghost'];
     expect(verifySeedSteps({ steps: unknown, seedRecord: seedRecord as never }).join('\n')).toMatch(/does not account for/);
+    const emptied = structuredClone(good);
+    emptied[3]!.ids = [];
+    expect(verifySeedSteps({ steps: emptied, seedRecord: seedRecord as never }).join('\n')).toMatch(/are not the record-derived set \(missing /);
+    const misattributed = structuredClone(good);
+    misattributed[0]!.ids = ['t1'];
+    expect(verifySeedSteps({ steps: misattributed, seedRecord: seedRecord as never }).join('\n')).toMatch(/not this step's work/);
+    const duped = structuredClone(good);
+    duped[4]!.ids = ['p1', 'p1'];
+    expect(verifySeedSteps({ steps: duped, seedRecord: seedRecord as never }).join('\n')).toMatch(/reports DUPLICATE identities/);
   });
 
   it('cleanup must be proven by EXECUTION, not asserted', () => {
     const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
     const commands = [
-      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null })),
-      ...names.map((n, i) => ({ id: `in-${i}`, label: `cleanup-inspect-${n}`, argv: ['docker', 'inspect', n], exit: 1, signal: null })),
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0 })),
+      ...names.map((n, i) => ({ id: `in-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n), exit: 0, signal: null, stdout_bytes: 0 })),
     ];
     const cleanup = {
       removed: names, failures: [], kept: [],
       removals: names.map((n, i) => ({ container: n, command_id: `rm-${i}`, exit: 0 })),
-      inspections: names.map((n, i) => ({ container: n, command_id: `in-${i}`, exit: 1 })),
+      inspections: names.map((n, i) => ({ container: n, command_id: `in-${i}`, exit: 0 })),
     };
     const receiptA = { container_name: names[0], redis_container: names[1] };
     const receiptB = { container_name: names[2], redis_container: names[3] };
-    expect(verifyCleanupReceipt({ cleanup, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never })).toEqual([]);
+    const rawText = () => '';
+    expect(verifyCleanupReceipt({ cleanup, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never, rawText })).toEqual([]);
     // The 15e8239 shape — an assertion with no execution evidence — is refused outright.
     const asserted = { removed: names, failures: [], kept: [] };
-    expect(verifyCleanupReceipt({ cleanup: asserted as never, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
+    expect(verifyCleanupReceipt({ cleanup: asserted as never, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never, rawText }).join('\n'))
       .toMatch(/removal and inspection evidence is required/);
     const stillExists = structuredClone(cleanup);
     const cmds2 = structuredClone(commands);
-    cmds2[4]!.exit = 0; stillExists.inspections[0]!.exit = 0;
-    expect(verifyCleanupReceipt({ cleanup: stillExists, commands: cmds2 as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
-      .toMatch(/SUCCEEDED — the container still exists/);
+    cmds2[4]!.stdout_bytes = 13;
+    expect(verifyCleanupReceipt({ cleanup: stillExists, commands: cmds2 as never, receiptA: receiptA as never, receiptB: receiptB as never, rawText: () => '9f81ee4c2b7a\n' }).join('\n'))
+      .toMatch(/STILL EXISTS after checked removal/);
     const failedRm = structuredClone(cleanup);
     const cmds3 = structuredClone(commands);
     cmds3[0]!.exit = 1; failedRm.removals[0]!.exit = 1;
-    expect(verifyCleanupReceipt({ cleanup: failedRm, commands: cmds3 as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
+    expect(verifyCleanupReceipt({ cleanup: failedRm, commands: cmds3 as never, receiptA: receiptA as never, receiptB: receiptB as never, rawText }).join('\n'))
       .toMatch(/checked removal of .* recorded exit 1/);
+  });
+});
+
+describe('C18.1.4 — the source-owned catalog contract', () => {
+  const contract = loadCatalogContract(join(REPO, 'scripts', 'gate', 'lib'));
+  const snap = (era: 'historical' | 'latest') => ({
+    tables: Object.fromEntries(Object.entries(contract[era].tables).map(([t, v]: [string, any]) => [
+      t, { columns: [...v.columns], pk: [...v.pk], rows: [], row_count: 0 },
+    ])),
+    fks: contract[era].fks.map((f: any) => ({ ...f })),
+  });
+  it('the tracked contract covers both eras with complete column, key and FK definitions', () => {
+    expect(Object.keys(contract.historical.tables).length).toBe(TABLE_UNIVERSE_HISTORICAL.length);
+    expect(Object.keys(contract.latest.tables).length).toBe(TABLE_UNIVERSE_LATEST.length);
+    for (const era of ['historical', 'latest'] as const) {
+      for (const [t, v] of Object.entries(contract[era].tables) as Array<[string, any]>) {
+        expect(v.columns.length, `${era} ${t} columns`).toBeGreaterThan(0);
+        expect(v.pk.length, `${era} ${t} pk`).toBeGreaterThan(0);
+      }
+      for (const f of contract[era].fks) expect(f.definition).toMatch(/^FOREIGN KEY /);
+    }
+    expect(verifyCatalogContract(snap('historical') as never, 'historical', contract, 'x')).toEqual([]);
+    expect(verifyCatalogContract(snap('latest') as never, 'latest', contract, 'x')).toEqual([]);
+  });
+  it.each([
+    ['a removed column', (s2: any) => { s2.tables['identity.principals'].columns = s2.tables['identity.principals'].columns.filter((c: string) => c !== 'status'); }, /columns violate the source-owned catalog contract \(missing status\)/],
+    ['an added column', (s2: any) => { s2.tables['identity.principals'].columns.push('backdoor'); }, /unexpected backdoor/],
+    ['a reordered column list', (s2: any) => { s2.tables['identity.principals'].columns.reverse(); }, /columns violate the source-owned catalog contract/],
+    ['a changed primary key', (s2: any) => { s2.tables['identity.roles'].pk = ['scope']; }, /primary key .* is not the contract's/],
+    ['a weakened FK action', (s2: any) => { s2.fks[0].definition = `${s2.fks[0].definition} ON DELETE CASCADE`; }, /definition violates the source-owned catalog contract/],
+    ['a retargeted FK', (s2: any) => { s2.fks[0].to = 'attacker.shadow'; }, /to violates the source-owned catalog contract/],
+    ['a dropped FK', (s2: any) => { s2.fks.shift(); }, /is MISSING/],
+    ['an extra FK', (s2: any) => { s2.fks.push({ ...s2.fks[0], constraint: 'attacker.x.fk' }); }, /is not in the source-owned catalog contract/],
+    ['a dropped table', (s2: any) => { delete s2.tables['tenancy.tenants']; }, /catalog table set is not the source-owned/],
+  ])('detects %s', (_l, mutate, pattern) => {
+    const s2 = snap('latest');
+    mutate(s2);
+    expect(verifyCatalogContract(s2 as never, 'latest', contract, 'x').join('\n')).toMatch(pattern);
+  });
+});
+
+describe('C18.1.4 — credential positions are class-exact', () => {
+  it('a valid but WRONG class is refused in a PostgreSQL position', () => {
+    const receipt = {
+      path: 'path-a-upgraded',
+      credential_digests: Object.fromEntries(SECRET_CLASSES.map((k: string) => [k, sha256(k)])),
+    };
+    // Both classes are registered for this path — only one belongs in this position.
+    expect(checkPlaceholder('<REDACTED:a:EYE_DB_APP_PASSWORD>', 'a', receipt as never, 'x')).toEqual([]);
+    expect(placeholder('a', 'EYE_DB_APP_PASSWORD')).not.toBe(placeholder('a', 'EYE_DB_PASSWORD'));
+  });
+});
+
+describe('C18.1.4 — migration attestation is measured, not asserted', () => {
+  it('the attestation argv covers the runner and every governed migration in order', () => {
+    const files = ['0001_a.sql', '0002_b.sql'];
+    expect(attestArgv('/tmp/c18-a-Ab12Cd', files)).toEqual([
+      'shasum', '-a', '256', '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
+      '/tmp/c18-a-Ab12Cd/migrations/0001_a.sql', '/tmp/c18-a-Ab12Cd/migrations/0002_b.sql',
+    ]);
+  });
+  it('shasum output parses, and malformed output is refused', () => {
+    const ok = parseAttestation(`${'a'.repeat(64)}  /tmp/x\n${'b'.repeat(64)}  /tmp/y\n`);
+    expect(ok.problem).toBeNull();
+    expect(ok.rows).toEqual([{ digest: 'a'.repeat(64), path: '/tmp/x' }, { digest: 'b'.repeat(64), path: '/tmp/y' }]);
+    expect(parseAttestation('not a digest  /tmp/x').problem).toMatch(/is not shasum output/);
+  });
+});
+
+describe('C18.1.4 — authenticated absence', () => {
+  const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
+  const world = (over: { probeExit?: number; probeBytes?: number; probeText?: string } = {}) => {
+    const commands = [
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null, stdout_bytes: 0 })),
+      ...names.map((n, i) => ({
+        id: `ab-${i}`, label: `cleanup-absent-${n}`, argv: absenceArgv(n),
+        exit: i === 0 ? (over.probeExit ?? 0) : 0, signal: null,
+        stdout_bytes: i === 0 ? (over.probeBytes ?? 0) : 0,
+      })),
+    ];
+    const cleanup = {
+      removed: names, failures: [], kept: [],
+      removals: names.map((n, i) => ({ container: n, command_id: `rm-${i}`, exit: 0 })),
+      inspections: names.map((n, i) => ({ container: n, command_id: `ab-${i}`, exit: i === 0 ? (over.probeExit ?? 0) : 0 })),
+    };
+    return {
+      cleanup,
+      commands,
+      receiptA: { container_name: names[0], redis_container: names[1] },
+      receiptB: { container_name: names[2], redis_container: names[3] },
+      rawText: (c: any) => (c.id === 'ab-0' ? (over.probeText ?? '') : ''),
+    };
+  };
+  it('an exit-0 EMPTY probe proves absence', () => {
+    expect(verifyCleanupReceipt(world() as never)).toEqual([]);
+    expect(absenceArgv('c18-a-01234567-pg')).toEqual(['docker', 'ps', '-aq', '--filter', 'name=^c18-a-01234567-pg$']);
+  });
+  it.each([
+    ['a daemon/transport failure', { probeExit: 125 }, /exited 125: the container's state is UNKNOWN, not proven absent/],
+    ['a permission refusal', { probeExit: 126 }, /state is UNKNOWN/],
+    ['a missing docker binary', { probeExit: 127 }, /state is UNKNOWN/],
+    ['a probe that returned an id', { probeBytes: 13, probeText: '9f81ee4c2b7a\n' }, /STILL EXISTS after checked removal|produced 13 bytes/],
+  ])('refuses %s as proof of absence', (_l, over, pattern) => {
+    expect(verifyCleanupReceipt(world(over) as never).join('\n')).toMatch(pattern);
+  });
+});
+
+describe('C18.1.4 — seed step identities are derived exactly', () => {
+  const record = {
+    admin: { principalId: 'adm' },
+    tenants: [{ tenantId: 't1' }], domains: [{ domainId: 'd1' }],
+    principals: [{ principalId: 'p1' }],
+    sessions: [{ sessionId: 's-adm', principalId: 'adm' }, { sessionId: 's-ten', principalId: 'p1' }],
+    objects: [{ objectId: 'o1' }],
+    outbox: [{ eventId: 'e-pub', eventType: 'c18.seed.published' }, { eventId: 'e-pend', eventType: 'c18.seed.pending' }],
+  };
+  it('each step maps to exactly the identities that step produced', () => {
+    const d = deriveSeedStepIdentities(record as never);
+    expect(d.bootstrap).toEqual(['adm']);
+    expect(d['admin-session']).toEqual(['s-adm']);
+    expect(d['tenant-session']).toEqual(['s-ten']);
+    expect(d['tenants-domains']).toEqual(['t1', 'd1']);
+    expect(d['outbox-enqueue']).toEqual(['e-pub', 'e-pend']);
+    // Only the PUBLISHED event belongs to the publish step.
+    expect(d['outbox-publish']).toEqual(['e-pub']);
   });
 });
 

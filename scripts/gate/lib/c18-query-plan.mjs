@@ -304,11 +304,26 @@ export function verifyCommandGraph({
     if (text === null) return undefined;
     try { return text.trim() === '' ? null : JSON.parse(text); } catch { return undefined; }
   };
-  /** An exact placeholder, bound to path AND to a credential class the receipt carries. */
+  /**
+   * C18.1.4 — a credential position must carry the LITERAL placeholder for its own class. The
+   * 83d158c graph accepted any class that merely had a credential digest for that path, so
+   * `PGPASSWORD=<REDACTED:a:EYE_DB_APP_PASSWORD>` — a different, valid class — passed in every
+   * PostgreSQL and readiness position. `ph` still checks path and class registration; `exactPh`
+   * additionally pins WHICH class belongs in this position.
+   */
   const ph = (letter, r, prefix = '') => (v, c) => {
     const raw = String(v ?? '');
     if (!raw.startsWith(prefix)) return [`command '${c.label}' argv ${JSON.stringify(raw)} is not the ${prefix}<REDACTED:…> form`];
     return checkPlaceholder(raw.slice(prefix.length), letter, r, `command '${c.label}' argv ${JSON.stringify(raw)}`);
+  };
+  const exactPh = (letter, r, cls, prefix = '') => (v, c) => {
+    const problems = ph(letter, r, prefix)(v, c);
+    if (problems.length > 0) return problems;
+    const want = `${prefix}${placeholder(letter, cls)}`;
+    if (String(v) !== want) {
+      return [`command '${c.label}' credential position carries ${JSON.stringify(String(v))}; this position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`];
+    }
+    return [];
   };
   /** Exact instance environment, with per-class placeholders — no prefix matching. */
   const connEnv = (c, letter, r, extra = {}) => {
@@ -324,7 +339,7 @@ export function verifyCommandGraph({
       if (!(k in want)) problems.push(`command '${c.label}' carries unauthorized environment key '${k}'`);
     }
   };
-  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', ph(letter, r, 'PGPASSWORD='), '-i',
+  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), '-i',
     r.container_name, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', r.database, '-c', sql];
   const planned = (letter, r) => (step) => {
     const c = next(step.label);
@@ -336,7 +351,7 @@ export function verifyCommandGraph({
     const pg = next(`${letter}-pg-run`);
     mustSucceed(pg); emptyEnv(pg);
     matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name, '-e', 'POSTGRES_USER=eye', '-e',
-      ph(letter, r, 'POSTGRES_PASSWORD='), '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
+      exactPh(letter, r, 'EYE_DB_PASSWORD', 'POSTGRES_PASSWORD='), '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
     if (pg !== null && Array.isArray(pg.argv) && pg.argv[8] !== `POSTGRES_PASSWORD=${placeholder(letter, 'EYE_DB_PASSWORD')}`) {
       problems.push(`command '${pg.label}' container password is not the path-${letter} EYE_DB_PASSWORD class`);
     }
@@ -347,7 +362,7 @@ export function verifyCommandGraph({
     const rd = next(`${letter}-redis-run`);
     mustSucceed(rd); emptyEnv(rd);
     matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379', images.redis,
-      'redis-server', '--requirepass', ph(letter, r)]);
+      'redis-server', '--requirepass', exactPh(letter, r, 'EYE_REDIS_PASSWORD')]);
     if (rd !== null && Array.isArray(rd.argv) && rd.argv[rd.argv.length - 1] !== placeholder(letter, 'EYE_REDIS_PASSWORD')) {
       problems.push(`command '${rd.label}' requirepass is not the path-${letter} EYE_REDIS_PASSWORD class`);
     }
@@ -377,7 +392,7 @@ export function verifyCommandGraph({
         const conf = next(`${letter}-pg-confirm-${i}`);
         if (conf === null) break;
         emptyEnv(conf);
-        matchArgv(conf, ['docker', 'exec', '-e', ph(letter, r, 'PGPASSWORD='), r.container_name,
+        matchArgv(conf, ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), r.container_name,
           'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', r.database, '-c', READINESS_CONFIRM_SQL]);
         if (conf.exit === 0 && conf.signal === null && (stdoutOf(conf) ?? '').trim() === '1') confirmed = true;
       }
@@ -389,11 +404,23 @@ export function verifyCommandGraph({
    * exact argv, exact instance environment. The receipt itself (runner bytes, workspace
    * grammar, migration set, ceiling) is judged by verifyMigrationExecutions. */
   const walkMigrate = (label, letter, r) => {
-    const c = next(label);
-    mustSucceed(c);
     const exec = Array.isArray(migrationExecutions) ? migrationExecutions.find((e) => e.label === label) : undefined;
+    // C18.1.4 — the ATTESTATION runs first, in the ledger, against the same governed workspace:
+    // the runner's and every workspace migration's bytes are MEASURED, never asserted.
+    const attest = next(`${label}-attest`);
+    mustSucceed(attest); emptyEnv(attest);
     if (exec === undefined) {
       problems.push(`command '${label}' has no governed migration-execution receipt`);
+    } else {
+      matchArgv(attest, ['shasum', '-a', '256', `${exec.workspace}/scripts/migrate.mjs`,
+        ...(Array.isArray(exec.migrations) ? exec.migrations : []).map((m) => `${exec.workspace}/migrations/${m.filename}`)]);
+      if (attest !== null && exec.attest_command_id !== attest.id) {
+        problems.push(`migration execution '${label}' attestation is bound to a different command than the one in the ledger`);
+      }
+    }
+    const c = next(label);
+    mustSucceed(c);
+    if (exec === undefined) {
       matchArgv(c, ['node', (v, cc) => [`command '${cc.label}' runner ${JSON.stringify(v)} is unauthenticated`]]);
     } else {
       matchArgv(c, ['node', exec.runner_path]);
@@ -466,11 +493,15 @@ export function verifyCommandGraph({
     matchArgv(c, ['docker', 'rm', '-fv', name]);
   }
   for (const name of containers) {
-    const c = next(`cleanup-inspect-${name}`);
+    const c = next(`cleanup-absent-${name}`);
     emptyEnv(c);
-    matchArgv(c, ['docker', 'inspect', name]);
-    if (c !== null && (c.exit === 0 || c.signal !== null)) {
-      problems.push(`post-removal inspection of '${name}' did not prove absence (exit ${c.exit}, signal ${c.signal})`);
+    matchArgv(c, ['docker', 'ps', '-aq', '--filter', `name=^${name}$`]);
+    if (c !== null && (c.exit !== 0 || c.signal !== null)) {
+      // A failed probe proves NOTHING about the container: it proves the probe failed.
+      problems.push(`absence probe for '${name}' exited ${c.exit} (signal ${c.signal}); absence must be a SUCCESSFUL empty query`);
+    }
+    if (c !== null && c.exit === 0 && c.stdout_bytes !== 0) {
+      problems.push(`absence probe for '${name}' returned output — the container still exists`);
     }
   }
   if (cleanup !== null && Array.isArray(cleanup.removals) && !dead) {

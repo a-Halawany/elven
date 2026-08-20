@@ -30,6 +30,8 @@ import { verifyEvidence as legacy8a } from './fixtures/c18-legacy-8a23526/c18-db
 import { verifyEvidence as legacy567 } from './fixtures/c18-legacy-567a70f/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy15e } from './fixtures/c18-legacy-15e8239/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy83d } from './fixtures/c18-legacy-83d158c/c18-db-paths.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -37,6 +39,10 @@ const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('he
 const ARCHIVE = process.env['C18_ARCHIVE'] ?? '';
 /** A fixed forged identifier: mutations must be deterministic so a failure is reproducible. */
 const FORGED_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+const SNAP_FILES: ReadonlyArray<[string, string]> = [
+  ['path-a-before.json', 'a-a-before'], ['path-a-after.json', 'a-a-after'],
+  ['path-a-final.json', 'a-a-final'], ['path-b-virgin.json', 'b-b-virgin'],
+];
 
 type Mutator = (dir: string) => void;
 
@@ -620,6 +626,13 @@ function renumberCommands(dir: string) {
       r.stderr_file = `raw/${r.command_id}.stderr.txt`;
       r.exit_file = `raw/${r.command_id}.exit.txt`;
     }
+    for (const e of doc.migration_executions ?? []) {
+      e.command_id = idMap.get(e.command_id) ?? e.command_id;
+      if (e.attest_command_id !== undefined) e.attest_command_id = idMap.get(e.attest_command_id) ?? e.attest_command_id;
+    }
+    for (const phase of ['removals', 'inspections']) {
+      for (const row of doc.cleanup?.[phase] ?? []) row.command_id = idMap.get(row.command_id) ?? row.command_id;
+    }
   });
 }
 
@@ -780,6 +793,8 @@ describe('C18.1.2 — command-graph, binding and projection controls (new-verifi
  * describe the same run at the same source SHA.
  */
 function downgradeTo15e8239(dir: string) {
+  // Formats stack: C18.1.4 -> 83d158c -> 15e8239. Normalise the newer layer first.
+  downgradeTo83d158c(dir);
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (let i = cmds.length - 1; i >= 0; i -= 1) {
       if (/^cleanup-(rm|inspect)-/.test(cmds[i].label)) {
@@ -799,6 +814,41 @@ function downgradeTo15e8239(dir: string) {
 }
 
 /** Mutations that exist in BOTH evidence formats, so one function can be applied to each. */
+/**
+ * C18.1.4 raises the evidence format again (per-migration attestation commands, authenticated
+ * absence probes, `attest_command_id`), so the 83d158c verifier cannot read a C18.1.4 archive.
+ * This produces EXACTLY what the 83d158c producer emitted for the same run: attestations removed,
+ * absence probes restored to the `docker inspect`-exits-nonzero form its graph expected, and the
+ * ledger renumbered so every position-bound id is correct again.
+ */
+function downgradeTo83d158c(dir: string) {
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (let i = cmds.length - 1; i >= 0; i -= 1) {
+      const c = cmds[i];
+      if (String(c.label).endsWith('-attest')) {
+        for (const s of ['stdout', 'stderr', 'exit']) rmSync(join(dir, 'raw', `${c.id}.${s}.txt`), { force: true });
+        cmds.splice(i, 1);
+        continue;
+      }
+      if (String(c.label).startsWith('cleanup-absent-')) {
+        const name = String(c.label).slice('cleanup-absent-'.length);
+        c.label = `cleanup-inspect-${name}`;
+        c.argv = ['docker', 'inspect', name];
+        c.exit = 1;
+        const exitBuf = Buffer.from('1\n');
+        writeFileSync(join(dir, 'raw', `${c.id}.exit.txt`), exitBuf);
+        c.exit_bytes = exitBuf.byteLength;
+        c.exit_sha256 = sha256(exitBuf);
+      }
+    }
+  });
+  editJson(dir, 'c18-manifest.json', (m) => {
+    for (const e of m.migration_executions ?? []) delete e.attest_command_id;
+    for (const row of m.cleanup?.inspections ?? []) row.exit = 1;
+  });
+  renumberCommands(dir);
+}
+
 const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   ['1: snapshot SQL substitution behind genuine output', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
@@ -889,7 +939,7 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       const doc = JSON.parse(readFileSync(join(d, snapFile!), 'utf8'));
       setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(doc.tables['identity.role_bindings'].rows)));
     }
-  }, /carries live role binding .*platform_admin, which the seed record does not account for/],
+  }, /carries live role binding .*platform_admin.*which the seed record does not account for/],
   ['12: swapped Path-A/Path-B integration suite streams', (d) => {
     editJson(d, 'c18-manifest.json', (doc) => {
       const a = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
@@ -988,13 +1038,13 @@ describe('C18.1.3 — direct rejections on the genuine archive', () => {
         cmds.splice(i, 1);
       });
     }, /expected 'cleanup-rm-|names a command id that does not exist|breaks the sequence/],
-    ['a post-removal inspection that SUCCEEDED (container still exists)', (d: string) => {
+    ['a post-removal absence probe that found the container', (d: string) => {
       const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
-      const insp = m.cleanup.inspections[0];
-      editJson(d, 'commands.json', (cmds: any[]) => { cmds.find((c) => c.id === insp.command_id).exit = 0; });
-      setStream(d, `cleanup-inspect-${insp.container}`, 'exit', Buffer.from('0\n'));
-      editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.inspections[0].exit = 0; });
-    }, /did not prove absence|SUCCEEDED — the container still exists/],
+      const probe = m.cleanup.inspections[0];
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const label = cmds.find((c: any) => c.id === probe.command_id).label;
+      setStream(d, label, 'stdout', Buffer.from('9f81ee4c2b7a\n'));
+    }, /STILL EXISTS after checked removal|returned output — the container still exists|produced \d+ bytes/],
     ['a cleanup removal recorded as failed', (d: string) => {
       editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.failures = ['docker rm -fv refused']; });
     }, /cleanup failures or kept containers|records removal failures/],
@@ -1028,6 +1078,225 @@ describe('C18.1.3 — direct rejections on the genuine archive', () => {
         doc.correlations = doc.correlations.filter((c: string) => c !== victim);
       });
     }, /names correlation .* which the recorded correlation set omits/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+/** Mutations that exist in BOTH the C18.1.4 and 83d158c evidence formats. */
+const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['2: a PostgreSQL credential position carrying another VALID class', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      for (const c of cmds) {
+        if (c.label === 'a-a-before-ledger' || c.label === 'a-pg-confirm-0') {
+          c.argv[3] = '<REDACTED:a:EYE_DB_APP_PASSWORD>'.replace(/^/, 'PGPASSWORD=');
+        }
+      }
+    });
+  }, /this position requires the path-a EYE_DB_PASSWORD class/],
+  ['3: a self-asserted runner digest over a foreign workspace', (d) => {
+    editJson(d, 'c18-manifest.json', (m) => {
+      const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+      const forged = String(e.workspace).replace(/c18-a-[A-Za-z0-9]{6}$/, 'c18-a-Xy7Z9q');
+      e.workspace = forged;
+      e.runner_path = `${forged}/scripts/migrate.mjs`;
+    });
+    const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+    const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      cmds.find((c) => c.label === 'a-migrate-historical').argv[1] = e.runner_path;
+      const attest = cmds.find((c) => c.label === 'a-migrate-historical-attest');
+      if (attest !== undefined) {
+        attest.argv = attest.argv.map((a: string, i: number) => (
+          i >= 3 ? a.replace(/c18-a-[A-Za-z0-9]{6}/, 'c18-a-Xy7Z9q') : a
+        ));
+      }
+    });
+  }, /attestation line 1 hashed|EXECUTED runner whose measured bytes/],
+  ['4a: a REMOVED column, processed + raw + checksums rebound', (d) => {
+    for (const [snapFile, pfx] of SNAP_FILES) {
+      const doc = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      if (!doc.tables['identity.principals'].columns.includes('revocation_epoch')) continue;
+      editJson(d, snapFile, (dd) => {
+        const t = dd.tables['identity.principals'];
+        t.columns = t.columns.filter((c: string) => c !== 'revocation_epoch');
+        t.rows = t.rows.map((r: any) => { const { revocation_epoch, ...rest } = r; void revocation_epoch; return rest; });
+        t.row_count = t.rows.length;
+        dd.posture.columns = dd.posture.columns.filter((c: string) => !c.includes('identity.principals|revocation_epoch'));
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      setStream(d, `${pfx}-rows-identity_principals`, 'stdout', Buffer.from(JSON.stringify(after.tables['identity.principals'].rows)));
+      setStream(d, `${pfx}-columns`, 'stdout', Buffer.from(JSON.stringify(after.posture.columns)));
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const metaCmd = cmds.find((c: any) => c.label === `${pfx}-tables-meta`);
+      const meta = JSON.parse(readFileSync(join(d, 'raw', `${metaCmd.id}.stdout.txt`), 'utf8'));
+      for (const m of meta) {
+        if (m.table === 'identity.principals') m.columns = m.columns.filter((c: string) => c !== 'revocation_epoch');
+      }
+      setStream(d, `${pfx}-tables-meta`, 'stdout', Buffer.from(JSON.stringify(meta)));
+    }
+  }, /columns violate the source-owned catalog contract \(missing revocation_epoch\)/],
+  ['4b: a WEAKENED foreign-key referential action on both paths', (d) => {
+    const TARGET = 'identity.sessions.sessions_principal_id_fkey';
+    for (const [snapFile, pfx] of SNAP_FILES) {
+      const doc = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      const target = doc.fks.find((f: any) => f.constraint === TARGET);
+      if (target === undefined) continue;
+      const newDef = `${target.definition} ON DELETE CASCADE`;
+      editJson(d, snapFile, (dd) => {
+        for (const f of dd.fks) if (f.constraint === TARGET) f.definition = newDef;
+        dd.posture.constraints = dd.posture.constraints.map((c: string) => (
+          c.includes('sessions_principal_id_fkey') ? c.replace(target.definition, newDef) : c
+        ));
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const fkCmd = cmds.find((c: any) => c.label === `${pfx}-fk-meta`);
+      const meta = JSON.parse(readFileSync(join(d, 'raw', `${fkCmd.id}.stdout.txt`), 'utf8'));
+      for (const m of meta) if (m.constraint === TARGET) m.definition = newDef;
+      setStream(d, `${pfx}-fk-meta`, 'stdout', Buffer.from(JSON.stringify(meta)));
+      setStream(d, `${pfx}-constraints`, 'stdout', Buffer.from(JSON.stringify(after.posture.constraints)));
+    }
+  }, /foreign key '.*sessions_principal_id_fkey' definition violates the source-owned catalog contract/],
+  ['5: a role binding re-scoped and re-attributed', (d) => {
+    const seed = JSON.parse(readFileSync(join(d, 'path-a-seed-record.json'), 'utf8'));
+    const victim = seed.principals.find((p: any) => p.roleCode === 'tenant_admin');
+    for (const [snapFile, pfx] of SNAP_FILES.filter(([f]) => f.startsWith('path-a'))) {
+      editJson(d, snapFile, (dd) => {
+        for (const r of dd.tables['identity.role_bindings'].rows) {
+          if (r.principal_id === victim.principalId && r.role_code === 'tenant_admin') {
+            r.scope = 'PLATFORM';
+            r.tenant_id = null;
+            r.granted_by_principal = FORGED_UUID;
+            r.granted_by_scope = 'DOMAIN';
+          }
+        }
+      });
+      const after = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+      setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(after.tables['identity.role_bindings'].rows)));
+    }
+  }, /carries live role binding .*which the seed record does not account for/],
+  ['6a: a governed seed step reporting NO identities', (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => { doc.steps[3].ids = []; });
+  }, /identities are not the record-derived set \(missing /],
+  ["6b: a seed step claiming another step's identity", (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => { doc.steps[0].ids = [doc.tenants[0].tenantId]; });
+  }, /not this step's work/],
+  ['6c: a duplicated identity inside a seed collection', (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => {
+      doc.principals.push({ ...doc.principals[0] });
+      doc.steps[4].ids = doc.principals.map((p: any) => p.principalId);
+    });
+    editJson(d, 'c18-manifest.json', (m) => { m.seed_summary.principals += 1; });
+  }, /contains DUPLICATE principalId entries/],
+  ['7: cleanup "absence" proved by a failed docker probe', (d) => {
+    const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+    const probe = m.cleanup.inspections[0];
+    const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+    const label = cmds.find((c: any) => c.id === probe.command_id).label;
+    editJson(d, 'commands.json', (cs: any[]) => { cs.find((c) => c.id === probe.command_id).exit = 125; });
+    setStream(d, label, 'exit', Buffer.from('125\n'));
+    setStream(d, label, 'stderr', Buffer.from('Cannot connect to the Docker daemon at unix:///var/run/docker.sock.\n'));
+    editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.inspections[0].exit = 125; });
+  }, /absence probe for .* exited 125/],
+];
+
+describe('C18.1.4 — DIFFERENTIAL: the frozen 83d158c verifier ACCEPTED what C18.1.4 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 83d158c verifier accepts the genuine archive in ITS format', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo83d158c);
+    try {
+      const r = await legacy83d({ zipPath: zip, root: REPO });
+      expect(r.problems, 'the downgrade must be exactly what the 83d158c producer emitted').toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C1814_MUTATIONS)('%s — 83d158c ACCEPTS it; C18.1.4 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { downgradeTo83d158c(d); mutate(d); });
+    try {
+      const old = await legacy83d({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 83d158c verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a POSTGRES_PASSWORD carrying another valid class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        cmds.find((c) => c.label === 'a-pg-run').argv[8] = 'POSTGRES_PASSWORD=<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>';
+      });
+    }, /this position requires the path-a EYE_DB_PASSWORD class/],
+    ['a --requirepass carrying the database class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x) => x.label === 'b-redis-run');
+        c.argv[c.argv.length - 1] = '<REDACTED:b:EYE_DB_PASSWORD>';
+      });
+    }, /this position requires the path-b EYE_REDIS_PASSWORD class/],
+    ['an attestation that hashed a foreign migration file', (d: string) => {
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const attest = cmds.find((c: any) => c.label === 'b-migrate-latest-attest');
+      const out = readFileSync(join(d, 'raw', `${attest.id}.stdout.txt`), 'utf8').split('\n');
+      out[3] = `${sha256('attacker migration')}  ${out[3]!.split('  ')[1]}`;
+      setStream(d, 'b-migrate-latest-attest', 'stdout', Buffer.from(out.join('\n')));
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'b-migrate-latest');
+        e.migrations[2].digest = sha256('attacker migration');
+      });
+    }, /EXECUTED migration .* whose measured bytes are not the tracked source bytes/],
+    ['a migration receipt whose digest disagrees with its attestation', (d: string) => {
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-upgrade');
+        e.runner_sha256 = sha256('elsewhere');
+      });
+    }, /runner_sha256 disagrees with the attested measurement|not the tracked apps\/api\/scripts\/migrate\.mjs/],
+    ['a deleted attestation command', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const i = cmds.findIndex((c) => c.label === 'a-migrate-upgrade-attest');
+        for (const ext of ['stdout', 'stderr', 'exit']) rmSync(join(d, 'raw', `${cmds[i].id}.${ext}.txt`));
+        cmds.splice(i, 1);
+      });
+    }, /expected 'a-migrate-upgrade-attest'|attestation command .* which does not exist|breaks the sequence/],
+    ['an absence probe that returned a container id', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const probe = m.cleanup.inspections[1];
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const label = cmds.find((c: any) => c.id === probe.command_id).label;
+      setStream(d, label, 'stdout', Buffer.from('9f81ee4c2b7a\n'));
+    }, /returned .*container id|returned output — the container still exists|produced \d+ bytes/],
+    ['a primary key altered in the catalog', (d: string) => {
+      editJson(d, 'path-b-virgin.json', (doc) => { doc.tables['identity.roles'].pk = ['scope']; });
+      const after = JSON.parse(readFileSync(join(d, 'path-b-virgin.json'), 'utf8'));
+      const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
+      const metaCmd = cmds.find((c: any) => c.label === 'b-b-virgin-tables-meta');
+      const meta = JSON.parse(readFileSync(join(d, 'raw', `${metaCmd.id}.stdout.txt`), 'utf8'));
+      for (const m of meta) if (m.table === 'identity.roles') m.pk = ['scope'];
+      setStream(d, 'b-b-virgin-tables-meta', 'stdout', Buffer.from(JSON.stringify(meta)));
+      void after;
+    }, /primary key .* is not the contract's/],
+    ['an extra foreign key not in the catalog contract', (d: string) => {
+      editJson(d, 'path-b-virgin.json', (doc) => {
+        doc.fks.push({
+          constraint: 'attacker.shadow.fk', from: 'attacker.shadow', to: 'tenancy.tenants',
+          definition: 'FOREIGN KEY (x) REFERENCES tenancy.tenants(id)', validated: true,
+          deferrable: false, pairs_count: 0, pairs_digest: sha256('[]'),
+        });
+      });
+    }, /is not in the source-owned catalog contract|reconstructed from raw differs/],
+    ['a seed step whose identity set is a strict subset', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => { doc.steps[7].ids = [doc.outbox[0].eventId]; });
+    }, /identities are not the record-derived set \(missing /],
+    ['a duplicated session in the seed record', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => {
+        doc.sessions.push({ ...doc.sessions[0] });
+      });
+      editJson(d, 'c18-manifest.json', (m) => { m.seed_summary.sessions += 1; });
+    }, /sessions contains DUPLICATE sessionId entries/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
     await expectReject(mutate, pattern);
   });
