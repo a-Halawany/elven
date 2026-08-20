@@ -10,7 +10,8 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import {
-  lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
+  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
@@ -27,11 +28,15 @@ import { verifyEvidence as legacyVerify } from './fixtures/c18-legacy-d5061b8/c1
 import { verifyEvidence as legacy8a } from './fixtures/c18-legacy-8a23526/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy567 } from './fixtures/c18-legacy-567a70f/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy15e } from './fixtures/c18-legacy-15e8239/c18-db-paths.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const ARCHIVE = process.env['C18_ARCHIVE'] ?? '';
+/** A fixed forged identifier: mutations must be deterministic so a failure is reproducible. */
+const FORGED_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
 type Mutator = (dir: string) => void;
 
@@ -621,10 +626,15 @@ function renumberCommands(dir: string) {
 describe('C18.1.2 — DIFFERENTIAL: the TEN false passes the frozen 567a70f verifier ACCEPTED', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
-  it('NON-VACUITY: the frozen 567a70f verifier accepts the GENUINE archive', async () => {
-    const r = await legacy567({ zipPath: ARCHIVE, root: REPO });
-    expect(r.problems).toEqual([]);
-    expect(r.ok).toBe(true);
+  it('NON-VACUITY: the frozen 567a70f verifier accepts the genuine archive in ITS format', async () => {
+    // C18.1.3 raised the evidence format, so the predecessor is shown the same run downgraded to
+    // the shape its own producer emitted (see downgradeTo15e8239).
+    const { dir, zip } = mutateArchive(downgradeTo15e8239);
+    try {
+      const r = await legacy567({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it.each([
@@ -686,16 +696,14 @@ describe('C18.1.2 — DIFFERENTIAL: the TEN false passes the frozen 567a70f veri
   ] as ReadonlyArray<[string, Mutator, RegExp]>)(
     'case %s — 567a70f ACCEPTS it; C18.1.2 REJECTS it for its semantic reason',
     async (_label, mutate, pattern) => {
-      const { dir, zip } = mutateArchive(mutate);
+      const legacyCase = mutateArchive((d) => { downgradeTo15e8239(d); mutate(d); });
       try {
-        const old = await legacy567({ zipPath: zip, root: REPO });
+        const old = await legacy567({ zipPath: legacyCase.zip, root: REPO });
         expect(old.ok, `the frozen 567a70f verifier must accept this rebound false package; problems: ${old.problems.join('; ')}`).toBe(true);
-        const now = await verifyEvidence({ zipPath: zip, root: REPO });
-        expect(now.ok).toBe(false);
-        expect(now.problems.join('\n')).toMatch(pattern);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        rmSync(legacyCase.dir, { recursive: true, force: true });
       }
+      await expectReject(mutate, pattern);
     },
   );
 });
@@ -732,12 +740,12 @@ describe('C18.1.2 — command-graph, binding and projection controls (new-verifi
       editJson(d, 'commands.json', (c: any[]) => {
         c.find((x) => x.label === 'a-suite-integration').env.EYE_DB_NAME = 'eye_b_00000000';
       });
-    }, /'a-suite-integration' env EYE_DB_NAME .* database binding requires/],
+    }, /'a-suite-integration' env EYE_DB_NAME .* binding requires/],
     ['a suite command with an unredacted-looking secret env', (d: string) => {
       editJson(d, 'commands.json', (c: any[]) => {
         c.find((x) => x.label === 'a-suite-integration').env.EYE_DB_PASSWORD = 'not-a-placeholder';
       });
-    }, /env EYE_DB_PASSWORD is not a redacted placeholder/],
+    }, /env EYE_DB_PASSWORD is "not-a-placeholder"/],
     ['a pg-run container id contradicting the isolation receipt', (d: string) => {
       setStream(d, 'a-pg-run', 'stdout', Buffer.from(`${'f'.repeat(64)}\n`));
     }, /'a-pg-run' raw container id does not match the path-a-upgraded isolation receipt/],
@@ -757,6 +765,269 @@ describe('C18.1.2 — command-graph, binding and projection controls (new-verifi
       const meta = JSON.parse(readFileSync(join(d, 'raw', `${c.id}.stdout.txt`), 'utf8'));
       setStream(d, 'a-a-before-tables-meta', 'stdout', Buffer.from(JSON.stringify(meta.slice(1))));
     }, /not the source-owned 26-table universe|table set differs/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+
+/**
+ * C18.1.3 raises the EVIDENCE format (governed migration-execution receipts, sanitized seeding
+ * step receipts, executed-cleanup commands and receipts, per-session identity correlations), so
+ * the frozen 15e8239 verifier cannot read a C18.1.3 archive at all. To compare the two verifiers
+ * honestly across that change, each differential applies THE SAME mutation to each verifier's own
+ * genuine archive: the frozen verifier judges a faithful downgrade of this run's archive to the
+ * exact shape its own producer emitted, and C18.1.3 judges the archive as produced. Both archives
+ * describe the same run at the same source SHA.
+ */
+function downgradeTo15e8239(dir: string) {
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (let i = cmds.length - 1; i >= 0; i -= 1) {
+      if (/^cleanup-(rm|inspect)-/.test(cmds[i].label)) {
+        for (const ext of ['stdout', 'stderr', 'exit']) rmSync(join(dir, 'raw', `${cmds[i].id}.${ext}.txt`), { force: true });
+        cmds.splice(i, 1);
+      }
+    }
+  });
+  editJson(dir, 'c18-manifest.json', (m) => {
+    delete m.migration_executions;
+    m.cleanup = { removed: m.cleanup.removed, failures: m.cleanup.failures, kept: m.cleanup.kept };
+  });
+  editJson(dir, 'path-a-seed-record.json', (s) => {
+    delete s.steps;
+    for (const sess of s.sessions) delete sess.correlation;
+  });
+}
+
+/** Mutations that exist in BOTH evidence formats, so one function can be applied to each. */
+const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['1: snapshot SQL substitution behind genuine output', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'a-a-before-rows-tenancy_tenants');
+      c.argv[c.argv.length - 1] = "select coalesce(json_agg(to_jsonb(t) order by t.\"id\"), '[]'::json) from tenancy.tenants t where 1=1";
+    });
+  }, /is not the source-owned/],
+  ['2: posture SQL substitution behind genuine output', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'a-a-after-roles');
+      c.argv[c.argv.length - 1] = "select '[]'::json";
+    });
+  }, /is not the source-owned/],
+  ['3: any other snapshot query replaced', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'b-b-virgin-constraints');
+      c.argv[c.argv.length - 1] = 'select 1';
+    });
+  }, /is not the source-owned/],
+  ['4: attacker migration-runner path', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'a-migrate-historical');
+      c.argv[1] = '/attacker/scripts/migrate.mjs';
+    });
+    if (existsSync(join(d, 'c18-manifest.json'))) {
+      editJson(d, 'c18-manifest.json', (m) => {
+        if (!Array.isArray(m.migration_executions)) return;
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+        e.runner_path = '/attacker/scripts/migrate.mjs';
+        e.workspace = '/attacker';
+      });
+    }
+  }, /is not a governed workspace path|is not the governed workspace runner/],
+  ['5: wrong suite secret class', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      cmds.find((x) => x.label === 'a-suite-integration').env.EYE_DB_PASSWORD = '<REDACTED:attacker:WRONG_CLASS>';
+    });
+  }, /env EYE_DB_PASSWORD is .*attacker:WRONG_CLASS/],
+  ['6: wrong Redis secret class', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'a-redis-run');
+      c.argv[c.argv.length - 1] = '<REDACTED:a:EYE_DB_PASSWORD>';
+    });
+  }, /requirepass is not the path-a EYE_REDIS_PASSWORD class/],
+  ['7: Path-A command carrying a Path-B placeholder', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      cmds.find((x) => x.label === 'a-suite-integration').env.EYE_DB_APP_PASSWORD = '<REDACTED:b:EYE_DB_APP_PASSWORD>';
+    });
+  }, /env EYE_DB_APP_PASSWORD is .*REDACTED:b:/],
+  ['7b: two secret classes swapped within one path', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      const c = cmds.find((x) => x.label === 'a-suite-acceptance');
+      c.env.EYE_DB_COMMIT_PASSWORD = '<REDACTED:a:EYE_DB_IDENTITY_PASSWORD>';
+      c.env.EYE_DB_IDENTITY_PASSWORD = '<REDACTED:a:EYE_DB_COMMIT_PASSWORD>';
+    });
+  }, /env EYE_DB_COMMIT_PASSWORD is/],
+  ['7c: wrong-path PGPASSWORD in argv', (d) => {
+    editJson(d, 'commands.json', (cmds: any[]) => {
+      cmds.find((x) => x.label === 'a-a-before-ledger').argv[3] = 'PGPASSWORD=<REDACTED:b:EYE_DB_PASSWORD>';
+    });
+  }, /carries path 'b' credential material in a path-'a' command/],
+  ['8: forged session familyId', (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => { doc.sessions[0].familyId = FORGED_UUID; });
+  }, /familyId .* differs from the snapshot family/],
+  ['9: forged canonical-object correlation', (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => { doc.objects[0].correlation = doc.objects[1].correlation; });
+  }, /differs from the canonical object's audit correlation/],
+  ['10: extra unused correlation UUID', (d) => {
+    editJson(d, 'path-a-seed-record.json', (doc) => { doc.correlations.push(FORGED_UUID); });
+  }, /appears NOWHERE in the seeded world and belongs to no recorded session/],
+  ['11: an ADDITIONAL live role binding', (d) => {
+    const seed = JSON.parse(readFileSync(join(d, 'path-a-seed-record.json'), 'utf8'));
+    const analyst = seed.principals.find((p: any) => p.roleCode === 'domain_analyst');
+    let forged: any = null;
+    for (const [snapFile, pfx] of [['path-a-before.json', 'a-a-before'], ['path-a-after.json', 'a-a-after'], ['path-a-final.json', 'a-a-final']]) {
+      editJson(d, snapFile!, (doc) => {
+        const t = doc.tables['identity.role_bindings'];
+        if (forged === null) {
+          forged = {
+            ...t.rows.find((r: any) => r.role_code === 'tenant_admin'), id: FORGED_UUID,
+            principal_id: analyst.principalId, role_code: 'platform_admin', scope: 'PLATFORM',
+            tenant_id: null, domain_id: null,
+          };
+        }
+        t.rows = [...t.rows, { ...forged }].sort((a: any, b: any) => (a.id < b.id ? -1 : 1));
+        t.row_count = t.rows.length;
+      });
+      const doc = JSON.parse(readFileSync(join(d, snapFile!), 'utf8'));
+      setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(doc.tables['identity.role_bindings'].rows)));
+    }
+  }, /carries live role binding .*platform_admin, which the seed record does not account for/],
+  ['12: swapped Path-A/Path-B integration suite streams', (d) => {
+    editJson(d, 'c18-manifest.json', (doc) => {
+      const a = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
+      const b = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-b-virgin');
+      for (const f of ['stdout_file', 'stderr_file', 'exit_file', 'stdout_bytes', 'stdout_sha256', 'stderr_bytes', 'stderr_sha256']) {
+        const t = a[f]; a[f] = b[f]; b[f] = t;
+      }
+    });
+  }, /is not its own command's stream/],
+  ['12b: suite streams AND command_id swapped together', (d) => {
+    editJson(d, 'c18-manifest.json', (doc) => {
+      const a = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-a-upgraded');
+      const b = doc.suite_receipts.find((r: any) => r.suite === 'integration' && r.path === 'path-b-virgin');
+      for (const f of ['command_id', 'stdout_file', 'stderr_file', 'exit_file', 'stdout_bytes', 'stdout_sha256', 'stderr_bytes', 'stderr_sha256']) {
+        const t = a[f]; a[f] = b[f]; b[f] = t;
+      }
+    });
+  }, /command environment is not the path-[ab].* instance binding/],
+];
+
+describe('C18.1.3 — DIFFERENTIAL: the frozen 15e8239 verifier ACCEPTED what C18.1.3 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: C18.1.3 accepts the genuine archive; 15e8239 accepts its faithful downgrade', async () => {
+    const now = await verifyEvidence({ zipPath: ARCHIVE, root: REPO });
+    expect(now.problems).toEqual([]);
+    const { dir, zip } = mutateArchive(downgradeTo15e8239);
+    try {
+      const old = await legacy15e({ zipPath: zip, root: REPO });
+      expect(old.problems, 'the downgrade must be exactly what the 15e8239 producer emitted').toEqual([]);
+      expect(old.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(SHARED_MUTATIONS)('%s — 15e8239 ACCEPTS it; C18.1.3 REJECTS it', async (_label, mutate, pattern) => {
+    // Leg 1: the frozen verifier, judging its own producer's evidence shape, accepts the mutation.
+    const legacyCase = mutateArchive((d) => { downgradeTo15e8239(d); mutate(d); });
+    try {
+      const old = await legacy15e({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 15e8239 verifier must accept this rebound mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    // Leg 2: C18.1.3, judging the same mutation of the archive as produced, rejects it for the
+    // intended semantic reason.
+    await expectReject(mutate, pattern);
+  });
+
+  it('13: cleanup EXECUTION and governed seeding receipts — 15e8239 required neither', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo15e8239);
+    try {
+      const old = await legacy15e({ zipPath: zip, root: REPO });
+      expect(old.ok, 'the frozen verifier accepts evidence in which cleanup was only ASSERTED').toBe(true);
+      const now = await verifyEvidence({ zipPath: zip, root: REPO });
+      expect(now.ok).toBe(false);
+      const joined = now.problems.join('\n');
+      expect(joined).toMatch(/cleanup fields are not the exact closed receipt set|expected 'cleanup-rm-/);
+      expect(joined).toMatch(/migration_executions|governed migration-execution receipt/);
+      expect(joined).toMatch(/seed record fields are not the exact closed schema|governed seed step/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('C18.1.3 — direct rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['an attacker runner inside a governed-LOOKING workspace', (d: string) => {
+      const forged = '/tmp/c18-a-abc123';
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        cmds.find((x) => x.label === 'a-migrate-historical').argv[1] = `${forged}/scripts/migrate.mjs`;
+      });
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+        e.workspace = forged; e.runner_path = `${forged}/scripts/migrate.mjs`;
+        e.runner_sha256 = sha256('attacker runner');
+      });
+    }, /ran a runner whose bytes are not the tracked/],
+    ['a migration workspace holding migrations beyond its ceiling', (d: string) => {
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+        e.migrations = e.migrations.slice(0, 8);
+      });
+    }, /workspace migration set is not exactly the tracked/],
+    ['a migration execution bound to another command', (d: string) => {
+      editJson(d, 'c18-manifest.json', (m) => {
+        const e = m.migration_executions.find((x: any) => x.label === 'a-migrate-historical');
+        const other = m.migration_executions.find((x: any) => x.label === 'b-migrate-latest');
+        e.command_id = other.command_id;
+      });
+    }, /bound to command|is bound to a different command/],
+    ['a deleted cleanup removal command', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const victim = m.cleanup.removals[0];
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const i = cmds.findIndex((c) => c.id === victim.command_id);
+        for (const ext of ['stdout', 'stderr', 'exit']) rmSync(join(d, 'raw', `${cmds[i].id}.${ext}.txt`));
+        cmds.splice(i, 1);
+      });
+    }, /expected 'cleanup-rm-|names a command id that does not exist|breaks the sequence/],
+    ['a post-removal inspection that SUCCEEDED (container still exists)', (d: string) => {
+      const m = JSON.parse(readFileSync(join(d, 'c18-manifest.json'), 'utf8'));
+      const insp = m.cleanup.inspections[0];
+      editJson(d, 'commands.json', (cmds: any[]) => { cmds.find((c) => c.id === insp.command_id).exit = 0; });
+      setStream(d, `cleanup-inspect-${insp.container}`, 'exit', Buffer.from('0\n'));
+      editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.inspections[0].exit = 0; });
+    }, /did not prove absence|SUCCEEDED — the container still exists/],
+    ['a cleanup removal recorded as failed', (d: string) => {
+      editJson(d, 'c18-manifest.json', (doc) => { doc.cleanup.failures = ['docker rm -fv refused']; });
+    }, /cleanup failures or kept containers|records removal failures/],
+    ['a forged governed seeding-step port list', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => { doc.steps[3].ports = [...doc.steps[3].ports, 'attacker.port']; });
+    }, /ports .* are not the source-owned era ports/],
+    ['a seeding step reporting an unaccounted identity', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => { doc.steps[0].ids = [FORGED_UUID]; });
+    }, /reports identity .* which the closed seed record does not account for/],
+    ['a reordered governed seeding plan', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => {
+        const t = doc.steps[1]; doc.steps[1] = doc.steps[2]; doc.steps[2] = t;
+      });
+    }, /governed seed step \d+ is '.*', the plan requires/],
+    ['a MISSING live role binding (15e8239 already caught this one)', (d: string) => {
+      const seed = JSON.parse(readFileSync(join(d, 'path-a-seed-record.json'), 'utf8'));
+      const victim = seed.principals[0].principalId;
+      for (const [snapFile, pfx] of [['path-a-before.json', 'a-a-before'], ['path-a-after.json', 'a-a-after'], ['path-a-final.json', 'a-a-final']]) {
+        editJson(d, snapFile!, (doc) => {
+          const t = doc.tables['identity.role_bindings'];
+          t.rows = t.rows.filter((r: any) => r.principal_id !== victim);
+          t.row_count = t.rows.length;
+        });
+        const doc = JSON.parse(readFileSync(join(d, snapFile!), 'utf8'));
+        setStream(d, `${pfx}-rows-identity_role_bindings`, 'stdout', Buffer.from(JSON.stringify(doc.tables['identity.role_bindings'].rows)));
+      }
+    }, /requires live role binding .*which the snapshot does not carry/],
+    ['a session correlation the recorded set omits', (d: string) => {
+      editJson(d, 'path-a-seed-record.json', (doc) => {
+        const victim = doc.sessions[0].correlation;
+        doc.correlations = doc.correlations.filter((c: string) => c !== victim);
+      });
+    }, /names correlation .* which the recorded correlation set omits/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
     await expectReject(mutate, pattern);
   });

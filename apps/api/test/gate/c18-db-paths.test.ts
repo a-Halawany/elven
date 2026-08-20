@@ -18,14 +18,19 @@ import { parse as parseYaml } from 'yaml';
 import {
   HISTORICAL_LAST, LATEST_LAST, POSTURE_CATEGORIES, POSTURE_COMMAND_LABELS, SECRET_CLASSES,
   SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL, TABLE_UNIVERSE_LATEST,
-  authenticateProjections, c18ArtifactName, commandIdFor, comparePosture, compareSnapshots,
-  crossCheckAuditTable, deriveIntentionalTransforms, deriveSeedSummary, orderedMigrations,
-  parseResultReceipt, redactArgv, secretDigest, verifyAuditShapes, verifyChainRows,
-  verifyCommandGraph, verifyCommandRecords, verifyCommandStreams, verifyIsolation,
-  verifyManifestShape, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
-  verifySeedRecordClosed, verifySuiteReceipts, verifyTableUniverse,
+  SEED_STEP_PLAN, authenticateProjections, c18ArtifactName, checkPlaceholder, commandIdFor,
+  comparePosture, compareSnapshots, crossCheckAuditTable, deriveIntentionalTransforms,
+  deriveSeedSummary, expectedInstanceEnv, jwtPlaceholder, orderedMigrations, parseResultReceipt,
+  placeholder, redactArgv, secretDigest, verifyAuditShapes, verifyChainRows, verifyCleanupReceipt,
+  verifyCommandRecords, verifyCommandStreams, verifyIsolation, verifyManifestShape,
+  verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
+  verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
+import {
+  postureSql, snapshotQueryPlan, tableRowsSql, verifyCommandGraph,
+  // eslint-disable-next-line import/no-relative-packages
+} from '../../../../scripts/gate/lib/c18-query-plan.mjs';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -324,16 +329,21 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
 
 describe('C18.1.2 — the seed record is a closed schema bound bidirectionally', () => {
   const world = () => {
+    const CORR_TENANT = '22222222-2222-4222-8222-222222222222';
+    const CORR_OBJECT = '33333333-3333-4333-8333-333333333333';
+    const CORR_SESSION = '44444444-4444-4444-8444-444444444444';
+    const DECISION = '11111111-1111-4111-8111-111111111111';
     const seedRecord = {
       admin: { principalId: 'adm', loginName: 'platform-admin' },
       tenants: [{ tenantId: 't1', name: 'alpha' }],
       domains: [{ domainId: 'd1', tenantId: 't1', name: 'alpha-dom0' }],
       principals: [{ principalId: 'p1', scope: 'TENANT', tenantId: 't1', domainId: null, loginName: 'l1', roleCode: 'tenant_admin' }],
-      sessions: [{ sessionId: 's1', principalId: 'adm', familyId: 'f1' }],
-      objects: [{ objectId: 'o1', tenantId: 't1', domainId: 'd1', correlation: 'c1' }],
-      outbox: [{ eventId: 'e1', correlation: 'c1', eventType: 'x' }],
-      decisions: ['11111111-1111-4111-8111-111111111111'],
-      correlations: ['22222222-2222-4222-8222-222222222222'],
+      sessions: [{ sessionId: 's1', principalId: 'adm', familyId: 'f1', correlation: CORR_SESSION }],
+      objects: [{ objectId: 'o1', tenantId: 't1', domainId: 'd1', correlation: CORR_OBJECT }],
+      outbox: [{ eventId: 'e1', correlation: CORR_TENANT, eventType: 'x' }],
+      decisions: [DECISION],
+      correlations: [CORR_TENANT, CORR_OBJECT, CORR_SESSION],
+      steps: SEED_STEP_PLAN.map((st: { step: string; ports: string[] }) => ({ step: st.step, ports: [...st.ports], ids: [] })),
       post_upgrade_operation: { correlation: 'pc', decisionId: 'pd', action: 'objects.create', target: 'outbox:pe', tenantId: 't1', domainId: 'd1', principalId: 'adm', sessionId: 'ps', eventId: 'pe', effectRef: 'pe', effectKinds: ['outbox'] },
     };
     const before = {
@@ -342,16 +352,17 @@ describe('C18.1.2 — the seed record is a closed schema bound bidirectionally',
         'tenancy.domains': { rows: [{ id: 'd1', tenant_id: 't1', name: 'alpha-dom0' }] },
         'identity.principals': { rows: [{ id: 'adm', scope: 'PLATFORM', tenant_id: null, domain_id: null, login_name: 'platform-admin', display_name: 'platform-admin' }, { id: 'p1', scope: 'TENANT', tenant_id: 't1', domain_id: null, login_name: 'l1', display_name: 'l1' }] },
         'identity.role_bindings': { rows: [{ principal_id: 'adm', role_code: 'platform_admin', revoked_at: null }, { principal_id: 'p1', role_code: 'tenant_admin', revoked_at: null }] },
-        'identity.sessions': { rows: [{ id: 's1', principal_id: 'adm' }] },
-        'objects.canonical_objects': { rows: [{ object_id: 'o1', tenant_id: 't1', domain_id: 'd1' }] },
-        'objects.object_outbox': { rows: [{ id: 'e1', correlation_id: 'c1', event_type: 'x' }] },
-        'policy.policy_decisions': { rows: [{ id: '11111111-1111-4111-8111-111111111111', correlation_id: '22222222-2222-4222-8222-222222222222' }] },
+        'identity.sessions': { rows: [{ id: 's1', principal_id: 'adm', family_id: 'f1' }] },
+        'identity.refresh_tokens': { rows: [{ id: 'rt1', session_id: 's1', family_id: 'f1' }] },
+        'objects.canonical_objects': { rows: [{ object_id: 'o1', tenant_id: 't1', domain_id: 'd1', audit_correlation_id: CORR_OBJECT }] },
+        'objects.object_outbox': { rows: [{ id: 'e1', correlation_id: CORR_TENANT, event_type: 'x' }] },
+        'policy.policy_decisions': { rows: [{ id: DECISION, correlation_id: CORR_TENANT }] },
       },
-      audit: { events: [{ partition_id: 'platform', audit_seq: 1, correlation_id: '22222222-2222-4222-8222-222222222222' }] },
+      audit: { events: [{ partition_id: 'platform', audit_seq: 1, correlation_id: CORR_TENANT }, { partition_id: 'platform', audit_seq: 2, correlation_id: CORR_OBJECT }] },
     };
     const finalSnap = {
       tables: {
-        'identity.sessions': { rows: [...before.tables['identity.sessions'].rows, { id: 'ps', principal_id: 'adm' }] },
+        'identity.sessions': { rows: [...before.tables['identity.sessions'].rows, { id: 'ps', principal_id: 'adm', family_id: 'f2' }] },
         'identity.principals': { rows: before.tables['identity.principals'].rows },
         'policy.policy_decisions': { rows: [...before.tables['policy.policy_decisions'].rows, { id: 'pd' }] },
         'objects.object_outbox': { rows: [...before.tables['objects.object_outbox'].rows, { id: 'pe' }] },
@@ -375,8 +386,14 @@ describe('C18.1.2 — the seed record is a closed schema bound bidirectionally',
     ['an open (extra-field) seed record', (w: any) => { w.seedRecord.attacker = true; }, /not the exact closed schema/],
     ['a broken domain->tenant relationship', (w: any) => { w.seedRecord.domains[0].tenantId = 'other'; }, /tenant relationship differs|unrecorded tenant/],
     ['a session bound to the wrong principal', (w: any) => { w.before.tables['identity.sessions'].rows[0].principal_id = 'p1'; }, /session s1 principal relationship differs/],
-    ['a missing role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.pop(); }, /has no live 'tenant_admin' role binding/],
-    ['an unrecorded audit correlation', (w: any) => { w.before.audit.events.push({ partition_id: 'platform', audit_seq: 2, correlation_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }); }, /unrecorded correlation/],
+    ['a missing role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.pop(); }, /has no live 'tenant_admin' role binding|requires live role binding/],
+    ['an ADDITIONAL live role binding', (w: any) => { w.before.tables['identity.role_bindings'].rows.push({ principal_id: 'p1', role_code: 'platform_admin', revoked_at: null }); }, /carries live role binding p1\|platform_admin, which the seed record does not account for/],
+    ['a forged session family', (w: any) => { w.before.tables['identity.sessions'].rows[0].family_id = 'other'; }, /familyId .* differs from the snapshot family/],
+    ['a refresh token in a foreign family', (w: any) => { w.before.tables['identity.refresh_tokens'].rows[0].family_id = 'other'; }, /carries family other, not the recorded/],
+    ['a forged object correlation', (w: any) => { w.seedRecord.objects[0].correlation = w.seedRecord.correlations[0]; }, /differs from the canonical object's audit correlation/],
+    ['an extra unused correlation', (w: any) => { w.seedRecord.correlations.push('55555555-5555-4555-8555-555555555555'); }, /appears NOWHERE in the seeded world and belongs to no recorded session/],
+    ['a session correlation missing from the set', (w: any) => { w.seedRecord.correlations = w.seedRecord.correlations.filter((c: string) => c !== w.seedRecord.sessions[0].correlation); }, /which the recorded correlation set omits/],
+    ['an unrecorded audit correlation', (w: any) => { w.before.audit.events.push({ partition_id: 'platform', audit_seq: 3, correlation_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }); }, /which the seed record does not account for/],
     ['a FORGED post-upgrade eventId in the record', (w: any) => { w.seedRecord.post_upgrade_operation.eventId = 'zz'; w.manifest.post_upgrade_operation.eventId = 'zz'; }, /final-outbox event zz is not in the snapshot|final-outbox event pe is not accounted for/],
     ['a divergent manifest operation record', (w: any) => { w.manifest.post_upgrade_operation.eventId = 'zz'; }, /differs from the manifest/],
     ['a post-upgrade principal that is not the admin', (w: any) => { w.seedRecord.post_upgrade_operation.principalId = 'p1'; w.manifest.post_upgrade_operation.principalId = 'p1'; }, /not the seeded admin/],
@@ -417,6 +434,166 @@ describe('C18.1.2 — audit table rows cross-check against the audit view', () =
     const s = mk();
     mutate(s);
     expect(crossCheckAuditTable(s as never, 'x').join('\n')).toMatch(pattern);
+  });
+});
+
+describe('C18.1.3 — the query plan is source-owned and exact', () => {
+  it('every authoritative query is a pure function of source, with no attacker-supplied text', () => {
+    const meta = [
+      { table: 'tenancy.tenants', pk: ['id'], columns: ['id', 'name'] },
+      { table: 'ctx.context_secret', pk: ['id'], columns: ['id', 'secret'] },
+    ];
+    const fk = [{ constraint: 'a.b.c', from: 'a.b', to: 'a.d', cols: ['x'] }];
+    const plan = snapshotQueryPlan({ prefix: 'a-a-before', tablesMeta: meta, fkMeta: fk });
+    // 1 meta + 2 row queries + 1 fk-meta + 1 fk pairs + 15 posture + ledger + 2 audit = 23.
+    expect(plan).toHaveLength(1 + meta.length + 1 + fk.length + POSTURE_CATEGORIES.length + 3);
+    expect(plan.map((s: { label: string }) => s.label)).toContain('a-a-before-rows-tenancy_tenants');
+    // Determinism: the same inputs produce byte-identical SQL every time.
+    const again = snapshotQueryPlan({ prefix: 'a-a-before', tablesMeta: meta, fkMeta: fk });
+    expect(JSON.stringify(again)).toBe(JSON.stringify(plan));
+    // The secret-valued column is digest-substituted IN THE PROJECTION, never selected raw.
+    const secretRows = plan.find((s: { label: string }) => s.label === 'a-a-before-rows-ctx_context_secret')!;
+    expect(secretRows.sql).toContain("encode(sha256(convert_to('c18-secret-v1:ctx.context_secret.secret:'");
+    expect(tableRowsSql('tenancy.tenants', ['id'], ['id'])).not.toContain('c18-secret-v1');
+    // Every posture category has exactly one source-owned query, and they are all distinct.
+    const postures = POSTURE_CATEGORIES.map((c: string) => postureSql(c));
+    expect(new Set(postures).size).toBe(POSTURE_CATEGORIES.length);
+    expect(() => postureSql('attacker_category')).toThrow(/no source-owned posture query/);
+  });
+
+  it('the graph rejects a substituted query even when its output is genuine', () => {
+    const iso = (tag: 'a' | 'b') => ({
+      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      container_id: 'c'.repeat(12), container_name: `c18-${tag}-01234567-pg`,
+      redis_container_id: 'd'.repeat(12), redis_container: `c18-${tag}-01234567-redis`,
+      database: `eye_${tag}_01234567`, port: 5001, redis_port: 6001,
+      postgres_image: 'p', redis_image: 'r',
+      credential_digests: Object.fromEntries(SECRET_CLASSES.map((k: string) => [k, sha256(`${tag}:${k}`)])),
+    });
+    const r = verifyCommandGraph({
+      commands: [], receiptA: iso('a') as never, receiptB: iso('b') as never,
+      images: { postgres: 'p', redis: 'r' }, rawText: () => null,
+    });
+    expect(r.join('\n')).toMatch(/expected 'a-pg-run' at position 1 but the ledger ended/);
+  });
+});
+
+describe('C18.1.3 — exact secret-class placeholders', () => {
+  const receipt = {
+    path: 'path-a-upgraded',
+    credential_digests: Object.fromEntries(SECRET_CLASSES.map((k: string) => [k, sha256(k)])),
+  };
+  it('the exact placeholder is per path AND per class, and the JWT composition is bound', () => {
+    expect(placeholder('a', 'EYE_DB_PASSWORD')).toBe('<REDACTED:a:EYE_DB_PASSWORD>');
+    expect(jwtPlaceholder('b')).toBe('<REDACTED:b:EYE_TEST_ADMIN_PASSWORD><REDACTED:b:EYE_TEST_BOOTSTRAP_PASSWORD>');
+    const env = expectedInstanceEnv('a', { port: 5001, redis_port: 6001, database: 'eye_a_01234567' } as never);
+    expect(env.EYE_DB_MIGRATE_PASSWORD).toBe('<REDACTED:a:EYE_DB_PASSWORD>');
+    expect(env.EYE_IDENTITY_JWT_SECRET).toBe(jwtPlaceholder('a'));
+    for (const k of SECRET_CLASSES) expect(env[k]).toBe(placeholder('a', k));
+  });
+  it.each([
+    ['a bare prefix match', '<REDACTED:whatever', /not an exact <REDACTED:path:CLASS> placeholder/],
+    ['a wrong-path placeholder', '<REDACTED:b:EYE_DB_PASSWORD>', /carries path 'b' credential material/],
+    ['an unknown class', '<REDACTED:a:WRONG_CLASS>', /has no credential-digest entry/],
+    ['a raw secret', 'deadbeefdeadbeefdeadbeef', /not an exact <REDACTED:path:CLASS> placeholder/],
+  ])('rejects %s', (_l, value, pattern) => {
+    expect(checkPlaceholder(value, 'a', receipt as never, 'test').join('\n')).toMatch(pattern);
+  });
+  it('accepts the exact placeholder for this path and class', () => {
+    expect(checkPlaceholder('<REDACTED:a:EYE_REDIS_PASSWORD>', 'a', receipt as never, 'test')).toEqual([]);
+  });
+});
+
+describe('C18.1.3 — migration executions, seeding steps and executed cleanup', () => {
+  const tracked = () => {
+    const { files } = orderedMigrations(readdirSync(MIGRATIONS)) as { files: string[] };
+    const m = new Map(files.map((f) => [f, sha256(readFileSync(join(MIGRATIONS, f)))]));
+    m.set('__runner__', sha256(readFileSync(join(REPO, 'apps', 'api', 'scripts', 'migrate.mjs'))));
+    return m;
+  };
+  const exec = (over: Record<string, unknown> = {}) => {
+    const t = tracked();
+    return {
+      command_id: '001-a-migrate-historical', label: 'a-migrate-historical', path: 'path-a-upgraded',
+      workspace: '/tmp/c18-a-Ab12Cd', runner_path: '/tmp/c18-a-Ab12Cd/scripts/migrate.mjs',
+      runner_sha256: t.get('__runner__'), ceiling: HISTORICAL_LAST,
+      migrations: [...t.entries()].filter(([f]) => /^\d{4}_/.test(f) && f.slice(0, 4) <= HISTORICAL_LAST)
+        .sort(([a], [b]) => (a < b ? -1 : 1)).map(([filename, digest]) => ({ filename, digest })),
+      ...over,
+    };
+  };
+  it.each([
+    ['an attacker path', { workspace: '/attacker', runner_path: '/attacker/scripts/migrate.mjs' }, /not a governed workspace path/],
+    ['a traversal workspace', { workspace: '/tmp/../etc/c18-a-Ab12Cd', runner_path: '/tmp/../etc/c18-a-Ab12Cd/scripts/migrate.mjs' }, /not a governed workspace path/],
+    ['a runner outside its workspace', { runner_path: '/tmp/other/scripts/migrate.mjs' }, /is not the governed workspace runner/],
+    ['substituted runner bytes', { runner_sha256: sha256('evil') }, /not the tracked apps\/api\/scripts\/migrate\.mjs/],
+    ['a truncated migration set', { migrations: [] }, /workspace migration set is not exactly the tracked/],
+    ['the wrong ceiling', { ceiling: LATEST_LAST }, /ceiling is|migration set is not exactly/],
+  ])('rejects %s', (_l, over, pattern) => {
+    const problems = verifyMigrationExecutions({
+      executions: [exec(over), exec({ label: 'a-migrate-upgrade' }), exec({ label: 'b-migrate-latest' })],
+      commands: [], trackedDigests: tracked(), repoRoot: REPO,
+    });
+    expect(problems.join('\n')).toMatch(pattern);
+  });
+  it('rejects a workspace inside the repository', () => {
+    const inside = join(REPO, 'c18-a-Ab12Cd');
+    const problems = verifyMigrationExecutions({
+      executions: [exec({ workspace: inside, runner_path: `${inside}/scripts/migrate.mjs` })],
+      commands: [], trackedDigests: tracked(), repoRoot: REPO,
+    });
+    expect(problems.join('\n')).toMatch(/resolves INSIDE the repository/);
+  });
+
+  it('the governed seeding plan is exact, ordered and sanitized', () => {
+    const seedRecord = {
+      admin: { principalId: 'p-admin' }, tenants: [], domains: [], principals: [],
+      sessions: [], objects: [], outbox: [],
+    };
+    const good = SEED_STEP_PLAN.map((s: { step: string; ports: string[] }) => ({ step: s.step, ports: [...s.ports], ids: [] }));
+    expect(verifySeedSteps({ steps: good, seedRecord: seedRecord as never })).toEqual([]);
+    const reordered = structuredClone(good);
+    [reordered[0], reordered[1]] = [reordered[1]!, reordered[0]!];
+    expect(verifySeedSteps({ steps: reordered, seedRecord: seedRecord as never }).join('\n')).toMatch(/the plan requires/);
+    const extraPort = structuredClone(good);
+    extraPort[0]!.ports.push('attacker.port');
+    expect(verifySeedSteps({ steps: extraPort, seedRecord: seedRecord as never }).join('\n')).toMatch(/are not the source-owned era ports/);
+    const leaky = structuredClone(good);
+    leaky[0]!.ids = ['deadbeefdeadbeefdeadbeefdeadbeef'];
+    expect(verifySeedSteps({ steps: leaky, seedRecord: seedRecord as never }).join('\n')).toMatch(/not a sanitized identity/);
+    const unknown = structuredClone(good);
+    unknown[0]!.ids = ['p-ghost'];
+    expect(verifySeedSteps({ steps: unknown, seedRecord: seedRecord as never }).join('\n')).toMatch(/does not account for/);
+  });
+
+  it('cleanup must be proven by EXECUTION, not asserted', () => {
+    const names = ['c18-a-01234567-pg', 'c18-a-01234567-redis', 'c18-b-01234567-pg', 'c18-b-01234567-redis'];
+    const commands = [
+      ...names.map((n, i) => ({ id: `rm-${i}`, label: `cleanup-rm-${n}`, argv: ['docker', 'rm', '-fv', n], exit: 0, signal: null })),
+      ...names.map((n, i) => ({ id: `in-${i}`, label: `cleanup-inspect-${n}`, argv: ['docker', 'inspect', n], exit: 1, signal: null })),
+    ];
+    const cleanup = {
+      removed: names, failures: [], kept: [],
+      removals: names.map((n, i) => ({ container: n, command_id: `rm-${i}`, exit: 0 })),
+      inspections: names.map((n, i) => ({ container: n, command_id: `in-${i}`, exit: 1 })),
+    };
+    const receiptA = { container_name: names[0], redis_container: names[1] };
+    const receiptB = { container_name: names[2], redis_container: names[3] };
+    expect(verifyCleanupReceipt({ cleanup, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never })).toEqual([]);
+    // The 15e8239 shape — an assertion with no execution evidence — is refused outright.
+    const asserted = { removed: names, failures: [], kept: [] };
+    expect(verifyCleanupReceipt({ cleanup: asserted as never, commands: commands as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
+      .toMatch(/removal and inspection evidence is required/);
+    const stillExists = structuredClone(cleanup);
+    const cmds2 = structuredClone(commands);
+    cmds2[4]!.exit = 0; stillExists.inspections[0]!.exit = 0;
+    expect(verifyCleanupReceipt({ cleanup: stillExists, commands: cmds2 as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
+      .toMatch(/SUCCEEDED — the container still exists/);
+    const failedRm = structuredClone(cleanup);
+    const cmds3 = structuredClone(commands);
+    cmds3[0]!.exit = 1; failedRm.removals[0]!.exit = 1;
+    expect(verifyCleanupReceipt({ cleanup: failedRm, commands: cmds3 as never, receiptA: receiptA as never, receiptB: receiptB as never }).join('\n'))
+      .toMatch(/checked removal of .* recorded exit 1/);
   });
 });
 

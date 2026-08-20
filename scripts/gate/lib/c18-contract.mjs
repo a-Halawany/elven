@@ -51,6 +51,53 @@ export const SECRET_CLASSES = Object.freeze([
  * pre/post equality is still provable. */
 export const secretDigest = (cls, value) => sha256(`c18-secret-v1:${cls}:${value}`);
 
+/**
+ * C18.1.3 — the EXACT redaction placeholder for one path and one secret class. The 15e8239
+ * verifier accepted ANY string beginning with `<REDACTED:`, so a Path-A command could carry a
+ * Path-B credential, a Redis password could stand in for the database password, and
+ * `<REDACTED:attacker:WRONG_CLASS>` passed. Placeholders are now exact, per path AND per class.
+ */
+export const PLACEHOLDER_RE = /^<REDACTED:([ab]):([A-Z0-9_]+)>$/;
+export const placeholder = (letter, cls) => `<REDACTED:${letter}:${cls}>`;
+
+/** The JWT secret is the admin secret concatenated with the bootstrap secret; redaction leaves
+ * both placeholders in that exact order, which is itself a composition proof. */
+export const jwtPlaceholder = (letter) => placeholder(letter, 'EYE_TEST_ADMIN_PASSWORD')
+  + placeholder(letter, 'EYE_TEST_BOOTSTRAP_PASSWORD');
+
+/**
+ * The EXACT environment one instance's commands may carry: plain connection facts bound to that
+ * path's isolation receipt, and one exact placeholder per secret class. Used by BOTH the command
+ * graph and the suite-receipt binding, so a suite cannot claim one path while running on another.
+ */
+export function expectedInstanceEnv(letter, receipt, extra = {}) {
+  return {
+    EYE_DB_HOST: '127.0.0.1',
+    EYE_DB_PORT: String(receipt.port),
+    EYE_DB_NAME: receipt.database,
+    EYE_DB_MIGRATE_PASSWORD: placeholder(letter, 'EYE_DB_PASSWORD'),
+    EYE_REDIS_HOST: '127.0.0.1',
+    EYE_REDIS_PORT: String(receipt.redis_port),
+    EYE_IDENTITY_JWT_SECRET: jwtPlaceholder(letter),
+    ...Object.fromEntries(SECRET_CLASSES.map((k) => [k, placeholder(letter, k)])),
+    ...extra,
+  };
+}
+
+/**
+ * Every placeholder in a command must name the RIGHT path and a class that actually exists as a
+ * typed credential-digest entry in that path's isolation receipt.
+ */
+export function checkPlaceholder(value, letter, receipt, where) {
+  const m = PLACEHOLDER_RE.exec(String(value ?? ''));
+  if (m === null) return [`${where} is not an exact <REDACTED:path:CLASS> placeholder`];
+  if (m[1] !== letter) return [`${where} carries path '${m[1]}' credential material in a path-'${letter}' command`];
+  if (!Object.prototype.hasOwnProperty.call(receipt?.credential_digests ?? {}, m[2])) {
+    return [`${where} names secret class '${m[2]}', which has no credential-digest entry in the ${receipt?.path} isolation receipt`];
+  }
+  return [];
+}
+
 /** Snapshot columns whose RAW value is a secret and must be digest-substituted. */
 export const SNAPSHOT_SECRET_COLUMNS = Object.freeze({
   'ctx.context_secret': Object.freeze(['secret']),
@@ -590,16 +637,214 @@ export function verifyOperationClosure({ snapshot, expected, spec = POST_UPGRADE
   return problems;
 }
 
+// ── MIGRATION EXECUTION AUTHENTICATION (C18.1.3 §B) ───────────────────────────
+/**
+ * The 15e8239 graph checked only that a migration command's argv ended in `/scripts/migrate.mjs`,
+ * so `/attacker/scripts/migrate.mjs` passed. A migration execution is now a closed typed receipt
+ * binding the governed workspace, the EXECUTED runner's bytes, the exact ordered migration set
+ * present in that workspace, and the intended ceiling.
+ */
+export const MIGRATION_EXECUTION_FIELDS = Object.freeze([
+  'command_id', 'label', 'path', 'workspace', 'runner_path', 'runner_sha256', 'ceiling', 'migrations',
+]);
+/** A governed workspace: an absolute path OUTSIDE the repository whose final component is the
+ * mkdtemp name the producer creates, with no traversal and no symlink games. */
+export const WORKSPACE_BASENAME_RE = /^c18-[ab]-[A-Za-z0-9]{6}$/;
+
+export function verifyMigrationExecutions({ executions, commands, trackedDigests, repoRoot }) {
+  const problems = [];
+  if (!Array.isArray(executions)) return ['manifest migration_executions is not an array'];
+  const expected = [
+    { label: 'a-migrate-historical', path: 'path-a-upgraded', letter: 'a', ceiling: HISTORICAL_LAST },
+    { label: 'a-migrate-upgrade', path: 'path-a-upgraded', letter: 'a', ceiling: LATEST_LAST },
+    { label: 'b-migrate-latest', path: 'path-b-virgin', letter: 'b', ceiling: LATEST_LAST },
+  ];
+  if (executions.length !== expected.length) {
+    problems.push(`manifest records ${executions.length} migration executions; exactly ${expected.length} are governed`);
+  }
+  const runnerDigest = trackedDigests.get('__runner__');
+  expected.forEach((want, i) => {
+    const e = executions[i];
+    if (e === undefined) { problems.push(`migration execution '${want.label}' is MISSING`); return; }
+    if (JSON.stringify(Object.keys(e).sort()) !== JSON.stringify([...MIGRATION_EXECUTION_FIELDS].sort())) {
+      problems.push(`migration execution ${i + 1} fields are not the exact closed receipt set`);
+      return;
+    }
+    if (e.label !== want.label) problems.push(`migration execution ${i + 1} is '${e.label}', expected '${want.label}'`);
+    if (e.path !== want.path) problems.push(`migration execution '${e.label}' claims path ${JSON.stringify(e.path)}`);
+    if (e.ceiling !== want.ceiling) problems.push(`migration execution '${e.label}' ceiling is ${JSON.stringify(e.ceiling)}, expected ${want.ceiling}`);
+    // GOVERNED WORKSPACE GRAMMAR — absolute, no traversal, outside the repo, mkdtemp-shaped.
+    const ws = e.workspace;
+    const parts = typeof ws === 'string' ? ws.split('/') : [];
+    if (typeof ws !== 'string' || !ws.startsWith('/') || parts.includes('..') || parts.includes('.')
+      || !WORKSPACE_BASENAME_RE.test(parts[parts.length - 1] ?? '')) {
+      problems.push(`migration execution '${e.label}' workspace ${JSON.stringify(ws)} is not a governed workspace path`);
+    } else if (typeof repoRoot === 'string' && (ws === repoRoot || ws.startsWith(`${repoRoot}/`))) {
+      problems.push(`migration execution '${e.label}' workspace resolves INSIDE the repository`);
+    }
+    if (e.runner_path !== `${ws}/scripts/migrate.mjs`) {
+      problems.push(`migration execution '${e.label}' runner ${JSON.stringify(e.runner_path)} is not the governed workspace runner`);
+    }
+    // The EXECUTED runner's bytes must be the tracked source runner's bytes.
+    if (runnerDigest !== undefined && e.runner_sha256 !== runnerDigest) {
+      problems.push(`migration execution '${e.label}' ran a runner whose bytes are not the tracked apps/api/scripts/migrate.mjs`);
+    }
+    // The EXACT ordered migration set available in that workspace, at that ceiling.
+    const wantFiles = [...trackedDigests.entries()]
+      .filter(([f]) => /^\d{4}_/.test(f) && f.slice(0, 4) <= e.ceiling)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([filename, digest]) => ({ filename, digest }));
+    if (JSON.stringify(e.migrations) !== JSON.stringify(wantFiles)) {
+      problems.push(`migration execution '${e.label}' workspace migration set is not exactly the tracked 0001–${e.ceiling} set in order`);
+    }
+    const cmd = Array.isArray(commands) ? commands.find((c) => c.id === e.command_id) : undefined;
+    if (cmd === undefined) problems.push(`migration execution '${e.label}' names command id '${e.command_id}' which does not exist`);
+    else {
+      if (cmd.label !== e.label) problems.push(`migration execution '${e.label}' is bound to command '${cmd.label}'`);
+      if (JSON.stringify(cmd.argv) !== JSON.stringify(['node', e.runner_path])) {
+        problems.push(`migration execution '${e.label}' command argv is not exactly ['node', <governed runner>]`);
+      }
+      if (cmd.exit !== 0 || (cmd.signal ?? null) !== null) {
+        problems.push(`migration execution '${e.label}' command recorded exit ${cmd.exit} signal ${cmd.signal}`);
+      }
+    }
+  });
+  return problems;
+}
+
+// ── GOVERNED SEEDING STEP RECEIPTS (C18.1.3 §F) ───────────────────────────────
+/**
+ * The governed 0012-era seed, as a source-owned ordered plan of steps and the era ports each one
+ * is allowed to use. The producer emits one sanitized receipt per step — names, ports, counts and
+ * resulting identities only, never a credential or a hash of one.
+ */
+export const SEED_STEP_PLAN = Object.freeze([
+  Object.freeze({ step: 'bootstrap', ports: Object.freeze(['ctx.issue_bootstrap', 'identity.claim_bootstrap', 'identity.create_principal', 'identity.bootstrap_mark_one_time', 'identity.record_bootstrap_principal', 'audit.commit_identity_event']) }),
+  Object.freeze({ step: 'credential-rotation', ports: Object.freeze(['identity.credential_get_active', 'ctx.issue_identity_op', 'identity.credential_rotate_v2', 'audit.commit_identity_event']) }),
+  Object.freeze({ step: 'admin-session', ports: Object.freeze(['ctx.issue_identity_op', 'identity.session_open']) }),
+  Object.freeze({ step: 'tenants-domains', ports: Object.freeze(['ctx.issue_commit', 'tenancy.create_tenant', 'tenancy.create_domain', 'policy.commit_decision', 'audit.commit_event']) }),
+  Object.freeze({ step: 'principals', ports: Object.freeze(['ctx.issue_commit', 'identity.create_principal', 'policy.commit_decision', 'audit.commit_event']) }),
+  Object.freeze({ step: 'tenant-session', ports: Object.freeze(['ctx.issue_identity_op', 'identity.session_open']) }),
+  Object.freeze({ step: 'canonical-objects', ports: Object.freeze(['ctx.issue_commit', 'objects.admit_version', 'policy.commit_decision', 'audit.commit_event']) }),
+  Object.freeze({ step: 'outbox-enqueue', ports: Object.freeze(['ctx.issue_commit', 'objects.enqueue_event', 'policy.commit_decision', 'audit.commit_event']) }),
+  Object.freeze({ step: 'outbox-publish', ports: Object.freeze(['ctx.issue_publish', 'objects.outbox_lease', 'objects.outbox_ack_leased']) }),
+]);
+const SEED_STEP_FIELDS = Object.freeze(['step', 'ports', 'ids']);
+const SECRET_SHAPE_RE = /[0-9a-f]{24,}/i;
+
+/** Steps must be the exact plan, in order, with the exact era ports — and every identity a step
+ * reports must be one the closed seed record already accounts for. */
+export function verifySeedSteps({ steps, seedRecord }) {
+  const problems = [];
+  if (!Array.isArray(steps)) return ['seed record steps is not an array'];
+  if (steps.length !== SEED_STEP_PLAN.length) {
+    problems.push(`seed record has ${steps.length} governed step receipts; the source-owned plan has ${SEED_STEP_PLAN.length}`);
+  }
+  const known = new Set([
+    seedRecord?.admin?.principalId,
+    ...(seedRecord?.tenants ?? []).map((t) => t.tenantId),
+    ...(seedRecord?.domains ?? []).map((d) => d.domainId),
+    ...(seedRecord?.principals ?? []).map((p) => p.principalId),
+    ...(seedRecord?.sessions ?? []).map((s) => s.sessionId),
+    ...(seedRecord?.objects ?? []).map((o) => o.objectId),
+    ...(seedRecord?.outbox ?? []).map((o) => o.eventId),
+  ].filter(Boolean));
+  SEED_STEP_PLAN.forEach((want, i) => {
+    const got = steps[i];
+    if (got === undefined) { problems.push(`governed seed step '${want.step}' is MISSING`); return; }
+    if (JSON.stringify(Object.keys(got).sort()) !== JSON.stringify([...SEED_STEP_FIELDS].sort())) {
+      problems.push(`governed seed step ${i + 1} fields are not the exact closed receipt set`);
+      return;
+    }
+    if (got.step !== want.step) problems.push(`governed seed step ${i + 1} is '${got.step}', the plan requires '${want.step}'`);
+    if (JSON.stringify(got.ports) !== JSON.stringify([...want.ports])) {
+      problems.push(`governed seed step '${want.step}' ports ${JSON.stringify(got.ports)} are not the source-owned era ports`);
+    }
+    if (!Array.isArray(got.ids)) { problems.push(`governed seed step '${want.step}' ids is not an array`); return; }
+    for (const id of got.ids) {
+      if (typeof id !== 'string' || SECRET_SHAPE_RE.test(id)) {
+        problems.push(`governed seed step '${want.step}' reports a value that is not a sanitized identity`);
+      } else if (!known.has(id)) {
+        problems.push(`governed seed step '${want.step}' reports identity ${id}, which the closed seed record does not account for`);
+      }
+    }
+  });
+  return problems;
+}
+
+// ── CHECKED CLEANUP, AUTHENTICATED BY EXECUTION (C18.1.3 §F) ──────────────────
+/**
+ * 15e8239 recorded cleanup as an ASSERTION: `removed`/`failures`/`kept` with nothing proving a
+ * `docker rm -fv` ever ran. Cleanup is now executed THROUGH the evidence recorder, so each
+ * removal and each post-removal absence check is a command with bound streams, and the receipt
+ * must agree with those commands.
+ */
+export const CLEANUP_RECEIPT_FIELDS = Object.freeze(['removed', 'failures', 'kept', 'removals', 'inspections']);
+const CLEANUP_STEP_FIELDS = Object.freeze(['container', 'command_id', 'exit']);
+
+export function verifyCleanupReceipt({ cleanup, commands, receiptA, receiptB }) {
+  const problems = [];
+  if (cleanup === null || typeof cleanup !== 'object' || Array.isArray(cleanup)) return ['manifest cleanup is not an object'];
+  if (JSON.stringify(Object.keys(cleanup).sort()) !== JSON.stringify([...CLEANUP_RECEIPT_FIELDS].sort())) {
+    return ['manifest cleanup fields are not the exact closed receipt set (removal and inspection evidence is required)'];
+  }
+  const wanted = [
+    receiptA?.container_name, receiptA?.redis_container,
+    receiptB?.container_name, receiptB?.redis_container,
+  ];
+  if (wanted.some((n) => typeof n !== 'string')) return ['cleanup cannot be authenticated: the isolation receipts name no containers'];
+  if (JSON.stringify(cleanup.removed) !== JSON.stringify(wanted)) {
+    problems.push('manifest cleanup.removed is not exactly the four source-derived isolation container names');
+  }
+  if (JSON.stringify(cleanup.failures) !== '[]') problems.push('manifest cleanup records removal failures');
+  if (JSON.stringify(cleanup.kept) !== '[]') problems.push('manifest cleanup records kept containers');
+  const find = (id) => (Array.isArray(commands) ? commands.find((c) => c.id === id) : undefined);
+  const walkPhase = (phase, expectExit) => {
+    const rows = cleanup[phase];
+    if (!Array.isArray(rows) || rows.length !== wanted.length) {
+      problems.push(`manifest cleanup.${phase} does not carry one receipt per source-derived container`);
+      return;
+    }
+    rows.forEach((row, i) => {
+      const container = wanted[i];
+      if (JSON.stringify(Object.keys(row ?? {}).sort()) !== JSON.stringify([...CLEANUP_STEP_FIELDS].sort())) {
+        problems.push(`cleanup ${phase} receipt ${i + 1} fields are not the exact closed set`);
+        return;
+      }
+      if (row.container !== container) {
+        problems.push(`cleanup ${phase} receipt ${i + 1} names '${row.container}', expected '${container}'`);
+      }
+      const cmd = find(row.command_id);
+      if (cmd === undefined) { problems.push(`cleanup ${phase} receipt for '${container}' names a command id that does not exist`); return; }
+      const wantArgv = phase === 'removals' ? ['docker', 'rm', '-fv', container] : ['docker', 'inspect', container];
+      if (JSON.stringify(cmd.argv) !== JSON.stringify(wantArgv)) {
+        problems.push(`cleanup ${phase} command for '${container}' argv ${JSON.stringify(cmd.argv)} is not the checked ${wantArgv.slice(0, 3).join(' ')} execution`);
+      }
+      if (cmd.exit !== row.exit) problems.push(`cleanup ${phase} receipt for '${container}' exit disagrees with its command ledger record`);
+      if (expectExit === 'zero' && cmd.exit !== 0) {
+        problems.push(`checked removal of '${container}' recorded exit ${cmd.exit}`);
+      }
+      if (expectExit === 'nonzero' && (cmd.exit === 0 || cmd.exit === null)) {
+        problems.push(`post-removal inspection of '${container}' SUCCEEDED — the container still exists`);
+      }
+      if ((cmd.signal ?? null) !== null) problems.push(`cleanup ${phase} command for '${container}' was signalled`);
+    });
+  };
+  walkPhase('removals', 'zero');
+  walkPhase('inspections', 'nonzero');
+  return problems;
+}
+
 // ── THE CLOSED SEED RECORD ────────────────────────────────────────────────────
 export const SEED_RECORD_FIELDS = Object.freeze([
   'admin', 'tenants', 'domains', 'principals', 'sessions', 'objects', 'outbox',
-  'decisions', 'correlations', 'post_upgrade_operation',
+  'decisions', 'correlations', 'steps', 'post_upgrade_operation',
 ]);
 const SEED_ENTRY_FIELDS = Object.freeze({
   tenants: ['tenantId', 'name'],
   domains: ['domainId', 'tenantId', 'name'],
   principals: ['principalId', 'scope', 'tenantId', 'domainId', 'loginName', 'roleCode'],
-  sessions: ['sessionId', 'principalId', 'familyId'],
+  sessions: ['sessionId', 'principalId', 'familyId', 'correlation'],
   objects: ['objectId', 'tenantId', 'domainId', 'correlation'],
   outbox: ['eventId', 'correlation', 'eventType'],
 });
@@ -708,18 +953,39 @@ export function verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest
   // Sessions, objects, outbox, decisions — exact sets with exact relationships.
   const sessionRows = rowsOf(before, 'identity.sessions');
   bindSet('session', seedRecord.sessions.map((s) => s.sessionId), sessionRows.map((r) => r.id));
+  const refreshRows = rowsOf(before, 'identity.refresh_tokens');
   for (const s of seedRecord.sessions) {
     const row = rowBy(sessionRows, s.sessionId);
-    if (row !== undefined && row.principal_id !== s.principalId) {
+    if (row === undefined) continue;
+    if (row.principal_id !== s.principalId) {
       problems.push(`seed record session ${s.sessionId} principal relationship differs from the snapshot`);
+    }
+    // C18.1.3 — the recorded refresh-token FAMILY is a real relationship, not decoration.
+    if (row.family_id !== s.familyId) {
+      problems.push(`seed record session ${s.sessionId} familyId ${JSON.stringify(s.familyId)} differs from the snapshot family ${JSON.stringify(row.family_id)}`);
+    }
+    for (const rt of refreshRows.filter((r) => r.session_id === s.sessionId)) {
+      if (rt.family_id !== s.familyId) {
+        problems.push(`refresh token ${rt.id} of session ${s.sessionId} carries family ${rt.family_id}, not the recorded ${s.familyId}`);
+      }
     }
   }
   const objectRows = rowsOf(before, 'objects.canonical_objects');
   bindSet('object', seedRecord.objects.map((o) => o.objectId), objectRows.map((r) => r.object_id));
+  const auditCorrelations = new Set(before.audit.events.map((e) => e.correlation_id).filter(Boolean));
   for (const o of seedRecord.objects) {
     const row = objectRows.find((r) => r.object_id === o.objectId);
-    if (row !== undefined && (row.tenant_id !== o.tenantId || row.domain_id !== o.domainId)) {
+    if (row === undefined) continue;
+    if (row.tenant_id !== o.tenantId || row.domain_id !== o.domainId) {
       problems.push(`seed record object ${o.objectId} tenancy differs from the snapshot`);
+    }
+    // C18.1.3 — the recorded correlation must BE the object's own authenticated audit
+    // correlation, not merely some correlation that exists somewhere in the world.
+    if (row.audit_correlation_id !== o.correlation) {
+      problems.push(`seed record object ${o.objectId} correlation ${JSON.stringify(o.correlation)} differs from the canonical object's audit correlation ${JSON.stringify(row.audit_correlation_id)}`);
+    }
+    if (!auditCorrelations.has(o.correlation)) {
+      problems.push(`seed record object ${o.objectId} correlation ${o.correlation} has no authenticated audit event`);
     }
   }
   const outboxRows = rowsOf(before, 'objects.object_outbox');
@@ -731,14 +997,51 @@ export function verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest
     if (row.event_type !== o.eventType) problems.push(`seed record outbox event ${o.eventId} event_type differs from the snapshot`);
   }
   bindSet('decision', seedRecord.decisions, rowsOf(before, 'policy.policy_decisions').map((r) => r.id));
-  // Correlations: unique (checked), and every governed row correlation is accounted for.
+  // Correlations: EXACT IN BOTH DIRECTIONS. 15e8239 required only that every observed
+  // correlation was recorded, so an attacker could pad the record with unused UUIDs.
   const correlations = new Set(seedRecord.correlations);
-  for (const d of rowsOf(before, 'policy.policy_decisions')) {
-    if (!correlations.has(d.correlation_id)) problems.push(`snapshot decision ${d.id} carries an unrecorded correlation`);
+  const observedCorrelations = new Set([
+    ...rowsOf(before, 'policy.policy_decisions').map((d) => d.correlation_id),
+    ...before.audit.events.map((e) => e.correlation_id),
+    ...rowsOf(before, 'objects.object_outbox').map((o) => o.correlation_id),
+    ...objectRows.map((o) => o.audit_correlation_id),
+  ].filter((c) => c !== null && c !== undefined));
+  for (const c of observedCorrelations) {
+    if (!correlations.has(c)) problems.push(`the snapshot carries correlation ${c}, which the seed record does not account for`);
   }
-  for (const e of before.audit.events) {
-    if (e.correlation_id !== null && e.correlation_id !== undefined && !correlations.has(e.correlation_id)) {
-      problems.push(`snapshot audit event ${e.partition_id}#${e.audit_seq} carries an unrecorded correlation`);
+  // A session's identity-op capability legitimately leaves no row behind, so its correlation is
+  // ATTRIBUTED to the session that used it. Everything else must be observable, and a recorded
+  // correlation belonging to neither set is padding.
+  const sessionCorrelations = new Set(seedRecord.sessions.map((s) => s.correlation));
+  for (const c of correlations) {
+    if (!observedCorrelations.has(c) && !sessionCorrelations.has(c)) {
+      problems.push(`seed record correlation ${c} appears NOWHERE in the seeded world and belongs to no recorded session — an unused recorded correlation`);
+    }
+  }
+  for (const s of seedRecord.sessions) {
+    if (!correlations.has(s.correlation)) {
+      problems.push(`seed record session ${s.sessionId} names correlation ${s.correlation}, which the recorded correlation set omits`);
+    }
+  }
+  if (new Set(seedRecord.sessions.map((s) => s.correlation)).size !== seedRecord.sessions.length) {
+    problems.push('two seeded sessions share one identity-op correlation');
+  }
+  // Role bindings: EXACT IN BOTH DIRECTIONS. 15e8239 asked only that a required binding
+  // existed, so an ADDITIONAL grant (a domain analyst handed platform_admin) passed unseen.
+  const wantBindings = [
+    `${seedRecord.admin.principalId}|platform_admin`,
+    ...seedRecord.principals.map((p) => `${p.principalId}|${p.roleCode}`),
+  ].sort();
+  const haveBindings = bindingRows
+    .filter((b) => b.revoked_at === null)
+    .map((b) => `${b.principal_id}|${b.role_code}`)
+    .sort();
+  if (JSON.stringify(haveBindings) !== JSON.stringify(wantBindings)) {
+    for (const b of haveBindings.filter((x) => !wantBindings.includes(x))) {
+      problems.push(`the snapshot carries live role binding ${b}, which the seed record does not account for`);
+    }
+    for (const b of wantBindings.filter((x) => !haveBindings.includes(x))) {
+      problems.push(`seed record requires live role binding ${b}, which the snapshot does not carry`);
     }
   }
   // Post-upgrade deltas: the FINAL snapshot is exactly the seeded world plus the one operation.
@@ -934,7 +1237,12 @@ const RECEIPT_FIELDS = Object.freeze([
  * distinct across all receipts, and `readFile(rel)` lets the verifier re-hash the raw bytes
  * and re-parse the framework summary rather than trusting the receipt.
  */
-export function verifySuiteReceipts(matrix, receipts, { readFile = null, commands = null } = {}) {
+/** Which isolated instance a receipt's declared path names. */
+export const SUITE_PATH_LETTER = Object.freeze({
+  'path-a-upgraded': 'a', 'instance-a-server': 'a', 'path-b-virgin': 'b', 'instance-b-server': 'b',
+});
+
+export function verifySuiteReceipts(matrix, receipts, { readFile = null, commands = null, instances = null } = {}) {
   const problems = [];
   const seenTuples = new Set();
   const seenStreams = new Set();
@@ -968,6 +1276,15 @@ export function verifySuiteReceipts(matrix, receipts, { readFile = null, command
     if (JSON.stringify(r.argv_redacted) !== JSON.stringify(spec.command)) {
       problems.push(`receipt ${tuple} argv ${JSON.stringify(r.argv_redacted)} is not EXACTLY the matrix command`);
     }
+    // C18.1.3 — a receipt may not BORROW another command's streams. The three files must be
+    // exactly this command's own raw receipts, and their lengths and digests must equal the
+    // command-ledger record's, so swapping Path-A and Path-B output (both '297 passed') fails.
+    for (const [f, ext] of [['stdout_file', 'stdout'], ['stderr_file', 'stderr'], ['exit_file', 'exit']]) {
+      const want = `raw/${r.command_id}.${ext}.txt`;
+      if (r[f] !== want) {
+        problems.push(`receipt ${tuple} ${f} ${JSON.stringify(r[f])} is not its own command's stream ${JSON.stringify(want)}`);
+      }
+    }
     if (commands !== null) {
       const cmd = commands.find((c) => c.id === r.command_id);
       if (cmd === undefined) problems.push(`receipt ${tuple} names command ledger id '${r.command_id}' which does not exist`);
@@ -980,6 +1297,27 @@ export function verifySuiteReceipts(matrix, receipts, { readFile = null, command
         }
         if (cmd.exit !== 0 || (cmd.signal ?? null) !== null) {
           problems.push(`receipt ${tuple} command ledger records exit ${cmd.exit} signal ${cmd.signal}`);
+        }
+        for (const s of ['stdout', 'stderr']) {
+          if (cmd[`${s}_bytes`] !== r[`${s}_bytes`] || cmd[`${s}_sha256`] !== r[`${s}_sha256`]) {
+            problems.push(`receipt ${tuple} ${s} length/digest disagrees with its command-ledger record`);
+          }
+        }
+        if (cmd.cwd !== '.') problems.push(`receipt ${tuple} command ran in ${JSON.stringify(cmd.cwd)}, not the repository root`);
+        // The command's environment must be EXACTLY the instance the receipt claims.
+        if (instances !== null) {
+          const letter = SUITE_PATH_LETTER[r.path];
+          const inst = letter === undefined ? undefined : instances[letter];
+          if (inst === undefined) problems.push(`receipt ${tuple} declares a path with no isolated instance`);
+          else {
+            const want = expectedInstanceEnv(letter, inst, { NO_COLOR: '1', FORCE_COLOR: '0' });
+            const got = cmd.env ?? {};
+            const wrong = Object.keys(want).filter((k) => got[k] !== want[k]);
+            const extra = Object.keys(got).filter((k) => !(k in want));
+            if (wrong.length > 0 || extra.length > 0) {
+              problems.push(`receipt ${tuple} command environment is not the ${inst.path} instance binding (${[...wrong, ...extra.map((k) => `unexpected ${k}`)].slice(0, 4).join(', ')})`);
+            }
+          }
         }
       }
     }
@@ -1170,203 +1508,6 @@ export function verifyCommandStreams(commands, readBytes) {
   return problems;
 }
 
-/**
- * THE SOURCE-OWNED COMMAND GRAPH. The producer's whole execution is a deterministic state
- * machine over provisioning, readiness, migration, snapshots and suites; this walk re-derives
- * that machine from the SOURCE contract (universes, posture categories, suite matrix, pinned
- * images, isolation receipts) and requires the ledger to be EXACTLY one run of it: no missing,
- * duplicate, unknown or reordered command survives, every must-succeed command must record
- * exit 0, and every evidence-bearing output (container ids, discovered ports, tables-meta and
- * fk-meta sets, readiness confirmation) must equal what the rest of the evidence claims.
- * `rawText(cmd, stream)` returns the raw stream text or null.
- */
-export function verifyCommandGraph({ commands, receiptA, receiptB, images, rawText }) {
-  const problems = [];
-  if (!Array.isArray(commands)) return ['command graph: commands.json is not an array'];
-  for (const [tag, r] of [['path-a', receiptA], ['path-b', receiptB]]) {
-    if (r === null || typeof r !== 'object') return [`command graph cannot bind: the ${tag} isolation receipt is missing`];
-  }
-  let pos = 0;
-  let dead = false;
-  const structural = (msg) => { problems.push(msg); dead = true; };
-  const next = (label) => {
-    if (dead) return null;
-    const c = commands[pos];
-    if (c === undefined || typeof c !== 'object' || c === null) {
-      structural(`command graph: expected '${label}' at position ${pos + 1} but the ledger ended`);
-      return null;
-    }
-    if (c.label !== label) {
-      structural(`command graph: expected '${label}' at position ${pos + 1}, found '${c.label}'`);
-      return null;
-    }
-    pos += 1;
-    return c;
-  };
-  const mustSucceed = (c) => {
-    if (c !== null && (c.exit !== 0 || c.signal !== null)) {
-      problems.push(`command '${c.label}' recorded exit ${c.exit} signal ${c.signal}; the graph requires success`);
-    }
-  };
-  const emptyEnv = (c) => {
-    if (c !== null && Object.keys(c.env ?? {}).length !== 0) {
-      problems.push(`command '${c.label}' carries environment bindings the graph does not authorize`);
-    }
-  };
-  const matchArgv = (c, pattern) => {
-    if (c === null) return;
-    const a = Array.isArray(c.argv) ? c.argv : [];
-    if (a.length !== pattern.length) {
-      problems.push(`command '${c.label}' argv arity ${a.length} is not the graph's ${pattern.length}`);
-      return;
-    }
-    pattern.forEach((p, i) => {
-      const ok = typeof p === 'string' ? a[i] === p : p(a[i]);
-      if (!ok) problems.push(`command '${c.label}' argv[${i}] ${JSON.stringify(a[i])} violates the graph`);
-    });
-  };
-  const stdoutOf = (c) => (c === null ? null : rawText(c, 'stdout'));
-  const jsonOf = (c) => {
-    const text = stdoutOf(c);
-    if (text === null) return undefined;
-    try { return text.trim() === '' ? null : JSON.parse(text); } catch { return undefined; }
-  };
-  const REDACTED_PG = (v) => typeof v === 'string' && v.startsWith('POSTGRES_PASSWORD=<REDACTED:');
-  const REDACTED_PW = (v) => typeof v === 'string' && v.startsWith('PGPASSWORD=<REDACTED:');
-  const REDACTED_ANY = (v) => typeof v === 'string' && v.startsWith('<REDACTED:');
-  const connEnv = (c, r, extra = {}) => {
-    if (c === null) return;
-    const env = c.env ?? {};
-    const wantPlain = {
-      EYE_DB_HOST: '127.0.0.1', EYE_DB_PORT: String(r.port), EYE_DB_NAME: r.database,
-      EYE_REDIS_HOST: '127.0.0.1', EYE_REDIS_PORT: String(r.redis_port), ...extra,
-    };
-    const redactedKeys = [...SECRET_CLASSES, 'EYE_DB_MIGRATE_PASSWORD', 'EYE_IDENTITY_JWT_SECRET'];
-    const wantKeys = [...Object.keys(wantPlain), ...redactedKeys].sort();
-    if (JSON.stringify(Object.keys(env).sort()) !== JSON.stringify(wantKeys)) {
-      problems.push(`command '${c.label}' env keys are not exactly the ${r.path} connection binding`);
-      return;
-    }
-    for (const [k, v] of Object.entries(wantPlain)) {
-      if (env[k] !== v) problems.push(`command '${c.label}' env ${k} is ${JSON.stringify(env[k])}; the ${r.path} database binding requires ${JSON.stringify(v)}`);
-    }
-    for (const k of redactedKeys) {
-      if (typeof env[k] !== 'string' || !env[k].startsWith('<REDACTED:')) {
-        problems.push(`command '${c.label}' env ${k} is not a redacted placeholder`);
-      }
-    }
-  };
-  const psqlPattern = (r) => ['docker', 'exec', '-e', REDACTED_PW, '-i', r.container_name, 'psql', '-X', '-v',
-    'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', r.database, '-c', () => true];
-  const snapCmd = (label, r) => {
-    const c = next(label);
-    mustSucceed(c); emptyEnv(c); matchArgv(c, psqlPattern(r));
-    return c;
-  };
-
-  const walkInstance = (letter, r) => {
-    const pg = next(`${letter}-pg-run`);
-    mustSucceed(pg); emptyEnv(pg);
-    matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name, '-e', 'POSTGRES_USER=eye', '-e',
-      REDACTED_PG, '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
-    const pgOut = stdoutOf(pg);
-    if (pg !== null && pgOut !== null && pgOut.trim() !== r.container_id) {
-      problems.push(`'${pg.label}' raw container id does not match the ${r.path} isolation receipt`);
-    }
-    const rd = next(`${letter}-redis-run`);
-    mustSucceed(rd); emptyEnv(rd);
-    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379', images.redis,
-      'redis-server', '--requirepass', REDACTED_ANY]);
-    const rdOut = stdoutOf(rd);
-    if (rd !== null && rdOut !== null && rdOut.trim() !== r.redis_container_id) {
-      problems.push(`'${rd.label}' raw container id does not match the ${r.path} isolation receipt`);
-    }
-    for (const [inner, container, portField] of [['5432', r.container_name, 'port'], ['6379', r.redis_container, 'redis_port']]) {
-      const pc = next(`${letter}-port-${inner}`);
-      mustSucceed(pc); emptyEnv(pc);
-      matchArgv(pc, ['docker', 'port', container, inner]);
-      const out = stdoutOf(pc);
-      if (pc !== null && out !== null) {
-        const m = /:(\d+)\s*$/m.exec(out.trim());
-        if (m === null || Number(m[1]) !== r[portField]) {
-          problems.push(`'${pc.label}' port-discovery output does not equal the recorded ${r.path} ${portField} ${r[portField]}`);
-        }
-      }
-    }
-    let confirmed = false;
-    for (let i = 0; i < 90 && !confirmed && !dead; i += 1) {
-      const w = next(`${letter}-pg-wait-${i}`);
-      if (w === null) break;
-      emptyEnv(w);
-      matchArgv(w, ['docker', 'exec', r.container_name, 'pg_isready', '-h', '127.0.0.1', '-p', '5432', '-U', 'eye', '-d', r.database]);
-      if (w.exit === 0 && w.signal === null) {
-        const conf = next(`${letter}-pg-confirm-${i}`);
-        if (conf === null) break;
-        emptyEnv(conf);
-        matchArgv(conf, ['docker', 'exec', '-e', REDACTED_PW, r.container_name, 'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', r.database, '-c', 'select 1']);
-        if (conf.exit === 0 && conf.signal === null && (stdoutOf(conf) ?? '').trim() === '1') confirmed = true;
-      }
-    }
-    if (!confirmed && !dead) structural(`command graph: path ${letter} records no successful authenticated readiness confirmation`);
-  };
-
-  const walkMigrate = (label, r) => {
-    const c = next(label);
-    mustSucceed(c);
-    matchArgv(c, ['node', (v) => typeof v === 'string' && v.endsWith('/scripts/migrate.mjs')]);
-    connEnv(c, r);
-  };
-
-  const walkSnapshot = (letter, snapLabel, r, universe) => {
-    const pfx = `${letter}-${snapLabel}`;
-    const wantTables = [...universe].sort();
-    const meta = snapCmd(`${pfx}-tables-meta`, r);
-    const metaParsed = jsonOf(meta);
-    if (meta !== null) {
-      if (!Array.isArray(metaParsed)) problems.push(`${pfx}: tables-meta raw output is not JSON`);
-      else if (JSON.stringify(metaParsed.map((m) => m.table)) !== JSON.stringify(wantTables)) {
-        problems.push(`${pfx}: raw tables-meta output is not the source-owned ${universe.length}-table universe in canonical order`);
-      }
-    }
-    for (const t of wantTables) snapCmd(`${pfx}-rows-${t.replace('.', '_')}`, r);
-    const fkMeta = snapCmd(`${pfx}-fk-meta`, r);
-    const fks = jsonOf(fkMeta);
-    if (fkMeta !== null) {
-      if (!Array.isArray(fks)) problems.push(`${pfx}: fk-meta raw output is not JSON`);
-      else {
-        const names = fks.map((f) => f.constraint);
-        if (JSON.stringify(names) !== JSON.stringify([...names].sort())) {
-          problems.push(`${pfx}: raw fk-meta is not in canonical order`);
-        }
-        for (const n of names) snapCmd(`${pfx}-fk-${n.replace(/\./g, '_')}`, r);
-      }
-    }
-    for (const cat of POSTURE_CATEGORIES) snapCmd(`${pfx}-${POSTURE_COMMAND_LABELS[cat]}`, r);
-    for (const tail of ['ledger', 'audit-events', 'audit-heads']) snapCmd(`${pfx}-${tail}`, r);
-  };
-
-  walkInstance('a', receiptA);
-  walkMigrate('a-migrate-historical', receiptA);
-  walkSnapshot('a', 'a-before', receiptA, TABLE_UNIVERSE_HISTORICAL);
-  walkMigrate('a-migrate-upgrade', receiptA);
-  walkSnapshot('a', 'a-after', receiptA, TABLE_UNIVERSE_LATEST);
-  walkSnapshot('a', 'a-final', receiptA, TABLE_UNIVERSE_LATEST);
-  walkInstance('b', receiptB);
-  walkMigrate('b-migrate-latest', receiptB);
-  walkSnapshot('b', 'b-virgin', receiptB, TABLE_UNIVERSE_LATEST);
-  for (const [letter, r] of [['a', receiptA], ['b', receiptB]]) {
-    for (const suite of ['integration', 'acceptance']) {
-      const c = next(`${letter}-suite-${suite}`);
-      mustSucceed(c);
-      matchArgv(c, [...SUITE_MATRIX[suite].command]);
-      connEnv(c, r, { NO_COLOR: '1', FORCE_COLOR: '0' });
-    }
-  }
-  if (!dead && pos !== commands.length) {
-    problems.push(`command graph: ${commands.length - pos} unauthorized trailing command(s) beginning with '${commands[pos]?.label}'`);
-  }
-  return problems;
-}
 
 // ── MANIFEST + RESULT TYPING ──────────────────────────────────────────────────
 export const MANIFEST_FIELDS = Object.freeze({
@@ -1380,6 +1521,7 @@ export const MANIFEST_FIELDS = Object.freeze({
   historical_last: (v) => v === HISTORICAL_LAST,
   latest_last: (v) => v === LATEST_LAST,
   migration_digests: (v) => v !== null && typeof v === 'object' && !Array.isArray(v),
+  migration_executions: (v) => Array.isArray(v),
   intentional_transforms: (v) => v !== null && typeof v === 'object',
   suite_matrix: (v) => v !== null && typeof v === 'object',
   receipts: (v) => v !== null && typeof v === 'object',

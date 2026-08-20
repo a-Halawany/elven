@@ -1,10 +1,40 @@
 #!/usr/bin/env node
 /**
- * C18.1.2 — DUAL-PATH DATABASE HISTORY PROOF (tracked, deterministic runner + verifier).
+ * C18.1.3 — DUAL-PATH DATABASE HISTORY PROOF (tracked, deterministic runner + verifier).
  *
- * Supersedes the d5061b8 runner (secret exposure + synthetic acceptance), the 8a23526 runner
- * (raw ctx secret leak) and the 567a70f runner, whose evidence was authentic and leak-free
- * but whose verifier still accepted fully-rebound false packages. This revision adds:
+ * Supersedes the 15e8239 runner, whose evidence was authentic and leak-free but whose verifier
+ * did not authenticate the things an attacker actually controls:
+ *
+ *   EXACT COMMAND SEMANTICS — every authoritative psql command's SQL now comes from the
+ *   source-owned plan in lib/c18-query-plan.mjs and must be byte-equal in argv. 15e8239 accepted
+ *   ANY text in the final `psql -c` position, so a table's rows, a posture category or any other
+ *   query could be substituted behind genuine-looking output.
+ *
+ *   AUTHENTICATED MIGRATION EXECUTABLE — each migration command carries a closed typed execution
+ *   receipt: governed workspace grammar, the executed runner's SHA-256 equal to the tracked
+ *   apps/api/scripts/migrate.mjs, the exact ordered migration set present at that ceiling, and
+ *   the command's cwd/env/exit/streams. 15e8239 checked only that argv ended '/scripts/migrate.mjs'.
+ *
+ *   EXACT SECRET CLASSES — every placeholder is the exact `<REDACTED:<path>:<CLASS>>` for that
+ *   path and a class the isolation receipt carries a credential digest for, in every argv
+ *   position and every environment key. 15e8239 accepted anything starting `<REDACTED:`.
+ *
+ *   COMPLETE SEED RECONCILIATION — session refresh-token families, canonical-object audit
+ *   correlations, the correlation set (exact in BOTH directions) and live role bindings (exact in
+ *   both directions, so an ADDITIONAL grant fails) join the existing bidirectional bindings.
+ *
+ *   SUITE STREAM OWNERSHIP — a receipt's three stream files must be its own command's, with
+ *   lengths and digests equal to the ledger record and the command's environment equal to the
+ *   instance it claims, so swapping Path-A and Path-B output (both '297 passed') fails.
+ *
+ *   EXECUTED CLEANUP + GOVERNED SEEDING RECEIPTS — cleanup runs through the evidence recorder
+ *   (four checked `docker rm -fv`, then four post-removal absence proofs), and the governed seed
+ *   emits sanitized typed step receipts bound to the source-owned port plan. Packaging happens
+ *   only after successful cleanup evidence exists.
+ *
+ * Earlier supersessions retained as history: d5061b8 (secret exposure + synthetic acceptance),
+ * 8a23526 (raw ctx secret leak), 567a70f (verifier accepted rebound false packages). This
+ * revision keeps everything C18.1.2 added:
  *
  *   CLOSED COMMAND LEDGER + SOURCE-OWNED COMMAND GRAPH — every executed command is a closed
  *   typed record (position-bound id, unique label, redacted argv, exact cwd, typed redacted
@@ -76,11 +106,15 @@ import {
   TABLE_UNIVERSE_LATEST, authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt,
   commandIdFor, compareSnapshots, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
   deriveSeedSummary, orderedMigrations, parseResultReceipt, redactArgv, redactString, secretDigest,
-  verifyAuditShapes, verifyChainRows, verifyCommandGraph, verifyCommandRecords,
-  verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape, verifyMigrationLedger,
-  verifyOperationClosure, verifySeedFloor, verifySeedRecordClosed, verifySuiteReceipts,
-  verifyTableUniverse,
+  verifyAuditShapes, verifyChainRows, verifyCleanupReceipt, verifyCommandRecords,
+  verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape,
+  verifyMigrationExecutions, verifyMigrationLedger, verifyOperationClosure, verifySeedFloor,
+  verifySeedRecordClosed, verifySeedSteps, verifySuiteReceipts, verifyTableUniverse,
 } from './lib/c18-contract.mjs';
+import {
+  POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
+  tableRowsSql, tablesMetaSql, verifyCommandGraph,
+} from './lib/c18-query-plan.mjs';
 import { seedThroughEraPorts, runPostUpgradeOperation } from './lib/c18-seed-0012.mjs';
 import {
   REPOSITORY, apiGet, artifactsUrl, jobsUrl, runUrl, selectAttemptArtifact,
@@ -244,6 +278,32 @@ function startInstance(ev, letter, images, cleanup) {
   return inst;
 }
 
+/**
+ * THE SUCCESS-PATH CLEANUP, EXECUTED THROUGH THE EVIDENCE RECORDER (C18.1.3 §F).
+ *
+ * 15e8239 asserted `removed`/`failures`/`kept` with nothing proving a `docker rm -fv` ever ran.
+ * Every removal and every post-removal absence check is now a ledger command with bound streams,
+ * so the claim is authenticated by execution. The failure and signal paths keep using the raw
+ * checked `teardown()` below — they run when the evidence recorder may already be unusable.
+ */
+function cleanupWithEvidence(ev, cleanup, containers) {
+  const removals = [];
+  const inspections = [];
+  const failures = [];
+  for (const name of containers) {
+    const r = ev.run(`cleanup-rm-${name}`, ['docker', 'rm', '-fv', name], { timeoutMs: 60_000, allowFail: true });
+    removals.push({ container: name, command_id: r.id, exit: r.exit });
+    if (r.exit !== 0 || r.signal !== null) failures.push(`docker rm -fv ${name} exited ${r.exit} signal ${r.signal}`);
+  }
+  for (const name of containers) {
+    const r = ev.run(`cleanup-inspect-${name}`, ['docker', 'inspect', name], { timeoutMs: 30_000, allowFail: true });
+    inspections.push({ container: name, command_id: r.id, exit: r.exit });
+    if (r.exit === 0) failures.push(`container ${name} STILL EXISTS after checked removal`);
+  }
+  for (const ws of cleanup.workspaces) rmSync(ws, { recursive: true, force: true });
+  return { removed: containers.slice(), failures, kept: [], removals, inspections };
+}
+
 /** Checked teardown: `docker rm -fv` for every registered container; failures are FAILURES. */
 function teardown(cleanup, keep) {
   const removed = [];
@@ -260,6 +320,36 @@ function teardown(cleanup, keep) {
     if (check.status === 0) failures.push(`container ${c} STILL EXISTS after checked removal`);
   }
   return { removed, failures, kept: [] };
+}
+
+/**
+ * Run one governed migration and record a CLOSED typed execution receipt: the governed
+ * workspace, the runner actually executed (with its bytes' digest), the exact ordered migration
+ * set present in that workspace at that moment, and the intended ceiling. 15e8239 checked only
+ * that argv[1] ended in `/scripts/migrate.mjs`, so an attacker path passed.
+ */
+function runMigration(ev, { label, path, letter, inst, ws, ceiling, tracked, executions }) {
+  const runner = join(ws, 'scripts', 'migrate.mjs');
+  const migrations = [...tracked.digests.entries()]
+    .filter(([f]) => /^\d{4}_/.test(f) && f.slice(0, 4) <= ceiling)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([filename, digest]) => {
+      const local = join(ws, 'migrations', filename);
+      if (!existsSync(local)) throw new Error(`governed workspace is missing ${filename} at ceiling ${ceiling}`);
+      const localDigest = sha256(readFileSync(local));
+      if (localDigest !== digest) throw new Error(`workspace copy of ${filename} is not byte-identical to the tracked migration`);
+      return { filename, digest };
+    });
+  const present = readdirSync(join(ws, 'migrations')).filter((f) => /^\d{4}_/.test(f)).sort();
+  if (JSON.stringify(present) !== JSON.stringify(migrations.map((m) => m.filename))) {
+    throw new Error(`governed workspace holds ${present.length} migrations; the ${ceiling} ceiling authorizes ${migrations.length}`);
+  }
+  const r = ev.run(label, ['node', runner], { env: inst.envFor() });
+  executions.push({
+    command_id: r.id, label, path, workspace: ws, runner_path: runner,
+    runner_sha256: sha256(readFileSync(runner)), ceiling, migrations,
+  });
+  return r;
 }
 
 function migrationWorkspace(label, upTo, tracked, cleanup) {
@@ -286,186 +376,41 @@ function extendWorkspace(ws, after, upTo, tracked) {
   }
 }
 
-/** Complete state snapshot; secret-valued columns are digest-substituted, never serialized. */
+/**
+ * Complete state snapshot. EVERY query comes from the source-owned plan in lib/c18-query-plan.mjs
+ * — the same strings the verifier re-derives and demands byte-equal in argv — and secret-valued
+ * columns are digest-substituted inside the SQL projection, never serialized raw.
+ */
 function snapshot(inst, label) {
-  const schemasIn = SNAPSHOT_SCHEMAS.map((s) => `'${s}'`).join(',');
-  const tablesMeta = inst.json(`
-    select coalesce(json_agg(json_build_object(
-      'table', t.table_schema || '.' || t.table_name,
-      'columns', (select json_agg(c.column_name order by c.ordinal_position)
-                    from information_schema.columns c
-                   where c.table_schema = t.table_schema and c.table_name = t.table_name),
-      'pk', (select coalesce(json_agg(a.attname order by k.ord), '[]'::json)
-               from pg_index i
-               join pg_class cl on cl.oid = i.indrelid
-               join pg_namespace n on n.oid = cl.relnamespace
-               cross join lateral unnest(i.indkey) with ordinality as k(attnum, ord)
-               join pg_attribute a on a.attrelid = cl.oid and a.attnum = k.attnum
-              where i.indisprimary and n.nspname = t.table_schema and cl.relname = t.table_name)
-    ) order by t.table_schema, t.table_name), '[]'::json)
-    from information_schema.tables t
-    where t.table_schema in (${schemasIn}) and t.table_type = 'BASE TABLE'`, `${label}-tables-meta`);
+  const tablesMeta = inst.json(tablesMetaSql(), `${label}-tables-meta`);
   const tables = {};
   for (const m of tablesMeta ?? []) {
     const pk = m.pk.length > 0 ? m.pk : m.columns;
-    const order = pk.map((c) => `t."${c}"`).join(',');
-    // C18.1.1 — SECRET SUBSTITUTION HAPPENS IN THE SQL PROJECTION, so the raw psql receipt
-    // NEVER contains the raw secret. A secret-valued column is replaced, in-query, by the
-    // SAME domain-separated digest secretDigest() produces:
-    //   sha256('c18-secret-v1:<table>.<col>:' || <col>::text). For bytea under the default
-    // hex output, <col>::text is '\x…' — byte-identical to the JS String(row[col]) that fed
-    // the old (leaking) substitution, so pre/post equality is unchanged.
-    const secretCols = SNAPSHOT_SECRET_COLUMNS[m.table] ?? [];
-    let projection = 'to_jsonb(t)';
-    for (const col of secretCols) {
-      const domain = `c18-secret-v1:${m.table}.${col}:`;
-      projection = `jsonb_set(${projection}, '{${col}}', to_jsonb(`
-        + `case when t."${col}" is null then null else `
-        + `encode(sha256(convert_to('${domain}' || t."${col}"::text, 'UTF8')), 'hex') end))`;
-    }
-    const rows = inst.json(
-      `select coalesce(json_agg(${projection} order by ${order}), '[]'::json) from ${m.table} t`,
-      `${label}-rows-${m.table.replace('.', '_')}`,
-    ) ?? [];
+    const rows = inst.json(tableRowsSql(m.table, pk, m.columns),
+      `${label}-rows-${m.table.replace('.', '_')}`) ?? [];
     tables[m.table] = { pk, columns: m.columns, rows, row_count: rows.length };
   }
-  const fkMeta = inst.json(`
-    select coalesce(json_agg(json_build_object(
-      'constraint', n.nspname || '.' || cl.relname || '.' || c.conname,
-      'from', n.nspname || '.' || cl.relname,
-      'to', fn.nspname || '.' || fcl.relname,
-      'definition', pg_get_constraintdef(c.oid),
-      'validated', c.convalidated, 'deferrable', c.condeferrable,
-      'cols', (select json_agg(a.attname order by k.ord)
-                 from unnest(c.conkey) with ordinality k(attnum, ord)
-                 join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum)
-    ) order by n.nspname, cl.relname, c.conname), '[]'::json)
-    from pg_constraint c
-    join pg_class cl on cl.oid = c.conrelid
-    join pg_namespace n on n.oid = cl.relnamespace
-    join pg_class fcl on fcl.oid = c.confrelid
-    join pg_namespace fn on fn.oid = fcl.relnamespace
-    where c.contype = 'f' and n.nspname in (${schemasIn})`, `${label}-fk-meta`);
+  const fkMeta = inst.json(fkMetaSql(), `${label}-fk-meta`);
   const fks = (fkMeta ?? []).map((f) => {
-    const cols = f.cols.map((c) => `t."${c}"::text`).join(` || '|' || `);
-    const notNull = f.cols.map((c) => `t."${c}" is not null`).join(' and ');
-    const pairs = inst.json(
-      `select coalesce(json_agg(x order by x), '[]'::json)
-         from (select ${cols} as x from ${f.from} t where ${notNull}) s`,
-      `${label}-fk-${f.constraint.replace(/\./g, '_')}`,
-    ) ?? [];
+    const pairs = inst.json(fkPairsSql(f.from, f.cols),
+      `${label}-fk-${f.constraint.replace(/\./g, '_')}`) ?? [];
     return {
       constraint: f.constraint, from: f.from, to: f.to, definition: f.definition,
       validated: f.validated, deferrable: f.deferrable,
       pairs_count: pairs.length, pairs_digest: sha256(JSON.stringify(pairs)),
     };
   });
-  const posture = {
-    roles: inst.json(`
-      select coalesce(json_agg(json_build_object('role', rolname, 'login', rolcanlogin,
-        'super', rolsuper, 'createrole', rolcreaterole, 'createdb', rolcreatedb,
-        'bypassrls', rolbypassrls, 'inherit', rolinherit, 'connlimit', rolconnlimit)
-        order by rolname), '[]'::json)
-      from pg_roles where rolname like 'eye%'`, `${label}-roles`),
-    memberships: inst.json(`
-      select coalesce(json_agg(r.rolname || '->' || m.rolname order by r.rolname, m.rolname), '[]'::json)
-      from pg_auth_members am
-      join pg_roles r on r.oid = am.member join pg_roles m on m.oid = am.roleid
-      where r.rolname like 'eye%' or m.rolname like 'eye%'`, `${label}-memberships`),
-    database_privileges: inst.json(`
-      select coalesce(json_agg(coalesce(datacl::text, '(default)')), '[]'::json)
-      from pg_database where datname = current_database()`, `${label}-db-priv`),
-    schema_privileges: inst.json(`
-      select coalesce(json_agg(nspname || '|' || nspowner::regrole::text || '|' || coalesce(nspacl::text, '(default)')
-        order by nspname), '[]'::json)
-      from pg_namespace where nspname in (${schemasIn}, 'canon', 'public')`, `${label}-schema-priv`),
-    table_grants: inst.json(`
-      select coalesce(json_agg(grantee || '|' || table_schema || '.' || table_name || '|' || privilege_type
-        order by grantee, table_schema, table_name, privilege_type), '[]'::json)
-      from information_schema.role_table_grants
-      where table_schema in (${schemasIn}) and grantee like 'eye%'`, `${label}-table-grants`),
-    sequence_privileges: inst.json(`
-      select coalesce(json_agg(n.nspname || '.' || c.relname || '|' || coalesce(c.relacl::text, '(default)')
-        order by n.nspname, c.relname), '[]'::json)
-      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where c.relkind = 'S' and n.nspname in (${schemasIn})`, `${label}-seq-priv`),
-    default_privileges: inst.json(`
-      select coalesce(json_agg(d.defaclrole::regrole::text || '|' || coalesce(n.nspname, '(all)') || '|' ||
-        d.defaclobjtype::text || '|' || d.defaclacl::text order by 1), '[]'::json)
-      from pg_default_acl d left join pg_namespace n on n.oid = d.defaclnamespace`, `${label}-default-priv`),
-    owners: inst.json(`
-      select coalesce(json_agg(n.nspname || '.' || c.relname || '|' || c.relowner::regrole::text
-        order by n.nspname, c.relname), '[]'::json)
-      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where c.relkind in ('r', 'S', 'v') and n.nspname in (${schemasIn})`, `${label}-owners`),
-    routines: inst.json(`
-      select coalesce(json_agg(json_build_object(
-        'fn', n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-        'secdef', p.prosecdef, 'owner', p.proowner::regrole::text,
-        'language', l.lanname, 'volatility', p.provolatile,
-        'config', coalesce(p.proconfig::text, ''),
-        'body_sha256', encode(sha256(convert_to(pg_get_functiondef(p.oid), 'UTF8')), 'hex'),
-        'acl', coalesce(p.proacl::text, ''))
-        order by n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)), '[]'::json)
-      from pg_proc p
-      join pg_namespace n on n.oid = p.pronamespace
-      join pg_language l on l.oid = p.prolang
-      where n.nspname in (${schemasIn}, 'canon')`, `${label}-routines`),
-    rls: inst.json(`
-      select coalesce(json_agg(json_build_object(
-        'table', n.nspname || '.' || c.relname,
-        'enabled', c.relrowsecurity, 'forced', c.relforcerowsecurity)
-        order by n.nspname, c.relname), '[]'::json)
-      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in (${schemasIn}) and c.relkind = 'r'`, `${label}-rls`),
-    policies: inst.json(`
-      select coalesce(json_agg(json_build_object(
-        'table', schemaname || '.' || tablename, 'name', policyname, 'cmd', cmd,
-        'roles', roles::text, 'qual', coalesce(qual, ''), 'check', coalesce(with_check, ''))
-        order by schemaname, tablename, policyname), '[]'::json)
-      from pg_policies where schemaname in (${schemasIn})`, `${label}-policies`),
-    triggers: inst.json(`
-      select coalesce(json_agg(n.nspname || '.' || c.relname || '|' || t.tgname || '|' ||
-        pg_get_triggerdef(t.oid) order by n.nspname, c.relname, t.tgname), '[]'::json)
-      from pg_trigger t
-      join pg_class c on c.oid = t.tgrelid
-      join pg_namespace n on n.oid = c.relnamespace
-      where not t.tgisinternal and n.nspname in (${schemasIn})`, `${label}-triggers`),
-    columns: inst.json(`
-      select coalesce(json_agg(table_schema || '.' || table_name || '|' || column_name || '|' ||
-        data_type || '|' || is_nullable || '|' || coalesce(column_default, '')
-        order by table_schema, table_name, column_name), '[]'::json)
-      from information_schema.columns where table_schema in (${schemasIn})`, `${label}-columns`),
-    constraints: inst.json(`
-      select coalesce(json_agg(n.nspname || '.' || cl.relname || '|' || c.conname || '|' ||
-        pg_get_constraintdef(c.oid) || '|' || c.convalidated || '|' || c.condeferrable
-        order by n.nspname, cl.relname, c.conname), '[]'::json)
-      from pg_constraint c join pg_class cl on cl.oid = c.conrelid
-      join pg_namespace n on n.oid = cl.relnamespace where n.nspname in (${schemasIn})`, `${label}-constraints`),
-    indexes: inst.json(`
-      select coalesce(json_agg(schemaname || '.' || tablename || '|' || indexname || '|' || indexdef
-        order by schemaname, tablename, indexname), '[]'::json)
-      from pg_indexes where schemaname in (${schemasIn})`, `${label}-indexes`),
-  };
-  const ledger = inst.json(`
-    select coalesce(json_agg(json_build_object('filename', filename, 'digest', digest,
-      'applied_at', applied_at::text) order by filename), '[]'::json)
-    from public.schema_migrations`, `${label}-ledger`) ?? [];
+  const posture = Object.fromEntries(POSTURE_CATEGORIES.map((cat) => [
+    cat, inst.json(postureSql(cat), `${label}-${POSTURE_LABEL[cat]}`),
+  ]));
+  const ledger = inst.json(ledgerSql(), `${label}-ledger`) ?? [];
   const audit = {
-    events: inst.json(`
-      select coalesce(json_agg(json_build_object('partition_id', partition_id, 'audit_seq', audit_seq,
-        'event_jcs', event_jcs, 'previous_hash', previous_hash, 'row_hash', row_hash,
-        'hash_alg_version', hash_alg_version, 'correlation_id', correlation_id,
-        'policy_decision_id', (event_jcs::jsonb)->>'policy_decision_id')
-        order by partition_id, audit_seq), '[]'::json)
-      from audit.audit_events`, `${label}-audit-events`) ?? [],
-    heads: inst.json(`
-      select coalesce(json_agg(json_build_object('partition_id', partition_id, 'next_seq', next_seq,
-        'head_hash', head_hash, 'frozen', frozen) order by partition_id), '[]'::json)
-      from audit.audit_chain_heads`, `${label}-audit-heads`) ?? [],
+    events: inst.json(auditEventsSql(), `${label}-audit-events`) ?? [],
+    heads: inst.json(auditHeadsSql(), `${label}-audit-heads`) ?? [],
   };
   return { label, tables, fks, posture, ledger, audit };
 }
+
 
 const credentialDigests = (passwords) => Object.fromEntries(
   Object.entries(passwords).map(([k, v]) => [k, secretDigest(`credential:${k}`, v)]),
@@ -657,6 +602,7 @@ async function runCommand(args) {
     phase = 'preflight';
     const images = composeImages();
     const tracked = trackedMigrationDigests();
+    const migrationExecutions = [];
     const transforms = deriveIntentionalTransforms(tracked.dir, tracked.files);
     const audit = await productionAudit(ROOT);
     const problems = [];
@@ -666,7 +612,7 @@ async function runCommand(args) {
     const a = startInstance(ev, 'a', images, cleanup);
     phase = 'path-a-historical-migrate';
     const wsA = migrationWorkspace('a', HISTORICAL_LAST, tracked, cleanup);
-    ev.run('a-migrate-historical', ['node', join(wsA, 'scripts', 'migrate.mjs')], { env: a.envFor() });
+    runMigration(ev, { label: 'a-migrate-historical', path: 'path-a-upgraded', letter: 'a', inst: a, ws: wsA, ceiling: HISTORICAL_LAST, tracked, executions: migrationExecutions });
     phase = 'path-a-seed';
     const seedRecord = await seedThroughEraPorts({
       root: ROOT, host: '127.0.0.1', port: a.port, database: a.database,
@@ -677,7 +623,7 @@ async function runCommand(args) {
     writeFileSync(join(outDir, 'path-a-before.json'), `${JSON.stringify(before, null, 2)}\n`);
     phase = 'path-a-upgrade';
     extendWorkspace(wsA, HISTORICAL_LAST, LATEST_LAST, tracked);
-    ev.run('a-migrate-upgrade', ['node', join(wsA, 'scripts', 'migrate.mjs')], { env: a.envFor() });
+    runMigration(ev, { label: 'a-migrate-upgrade', path: 'path-a-upgraded', letter: 'a', inst: a, ws: wsA, ceiling: LATEST_LAST, tracked, executions: migrationExecutions });
     // The PURE post-upgrade snapshot first (preservation is judged against it), then ONE
     // deterministic governed operation through the CURRENT ports, then the closure snapshot.
     phase = 'path-a-snapshot-after';
@@ -705,6 +651,7 @@ async function runCommand(args) {
       problems.push(...crossCheckAuditTable(snap, lbl));
     }
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
+    problems.push(...verifySeedSteps({ steps: seedRecord.steps, seedRecord }).map((p) => `path-a-seed: ${p}`));
     problems.push(...compareSnapshots(before, after, transforms).map((p) => `path-a: ${p}`));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }).map((p) => `path-a-before: ${p}`));
     problems.push(...verifyChainRows({
@@ -732,7 +679,7 @@ async function runCommand(args) {
     const b = startInstance(ev, 'b', images, cleanup);
     phase = 'path-b-migrate';
     const wsB = migrationWorkspace('b', LATEST_LAST, tracked, cleanup);
-    ev.run('b-migrate-latest', ['node', join(wsB, 'scripts', 'migrate.mjs')], { env: b.envFor() });
+    runMigration(ev, { label: 'b-migrate-latest', path: 'path-b-virgin', letter: 'b', inst: b, ws: wsB, ceiling: LATEST_LAST, tracked, executions: migrationExecutions });
     phase = 'path-b-snapshot';
     const virgin = snapshot(b, 'b-virgin');
     writeFileSync(join(outDir, 'path-b-virgin.json'), `${JSON.stringify(virgin, null, 2)}\n`);
@@ -771,7 +718,17 @@ async function runCommand(args) {
 
     // ── CHECKED CLEANUP happens BEFORE packaging so its result is part of the evidence. ──
     phase = 'cleanup';
-    const cleaned = teardown(cleanup, keep);
+    // The four source-derived container names, in the order the isolation receipts declare them.
+    const cleanupContainers = [
+      receiptA.container_name, receiptA.redis_container,
+      receiptB.container_name, receiptB.redis_container,
+    ];
+    if (JSON.stringify([...cleanup.containers].sort()) !== JSON.stringify([...cleanupContainers].sort())) {
+      throw new Error('the registered container set is not exactly the four isolation-receipt containers');
+    }
+    const cleaned = keep
+      ? { ...teardown(cleanup, keep), removals: [], inspections: [] }
+      : cleanupWithEvidence(ev, cleanup, cleanupContainers);
     cleanup.containers = cleaned.kept;
     cleanup.workspaces = [];
     if (cleaned.failures.length > 0) {
@@ -792,13 +749,17 @@ async function runCommand(args) {
       historical_last: HISTORICAL_LAST, latest_last: LATEST_LAST,
       migration_digests: Object.fromEntries(tracked.digests),
       intentional_transforms: transforms,
+      migration_executions: migrationExecutions,
       suite_matrix: SUITE_MATRIX,
       receipts: { 'path-a-upgraded': receiptA, 'path-b-virgin': receiptB },
       suite_receipts: suiteReceipts,
       seed_summary: deriveSeedSummary(seedRecord),
       post_upgrade_operation: postOp,
       hosted_receipt: hostedReceipt(),
-      cleanup: { removed: cleaned.removed, failures: cleaned.failures, kept: cleaned.kept },
+      cleanup: {
+        removed: cleaned.removed, failures: cleaned.failures, kept: cleaned.kept,
+        removals: cleaned.removals, inspections: cleaned.inspections,
+      },
     };
     writeFileSync(join(outDir, 'c18-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     writeFileSync(join(outDir, 'commands.json'), `${JSON.stringify(ev.commands, null, 2)}\n`);
@@ -1115,10 +1076,27 @@ export async function verifyEvidence({
         receiptA: manifest.receipts?.['path-a-upgraded'] ?? null,
         receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
         images: composeImages(),
+        migrationExecutions: Array.isArray(manifest.migration_executions) ? manifest.migration_executions : null,
+        cleanup: manifest.cleanup ?? null,
         rawText: (cmd, stream) => {
           const abs = contained(`raw/${cmd.id}.${stream}.txt`, 'graph stream');
           return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
         },
+      }));
+      // The migration executions themselves: governed workspace, tracked runner BYTES, the exact
+      // ordered migration set at the intended ceiling.
+      problems.push(...verifyMigrationExecutions({
+        executions: manifest.migration_executions,
+        commands,
+        trackedDigests: new Map([...tracked.digests, ['__runner__', sha256(readFileSync(join(root, 'apps', 'api', 'scripts', 'migrate.mjs')))]]),
+        repoRoot: realpathSync(root),
+      }));
+      // Checked cleanup, authenticated by execution rather than asserted.
+      problems.push(...verifyCleanupReceipt({
+        cleanup: manifest.cleanup ?? null,
+        commands,
+        receiptA: manifest.receipts?.['path-a-upgraded'] ?? null,
+        receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
       }));
     }
 
@@ -1129,16 +1107,12 @@ export async function verifyEvidence({
       if (JSON.stringify(manifest.suite_matrix) !== JSON.stringify(SUITE_MATRIX)) {
         problems.push('manifest suite_matrix is not exactly the code-owned matrix');
       }
-      const iso = manifest.receipts ?? {};
-      const wantCleanup = [
-        iso['path-a-upgraded']?.container_name, iso['path-a-upgraded']?.redis_container,
-        iso['path-b-virgin']?.container_name, iso['path-b-virgin']?.redis_container,
-      ];
-      if (JSON.stringify(manifest.cleanup?.removed) !== JSON.stringify(wantCleanup)) {
-        problems.push('manifest cleanup.removed is not exactly the four isolation container names');
-      }
-      problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest }));
     }
+    // The seed judgements run REGARDLESS of manifest shape: a malformed manifest must never
+    // suppress a deeper finding (the C18.1.1 rule, extended here to the seed record and its
+    // governed step receipts). Only the seed_summary comparison needs a well-formed manifest.
+    problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: shaped ? manifest : null }));
+    problems.push(...verifySeedSteps({ steps: seedRecord?.steps, seedRecord }));
     problems.push(...compareSnapshots(before, after, transforms));
     problems.push(...verifyChainRows({ events: before.audit.events, heads: before.audit.heads, ...audit }));
     problems.push(...verifyChainRows({ events: after.audit.events, heads: after.audit.heads, priorEvents: before.audit.events, ...audit }));
@@ -1156,6 +1130,10 @@ export async function verifyEvidence({
     problems.push(...verifyIsolation(manifest.receipts?.['path-a-upgraded'], manifest.receipts?.['path-b-virgin'], composeImages()));
     problems.push(...verifySuiteReceipts(SUITE_MATRIX, Array.isArray(manifest.suite_receipts) ? manifest.suite_receipts : [], {
       commands: Array.isArray(commands) ? commands : [],
+      instances: {
+        a: manifest.receipts?.['path-a-upgraded'] ?? null,
+        b: manifest.receipts?.['path-b-virgin'] ?? null,
+      },
       readFile: (rel) => {
         const abs = contained(rel, 'suite receipt');
         return abs !== null && existsSync(abs) ? readFileSync(abs) : null;

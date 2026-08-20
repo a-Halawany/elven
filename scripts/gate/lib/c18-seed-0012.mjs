@@ -37,8 +37,15 @@ export async function seedThroughEraPorts({ root, host, port, database, password
 
   const record = {
     admin: null, tenants: [], domains: [], principals: [], sessions: [],
-    objects: [], outbox: [], decisions: [], correlations: [],
+    objects: [], outbox: [], decisions: [], correlations: [], steps: [],
   };
+  /**
+   * C18.1.3 — one SANITIZED governed-step receipt per plan step: the era ports the step used and
+   * the identities it produced. Never a credential, never a hash of one; the verifier checks the
+   * step sequence against the source-owned SEED_STEP_PLAN and every identity against the closed
+   * seed record.
+   */
+  const step = (name, ports, ids = []) => { record.steps.push({ step: name, ports, ids }); };
 
   /** One governed operation = one transaction carrying one bound capability. */
   const tx = async (client, statements, step = 'seed') => {
@@ -78,6 +85,9 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     ]);
     record.admin = { principalId: adminId, loginName: 'platform-admin' };
     record.correlations.push(bootCorr);
+    step('bootstrap', ['ctx.issue_bootstrap', 'identity.claim_bootstrap', 'identity.create_principal',
+      'identity.bootstrap_mark_one_time', 'identity.record_bootstrap_principal',
+      'audit.commit_identity_event'], [adminId]);
     log('seed: bootstrap claimed; platform admin created through the identity authority');
 
     // ── 1b. FORCED ROTATION, exactly as the era login pipeline required it: a bootstrap
@@ -95,6 +105,8 @@ export async function seedThroughEraPorts({ root, host, port, database, password
         + "'identity.credential.rotate','success','OK',$2::uuid,'{}'::jsonb)", [adminId, rotCorr]],
     ], 'rotate');
     record.correlations.push(rotCorr);
+    step('credential-rotation', ['identity.credential_get_active', 'ctx.issue_identity_op',
+      'identity.credential_rotate_v2', 'audit.commit_identity_event'], [adminId]);
     log('seed: bootstrap credential rotated through the identity ports');
 
     // ── 2. SESSION for the admin, through the identity ports ──
@@ -110,11 +122,12 @@ export async function seedThroughEraPorts({ root, host, port, database, password
           [sessionId, principalId, assurance, sha256(refreshToken), sha256(contextKey),
             new Date(Date.now() + 3600_000), familyId]],
       ], 'session-open');
-      record.sessions.push({ sessionId, principalId, familyId });
+      record.sessions.push({ sessionId, principalId, familyId, correlation: corr });
       record.correlations.push(corr);
       return { sessionId, contextKey };
     };
     const admin = await openSession(adminId, 'password');
+    step('admin-session', ['ctx.issue_identity_op', 'identity.session_open'], [admin.sessionId]);
     log('seed: admin session opened through identity.session_open');
 
     /** A COMMIT-capability operation, closed exactly as the era pipeline closed it. */
@@ -162,6 +175,9 @@ export async function seedThroughEraPorts({ root, host, port, database, password
         record.domains.push({ domainId, tenantId, name: `${name}-dom${d}` });
       }
     }
+    step('tenants-domains', ['ctx.issue_commit', 'tenancy.create_tenant', 'tenancy.create_domain',
+      'policy.commit_decision', 'audit.commit_event'],
+    [...record.tenants.map((t) => t.tenantId), ...record.domains.map((d) => d.domainId)]);
     log(`seed: ${record.tenants.length} tenants + ${record.domains.length} domains through tenancy ports`);
 
     // ── 4. TENANT/DOMAIN PRINCIPALS through the identity authority ──
@@ -195,7 +211,10 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     const tAdmin0 = await mkPrincipal({ scope: 'TENANT', tenantId: t0, domainId: null, loginName: 'c18-alpha-admin', roleCode: 'tenant_admin' });
     await mkPrincipal({ scope: 'DOMAIN', tenantId: t0, domainId: d00, loginName: 'c18-alpha-analyst', roleCode: 'domain_analyst' });
     await mkPrincipal({ scope: 'TENANT', tenantId: t1, domainId: null, loginName: 'c18-beta-admin', roleCode: 'tenant_admin' });
+    step('principals', ['ctx.issue_commit', 'identity.create_principal', 'policy.commit_decision',
+      'audit.commit_event'], record.principals.map((p) => p.principalId));
     const alphaAdmin = await openSession(tAdmin0, 'password');
+    step('tenant-session', ['ctx.issue_identity_op', 'identity.session_open'], [alphaAdmin.sessionId]);
     log(`seed: ${record.principals.length} governed principals + tenant session`);
 
     // ── 5. CANONICAL OBJECTS through the admission port, with the REAL header digest ──
@@ -232,6 +251,8 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     };
     await admitObject(alphaAdmin, t0, d00, 'c18-claim-1');
     await admitObject(alphaAdmin, t0, d00, 'c18-claim-2');
+    step('canonical-objects', ['ctx.issue_commit', 'objects.admit_version', 'policy.commit_decision',
+      'audit.commit_event'], record.objects.map((o) => o.objectId));
     log('seed: 2 canonical objects admitted with real header digests');
 
     // ── 6. OUTBOX effects: one enqueued-and-published, one left pending ──
@@ -250,6 +271,8 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     };
     const published = await enqueue(alphaAdmin, t0, d00, 'c18.seed.published');
     await enqueue(alphaAdmin, t0, d00, 'c18.seed.pending');
+    step('outbox-enqueue', ['ctx.issue_commit', 'objects.enqueue_event', 'policy.commit_decision',
+      'audit.commit_event'], record.outbox.map((o) => o.eventId));
     await publisher.query('BEGIN');
     try {
       await publisher.query('select ctx.issue_publish($1::uuid)', [published]);
@@ -266,6 +289,8 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       await publisher.query('ROLLBACK');
       throw new Error(`[outbox-publish] ${e instanceof Error ? e.message : e}`);
     }
+    step('outbox-publish', ['ctx.issue_publish', 'objects.outbox_lease', 'objects.outbox_ack_leased'],
+      [published]);
     log('seed: outbox enqueued x2, one leased + acknowledged through the publish capability');
 
     return record;
