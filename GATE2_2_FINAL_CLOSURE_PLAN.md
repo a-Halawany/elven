@@ -2167,7 +2167,13 @@ artifacts are NOT contaminated. This section is a docs-only child; verification 
 `dccfcf26b0111edeb4b5d710b6d0f707beb34f46`.
 
 
-## 22. C18.1.7 — EXACT MIGRATION-RECEIPT BYTES AND A CLOSED SOURCE-OWNED SEED SEMANTIC MODEL (delivered; awaiting independent review)
+## 22. C18.1.7 — EXACT MIGRATION-RECEIPT BYTES AND A CLOSED SOURCE-OWNED SEED SEMANTIC MODEL (delivered; SUPERSEDED by §23)
+
+**SUPERSEDED at C18.1.8 (§23)**: independent review verified the bfc8695 archive, checksums,
+leak-free status, exact-receipt correction, CI, finalizer, hosted bindings and unchanged
+migrations; C18.1.8 preserves all of them. Its seed model nonetheless omitted deterministic
+base-row posture and left audit history unclaimed. This section stays as honest history;
+verification targets §23.
 
 **Evidence-bearing source `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`.**
 Candidate CI: pull-request run `32409590023` (3/3 green). Source run `32410169418` **attempt 1**
@@ -2264,3 +2270,110 @@ artifacts remain enumerated (§16 and the memory ledger) and undeleted — targe
 requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8, 8362cba and
 dccfcf26 artifacts are NOT contaminated. This section is a docs-only child; verification runs
 against `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`.
+
+
+## 23. C18.1.8 — MACHINE-READABLE SEED COVERAGE, COMPLETE BASE-ENTITY POSTURE, EXACT AUDIT WORLD (delivered; awaiting independent review)
+
+**Evidence-bearing source `77489f50fdb07d7f469f9181ddd808b37b70c964`.**
+Candidate CI: pull-request run `32420967676` (3/3 green). Source run `32421740131` **attempt 2**
+(push/`main`, all three jobs green with the blocking C18 gate — corrected producer + offline
+self-verification + the 217-test in-gate mutation/differential suite) · finalizer run
+`32422894325` (`macos-14`, green).
+
+**Recovery contract, recorded honestly.** Attempt 1 failed in `browser-regression` on a
+pre-existing scenario this change does not touch — `e2e/phase0.spec.ts:226` fills a
+`datetime-local` input and Playwright reported `Malformed value`. The identical tree had just
+passed candidate CI 3/3 and passes 10/10 locally, so the ENTIRE workflow was re-run once per the
+recovery contract and attempt 2 was green. This is recorded as a transient failure in a browser
+scenario, NOT as a C18 defect and NOT as an infrastructure outage; if it recurs it should be
+diagnosed as a real flake in that spec rather than retried.
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a2-6800db195a7a2255f08566277381a92386038a4d14363fdd786b23c0210e7c57`
+(353,249 B wrapper) — exactly the archive `c18-db-paths-evidence-77489f50….zip` (524,576 B, outer
+sha256 `6800db195a7a2255f08566277381a92386038a4d14363fdd786b23c0210e7c57`) + verified sidecar.
+Arithmetic, measured from the delivered archive: **336 commands; 1,008 raw stream files; 11 fixed
+top-level regular files; 1,019 regular files total; + the `raw/` directory entry = 1,020 ZIP
+entries.** Verified from a fresh foreign checkout offline and **online-hosted**
+(`standing=delivery-online`).
+
+**Scope discipline.** Everything independent review verified at C18.1.7 — the archive, checksums,
+leak-free status, the exact inventory/attestation-byte correction, CI, the finalizer, hosted
+bindings and unchanged migrations — is preserved and was not reopened, as are C15–C17.
+
+**Why bfc8695 is superseded (honestly stated).** It is authentic and leak-free. Five packages
+still passed its exact verifier after snapshots, raw receipts, command digests, checksums and ZIP
+bytes were consistently rebound; all five were REPRODUCED as accepted against the byte-verbatim
+frozen fixture before any change:
+
+| # | Reproduced acceptance | Now rejected because |
+|---|---|---|
+| 1 | a seeded tenant suspended | tenant slots bind their source-owned status |
+| 2 | the bootstrap principal disabled | principal slots bind status and revocation epoch |
+| 3 | a seeded session revoked | session slots bind status and null revocation |
+| 4 | a seeded domain retention profile changed | domain slots bind both profiles |
+| 5 | one additional production-valid audit event | `claimedAuditEvents` is CONSUMED and the audit world is exact |
+
+**The correction — the omission class, not the five fields.**
+* **Machine-readable seed coverage.** The producer now takes an AUTHENTICATED PRE-SEED snapshot
+  (`path-a-preseed.json` — the database as migration 0012 leaves it), and the seed-affected table
+  universe is DERIVED from the pre-seed → post-seed delta. `scripts/gate/lib/c18-seed-coverage.mjs`
+  classifies every column of all fifteen affected tables as exactly one of *exact*, *slot-derived*,
+  *formula-derived*, *generated identifier*, *digest*, *timestamp* or *explicitly volatile*, and
+  names the verification that claims each table's rows. Verification fails on a seed-affected
+  table missing from the contract, an unclassified catalog column, a contract entry naming a
+  nonexistent table or column, and unclaimed rows. The report ships as `seed-coverage.json` and
+  the verifier re-derives and compares it. In the delivered archive the delta names exactly the
+  fifteen tables, each empty before the seed.
+* **Complete base-entity posture.** Tenants and domains bind name, status, residency and retention
+  profiles and activation lifecycle; principals bind login/display name, kind, scope, tenancy,
+  status and the source-derived revocation epoch (the forced rotation bumps the admin to 2;
+  governed principals stay at 1); sessions bind owner, assurance, status, null revocation, hash
+  posture, issue/expiry ordering, family relationship and an owner-consistent bound epoch; refresh
+  tokens bind exact cardinality, one-to-one session and family linkage, generation and null
+  replacement/reuse/invalidation posture; credentials bind exact cardinality, ownership, password
+  type, the active set plus the rotated bootstrap predecessor, rotation/expiry lifecycle and hash
+  format without exposing secrets; the bootstrap claim binds its singleton identity, claimed
+  principal and lifecycle; tenancy lifecycle events bind the exact planned set with actor, scope,
+  entity relationship and details; `ctx.issued` binds the exact source-derived capability multiset
+  by class and bound action with temporal validity and no extra or missing row.
+* **Exact audit world.** Floors are replaced by a source-derived plan: the twelve decision closers
+  plus the fully authenticated bootstrap and credential-rotation events (event type, action,
+  actor, scope, session posture, target, result, metadata, correlation and null decision
+  reference). `claimedAuditEvents` is consumed, so every planned event resolves exactly once,
+  every delivered event belongs to exactly one plan slot, the total is exact (14 in the delivered
+  archive, 2 of them non-decision), and chain heads derive from that set.
+* **One source of truth.** The narrow string-search meta-control is replaced by structural
+  controls proving every producer step maps to specification slots, every deterministic field is
+  covered by the coverage contract, every generated field carries a declared validator kind, and
+  the specification is the single tracked module both producer and verifier read — anchored by
+  `source_sha` like any other tracked file.
+* **Anti-suppression.** A missing or malformed member no longer suppresses checks that do not
+  depend on it: the pre-seed member's absence is reported as its own finding while coverage,
+  audit accounting, credentials, sessions, lifecycle events, capability rows and raw-receipt
+  reconstruction still run.
+
+**Controls.** The exact bfc8695 verifier is frozen BYTE-VERBATIM with per-file digest pins
+(`apps/api/test/gate/fixtures/c18-legacy-bfc8695`, eight files). In-gate controls total **217** —
+the five differentials and seventeen adjacent single-defect rejections (tenant residency profile,
+domain status, principal revocation epoch, session revocation time and bound epoch, extra and
+missing and invalidated and replaced refresh tokens, wrong credential status and owner, a wrong
+bootstrap claim, extra and missing lifecycle events, extra and missing and misattributed and
+consumed capability rows) — plus every prior C18/C18.1.x control, all still green. Hermetic gate
+controls total **223**.
+
+**Measured this round (nothing carried forward).** Hermetic: tokens 3, contracts 203, API 1163 +
+hermetic-meta 9. Local: integration 297, acceptance 58, Playwright 10 on reset databases; build,
+typecheck, lint and boundaries green. Migrations 0001–0021 byte-identical. Delivered archive: 15
+seed-affected tables derived from the delta, each empty pre-seed and holding 2 tenants, 3 domains,
+5 lifecycle events, 1 bootstrap claim, 4 principals, 5 credentials, 2 sessions, 2 refresh tokens,
+4 role bindings, 17 capabilities, 12 decisions, 14 audit events (2 non-decision), 2 chain heads,
+2 canonical objects and 2 outbox events after it; cleanup 4 removed, 0 failures.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.8 review, and no
+closure is claimed here. C19, the freeze protocol and external independent review remain open;
+Phase 0 is not approved and the source is not frozen. Contaminated d5061b8/8a23526-era hosted
+artifacts remain enumerated (§16 and the memory ledger) and undeleted — targeted deletion still
+requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8, 8362cba, dccfcf26
+and bfc8695 artifacts are NOT contaminated. This section is a docs-only child; verification runs
+against `77489f50fdb07d7f469f9181ddd808b37b70c964`.
