@@ -1949,7 +1949,15 @@ contaminated. This section is a docs-only child; verification runs against
 `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`.
 
 
-## 20. C18.1.5 — COMPLETE MIGRATION INVENTORY, EXACT SEED CONTRACT, EXACT BINDING MULTISETS, UNAMBIGUOUS ABSENCE (delivered; awaiting independent review)
+## 20. C18.1.5 — COMPLETE MIGRATION INVENTORY, EXACT SEED CONTRACT, EXACT BINDING MULTISETS, UNAMBIGUOUS ABSENCE (delivered; SUPERSEDED by §21)
+
+**SUPERSEDED at C18.1.6 (§21)**: independent review APPROVED the 8362cba archive, hosted runs,
+role-binding multiset, revoked-row handling, cleanup checks and all previous corrections, and
+C18.1.6 preserves every one of them unchanged. Two evidence-consistency issues remained: an
+`ls -1` inventory that omits dot-prefixed filenames the runner nevertheless applies, with an
+output parser that assumed whitespace-free filenames; and seed validation that fixed exact
+quantities while checking deterministic VALUES only for internal agreement. This section stays as
+honest history; verification targets §21.
 
 **Evidence-bearing source `8362cba116657c9119a96f16cde40faac1727113`.**
 Candidate CI: pull-request run `32373661813` (3/3 green). Source run `32374447671` **attempt 1**
@@ -2043,3 +2051,110 @@ artifacts remain enumerated (§16 and the memory ledger) and undeleted — targe
 requires explicit owner authorization; the 567a70f, 15e8239, 83d158c and 7be02b8 artifacts are
 NOT contaminated. This section is a docs-only child; verification runs against
 `8362cba116657c9119a96f16cde40faac1727113`.
+
+
+## 21. C18.1.6 — COMPLETE MIGRATION DISCOVERY, EXACT OUTPUT VALIDATION, SOURCE-OWNED SEED SEMANTICS (delivered; awaiting independent review)
+
+**Evidence-bearing source `dccfcf26b0111edeb4b5d710b6d0f707beb34f46`.**
+Candidate CI: pull-request run `32398239519` (3/3 green). Source run `32399868648` **attempt 1**
+(push/`main`, all three jobs green in ONE attempt with the blocking C18 gate — corrected producer
++ offline self-verification + the 171-test in-gate mutation/differential suite) · finalizer run
+`32400475534` (`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-4a9eba0cda45dbe78abce2a4b3b2dd31e088ff4c649ecd107cd41fffccd0997a`
+(296,162 B wrapper) — exactly the archive `c18-db-paths-evidence-dccfcf26….zip` (449,944 B, outer
+sha256 `4a9eba0cda45dbe78abce2a4b3b2dd31e088ff4c649ecd107cd41fffccd0997a`) + verified sidecar.
+Arithmetic, measured from the delivered archive rather than carried forward: **278 commands
+(3 workspace inventories, 3 attestations, 4 checked removals, 4 authenticated absence probes);
+834 raw stream files; 9 fixed top-level regular files; 843 regular files total; + the `raw/`
+directory entry = 844 ZIP entries.** Verified from a fresh foreign checkout offline and
+**online-hosted** (`standing=delivery-online`).
+
+**Scope discipline.** Everything independent review approved at C18.1.5 — the archive, the hosted
+runs, the role-binding multiset, revoked-row handling, cleanup checks, the catalogue contract,
+credential handling and every earlier correction — is preserved exactly and was not reopened.
+C15–C17, migrations 0001–0021 and previously approved C18 mechanisms are untouched.
+
+**Why 8362cba is superseded (honestly stated).** It is authentic and leak-free — NOT
+secret-contaminated. Both remaining issues were REPRODUCED as accepted against the byte-verbatim
+frozen 8362cba fixture before any fix:
+
+| # | Reproduced false pass | Now rejected because |
+|---|---|---|
+| 1a | a dot-prefixed `.sql` the runner applied | *(already caught by 8362cba's sequence check — recorded honestly, retained as regression coverage)* |
+| 1b | a dot-prefixed file whose name contains WHITESPACE | the inventory is canonical JSON from a tracked helper, and output validation is complete rather than `\S+`-matched |
+| 1c | an unknown extra line in the migration output | the runner's output must equal the exact expected line sequence |
+| 1d | nonempty stderr on a successful migration command | a successful governed command must emit nothing on stderr |
+| 2a | a consistently renamed tenant | tenant slots resolve by the source-owned name |
+| 2b | a consistently renamed domain | domain slots resolve by name AND parent tenant slot |
+| 2c | a consistently renamed principal login/display name | principal slots resolve by the specified login |
+| 2d | a consistently changed principal role | each slot's live role must be exactly what the specification grants |
+| 2e | a consistently changed outbox event type | outbox slots resolve by the specified event type |
+| 2f | a consistently moved canonical object | object slots resolve by specified tenancy placement |
+| 2g | a consistently changed session owner | session slots resolve by their specified owning principal slot |
+
+**The correction.**
+* **A tracked, cross-platform inventory helper** (`scripts/gate/lib/c18-inventory.mjs`) enumerates
+  every directory entry — dot-prefixed included — and emits canonical JSON carrying each entry's
+  NAME and its lstat FILE TYPE, so names containing spaces, Unicode or newlines round-trip without
+  ambiguity and a symlink is reported as a symlink rather than as the file it points at. The
+  verifier refuses directories, symlinks and every non-regular entry; enforces the governed
+  migration filename grammar; requires the complete sorted, duplicate-free inventory to equal the
+  exact source-derived list; and requires the receipt's own `inventory[]` to equal what the command
+  enumerated. The attestation is built from the ENUMERATED inventory, so a file cannot escape
+  hashing by being absent from the manifest's claim. The helper travels INSIDE the governed
+  workspace exactly as the migrate runner does — its argv is therefore workspace-relative and
+  reproducible by any verifier, and its executed bytes are measured by the same `shasum`
+  attestation that measures the runner. (A first implementation passed the repository root into
+  the argv; foreign-checkout verification caught that the producer's absolute path is not the
+  verifier's, and the workspace-resident design replaced it.)
+* **Complete output validation.** The exact expected lines are constructed from the source-derived
+  application sequence — `applying <filename> ... ok` in order, then `migrations up to date` and
+  `role passwords synchronized from environment` — and the runner's stdout must equal that
+  sequence exactly. Unknown, additional, malformed, duplicate and reordered lines all fail, as does
+  output that does not end with a newline. Successful inventory, attestation and migration commands
+  must record exit 0, no signal and empty stderr.
+* **One source-owned seed specification** (`scripts/gate/lib/c18-seed-spec.mjs`) describes every
+  deterministic, non-generated part of the seed: tenant slots and names; domain slots, names and
+  parent-tenant slots; principal slots with exact login/display names, kind, scope, role and
+  tenancy parents; the platform administrator; session-owner slots and assurance; canonical-object
+  placement, type, version and lifecycle; outbox event types, statuses, scope and topology;
+  deterministic decision (action, consequence, object type) multisets; and the governed
+  step-to-slot map. The governed SEEDER writes from it and the VERIFIER judges against it —
+  exact cardinalities are DERIVED from it, never maintained twice, and a hermetic control asserts
+  no deterministic name is duplicated as a literal in the seeder. Generated UUIDs, correlations,
+  hashes, credentials and timestamps remain variable; each is bound to its named slot, after which
+  the seed record, the reconstructed snapshots and the step receipts reconcile in both directions,
+  and governed step identities are derived from the slot map rather than from the record itself.
+
+**Controls.** The exact 8362cba verifier is frozen BYTE-VERBATIM with per-file digest pins
+(`apps/api/test/gate/fixtures/c18-legacy-8362cba`, six files, cross-checked against
+`git show 8362cba:…` when history is available). Because C18.1.6 raises the evidence format again,
+each differential applies the SAME mutation to each verifier's own genuine archive: the predecessor
+judges a faithful downgrade of this run to the shape its own producer emitted (non-vacuously
+accepted with zero problems), C18.1.6 judges the archive as produced. In-gate controls total
+**171** — eleven differentials, fifteen adjacent-field rejections (a dot-prefixed `.sql`, a
+dot-prefixed name with whitespace, an ordinary additional file, a missing file, a duplicate entry,
+a directory entry, a symlink entry, a reordered inventory, a duplicated application line, a
+malformed application line, a missing terminal status line, nonempty stderr on inventory and on
+attestation, a non-tracked inventory helper, a step attributing another slot's identity) and every
+prior C18/C18.1.x control, all still green. Hermetic gate controls total **181**.
+
+**Measured this round (nothing carried forward).** Hermetic: tokens 3, contracts 203, API 1121 +
+hermetic-meta 9. Local: integration 297, acceptance 58, Playwright 10 on reset databases; build,
+typecheck, lint and boundaries green. Migrations 0001–0021 byte-identical. Hosted gate: 171
+mutation/differential controls; integration 297 on both paths; acceptance 58 on both instances.
+Migration executions measured in the delivered archive: historical inventory 12 entries (all
+regular files) / applied 12; upgrade inventory 21 / applied 9; virgin inventory 21 / applied 21.
+Seed rows in the delivered pre-upgrade snapshot: 2 tenants, 3 domains, 4 principals, 2 sessions,
+2 canonical objects, 2 outbox events, 12 decisions, 4 role bindings. Cleanup: 4 removed, 4
+authenticated absence proofs, 0 failures, 0 kept.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.6 review, and no
+closure is claimed here. C19, the freeze protocol and external independent review remain open;
+Phase 0 is not approved and the source is not frozen. Contaminated d5061b8/8a23526-era hosted
+artifacts remain enumerated (§16 and the memory ledger) and undeleted — targeted deletion still
+requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8 and 8362cba
+artifacts are NOT contaminated. This section is a docs-only child; verification runs against
+`dccfcf26b0111edeb4b5d710b6d0f707beb34f46`.
