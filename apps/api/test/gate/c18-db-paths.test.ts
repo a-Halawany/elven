@@ -8,7 +8,10 @@
  * and the parsed-YAML CI wiring.
  */
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -53,6 +56,8 @@ import {
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { ingestArchive, verifySemantics } from '../../../../scripts/gate/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { redactSecrets } from '../../../../scripts/gate/c18-watchdog.mjs';
 import {
   opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
@@ -2315,5 +2320,73 @@ describe('C18.1.10 — the hosted binding needs the delivered bytes, and says so
       root: REPO, online: true, requireHosted: true, zipBytes: null,
     } as never);
     expect(r.problems.join('\n')).toMatch(/hosted verification was requested without the delivered archive bytes/);
+  });
+});
+
+describe('C18.1.11 — a secret in the environment never reaches argv, a log, evidence or an error', () => {
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  /** A canary that is unmistakable if it ever appears anywhere it should not. */
+  const CANARY = 'gho_c18canary000000000000000000000000';
+
+  it.each([
+    ['a provider token anywhere in the text', `run --with ${CANARY} now`],
+    ['a secret-named assignment', 'GITHUB_TOKEN=abcdefghijklmnop run'],
+    ['a secret-named flag', 'verify --token abcdefghijklmnop'],
+    ['an Authorization header', 'Authorization: Bearer abcdefghijklmnop'],
+    ['a database password assignment', 'EYE_DB_PASSWORD=hunter2hunter2hunter2'],
+    ['a fine-grained PAT', 'x github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz'],
+    ['a private key block', '-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----'],
+  ])('redacts %s', (_l, text) => {
+    const out = redactSecrets(text);
+    expect(out).toContain('[REDACTED]');
+    for (const leak of [CANARY, 'abcdefghijklmnop', 'hunter2hunter2hunter2', 'AAAA']) {
+      if (text.includes(leak)) expect(out, `${leak} survived redaction`).not.toContain(leak);
+    }
+  });
+  it('leaves ordinary text untouched', () => {
+    expect(redactSecrets('C18 dual-path proof: PASS')).toBe('C18 dual-path proof: PASS');
+  });
+
+  it('the watchdog never echoes a secret passed in argv', () => {
+    // Passing a secret in argv is the mistake itself; the watchdog must not compound it by
+    // writing the value into a log that outlives the run.
+    const r = spawnSync('node', [WATCHDOG, '10', 'node', '-e', 'process.exit(0)', CANARY], { encoding: 'utf8' });
+    expect(r.stderr).not.toContain(CANARY);
+    expect(r.stderr).toContain('[REDACTED]');
+  });
+
+  it('a secret INHERITED through the environment appears in no output at all', () => {
+    // The supported way to hand a credential to a child: the environment. It must not surface in
+    // the echoed command, the diagnostics, or the child's own failure output.
+    const r = spawnSync('node', [
+      WATCHDOG, '10', 'node', '-e', 'if (!process.env.CANARY_TOKEN) process.exit(3); process.exit(0)',
+    ], { encoding: 'utf8', env: { ...process.env, CANARY_TOKEN: CANARY } });
+    expect(r.status, 'the child must actually receive the environment secret').toBe(0);
+    expect(`${r.stdout}${r.stderr}`).not.toContain(CANARY);
+  });
+
+  it('the evidence producer records no secret in its command ledger or raw receipts', () => {
+    // The archive is the artefact that leaves this machine. The producer redacts argv and typed
+    // environment already; this asserts the canary cannot appear even when it is in the
+    // environment of the producing process.
+    const archive = process.env['C18_ARCHIVE'];
+    if (archive === undefined || archive === '') return; // exercised in-gate, where an archive exists
+    const dir = mkdtempSync(join(tmpdir(), 'c18-secret-'));
+    try {
+      expect(spawnSync('unzip', ['-q', archive, '-d', dir]).status).toBe(0);
+      const files: string[] = [];
+      const walk = (d: string) => {
+        for (const n of readdirSync(d)) {
+          const abs = join(d, n);
+          if (statSync(abs).isDirectory()) walk(abs); else files.push(abs);
+        }
+      };
+      walk(dir);
+      for (const f of files) {
+        const text = readFileSync(f, 'utf8');
+        expect(text, `${f} carries a provider token`).not.toMatch(/gh[pousr]_[A-Za-z0-9]{16,}/);
+        expect(text, `${f} carries a private key`).not.toMatch(/BEGIN [A-Z ]*PRIVATE KEY/);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
