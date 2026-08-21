@@ -177,7 +177,44 @@ export const SEED_AUDIT_POSTURE = Object.freeze({
   context_mode: 'authority', policy_version: 'bundle-v1', purpose_id: 'c18-era-seed',
   causation_id: null, delegation_id: null, trace_id: null, request_digest: null,
   target_version: null, metadata: {},
+  // C18.1.9 — the chain columns and head posture the seeded audit world always exhibits.
+  hash_alg_version: 'eye-audit-v1',
+  clock_quality: 'trusted',
+  headFrozen: false,
+  /** The EXACT field set of every seeded audit event body. Neither more nor fewer. */
+  bodyFields: Object.freeze([
+    'action', 'actor', 'causation_id', 'clock_quality', 'context_mode', 'correlation_id',
+    'delegation_id', 'domain_id', 'event_type', 'metadata', 'occurred_at', 'outcome',
+    'policy_decision_id', 'policy_version', 'purpose_id', 'request_digest', 'result_code',
+    'scope', 'session_id', 'target_id', 'target_type', 'target_version', 'tenant_id',
+    'trace_id',
+  ]),
 });
+
+/**
+ * C18.1.9 — the governed bootstrap credential's forced rotation, as executable relationships.
+ * The rotated predecessor is retired exactly when its replacement is minted, and carries a
+ * governed expiry that falls inside its own lifetime. Active credentials are never retired.
+ */
+export const SEED_CREDENTIAL_LIFECYCLE = Object.freeze({
+  activeRotatedAt: null,
+  activeExpiresAt: null,
+  rotatedCount: 1,
+  /** The retired credential's expiry is one governed lifetime after an instant it was alive. */
+  lifetimeMs: 24 * 60 * 60 * 1000,
+});
+
+/**
+ * C18.1.9 — THE GOVERNED SEEDING WINDOW. Every seeded instant is stamped while the governed seed
+ * runs. The window's anchor is the authenticated audit chain — the only timestamps in the seeded
+ * world protected by production row hashes — widened by a slack that comfortably covers the rows
+ * written just before the first audit event. Timestamps outside it are detached, which is what
+ * 77489f5's bare "present" timestamp classification could not say.
+ */
+export const SEED_WINDOW_SLACK_MS = 5 * 60 * 1000;
+
+/** C18.1.9 — the governed Argon2id parameters every seeded credential hash must carry. */
+export const SEED_ARGON2ID_PARAMS = Object.freeze({ v: 19, m: 19456, t: 2, p: 1 });
 /** The source-owned input-digest formula each governed seed decision records. */
 export const seedInputDigestSource = (op, entityId) => (op.entityKind === 'principal'
   ? `c18:principal:${entityId}`
@@ -274,17 +311,32 @@ export const SEED_LIFECYCLE_EVENTS = Object.freeze([
  * Every capability the governed seed mints, by class and bound action. One row per governed
  * operation, plus the bootstrap, rotation, session-open and publish capabilities.
  */
+export const CAPABILITY_SESSIONLESS_ID = '00000000-0000-0000-0000-000000000000';
+
 export const SEED_CAPABILITIES = Object.freeze([
-  Object.freeze({ op_class: 'bootstrap', bound_action: 'identity.bootstrap.platform_admin', sessionSlot: null, count: 1 }),
-  Object.freeze({ op_class: 'identity', bound_action: 'identity.credential.rotate', sessionSlot: null, count: 1 }),
-  Object.freeze({ op_class: 'identity', bound_action: 'identity.session.create', sessionSlot: null, count: SEED_SESSIONS.length }),
-  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.tenant.create', sessionSlot: 'admin-session', count: SEED_TENANTS.length }),
-  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.domain.create', sessionSlot: 'admin-session', count: SEED_DOMAINS.length }),
-  Object.freeze({ op_class: 'C2', bound_action: 'identity.principal.create', sessionSlot: 'admin-session', count: SEED_PRINCIPALS.length }),
-  Object.freeze({ op_class: 'C2', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OBJECTS.length }),
-  Object.freeze({ op_class: 'C1', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OUTBOX.length }),
-  Object.freeze({ op_class: 'outbox', bound_action: 'objects.outbox.publish', sessionSlot: null, count: 1 }),
+  Object.freeze({ op_class: 'bootstrap', bound_action: 'identity.bootstrap.platform_admin', sessionSlot: null, count: 1, consumed_at: null }),
+  Object.freeze({ op_class: 'identity', bound_action: 'identity.credential.rotate', sessionSlot: null, count: 1, consumed_at: null }),
+  Object.freeze({ op_class: 'identity', bound_action: 'identity.session.create', sessionSlot: null, count: SEED_SESSIONS.length, consumed_at: null }),
+  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.tenant.create', sessionSlot: 'admin-session', count: SEED_TENANTS.length, consumed_at: null }),
+  Object.freeze({ op_class: 'C2', bound_action: 'tenancy.domain.create', sessionSlot: 'admin-session', count: SEED_DOMAINS.length, consumed_at: null }),
+  Object.freeze({ op_class: 'C2', bound_action: 'identity.principal.create', sessionSlot: 'admin-session', count: SEED_PRINCIPALS.length, consumed_at: null }),
+  Object.freeze({ op_class: 'C2', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OBJECTS.length, consumed_at: null }),
+  Object.freeze({ op_class: 'C1', bound_action: 'objects.create', sessionSlot: 'alpha-admin-session', count: SEED_OUTBOX.length, consumed_at: null }),
+  Object.freeze({ op_class: 'outbox', bound_action: 'objects.outbox.publish', sessionSlot: null, count: 1, consumed_at: null }),
 ]);
+
+/**
+ * C18.1.9 — the capability world as an EXACT MULTISET of complete rows, not a tally.
+ * bfc8695..77489f5 counted capabilities by (class, action) and never consumed `sessionSlot`, so
+ * moving a capability onto another session preserved every tally the verifier examined.
+ */
+export const SEED_CAPABILITY_MULTISET = Object.freeze(SEED_CAPABILITIES.flatMap(
+  (c) => Array.from({ length: c.count }, () => Object.freeze({
+    op_class: c.op_class, bound_action: c.bound_action, sessionSlot: c.sessionSlot,
+    consumed_at: c.consumed_at,
+  })),
+));
+export const SEED_CAPABILITY_COUNT = SEED_CAPABILITY_MULTISET.length;
 
 /**
  * The NON-DECISION audit events: the audited single-use bootstrap and the forced credential

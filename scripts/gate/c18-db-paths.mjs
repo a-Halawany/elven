@@ -115,7 +115,8 @@ import {
   verifyMigrationRun, INVENTORY_HELPER_REL, INVENTORY_HELPER_WS, bindSeedSpec,
   deriveStepIdentitiesFromSlots,
 } from './lib/c18-contract.mjs';
-import { buildCoverageReport, verifySeedCoverage } from './lib/c18-seed-coverage.mjs';
+import { buildCoverageReport, verifyCoverageRegistry, verifySeedCoverage } from './lib/c18-seed-coverage.mjs';
+import { registeredColumns, runCoverageValidators, slotsResolved } from './lib/c18-coverage-runner.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
@@ -729,12 +730,20 @@ async function runCommand(args) {
     problems.push(...verifySeedRecordClosed({ seedRecord, before, finalSnap, manifest: null }).map((p) => `path-a-seed: ${p}`));
     // C18.1.8 — the seed-affected table universe DERIVED from the authenticated delta, and the
     // machine-readable coverage report carried in the package.
-    const coverage = verifySeedCoverage({ preseed, before });
+    const coverage = verifySeedCoverage({ preseed, before, latest: after });
     problems.push(...coverage.problems.map((p) => `path-a-coverage: ${p}`));
     writeFileSync(join(outDir, 'seed-coverage.json'),
-      `${JSON.stringify(buildCoverageReport({ preseed, before }), null, 2)}\n`);
+      `${JSON.stringify(buildCoverageReport({ preseed, before, latest: after }), null, 2)}\n`);
+    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns() }).problems
+      .map((p) => `path-a-coverage: ${p}`));
     const boundA = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...boundA.problems.map((p) => `path-a-seed: ${p}`));
+    // C18.1.9 — EXECUTE every registered coverage rule. The published classification is a
+    // statement about what the verifier enforces only if the rules actually run.
+    if (slotsResolved(boundA.slots)) {
+      problems.push(...runCoverageValidators({ before, slots: boundA.slots }).problems
+        .map((p) => `path-a-coverage: ${p}`));
+    }
     problems.push(...verifySeedSteps({
       steps: seedRecord.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
       slots: boundA.problems.length === 0 ? boundA.slots : null,
@@ -1229,17 +1238,24 @@ export async function verifyEvidence({
     // C18.1.8 — SEED COVERAGE, derived from the authenticated pre-seed delta. These run
     // whenever their members are readable: a malformed manifest must not suppress them.
     if (preseed !== null) {
-      problems.push(...verifySeedCoverage({ preseed, before }).problems);
+      problems.push(...verifySeedCoverage({ preseed, before, latest: after }).problems);
       const deliveredCoverage = readJson('seed-coverage.json');
       if (deliveredCoverage === null) problems.push('seed-coverage.json is missing or not JSON');
-      else if (JSON.stringify(deliveredCoverage) !== JSON.stringify(buildCoverageReport({ preseed, before }))) {
+      else if (JSON.stringify(deliveredCoverage) !== JSON.stringify(buildCoverageReport({ preseed, before, latest: after }))) {
         problems.push('the delivered seed-coverage report is not the source-derived coverage of this evidence');
       }
     }
+    // C18.1.9 — the coverage REGISTRY meta-control and the executable rules themselves. Both are
+    // independent of the pre-seed member and of the manifest, so neither can be suppressed by a
+    // missing or malformed one.
+    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns() }).problems);
     // THE SOURCE-OWNED SEED SPECIFICATION: every generated identity is bound to a named slot by
     // the deterministic key the specification owns, so a consistent rename cannot resolve.
     const bound = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...bound.problems);
+    if (slotsResolved(bound.slots)) {
+      problems.push(...runCoverageValidators({ before, slots: bound.slots }).problems);
+    }
     problems.push(...verifySeedSteps({
       steps: seedRecord?.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
       slots: bound.problems.length === 0 ? bound.slots : null,

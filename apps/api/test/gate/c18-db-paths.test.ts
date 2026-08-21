@@ -8,7 +8,7 @@
  * and the parsed-YAML CI wiring.
  */
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -46,10 +46,15 @@ import {
 } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import {
-  COVERAGE_KINDS, SEED_COVERAGE, buildCoverageReport, deriveSeedAffectedTables, verifySeedCoverage,
+  COVERAGE_KINDS, SEED_COVERAGE, buildCoverageReport, deriveSeedAffectedTables,
+  verifyCoverageRegistry, verifySeedCoverage,
 } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
+import {
+  opaqueColumns, registeredColumns, runCoverageValidators,
+} from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
+import { WORLD_IDS, buildSeedWorld, worldSlots } from './c18-seed-world';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
@@ -753,15 +758,22 @@ describe('C18.1.8 — the source-owned seed coverage contract', () => {
   const world = () => {
     const preseed: any = { tables: {} };
     const before: any = { tables: {} };
+    const latest: any = { tables: {} };
     for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
-      const columns = spec.columnsOwnedBy === undefined ? Object.keys(spec.columns) : ['object_id'];
+      const all = spec.columnsOwnedBy === undefined ? Object.keys(spec.columns) : ['object_id'];
+      // A later-era column exists in the UPGRADED catalog only; the seed-era catalog does not
+      // have it, and the contract's era declaration is checked against both.
+      const columns = spec.columnsOwnedBy === undefined
+        ? all.filter((c) => spec.columns[c].era !== 'latest') : all;
       preseed.tables[t] = table([], columns);
       before.tables[t] = table([{ id: `${t}-row` }], columns);
+      latest.tables[t] = table([{ id: `${t}-row` }], all);
     }
     // A table the seed does NOT write is identical on both sides.
     preseed.tables['config.runtime_profile'] = table([{ id: 'p' }], ['id']);
     before.tables['config.runtime_profile'] = table([{ id: 'p' }], ['id']);
-    return { preseed, before };
+    latest.tables['config.runtime_profile'] = table([{ id: 'p' }], ['id']);
+    return { preseed, before, latest };
   };
   it('the affected universe is DERIVED from the authenticated pre-seed delta', () => {
     const { preseed, before } = world();
@@ -769,7 +781,7 @@ describe('C18.1.8 — the source-owned seed coverage contract', () => {
     expect(affected).toEqual(Object.keys(SEED_COVERAGE).sort());
     // A table the seed never writes is not in the delta.
     expect(affected).not.toContain('config.runtime_profile');
-    expect(verifySeedCoverage({ preseed, before }).problems).toEqual([]);
+    expect(verifySeedCoverage({ preseed, before, latest: (world() as any).latest }).problems).toEqual([]);
   });
   it('every classified column carries exactly one known kind', () => {
     for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
@@ -1712,5 +1724,289 @@ describe('C18.1.1 — CI wiring', () => {
     expect(c18ArtifactName('1', 'a'.repeat(64))).toBe(`c18-db-paths-evidence-a1-${'a'.repeat(64)}`);
     const diag = steps().find((s) => String(s['name'] ?? '') === 'Upload C18 diagnostics');
     expect(diag!['if']).toBe('always()');
+  });
+});
+
+describe('C18.1.9 — the frozen 77489f5 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '77489f50fdb07d7f469f9181ddd808b37b70c964';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '722371efe0f240206c2f9a8af14a6ae5340302e76b66686161c8a194b9fd6e53'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '97af2b2605d8fd53e71f00f2b1470bfff2ec895ab4bac076c54f62c6d30acb79'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', 'd78b2fe56d7b7d879bf1bd593512adc1becacfed69b4673ce4ec415d1fcfc991'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', 'e4dfcce62bf99ad58c490b84fee89b4e23ca3aaa780f981618e1230c220f173e'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-77489f5/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-77489f5', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+  it('the frozen predecessor carries every file its verifier executes', () => {
+    // A differential is only meaningful if the frozen leg can actually run.
+    for (const [rel] of PINNED) {
+      expect(existsSync(join(__dirname, 'fixtures', 'c18-legacy-77489f5', rel)), rel).toBe(true);
+    }
+  });
+});
+
+describe('C18.1.9 — every classified column carries an EXECUTABLE rule', () => {
+  it('the registry, the contract and the catalog are exactly equal', () => {
+    const { before } = buildSeedWorld();
+    const r = verifyCoverageRegistry({ before, registered: registeredColumns() });
+    expect(r.problems).toEqual([]);
+    expect(r.catalog).toEqual(r.classified);
+    expect(r.classified).toEqual(r.registered);
+    expect(r.registered.length).toBeGreaterThan(100);
+  });
+  it.each([
+    ['a classified column the catalog does not have', (w: any) => {
+      w.before.tables['tenancy.tenants'].columns =
+        w.before.tables['tenancy.tenants'].columns.filter((c: string) => c !== 'status');
+    }, /'tenancy\.tenants\.status' is classified by the coverage contract but not in the delivered catalog/],
+    ['a catalog column nothing classifies', (w: any) => {
+      w.before.tables['tenancy.tenants'].columns.push('smuggled');
+    }, /'tenancy\.tenants\.smuggled' is in the delivered catalog but not classified/],
+  ])('the meta-control rejects %s', (_l, mutate, pattern) => {
+    const w = buildSeedWorld();
+    mutate(w);
+    expect(verifyCoverageRegistry({ before: w.before, registered: registeredColumns() })
+      .problems.join('\n')).toMatch(pattern);
+  });
+  it('a classification without an executable rule is a finding', () => {
+    const w = buildSeedWorld();
+    const shadow: any = JSON.parse(JSON.stringify(
+      Object.fromEntries(Object.entries(SEED_COVERAGE).map(([t, s]: [string, any]) => [t, {
+        rowsClaimedBy: s.rowsClaimedBy,
+        ...(s.columnsOwnedBy === undefined
+          ? { columns: Object.fromEntries(Object.entries(s.columns).map(([c, e]: [string, any]) => [c, { kind: e.kind, note: e.note, era: e.era }])) }
+          : { columnsOwnedBy: s.columnsOwnedBy }),
+      }]))));
+    const problems = verifySeedCoverage({
+      preseed: w.preseed, before: w.before, latest: w.latest, coverage: shadow,
+    }).problems.join('\n');
+    expect(problems).toMatch(/is classified but carries no executable rule/);
+  });
+  it('the delivered report publishes each column KIND and its executability', () => {
+    const w = buildSeedWorld();
+    const report: any = buildCoverageReport({ preseed: w.preseed, before: w.before, latest: w.latest });
+    for (const [t, spec] of Object.entries(SEED_COVERAGE) as Array<[string, any]>) {
+      if (spec.columnsOwnedBy !== undefined) continue;
+      for (const c of Object.keys(spec.columns)) {
+        expect(report.tables[t].columns[c].kind, `${t}.${c}`).toBe(spec.columns[c].kind);
+        expect(report.tables[t].columns[c].executable_rule, `${t}.${c}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('C18.1.9 — later-era columns are modelled, not exempted', () => {
+  it('a later-era column must be ABSENT from the seed-era catalog', () => {
+    const w = buildSeedWorld();
+    w.before.tables['identity.bootstrap_claim'].columns.push('consumed');
+    expect(verifySeedCoverage({ preseed: w.preseed, before: w.before, latest: w.latest })
+      .problems.join('\n')).toMatch(/declared a later-era column, but the seed-era catalog already has it/);
+  });
+  it('a later-era column must be PRESENT in the upgraded catalog', () => {
+    const w = buildSeedWorld();
+    w.latest.tables['identity.bootstrap_claim'].columns =
+      w.latest.tables['identity.bootstrap_claim'].columns.filter((c: string) => c !== 'consumed');
+    expect(verifySeedCoverage({ preseed: w.preseed, before: w.before, latest: w.latest })
+      .problems.join('\n')).toMatch(/declared a later-era column, but the upgraded catalog does not have it either/);
+  });
+  it.each([['exact'], ['volatile']])('a missing %s column is no longer excused', (kind) => {
+    // 77489f5 allowed ANY missing 'exact' or 'volatile' column, which silenced its rule.
+    const w = buildSeedWorld();
+    const table = kind === 'exact' ? 'identity.sessions' : 'objects.object_outbox';
+    const column = kind === 'exact' ? 'status' : 'lease_id';
+    w.before.tables[table].columns = w.before.tables[table].columns.filter((c: string) => c !== column);
+    expect(verifySeedCoverage({ preseed: w.preseed, before: w.before, latest: w.latest })
+      .problems.join('\n')).toMatch(new RegExp(`classifies '${table.replace('.', '\\.')}\\.${column}', which the delivered catalog does not have`));
+  });
+});
+
+describe('C18.1.9 — the generated world exercises every registered rule', () => {
+  const clean = () => {
+    const w = buildSeedWorld();
+    return { w, slots: worldSlots() };
+  };
+  it('the specification-conformant world raises NO finding', () => {
+    const { w, slots } = clean();
+    const r = runCoverageValidators({ before: w.before, slots });
+    expect(r.problems).toEqual([]);
+    expect(r.executed.sort()).toEqual(registeredColumns());
+  });
+
+  /** One mutation per registered column: change the value away from what its rule requires. */
+  const perturb = (value: unknown): unknown => {
+    if (value === null || value === undefined) return 'c18-1-9-perturbed';
+    if (typeof value === 'boolean') return !value;
+    if (typeof value === 'number') return value + 41;
+    if (typeof value === 'string') {
+      if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return '2001-01-01T00:00:00.000+00:00';
+      if (/^[0-9a-f]{64}$/.test(value)) return 'f'.repeat(64);
+      return `${value}-perturbed`;
+    }
+    if (Array.isArray(value)) return [...value, 'perturbed'];
+    return { ...(value as object), perturbed: true };
+  };
+  const registered = registeredColumns();
+  const opaque = opaqueColumns();
+  it('the OPAQUE exemption is exactly the two columns with no source-owned value', () => {
+    // A generated context key and a broker lease have no derivation the source can state. Every
+    // other registered column must be provably enforced by the matrix below.
+    expect(opaque).toEqual(['identity.sessions.context_key_hash', 'objects.object_outbox.lease_id']);
+  });
+  it.each(opaque.map((c) => [c]))('the opaque column %s still rejects a grammar violation', (spec) => {
+    const [table, column] = [spec.slice(0, spec.lastIndexOf('.')), spec.slice(spec.lastIndexOf('.') + 1)];
+    const { w, slots } = clean();
+    w.before.tables[table].rows[0][column] = 42;
+    expect(runCoverageValidators({ before: w.before, slots }).problems.join('\n')).toMatch(
+      new RegExp(`${table.replace('.', '\\.')}\\.${column}`));
+  });
+  it.each(registered.filter((c) => !opaque.includes(c)).map((c) => [c]))('mutating %s is REJECTED by its own rule', (spec) => {
+    const [table, column] = [spec.slice(0, spec.lastIndexOf('.')), spec.slice(spec.lastIndexOf('.') + 1)];
+    const { w, slots } = clean();
+    const rows = w.before.tables[table].rows;
+    expect(rows.length, `${spec} has no rows to mutate`).toBeGreaterThan(0);
+    rows[0][column] = perturb(rows[0][column]);
+    const problems = runCoverageValidators({ before: w.before, slots }).problems;
+    expect(problems.length, `${spec} accepted a perturbed value`).toBeGreaterThan(0);
+  });
+});
+
+describe('C18.1.9 — the reproduced acceptances are permanently closed', () => {
+  const world = () => ({ w: buildSeedWorld(), slots: worldSlots() });
+  const reject = (mutate: (b: any) => void) => {
+    const { w, slots } = world();
+    mutate(w.before);
+    return runCoverageValidators({ before: w.before, slots }).problems.join('\n');
+  };
+  const R = (b: any, t: string) => b.tables[t].rows;
+
+  it('a capability reassigned to another session (tally preserved)', () => {
+    expect(reject((b) => {
+      const caps = R(b, 'ctx.issued');
+      const c = caps.find((x: any) => x.op_class === 'C1');
+      c.session_id = WORLD_IDS.s1;
+    })).toMatch(/is not in the source-owned capability multiset/);
+  });
+  it('a duplicate capability nonce', () => {
+    expect(reject((b) => { const c = R(b, 'ctx.issued'); c[1].nonce = c[0].nonce; }))
+      .toMatch(/appears 2 times; every generated nonce is unique/);
+  });
+  it('a capability class or action detached from its plan', () => {
+    expect(reject((b) => { R(b, 'ctx.issued')[0].bound_action = 'identity.session.create'; }))
+      .toMatch(/capability multiset/);
+  });
+  it('a capability issued after it expires', () => {
+    expect(reject((b) => {
+      const c = R(b, 'ctx.issued')[0];
+      const swap = c.issued_at; c.issued_at = c.expires_at; c.expires_at = swap;
+    })).toMatch(/ctx\.issued\.issued_at/);
+  });
+  it('a consumed capability', () => {
+    expect(reject((b) => { R(b, 'ctx.issued')[0].consumed_at = '2026-08-01T00:10:00.000+00:00'; }))
+      .toMatch(/ctx\.issued\.consumed_at/);
+  });
+  it('an inflated session bound_epoch', () => {
+    expect(reject((b) => { R(b, 'identity.sessions')[0].bound_epoch = 99; }))
+      .toMatch(/bound_epoch is 99; the owner's revocation epoch recomputes to/);
+  });
+  it('a LOWERED session bound_epoch', () => {
+    expect(reject((b) => { R(b, 'identity.sessions')[0].bound_epoch = 0; }))
+      .toMatch(/bound_epoch is 0/);
+  });
+  it('a lifecycle event detached from the entity it describes', () => {
+    expect(reject((b) => { R(b, 'tenancy.lifecycle_events')[0].occurred_at = '2020-01-01T00:00:00.000+00:00'; }))
+      .toMatch(/lifecycle_events\.occurred_at .* is not the same instant as the created entity's creation time/);
+  });
+  it('a refresh token detached from its session', () => {
+    expect(reject((b) => { R(b, 'identity.refresh_tokens')[0].issued_at = '2020-01-01T00:00:00.000+00:00'; }))
+      .toMatch(/refresh_tokens\.issued_at .* is not the same instant as its session's issue time/);
+  });
+  it('an active credential given a rotation instant', () => {
+    expect(reject((b) => {
+      const c = R(b, 'identity.credentials').find((x: any) => x.status === 'active');
+      c.rotated_at = '2026-08-01T00:05:00.000+00:00';
+    })).toMatch(/on an ACTIVE credential; the specification requires null/);
+  });
+  it('a rotated credential whose retirement does not mint its replacement', () => {
+    expect(reject((b) => {
+      const c = R(b, 'identity.credentials').find((x: any) => x.status === 'rotated');
+      c.rotated_at = '2026-08-01T00:00:07.000+00:00';
+    })).toMatch(/does not coincide with the minting of its replacement/);
+  });
+  it('a credential hash outside the Argon2id PHC grammar', () => {
+    expect(reject((b) => { R(b, 'identity.credentials')[0].secret_hash = '$argon2i$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA'; }))
+      .toMatch(/secret_hash/);
+  });
+  it('a standalone audit body rechained onto a policy version', () => {
+    expect(reject((b) => {
+      const ev = R(b, 'audit.audit_events');
+      const e = ev.find((x: any) => x.event.policy_decision_id === null);
+      e.event = { ...e.event, policy_version: 'bundle-v1' };
+      e.event_jcs = jcsCanonicalize(e.event);
+      // Rechain the whole partition exactly as an author with write access would.
+      let prev = '0'.repeat(64);
+      for (const r of ev.filter((x: any) => x.partition_id === e.partition_id).sort((a: any, z: any) => a.audit_seq - z.audit_seq)) {
+        r.previous_hash = prev;
+        r.row_hash = auditRowHash({ partitionId: r.partition_id, auditSeq: r.audit_seq, previousHash: prev, event: r.event });
+        prev = r.row_hash;
+      }
+      const head = R(b, 'audit.audit_chain_heads').find((h: any) => h.partition_id === e.partition_id);
+      head.head_hash = prev;
+    })).toMatch(/body policy_version is "bundle-v1"; the specification requires null/);
+  });
+  it('an audit body carrying an extra field', () => {
+    expect(reject((b) => {
+      const e = R(b, 'audit.audit_events')[0];
+      e.event = { ...e.event, smuggled: 'x' };
+      e.event_jcs = jcsCanonicalize(e.event);
+    })).toMatch(/the body field set is .*smuggled/);
+  });
+  it('an audit body missing a field', () => {
+    expect(reject((b) => {
+      const e = R(b, 'audit.audit_events')[0];
+      const { trace_id: _drop, ...rest } = e.event;
+      e.event = rest;
+      e.event_jcs = jcsCanonicalize(e.event);
+    })).toMatch(/the body field set is/);
+  });
+  it('a seeded chain head marked frozen', () => {
+    expect(reject((b) => { R(b, 'audit.audit_chain_heads')[0].frozen = true; }))
+      .toMatch(/audit_chain_heads\.frozen is true; the specification requires false/);
+  });
+  it('a chain head stamped at an instant its last event did not land', () => {
+    expect(reject((b) => { R(b, 'audit.audit_chain_heads')[0].updated_at = '2026-08-02T00:00:00.000+00:00'; }))
+      .toMatch(/the head is stamped when its last event lands/);
+  });
+  it('a chain head whose next_seq or head_hash is not derived', () => {
+    expect(reject((b) => { R(b, 'audit.audit_chain_heads')[0].next_seq += 1; }))
+      .toMatch(/the authenticated chain derives/);
+    expect(reject((b) => { R(b, 'audit.audit_chain_heads')[0].head_hash = 'f'.repeat(64); }))
+      .toMatch(/the authenticated chain derives/);
+  });
+  it('a SECOND head for one partition, and a head for no partition', () => {
+    expect(reject((b) => {
+      const h = R(b, 'audit.audit_chain_heads');
+      h.push({ ...h[0] });
+    })).toMatch(/carries 2 chain heads; exactly one is required/);
+    expect(reject((b) => {
+      const h = R(b, 'audit.audit_chain_heads');
+      h.push({ ...h[0], partition_id: 'tenant:invented' });
+    })).toMatch(/names a partition with no seeded audit events/);
+  });
+  it('a partition left with no head at all', () => {
+    expect(reject((b) => { b.tables['audit.audit_chain_heads'].rows = [R(b, 'audit.audit_chain_heads')[0]]; }))
+      .toMatch(/has no chain head/);
   });
 });

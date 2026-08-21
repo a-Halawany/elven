@@ -40,6 +40,10 @@ import { verifyEvidence as legacy8362 } from './fixtures/c18-legacy-8362cba/c18-
 import { verifyEvidence as legacyDcc } from './fixtures/c18-legacy-dccfcf2/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyBfc } from './fixtures/c18-legacy-bfc8695/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy774 } from './fixtures/c18-legacy-77489f5/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy774Coverage } from './fixtures/c18-legacy-77489f5/lib/c18-seed-coverage.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -103,6 +107,19 @@ function dropRow(d: string, table: string, match: (r: any) => boolean) {
  * C18.1.8 adds an authenticated pre-seed snapshot, its command-bound receipts and a
  * machine-readable coverage report. This produces exactly what the bfc8695 producer emitted.
  */
+/**
+ * C18.1.9 publishes each coverage column as {kind, era, executable_rule, source_owned_value};
+ * 77489f5 published the bare kind. Regenerating the report with the FROZEN module produces
+ * exactly the bytes that producer emitted, so the differential leg is byte-faithful rather than
+ * hand-approximated.
+ */
+function downgradeTo77489f5(dir: string) {
+  const preseed = JSON.parse(readFileSync(join(dir, 'path-a-preseed.json'), 'utf8'));
+  const before = JSON.parse(readFileSync(join(dir, 'path-a-before.json'), 'utf8'));
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    `${JSON.stringify(legacy774Coverage({ preseed, before }), null, 2)}\n`);
+}
+
 function downgradeToBfc8695(dir: string) {
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (let i = cmds.length - 1; i >= 0; i -= 1) {
@@ -2299,5 +2316,219 @@ describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)'
       rmSync(shimDir, { recursive: true, force: true });
       rmSync(out, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * Rewrite one audit event's canonical BODY and rechain its whole partition with the production
+ * hashes — the strongest form of the mutation, in which every checksum, canonicalization, chain
+ * link and head the verifier can recompute agrees with the forged body.
+ */
+function rewriteAuditBody(d: string, pick: (body: any) => boolean, edit: (body: any) => void) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    editJson(d, snapFile, (doc: any) => {
+      const rows = doc.tables['audit.audit_events'].rows;
+      const target = rows.find((r: any) => pick(r.event));
+      if (target === undefined) return;
+      edit(target.event);
+      const byPartition = [...new Set(rows.map((r: any) => r.partition_id))];
+      for (const partition of byPartition) {
+        const chain = rows.filter((r: any) => r.partition_id === partition)
+          .sort((a: any, b: any) => Number(a.audit_seq) - Number(b.audit_seq));
+        let previous = '0'.repeat(64);
+        for (const r of chain) {
+          r.event_jcs = jcsCanonicalize(r.event);
+          r.previous_hash = previous;
+          r.row_hash = auditRowHash({
+            partitionId: r.partition_id, auditSeq: Number(r.audit_seq),
+            previousHash: previous, event: r.event,
+          });
+          previous = r.row_hash;
+          const view = doc.audit.events.find((e: any) => e.partition_id === r.partition_id
+            && Number(e.audit_seq) === Number(r.audit_seq));
+          if (view !== undefined) {
+            view.event_jcs = r.event_jcs; view.previous_hash = r.previous_hash; view.row_hash = r.row_hash;
+          }
+        }
+        const last = chain[chain.length - 1];
+        for (const h of doc.tables['audit.audit_chain_heads'].rows) {
+          if (h.partition_id === partition) { h.head_hash = last.row_hash; }
+        }
+        for (const h of doc.audit.heads) {
+          if (h.partition_id === partition) { h.head_hash = last.row_hash; }
+        }
+      }
+    });
+    const now = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-audit-events`, 'stdout', Buffer.from(JSON.stringify(now.audit.events)));
+    setStream(d, `${pfx}-audit-heads`, 'stdout', Buffer.from(JSON.stringify(now.audit.heads)));
+    setStream(d, `${pfx}-rows-audit_audit_events`, 'stdout',
+      Buffer.from(JSON.stringify(now.tables['audit.audit_events'].rows)));
+    setStream(d, `${pfx}-rows-audit_audit_chain_heads`, 'stdout',
+      Buffer.from(JSON.stringify(now.tables['audit.audit_chain_heads'].rows)));
+  }
+}
+
+/**
+ * Pick ONE deterministic target key before mutating. A `done` flag captured across snapshots is
+ * the classic error here: it fires on the first snapshot only, so the later ones keep the
+ * original value and SNAPSHOT PRESERVATION rejects the archive instead of the rule under test.
+ * Selecting a stable key up front makes the mutator idempotent across every snapshot.
+ */
+function pickKey(d: string, table: string, key = 'id', where: (r: any) => boolean = () => true) {
+  const doc = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+  const found = doc.tables[table].rows.filter(where).map((r: any) => String(r[key])).sort();
+  expect(found.length, `no ${table} row matches`).toBeGreaterThan(0);
+  return found[0];
+}
+
+/** Rewrite chain-head rows across every seeded snapshot AND the audit view they must agree with. */
+function everyHead(d: string, apply: (h: any) => void) {
+  for (const [snapFile, pfx] of SEEDED_SNAPS) {
+    editJson(d, snapFile, (doc: any) => {
+      for (const h of doc.tables['audit.audit_chain_heads'].rows) apply(h);
+      for (const h of doc.audit.heads) apply(h);
+    });
+    const now = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    setStream(d, `${pfx}-audit-heads`, 'stdout', Buffer.from(JSON.stringify(now.audit.heads)));
+    setStream(d, `${pfx}-rows-audit_audit_chain_heads`, 'stdout',
+      Buffer.from(JSON.stringify(now.tables['audit.audit_chain_heads'].rows)));
+  }
+}
+
+/**
+ * C18.1.9 — the classification-versus-enforcement class.
+ *
+ * 77489f5 published a machine-readable classification of every seeded column but did not execute
+ * most of it. Each mutation below contradicts the PUBLISHED classification and was accepted by
+ * the complete frozen 77489f5 verifier.
+ */
+const C1819_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['a capability moved onto another session, tally preserved', (d: string) => {
+    const nonce = pickKey(d, 'ctx.issued', 'nonce', (r) => r.op_class === 'C1');
+    const doc = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+    const held = doc.tables['ctx.issued'].rows.find((r: any) => r.nonce === nonce).session_id;
+    const other = doc.tables['identity.sessions'].rows
+      .map((r: any) => r.id).sort().find((x: string) => x !== held) ?? FORGED_UUID;
+    everywhereA(d, 'ctx.issued', (r) => { if (r.nonce === nonce) r.session_id = other; });
+  }, /is not in the source-owned capability multiset/],
+
+  ['a session bound to an INFLATED revocation epoch', (d: string) => {
+    const id = pickKey(d, 'identity.sessions');
+    everywhereA(d, 'identity.sessions', (r) => { if (r.id === id) r.bound_epoch = 99; });
+  }, /bound_epoch is 99/],
+
+  ['a lifecycle event detached from the entity it records', (d: string) => {
+    const id = pickKey(d, 'tenancy.lifecycle_events');
+    everywhereA(d, 'tenancy.lifecycle_events', (r) => {
+      if (r.id === id) r.occurred_at = '2026-08-21T10:00:00.000000+00:00';
+    });
+  }, /is not the same instant as the created entity's creation time/],
+
+  ['a refresh token detached from the session that issued it', (d: string) => {
+    const id = pickKey(d, 'identity.refresh_tokens');
+    everywhereA(d, 'identity.refresh_tokens', (r) => {
+      if (r.id === id) r.issued_at = '2026-08-21T10:00:00.000000+00:00';
+    });
+  }, /is not the same instant as its session's issue time/],
+
+  ['a seeded chain head marked FROZEN', (d: string) => {
+    everyHead(d, (h) => { if (h.partition_id === 'platform') h.frozen = true; });
+  }, /audit_chain_heads\.frozen is true/],
+
+  ['a standalone audit body rechained onto a policy version', (d: string) => {
+    // policy_version lives ONLY inside the canonical body. 77489f5 judged the projected columns
+    // and the chain, both of which this mutation rebuilds, so it reconciled completely.
+    rewriteAuditBody(d,
+      (body) => body.action === 'identity.credential.rotate',
+      (body) => { body.policy_version = 'bundle-v1'; });
+  }, /body policy_version is "bundle-v1"; the specification requires null/],
+];
+
+describe('C18.1.9 — DIFFERENTIAL: the frozen 77489f5 verifier ACCEPTED what C18.1.9 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 77489f5 verifier accepts the genuine archive', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo77489f5);
+    try {
+      const r = await legacy774({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C1819_MUTATIONS)('%s — 77489f5 ACCEPTS it; C18.1.9 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { mutate(d); downgradeTo77489f5(d); });
+    try {
+      const old = await legacy774({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 77489f5 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.9 — adjacent single-defect rejections on the genuine archive', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it.each([
+    ['a LOWERED session bound epoch', (d: string) => {
+      const id = pickKey(d, 'identity.sessions');
+      everywhereA(d, 'identity.sessions', (r) => { if (r.id === id) r.bound_epoch = 0; });
+    }, /bound_epoch is 0/],
+    ['a duplicated capability nonce', (d: string) => {
+      const [keep, dupe] = (() => {
+        const doc = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+        const ns = doc.tables['ctx.issued'].rows.map((r: any) => r.nonce).sort();
+        return [ns[0], ns[1]];
+      })();
+      everywhereA(d, 'ctx.issued', (r) => { if (r.nonce === dupe) r.nonce = keep; });
+    }, /appears 2 times; every generated nonce is unique/],
+    ['a capability given a consumption instant', (d: string) => {
+      const nonce = pickKey(d, 'ctx.issued', 'nonce');
+      everywhereA(d, 'ctx.issued', (r) => {
+        if (r.nonce === nonce) r.consumed_at = '2026-08-21T11:00:00.000000+00:00';
+      });
+    }, /ctx\.issued\.consumed_at/],
+    ['an active credential given a rotation instant', (d: string) => {
+      const id = pickKey(d, 'identity.credentials', 'id', (r) => r.status === 'active');
+      everywhereA(d, 'identity.credentials', (r) => {
+        if (r.id === id) r.rotated_at = '2026-08-21T11:00:00.000000+00:00';
+      });
+    }, /on an ACTIVE credential; the specification requires null/],
+    ['a credential hash outside the Argon2id PHC grammar', (d: string) => {
+      const id = pickKey(d, 'identity.credentials');
+      everywhereA(d, 'identity.credentials', (r) => {
+        if (r.id === id) r.secret_hash = '$argon2i$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA';
+      });
+    }, /secret_hash/],
+    ['a governed timestamp moved outside the seeding window', (d: string) => {
+      const id = pickKey(d, 'identity.principals');
+      everywhereA(d, 'identity.principals', (r) => {
+        if (r.id === id) r.created_at = '2020-01-01T00:00:00.000000+00:00';
+      });
+    }, /falls outside the governed seeding window/],
+    ['a chain head stamped at an instant its last event did not land', (d: string) => {
+      everyHead(d, (h) => {
+        if (h.partition_id === 'platform' && 'updated_at' in h) h.updated_at = '2026-09-01T00:00:00.000000+00:00';
+      });
+    }, /the head is stamped when its last event lands/],
+    ['a live role binding marked revoked', (d: string) => {
+      const id = pickKey(d, 'identity.role_bindings');
+      everywhereA(d, 'identity.role_bindings', (r) => {
+        if (r.id === id) r.revoked_at = '2026-08-21T11:00:00.000000+00:00';
+      });
+    }, /role_bindings\.revoked_at|holds role/],
+    ['a coverage report that claims a column is not executable', (d: string) => {
+      editJson(d, 'seed-coverage.json', (doc: any) => {
+        doc.tables['tenancy.tenants'].columns.status.executable_rule = false;
+      });
+    }, /not the source-derived coverage of this evidence/],
+    ['a coverage report that renames a column KIND', (d: string) => {
+      editJson(d, 'seed-coverage.json', (doc: any) => {
+        doc.tables['identity.sessions'].columns.bound_epoch.kind = 'volatile';
+      });
+    }, /not the source-derived coverage of this evidence/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('rejects %s', async (_l, mutate, pattern) => {
+    await expectReject(mutate, pattern);
   });
 });
