@@ -1,0 +1,1 @@
+{ "name": "c18-fixture-contracts-shim", "private": true, "type": "module", "main": "dist/index.js" }
