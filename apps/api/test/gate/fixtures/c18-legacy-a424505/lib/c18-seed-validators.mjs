@@ -1,0 +1,244 @@
+/**
+ * C18.1.9 — THE EXECUTABLE VALIDATOR REGISTRY.
+ *
+ * C18.1.8 classified every column of every seed-affected table, but several classifications were
+ * descriptive only: the kind and its note stated a guarantee that no verifier code executed. A
+ * reassigned capability session, an inflated session epoch, a detached lifecycle or refresh-token
+ * timestamp, a re-canonicalised standalone audit body and a frozen chain head all satisfied the
+ * classification while contradicting it.
+ *
+ * Every classified column now maps to exactly one RULE FUNCTION here, and a structural
+ * meta-control proves three-way equality between the catalog columns, the coverage entries and
+ * the registrations in this file. A classified column with no rule, a rule with no column, and a
+ * rule that is only a comment all fail.
+ *
+ * Each rule is `(value, row, ctx) => string[]`, returning zero or more problems. `ctx` carries the
+ * resolved slot maps, the source-owned specification, the era, and row lookups.
+ */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+/**
+ * C18.1.10 — THE EXACT ARGON2ID CONTRACT, derived from the PINNED PRODUCER.
+ *
+ * 53a4eec declared SEED_ARGON2ID_PARAMS and never consumed it, while `phcArgon2id` accepted any
+ * positive integers — so `m=1,t=1,p=1` with a four-byte salt passed, and so did the declared
+ * constant itself, which was WRONG. The producer (`argon2` 0.45.1, `argon2.hash(secret,
+ * { type: argon2id })` with no cost overrides) emits exactly:
+ *
+ *     $argon2id$v=19$m=65536,p=4,t=3$<22 b64 chars>$<43 b64 chars>
+ *
+ * — parameters in `m,p,t` order, standard-alphabet unpadded base64, a 16-byte salt and a 32-byte
+ * tag. That single canonical spelling is the contract; a reordered, padded, url-safe, extra- or
+ * duplicate-parameter form is not what this producer writes and is refused.
+ */
+const ARGON2ID_PHC_RE = /^\$argon2id\$v=(\d+)\$m=(\d+),p=(\d+),t=(\d+)\$([A-Za-z0-9+/]+)\$([A-Za-z0-9+/]+)$/;
+
+const j = (v) => JSON.stringify(v);
+/**
+ * C18.1.10 — THE CANONICAL DATABASE TIMESTAMP GRAMMAR.
+ *
+ * 53a4eec passed every recorded instant through `new Date(v)`, which accepts prose ("Fri, 21 Aug
+ * 2026 19:19:49 GMT"), alternate offsets and many other equivalent-but-noncanonical spellings. A
+ * timestamp rewritten into any of those forms named the SAME instant, so every instant comparison
+ * still agreed and the archive reconciled. The evidence carries exactly two canonical shapes:
+ *   • a PostgreSQL column instant — `YYYY-MM-DDTHH:MM:SS[.ffffff]+00:00` (UTC, 0-6 fraction
+ *     digits, because the driver trims trailing zeros); and
+ *   • a canonical JSON body instant — `YYYY-MM-DDTHH:MM:SS[.fff]Z`.
+ * Nothing else is a governed timestamp, whatever `Date` would make of it.
+ */
+export const PG_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00:00$/;
+export const ISO_Z_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+export const canonicalTimestamp = (v) => typeof v === 'string'
+  && (PG_TIMESTAMP_RE.test(v) || ISO_Z_TIMESTAMP_RE.test(v));
+/**
+ * Parse ONLY a canonical instant. A noncanonical string is not "a different spelling of the same
+ * time" — it is not a governed timestamp at all, and yields NaN so every rule rejects it.
+ */
+const at = (v) => (canonicalTimestamp(v) ? new Date(v) : new Date(NaN));
+const finiteTime = (v) => Number.isFinite(at(v).getTime());
+/** The reason a value is not a canonical instant, for a precise finding. */
+const whyNotCanonical = (v) => {
+  if (typeof v !== 'string') return `is ${j(v)}, which is not a timestamp string`;
+  if (Number.isFinite(new Date(v).getTime())) {
+    return `is ${j(v)}, which is parseable but NOT the canonical governed timestamp grammar`;
+  }
+  return `is ${j(v)}, which is not a valid instant`;
+};
+const stable = (v) => JSON.stringify(v, (k, val) => (
+  val !== null && typeof val === 'object' && !Array.isArray(val)
+    ? Object.fromEntries(Object.keys(val).sort().map((kk) => [kk, val[kk]])) : val));
+/** PostgreSQL renders '+00:00'; the specification writes ISO 'Z'. Compare the instants. */
+const sameInstant = (a, b) => finiteTime(a) && finiteTime(b) && at(a).getTime() === at(b).getTime();
+
+// ── Rule builders ─────────────────────────────────────────────────────────────
+/** exact: one source-owned value. */
+export const exact = (want, label) => (v) => (v === want ? []
+  : [`is ${j(v)}; the specification requires ${j(want)}${label ? ` (${label})` : ''}`]);
+/** exact, chosen per row by a source-owned selector. */
+export const exactBy = (pick) => (v, row, ctx) => {
+  const want = pick(row, ctx);
+  return v === want ? [] : [`is ${j(v)}; the specification requires ${j(want)}`];
+};
+/** exact one-of, for a closed source-owned value set. */
+export const oneOf = (values) => (v) => (values.includes(v) ? []
+  : [`is ${j(v)}; the specification allows only ${j(values)}`]);
+/** slot: the value must be exactly the id the named slot resolved to (or exactly null). */
+export const slotRef = (pick) => (v, row, ctx) => {
+  const want = pick(row, ctx);
+  return (v ?? null) === (want ?? null) ? []
+    : [`is ${j(v)}; the resolved slot relationship requires ${j(want)}`];
+};
+/** generated-id: UUID grammar, and — where given — uniqueness within its table. */
+export const generatedId = ({ unique = false } = {}) => (v, row, ctx) => {
+  if (typeof v !== 'string' || !UUID_RE.test(v)) return [`is ${j(v)}, which is not a generated UUID`];
+  if (!unique) return [];
+  const seen = ctx.tableRows.filter((r) => r[ctx.column] === v).length;
+  return seen === 1 ? [] : [`value ${j(v)} appears ${seen} times; every generated ${ctx.column} is unique`];
+};
+/** digest: full hex grammar plus its declared semantic relationship. */
+export const digest = ({ bytes = 32, relatesTo = null, unique = false } = {}) => (v, row, ctx) => {
+  const problems = [];
+  const re = bytes === 32 ? HEX64_RE : new RegExp(`^[0-9a-f]{${bytes * 2}}$`);
+  if (typeof v !== 'string' || !re.test(v)) problems.push(`is ${j(v)}, which is not a ${bytes}-byte hex digest`);
+  if (relatesTo !== null) {
+    const want = relatesTo(row, ctx);
+    if (want !== undefined && v !== want) problems.push(`does not equal ${j(want)}, the value it must mirror`);
+  }
+  // C18.1.10 — `unique` was accepted and then IGNORED, so two sessions could share one otherwise
+  // valid context key digest. Independently generated digests are now required to be distinct.
+  if (unique === true && Array.isArray(ctx?.tableRows) && typeof ctx?.column === 'string') {
+    const n = ctx.tableRows.filter((r) => r[ctx.column] === v).length;
+    if (n > 1) problems.push(`value ${j(v)} appears ${n} times; every generated digest is unique`);
+  }
+  return problems;
+};
+/** digest with a complete PHC grammar and governed parameters; never exposes the secret. */
+export const phcArgon2id = (params) => (v) => {
+  if (typeof v !== 'string') return [`is ${j(v)}, which is not a PHC string`];
+  const m = ARGON2ID_PHC_RE.exec(v);
+  if (m === null) {
+    return [`does not satisfy the canonical argon2id PHC grammar `
+      + `($argon2id$v=<n>$m=<n>,p=<n>,t=<n>$<salt>$<hash>, standard unpadded base64)`];
+  }
+  const [, ver, mem, par, time, salt, hash] = m;
+  const out = [];
+  const want = (label, actual, expected) => {
+    if (Number(actual) !== expected) {
+      out.push(`carries ${label}=${actual}; the governed configuration is ${label}=${expected}`);
+    }
+  };
+  want('v', ver, params.v);
+  want('m', mem, params.m);
+  want('p', par, params.p);
+  want('t', time, params.t);
+  // Canonical unpadded base64 of exactly the governed byte lengths. Decoding then re-encoding
+  // catches a string that is base64-shaped but not a canonical encoding of those bytes.
+  const check = (label, b64, bytes) => {
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length !== bytes) {
+      out.push(`carries a ${buf.length}-byte ${label}; the governed configuration uses ${bytes} bytes`);
+      return;
+    }
+    if (buf.toString('base64').replace(/=+$/, '') !== b64) {
+      out.push(`carries a non-canonical base64 ${label}`);
+    }
+  };
+  check('salt', salt, params.saltBytes);
+  check('hash', hash, params.hashBytes);
+  return out;
+};
+/** timestamp: a finite canonical instant, plus its declared lifecycle relationships. */
+export const timestamp = ({ nullable = false, relations = [] } = {}) => (v, row, ctx) => {
+  if (v === null || v === undefined) {
+    return nullable ? [] : ['is null; the specification requires a recorded time'];
+  }
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
+  const problems = [];
+  for (const rel of relations) {
+    const p = rel(v, row, ctx);
+    if (p !== null) problems.push(p);
+  }
+  return problems;
+};
+/** timestamp relation: this value must be the same instant as another source-owned time. */
+export const sameTimeAs = (pick, what) => (v, row, ctx) => {
+  const other = pick(row, ctx);
+  if (other === undefined) return null;
+  return sameInstant(v, other) ? null : `is ${j(v)}, which is not the same instant as ${what} (${j(other)})`;
+};
+/** timestamp relation: this value must be strictly before another. */
+export const before = (pick, what) => (v, row, ctx) => {
+  const other = pick(row, ctx);
+  if (other === undefined || !finiteTime(other)) return null;
+  return at(v).getTime() < at(other).getTime() ? null : `is ${j(v)}, which is not before ${what} (${j(other)})`;
+};
+/** timestamp relation: this value must be at or after another. */
+export const notBefore = (pick, what) => (v, row, ctx) => {
+  const other = pick(row, ctx);
+  if (other === undefined || !finiteTime(other)) return null;
+  return at(v).getTime() >= at(other).getTime() ? null : `is ${j(v)}, which precedes ${what} (${j(other)})`;
+};
+/** volatile: an explicit allowed set, type and nullability — never "unchecked". */
+export const volatileField = ({ allowed = null, type = null, nullable = true, era = null }) => (v, row, ctx) => {
+  if (era !== null && ctx.era !== era) {
+    return v === undefined ? [] : [`is present in the ${ctx.era} era, where the specification does not carry it`];
+  }
+  if (v === null || v === undefined) return nullable ? [] : ['is null; the specification requires a value'];
+  if (allowed !== null && !allowed.includes(v)) return [`is ${j(v)}; the specification allows only ${j(allowed)}`];
+  if (type !== null && typeof v !== type) return [`is a ${typeof v}; the specification requires a ${type}`];
+  return [];
+};
+/** formula: independently recomputed from source-owned inputs. */
+export const formula = (compute, what) => (v, row, ctx) => {
+  const want = compute(row, ctx);
+  if (want === undefined) return [];
+  const same = (typeof want === 'object' && want !== null) ? stable(v) === stable(want) : v === want;
+  return same ? [] : [`is ${j(v)}; ${what} recomputes to ${j(want)}`];
+};
+/** exact structural value (objects/arrays), compared by stable ordering. */
+export const exactShape = (want) => (v) => (stable(v) === stable(want) ? []
+  : [`is ${j(v)}; the specification requires ${j(want)}`]);
+export const exactShapeBy = (pick) => (v, row, ctx) => {
+  const want = pick(row, ctx);
+  return stable(v) === stable(want) ? [] : [`is ${j(v)}; the specification requires ${j(want)}`];
+};
+/** A column whose complete validation is performed by a named dedicated model. */
+export const byModel = (modelName, check) => (v, row, ctx) => {
+  const problems = check(v, row, ctx);
+  return problems.map((p) => `${p} [${modelName}]`);
+};
+
+export const helpers = { UUID_RE, HEX64_RE, at, finiteTime, sameInstant, stable };
+
+/**
+ * A timestamp stamped INSIDE the governed seeding window. `offsetMs` widens the window's upper
+ * bound for a column whose value is a governed lifetime in the future (a credential expiry).
+ */
+export const inSeedWindow = ({ nullable = false, offsetMs = 0, relations = [] } = {}) => (v, row, ctx) => {
+  if (v === null || v === undefined) {
+    return nullable ? [] : ['is null; the specification requires an instant'];
+  }
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
+  const t = at(v).getTime();
+  const w = ctx.seedWindow?.();
+  const out = [];
+  if (w !== undefined && w !== null) {
+    if (t < w.lo || t > w.hi + offsetMs) {
+      out.push(`is ${JSON.stringify(v)}, which falls outside the governed seeding window `
+        + `(${new Date(w.lo).toISOString()} … ${new Date(w.hi + offsetMs).toISOString()})`);
+    }
+  }
+  for (const rel of relations) {
+    const problem = rel(v, row, ctx);
+    if (problem !== null) out.push(problem);
+  }
+  return out;
+};
+
+/**
+ * A value with NO source-owned expectation: the specification can state its grammar and its
+ * uniqueness, and nothing more. Marked explicitly so the mutation matrix does not pretend a
+ * perturbation would be caught — the honest alternative to a rule that silently permits anything.
+ */
+export const opaque = (check) => Object.assign((v, row, ctx) => check(v, row, ctx), { opaque: true });
