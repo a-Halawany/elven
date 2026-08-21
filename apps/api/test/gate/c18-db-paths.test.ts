@@ -51,6 +51,8 @@ import {
 } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { ingestArchive, verifySemantics } from '../../../../scripts/gate/c18-db-paths.mjs';
 import {
   opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
@@ -2288,5 +2290,30 @@ describe('C18.1.10 — no phase can wait indefinitely', () => {
   it('the watchdog refuses a malformed invocation rather than running unbounded', () => {
     expect(spawnSync('node', [WATCHDOG], { encoding: 'utf8' }).status).toBe(2);
     expect(spawnSync('node', [WATCHDOG, '0', 'true'], { encoding: 'utf8' }).status).toBe(2);
+  });
+});
+
+describe('C18.1.10 — the hosted binding needs the delivered bytes, and says so', () => {
+  it('ingress carries the archive bytes alongside the member map', () => {
+    // The hosted binding compares the DELIVERED FILE's digest against the published artifact, so
+    // it cannot be recomputed from members alone. Splitting ingress from the semantic core lost
+    // that value at first, and only an --online run surfaced it: every offline control passed.
+    const dir = mkdtempSync(join(tmpdir(), 'c18-ingress-'));
+    try {
+      const zip = join(dir, 'a.zip');
+      writeFileSync(join(dir, 'x.txt'), 'hello');
+      expect(spawnSync('zip', ['-qrX', zip, 'x.txt'], { cwd: dir }).status).toBe(0);
+      const r: any = ingestArchive({ zipPath: zip });
+      expect(r.ok).toBe(true);
+      expect(Buffer.isBuffer(r.zipBytes), 'ingress must return the archive bytes').toBe(true);
+      expect(sha256(r.zipBytes)).toBe(sha256(readFileSync(zip)));
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it('an online request without those bytes is a FINDING, never a silent skip', async () => {
+    const r = await verifySemantics({
+      members: new Map([['c18-manifest.json', Buffer.from('{}')]]),
+      root: REPO, online: true, requireHosted: true, zipBytes: null,
+    } as never);
+    expect(r.problems.join('\n')).toMatch(/hosted verification was requested without the delivered archive bytes/);
   });
 });

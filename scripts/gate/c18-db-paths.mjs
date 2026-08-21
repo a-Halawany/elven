@@ -1044,7 +1044,9 @@ export function ingestArchive({ zipPath }) {
     };
     walk(tmp, tmp);
     if (problems.length > 0) return { ok: false, problems, members: null };
-    return { ok: true, problems: [], members };
+    // The archive's own bytes travel with the member map: the hosted binding is a property of
+    // the DELIVERED FILE, not of its contents, so it cannot be recomputed from members alone.
+    return { ok: true, problems: [], members, zipBytes: readFileSync(zipPath) };
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -1059,10 +1061,18 @@ export function ingestArchive({ zipPath }) {
  */
 export async function verifySemantics({
   members, root, online = false, requireHosted = false, fetchImpl = globalThis.fetch, token = null,
+  zipBytes = null,
 }) {
   const problems = [];
   const notes = [];
   const files = [...members.keys()].sort();
+  // The hosted binding compares the DELIVERED archive's digest against the published artifact.
+  // Without those bytes the comparison cannot be made, and that must be a finding rather than a
+  // silently skipped check.
+  const archiveDigest = zipBytes === null ? null : sha256(zipBytes);
+  if (online && archiveDigest === null) {
+    problems.push('hosted verification was requested without the delivered archive bytes');
+  }
   /** Member bytes by archive-relative path, or null when the archive does not carry it. */
   const memberBytes = (rel) => (members.get(rel) ?? null);
   const memberText = (rel) => {
@@ -1406,7 +1416,7 @@ export async function verifySemantics({
           const picked = selectAttemptArtifact(all, {
             prefixForAttempt: c18ArtifactPrefixForAttempt,
             attempt: hr.run_attempt,
-            digest: sha256(zipBytes),
+            digest: archiveDigest,
             familyPrefix: C18_ARTIFACT_PREFIX,
             label: 'C18 evidence artifact',
           });
@@ -1443,7 +1453,10 @@ export async function verifyEvidence({
 }) {
   const ingest = ingestArchive({ zipPath });
   if (!ingest.ok) return { ok: false, problems: ingest.problems, notes: [] };
-  return verifySemantics({ members: ingest.members, root, online, requireHosted, fetchImpl, token });
+  return verifySemantics({
+    members: ingest.members, root, online, requireHosted, fetchImpl, token,
+    zipBytes: ingest.zipBytes,
+  });
 }
 
 
