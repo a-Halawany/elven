@@ -50,6 +50,8 @@ import { buildCoverageReport as legacy774Coverage } from './fixtures/c18-legacy-
 import { verifyEvidence as legacy53a } from './fixtures/c18-legacy-53a4eec/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy53aCoverage } from './fixtures/c18-legacy-53a4eec/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacyA42 } from './fixtures/c18-legacy-a424505/c18-db-paths.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -2815,5 +2817,174 @@ describe('C18.1.10 — the semantic core and the production CLI agree', () => {
     expect(changed).toContain('SHA256SUMS.txt');
     expect(changed.filter((f) => f.startsWith('raw/'))).toHaveLength(1);
     expect(changed).toHaveLength(4);
+  });
+});
+
+
+/**
+ * C18.1.11 — the post-upgrade world the frozen a424505 verifier could not see.
+ *
+ * a424505 authenticated the after -> final boundary by COUNTING. Every mutation below changes a
+ * column of a row the governed operation INSERTS or UPDATES, leaves every count intact, and was
+ * accepted by the complete frozen verifier with ZERO findings.
+ */
+function finalOnly(d: string, table: string, apply: (t: any) => void) {
+  editJson(d, 'path-a-final.json', (doc: any) => {
+    apply(doc.tables[table]);
+    doc.tables[table].row_count = doc.tables[table].rows.length;
+  });
+  const now = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'));
+  setStream(d, `a-a-final-rows-${table.replace('.', '_')}`, 'stdout',
+    Buffer.from(JSON.stringify(now.tables[table].rows)));
+}
+/** The row the governed post-upgrade operation inserted: present in final, absent from after. */
+function insertedRow(d: string, table: string, key: string) {
+  const a = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8')).tables[table]?.rows ?? [];
+  const f = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8')).tables[table].rows;
+  const seen = new Set(a.map((r: any) => JSON.stringify(r[key])));
+  return f.find((r: any) => !seen.has(JSON.stringify(r[key])));
+}
+
+const C11811_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['the new session is marked revoked', (d) => {
+    const id = insertedRow(d, 'identity.sessions', 'id').id;
+    finalOnly(d, 'identity.sessions', (t) => { t.rows.find((r: any) => r.id === id).status = 'revoked'; });
+  }, /identity\.sessions\.status/],
+
+  ['the new session is repointed at another principal', (d) => {
+    const row = insertedRow(d, 'identity.sessions', 'id');
+    const others = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'))
+      .tables['identity.principals'].rows.map((p: any) => p.id).sort();
+    const other = others.find((p: string) => p !== row.principal_id);
+    finalOnly(d, 'identity.sessions', (t) => { t.rows.find((r: any) => r.id === row.id).principal_id = other; });
+  }, /identity\.sessions\.principal_id/],
+
+  ['the new session carries an inflated bound epoch', (d) => {
+    const id = insertedRow(d, 'identity.sessions', 'id').id;
+    finalOnly(d, 'identity.sessions', (t) => { t.rows.find((r: any) => r.id === id).bound_epoch = 99; });
+  }, /identity\.sessions\.bound_epoch/],
+
+  ['the new refresh token claims a later generation', (d) => {
+    const id = insertedRow(d, 'identity.refresh_tokens', 'id').id;
+    finalOnly(d, 'identity.refresh_tokens', (t) => { t.rows.find((r: any) => r.id === id).generation = 7; });
+  }, /identity\.refresh_tokens\.generation/],
+
+  ['the new refresh token is detached from its session', (d) => {
+    const id = insertedRow(d, 'identity.refresh_tokens', 'id').id;
+    finalOnly(d, 'identity.refresh_tokens', (t) => {
+      t.rows.find((r: any) => r.id === id).token_hash = 'e'.repeat(64);
+    });
+  }, /identity\.refresh_tokens\.token_hash/],
+
+  ['a post-upgrade capability is bound to another action', (d) => {
+    const nonce = insertedRow(d, 'ctx.issued', 'nonce').nonce;
+    finalOnly(d, 'ctx.issued', (t) => {
+      t.rows.find((r: any) => r.nonce === nonce).bound_action = 'tenancy.tenant.create';
+    });
+  }, /ctx\.issued\.bound_action|capability/],
+
+  ['a post-upgrade capability is marked consumed', (d) => {
+    const nonce = insertedRow(d, 'ctx.issued', 'nonce').nonce;
+    finalOnly(d, 'ctx.issued', (t) => {
+      t.rows.find((r: any) => r.nonce === nonce).consumed_at = '2026-08-21T22:00:00.000000+00:00';
+    });
+  }, /ctx\.issued\.consumed_at/],
+
+  ['the operation claims a different runtime role', (d) => {
+    finalOnly(d, 'ctx.operation', (t) => { t.rows[0].runtime_role = 'postgres'; });
+  }, /ctx\.operation\.runtime_role/],
+
+  ['the operation claims obligations were executed', (d) => {
+    finalOnly(d, 'ctx.operation', (t) => { t.rows[0].obligations_executed = true; });
+  }, /ctx\.operation\.obligations_executed/],
+
+  ['the operation effect is recorded before the operation opened', (d) => {
+    finalOnly(d, 'ctx.operation_effect', (t) => {
+      t.rows[0].recorded_at = '2020-01-01T00:00:00.000000+00:00';
+    });
+  }, /ctx\.operation_effect\.recorded_at/],
+
+  ['the closure decision is stamped at another instant', (d) => {
+    const id = insertedRow(d, 'policy.policy_decisions', 'id').id;
+    finalOnly(d, 'policy.policy_decisions', (t) => {
+      t.rows.find((r: any) => r.id === id).created_at = '2020-01-01T00:00:00.000000+00:00';
+    });
+  }, /policy\.policy_decisions\.created_at/],
+
+  ['the outbox payload is rewritten', (d) => {
+    const id = insertedRow(d, 'objects.object_outbox', 'id').id;
+    finalOnly(d, 'objects.object_outbox', (t) => {
+      t.rows.find((r: any) => r.id === id).payload = { c18: 'tampered' };
+    });
+  }, /objects\.object_outbox\.payload/],
+
+  ['the outbox row claims delivery attempts', (d) => {
+    const id = insertedRow(d, 'objects.object_outbox', 'id').id;
+    finalOnly(d, 'objects.object_outbox', (t) => { t.rows.find((r: any) => r.id === id).attempts = 5; });
+  }, /objects\.object_outbox\.attempts/],
+
+  ['the advanced chain head is stamped at another instant', (d) => {
+    const fin = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'));
+    const aft = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'));
+    const seen = new Set(aft.tables['audit.audit_events'].rows.map((e: any) => `${e.partition_id}#${e.audit_seq}`));
+    const closing = fin.tables['audit.audit_events'].rows
+      .find((e: any) => !seen.has(`${e.partition_id}#${e.audit_seq}`));
+    finalOnly(d, 'audit.audit_chain_heads', (t) => {
+      t.rows.find((h: any) => h.partition_id === closing.partition_id)
+        .updated_at = '2026-09-01T00:00:00.000000+00:00';
+    });
+  }, /audit\.audit_chain_heads\.updated_at/],
+
+  ['the rotated seed credential expiry drifts by five milliseconds', (d) => {
+    everywhereA(d, 'identity.credentials', (r) => {
+      if (r.status !== 'rotated') return;
+      r.expires_at = new Date(Date.parse(r.expires_at) + 5).toISOString().replace('Z', '+00:00');
+    });
+  }, /credential lifecycle: the expiry implies a marking instant/],
+];
+
+describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen a424505 verifier accepts the genuine archive', async () => {
+    const { dir, zip } = mutateArchive(() => {});
+    try {
+      const r = await legacyA42({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C11811_MUTATIONS)('%s — a424505 ACCEPTS it; C18.1.11 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive(mutate);
+    try {
+      const old = await legacyA42({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen a424505 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.11 — one finding never suppresses an independent check', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('a post-upgrade finding and a seeded-world finding are BOTH reported', async () => {
+    const { members } = mutateMembers((d) => {
+      finalOnly(d, 'ctx.operation', (t) => { t.rows[0].runtime_role = 'postgres'; });
+      everywhereA(d, 'identity.sessions', (r) => { r.bound_epoch = 99; });
+    });
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    const text = r.problems.join('\n');
+    expect(text, 'the post-upgrade finding must survive').toMatch(/ctx\.operation\.runtime_role/);
+    expect(text, 'the seeded-world finding must survive').toMatch(/bound_epoch/);
+  });
+
+  it('the post-upgrade registry proof runs even when the operation record is unusable', async () => {
+    const { members } = mutateMembers((d) => {
+      editJson(d, 'c18-manifest.json', (m: any) => { m.post_upgrade_operation = null; });
+      finalOnly(d, 'identity.sessions', (t) => { t.columns.push('smuggled'); });
+    });
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.problems.join('\n')).toMatch(/'identity\.sessions\.smuggled' is in the delivered catalog but not classified/);
   });
 });
