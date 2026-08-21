@@ -19,7 +19,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 
 // eslint-disable-next-line import/no-relative-packages
-import { ingestArchive, verifyEvidence, verifySemantics } from '../../../../scripts/gate/c18-db-paths.mjs';
+import {
+  deriveSourceBinding, ingestArchive, verifyEvidence, verifySemantics,
+} from '../../../../scripts/gate/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { commandIdFor } from '../../../../scripts/gate/lib/c18-contract.mjs';
 // eslint-disable-next-line import/no-relative-packages
@@ -294,9 +296,20 @@ const editJson = (dir: string, name: string, edit: (doc: any) => void) => {
   writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
 };
 
+/**
+ * The checkout's source binding, derived ONCE. It is identical for every archive judged against
+ * this checkout, and shelling out to git per control cost about 22 ms each — real time on a
+ * loaded hosted runner. The binding is still checked against every archive.
+ */
+let SOURCE_BINDING: unknown = null;
+const sourceBinding = () => {
+  if (SOURCE_BINDING === null) SOURCE_BINDING = deriveSourceBinding(REPO);
+  return SOURCE_BINDING;
+};
+
 async function expectReject(mutate: Mutator, pattern: RegExp, opts: { rebindAfter?: boolean } = {}) {
   const { members } = mutateMembers(mutate, opts);
-  const r = await verifySemantics({ members, root: REPO });
+  const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
   expect(r.ok).toBe(false);
   expect(r.problems.join('\n')).toMatch(pattern);
 }

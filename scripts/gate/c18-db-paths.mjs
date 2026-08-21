@@ -989,6 +989,21 @@ function reconstructSnapshot(snap, pfx, rawFor) {
 }
 
 /**
+ * C18.1.10 — derive the checkout's source binding: HEAD, cleanliness, tracked migration digests
+ * and the migration-derived intentional transforms. Cheap to state, but it shells out to git, so
+ * a control suite derives it once rather than per control.
+ */
+export function deriveSourceBinding(root) {
+  const tracked = trackedMigrationDigests(root);
+  return {
+    head: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim(),
+    dirty: spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).stdout.trim(),
+    tracked,
+    transforms: deriveIntentionalTransforms(tracked.dir, tracked.files),
+  };
+}
+
+/**
  * C18.1.10 — HARDENED ZIP INGRESS.
  *
  * Everything that is a property of the ARCHIVE CONTAINER rather than of the evidence: duplicate
@@ -1061,7 +1076,7 @@ export function ingestArchive({ zipPath }) {
  */
 export async function verifySemantics({
   members, root, online = false, requireHosted = false, fetchImpl = globalThis.fetch, token = null,
-  zipBytes = null,
+  zipBytes = null, sourceBinding = null,
 }) {
   const problems = [];
   const notes = [];
@@ -1162,14 +1177,19 @@ export async function verifySemantics({
     }
 
     // ── SOURCE BINDING: HEAD, cleanliness, migrations from the CHECKOUT ───────
-    const rootHead = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim();
-    const rootDirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+    // C18.1.10 — the SOURCE BINDING is a property of the checkout, identical for every archive
+    // judged against it. The production CLI always re-derives it. A control suite may derive it
+    // ONCE and inject it, which is the "cache source-derived expectations per suite" rule: the
+    // binding is still checked against every archive, it is simply not re-shelled 247 times.
+    const binding = sourceBinding ?? deriveSourceBinding(root);
+    const rootHead = binding.head;
+    const rootDirty = binding.dirty;
     // A malformed manifest must never SUPPRESS the source binding finding.
     if (typeof manifest.source_sha === 'string' && manifest.source_sha !== rootHead) {
       problems.push(`manifest source_sha ${manifest.source_sha} is not this checkout's HEAD ${rootHead}`);
     }
     if (rootDirty !== '') problems.push('the verifier checkout is not clean; verification must run from the exact source');
-    const tracked = trackedMigrationDigests(root);
+    const tracked = binding.tracked;
     if (shaped) {
       const manifestDigests = Object.entries(manifest.migration_digests).sort();
       const sourceDigests = [...tracked.digests.entries()].sort();
@@ -1177,7 +1197,7 @@ export async function verifySemantics({
         problems.push('manifest migration digests are not exactly the source-derived set');
       }
     }
-    const transforms = deriveIntentionalTransforms(tracked.dir, tracked.files);
+    const transforms = binding.transforms;
     if (shaped && JSON.stringify(manifest.intentional_transforms) !== JSON.stringify(transforms)) {
       problems.push('manifest intentional transforms are not exactly the migration-derived set');
     }
