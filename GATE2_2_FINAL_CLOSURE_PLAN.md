@@ -2272,7 +2272,15 @@ dccfcf26 artifacts are NOT contaminated. This section is a docs-only child; veri
 against `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`.
 
 
-## 23. C18.1.8 — MACHINE-READABLE SEED COVERAGE, COMPLETE BASE-ENTITY POSTURE, EXACT AUDIT WORLD (delivered; awaiting independent review)
+## 23. C18.1.8 — MACHINE-READABLE SEED COVERAGE, COMPLETE BASE-ENTITY POSTURE, EXACT AUDIT WORLD (delivered; SUPERSEDED by §24)
+
+**SUPERSEDED at C18.1.9 (§24)**: `77489f5` is authentic and leak-free, and everything it
+established — the archive, checksums, command ledger, raw receipts, CI and finalizer topology,
+hosted bindings and migrations — is preserved. It is superseded only because several of its
+machine-readable coverage claims were **not executable verifier guarantees**: `seed-coverage.json`
+classified every seeded column, but for many of them the verifier enforced a weaker property, or
+none. Six mutations contradicting the published classification were accepted by the complete
+frozen 77489f5 verifier. The record below stays as honest history; verification targets §24.
 
 **Evidence-bearing source `77489f50fdb07d7f469f9181ddd808b37b70c964`.**
 Candidate CI: pull-request run `32420967676` (3/3 green). Source run `32421740131` **attempt 2**
@@ -2377,3 +2385,123 @@ artifacts remain enumerated (§16 and the memory ledger) and undeleted — targe
 requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8, 8362cba, dccfcf26
 and bfc8695 artifacts are NOT contaminated. This section is a docs-only child; verification runs
 against `77489f50fdb07d7f469f9181ddd808b37b70c964`.
+
+## 24. C18.1.9 — AN EXECUTABLE SEED COVERAGE REGISTRY, NOT A DESCRIBED ONE (delivered; awaiting independent review)
+
+**Evidence-bearing source `53a4eec4d9f83422969a34efe37e277f7accc809`.**
+Candidate CI: pull-request run `32479491584` (3/3 green). Source run `32480029784` (push/`main`, all
+three jobs green with the blocking C18 gate — producer + offline self-verification + the
+234-test in-gate mutation/differential suite) · finalizer run `32480596912` (`macos-14`, green).
+
+**Delivery artifact (digest-bound, leak-free).** `c18-db-paths-evidence-a1-4eef12de660110aeb0676270ccc3b5f7ef9e69c080b568e1494525a82399a58c` — exactly the archive
+`c18-db-paths-evidence-53a4eec4d9f83422969a34efe37e277f7accc809.zip` (524,540 B, outer sha256 `4eef12de660110aeb0676270ccc3b5f7ef9e69c080b568e1494525a82399a58c`) + verified
+sidecar. Arithmetic, measured from the delivered archive: **336 commands; 1,008 raw stream files;
+11 fixed top-level regular files; 1,019 regular files total; + the `raw/` directory entry =
+1,020 ZIP entries.** Verified from a fresh foreign checkout offline and **online-hosted**
+(`standing=delivery-online`).
+
+### 24.1 What 77489f5 got right, and is preserved unchanged
+
+C18.1.8 is **authentic and leak-free**. Its evidence archive, SHA256SUMS, closed typed command
+ledger, raw receipts, digest-bound attempt-scoped hosted artifact and sidecar, its CI and
+finalizer topology, its hosted-standing bindings and migrations 0001–0021 are all preserved
+byte-for-byte in behaviour. **Nothing in that delivery topology was reopened.**
+
+### 24.2 The remaining defect class: classification that was not enforcement
+
+`seed-coverage.json` published a machine-readable classification of every column of all fifteen
+seed-affected tables. The classification was **descriptive**. It said
+`identity.sessions.bound_epoch` was a `formula` while the verifier checked only `>= the owner's
+epoch`; it said `tenancy.lifecycle_events.occurred_at` was a `timestamp` while the verifier
+checked only that a value was present. Eight mutations that contradicted the published
+classification were put to the **complete frozen 77489f5 verifier before any code changed**:
+
+| # | mutation | frozen 77489f5 |
+|---|---|---|
+| 1 | a capability reassigned to another session, tally preserved | **accepted** |
+| 2 | a session `bound_epoch` inflated to 99 | **accepted** |
+| 3 | a lifecycle event's `occurred_at` detached from its entity's creation | **accepted** |
+| 4 | a refresh token's `issued_at` detached from its session | **accepted** |
+| 5 | a standalone audit body rechained onto a `policy_version` | **accepted** |
+| 6 | a seeded chain head marked `frozen` | **accepted** |
+| 7 | a duplicated capability nonce | rejected — by snapshot preservation, not by the classification |
+| 8 | a classified `exact` column dropped from the catalog | rejected — by the catalog contract, not by the coverage validator |
+
+**Arithmetic, kept honest.** Six are complete-archive false passes of the frozen predecessor and
+are the closures this pass claims. Cases 7 and 8 are **real component-level defects** — the
+coverage layer itself accepted them — but the complete archive was already rejected by another
+layer, so they are recorded as component-level regressions, not as newly closed false passes.
+
+### 24.3 The structural correction
+
+Not eight patches. The gap between what the contract publishes and what the verifier executes is
+removed:
+
+1. **Every classified column carries an executable rule.** The kind and the rule are one
+   registration, so a published kind nothing enforces cannot exist. New
+   `scripts/gate/lib/c18-seed-validators.mjs` holds the rule builders (exact, slot, formula,
+   generated-id, digest with grammar and relationship, PHC Argon2id, timestamp with lifecycle
+   relations, seeding-window, volatile with explicit allowed set/type/nullability, dedicated
+   models). New `scripts/gate/lib/c18-coverage-runner.mjs` **executes** all of them and owns the
+   deterministic row-to-plan pairings the `byModel` rules delegate to: each decision to exactly
+   one source-owned operation, each audit event to exactly one planned event, each head to its
+   partition's derived posture, each capability to one entry of the exact multiset, each live
+   role binding to its principal's granted role. An ambiguous or unpaired row is itself a finding.
+
+2. **The blanket allowance is deleted.** 77489f5 excused ANY missing `exact` or `volatile` column,
+   which silenced that column's rule instead of raising a finding. The only legitimate absence is
+   a column the contract declares `era: 'latest'`, and that declaration is checked **in both
+   directions** — the column must be absent from the seed-era catalog AND present in the upgraded
+   one — so an era label cannot excuse a column that simply went missing.
+
+3. **A structural meta-control** proves exact equality between the delivered catalog columns, the
+   coverage entries and the executable registrations (142 = 142 = 142 in the seed-era world).
+
+4. **A generated mutation matrix** perturbs every registered column in a specification-conformant
+   world built from the same source-owned specification. **It found thirteen columns whose
+   published kind did not constrain the value** — the matrix earned its place by failing. Eleven
+   are now genuinely enforced; two are reclassified honestly (§24.4).
+
+### 24.4 Enforce it, or reclassify it honestly
+
+* **Enforced.** A governed seeding window anchored on the audit events' `occurred_at` — the only
+  seeded timestamps covered by production row hashes, so the anchor cannot be moved without
+  breaking the chain — now bounds every governed `created_at`, `claimed_at`, `activated_at` and
+  capability `issued_at`. The chain head's `updated_at` is an **exact formula** (its last event's
+  landing instant), not "present". A closing audit event's `correlation_id` is bound to its
+  decision's. A live role binding's `revoked_at` is exactly null.
+* **Reclassified.** `identity.sessions.context_key_hash` and `objects.object_outbox.lease_id`
+  have **no source-owned derivation**: the specification can state their grammar and uniqueness
+  and nothing more. They are marked `opaque`, published as `source_owned_value: false`, asserted
+  by a control to be **exactly** that pair, and each must still reject a grammar violation. The
+  mutation matrix exempts exactly this list and nothing else — the honest alternative to a rule
+  that silently permits anything.
+
+### 24.5 The closed worlds
+
+* **Capabilities** — an exact multiset of complete rows. The plan's `sessionSlot` is now
+  **consumed**, the sessionless sentinel is source-owned, nonces are unique, class and action are
+  exact, `issued_at < expires_at`, `consumed_at` is exact.
+* **Lifecycle and identity timing** — a lifecycle event's instant IS its entity's creation
+  instant; a refresh token is issued with its session; `bound_epoch` recomputes from its owner's
+  revocation epoch, rejecting both lowered and inflated; an active credential is never retired and
+  never expires; the rotated predecessor is retired exactly when its replacement is minted and
+  carries a governed expiry inside its own life; the complete Argon2id PHC grammar is required.
+* **Audit** — the exact 24-field body set, every planned field **including `policy_version`**,
+  which lives only inside the canonical body and so survived a full rechain under 77489f5. The
+  head world derives one head per partition from the authenticated event set, with an exact
+  `frozen` posture.
+
+### 24.6 Controls
+
+Hermetic gate 406 (was 223) · in-gate mutation/differential 234 (was 217)
+· API hermetic 1,355 (was 1163). The frozen 77489f5 verifier is pinned byte-verbatim
+(nine files, per-file sha256, cross-checked against the commit) and is the differential
+predecessor: it accepts the genuine archive (non-vacuity) and accepts each reproduced mutation,
+which C18.1.9 rejects.
+
+**Scope discipline.** Migrations 0001–0021, C15–C17 verifier logic and unrelated product code are
+untouched.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.9 review, and no
+part of C19 has been started.
