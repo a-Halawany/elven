@@ -26,6 +26,9 @@ const BASE = Date.parse('2026-08-01T00:00:00.000Z');
 /** Distinct, ordered instants so a detached timestamp cannot coincide by accident. */
 const t = (n: number) => new Date(BASE + n * 1000).toISOString().replace('Z', '+00:00');
 const iso = (n: number) => new Date(BASE + n * 1000).toISOString();
+/** An instant a whole number of milliseconds after second `n`. */
+const tms = (n: number, ms: number) => new Date(BASE + n * 1000 + ms).toISOString().replace('Z', '+00:00');
+const isoms = (n: number, ms: number) => new Date(BASE + n * 1000 + ms).toISOString();
 
 export const WORLD_IDS = {
   tAlpha: u('0001'), tBeta: u('0002'), d0: u('0003'), d1: u('0004'), d2: u('0005'),
@@ -110,6 +113,10 @@ export function buildSeedWorld(): SeedWorld {
   // The audited bootstrap is the earliest governed event (t(2) below), and the claim carries
   // exactly that landing instant.
   const bootstrapClaim = [{ id: P.bootstrapClaim.id, principal_id: WORLD_IDS.adm, claimed_at: t(2) }];
+  // The audited bootstrap is STAMPED by the application after the port call returns, so its
+  // occurred_at is strictly later than the transaction instant that wrote the claim. That gap is
+  // what bounds the credential's `clock_timestamp()` marking instant.
+  const BOOTSTRAP_STAMP_MS = 100;
 
   // Exactly what the pinned producer emits: m,p,t order, 16-byte salt, 32-byte tag, canonical
   // unpadded standard-alphabet base64.
@@ -121,11 +128,12 @@ export function buildSeedWorld(): SeedWorld {
   const credentials = [
     {
       id: u('0101'), principal_id: WORLD_IDS.adm, type: P.credential.type, secret_hash: ARGON,
-      status: P.credential.rotatedStatus, created_at: t(rotatedCreated),
-      // Retired exactly when its replacement is minted; expiry is one governed lifetime after an
-      // instant inside its own life.
+      // Created by the same transaction that recorded the bootstrap claim.
+      status: P.credential.rotatedStatus, created_at: t(2),
+      // Retired exactly when its replacement is minted; the expiry is 24 hours after a marking
+      // instant strictly inside the bootstrap transaction and at or before its audit stamp.
       rotated_at: t(replacementCreated),
-      expires_at: new Date(BASE + rotatedCreated * 1000 + L.lifetimeMs).toISOString().replace('Z', '+00:00'),
+      expires_at: new Date(BASE + 2 * 1000 + 50 + L.lifetimeMs).toISOString().replace('Z', '+00:00'),
     },
     {
       id: u('0102'), principal_id: WORLD_IDS.adm, type: P.credential.type, secret_hash: ARGON,
@@ -233,7 +241,7 @@ export function buildSeedWorld(): SeedWorld {
         purpose_id: s.purpose_id, policy_version: null, policy_decision_id: null,
         correlation_id: corr(900 + i), tenant_id: null, domain_id: null,
         target_id: s.targetIsActor ? entityOf(s.actorSlot) : null, target_type: s.target_type,
-        session_id: entityOf(s.sessionSlot), occurred_at: iso(2 + i),
+        session_id: entityOf(s.sessionSlot), occurred_at: isoms(2 + i, BOOTSTRAP_STAMP_MS),
       }),
     });
   });

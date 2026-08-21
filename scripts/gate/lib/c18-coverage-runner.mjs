@@ -433,44 +433,94 @@ function buildContext({ before, slots, spec }) {
       return out;
     },
 
-    /** The rotated bootstrap credential's complete ordering, and the active ones' null lifecycle. */
+    /**
+     * C18.1.11 — THE CREDENTIAL LIFECYCLE, from the migration rather than from a tolerance.
+     *
+     * `identity.bootstrap_mark_one_time` (migration 0012) sets
+     *     expires_at = clock_timestamp() + interval '24 hours'
+     * while marking the bootstrap credential `must_rotate`. So the expiry is EXACTLY 24 hours
+     * after some instant τ inside the bootstrap transaction, and the contract is that such a τ
+     * exists within the interval the evidence actually bounds:
+     *
+     *   • τ > created_at — clock_timestamp() is strictly later than the transaction's now(),
+     *     which is what stamped the credential row and the bootstrap claim;
+     *   • τ <= the audited bootstrap event's occurred_at — the application stamps that instant
+     *     only after the bootstrap port call has returned, so the marking already happened;
+     *   • τ < rotated_at — the marking transaction commits before the rotation begins.
+     *
+     * C18.1.10 bounded τ only by [created_at, rotated_at] inclusive, a ~65 ms interval, so a
+     * few milliseconds of drift stayed inside it. Bounding τ by the audited bootstrap instant
+     * narrows it to the marking itself. The residual freedom is real and is stated honestly: a
+     * drift smaller than the gap between the transaction clock and that audit stamp is
+     * indistinguishable from a legitimate `clock_timestamp()` read.
+     */
     credentialWorld() {
       const out = [];
       const creds = rows('identity.credentials');
       const L = SEED_CREDENTIAL_LIFECYCLE;
-      const rotated = creds.filter((c) => c.status === spec.basePosture.credential.rotatedStatus);
-      const active = creds.filter((c) => c.status === spec.basePosture.credential.activeStatus);
+      const P = spec.basePosture.credential;
+      const rotated = creds.filter((c) => c.status === P.rotatedStatus);
+      const active = creds.filter((c) => c.status === P.activeStatus);
       if (rotated.length !== L.rotatedCount) {
-        out.push(`coverage runner: ${rotated.length} rotated credential(s); the specification retires exactly ${L.rotatedCount}`);
+        out.push(`credential lifecycle: ${rotated.length} rotated credential(s); the specification retires exactly ${L.rotatedCount}`);
+      }
+      for (const c of creds) {
+        if (c.type !== P.type) {
+          out.push(`credential lifecycle: credential ${stable(c.id)} is type ${stable(c.type)}; the specification issues ${stable(P.type)}`);
+        }
+        if (![P.activeStatus, P.rotatedStatus].includes(c.status)) {
+          out.push(`credential lifecycle: credential ${stable(c.id)} carries status ${stable(c.status)}`);
+        }
       }
       for (const c of active) {
         if ((c.rotated_at ?? null) !== L.activeRotatedAt) {
-          out.push(`coverage runner: an active credential carries rotated_at ${stable(c.rotated_at)}; an active credential is never retired`);
+          out.push(`credential lifecycle: an active credential carries rotated_at ${stable(c.rotated_at)}; an active credential is never retired`);
         }
         if ((c.expires_at ?? null) !== L.activeExpiresAt) {
-          out.push(`coverage runner: an active credential carries expires_at ${stable(c.expires_at)}; an active credential does not expire`);
+          out.push(`credential lifecycle: an active credential carries expires_at ${stable(c.expires_at)}; an active credential does not expire`);
         }
       }
+      const adminId = idOf(slots.principal, spec.admin.slot);
+      const claim = rows('identity.bootstrap_claim')[0] ?? null;
+      const bootstrapEvent = auditRows.find((r) => r.event?.action === 'identity.bootstrap.platform_admin') ?? null;
       for (const c of rotated) {
+        // OWNER: the retired credential belongs to the audited bootstrap principal, nobody else.
+        if (c.principal_id !== adminId) {
+          out.push(`credential lifecycle: the rotated credential belongs to ${stable(c.principal_id)}; the bootstrap principal is ${stable(adminId)}`);
+        }
+        // CREATION: stamped by the same transaction that recorded the bootstrap claim.
+        if (claim !== null && !same(c.created_at, claim.claimed_at)) {
+          out.push(`credential lifecycle: the rotated credential was created at ${stable(c.created_at)}; the bootstrap claim records ${stable(claim.claimed_at)}`);
+        }
         if (at(c.rotated_at) === null) {
-          out.push('coverage runner: the rotated credential records no rotation instant');
+          out.push('credential lifecycle: the rotated credential records no rotation instant');
           continue;
         }
-        if (!(at(c.created_at) <= at(c.rotated_at))) {
-          out.push('coverage runner: the rotated credential was retired before it was created');
+        // ROTATION: it is retired exactly when its replacement is minted, and there is exactly one.
+        const successors = active.filter((a) => a.principal_id === c.principal_id && same(a.created_at, c.rotated_at));
+        if (successors.length !== 1) {
+          out.push(`credential lifecycle: ${successors.length} replacement credentials were minted at the rotation instant; exactly one is required`);
         }
-        // The predecessor is retired exactly when its replacement is minted.
-        const successor = active.find((a) => same(a.created_at, c.rotated_at));
-        if (successor === undefined) {
-          out.push('coverage runner: the rotated credential\'s retirement does not coincide with the minting of its replacement');
-        }
+        // EXPIRY: exactly 24 hours after an instant inside the bootstrap marking.
         if (at(c.expires_at) === null) {
-          out.push('coverage runner: the rotated credential carries no governed expiry');
+          out.push('credential lifecycle: the rotated credential carries no governed expiry');
+          continue;
+        }
+        const tau = at(c.expires_at) - L.lifetimeMs;
+        if (!(tau > at(c.created_at))) {
+          out.push(`credential lifecycle: the expiry implies a marking instant at or before the credential's own creation (${stable(c.created_at)})`);
+        }
+        if (!(tau < at(c.rotated_at))) {
+          out.push(`credential lifecycle: the expiry implies a marking instant at or after the rotation (${stable(c.rotated_at)})`);
+        }
+        if (bootstrapEvent === null) {
+          out.push('credential lifecycle: no audited bootstrap event bounds the marking instant');
         } else {
-          const issued = at(c.expires_at) - L.lifetimeMs;
-          if (!(at(c.created_at) <= issued && issued <= at(c.rotated_at))) {
-            out.push('coverage runner: the rotated credential\'s expiry is not one governed lifetime '
-              + 'after an instant within its own life');
+          const stamped = at(bootstrapEvent.event?.occurred_at ?? null);
+          if (stamped !== null && !(tau <= stamped)) {
+            out.push(`credential lifecycle: the expiry implies a marking instant ${new Date(tau).toISOString()}, `
+              + `after the audited bootstrap was stamped (${stable(bootstrapEvent.event.occurred_at)}); the marking `
+              + 'precedes that stamp');
           }
         }
       }

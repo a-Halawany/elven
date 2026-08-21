@@ -390,7 +390,9 @@ export const C18_SEED_SPEC_FULL = withC1818(C18_SEED_SPEC);
  * from this contract must be byte-identical across the upgrade boundary.
  */
 export const POST_UPGRADE_DELTA = Object.freeze({
-  'ctx.operation': Object.freeze({ key: ['id'], inserts: 1 }),
+  // C18.1.11 — this table has NO `id` column; its identity is `operation_id`. C18.1.10 keyed on
+  // a column that does not exist, so every row hashed to the same [null] key.
+  'ctx.operation': Object.freeze({ key: ['operation_id'], inserts: 1 }),
   'ctx.operation_effect': Object.freeze({ key: ['id'], inserts: 1 }),
   'ctx.issued': Object.freeze({ key: ['nonce'], inserts: 2 }),
   'identity.sessions': Object.freeze({ key: ['id'], inserts: 1 }),

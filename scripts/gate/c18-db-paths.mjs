@@ -122,6 +122,10 @@ import {
   registeredColumns, runCoverageValidators, runEraColumns, slotsResolved, verifyPostUpgradeDelta,
 } from './lib/c18-coverage-runner.mjs';
 import {
+  postUpgradeRegisteredColumns, runPostUpgradeCoverage, verifyPostUpgradeRegistry,
+} from './lib/c18-post-upgrade.mjs';
+import { canonicalTimestamp } from './lib/c18-seed-validators.mjs';
+import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
 } from './lib/c18-query-plan.mjs';
@@ -790,6 +794,15 @@ async function runCommand(args) {
     problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: postOp }).map((p) => `path-a-closure: ${p}`));
     // C18.1.10 — the COMPLETE after -> final comparison, not an ID-set check on four tables.
     problems.push(...verifyPostUpgradeDelta({ after, final: finalSnap }).problems);
+    // C18.1.11 — every COLUMN of every inserted or updated post-upgrade row, not merely counts.
+    // Runs whenever the boundary is readable; it is never gated behind another finding.
+    problems.push(...verifyPostUpgradeRegistry({
+      final: finalSnap, registered: postUpgradeRegisteredColumns(),
+    }).problems);
+    problems.push(...runPostUpgradeCoverage({
+      after, final: finalSnap, expected: postOp, canonicalTimestamp,
+      audit: { jcs: audit.jcs, rowHash: audit.rowHash },
+    }).problems);
     problems.push(...verifyMigrationLedger({
       trackedDigests: tracked.digests, ledger: before.ledger, expectLast: HISTORICAL_LAST,
     }).map((p) => `path-a-before-ledger: ${p}`));
@@ -1364,6 +1377,15 @@ export async function verifySemantics({
     }));
     problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: manifest.post_upgrade_operation ?? null }));
     problems.push(...verifyPostUpgradeDelta({ after, final: finalSnap }).problems);
+    // C18.1.11 — every COLUMN of every inserted or updated post-upgrade row, not merely counts.
+    // Runs whenever the boundary is readable; it is never gated behind another finding.
+    problems.push(...verifyPostUpgradeRegistry({
+      final: finalSnap, registered: postUpgradeRegisteredColumns(),
+    }).problems);
+    problems.push(...runPostUpgradeCoverage({
+      after, final: finalSnap, expected: (manifest.post_upgrade_operation ?? null), canonicalTimestamp,
+      audit: { jcs: audit.jcs, rowHash: audit.rowHash },
+    }).problems);
     problems.push(...comparePosture(after.posture, virgin.posture));
     // Receipt, isolation and RESULT judgements run regardless of manifest shape — a
     // malformed manifest must not suppress deeper findings.

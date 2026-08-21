@@ -62,6 +62,16 @@ import {
   opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
 import { WORLD_IDS, buildSeedWorld, worldSlots } from './c18-seed-world';
+import {
+  buildPostUpgradeWorld, judgePostUpgrade, mutatePostUpgradeColumn, postUpgradeSubject,
+} from './c18-post-upgrade-world';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  POST_UPGRADE_COVERAGE, postUpgradeRegisteredColumns, postUpgradeUnownedColumns,
+  verifyPostUpgradeRegistry,
+} from '../../../../scripts/gate/lib/c18-post-upgrade.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { POST_UPGRADE_DELTA } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
@@ -1973,10 +1983,36 @@ describe('C18.1.9 — the reproduced acceptances are permanently closed', () => 
     })).toMatch(/on an ACTIVE credential; the specification requires null/);
   });
   it('a rotated credential whose retirement does not mint its replacement', () => {
-    expect(reject((b) => {
+    // C18.1.11 — the INTENT is unchanged: the predecessor is retired exactly when its
+    // replacement is minted. The finding now states it as a count, because the rule became
+    // "exactly one replacement exists at that instant" rather than "some replacement exists".
+    // The two independent controls below prove that intent directly before this wording is
+    // relied upon: moving the retirement leaves ZERO replacements at the rotation instant, and
+    // minting a second one at that instant is equally rejected.
+    const out = reject((b) => {
       const c = R(b, 'identity.credentials').find((x: any) => x.status === 'rotated');
       c.rotated_at = '2026-08-01T00:00:07.000+00:00';
-    })).toMatch(/does not coincide with the minting of its replacement/);
+    });
+    expect(out).toMatch(/replacement credentials were minted at the rotation instant/);
+    expect(out).toMatch(/^.*\b0 replacement/m);
+  });
+  it('the retirement instant IS the replacement minting instant, in both directions', () => {
+    // Direction 1: no replacement at the retirement instant.
+    expect(reject((b) => {
+      const creds = R(b, 'identity.credentials');
+      const c = creds.find((x: any) => x.status === 'rotated');
+      const succ = creds.find((x: any) => x.status === 'active' && x.created_at === c.rotated_at);
+      succ.created_at = '2026-08-01T00:00:09.000+00:00';
+    })).toMatch(/0 replacement credentials were minted at the rotation instant/);
+    // Direction 2: two replacements at that instant is not "exactly one" either.
+    expect(reject((b) => {
+      const creds = R(b, 'identity.credentials');
+      const c = creds.find((x: any) => x.status === 'rotated');
+      const succ = creds.find((x: any) => x.status === 'active' && x.created_at === c.rotated_at);
+      const twin = creds.find((x: any) => x.status === 'active' && x !== succ);
+      twin.principal_id = succ.principal_id;
+      twin.created_at = succ.created_at;
+    })).toMatch(/2 replacement credentials were minted at the rotation instant/);
   });
   it('a credential hash outside the Argon2id PHC grammar', () => {
     expect(reject((b) => { R(b, 'identity.credentials')[0].secret_hash = '$argon2i$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA'; }))
@@ -2388,5 +2424,121 @@ describe('C18.1.11 — a secret in the environment never reaches argv, a log, ev
         expect(text, `${f} carries a private key`).not.toMatch(/BEGIN [A-Z ]*PRIVATE KEY/);
       }
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('C18.1.11 — the frozen a424505 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = 'a424505a82970d8e4446ea5e0aacaf5f0a85a2e9';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '5dd317ad5bbda315f6622994e4fd58b97f8dc99d2094646359b9d66d3bfd390d'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', '34512a426bb98d346c53c3095e292e6c74673b7ebae5d65e20df014e48a8e71a'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '97af2b2605d8fd53e71f00f2b1470bfff2ec895ab4bac076c54f62c6d30acb79'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', '86f56a040fa9c9647d30f806f01fe5f14fb0006528a7f843f96bfdd09b30afa3'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '920bfe5023790455cab7b19816e1d65514738519c0c13234005200aed0a8d90d'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', '1578e89715b7cc20ca7e6106b40eb54584fcf71f7b6a399614eb2539a36ce1d0'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-a424505/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-a424505', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+});
+
+describe('C18.1.11 — the post-upgrade world is classified and executed, not counted', () => {
+  it('ctx.operation is keyed by operation_id, the column it actually has', () => {
+    // C18.1.10 declared key ['id']; that table has no `id`, so every row keyed to [null].
+    expect(POST_UPGRADE_COVERAGE['ctx.operation'].key).toEqual(['operation_id']);
+    expect(POST_UPGRADE_DELTA['ctx.operation'].key).toEqual(['operation_id']);
+    // And the real catalog confirms it.
+    const w = buildPostUpgradeWorld();
+    expect(w.final.tables['ctx.operation'].columns).toContain('operation_id');
+    expect(w.final.tables['ctx.operation'].columns).not.toContain('id');
+  });
+
+  it('the registry is exactly equal in both directions', () => {
+    const w = buildPostUpgradeWorld();
+    const r = verifyPostUpgradeRegistry({ final: w.final, registered: postUpgradeRegisteredColumns() });
+    expect(r.problems).toEqual([]);
+    expect(r.catalog).toEqual(r.classified);
+    expect(r.classified).toEqual(r.registered);
+    expect(r.registered.length).toBeGreaterThan(100);
+  });
+
+  it.each([
+    ['a classified column the catalog does not have', (w: any) => {
+      w.final.tables['identity.sessions'].columns =
+        w.final.tables['identity.sessions'].columns.filter((c: string) => c !== 'status');
+    }, /'identity\.sessions\.status' is classified but not in the delivered catalog/],
+    ['a catalog column nothing classifies', (w: any) => {
+      w.final.tables['identity.sessions'].columns.push('smuggled');
+    }, /'identity\.sessions\.smuggled' is in the delivered catalog but not classified/],
+  ] as ReadonlyArray<[string, (w: any) => void, RegExp]>)('the registry proof rejects %s', (_l, mutate, pattern) => {
+    const w = buildPostUpgradeWorld();
+    mutate(w);
+    expect(verifyPostUpgradeRegistry({ final: w.final, registered: postUpgradeRegisteredColumns() })
+      .problems.join('\n')).toMatch(pattern);
+  });
+
+  it('the conformant post-upgrade world raises NO finding, and executes every column', () => {
+    const w = buildPostUpgradeWorld();
+    const r = judgePostUpgrade(w);
+    expect(r.problems).toEqual([]);
+    expect(r.executed).toEqual(postUpgradeRegisteredColumns());
+  });
+
+  it('the affected-table universe is DERIVED, so an unclassified change is a finding', () => {
+    // identity.principals is present on both sides and the contract does not classify it, so the
+    // governed operation must leave it byte-identical.
+    const w = buildPostUpgradeWorld();
+    w.final.tables['identity.principals'].rows[0].revocation_epoch = 99;
+    expect(judgePostUpgrade(w).problems.join('\n'))
+      .toMatch(/'identity\.principals' changed, but the governed operation does not touch it/);
+  });
+
+  it('exactly four columns declare no source-owned value, and each still executes a rule', () => {
+    // A backend transaction id, a backend process id, a bare sequence value and a per-session
+    // context key are chosen at run time; no compile-time value exists for them. Each is still
+    // held to a real grammar or uniqueness rule, and nothing else may claim the exemption.
+    expect(postUpgradeUnownedColumns()).toEqual([
+      'ctx.operation.backend_pid', 'ctx.operation.txid', 'ctx.operation_effect.id',
+      'identity.sessions.context_key_hash',
+    ]);
+    for (const [table2, column, bad] of [
+      ['ctx.operation', 'txid', 'not-a-txid'],
+      ['ctx.operation', 'backend_pid', -1],
+      ['ctx.operation_effect', 'id', 0],
+    ] as Array<[string, string, unknown]>) {
+      const w = buildPostUpgradeWorld();
+      w.final.tables[table2].rows[0][column] = bad;
+      expect(judgePostUpgrade(w).problems.join('\n'), `${table2}.${column}`).toMatch(new RegExp(column));
+    }
+    // The context key's uniqueness IS enforced even though its value is not source-owned.
+    const w = buildPostUpgradeWorld();
+    const sessions = w.final.tables['identity.sessions'].rows;
+    sessions[1].context_key_hash = sessions[0].context_key_hash;
+    expect(judgePostUpgrade(w).problems.join('\n')).toMatch(/context_key_hash.*appears 2 times/);
+  });
+
+  /** One rule-aware mutation per registered post-upgrade column. */
+  const registered = postUpgradeRegisteredColumns()
+    .filter((c: string) => !postUpgradeUnownedColumns().includes(c));
+  it.each(registered.map((c) => [c]))('mutating %s is REJECTED by its own rule', (spec) => {
+    const table = spec.slice(0, spec.lastIndexOf('.'));
+    const column = spec.slice(spec.lastIndexOf('.') + 1);
+    const w = buildPostUpgradeWorld();
+    const subject = postUpgradeSubject(w, table, column);
+    expect(subject, `${spec} has no changed row to mutate`).toBeDefined();
+    mutatePostUpgradeColumn(w, table, column, subject);
+    expect(judgePostUpgrade(w).problems.length, `${spec} accepted a well-typed wrong value`).toBeGreaterThan(0);
   });
 });
