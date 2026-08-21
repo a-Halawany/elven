@@ -2386,7 +2386,17 @@ requires explicit owner authorization; the 567a70f, 15e8239, 83d158c, 7be02b8, 8
 and bfc8695 artifacts are NOT contaminated. This section is a docs-only child; verification runs
 against `77489f50fdb07d7f469f9181ddd808b37b70c964`.
 
-## 24. C18.1.9 — AN EXECUTABLE SEED COVERAGE REGISTRY, NOT A DESCRIBED ONE (delivered; awaiting independent review)
+## 24. C18.1.9 — AN EXECUTABLE SEED COVERAGE REGISTRY, NOT A DESCRIBED ONE (delivered; SUPERSEDED by §25)
+
+**SUPERSEDED at C18.1.10 (§25)**: `53a4eec` is authentic and leak-free, and everything it
+established is preserved. It is superseded because `after → final` was authenticated only by
+ID-set membership on four tables, the declared Argon2id parameters were dead code AND wrong,
+`digest({unique:true})` ignored `unique`, an outbox correlation needed only to agree with the seed
+record, every instant went through `new Date()`, `claimed_at` needed only to fall inside a movable
+window, and the registry excluded the later-era fields and the dedicated-model table while
+reporting itself complete. Eleven mutations were accepted by the complete frozen verifier. Its
+control suite also took hours locally. The record below stays as honest history; verification
+targets §25.
 
 **Evidence-bearing source `53a4eec4d9f83422969a34efe37e277f7accc809`.**
 Candidate CI: pull-request run `32479491584` (3/3 green). Source run `32480029784` (push/`main`, all
@@ -2504,4 +2514,131 @@ which C18.1.9 rejects.
 untouched.
 
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.9 review, and no
+part of C19 has been started.
+
+## 25. C18.1.10 — THE COMPLETE POST-UPGRADE DELTA, THE REAL CREDENTIAL CONTRACT, AND A HARNESS THAT FINISHES (delivered; awaiting independent review)
+
+**Evidence-bearing source `a424505a82970d8e4446ea5e0aacaf5f0a85a2e9`.**
+Candidate CI: pull-request run `32529804949` (3/3 green). Source run `32530262825` (push/`main`, all three
+jobs green with the blocking C18 gate) · finalizer run `32530692547` (`macos-14`, green).
+
+**Delivery artifact (digest-bound, leak-free).** `c18-db-paths-evidence-a1-791bdc48d7a81d5e6edf50f4109100720ea185e773688d0755469aab880cb47b` — exactly the archive
+`c18-db-paths-evidence-a424505….zip` (524,617 B, outer sha256 `791bdc48d7a81d5e6edf50f4109100720ea185e773688d0755469aab880cb47b`) + verified sidecar.
+Arithmetic, measured from the delivered archive: **336 commands; 1,008 raw stream files; 11 fixed
+top-level regular files; 1,019 regular files total; + the `raw/` directory entry = 1,020 ZIP
+entries.** Verified from a fresh foreign checkout offline and **online-hosted**
+(`standing=delivery-online`).
+
+### 25.1 Reproduced first, and counted honestly
+
+Every issue was put to the COMPLETE frozen 53a4eec verifier, with all attacker-controlled
+checksums and receipts rebound, **before any code changed**:
+
+| # | mutation | frozen 53a4eec |
+|---|---|---|
+| 1 | a final-only tenant value change (retention profile) | **accepted** |
+| 2 | a final-only principal status change | **accepted** |
+| 3 | an extra row present only in the final snapshot | **accepted** |
+| 4 | a seeded row deleted only in the final snapshot | **accepted** |
+| 5 | a weak but well-formed argon2id hash (`m=1,t=1,p=1`) | **accepted** |
+| 6 | argon2id with the parameters C18.1.9 declared (`m=19456,p=1,t=2`) | **accepted** |
+| 7 | two sessions sharing one valid `context_key_hash` | **accepted** |
+| 8 | an outbox correlation repointed at another genuine correlation, seed record rebound | **accepted** |
+| 9 | a noncanonical but parseable spelling of the same instant | **accepted** |
+| 10 | `bootstrap_claim.claimed_at` moved later but still inside the window | **accepted** |
+| 11 | a later-era column substituted in the upgraded catalog | **accepted** |
+| — | outbox correlation repointed WITHOUT rebinding the seed record | already caught (seed-record agreement) |
+| — | a timestamp change that also broke an ordering relation | already caught (instant comparison) |
+| — | a later-era column changed in path A | already caught (migration backfill check) |
+| — | a dedicated-model column changed, and a model column omitted | already caught (object model, catalog contract) |
+
+**Eleven complete-package false passes are the closures this pass claims.** The four
+already-caught cases are recorded as such and counted separately; none is presented as a closure,
+and the baseline itself is not counted at all.
+
+### 25.2 The corrections
+
+1. **The complete `after → final` comparison (A).** `POST_UPGRADE_DELTA` states the governed
+   operation's exact footprint — nine tables, keyed inserts, one head update restricted to
+   `next_seq`/`head_hash`/`updated_at`, and no deletions anywhere. `verifyPostUpgradeDelta`
+   compares every table, row and column across the boundary; a table the contract does not name
+   must be byte-identical, and a catalog change across the boundary is itself a finding.
+
+2. **The real Argon2id contract (B).** Derived from the pinned producer rather than assumed:
+   `argon2` 0.45.1 with no cost overrides emits `$argon2id$v=19$m=65536,p=4,t=3$…` with a 16-byte
+   salt and a 32-byte tag in canonical unpadded standard-alphabet base64. C18.1.9's
+   `SEED_ARGON2ID_PARAMS` was dead code **and wrong**; nothing consumed it, so nothing caught the
+   error. Reordered, padded, url-safe, over- or under-sized encodings are all refused.
+
+3. **Digest uniqueness (C).** `digest({unique:true})` accepted the option and ignored it.
+
+4. **Own-operation correlation binding (D).** Each outbox row's correlation is the correlation of
+   the decision that enqueued *that row*, checked in both directions, so agreement with a rebound
+   seed record is no longer sufficient.
+
+5. **Canonical timestamps (E).** Two source-owned shapes, derived from the evidence: a PostgreSQL
+   column instant and a canonical JSON body instant. Anything else — prose, alternate offsets, a
+   space separator, a colon-less offset — is not a governed timestamp, whatever `Date` makes of it.
+
+6. **Authenticated bootstrap timing (F).** `claimed_at` is the audited bootstrap event's landing
+   instant, and that event must be the earliest governed event.
+
+7. **Literal registry completeness (G).** Per-era equality — seed 142 = 142 = 142, upgraded
+   145 = 145 = 145 including the later-era fields, which now execute where they exist — plus a
+   separate exact catalog-to-model coverage proof for the 45 columns of
+   `objects.canonical_objects`. The two columns C18.1.9 exempted as opaque both have enforceable
+   properties: the context key is unique across sessions, and the lease is present exactly on the
+   leased slot. **The exemption list is now empty rather than merely short.**
+
+8. **A rule-aware mutation matrix (H).** A generic "change the value" mutation cannot exercise a
+   uniqueness rule, because an arbitrary distinct digest is legitimately valid. The matrix now
+   chooses its mutation by what the rule claims, and adds valid-looking-but-wrong variants for
+   weak parameters, duplicate digests, noncanonical timestamps, wrong correlations,
+   in-window-but-wrong timing, final-only mutations, era substitution and model-column omission.
+
+### 25.3 The runtime defect
+
+The C18.1.9 control suite unzipped, mutated, rezipped and re-unzipped the archive for each of ~234
+controls; the hosted gate finished in minutes while a local run took hours. That was a harness
+defect, and it was fixed without removing, sampling or weakening a single control.
+
+* **Hardened ZIP ingress** (duplicate names, traversal, symlinks, non-regular members) is separated
+  from a **shared semantic core** operating on an authenticated immutable member map. The CLI
+  always runs both. The controls call that same core — there is no test-only or weakened verifier —
+  and an equivalence control proves a mutation rejected through the member map is rejected through
+  the real ZIP path.
+* Mutations apply in place to one authenticated baseline and the tree is restored byte-exactly;
+  every control asserts the baseline is unchanged and declares exactly which members it changed.
+* Source-derived expectations and each frozen-predecessor downgrade are computed once per suite.
+* **Measured, three clean runs:** 144.57 s / 145.99 s / 145.67 s → median **145.67 s**, max **145.99 s**
+  (247 controls, zero failures). Complete C18 gate locally **~3.6 min (producer 71.0 s + offline verification 0.4 s + controls 145.7 s)**. Hosted CI **controls 70.4 s (candidate) and 80.2 s (push/main), complete gate 2 m 17 s**.
+* Execution stays **serial**. Bounded parallelism is permitted only for isolated semantic families,
+  and the targets are met without it; the in-place harness shares one authenticated baseline, so
+  running families concurrently would trade a real safety property for time the pass does not need.
+
+**Bounded waits.** The teardown had no deadline at all. It is now a graceful wait, then a kill of
+the complete process group, then a bounded reap, with the parent owning container cleanup either
+way. `timeout(1)` does not exist on macOS, which is why an hours-long run could go unnoticed;
+`scripts/gate/c18-watchdog.mjs` runs any phase in its own process group under a hard deadline and
+prints the surviving process tree before signalling and then killing it. A control proves a child
+that deliberately ignores SIGTERM is still killed.
+
+### 25.4 Controls
+
+Hermetic gate **453** (was 453 at C18.1.9: 406) · in-gate mutation/differential **247** (was 234) ·
+API hermetic **1,402** (was 1,355) · integration **297** · acceptance **58** · Playwright **10**.
+The frozen 53a4eec verifier is pinned byte-verbatim (eleven files, per-file sha256, cross-checked
+against the commit) and is the differential predecessor: it accepts the genuine archive
+(non-vacuity) and accepts each reproduced mutation, which C18.1.10 rejects.
+
+**A note on the freeze.** C18.1.9's coverage runner imported the production contracts by a
+relative path that resolves only three directories below the repository root, so the frozen
+predecessor could not execute from the fixture tree. Every other C18 gate module is relocatable.
+Rather than edit frozen bytes, the fixture is supplied the dependency at the exact path it asks
+for, re-exporting the same production package.
+
+**Scope discipline.** Only `scripts/gate/**` and `apps/api/test/gate/**` change. Migrations
+0001–0021, C15–C17 verifier logic and product code are untouched; 21 migrations, zero drift.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.10 review, and no
 part of C19 has been started.
