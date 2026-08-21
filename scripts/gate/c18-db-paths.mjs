@@ -615,7 +615,19 @@ async function runCommand(args) {
   // be handled by any process — no in-process cleanup can run under it; that limit is stated
   // honestly rather than papered over. (Signals are delivered between spawnSync calls, which
   // is exactly where container state changes.)
+  // C18.1.10 — the teardown is BOUNDED. C18.1.9 ran the checked teardown with no deadline, so a
+  // child that ignores SIGTERM (or a docker call that hangs) left the gate waiting indefinitely.
+  // The sequence is now: graceful wait, then kill the COMPLETE process group, then a bounded
+  // reap, and the parent owns container cleanup either way.
   const onSignal = (sig) => {
+    const deadlineMs = Number(process.env['C18_TEARDOWN_DEADLINE_MS'] ?? 30_000);
+    const hardExit = setTimeout(() => {
+      console.error(`C18 ${sig} teardown exceeded ${deadlineMs}ms; killing the process group`);
+      try { process.kill(-process.pid, 'SIGKILL'); } catch { /* group may already be gone */ }
+      process.exit(1);
+    }, deadlineMs);
+    // Never let the deadline timer itself hold the event loop open.
+    if (typeof hardExit.unref === 'function') hardExit.unref();
     try {
       if (outDir !== null) {
         writeFileSync(join(outDir, 'RESULT-FAIL.txt'),
@@ -623,8 +635,10 @@ async function runCommand(args) {
         writeFileSync(join(outDir, 'commands.json'), `${JSON.stringify(ev?.commands ?? [], null, 2)}\n`);
       }
     } catch { /* teardown still runs */ }
+    // The PARENT owns container cleanup: it runs whether or not any child cooperated.
     const cleaned = teardown(cleanup, keep);
     if (cleaned.failures.length > 0) console.error(`C18 ${sig} cleanup FAILED: ${cleaned.failures.join('; ')}`);
+    clearTimeout(hardExit);
     process.exit(1);
   };
   process.once('SIGINT', onSignal);

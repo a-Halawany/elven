@@ -16,10 +16,10 @@ import {
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 // eslint-disable-next-line import/no-relative-packages
-import { verifyEvidence } from '../../../../scripts/gate/c18-db-paths.mjs';
+import { ingestArchive, verifyEvidence, verifySemantics } from '../../../../scripts/gate/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { commandIdFor } from '../../../../scripts/gate/lib/c18-contract.mjs';
 // eslint-disable-next-line import/no-relative-packages
@@ -44,6 +44,10 @@ import { verifyEvidence as legacyBfc } from './fixtures/c18-legacy-bfc8695/c18-d
 import { verifyEvidence as legacy774 } from './fixtures/c18-legacy-77489f5/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy774Coverage } from './fixtures/c18-legacy-77489f5/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy53a } from './fixtures/c18-legacy-53a4eec/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy53aCoverage } from './fixtures/c18-legacy-53a4eec/lib/c18-seed-coverage.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -113,11 +117,36 @@ function dropRow(d: string, table: string, match: (r: any) => boolean) {
  * exactly the bytes that producer emitted, so the differential leg is byte-faithful rather than
  * hand-approximated.
  */
-function downgradeTo77489f5(dir: string) {
+/**
+ * C18.1.10 — each predecessor's coverage report is source-DERIVED, so for an unmutated tree it is
+ * the same bytes every time. It is computed once per suite and reused; a mutated tree still
+ * recomputes, because the report must reflect what the archive actually carries.
+ */
+const DOWNGRADE_CACHE = new Map<string, string>();
+function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknown) {
   const preseed = JSON.parse(readFileSync(join(dir, 'path-a-preseed.json'), 'utf8'));
   const before = JSON.parse(readFileSync(join(dir, 'path-a-before.json'), 'utf8'));
+  const stamp = `${key}:${sha256(JSON.stringify(preseed))}:${sha256(JSON.stringify(before))}`;
+  const hit = DOWNGRADE_CACHE.get(stamp);
+  if (hit !== undefined) return hit;
+  const text = `${JSON.stringify(build(preseed, before), null, 2)}\n`;
+  DOWNGRADE_CACHE.set(stamp, text);
+  return text;
+}
+
+/**
+ * C18.1.10's coverage report states each column's kind, era, executability AND whether it has a
+ * source-owned value; 53a4eec's did not carry the last field, and several kinds and notes differ.
+ * Regenerating with the FROZEN module reproduces exactly what that producer emitted.
+ */
+function downgradeTo53a4eec(dir: string) {
   writeFileSync(join(dir, 'seed-coverage.json'),
-    `${JSON.stringify(legacy774Coverage({ preseed, before }), null, 2)}\n`);
+    coverageFor(dir, '53a4eec', (preseed, before) => legacy53aCoverage({ preseed, before })));
+}
+
+function downgradeTo77489f5(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, '77489f5', (preseed, before) => legacy774Coverage({ preseed, before })));
 }
 
 function downgradeToBfc8695(dir: string) {
@@ -152,14 +181,110 @@ function rebind(dir: string) {
   writeFileSync(join(dir, 'SHA256SUMS.txt'), `${lines.join('\n')}\n`);
 }
 
+/**
+ * C18.1.10 — THE PRISTINE EXTRACTION, taken ONCE per suite.
+ *
+ * C18.1.9 unzipped the archive, mutated it, rezipped it and let the CLI unzip it again for every
+ * one of ~234 controls, which is why the suite took hours. The genuine archive is now ingested
+ * and authenticated once; each semantic control copies that pristine tree, mutates the copy and
+ * runs the SAME shared semantic core the CLI runs. Archive-boundary properties keep real ZIPs.
+ */
+let PRISTINE_DIR: string | null = null;
+let PRISTINE_DIGEST = '';
+const pristineDir = () => {
+  if (PRISTINE_DIR === null) {
+    const d = mkdtempSync(join(tmpdir(), 'c18-pristine-'));
+    expect(spawnSync('unzip', ['-q', ARCHIVE, '-d', d]).status).toBe(0);
+    PRISTINE_DIR = d;
+    PRISTINE_DIGEST = dirDigest(d);
+  }
+  return PRISTINE_DIR;
+};
+/** A stable digest of a whole tree, so a control can prove it never touched the baseline. */
+function dirDigest(d: string) {
+  const files: string[] = [];
+  walkFiles(d, d, files);
+  return files.sort().map((f) => `${f}:${sha256(readFileSync(join(d, f)))}`).join('|');
+}
+/** The authenticated immutable member map for a directory. */
+function membersFromDir(d: string) {
+  const files: string[] = [];
+  walkFiles(d, d, files);
+  return new Map(files.sort().map((f) => [f, readFileSync(join(d, f))] as const));
+}
+
+/** The pristine member map, read ONCE and reused by every semantic control. */
+let PRISTINE_MEMBERS: Map<string, Buffer> | null = null;
+const pristineMembers = () => {
+  if (PRISTINE_MEMBERS === null) PRISTINE_MEMBERS = membersFromDir(pristineDir());
+  return PRISTINE_MEMBERS;
+};
+
+/**
+ * Apply exactly the declared mutation, rebind every attacker-controlled checksum, and return the
+ * resulting member map together with the members that actually changed.
+ *
+ * Copying the 1,013-member tree cost 223 ms per control — by far the dominant cost once the ZIP
+ * round-trip was gone — so the mutation is applied IN PLACE and the tree is then restored
+ * byte-exactly from the cached pristine map. Reading and hashing the whole tree costs 17 ms, so
+ * the restoration is verified rather than assumed: every control asserts the baseline is
+ * byte-identical afterwards.
+ */
+function mutateMembers(mutate: Mutator, { rebindAfter = true } = {}) {
+  const src = pristineDir();
+  const pristine = pristineMembers();
+  try {
+    mutate(src);
+    if (rebindAfter) rebind(src);
+    const members = membersFromDir(src);
+    const changed = [...members.keys()].filter((k) => !pristine.has(k)
+      || sha256(members.get(k) as Buffer) !== sha256(pristine.get(k) as Buffer));
+    const removed = [...pristine.keys()].filter((k) => !members.has(k));
+    return { members, changed: [...changed, ...removed].sort() };
+  } finally {
+    // Restore EXACTLY the pristine bytes, then prove the restoration was complete.
+    const now: string[] = [];
+    walkFiles(src, src, now);
+    for (const f of now) if (!pristine.has(f)) rmSync(join(src, f), { force: true });
+    for (const [f, bytes] of pristine) {
+      const abs = join(src, f);
+      if (!existsSync(abs) || sha256(readFileSync(abs)) !== sha256(bytes)) {
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, bytes);
+      }
+    }
+    expect(dirDigest(src), 'the pristine baseline was not restored').toBe(PRISTINE_DIGEST);
+  }
+}
+
+/**
+ * Real-ZIP form, for archive-boundary properties and the frozen-predecessor differentials, whose
+ * verifiers are frozen and take a zipPath. It reuses the pristine tree rather than re-extracting
+ * the archive for each control, and restores it byte-exactly afterwards.
+ */
 function mutateArchive(mutate: Mutator, { rebindAfter = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'c18-mut-'));
-  expect(spawnSync('unzip', ['-q', ARCHIVE, '-d', dir]).status).toBe(0);
-  mutate(dir);
-  if (rebindAfter) rebind(dir);
-  const zip = join(dir, 'mutated.zip');
-  expect(spawnSync('zip', ['-qrX', zip, '.', '-x', 'mutated.zip'], { cwd: dir }).status).toBe(0);
-  return { dir, zip };
+  const src = pristineDir();
+  const pristine = pristineMembers();
+  const out = mkdtempSync(join(tmpdir(), 'c18-zip-'));
+  const zip = join(out, 'mutated.zip');
+  try {
+    mutate(src);
+    if (rebindAfter) rebind(src);
+    expect(spawnSync('zip', ['-qrX', zip, '.'], { cwd: src }).status).toBe(0);
+  } finally {
+    const now: string[] = [];
+    walkFiles(src, src, now);
+    for (const f of now) if (!pristine.has(f)) rmSync(join(src, f), { force: true });
+    for (const [f, bytes] of pristine) {
+      const abs = join(src, f);
+      if (!existsSync(abs) || sha256(readFileSync(abs)) !== sha256(bytes)) {
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, bytes);
+      }
+    }
+    expect(dirDigest(src), 'the pristine baseline was not restored').toBe(PRISTINE_DIGEST);
+  }
+  return { dir: out, zip };
 }
 
 const editJson = (dir: string, name: string, edit: (doc: any) => void) => {
@@ -170,6 +295,14 @@ const editJson = (dir: string, name: string, edit: (doc: any) => void) => {
 };
 
 async function expectReject(mutate: Mutator, pattern: RegExp, opts: { rebindAfter?: boolean } = {}) {
+  const { members } = mutateMembers(mutate, opts);
+  const r = await verifySemantics({ members, root: REPO });
+  expect(r.ok).toBe(false);
+  expect(r.problems.join('\n')).toMatch(pattern);
+}
+
+/** The same judgement through the REAL CLI path, proving the two are equivalent. */
+async function expectRejectViaZip(mutate: Mutator, pattern: RegExp, opts: { rebindAfter?: boolean } = {}) {
   const { dir, zip } = mutateArchive(mutate, opts);
   try {
     const r = await verifyEvidence({ zipPath: zip, root: REPO });
@@ -2530,5 +2663,144 @@ describe('C18.1.9 — adjacent single-defect rejections on the genuine archive',
     }, /not the source-derived coverage of this evidence/],
   ] as ReadonlyArray<[string, Mutator, RegExp]>)('rejects %s', async (_l, mutate, pattern) => {
     await expectReject(mutate, pattern);
+  });
+});
+
+
+/**
+ * C18.1.10 — the gaps the frozen 53a4eec verifier could not see.
+ *
+ * Each mutation was put to the COMPLETE frozen predecessor with every attacker-controlled
+ * checksum rebound before any of this pass's code was written, and each was ACCEPTED.
+ */
+const C11810_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['a final-only value change on an untouched table', (d: string) => {
+    inFinalOnly(d, 'tenancy.tenants', (t: any) => { t.rows[0].retention_profile = 'extended'; });
+  }, /'tenancy\.tenants' changed, but the governed operation does not touch it/],
+
+  ['a final-only principal status change', (d: string) => {
+    inFinalOnly(d, 'identity.principals', (t: any) => { t.rows[0].status = 'disabled'; });
+  }, /'identity\.principals' changed, but the governed operation does not touch it/],
+
+  ['an EXTRA row present only in the final snapshot', (d: string) => {
+    inFinalOnly(d, 'identity.role_bindings', (t: any) => {
+      t.rows = [...t.rows, { ...t.rows[0], id: FORGED_UUID }];
+    });
+  }, /'identity\.role_bindings' changed, but the governed operation does not touch it/],
+
+  ['a seeded row DELETED only in the final snapshot', (d: string) => {
+    inFinalOnly(d, 'tenancy.lifecycle_events', (t: any) => { t.rows = t.rows.slice(1); });
+  }, /'tenancy\.lifecycle_events' changed, but the governed operation does not touch it/],
+
+  ['a WEAK but well-formed argon2id credential hash', (d: string) => {
+    const id = pickKey(d, 'identity.credentials');
+    everywhereA(d, 'identity.credentials', (r) => {
+      if (r.id === id) {
+        r.secret_hash = '$argon2id$v=19$m=1,p=1,t=1$QUFBQUFBQUFBQUFBQUFBQQ$QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI';
+      }
+    });
+  }, /carries m=1; the governed configuration is m=65536/],
+
+  ['argon2id parameters C18.1.9 wrongly declared as governed', (d: string) => {
+    const id = pickKey(d, 'identity.credentials');
+    everywhereA(d, 'identity.credentials', (r) => {
+      if (r.id === id) r.secret_hash = r.secret_hash.replace('m=65536,p=4,t=3', 'm=19456,p=1,t=2');
+    });
+  }, /the governed configuration is m=65536/],
+
+  ['two sessions sharing ONE otherwise valid context key digest', (d: string) => {
+    const keep = pickKey(d, 'identity.sessions');
+    const doc = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+    const src = doc.tables['identity.sessions'].rows.find((r: any) => r.id === keep).context_key_hash;
+    everywhereA(d, 'identity.sessions', (r) => { if (r.id !== keep) r.context_key_hash = src; });
+  }, /appears 2 times; every generated digest is unique/],
+
+  ['an outbox row repointed at ANOTHER genuine correlation, seed record rebound', (d: string) => {
+    const doc = JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'));
+    const ob = doc.tables['objects.object_outbox'].rows;
+    const other = ob.find((r: any) => r.event_type === 'c18.seed.pending').correlation_id;
+    everywhereA(d, 'objects.object_outbox', (r) => {
+      if (r.event_type === 'c18.seed.published') r.correlation_id = other;
+    });
+    editJson(d, 'path-a-seed-record.json', (rec: any) => {
+      for (const o of rec.outbox ?? []) if (o.eventType === 'c18.seed.published') o.correlation = other;
+    });
+  }, /the decision that enqueued this row carries/],
+
+  ['a NONCANONICAL but parseable spelling of the SAME instant', (d: string) => {
+    // The offset is respelled without its colon. The instant is bit-for-bit identical, so every
+    // ordering and equality rule still agrees and ONLY the grammar can object — which is what
+    // makes this a clean test of the grammar rather than of some other relationship. (A
+    // toUTCString() form would also truncate the sub-second part and trip an ordering rule
+    // instead, making the control depend on where the fraction happened to fall.)
+    const id = pickKey(d, 'tenancy.domains');
+    everywhereA(d, 'tenancy.domains', (r) => {
+      if (r.id === id) r.activated_at = String(r.activated_at).replace('+00:00', '+0000');
+    });
+  }, /parseable but NOT the canonical governed timestamp grammar/],
+
+  ['bootstrap timing moved later but still inside the seed window', (d: string) => {
+    everywhereA(d, 'identity.bootstrap_claim', (r) => {
+      r.claimed_at = new Date(Date.parse(r.claimed_at) + 60_000).toISOString().replace('Z', '+00:00');
+    });
+  }, /the audited bootstrap landed at/],
+];
+
+/** Rewrite a table in the FINAL snapshot only, rebinding that snapshot's command receipt. */
+function inFinalOnly(d: string, table: string, apply: (t: any) => void) {
+  editJson(d, 'path-a-final.json', (doc: any) => {
+    apply(doc.tables[table]);
+    doc.tables[table].row_count = doc.tables[table].rows.length;
+  });
+  const now = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'));
+  setStream(d, `a-a-final-rows-${table.replace('.', '_')}`, 'stdout',
+    Buffer.from(JSON.stringify(now.tables[table].rows)));
+}
+
+describe('C18.1.10 — DIFFERENTIAL: the frozen 53a4eec verifier ACCEPTED what C18.1.10 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 53a4eec verifier accepts the genuine archive', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo53a4eec);
+    try {
+      const r = await legacy53a({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C11810_MUTATIONS)('%s — 53a4eec ACCEPTS it; C18.1.10 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { mutate(d); downgradeTo53a4eec(d); });
+    try {
+      const old = await legacy53a({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 53a4eec verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+});
+
+describe('C18.1.10 — the semantic core and the production CLI agree', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('a mutation rejected through the member map is rejected through the real ZIP path', async () => {
+    const mutate: Mutator = (d) => {
+      inFinalOnly(d, 'tenancy.tenants', (t: any) => { t.rows[0].retention_profile = 'extended'; });
+    };
+    const pattern = /does not touch it/;
+    await expectReject(mutate, pattern);
+    await expectRejectViaZip(mutate, pattern);
+  });
+
+  it('a control declares exactly the members it changes, and never touches the baseline', () => {
+    const { changed } = mutateMembers((d) => {
+      inFinalOnly(d, 'tenancy.tenants', (t: any) => { t.rows[0].retention_profile = 'extended'; });
+    });
+    // The snapshot, its command receipt, the ledger that records the receipt digest, and the
+    // checksum manifest — nothing else.
+    expect(changed).toContain('path-a-final.json');
+    expect(changed).toContain('commands.json');
+    expect(changed).toContain('SHA256SUMS.txt');
+    expect(changed.filter((f) => f.startsWith('raw/'))).toHaveLength(1);
+    expect(changed).toHaveLength(4);
   });
 });

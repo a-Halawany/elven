@@ -16,7 +16,7 @@ import {
   SEED_SESSIONS, SEED_STANDALONE_AUDIT_EVENTS, SEED_TENANTS, seedInputDigestSource,
   seedOutboxPayload,
 } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
-import { SEED_COVERAGE } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
+import { SEED_COVERAGE, modelCoveredColumns } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 
 const sha256 = (b: string) => createHash('sha256').update(b).digest('hex');
 const u = (n: string) => `aaaaaaaa-${n.padStart(4, '0').slice(0, 4)}-4aaa-8aaa-aaaaaaaaaaaa`;
@@ -55,7 +55,9 @@ const CREATED: Record<string, number> = {
 /** The columns the seed-era catalog carries, taken from the registry itself. */
 export const catalogColumns = (table: string): string[] => {
   const spec: any = (SEED_COVERAGE as any)[table];
-  if (spec === undefined || spec.columnsOwnedBy !== undefined) return ['object_id'];
+  // A dedicated-model table carries the exact column set its model authenticates, so the
+  // catalog-to-model proof is exercised rather than trivially satisfied.
+  if (spec === undefined || spec.columnsOwnedBy !== undefined) return modelCoveredColumns();
   return Object.entries(spec.columns)
     .filter(([, e]: [string, any]) => e.era !== 'latest')
     .map(([c]) => c);
@@ -105,9 +107,14 @@ export function buildSeedWorld(): SeedWorld {
     revocation_epoch: p.slot === SEED_ADMIN.slot
       ? P.principalRevocationEpoch.admin : P.principalRevocationEpoch.governed,
   }));
-  const bootstrapClaim = [{ id: P.bootstrapClaim.id, principal_id: WORLD_IDS.adm, claimed_at: t(1) }];
+  // The audited bootstrap is the earliest governed event (t(2) below), and the claim carries
+  // exactly that landing instant.
+  const bootstrapClaim = [{ id: P.bootstrapClaim.id, principal_id: WORLD_IDS.adm, claimed_at: t(2) }];
 
-  const ARGON = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNo';
+  // Exactly what the pinned producer emits: m,p,t order, 16-byte salt, 32-byte tag, canonical
+  // unpadded standard-alphabet base64.
+  const b64 = (bytes: number, fill: number) => Buffer.alloc(bytes, fill).toString('base64').replace(/=+$/, '');
+  const ARGON = `$argon2id$v=19$m=65536,p=4,t=3$${b64(16, 0x41)}$${b64(32, 0x42)}`;
   const L = SEED_CREDENTIAL_LIFECYCLE as any;
   const rotatedCreated = 1;
   const replacementCreated = 3;
@@ -135,7 +142,8 @@ export function buildSeedWorld(): SeedWorld {
   const sessions = SEED_SESSIONS.map((s: any, i: number) => ({
     id: entityOf(s.slot), principal_id: entityOf(s.principalSlot), assurance: P.session.assurance,
     status: P.session.status, refresh_token_hash: hex(String(i + 1)),
-    prev_refresh_token_hash: P.session.prev_refresh_token_hash, context_key_hash: hex('a'),
+    prev_refresh_token_hash: P.session.prev_refresh_token_hash,
+    context_key_hash: hex(String.fromCharCode(97 + i)),
     issued_at: t(CREATED[entityOf(s.slot)!]), expires_at: t(CREATED[entityOf(s.slot)!] + 3600),
     revoked_at: P.session.revoked_at,
     bound_epoch: s.principalSlot === SEED_ADMIN.slot
@@ -176,7 +184,9 @@ export function buildSeedWorld(): SeedWorld {
     created_at: t(50 + i), event_type: o.eventType, causation_id: u(`081${i}`),
     leased_until: o.status === 'pending' ? t(60 + i) : null,
     published_at: o.status === 'published' ? t(60 + i) : null,
-    correlation_id: u(`082${i}`),
+    // The enqueue decision for this very row carries this correlation; nothing else may.
+    correlation_id: corr(SEED_OPERATIONS.findIndex(
+      (op: any) => op.entityKind === 'outbox' && op.entitySlot === o.slot)),
   }));
 
   // ── DECISIONS AND THEIR CLOSING AUDIT EVENTS, in plan order. ───────────────────────────
@@ -288,10 +298,12 @@ export function buildSeedWorld(): SeedWorld {
     preseed.tables[name] = { ...table(name, []), rows: [] };
     // The upgraded catalog carries the later-era columns too.
     const spec: any = (SEED_COVERAGE as any)[name];
-    latest.tables[name] = {
-      ...table(name, r),
-      columns: spec?.columnsOwnedBy === undefined ? Object.keys(spec.columns) : ['object_id'],
-    };
+    // The upgraded catalog carries the later-era columns, and the rows carry their DDL defaults.
+    const upgraded = spec?.columnsOwnedBy === undefined ? Object.keys(spec.columns) : modelCoveredColumns();
+    const upgradedRows = name === 'identity.bootstrap_claim'
+      ? r.map((row: any) => ({ ...row, nonce: null, consumed: false, consumed_at: null }))
+      : r;
+    latest.tables[name] = { ...table(name, upgradedRows), rows: upgradedRows, columns: upgraded };
   }
   const seedRecord = {
     admin: { principalId: WORLD_IDS.adm, loginName: SEED_ADMIN.loginName },

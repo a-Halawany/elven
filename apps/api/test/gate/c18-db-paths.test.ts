@@ -47,12 +47,12 @@ import {
 // eslint-disable-next-line import/no-relative-packages
 import {
   COVERAGE_KINDS, SEED_COVERAGE, buildCoverageReport, deriveSeedAffectedTables,
-  verifyCoverageRegistry, verifySeedCoverage,
+  verifyCoverageRegistry, verifyModelCoverage, verifySeedCoverage,
 } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { encodeInventory, readInventory } from '../../../../scripts/gate/lib/c18-inventory.mjs';
 import {
-  opaqueColumns, registeredColumns, runCoverageValidators,
+  opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
 import { WORLD_IDS, buildSeedWorld, worldSlots } from './c18-seed-world';
 
@@ -1750,6 +1750,19 @@ describe('C18.1.9 — the frozen 77489f5 predecessor is byte-verbatim', () => {
       expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
     }
   });
+  it('the frozen predecessor and its dependency shim are TRACKED, not merely present', () => {
+    // The shim lives under a path the repository's `dist/` rule ignores, so it existed locally
+    // and was absent from the checkout CI makes — the gate failed on a module it could not
+    // resolve. Presence on disk is not the property that matters; being in the tree is.
+    for (const rel of [
+      'apps/api/test/gate/packages/contracts/dist/index.js',
+      'apps/api/test/gate/fixtures/c18-legacy-53a4eec/lib/c18-coverage-runner.mjs',
+    ]) {
+      const tracked = spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO, encoding: 'utf8' });
+      expect(tracked.status, `${rel} is not tracked`).toBe(0);
+      expect(spawnSync('git', ['check-ignore', rel], { cwd: REPO }).status, `${rel} is ignored`).not.toBe(0);
+    }
+  });
   it('the frozen predecessor carries every file its verifier executes', () => {
     // A differential is only meaningful if the frozen leg can actually run.
     for (const [rel] of PINNED) {
@@ -1860,10 +1873,11 @@ describe('C18.1.9 — the generated world exercises every registered rule', () =
   };
   const registered = registeredColumns();
   const opaque = opaqueColumns();
-  it('the OPAQUE exemption is exactly the two columns with no source-owned value', () => {
-    // A generated context key and a broker lease have no derivation the source can state. Every
-    // other registered column must be provably enforced by the matrix below.
-    expect(opaque).toEqual(['identity.sessions.context_key_hash', 'objects.object_outbox.lease_id']);
+  it('C18.1.10 — there is NO opaque exemption left', () => {
+    // C18.1.9 exempted a generated context key and a broker lease as having no enforceable
+    // property. Both do: the context key is unique across sessions, and the lease is present
+    // exactly on the leased slot. Every registered column is provably enforced by the matrix.
+    expect(opaque).toEqual([]);
   });
   it.each(opaque.map((c) => [c]))('the opaque column %s still rejects a grammar violation', (spec) => {
     const [table, column] = [spec.slice(0, spec.lastIndexOf('.')), spec.slice(spec.lastIndexOf('.') + 1)];
@@ -1872,12 +1886,24 @@ describe('C18.1.9 — the generated world exercises every registered rule', () =
     expect(runCoverageValidators({ before: w.before, slots }).problems.join('\n')).toMatch(
       new RegExp(`${table.replace('.', '\\.')}\\.${column}`));
   });
+  /**
+   * C18.1.10 — the perturbation is RULE-AWARE. A generic "change the value" mutation cannot
+   * exercise a uniqueness rule, because an arbitrary distinct digest is legitimately valid; the
+   * meaningful contradiction is a DUPLICATE. Choosing the mutation by what the rule actually
+   * claims is what makes the matrix a proof rather than a formality.
+   */
+  const mutateFor = (table: string, column: string, rows: any[]) => {
+    const entry: any = (SEED_COVERAGE as any)[table].columns[column];
+    const unique = entry.rule?.length !== undefined && /unique/i.test(entry.note ?? '');
+    if (unique && rows.length >= 2) { rows[1][column] = rows[0][column]; return; }
+    rows[0][column] = perturb(rows[0][column]);
+  };
   it.each(registered.filter((c) => !opaque.includes(c)).map((c) => [c]))('mutating %s is REJECTED by its own rule', (spec) => {
     const [table, column] = [spec.slice(0, spec.lastIndexOf('.')), spec.slice(spec.lastIndexOf('.') + 1)];
     const { w, slots } = clean();
     const rows = w.before.tables[table].rows;
     expect(rows.length, `${spec} has no rows to mutate`).toBeGreaterThan(0);
-    rows[0][column] = perturb(rows[0][column]);
+    mutateFor(table, column, rows);
     const problems = runCoverageValidators({ before: w.before, slots }).problems;
     expect(problems.length, `${spec} accepted a perturbed value`).toBeGreaterThan(0);
   });
@@ -2008,5 +2034,259 @@ describe('C18.1.9 — the reproduced acceptances are permanently closed', () => 
   it('a partition left with no head at all', () => {
     expect(reject((b) => { b.tables['audit.audit_chain_heads'].rows = [R(b, 'audit.audit_chain_heads')[0]]; }))
       .toMatch(/has no chain head/);
+  });
+});
+
+describe('C18.1.10 — the frozen 53a4eec predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '53a4eec4d9f83422969a34efe37e277f7accc809';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '29b0fee717aec5ca90365bb4a5eb34bb862ec17850497d05ebe7c49fa319b8d7'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', '9dff9cf71dd00803750e49a5177f9c7689619513365835036b27141c4557dd44'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '97af2b2605d8fd53e71f00f2b1470bfff2ec895ab4bac076c54f62c6d30acb79'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', 'fbf08b69b205bef10fd33458401dfe2b266778ea56d54b65c2e26d113c6b91d5'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '259349f6422da3a921b21ec543234242421aa394a5985da4c19a851a4f297bdc'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', 'efce5649d250ad71664e0d9627976b0af0a939fe6fe3c778decb21b82ee3fbe2'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-53a4eec/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-53a4eec', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+});
+
+describe('C18.1.10 — the exact after → final delta contract', () => {
+  /** after and final differing by exactly the governed post-upgrade operation. */
+  const boundary = () => {
+    const w = buildSeedWorld();
+    const after = JSON.parse(JSON.stringify(w.before));
+    const final = JSON.parse(JSON.stringify(w.before));
+    const clone = (t: string) => JSON.parse(JSON.stringify(final.tables[t].rows[0]));
+    // Exactly the footprint POST_UPGRADE_DELTA declares.
+    for (const [t, key, n] of [
+      ['identity.sessions', 'id', 1], ['identity.refresh_tokens', 'id', 1],
+      ['policy.policy_decisions', 'id', 1], ['objects.object_outbox', 'id', 1],
+      ['ctx.issued', 'nonce', 2],
+    ] as Array<[string, string, number]>) {
+      for (let i = 0; i < n; i += 1) {
+        const row = clone(t);
+        row[key] = `post-upgrade-${t}-${i}`;
+        final.tables[t].rows = [...final.tables[t].rows, row];
+      }
+      final.tables[t].row_count = final.tables[t].rows.length;
+    }
+    const ev = clone('audit.audit_events');
+    ev.audit_seq = 9999;
+    final.tables['audit.audit_events'].rows = [...final.tables['audit.audit_events'].rows, ev];
+    const head = final.tables['audit.audit_chain_heads'].rows[0];
+    head.next_seq += 1; head.head_hash = 'e'.repeat(64); head.updated_at = '2026-08-01T02:00:00.000+00:00';
+    for (const t of ['ctx.operation', 'ctx.operation_effect']) {
+      after.tables[t] = { rows: [], columns: ['id'], pk: ['id'], row_count: 0 };
+      final.tables[t] = { rows: [{ id: `${t}-1` }], columns: ['id'], pk: ['id'], row_count: 1 };
+    }
+    return { after, final };
+  };
+  it('the genuine governed footprint raises NO finding', () => {
+    expect(verifyPostUpgradeDelta(boundary()).problems).toEqual([]);
+  });
+  it.each([
+    ['a final-only value change on an untouched table', (w: any) => {
+      w.final.tables['tenancy.tenants'].rows[0].retention_profile = 'extended';
+    }, /'tenancy\.tenants' changed, but the governed operation does not touch it/],
+    ['a final-only value change on a PRE-EXISTING governed row', (w: any) => {
+      w.final.tables['identity.sessions'].rows[0].assurance = 'none';
+    }, /changed 1 existing row\(s\)/],
+    ['an extra final row on an untouched table', (w: any) => {
+      const t = w.final.tables['identity.role_bindings'];
+      t.rows = [...t.rows, { ...t.rows[0], id: 'extra' }];
+    }, /does not touch it/],
+    ['an extra final row on a GOVERNED table', (w: any) => {
+      const t = w.final.tables['identity.sessions'];
+      t.rows = [...t.rows, { ...t.rows[0], id: 'extra-2' }];
+    }, /gained 2 row\(s\); the governed operation inserts exactly 1/],
+    ['a DELETED seeded row', (w: any) => {
+      w.final.tables['tenancy.lifecycle_events'].rows = w.final.tables['tenancy.lifecycle_events'].rows.slice(1);
+    }, /does not touch it/],
+    ['a deleted row on a governed table', (w: any) => {
+      w.final.tables['identity.sessions'].rows = w.final.tables['identity.sessions'].rows.slice(1);
+    }, /LOST 1 row\(s\); the governed operation deletes nothing/],
+    ['a head update outside its allowed columns', (w: any) => {
+      w.final.tables['audit.audit_chain_heads'].rows[0].frozen = true;
+    }, /which the governed operation may not touch/],
+    ['a column added across the boundary', (w: any) => {
+      w.final.tables['tenancy.tenants'].columns = [...w.final.tables['tenancy.tenants'].columns, 'smuggled'];
+    }, /columns changed across the upgrade/],
+    ['a table that appears only after the upgrade', (w: any) => {
+      w.final.tables['identity.mfa_enrolments'] = { rows: [], columns: ['id'], pk: ['id'], row_count: 0 };
+    }, /appears only after the upgrade/],
+    ['a table that disappears across the upgrade', (w: any) => {
+      delete w.final.tables['tenancy.domains'];
+    }, /disappeared across the upgrade/],
+  ] as ReadonlyArray<[string, (w: any) => void, RegExp]>)('rejects %s', (_l, mutate, pattern) => {
+    const w = boundary();
+    mutate(w);
+    expect(verifyPostUpgradeDelta(w).problems.join('\n')).toMatch(pattern);
+  });
+});
+
+describe('C18.1.10 — rule-specific valid-looking-but-wrong variants', () => {
+  const clean = () => ({ w: buildSeedWorld(), slots: worldSlots() });
+  const judge = (mutate: (b: any) => void) => {
+    const { w, slots } = clean();
+    mutate(w.before);
+    return runCoverageValidators({ before: w.before, slots }).problems.join('\n');
+  };
+  const R = (b: any, t: string) => b.tables[t].rows;
+
+  it.each([
+    ['weak but well-formed argon2 parameters', (b: any) => {
+      R(b, 'identity.credentials')[0].secret_hash =
+        '$argon2id$v=19$m=1,p=1,t=1$QUFBQUFBQUFBQUFBQUFBQQ$QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI';
+    }, /carries m=1; the governed configuration is m=65536/],
+    ['the parameters C18.1.9 wrongly declared', (b: any) => {
+      R(b, 'identity.credentials')[0].secret_hash =
+        R(b, 'identity.credentials')[0].secret_hash.replace('m=65536,p=4,t=3', 'm=19456,p=1,t=2');
+    }, /the governed configuration is m=65536/],
+    ['correct values in the WRONG parameter order', (b: any) => {
+      R(b, 'identity.credentials')[0].secret_hash =
+        R(b, 'identity.credentials')[0].secret_hash.replace('m=65536,p=4,t=3', 'm=65536,t=3,p=4');
+    }, /does not satisfy the canonical argon2id PHC grammar/],
+    ['a padded base64 salt', (b: any) => {
+      const p = R(b, 'identity.credentials')[0].secret_hash.split('$');
+      p[4] = `${p[4]}==`;
+      R(b, 'identity.credentials')[0].secret_hash = p.join('$');
+    }, /canonical argon2id PHC grammar/],
+    ['an undersized tag', (b: any) => {
+      const p = R(b, 'identity.credentials')[0].secret_hash.split('$');
+      p[5] = p[5].slice(0, 20);
+      R(b, 'identity.credentials')[0].secret_hash = p.join('$');
+    }, /byte hash; the governed configuration uses 32 bytes/],
+    ['a DUPLICATE valid context key digest', (b: any) => {
+      const s = R(b, 'identity.sessions');
+      s[1].context_key_hash = s[0].context_key_hash;
+    }, /appears 2 times; every generated digest is unique/],
+    ['a noncanonical spelling of the SAME instant', (b: any) => {
+      // Offset respelled without its colon: identical instant, so only the grammar can object.
+      const t = R(b, 'tenancy.domains')[0];
+      t.activated_at = String(t.activated_at).replace('+00:00', '+0000');
+    }, /parseable but NOT the canonical governed timestamp grammar/],
+    ['a timestamp with a non-UTC offset', (b: any) => {
+      R(b, 'tenancy.domains')[0].activated_at = '2026-08-01T02:00:12.000+01:00';
+    }, /parseable but NOT the canonical governed timestamp grammar/],
+    ['a timestamp with a space instead of T', (b: any) => {
+      R(b, 'tenancy.domains')[0].activated_at = '2026-08-01 00:00:12.000+00:00';
+    }, /NOT the canonical governed timestamp grammar/],
+    ['an outbox row repointed at ANOTHER genuine correlation', (b: any) => {
+      const o = R(b, 'objects.object_outbox');
+      o[0].correlation_id = o[1].correlation_id;
+    }, /the decision that enqueued this row carries/],
+    ['bootstrap timing moved later but still in window', (b: any) => {
+      const c = R(b, 'identity.bootstrap_claim')[0];
+      c.claimed_at = new Date(Date.parse(c.claimed_at) + 5000).toISOString().replace('Z', '+00:00');
+    }, /the audited bootstrap landed at/],
+    ['bootstrap timing moved EARLIER than the first governed event', (b: any) => {
+      const c = R(b, 'identity.bootstrap_claim')[0];
+      c.claimed_at = new Date(Date.parse(c.claimed_at) - 5000).toISOString().replace('Z', '+00:00');
+    }, /the audited bootstrap landed at/],
+    ['a lease on the slot that is never leased', (b: any) => {
+      const o = R(b, 'objects.object_outbox').find((r: any) => r.status === 'published');
+      o.lease_id = 'aaaaaaaa-0801-4aaa-8aaa-aaaaaaaaaaaa';
+    }, /which is never leased/],
+    ['a missing lease on the LEASED slot', (b: any) => {
+      const o = R(b, 'objects.object_outbox').find((r: any) => r.status === 'pending');
+      o.lease_id = null;
+    }, /the leased slot carries a generated uuid lease/],
+  ] as ReadonlyArray<[string, (b: any) => void, RegExp]>)('rejects %s', (_l, mutate, pattern) => {
+    expect(judge(mutate)).toMatch(pattern);
+  });
+});
+
+describe('C18.1.10 — registry completeness is literal, and model coverage is proven', () => {
+  it('the seed-era and LATEST-era registries are each exactly equal', () => {
+    const w = buildSeedWorld();
+    const seed = verifyCoverageRegistry({
+      before: w.before, registered: registeredColumns(undefined, 'seed'), era: 'seed',
+    });
+    expect(seed.problems).toEqual([]);
+    expect(seed.catalog).toEqual(seed.classified);
+    expect(seed.classified).toEqual(seed.registered);
+    const latest = verifyCoverageRegistry({
+      before: w.latest, registered: registeredColumns(undefined, 'latest'), era: 'latest',
+    });
+    expect(latest.problems).toEqual([]);
+    expect(latest.registered.length).toBeGreaterThan(seed.registered.length);
+  });
+  it('the later-era columns are REGISTERED and EXECUTED where they exist', () => {
+    const w = buildSeedWorld();
+    const r = runEraColumns({ snapshot: w.latest, slots: worldSlots() });
+    expect(r.executed).toEqual([
+      'identity.bootstrap_claim.consumed',
+      'identity.bootstrap_claim.consumed_at',
+      'identity.bootstrap_claim.nonce',
+    ]);
+    expect(r.problems).toEqual([]);
+  });
+  it.each([
+    ['a substituted later-era value', (t: any) => { t.rows[0].nonce = 'substituted'; }],
+    ['a flipped later-era flag', (t: any) => { t.rows[0].consumed = true; }],
+    ['an omitted later-era column', (t: any) => { t.columns = t.columns.filter((c: string) => c !== 'nonce'); }],
+  ] as ReadonlyArray<[string, (t: any) => void]>)('rejects %s', (_l, mutate) => {
+    const w = buildSeedWorld();
+    mutate(w.latest.tables['identity.bootstrap_claim']);
+    expect(runEraColumns({ snapshot: w.latest, slots: worldSlots() }).problems.length).toBeGreaterThan(0);
+  });
+  it('the dedicated model covers its catalog column for column', () => {
+    const w = buildSeedWorld();
+    const r = verifyModelCoverage({ before: w.before });
+    expect(r.problems).toEqual([]);
+    expect(r.proofs).toHaveLength(1);
+    expect(r.proofs[0].columns).toBeGreaterThan(40);
+  });
+  it.each([
+    ['a catalog column the model does not authenticate', (w: any) => {
+      w.before.tables['objects.canonical_objects'].columns.push('smuggled');
+    }, /is in the delivered catalog but the .* model does not authenticate it/],
+    ['a modelled column the catalog does not have', (w: any) => {
+      w.before.tables['objects.canonical_objects'].columns =
+        w.before.tables['objects.canonical_objects'].columns.filter((c: string) => c !== 'payload');
+    }, /model authenticates .*payload., which the delivered catalog does not have/],
+  ] as ReadonlyArray<[string, (w: any) => void, RegExp]>)('the model proof rejects %s', (_l, mutate, pattern) => {
+    const w = buildSeedWorld();
+    mutate(w);
+    expect(verifyModelCoverage({ before: w.before }).problems.join('\n')).toMatch(pattern);
+  });
+});
+
+describe('C18.1.10 — no phase can wait indefinitely', () => {
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  it('a well-behaved command runs to completion and reports its own exit code', () => {
+    const r = spawnSync('node', [WATCHDOG, '30', 'node', '-e', 'process.exit(7)'], { encoding: 'utf8' });
+    expect(r.status).toBe(7);
+    expect(r.stderr).toMatch(/c18-watchdog: finished in/);
+  });
+  it('a child that DELIBERATELY IGNORES SIGTERM is still killed, with diagnostics', () => {
+    // The exact failure C18.1.9 had no defence against: a process that refuses graceful
+    // termination. The group is signalled, given a bounded moment, then killed outright.
+    const r = spawnSync('node', [
+      WATCHDOG, '2', 'node', '-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)",
+    ], { encoding: 'utf8', timeout: 90_000 });
+    expect(r.stderr).toMatch(/DEADLINE EXCEEDED/);
+    // The diagnostics name the surviving tree rather than failing silently.
+    expect(r.stderr).toMatch(/PID\s+PPID\s+PGID/);
+    expect(r.stderr).toMatch(/signal=SIGKILL/);
+    expect(r.status).toBe(124);
+  });
+  it('the watchdog refuses a malformed invocation rather than running unbounded', () => {
+    expect(spawnSync('node', [WATCHDOG], { encoding: 'utf8' }).status).toBe(2);
+    expect(spawnSync('node', [WATCHDOG, '0', 'true'], { encoding: 'utf8' }).status).toBe(2);
   });
 });

@@ -45,3 +45,11 @@ evidence/supply-chain/c16/
 
 # C17 preliminary evidence (gitignored until the final freeze child)
 evidence/c17/
+
+# C18.1.10 — the frozen c18-legacy-53a4eec predecessor imports the production contracts by a
+# RELATIVE path, so it can only execute if a shim sits at exactly
+# apps/api/test/gate/packages/contracts/dist/index.js. That path falls under the `dist/` rule
+# above, so it is un-ignored explicitly here (the directory first, then the file, as git
+# requires). It is a committed test fixture, not build output.
+!apps/api/test/gate/packages/contracts/dist/
+!apps/api/test/gate/packages/contracts/dist/index.js
