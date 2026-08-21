@@ -213,8 +213,16 @@ export const SEED_CREDENTIAL_LIFECYCLE = Object.freeze({
  */
 export const SEED_WINDOW_SLACK_MS = 5 * 60 * 1000;
 
-/** C18.1.9 — the governed Argon2id parameters every seeded credential hash must carry. */
-export const SEED_ARGON2ID_PARAMS = Object.freeze({ v: 19, m: 19456, t: 2, p: 1 });
+/**
+ * C18.1.10 — the governed Argon2id configuration, DERIVED FROM THE PINNED PRODUCER rather than
+ * assumed. The API hashes with `argon2.hash(secret, { type: argon2id })` and no cost overrides,
+ * so the library defaults ARE the contract: argon2 0.45.1 emits v=19, m=65536, p=4, t=3 with a
+ * 16-byte salt and a 32-byte tag, spelled in `m,p,t` order. C18.1.9 declared m=19456, t=2, p=1
+ * here and never consumed it; that constant was simply wrong, which is why nothing caught it.
+ */
+export const SEED_ARGON2ID_PARAMS = Object.freeze({
+  v: 19, m: 65536, p: 4, t: 3, saltBytes: 16, hashBytes: 32,
+});
 /** The source-owned input-digest formula each governed seed decision records. */
 export const seedInputDigestSource = (op, entityId) => (op.entityKind === 'principal'
   ? `c18:principal:${entityId}`
@@ -367,3 +375,32 @@ export const SEED_AUDIT_EVENT_COUNT = SEED_OPERATIONS.length + SEED_STANDALONE_A
 
 /** The complete specification, including the C18.1.8 posture and plans. */
 export const C18_SEED_SPEC_FULL = withC1818(C18_SEED_SPEC);
+
+/**
+ * C18.1.10 — THE EXACT POST-UPGRADE DELTA CONTRACT (path-a-after → path-a-final).
+ *
+ * 53a4eec authenticated before → after with a complete row-and-column comparison, but the
+ * governed post-upgrade operation was checked only by ID-set membership on four tables. A
+ * final-only value change (a tenant's retention profile, a principal's status), an extra final row
+ * and a deleted seeded row were therefore all accepted by the complete verifier.
+ *
+ * The governed operation opens one session, mints its refresh token and two capabilities, records
+ * one decision, writes one outbox event, appends exactly one audit event to its tenant partition
+ * and advances that partition's head. Nothing else in the database may move. Every table absent
+ * from this contract must be byte-identical across the upgrade boundary.
+ */
+export const POST_UPGRADE_DELTA = Object.freeze({
+  'ctx.operation': Object.freeze({ key: ['id'], inserts: 1 }),
+  'ctx.operation_effect': Object.freeze({ key: ['id'], inserts: 1 }),
+  'ctx.issued': Object.freeze({ key: ['nonce'], inserts: 2 }),
+  'identity.sessions': Object.freeze({ key: ['id'], inserts: 1 }),
+  'identity.refresh_tokens': Object.freeze({ key: ['id'], inserts: 1 }),
+  'policy.policy_decisions': Object.freeze({ key: ['id'], inserts: 1 }),
+  'objects.object_outbox': Object.freeze({ key: ['id'], inserts: 1 }),
+  'audit.audit_events': Object.freeze({ key: ['partition_id', 'audit_seq'], inserts: 1 }),
+  // The head of the partition the operation appended to advances; no head is created or removed.
+  'audit.audit_chain_heads': Object.freeze({
+    key: ['partition_id'], inserts: 0, updates: 1,
+    updatableColumns: Object.freeze(['next_seq', 'head_hash', 'updated_at']),
+  }),
+});

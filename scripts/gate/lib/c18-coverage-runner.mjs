@@ -24,7 +24,7 @@ import { auditRowHash, jcsCanonicalize } from '../../../packages/contracts/dist/
 import {
   CAPABILITY_SESSIONLESS_ID, SEED_AUDIT_POSTURE, SEED_CAPABILITY_MULTISET,
   SEED_CREDENTIAL_LIFECYCLE, SEED_STANDALONE_AUDIT_EVENTS, SEED_WINDOW_SLACK_MS,
-  seedInputDigestSource, C18_SEED_SPEC_FULL,
+  seedInputDigestSource, C18_SEED_SPEC_FULL, POST_UPGRADE_DELTA,
 } from './c18-seed-spec.mjs';
 import { COLUMN_MODEL_TABLES, SEED_COVERAGE } from './c18-seed-coverage.mjs';
 
@@ -375,6 +375,45 @@ function buildContext({ before, slots, spec }) {
         : [`is ${stable(value)}; the specification grants ${stable(want[field])}`];
     },
 
+    /**
+     * C18.1.10 — an outbox row's correlation is ITS OWN enqueue decision's, in both directions.
+     * 53a4eec only required the correlation to agree with the seed record, so repointing a row at
+     * ANOTHER genuine correlation and rebinding the record reconciled completely.
+     */
+    outboxCorrelation(row, value) {
+      const own = decisionRows.filter((d) => d.object_id === row.id);
+      if (own.length !== 1) {
+        return [`is not closed by exactly one enqueue decision (${own.length} name this row)`];
+      }
+      const want = own[0].correlation_id;
+      if (value !== want) {
+        return [`is ${stable(value)}; the decision that enqueued this row carries ${stable(want)}`];
+      }
+      // The reverse direction: no OTHER seeded outbox row may claim this correlation.
+      const sharers = rows('objects.object_outbox').filter((r) => r.correlation_id === value);
+      return sharers.length === 1 ? []
+        : [`is shared by ${sharers.length} outbox rows; each enqueue owns its own correlation`];
+    },
+
+    /**
+     * C18.1.10 — the bootstrap claim is stamped by the EARLIEST governed event, not merely inside
+     * a movable window. The audited single-use bootstrap is that event, and its landing instant is
+     * authenticated by the production chain hashes.
+     */
+    bootstrapClaimTime(row, value) {
+      const bootstrap = SEED_STANDALONE_AUDIT_EVENTS.find((e) => e.event_type === 'admin.bootstrap');
+      const ev = auditRows.filter((r) => r.event?.action === bootstrap?.action);
+      if (ev.length !== 1) {
+        return [`cannot be authenticated: ${ev.length} audited bootstrap events exist`];
+      }
+      const ordered = [...auditRows].sort((a, b) => at(a.created_at) - at(b.created_at));
+      if (ordered[0] !== ev[0]) {
+        return ['is not stamped by the EARLIEST governed event; the audited bootstrap is not first'];
+      }
+      return same(value, ev[0].created_at) ? []
+        : [`is ${stable(value)}; the audited bootstrap landed at ${stable(ev[0].created_at)}`];
+    },
+
     capabilityOf: (row) => capOf.get(row.nonce) ?? undefined,
     capabilitySession: (row) => capOf.get(row.nonce)?.session_id ?? null,
 
@@ -481,29 +520,25 @@ export function runCoverageValidators({ before, slots, spec = C18_SEED_SPEC_FULL
 }
 
 /** The registrations this runner executes — the third leg of the structural meta-control. */
-export function registeredColumns(coverage = SEED_COVERAGE) {
+export function registeredColumns(coverage = SEED_COVERAGE, era = 'seed') {
   return Object.entries(coverage)
     .filter(([t]) => !COLUMN_MODEL_TABLES.includes(t))
     .flatMap(([t, s]) => Object.keys(s.columns)
-      .filter((c) => typeof s.columns[c].rule === 'function' && s.columns[c].era !== 'latest')
+      .filter((c) => typeof s.columns[c].rule === 'function'
+        && (era === 'latest' || s.columns[c].era !== 'latest'))
       .map((c) => `${t}.${c}`))
     .sort();
 }
 
 /**
- * The columns for which NO source-owned expected value exists — a generated context-key digest,
- * a broker lease. Their rules state grammar and uniqueness and nothing more, so a perturbation
- * that preserves the grammar is genuinely not detectable. Naming them here keeps that honest: the
- * mutation matrix exempts exactly this list, the list is asserted to be exactly these two
- * columns, and each still has to reject a grammar violation.
+ * C18.1.10 — there are NO opaque columns left. `identity.sessions.context_key_hash` is a
+ * generated digest whose uniqueness across sessions IS enforceable, and
+ * `objects.object_outbox.lease_id` is present exactly on the leased slot. Both were previously
+ * described as having no enforceable property; both now have one, so the exemption list is empty
+ * rather than merely short.
  */
-export function opaqueColumns(coverage = SEED_COVERAGE) {
-  return Object.entries(coverage)
-    .filter(([t]) => !COLUMN_MODEL_TABLES.includes(t))
-    .flatMap(([t, s]) => Object.keys(s.columns)
-      .filter((c) => s.columns[c].rule?.opaque === true && s.columns[c].era !== 'latest')
-      .map((c) => `${t}.${c}`))
-    .sort();
+export function opaqueColumns() {
+  return [];
 }
 
 /**
@@ -524,4 +559,116 @@ export function slotsResolved(slots, spec = C18_SEED_SPEC_FULL) {
     ['outbox', spec.outbox.map((x) => x.slot)],
   ];
   return want.every(([kind, list]) => list.every((slot) => slots[kind]?.get(slot) !== undefined));
+}
+
+/**
+ * C18.1.10 — AUTHENTICATE THE COMPLETE after → final DELTA.
+ *
+ * Every table, every row and every column across the upgrade boundary. Only the inserts and
+ * updates the source-owned post-upgrade contract declares are permitted; an unrelated changed
+ * seeded value, a deleted row, an extra row, a new or missing column, or a table that moved at
+ * all when the contract says it must not, is a finding.
+ */
+export function verifyPostUpgradeDelta({ after, final, delta = POST_UPGRADE_DELTA }) {
+  const problems = [];
+  const aTables = after?.tables ?? {};
+  const fTables = final?.tables ?? {};
+  const names = [...new Set([...Object.keys(aTables), ...Object.keys(fTables)])].sort();
+
+  for (const table of names) {
+    const a = aTables[table];
+    const f = fTables[table];
+    if (a === undefined) { problems.push(`post-upgrade delta: table '${table}' appears only after the upgrade`); continue; }
+    if (f === undefined) { problems.push(`post-upgrade delta: table '${table}' disappeared across the upgrade`); continue; }
+    // The CATALOG may not move: the governed operation adds no column and drops none.
+    if (stable(a.columns ?? []) !== stable(f.columns ?? [])) {
+      problems.push(`post-upgrade delta: table '${table}' columns changed across the upgrade`);
+    }
+    const rule = delta[table];
+    const aRows = a.rows ?? [];
+    const fRows = f.rows ?? [];
+
+    if (rule === undefined) {
+      // Not part of the governed operation: it must be byte-identical, rows and order alike.
+      if (stable(aRows) !== stable(fRows)) {
+        problems.push(`post-upgrade delta: table '${table}' changed, but the governed operation `
+          + `does not touch it (${aRows.length} rows before, ${fRows.length} after)`);
+      }
+      continue;
+    }
+
+    const keyOf = (r) => stable(rule.key.map((c) => r[c]));
+    const aBy = new Map(aRows.map((r) => [keyOf(r), r]));
+    const fBy = new Map(fRows.map((r) => [keyOf(r), r]));
+    if (aBy.size !== aRows.length || fBy.size !== fRows.length) {
+      problems.push(`post-upgrade delta: table '${table}' has rows sharing one ${stable(rule.key)} key`);
+    }
+    const inserted = [...fBy.keys()].filter((k) => !aBy.has(k));
+    const deleted = [...aBy.keys()].filter((k) => !fBy.has(k));
+    const updated = [...fBy.keys()].filter((k) => aBy.has(k) && stable(aBy.get(k)) !== stable(fBy.get(k)));
+
+    const wantIns = rule.inserts ?? 0;
+    const wantUpd = rule.updates ?? 0;
+    if (inserted.length !== wantIns) {
+      problems.push(`post-upgrade delta: table '${table}' gained ${inserted.length} row(s); the `
+        + `governed operation inserts exactly ${wantIns}`);
+    }
+    if (deleted.length !== 0) {
+      problems.push(`post-upgrade delta: table '${table}' LOST ${deleted.length} row(s); the `
+        + 'governed operation deletes nothing');
+    }
+    if (updated.length !== wantUpd) {
+      problems.push(`post-upgrade delta: table '${table}' changed ${updated.length} existing row(s); `
+        + `the governed operation updates exactly ${wantUpd}`);
+    }
+    // An update may touch ONLY the columns the contract names.
+    for (const k of updated) {
+      const before = aBy.get(k);
+      const now = fBy.get(k);
+      const moved = Object.keys(now).filter((c) => stable(before[c]) !== stable(now[c]));
+      const allowed = rule.updatableColumns ?? [];
+      const illegal = moved.filter((c) => !allowed.includes(c));
+      if (illegal.length > 0) {
+        problems.push(`post-upgrade delta: table '${table}' row ${k} changed ${stable(illegal)}, `
+          + `which the governed operation may not touch`);
+      }
+    }
+  }
+  return { problems };
+}
+
+/**
+ * C18.1.10 — EXECUTE the later-era column rules against the UPGRADED catalog.
+ *
+ * A column that only exists after 0013–0021 cannot be judged on the seed-era snapshot, and
+ * 53a4eec therefore registered it and never ran it. Its rule now runs where the column actually
+ * exists, so "every classified column carries an executable rule" is true of every era.
+ */
+export function runEraColumns({ snapshot, slots, spec = C18_SEED_SPEC_FULL, coverage = SEED_COVERAGE }) {
+  const { ctx } = buildContext({ before: snapshot, slots, spec });
+  const problems = [];
+  const executed = [];
+  for (const [table, tableSpec] of Object.entries(coverage)) {
+    if (COLUMN_MODEL_TABLES.includes(table)) continue;
+    const delivered = snapshot.tables?.[table];
+    if (delivered === undefined) continue;
+    for (const [column, entry] of Object.entries(tableSpec.columns)) {
+      if (entry.era !== 'latest') continue;
+      if (!(delivered.columns ?? []).includes(column)) {
+        problems.push(`seed column: ${table}.${column} is declared a later-era column but the `
+          + 'upgraded catalog does not carry it');
+        continue;
+      }
+      executed.push(`${table}.${column}`);
+      for (const row of delivered.rows ?? []) {
+        const bound = { ...ctx, table, column, tableRows: delivered.rows ?? [] };
+        let found;
+        try { found = entry.rule(row[column], row, bound); } catch (err) {
+          found = [`could not be judged: ${err.message}`];
+        }
+        for (const f of found) problems.push(`seed column: ${table}.${column} ${f}`);
+      }
+    }
+  }
+  return { problems, executed: executed.sort() };
 }

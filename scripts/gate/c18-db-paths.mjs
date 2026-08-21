@@ -115,8 +115,12 @@ import {
   verifyMigrationRun, INVENTORY_HELPER_REL, INVENTORY_HELPER_WS, bindSeedSpec,
   deriveStepIdentitiesFromSlots,
 } from './lib/c18-contract.mjs';
-import { buildCoverageReport, verifyCoverageRegistry, verifySeedCoverage } from './lib/c18-seed-coverage.mjs';
-import { registeredColumns, runCoverageValidators, slotsResolved } from './lib/c18-coverage-runner.mjs';
+import {
+  buildCoverageReport, verifyCoverageRegistry, verifyModelCoverage, verifySeedCoverage,
+} from './lib/c18-seed-coverage.mjs';
+import {
+  registeredColumns, runCoverageValidators, runEraColumns, slotsResolved, verifyPostUpgradeDelta,
+} from './lib/c18-coverage-runner.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
@@ -734,8 +738,13 @@ async function runCommand(args) {
     problems.push(...coverage.problems.map((p) => `path-a-coverage: ${p}`));
     writeFileSync(join(outDir, 'seed-coverage.json'),
       `${JSON.stringify(buildCoverageReport({ preseed, before, latest: after }), null, 2)}\n`);
-    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns() }).problems
+    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns(undefined, 'seed'), era: 'seed' }).problems
       .map((p) => `path-a-coverage: ${p}`));
+    // C18.1.10 — the LATEST-era catalog is held to the complete registration set, and the
+    // dedicated-model table is proven column-for-column rather than excluded.
+    problems.push(...verifyCoverageRegistry({ before: after, registered: registeredColumns(undefined, 'latest'), era: 'latest' }).problems
+      .map((p) => `path-a-coverage-latest: ${p}`));
+    problems.push(...verifyModelCoverage({ before }).problems.map((p) => `path-a-coverage: ${p}`));
     const boundA = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...boundA.problems.map((p) => `path-a-seed: ${p}`));
     // C18.1.9 — EXECUTE every registered coverage rule. The published classification is a
@@ -743,6 +752,8 @@ async function runCommand(args) {
     if (slotsResolved(boundA.slots)) {
       problems.push(...runCoverageValidators({ before, slots: boundA.slots }).problems
         .map((p) => `path-a-coverage: ${p}`));
+      problems.push(...runEraColumns({ snapshot: after, slots: boundA.slots }).problems
+        .map((p) => `path-a-coverage-latest: ${p}`));
     }
     problems.push(...verifySeedSteps({
       steps: seedRecord.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
@@ -763,6 +774,8 @@ async function runCommand(args) {
       outbox: (finalSnap.tables['objects.object_outbox']?.rows ?? []),
     }).map((p) => `path-a-linkage: ${p}`));
     problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: postOp }).map((p) => `path-a-closure: ${p}`));
+    // C18.1.10 — the COMPLETE after -> final comparison, not an ID-set check on four tables.
+    problems.push(...verifyPostUpgradeDelta({ after, final: finalSnap }).problems);
     problems.push(...verifyMigrationLedger({
       trackedDigests: tracked.digests, ledger: before.ledger, expectLast: HISTORICAL_LAST,
     }).map((p) => `path-a-before-ledger: ${p}`));
@@ -961,19 +974,30 @@ function reconstructSnapshot(snap, pfx, rawFor) {
   return problems;
 }
 
-export async function verifyEvidence({
-  zipPath, root, online = false, requireHosted = false, fetchImpl = globalThis.fetch, token = null,
-}) {
+/**
+ * C18.1.10 — HARDENED ZIP INGRESS.
+ *
+ * Everything that is a property of the ARCHIVE CONTAINER rather than of the evidence: duplicate
+ * member names, unsafe or traversing paths, symlinks, non-regular members, and readability. It
+ * returns an AUTHENTICATED IMMUTABLE MEMBER MAP — the extracted bytes keyed by archive-relative
+ * path — and deletes its temporary directory before returning, so nothing downstream can be
+ * influenced by the filesystem.
+ *
+ * The production CLI ALWAYS runs this before the semantic core. Semantic controls clone the
+ * member map instead of rebuilding a ZIP per mutation, which is what made the C18.1.9 control
+ * suite take hours; the container properties themselves keep real-ZIP controls.
+ */
+export function ingestArchive({ zipPath }) {
   const problems = [];
-  const notes = [];
-  if (!existsSync(zipPath)) return { ok: false, problems: [`archive ${zipPath} does not exist`], notes };
+  if (!existsSync(zipPath)) return { ok: false, problems: [`archive ${zipPath} does not exist`], members: null };
   const zst = lstatSync(zipPath);
-  if (zst.isSymbolicLink() || !zst.isFile()) return { ok: false, problems: [`archive ${zipPath} is not a real regular file`], notes };
-  const zipBytes = readFileSync(zipPath);
+  if (zst.isSymbolicLink() || !zst.isFile()) {
+    return { ok: false, problems: [`archive ${zipPath} is not a real regular file`], members: null };
+  }
 
   // ── ZIP SAFETY, inspected BEFORE extraction (the C17 rules) ───────────────
   const listing = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (listing.status !== 0) return { ok: false, problems: ['archive is not readable as a zip'], notes };
+  if (listing.status !== 0) return { ok: false, problems: ['archive is not readable as a zip'], members: null };
   const entries = listing.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
   const seen = new Set();
   for (const e of entries) {
@@ -985,13 +1009,13 @@ export async function verifyEvidence({
   if (/^\s*l/m.test(spawnSync('unzip', ['-Z', zipPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout)) {
     problems.push('archive contains a symlink');
   }
-  if (problems.length > 0) return { ok: false, problems, notes };
+  if (problems.length > 0) return { ok: false, problems, members: null };
 
-  const tmp = mkdtempSync(join(tmpdir(), 'c18-verify-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'c18-ingest-'));
   try {
     const x = spawnSync('unzip', ['-q', zipPath, '-d', tmp], { encoding: 'utf8' });
-    if (x.status !== 0) return { ok: false, problems: ['extraction failed'], notes };
-    const files = [];
+    if (x.status !== 0) return { ok: false, problems: ['extraction failed'], members: null };
+    const members = new Map();
     const walk = (d, base) => {
       for (const name of readdirSync(d).sort()) {
         const abs = join(d, name);
@@ -1001,48 +1025,69 @@ export async function verifyEvidence({
           continue;
         }
         if (st.isDirectory()) walk(abs, base);
-        else files.push(relative(base, abs));
+        else members.set(relative(base, abs), readFileSync(abs));
       }
     };
     walk(tmp, tmp);
-    if (problems.length > 0) return { ok: false, problems, notes };
+    if (problems.length > 0) return { ok: false, problems, members: null };
+    return { ok: true, problems: [], members };
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * C18.1.10 — THE SHARED SEMANTIC VERIFIER CORE.
+ *
+ * Exactly the judgement the production CLI applies, operating on an authenticated member map
+ * rather than a directory. There is no test-only variant and no weakened mode: the CLI calls this
+ * after `ingestArchive`, and the control suites call this same function with a cloned map.
+ */
+export async function verifySemantics({
+  members, root, online = false, requireHosted = false, fetchImpl = globalThis.fetch, token = null,
+}) {
+  const problems = [];
+  const notes = [];
+  const files = [...members.keys()].sort();
+  /** Member bytes by archive-relative path, or null when the archive does not carry it. */
+  const memberBytes = (rel) => (members.get(rel) ?? null);
+  const memberText = (rel) => {
+    const b = memberBytes(rel);
+    return b === null ? null : b.toString('utf8');
+  };
+  {
     // ── VERIFIER-SIDE LEAK SCAN: no raw secret, env/argv password or private key anywhere. ──
     for (const f of files) {
-      const text = readFileSync(join(tmp, f), 'utf8');
+      const text = memberText(f);
       for (const { re, why } of LEAK_PATTERNS) {
         if (re.test(text)) problems.push(`archive member '${f}' matches ${why}`);
       }
     }
     if (problems.length > 0) return { ok: false, problems, notes };
+    // A member reference is CONTAINED when its path is archive-safe. Physical traversal and
+    // symlink escape are impossible here by construction — the map holds bytes keyed by path,
+    // never filesystem handles — and ingestArchive already rejected those container attacks.
     const contained = (rel, label) => {
       if (!safeMember(rel)) { problems.push(`${label} names unsafe path '${rel}'`); return null; }
-      const abs = join(tmp, rel);
-      const real = existsSync(abs) ? realpathSync(abs) : null;
-      if (real !== null) {
-        const within = relative(realpathSync(tmp), real);
-        if (within.startsWith('..') || isAbsolute(within)) {
-          problems.push(`${label} path '${rel}' resolves outside the archive`);
-          return null;
-        }
-      }
-      return abs;
+      return rel;
     };
 
     // ── CHECKSUMS: one unique entry per file, no self-entry, everything bound ──
-    const sumAbs = join(tmp, CHECKSUM_FILE);
+    const sumText = memberText(CHECKSUM_FILE);
     const listed = new Set();
-    if (!existsSync(sumAbs)) problems.push(`archive has no ${CHECKSUM_FILE}`);
+    if (sumText === null) problems.push(`archive has no ${CHECKSUM_FILE}`);
     else {
-      for (const line of readFileSync(sumAbs, 'utf8').split('\n').filter(Boolean)) {
+      for (const line of sumText.split('\n').filter(Boolean)) {
         const m = /^([0-9a-f]{64}) {2}(.+)$/.exec(line);
         if (m === null) { problems.push(`malformed checksum line: ${line.slice(0, 60)}`); continue; }
         if (m[2] === CHECKSUM_FILE) problems.push('checksum manifest lists itself');
         if (listed.has(m[2])) problems.push(`DUPLICATE checksum entry '${m[2]}'`);
         listed.add(m[2]);
-        const abs = contained(m[2], 'checksum');
-        if (abs === null) continue;
-        if (!existsSync(abs)) problems.push(`checksum names missing file '${m[2]}'`);
-        else if (sha256(readFileSync(abs)) !== m[1]) problems.push(`'${m[2]}' does not hash to its manifest digest`);
+        const rel = contained(m[2], 'checksum');
+        if (rel === null) continue;
+        const bytes = memberBytes(rel);
+        if (bytes === null) problems.push(`checksum names missing file '${m[2]}'`);
+        else if (sha256(bytes) !== m[1]) problems.push(`'${m[2]}' does not hash to its manifest digest`);
       }
       for (const f of files) {
         if (f !== CHECKSUM_FILE && !listed.has(f)) problems.push(`file '${f}' is not bound by the checksum manifest`);
@@ -1051,7 +1096,7 @@ export async function verifyEvidence({
 
     // ── TYPED MANIFEST + EXACT INVENTORY ──────────────────────────────────────
     let manifest = null;
-    try { manifest = JSON.parse(readFileSync(join(tmp, 'c18-manifest.json'), 'utf8')); } catch {
+    try { manifest = JSON.parse(memberText('c18-manifest.json')); } catch {
       return { ok: false, problems: [...problems, 'c18-manifest.json is missing or not JSON'], notes };
     }
     problems.push(...verifyManifestShape(manifest));
@@ -1064,7 +1109,7 @@ export async function verifyEvidence({
       }
     }
     const commands = (() => {
-      try { return JSON.parse(readFileSync(join(tmp, 'commands.json'), 'utf8')); } catch { return null; }
+      try { return JSON.parse(memberText('commands.json')); } catch { return null; }
     })();
     if (!Array.isArray(commands)) problems.push('commands.json is missing or not an array');
     else {
@@ -1087,8 +1132,8 @@ export async function verifyEvidence({
       // Every ledger record binds its three streams by BYTES, and the raw exit receipt must
       // restate the ledger's exit exactly.
       problems.push(...verifyCommandStreams(commands, (rel) => {
-        const abs = contained(rel, 'command stream');
-        return abs !== null && existsSync(abs) ? readFileSync(abs) : null;
+        const r = contained(rel, 'command stream');
+        return r === null ? null : memberBytes(r);
       }));
     }
 
@@ -1114,7 +1159,7 @@ export async function verifyEvidence({
     }
 
     // ── THE PROOF, RE-RUN from raw snapshots with the PRODUCTION audit impl ───
-    const readJson = (name) => { try { return JSON.parse(readFileSync(join(tmp, name), 'utf8')); } catch { return null; } };
+    const readJson = (name) => { try { return JSON.parse(memberText(name)); } catch { return null; } };
     const preseed = readJson('path-a-preseed.json');
     const before = readJson('path-a-before.json');
     const after = readJson('path-a-after.json');
@@ -1162,8 +1207,8 @@ export async function verifyEvidence({
         const cmd = commands.find((c) => c.label === label);
         if (cmd === undefined) return undefined;
         const abs = contained(`raw/${cmd.id}.stdout.txt`, 'raw receipt');
-        if (abs === null || !existsSync(abs)) return undefined;
-        const text = readFileSync(abs, 'utf8').trim();
+        if (abs === null || memberBytes(abs) === null) return undefined;
+        const text = memberText(abs).trim();
         try { return text === '' ? null : JSON.parse(text); } catch { return undefined; }
       };
       for (const [snap, snapLabel] of [
@@ -1190,7 +1235,7 @@ export async function verifyEvidence({
         cleanup: manifest.cleanup ?? null,
         rawText: (cmd, stream) => {
           const abs = contained(`raw/${cmd.id}.${stream}.txt`, 'graph stream');
-          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+          return abs === null ? null : memberText(abs);
         },
       }));
       // The migration executions themselves: governed workspace, tracked runner BYTES, the exact
@@ -1203,7 +1248,7 @@ export async function verifyEvidence({
         helperDigest: sha256(readFileSync(join(root, INVENTORY_HELPER_REL))),
         rawText: (cmd) => {
           const abs = contained(`raw/${cmd.id}.stdout.txt`, 'attestation receipt');
-          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+          return abs === null ? null : memberText(abs);
         },
       }));
       // Checked cleanup, authenticated by execution rather than asserted.
@@ -1214,11 +1259,11 @@ export async function verifyEvidence({
         receiptB: manifest.receipts?.['path-b-virgin'] ?? null,
         rawText: (cmd) => {
           const abs = contained(`raw/${cmd.id}.stdout.txt`, 'absence receipt');
-          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+          return abs === null ? null : memberText(abs);
         },
         errText: (cmd) => {
           const abs = contained(`raw/${cmd.id}.stderr.txt`, 'absence stderr receipt');
-          return abs !== null && existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+          return abs === null ? null : memberText(abs);
         },
       }));
     }
@@ -1248,13 +1293,16 @@ export async function verifyEvidence({
     // C18.1.9 — the coverage REGISTRY meta-control and the executable rules themselves. Both are
     // independent of the pre-seed member and of the manifest, so neither can be suppressed by a
     // missing or malformed one.
-    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns() }).problems);
+    problems.push(...verifyCoverageRegistry({ before, registered: registeredColumns(undefined, 'seed'), era: 'seed' }).problems);
+    problems.push(...verifyCoverageRegistry({ before: after, registered: registeredColumns(undefined, 'latest'), era: 'latest' }).problems);
+    problems.push(...verifyModelCoverage({ before }).problems);
     // THE SOURCE-OWNED SEED SPECIFICATION: every generated identity is bound to a named slot by
     // the deterministic key the specification owns, so a consistent rename cannot resolve.
     const bound = bindSeedSpec({ seedRecord, before, headerDigest: audit.headerDigest });
     problems.push(...bound.problems);
     if (slotsResolved(bound.slots)) {
       problems.push(...runCoverageValidators({ before, slots: bound.slots }).problems);
+      problems.push(...runEraColumns({ snapshot: after, slots: bound.slots }).problems);
     }
     problems.push(...verifySeedSteps({
       steps: seedRecord?.steps, seedRecord, contractHeld: verifySeedFloor(before).length === 0,
@@ -1271,6 +1319,7 @@ export async function verifyEvidence({
       outbox: finalSnap.tables['objects.object_outbox']?.rows ?? [],
     }));
     problems.push(...verifyOperationClosure({ snapshot: finalSnap, expected: manifest.post_upgrade_operation ?? null }));
+    problems.push(...verifyPostUpgradeDelta({ after, final: finalSnap }).problems);
     problems.push(...comparePosture(after.posture, virgin.posture));
     // Receipt, isolation and RESULT judgements run regardless of manifest shape — a
     // malformed manifest must not suppress deeper findings.
@@ -1282,13 +1331,13 @@ export async function verifyEvidence({
         b: manifest.receipts?.['path-b-virgin'] ?? null,
       },
       readFile: (rel) => {
-        const abs = contained(rel, 'suite receipt');
-        return abs !== null && existsSync(abs) ? readFileSync(abs) : null;
+        const r = contained(rel, 'suite receipt');
+        return r === null ? null : memberBytes(r);
       },
     }));
-    const resultAbs = join(tmp, 'RESULT-PASS.txt');
-    if (!existsSync(resultAbs)) problems.push('archive has no RESULT-PASS receipt');
-    else problems.push(...parseResultReceipt(readFileSync(resultAbs, 'utf8'), manifest));
+    const resultText = memberText('RESULT-PASS.txt');
+    if (resultText === null) problems.push('archive has no RESULT-PASS receipt');
+    else problems.push(...parseResultReceipt(resultText, manifest));
 
     // ── DELIVERY STANDING (online): the hosted run, the blocking step, the artifact ──
     if (requireHosted && !online) {
@@ -1367,11 +1416,22 @@ export async function verifyEvidence({
       notes.push(`path_a_tables=${Object.keys(before.tables).length}->${Object.keys(after.tables).length} path_b_tables=${Object.keys(virgin.tables).length}`);
       notes.push(`standing=${online ? 'delivery-online' : 'offline-candidate'}`);
     }
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
   }
   return { ok: problems.length === 0, problems, notes };
 }
+
+/**
+ * The production entry point: hardened ingress, then the shared semantic core. The CLI never
+ * bypasses ingress, and the core it runs is byte-identical to the one the controls exercise.
+ */
+export async function verifyEvidence({
+  zipPath, root, online = false, requireHosted = false, fetchImpl = globalThis.fetch, token = null,
+}) {
+  const ingest = ingestArchive({ zipPath });
+  if (!ingest.ok) return { ok: false, problems: ingest.problems, notes: [] };
+  return verifySemantics({ members: ingest.members, root, online, requireHosted, fetchImpl, token });
+}
+
 
 async function main() {
   const argv = process.argv.slice(2);

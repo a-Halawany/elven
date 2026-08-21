@@ -16,12 +16,13 @@
  */
 
 import {
-  byModel, digest, exact, exactBy, exactShape, exactShapeBy, formula, generatedId, inSeedWindow,
-  notBefore, oneOf, opaque, phcArgon2id, sameTimeAs, slotRef, timestamp, volatileField,
+  byModel, digest, exact, exactBy, exactShape, exactShapeBy, formula, generatedId, helpers,
+  inSeedWindow, notBefore, oneOf, phcArgon2id, sameTimeAs, slotRef, timestamp, volatileField,
   before as tsBefore,
 } from './c18-seed-validators.mjs';
 import {
-  SEED_AUDIT_POSTURE, SEED_BASE_POSTURE, SEED_CREDENTIAL_LIFECYCLE, SEED_DECISION_POSTURE,
+  SEED_ARGON2ID_PARAMS, SEED_AUDIT_POSTURE, SEED_BASE_POSTURE, SEED_CREDENTIAL_LIFECYCLE,
+  SEED_DECISION_POSTURE, SEED_OBJECTS,
   SEED_DOMAINS, SEED_LIFECYCLE_EVENTS, SEED_TENANTS, seedObjectHeader, seedObjectPayload,
   seedOutboxPayload,
 } from './c18-seed-spec.mjs';
@@ -150,10 +151,10 @@ export const SEED_COVERAGE = Object.freeze({
     columns: Object.freeze({
       id: k('exact', 'the single-row identity, always 1', exact(P.bootstrapClaim.id)),
       principal_id: k('slot', 'the platform-admin slot', slotRef((row, ctx) => idOf(ctx.slots.principal, ctx.spec.admin.slot))),
-      claimed_at: k('timestamp', 'inside the window; the earliest governed write', inSeedWindow({})),
-      nonce: k('volatile', 'added by 0016; absent in the 0012 era snapshot', volatileField({ type: 'string', nullable: true }), { era: 'latest' }),
-      consumed: k('exact', 'false in the 0012 era; the 0016 DDL default', volatileField({ allowed: [false, true], nullable: false }), { era: 'latest' }),
-      consumed_at: k('volatile', 'null in the 0012 era', volatileField({ nullable: true }), { era: 'latest' }),
+      claimed_at: k('formula', 'the audited bootstrap event\'s landing instant', byModel('audit plan', (v, row, ctx) => ctx.bootstrapClaimTime(row, v))),
+      nonce: k('exact', "0016's DDL default; the 0012-era claim predates the column", exact(null), { era: 'latest' }),
+      consumed: k('exact', "0016's NOT NULL DEFAULT false; the era claim is never re-consumed", exact(false), { era: 'latest' }),
+      consumed_at: k('exact', "0016's DDL default; the era claim records no consumption", exact(null), { era: 'latest' }),
     }),
   }),
   'identity.principals': Object.freeze({
@@ -177,7 +178,7 @@ export const SEED_COVERAGE = Object.freeze({
       id: k('generated-id', 'uuid', generatedId({ unique: true })),
       principal_id: k('slot', 'the owning principal slot', slotRef((row, ctx) => (ctx.principalIds.has(row.principal_id) ? row.principal_id : null))),
       type: k('exact', "'password'", exact(P.credential.type)),
-      secret_hash: k('digest', 'argon2id encoded hash; never a raw secret', phcArgon2id()),
+      secret_hash: k('digest', 'argon2id PHC: exact governed m/p/t, canonical base64, exact salt and tag lengths', phcArgon2id(SEED_ARGON2ID_PARAMS)),
       status: k('exact', "'active', plus exactly one 'rotated' bootstrap predecessor", oneOf([P.credential.activeStatus, P.credential.rotatedStatus])),
       created_at: k('timestamp', 'inside the governed seeding window', inSeedWindow({})),
       rotated_at: k('timestamp', 'set only on the rotated predecessor', credentialLifecycle('rotated_at')),
@@ -193,7 +194,7 @@ export const SEED_COVERAGE = Object.freeze({
       status: k('exact', "'active'", exact(P.session.status)),
       refresh_token_hash: k('digest', 'sha-256 hex; equals its refresh token row', digest({ relatesTo: (row, ctx) => tokenOfSession(row, ctx)?.token_hash })),
       prev_refresh_token_hash: k('volatile', 'null — the seed never rotates a refresh token', volatileField({ allowed: [null], nullable: true })),
-      context_key_hash: k('digest', 'sha-256 hex; generated per session, no source-owned value', opaque(digest({ unique: true }))),
+      context_key_hash: k('digest', 'sha-256 hex; generated per session and UNIQUE across sessions', digest({ unique: true })),
       issued_at: k('timestamp', 'inside the window; < expires_at', inSeedWindow({ relations: [tsBefore((row) => row.expires_at, 'its expiry')] })),
       expires_at: k('timestamp', 'present; > issued_at', timestamp({})),
       revoked_at: k('volatile', 'null — the seed revokes no session', volatileField({ allowed: [null], nullable: true })),
@@ -316,7 +317,19 @@ export const SEED_COVERAGE = Object.freeze({
       status: k('exact', 'the slot status', exactBy((row, ctx) => outboxSpecOf(row, ctx)?.status)),
       payload: k('exact', 'seedOutboxPayload', exactShapeBy((row, ctx) => { const s = outboxSpecOf(row, ctx); return s === undefined ? undefined : seedOutboxPayload(s); })),
       attempts: k('exact', '1', exactBy((row, ctx) => outboxSpecOf(row, ctx)?.attempts)),
-      lease_id: k('generated-id', 'a generated lease, or null; no source-owned value', opaque(volatileField({ type: 'string', nullable: true }))),
+      lease_id: k('generated-id', 'a uuid lease exactly on the pending-after-lease slot, else null', (v, row, ctx) => {
+        const spec = outboxSpecOf(row, ctx);
+        if (spec === undefined) return [];
+        const leased = spec.lifecycle === 'pending-after-lease';
+        if (!leased) {
+          return (v ?? null) === null ? []
+            : [`is ${JSON.stringify(v)} on the '${spec.lifecycle}' slot, which is never leased`];
+        }
+        if (typeof v !== 'string' || !helpers.UUID_RE.test(v)) {
+          return [`is ${JSON.stringify(v)}; the leased slot carries a generated uuid lease`];
+        }
+        return [];
+      }),
       domain_id: k('slot', 'the slot domain', slotRef((row, ctx) => idOf(ctx.slots.domain, outboxSpecOf(row, ctx)?.domainSlot ?? null))),
       tenant_id: k('slot', 'the slot tenant', slotRef((row, ctx) => idOf(ctx.slots.tenant, outboxSpecOf(row, ctx)?.tenantSlot ?? null))),
       created_at: k('timestamp', 'inside the governed seeding window', inSeedWindow({})),
@@ -324,7 +337,7 @@ export const SEED_COVERAGE = Object.freeze({
       causation_id: k('generated-id', 'uuid', generatedId({})),
       leased_until: k('timestamp', 'present only on the pending-after-lease slot', timestamp({ nullable: true, relations: [notBefore((row) => row.created_at, 'its creation time')] })),
       published_at: k('timestamp', 'present only on the published slot', timestamp({ nullable: true, relations: [notBefore((row) => row.created_at, 'its creation time')] })),
-      correlation_id: k('generated-id', 'uuid; shared with the enqueue operation', generatedId({})),
+      correlation_id: k('formula', "its OWN enqueue decision's correlation", byModel('operation plan', (v, row, ctx) => ctx.outboxCorrelation(row, v))),
     }),
   }),
 });
@@ -441,17 +454,19 @@ export function buildCoverageReport({ preseed, before, latest = null, coverage =
  * either, is a finding. This is what makes the published `seed-coverage.json` a statement about
  * what the verifier EXECUTES rather than a description of what it intends.
  */
-export function verifyCoverageRegistry({ before, coverage = SEED_COVERAGE, registered }) {
-  // `registered` is the era-filtered registration list for this catalog.
+export function verifyCoverageRegistry({ before, coverage = SEED_COVERAGE, registered, era = 'seed' }) {
+  // `registered` must be the registration list for THIS era (see registeredColumns).
   const problems = [];
   const catalog = [];
   const classified = [];
   for (const [table, spec] of Object.entries(coverage)) {
     if (spec.columnsOwnedBy !== undefined) continue;
     for (const c of before.tables?.[table]?.columns ?? []) catalog.push(`${table}.${c}`);
-    // Era-filtered: only the columns that exist in THIS catalog take part in the equality.
+    // C18.1.10 — the equality is stated PER ERA and is literal within it. The seed-era catalog
+    // excludes later-era columns because they do not exist there; the upgraded catalog includes
+    // them, so nothing is permanently exempt from registration.
     for (const [c, e] of Object.entries(spec.columns)) {
-      if (e.era !== 'latest') classified.push(`${table}.${c}`);
+      if (era === 'latest' || e.era !== 'latest') classified.push(`${table}.${c}`);
     }
   }
   catalog.sort(); classified.sort();
@@ -466,4 +481,47 @@ export function verifyCoverageRegistry({ before, coverage = SEED_COVERAGE, regis
   diff(classified, reg, 'classified by the coverage contract', 'registered as an executable rule');
   diff(reg, classified, 'registered as an executable rule', 'classified by the coverage contract');
   return { problems, catalog, classified, registered: reg };
+}
+
+
+/**
+ * C18.1.10 — THE DEDICATED-MODEL COVERAGE PROOF.
+ *
+ * `objects.canonical_objects` is authenticated by a dedicated semantic model rather than a
+ * per-column map, and 53a4eec simply excluded it from the registry equality while still reporting
+ * the registry as complete. That is now proven instead of assumed: the exact set of columns the
+ * model authenticates is derived from the model itself and must EQUAL the delivered catalog, with
+ * no column skipped on either side. It is reported separately from the per-column registry so the
+ * two claims stay distinguishable.
+ */
+export function modelCoveredColumns() {
+  // Every header field the source-owned builder writes, plus the two columns the model derives.
+  const header = seedObjectHeader({
+    objectId: 'x', tenantId: 'x', domainId: 'x', correlation: 'x', spec: SEED_OBJECTS[0],
+  });
+  return [...Object.keys(header), 'payload', 'content_digest'].sort();
+}
+
+export function verifyModelCoverage({ before, coverage = SEED_COVERAGE }) {
+  const problems = [];
+  const proofs = [];
+  for (const [table, spec] of Object.entries(coverage)) {
+    if (spec.columnsOwnedBy === undefined) continue;
+    const catalog = [...(before.tables?.[table]?.columns ?? [])].sort();
+    const modelled = modelCoveredColumns();
+    for (const c of catalog) {
+      if (!modelled.includes(c)) {
+        problems.push(`model coverage: '${table}.${c}' is in the delivered catalog but the `
+          + `'${spec.columnsOwnedBy}' model does not authenticate it`);
+      }
+    }
+    for (const c of modelled) {
+      if (!catalog.includes(c)) {
+        problems.push(`model coverage: the '${spec.columnsOwnedBy}' model authenticates `
+          + `'${table}.${c}', which the delivered catalog does not have`);
+      }
+    }
+    proofs.push({ table, model: spec.columnsOwnedBy, columns: catalog.length });
+  }
+  return { problems, proofs };
 }

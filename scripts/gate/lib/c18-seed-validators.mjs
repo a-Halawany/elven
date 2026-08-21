@@ -18,13 +18,53 @@
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
-/** The complete PHC grammar the era's argon2id hashes use, with its governed parameters. */
-const ARGON2ID_RE = /^\$argon2id\$v=19\$m=(\d+),t=(\d+),p=(\d+)\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/;
-const ARGON2ID_ALT_RE = /^\$argon2id\$v=19\$m=(\d+),p=(\d+),t=(\d+)\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/;
+/**
+ * C18.1.10 — THE EXACT ARGON2ID CONTRACT, derived from the PINNED PRODUCER.
+ *
+ * 53a4eec declared SEED_ARGON2ID_PARAMS and never consumed it, while `phcArgon2id` accepted any
+ * positive integers — so `m=1,t=1,p=1` with a four-byte salt passed, and so did the declared
+ * constant itself, which was WRONG. The producer (`argon2` 0.45.1, `argon2.hash(secret,
+ * { type: argon2id })` with no cost overrides) emits exactly:
+ *
+ *     $argon2id$v=19$m=65536,p=4,t=3$<22 b64 chars>$<43 b64 chars>
+ *
+ * — parameters in `m,p,t` order, standard-alphabet unpadded base64, a 16-byte salt and a 32-byte
+ * tag. That single canonical spelling is the contract; a reordered, padded, url-safe, extra- or
+ * duplicate-parameter form is not what this producer writes and is refused.
+ */
+const ARGON2ID_PHC_RE = /^\$argon2id\$v=(\d+)\$m=(\d+),p=(\d+),t=(\d+)\$([A-Za-z0-9+/]+)\$([A-Za-z0-9+/]+)$/;
 
-const at = (v) => (typeof v === 'string' || typeof v === 'number' ? new Date(v) : new Date(NaN));
-const finiteTime = (v) => Number.isFinite(at(v).getTime());
 const j = (v) => JSON.stringify(v);
+/**
+ * C18.1.10 — THE CANONICAL DATABASE TIMESTAMP GRAMMAR.
+ *
+ * 53a4eec passed every recorded instant through `new Date(v)`, which accepts prose ("Fri, 21 Aug
+ * 2026 19:19:49 GMT"), alternate offsets and many other equivalent-but-noncanonical spellings. A
+ * timestamp rewritten into any of those forms named the SAME instant, so every instant comparison
+ * still agreed and the archive reconciled. The evidence carries exactly two canonical shapes:
+ *   • a PostgreSQL column instant — `YYYY-MM-DDTHH:MM:SS[.ffffff]+00:00` (UTC, 0-6 fraction
+ *     digits, because the driver trims trailing zeros); and
+ *   • a canonical JSON body instant — `YYYY-MM-DDTHH:MM:SS[.fff]Z`.
+ * Nothing else is a governed timestamp, whatever `Date` would make of it.
+ */
+export const PG_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00:00$/;
+export const ISO_Z_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+export const canonicalTimestamp = (v) => typeof v === 'string'
+  && (PG_TIMESTAMP_RE.test(v) || ISO_Z_TIMESTAMP_RE.test(v));
+/**
+ * Parse ONLY a canonical instant. A noncanonical string is not "a different spelling of the same
+ * time" — it is not a governed timestamp at all, and yields NaN so every rule rejects it.
+ */
+const at = (v) => (canonicalTimestamp(v) ? new Date(v) : new Date(NaN));
+const finiteTime = (v) => Number.isFinite(at(v).getTime());
+/** The reason a value is not a canonical instant, for a precise finding. */
+const whyNotCanonical = (v) => {
+  if (typeof v !== 'string') return `is ${j(v)}, which is not a timestamp string`;
+  if (Number.isFinite(new Date(v).getTime())) {
+    return `is ${j(v)}, which is parseable but NOT the canonical governed timestamp grammar`;
+  }
+  return `is ${j(v)}, which is not a valid instant`;
+};
 const stable = (v) => JSON.stringify(v, (k, val) => (
   val !== null && typeof val === 'object' && !Array.isArray(val)
     ? Object.fromEntries(Object.keys(val).sort().map((kk) => [kk, val[kk]])) : val));
@@ -57,7 +97,7 @@ export const generatedId = ({ unique = false } = {}) => (v, row, ctx) => {
   return seen === 1 ? [] : [`value ${j(v)} appears ${seen} times; every generated ${ctx.column} is unique`];
 };
 /** digest: full hex grammar plus its declared semantic relationship. */
-export const digest = ({ bytes = 32, relatesTo = null } = {}) => (v, row, ctx) => {
+export const digest = ({ bytes = 32, relatesTo = null, unique = false } = {}) => (v, row, ctx) => {
   const problems = [];
   const re = bytes === 32 ? HEX64_RE : new RegExp(`^[0-9a-f]{${bytes * 2}}$`);
   if (typeof v !== 'string' || !re.test(v)) problems.push(`is ${j(v)}, which is not a ${bytes}-byte hex digest`);
@@ -65,22 +105,55 @@ export const digest = ({ bytes = 32, relatesTo = null } = {}) => (v, row, ctx) =
     const want = relatesTo(row, ctx);
     if (want !== undefined && v !== want) problems.push(`does not equal ${j(want)}, the value it must mirror`);
   }
+  // C18.1.10 — `unique` was accepted and then IGNORED, so two sessions could share one otherwise
+  // valid context key digest. Independently generated digests are now required to be distinct.
+  if (unique === true && Array.isArray(ctx?.tableRows) && typeof ctx?.column === 'string') {
+    const n = ctx.tableRows.filter((r) => r[ctx.column] === v).length;
+    if (n > 1) problems.push(`value ${j(v)} appears ${n} times; every generated digest is unique`);
+  }
   return problems;
 };
 /** digest with a complete PHC grammar and governed parameters; never exposes the secret. */
-export const phcArgon2id = () => (v) => {
+export const phcArgon2id = (params) => (v) => {
   if (typeof v !== 'string') return [`is ${j(v)}, which is not a PHC string`];
-  const m = ARGON2ID_RE.exec(v) ?? ARGON2ID_ALT_RE.exec(v);
-  if (m === null) return ['does not satisfy the complete argon2id PHC grammar'];
-  const nums = [Number(m[1]), Number(m[2]), Number(m[3])].filter((n) => Number.isInteger(n) && n > 0);
-  return nums.length === 3 ? [] : ['carries non-positive argon2id parameters'];
+  const m = ARGON2ID_PHC_RE.exec(v);
+  if (m === null) {
+    return [`does not satisfy the canonical argon2id PHC grammar `
+      + `($argon2id$v=<n>$m=<n>,p=<n>,t=<n>$<salt>$<hash>, standard unpadded base64)`];
+  }
+  const [, ver, mem, par, time, salt, hash] = m;
+  const out = [];
+  const want = (label, actual, expected) => {
+    if (Number(actual) !== expected) {
+      out.push(`carries ${label}=${actual}; the governed configuration is ${label}=${expected}`);
+    }
+  };
+  want('v', ver, params.v);
+  want('m', mem, params.m);
+  want('p', par, params.p);
+  want('t', time, params.t);
+  // Canonical unpadded base64 of exactly the governed byte lengths. Decoding then re-encoding
+  // catches a string that is base64-shaped but not a canonical encoding of those bytes.
+  const check = (label, b64, bytes) => {
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length !== bytes) {
+      out.push(`carries a ${buf.length}-byte ${label}; the governed configuration uses ${bytes} bytes`);
+      return;
+    }
+    if (buf.toString('base64').replace(/=+$/, '') !== b64) {
+      out.push(`carries a non-canonical base64 ${label}`);
+    }
+  };
+  check('salt', salt, params.saltBytes);
+  check('hash', hash, params.hashBytes);
+  return out;
 };
 /** timestamp: a finite canonical instant, plus its declared lifecycle relationships. */
 export const timestamp = ({ nullable = false, relations = [] } = {}) => (v, row, ctx) => {
   if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires a recorded time'];
   }
-  if (!finiteTime(v)) return [`is ${j(v)}, which is not a finite timestamp`];
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
   const problems = [];
   for (const rel of relations) {
     const p = rel(v, row, ctx);
@@ -146,8 +219,8 @@ export const inSeedWindow = ({ nullable = false, offsetMs = 0, relations = [] } 
   if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires an instant'];
   }
-  const t = new Date(v).getTime();
-  if (!Number.isFinite(t)) return [`is ${JSON.stringify(v)}, which is not a valid instant`];
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
+  const t = at(v).getTime();
   const w = ctx.seedWindow?.();
   const out = [];
   if (w !== undefined && w !== null) {
