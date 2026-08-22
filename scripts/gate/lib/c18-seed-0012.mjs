@@ -19,10 +19,17 @@ import {
   seedInputDigestSource, seedObjectHeader, seedObjectPayload, seedOutboxPayload,
 } from './c18-seed-spec.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { GOVERNED_LIFETIMES, sessionExpiresAt } from './c18-lifetimes.mjs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
+/**
+ * C18.1.12 — the capability TTL the producer hands every `ctx.issue_*` port, read from the SAME
+ * source-owned spec the verifier judges the resulting rows against. It was six separate literal
+ * `60`s, so the producer and the verifier agreed only by coincidence.
+ */
+const CAP_TTL = GOVERNED_LIFETIMES.capabilitySeconds;
 
 export async function seedThroughEraPorts({ root, host, port, database, passwords, log = () => {} }) {
   const require = createRequire(join(root, 'apps', 'api', 'package.json'));
@@ -104,7 +111,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
     const rotCorr = randomUUID();
     const rotatedHash = await argon2.hash(passwords.EYE_TEST_ADMIN_PASSWORD, { type: argon2.argon2id });
     await tx(identity, [
-      ["select ctx.issue_identity_op('identity.credential.rotate', $1::uuid, $2::uuid, 60)", [adminId, rotCorr]],
+      [`select ctx.issue_identity_op('identity.credential.rotate', $1::uuid, $2::uuid, ${CAP_TTL})`, [adminId, rotCorr]],
       ['select identity.credential_rotate_v2($1::uuid,$2::uuid,$3::uuid,$4)',
         [adminId, oldCred, randomUUID(), rotatedHash]],
       ["select audit.commit_identity_event($1::uuid, null::uuid, 'identity.credential',"
@@ -123,10 +130,10 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       const contextKey = randomBytes(32).toString('base64url');
       const corr = randomUUID();
       await tx(identity, [
-        ["select ctx.issue_identity_op('identity.session.create', $1::uuid, $2::uuid, 60)", [principalId, corr]],
+        [`select ctx.issue_identity_op('identity.session.create', $1::uuid, $2::uuid, ${CAP_TTL})`, [principalId, corr]],
         ['select identity.session_open($1::uuid,$2::uuid,$3,$4,$5,$6,$7::uuid)',
           [sessionId, principalId, assurance, sha256(refreshToken), sha256(contextKey),
-            new Date(Date.now() + 3600_000), familyId]],
+            sessionExpiresAt(), familyId]],
       ], 'session-open');
       record.sessions.push({ sessionId, principalId, familyId, correlation: corr });
       record.correlations.push(corr);
@@ -142,7 +149,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       const decisionId = randomUUID();
       const cap = { corr, decisionId, bundle: 'bundle-v1' };
       const statements = [
-        ['select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,60)',
+        [`select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,${CAP_TTL})`,
           [session.sessionId, session.contextKey, scope, tenantId, domainId,
             'c18-era-seed', action, target, corr, decisionId, cap.bundle, consequence]],
         ...work(cap),
@@ -204,7 +211,7 @@ export async function seedThroughEraPorts({ root, host, port, database, password
       const decisionId = randomUUID();
       const hash = await argon2.hash(randomBytes(18).toString('hex'), { type: argon2.argon2id });
       await tx(identity, [
-        ['select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,60)',
+        [`select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,${CAP_TTL})`,
           [admin.sessionId, admin.contextKey, 'PLATFORM', null, null,
             'c18-era-seed', 'identity.principal.create', `identity.principal:${pid}`, corr, decisionId, 'bundle-v1', 'C2']],
         ["select identity.create_principal($1::uuid,'human',$2,$3::uuid,$4::uuid,$5,$5,$6,$7)",
@@ -350,10 +357,10 @@ export async function runPostUpgradeOperation({ root, host, port, database, pass
     const contextKey = randomBytes(32).toString('base64url');
     const sessCorr = randomUUID();
     await identity.query('BEGIN');
-    await identity.query("select ctx.issue_identity_op('identity.session.create', $1::uuid, $2::uuid, 60)", [adminId, sessCorr]);
+    await identity.query(`select ctx.issue_identity_op('identity.session.create', $1::uuid, $2::uuid, ${CAP_TTL})`, [adminId, sessCorr]);
     await identity.query('select identity.session_open($1::uuid,$2::uuid,$3,$4,$5,$6,$7::uuid)',
       [sessionId, adminId, 'password', sha256(randomBytes(24).toString('hex')), sha256(contextKey),
-        new Date(Date.now() + 3600_000), randomUUID()]);
+        sessionExpiresAt(), randomUUID()]);
     await identity.query('COMMIT');
 
     const corr = randomUUID();
@@ -363,7 +370,7 @@ export async function runPostUpgradeOperation({ root, host, port, database, pass
     const target = `outbox:${eventId}`;
     await commit.query('BEGIN');
     try {
-      await commit.query('select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,60)',
+      await commit.query(`select ctx.issue_commit($1::uuid,$2,$3,$4::uuid,$5::uuid,$6,$7,$8,$9::uuid,$10::uuid,$11,$12,${CAP_TTL})`,
         [sessionId, contextKey, 'DOMAIN', tenantId, domainId,
           'c18-post-upgrade-proof', action, target, corr, decisionId, 'bundle-v1', 'C1']);
       await commit.query('select objects.enqueue_event($1::uuid,$2,$3::jsonb,$4::uuid,$5::uuid)',

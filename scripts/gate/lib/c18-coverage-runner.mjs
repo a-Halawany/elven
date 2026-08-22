@@ -448,11 +448,18 @@ function buildContext({ before, slots, spec }) {
      *     only after the bootstrap port call has returned, so the marking already happened;
      *   • τ < rotated_at — the marking transaction commits before the rotation begins.
      *
-     * C18.1.10 bounded τ only by [created_at, rotated_at] inclusive, a ~65 ms interval, so a
-     * few milliseconds of drift stayed inside it. Bounding τ by the audited bootstrap instant
-     * narrows it to the marking itself. The residual freedom is real and is stated honestly: a
-     * drift smaller than the gap between the transaction clock and that audit stamp is
-     * indistinguishable from a legitimate `clock_timestamp()` read.
+     * C18.1.10 bounded τ only by [created_at, rotated_at] inclusive; bounding τ by the audited
+     * bootstrap instant narrows that interval considerably.
+     *
+     * C18.1.12 — WHAT IS PROVED IS THE INTERVAL, NOT THE INSTANT. C18.1.11 went on to describe
+     * this as narrowing τ "to the marking itself" and reported that a cited millisecond drift
+     * "now fails". It does not: replayed against the delivered verifier, a fully rebound
+     * `expires_at - 10 ms` was accepted with zero findings, because the implied τ simply moved to
+     * another instant inside the same causal interval — which the implementation genuinely
+     * permits. The enforcement below is unchanged and correct; the CLAIM is narrowed to the
+     * interval it actually establishes, and the residual is declared as an explicit observational
+     * limit in `c18-observational-limits.mjs` and carried to C19's external-anchoring ledger.
+     * Pinning the instant needs an anchor the archive cannot author, which C18 does not have.
      */
     credentialWorld() {
       const out = [];

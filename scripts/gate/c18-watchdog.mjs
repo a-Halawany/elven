@@ -13,8 +13,22 @@
  * C18.1.11 — EVERYTHING THIS PROCESS PRINTS IS REDACTED FIRST. A GitHub token was once passed
  * through argv and echoed verbatim into a watchdog log. Scrubbing that log afterwards is not a
  * fix: the defence has to be that a secret can never reach the log in the first place. Both the
- * echoed command line and the process-tree diagnostics now pass through `redactSecrets`, and
- * secrets are expected to arrive through the ENVIRONMENT, which is never printed.
+ * echoed command line and the process-tree diagnostics pass through `redactSecrets`, and secrets
+ * are expected to arrive through the ENVIRONMENT, which is never printed.
+ *
+ * C18.1.12 — THE CHILD'S OWN OUTPUT IS REDACTED TOO. C18.1.11 redacted what the WATCHDOG printed
+ * and then handed the child `stdio: 'inherit'`, which connects the child directly to this
+ * process's file descriptors. Nothing the child wrote passed through `redactSecrets` at all: a
+ * credential handed to the child through the environment — the supported way — reappeared verbatim
+ * on stdout and stderr the moment the child echoed it, which is exactly the shape of the original
+ * incident. The child's streams are now PIPED and filtered.
+ *
+ * The filter is cross-chunk safe. A pipe splits wherever the kernel happens to split it, so a
+ * token can straddle two reads and a naive per-chunk `replace` would miss it entirely. Output is
+ * therefore held until a line is complete before it is redacted and forwarded, with a bounded
+ * carry so a pathological writer that never emits a newline cannot grow the buffer without limit.
+ * stdout and stderr keep their own filters and their own destinations, so the separation callers
+ * rely on survives; exit codes, signals and the timeout diagnostics are unchanged.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -43,6 +57,41 @@ export function redactSecrets(text) {
     .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]');
 }
 
+/**
+ * A streaming redactor. Text is forwarded a whole line at a time so a secret cannot be missed by
+ * landing across a chunk boundary; `flush()` emits whatever is left when the stream ends.
+ *
+ * `CARRY_LIMIT` bounds the held text. A writer that produces a very long line without a newline
+ * would otherwise buffer unboundedly; when the limit is reached the held text is redacted and
+ * forwarded, keeping a `OVERLAP` tail behind so a secret straddling that forced boundary is still
+ * seen whole by the next pass.
+ */
+export function createRedactingStream(sink) {
+  const CARRY_LIMIT = 1 << 16;
+  const OVERLAP = 4_096;
+  let held = '';
+  return {
+    push(chunk) {
+      held += chunk;
+      const cut = held.lastIndexOf('\n');
+      if (cut >= 0) {
+        sink(redactSecrets(held.slice(0, cut + 1)));
+        held = held.slice(cut + 1);
+      }
+      if (held.length > CARRY_LIMIT) {
+        const emit = held.slice(0, held.length - OVERLAP);
+        sink(redactSecrets(emit));
+        held = held.slice(held.length - OVERLAP);
+      }
+    },
+    flush() {
+      if (held === '') return;
+      sink(redactSecrets(held));
+      held = '';
+    },
+  };
+}
+
 // Only run as a CLI. Imported (by the controls that prove redaction works) it exports the
 // redaction helper and does nothing else.
 const isMain = process.argv[1] !== undefined
@@ -56,7 +105,17 @@ if (isMain) {
   }
 
   const started = Date.now();
-  const child = spawn(command[0], command.slice(1), { stdio: 'inherit', detached: true });
+  // stdin is inherited so an interactive child still works; stdout and stderr are PIPED so every
+  // byte the child writes is redacted before it reaches this process's streams.
+  const child = spawn(command[0], command.slice(1), {
+    stdio: ['inherit', 'pipe', 'pipe'], detached: true,
+  });
+  const out = createRedactingStream((t) => process.stdout.write(t));
+  const err = createRedactingStream((t) => process.stderr.write(t));
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (c) => out.push(c));
+  child.stderr.on('data', (c) => err.push(c));
   // The command line is redacted before it is ever printed. A secret should arrive through the
   // environment, which this process never echoes.
   console.error(redactSecrets(`c18-watchdog: pid=${child.pid} deadline=${deadline}s command=${command.join(' ')}`));
@@ -74,11 +133,34 @@ if (isMain) {
     }, 10_000).unref();
   }, deadline * 1000);
 
-  child.on('exit', (code, signal) => {
+  /**
+   * Finish once — from `close` normally, or from `exit` plus a bounded drain.
+   *
+   * `close` is the correct signal because it fires only after both pipes have ended, so nothing
+   * the child wrote is dropped. But a pipe stays open while ANY process holds its write end, and
+   * this child leads a detached process group: a surviving grandchild would keep `close` pending
+   * indefinitely, which is precisely the unbounded wait this watchdog exists to prevent. So the
+   * child's own `exit` starts a short drain, and whichever arrives first ends the run.
+   */
+  let finished = false;
+  const finish = (code, signal) => {
+    if (finished) return;
+    finished = true;
     clearTimeout(timer);
+    // Whatever is still held — a final line with no newline — is redacted and forwarded here.
+    out.flush();
+    err.flush();
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
     console.error(`c18-watchdog: finished in ${elapsed}s (code=${code} signal=${signal})`);
     if (timedOut) process.exit(124);
     process.exit(code === null ? 1 : code);
+  };
+  const DRAIN_MS = 5_000;
+  child.on('close', (code, signal) => finish(code, signal));
+  child.on('exit', (code, signal) => {
+    setTimeout(() => {
+      if (!finished) console.error('c18-watchdog: child exited but its output pipes are still held; draining stopped');
+      finish(code, signal);
+    }, DRAIN_MS).unref();
   });
 }

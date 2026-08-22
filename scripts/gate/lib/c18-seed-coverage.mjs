@@ -19,6 +19,7 @@ import {
   byModel, digest, exact, exactBy, exactShape, exactShapeBy, formula, generatedId, helpers,
   inSeedWindow, notBefore, oneOf, phcArgon2id, sameTimeAs, slotRef, timestamp, volatileField,
   before as tsBefore,
+  canonicalTimestamp,
 } from './c18-seed-validators.mjs';
 import {
   SEED_ARGON2ID_PARAMS, SEED_AUDIT_POSTURE, SEED_BASE_POSTURE, SEED_CREDENTIAL_LIFECYCLE,
@@ -26,6 +27,24 @@ import {
   SEED_DOMAINS, SEED_LIFECYCLE_EVENTS, SEED_TENANTS, seedObjectHeader, seedObjectPayload,
   seedOutboxPayload,
 } from './c18-seed-spec.mjs';
+import { GOVERNED_LIFETIMES, capabilityLifetimeSeconds, judgeLifetime } from './c18-lifetimes.mjs';
+
+/**
+ * C18.1.12 — SEEDED LIFETIMES ARE GOVERNED TOO.
+ *
+ * The seeded world required only `expires_at > issued_at`, so doubling every seeded session and
+ * capability lifetime was invisible here; only the post-upgrade rows caught it. A governed
+ * lifetime is a governed lifetime wherever it is written, and the producer sets these from the
+ * same `c18-lifetimes.mjs` spec the rule below reads.
+ */
+const governedSeedLifetime = (seconds, label) => (v, row) => {
+  if (typeof v !== 'string' || !canonicalTimestamp(v)) {
+    return [`is ${JSON.stringify(v)}, which is not the canonical governed timestamp grammar`];
+  }
+  return judgeLifetime({
+    issuedAt: row.issued_at, expiresAt: v, seconds: seconds(row), label,
+  });
+};
 
 // ── Slot lookups shared by the rules ─────────────────────────────────────────
 const P = SEED_BASE_POSTURE;
@@ -182,7 +201,7 @@ export const SEED_COVERAGE = Object.freeze({
       status: k('exact', "'active', plus exactly one 'rotated' bootstrap predecessor", oneOf([P.credential.activeStatus, P.credential.rotatedStatus])),
       created_at: k('timestamp', 'inside the governed seeding window', inSeedWindow({})),
       rotated_at: k('timestamp', 'set only on the rotated predecessor', credentialLifecycle('rotated_at')),
-      expires_at: k('timestamp', 'set only on the rotated predecessor', credentialLifecycle('expires_at')),
+      expires_at: k('timestamp', 'set only on the rotated predecessor; 24h after a marking instant proved to lie inside a bounded causal interval, not at an exact time', credentialLifecycle('expires_at')),
     }),
   }),
   'identity.sessions': Object.freeze({
@@ -196,7 +215,8 @@ export const SEED_COVERAGE = Object.freeze({
       prev_refresh_token_hash: k('volatile', 'null — the seed never rotates a refresh token', volatileField({ allowed: [null], nullable: true })),
       context_key_hash: k('digest', 'sha-256 hex; generated per session and UNIQUE across sessions', digest({ unique: true })),
       issued_at: k('timestamp', 'inside the window; < expires_at', inSeedWindow({ relations: [tsBefore((row) => row.expires_at, 'its expiry')] })),
-      expires_at: k('timestamp', 'present; > issued_at', timestamp({})),
+      expires_at: k('formula', 'exactly the source-governed session lifetime after issue',
+        governedSeedLifetime(() => GOVERNED_LIFETIMES.sessionSeconds, 'session')),
       revoked_at: k('volatile', 'null — the seed revokes no session', volatileField({ allowed: [null], nullable: true })),
       bound_epoch: k('formula', "the owner's revocation epoch, plus the era binding offset", formula((row, ctx) => sessionOwner(row, ctx)?.revocation_epoch, "the owner's revocation epoch")),
       family_id: k('generated-id', 'uuid; equals its refresh token family', generatedId({ unique: true })),
@@ -239,7 +259,8 @@ export const SEED_COVERAGE = Object.freeze({
       op_class: k('exact', 'the capability class the plan assigns', exactBy((row, ctx) => ctx.capabilityOf(row)?.op_class)),
       bound_action: k('exact', 'the action the plan assigns', exactBy((row, ctx) => ctx.capabilityOf(row)?.bound_action)),
       issued_at: k('timestamp', 'inside the window; < expires_at', inSeedWindow({ relations: [tsBefore((row) => row.expires_at, 'its expiry')] })),
-      expires_at: k('timestamp', 'present; > issued_at', timestamp({})),
+      expires_at: k('formula', 'exactly the source-governed capability lifetime after issue',
+        governedSeedLifetime((row) => capabilityLifetimeSeconds(row.op_class), 'capability')),
       consumed_at: k('volatile', 'null — the era ports do not stamp consumption', exactBy((row, ctx) => ctx.capabilityOf(row)?.consumed_at ?? null)),
     }),
   }),

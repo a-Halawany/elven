@@ -209,7 +209,78 @@ export const byModel = (modelName, check) => (v, row, ctx) => {
   return problems.map((p) => `${p} [${modelName}]`);
 };
 
-export const helpers = { UUID_RE, HEX64_RE, at, finiteTime, sameInstant, stable };
+/**
+ * C18.1.12 — CONJUNCTIVE RULES, AND A BINDING THAT CANNOT PASS BY DEFAULT.
+ *
+ * `2c3cab3` bound the paired fields of the post-upgrade world to each other and to nothing else. A
+ * `family_id` had to equal its counterpart's `family_id`; a refresh-token hash had to equal its
+ * session's. Neither carried a GRAMMAR, so `"not-a-uuid"` written into both linked rows, and
+ * `"not-a-digest"` written into both token-hash fields, agreed with themselves and passed.
+ *
+ * Worse, the binding treated an UNRESOLVED counterpart as success: `if (want === undefined) return
+ * []`. Deleting `family_id` from BOTH rows made each side's expectation undefined, so both rules
+ * returned no findings and the field simply vanished from the governed world. That is the single
+ * most dangerous shape a validator can have — silence that reads as approval.
+ *
+ * Two things follow. A binding whose counterpart does not resolve is a FINDING, never a pass. And
+ * a value that must satisfy several independent claims — a grammar AND an equality — must be
+ * judged by ALL of them, which is what `allOf` composes.
+ */
+
+/** Run every rule and report every finding; no rule may mask another. */
+export const allOf = (...rules) => (v, row, ctx) => rules.flatMap((r) => r(v, row, ctx));
+
+/**
+ * A value that must equal a counterpart elsewhere in the same world. An unresolved counterpart is
+ * a finding: the claim could not be checked, and an unchecked claim is not a satisfied one.
+ */
+export const boundValue = (pick, what) => (v, row, ctx) => {
+  let want;
+  try { want = pick(row, ctx); } catch (err) { return [`could not resolve ${what}: ${err.message}`]; }
+  if (want === undefined) {
+    return [`cannot be judged: ${what} did not resolve, so this binding proves nothing`];
+  }
+  if (v === undefined) return [`is absent; ${what} is ${j(want)}`];
+  return stable(v) === stable(want) ? [] : [`is ${j(v)}; ${what} is ${j(want)}`];
+};
+
+/** A uuid-shaped value bound to its counterpart. Coordinated equality alone is not sufficient. */
+export const uuidBound = (pick, what) => allOf(
+  (v) => (typeof v === 'string' && UUID_RE.test(v) ? [] : [`is ${j(v)}, which is not a uuid`]),
+  boundValue(pick, what),
+);
+
+/** A sha-256 hex digest bound to its counterpart. */
+export const digestBound = (pick, what) => allOf(
+  (v) => (typeof v === 'string' && HEX64_RE.test(v) ? []
+    : [`is ${j(v)}, which is not a sha-256 hex digest`]),
+  boundValue(pick, what),
+);
+
+/**
+ * A canonical instant bound to its counterpart BY SPELLING, not merely by instant. Two strings
+ * that name the same moment in different notations are not the same recorded value, and rebinding
+ * every linked field to the same alternative spelling must not launder the change.
+ */
+export const canonicalTimestampBound = (pick, what) => allOf(
+  (v) => (canonicalTimestamp(v) ? []
+    : [`is ${j(v)}, which is not the canonical governed timestamp grammar`]),
+  boundValue(pick, what),
+);
+
+/** A prefixed identifier — `principal:<uuid>`, `outbox:<uuid>` — whose suffix must be a real uuid. */
+export const prefixedUuid = (prefix) => (v) => {
+  if (typeof v !== 'string' || !v.startsWith(`${prefix}:`)) {
+    return [`is ${j(v)}, which is not a ${prefix}:<uuid> identifier`];
+  }
+  const suffix = v.slice(prefix.length + 1);
+  return UUID_RE.test(suffix) ? [] : [`is ${j(v)}, whose ${prefix} suffix is not a uuid`];
+};
+
+/** The canonical JSON body instant, to exact millisecond precision. */
+export const ISO_Z_MILLIS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+export const helpers = { UUID_RE, HEX64_RE, ISO_Z_MILLIS_RE, at, finiteTime, sameInstant, stable };
 
 /**
  * A timestamp stamped INSIDE the governed seeding window. `offsetMs` widens the window's upper
