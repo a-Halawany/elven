@@ -2516,7 +2516,17 @@ untouched.
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.9 review, and no
 part of C19 has been started.
 
-## 25. C18.1.10 — THE COMPLETE POST-UPGRADE DELTA, THE REAL CREDENTIAL CONTRACT, AND A HARNESS THAT FINISHES (delivered; awaiting independent review)
+## 25. C18.1.10 — THE COMPLETE POST-UPGRADE DELTA, THE REAL CREDENTIAL CONTRACT, AND A HARNESS THAT FINISHES (delivered; SUPERSEDED by §26)
+
+**SUPERSEDED at C18.1.11 (§26)**: `a424505` is authentic and leak-free, and everything it
+established is preserved. It is superseded because its `after → final` authentication COUNTED rows
+rather than classifying their columns — every column of the new session, its refresh token, both
+capabilities, the operation and its effect, the decision, the outbox row and the closing audit
+event was unconstrained — and because its credential-expiry check accepted a ~65 ms range rather
+than the source-owned lifecycle formula. Twenty-two mutations were accepted by the complete frozen
+a424505 verifier with zero findings. Its `POST_UPGRADE_DELTA['ctx.operation']` also keyed on an
+`id` column that table does not have. The record below stays as honest history; verification
+targets §26.
 
 **Evidence-bearing source `a424505a82970d8e4446ea5e0aacaf5f0a85a2e9`.**
 Candidate CI: pull-request run `32529804949` (3/3 green). Source run `32530262825` (push/`main`, all three
@@ -2641,4 +2651,128 @@ for, re-exporting the same production package.
 0001–0021, C15–C17 verifier logic and product code are untouched; 21 migrations, zero drift.
 
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.10 review, and no
+part of C19 has been started.
+
+## 26. C18.1.11 — THE POST-UPGRADE WORLD CLASSIFIED AND EXECUTED, AND A SECRET THAT CANNOT REACH A LOG (delivered; awaiting independent review)
+
+**Evidence-bearing source `3dbf78736adb0f3e14c16112aebb6b470e3f583a`.**
+Candidate CI: pull-request run `32571494533` (3/3 green, attempt 1). Source run `32571797819`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32572074661`
+(`macos-14`, green).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`
+(353,102 B wrapper) — exactly the archive `c18-db-paths-evidence-3dbf787….zip` (outer sha256
+`feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+delivered archive: **336 commands; 1,008 raw stream files; 11 fixed top-level regular files; 1,019
+regular files; + the `raw/` directory entry = 1,020 ZIP entries.** Checksum manifest binds 1,018
+members with none unbound, none mismatched and no self-entry; no unsafe or duplicate ZIP paths;
+`source_sha` equals the evidence SHA; secret scan clean. Verified from a fresh foreign checkout at
+exactly `3dbf787` offline and **online-hosted** (`standing=delivery-online`).
+
+### 26.1 Credential incident, closed before any hosted action
+
+A GitHub OAuth token had been passed through argv and echoed verbatim into a watchdog log.
+Scrubbing that log is not a fix — the defence has to be that the value cannot reach the log at all:
+
+* `scripts/gate/c18-watchdog.mjs` redacts **everything it prints** — the echoed command line and
+  the process-tree diagnostics — covering provider token shapes (GitHub OAuth/PAT/fine-grained,
+  Slack, AWS, JWT), PEM private keys, `KEY=value` and `KEY: value` assignments whose key names a
+  secret, `--token`/`--password` style flags, and Authorization headers.
+* Canary controls assert that a secret inherited through the **environment** — the supported way to
+  hand a credential to a child — appears in no output at all; that a secret mistakenly passed in
+  argv is still redacted before it is written; and that no provider token or private key can appear
+  anywhere in the delivered evidence archive.
+* The owner rotated the exposed credential before hosted delivery resumed. The repository's event
+  history over the exposure window contains only the expected authoring activity. The hosted CI
+  logs for this delivery contain **zero token-shaped strings**, and the only token-shaped string in
+  the repository is the deliberate synthetic canary constant.
+
+### 26.2 Reproduced first, against the frozen predecessor
+
+The exact `a424505` verifier was frozen byte-for-byte (eleven files, per-file sha256, executing
+from a clean checkout with the tracked dependency shim). Pristine evidence passes it with **zero
+findings**, and **22 of 22** claimed false packages were accepted by the complete frozen verifier
+with **zero findings each** — every attacker-controlled binding rebound: the processed final
+snapshot, its command-bound raw stdout, that command's byte length and digest, the manifest and
+`SHA256SUMS.txt`. The families: the new session's status, assurance, principal, family, bound
+epoch, timestamps, token hashes and context key; the refresh token's session, family, generation,
+token hash, replacement/reuse/invalidation state, timestamps and id; either capability's session,
+class, action, nonce and issuance/expiry/consumption; `ctx.operation`'s txid, opened_at,
+backend_pid, runtime_role and obligations_executed; `ctx.operation_effect`'s id and recorded_at;
+the decision's created_at; the outbox row's payload, attempts, created_at, causation_id and
+leased_until; the updated chain head's updated_at; and the rotated seed credential's expiry drifting
+by a few milliseconds.
+
+### 26.3 Count-only post-upgrade checking, replaced
+
+C18.1.10 authenticated `after → final` by COUNTING — nine tables, so many inserts, one update
+touching three named columns, nothing deleted. It never looked inside the rows the governed
+operation INSERTS. New `scripts/gate/lib/c18-post-upgrade.mjs` states that world the way C18.1.9
+stated the seeded world:
+
+1. the affected-table universe is **derived** from the boundary itself;
+2. **114 columns** — every column of every inserted or updated row — are classified exactly once;
+3. each carries **one executable rule**, and all of them run;
+4. catalog, coverage and registration are proven equal in **both directions**;
+5. there are no unclassified, silently skipped or prose-only columns;
+6. it runs whenever its slots resolve — there is no suppression gate.
+
+The complete world is bound in both directions: new session ↔ principal ↔ family ↔ refresh row;
+refresh generation, token linkage, lifecycle, null fields and uniqueness; the exact two-capability
+multiset including which session each is bound to, its class, action, nonce, lifetime and
+consumption; the complete operation and effect rows; the decision with its exact source-owned
+digest `sha256("c18-post:<event id>")`, subject, topology, timestamps and correlation; the outbox
+payload, causation, attempts, lease state and lifecycle; the closing canonical audit event with
+every meaningful body field under the production JCS and row hash; and the head's sequence, hash,
+frozen state and `updated_at` tied to that closing event.
+
+Session and capability lifetimes are bound to the **same governed TTL the run's own pre-existing
+rows carry**, so the TTL is derived from evidence rather than hard-coded, and a changed lifetime is
+a finding.
+
+**A concrete contract error is corrected.** `POST_UPGRADE_DELTA['ctx.operation']` declared key
+`['id']`; that table has no `id` column. Its identity is `operation_id`, so every row hashed to the
+same `[null]` key.
+
+**Four columns declare `source_owned_value: false`** — a backend transaction id, a backend process
+id, a bare sequence value and a per-session context key. Each still executes a real grammar or
+uniqueness rule, and the exemption list is asserted to be exactly those four.
+
+### 26.4 The credential lifecycle, from the implementation
+
+Migration 0012's `identity.bootstrap_mark_one_time` sets
+`expires_at = clock_timestamp() + interval '24 hours'`. The expiry is therefore exactly 24 hours
+after an instant τ inside the bootstrap transaction, and the contract is that such a τ exists where
+the evidence actually bounds it: strictly after the transaction's `now()` (which stamped the
+credential row and the bootstrap claim), at or before the audited bootstrap event's stamp (the
+application records that only after the port call returned), and strictly before the rotation.
+C18.1.10 bounded τ only by `[created_at, rotated_at]` inclusive — about 65 ms — so a few
+milliseconds of drift stayed inside it. Bounding τ by the audited bootstrap instant narrows it to
+the marking itself, and **the drift the review cited now fails**. Owner, type, status, creation
+instant and the one-replacement-at-the-rotation-instant relationship are bound exactly.
+
+**Stated honestly:** a *backward* drift that stays inside the bootstrap transaction remains
+indistinguishable from a legitimate `clock_timestamp()` read, because the implementation genuinely
+permits it. That residual freedom is a property of the formula, not a gap in its enforcement.
+
+### 26.5 Controls and measured timings
+
+Hermetic gate **596** (was 467) · in-gate mutation/differential **265** (was 247) · API hermetic
+**1,545** · integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and
+boundaries clean · migrations 0001–0021 byte-identical (21 files, zero drift).
+
+In-gate control suite, three clean local runs: 146.38 s / 148.16 s / 151.40 s → **median 148.16 s,
+max 151.40 s** (≤180 s). Hosted control suite **78.35 s** (candidate) and **88.61 s** (push/main),
+both ≤90 s. Complete C18 gate **2 m 23 s** hosted (≤6 min) and under four minutes locally
+(≤10 min). Hard process-group watchdog 900 s throughout; no stale monitors or orphaned processes,
+and no gate containers left behind.
+
+**Scope discipline.** Only `scripts/gate/**` and `apps/api/test/gate/**` change. Migrations
+0001–0021, C15–C17 verifier logic, unrelated product code and all prior authentic evidence are
+untouched. `a424505` is recorded as **authentic and leak-free**, superseded only because its
+verifier incompletely authenticates the post-upgrade world and the credential lifecycle.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.11 review, and no
 part of C19 has been started.
