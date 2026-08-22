@@ -97,8 +97,13 @@ const uniqueUuid = () => (v, row, ctx) => {
  *
  * The TTL is governed configuration, not a compile-time constant, so it is derived from the rows
  * the same run already produced rather than hard-coded. `expires_at` is computed in the
- * application as `Date.now() + ttl` while `issued_at` is the database clock, so a sub-second
- * residual is expected and bounded; anything beyond that is a different lifetime.
+ * application as `Date.now() + ttl` while `issued_at` comes from the database clock, so an
+ * observed lifetime is the governed TTL plus a signed sub-second skew between those two clocks —
+ * it can land just above OR just below the nominal value. The governed TTL is a whole number of
+ * seconds, so it is recovered by ROUNDING a prior lifetime, and the row under test must sit within
+ * one second of it. Comparing truncated seconds instead would make the rule depend on which side
+ * of a second boundary the skew happened to fall: a prior lifetime of 3,599.997 s and a new one of
+ * 3,600.006 s are the same governed hour, and only the hosted runner's skew revealed that.
  */
 const governedLifetime = (priorRows, label) => (v, row, ctx) => {
   if (!ctx.canonicalTimestamp(v)) {
@@ -112,14 +117,10 @@ const governedLifetime = (priorRows, label) => (v, row, ctx) => {
     .map((r) => Date.parse(r.expires_at) - Date.parse(r.issued_at))
     .filter(Number.isFinite);
   if (priors.length === 0) return [];
-  const want = Math.floor(Math.min(...priors) / 1000);
-  const got = Math.floor(lived / 1000);
-  if (got !== want) {
-    return [`lives ${got}s; every ${label} in this run is issued for ${want}s`];
-  }
-  // The residual is the application/database clock difference, never a longer lifetime.
-  return lived - want * 1000 < 1000 ? []
-    : [`carries a ${lived - want * 1000}ms residual beyond the governed ${want}s lifetime`];
+  const ttlSeconds = Math.round(Math.min(...priors) / 1000);
+  const drift = Math.abs(lived - ttlSeconds * 1000);
+  return drift < 1000 ? []
+    : [`lives ${(lived / 1000).toFixed(3)}s; every ${label} in this run is issued for ${ttlSeconds}s`];
 };
 const puTimestamp = ({ nullable = false, notBefore = null, notAfter = null } = {}) => (v, row, ctx) => {
   if (v === null || v === undefined) {

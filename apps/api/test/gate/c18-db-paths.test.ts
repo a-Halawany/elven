@@ -2529,6 +2529,37 @@ describe('C18.1.11 — the post-upgrade world is classified and executed, not co
     expect(judgePostUpgrade(w).problems.join('\n')).toMatch(/context_key_hash.*appears 2 times/);
   });
 
+  it.each([
+    ['a prior lifetime just BELOW the nominal second, and a new one just above', -3, +6],
+    ['a prior lifetime just ABOVE the nominal second, and a new one just below', +4, -7],
+    ['both sides skewed the same way', +9, +2],
+  ] as ReadonlyArray<[string, number, number]>)(
+    'the governed lifetime tolerates clock skew: %s', (_l, priorSkewMs, newSkewMs) => {
+      // `expires_at` is computed in the application while `issued_at` is the database clock, so an
+      // observed lifetime straddles the nominal value by a signed sub-second amount. Truncating to
+      // whole seconds made the rule depend on which side of a second boundary the skew fell —
+      // 3,599.997 s and 3,600.006 s are the same governed hour. Only the hosted runner's skew
+      // revealed it, so it is pinned here in both directions.
+      const w = buildPostUpgradeWorld();
+      const sessions = w.final.tables['identity.sessions'].rows;
+      const prior = w.after.tables['identity.sessions'].rows[0];
+      const shift = (row: any, ms: number) => {
+        row.expires_at = new Date(Date.parse(row.expires_at) + ms).toISOString().replace('Z', '+00:00');
+      };
+      shift(prior, priorSkewMs);
+      shift(sessions[0], priorSkewMs);
+      shift(sessions[1], newSkewMs);
+      expect(judgePostUpgrade(w).problems).toEqual([]);
+    });
+
+  it('a genuinely different lifetime is still a finding', () => {
+    const w = buildPostUpgradeWorld();
+    const sessions = w.final.tables['identity.sessions'].rows;
+    const target = sessions[sessions.length - 1];
+    target.expires_at = new Date(Date.parse(target.expires_at) + 1_000).toISOString().replace('Z', '+00:00');
+    expect(judgePostUpgrade(w).problems.join('\n')).toMatch(/every session in this run is issued for/);
+  });
+
   /** One rule-aware mutation per registered post-upgrade column. */
   const registered = postUpgradeRegisteredColumns()
     .filter((c: string) => !postUpgradeUnownedColumns().includes(c));
