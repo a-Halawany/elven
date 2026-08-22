@@ -13,6 +13,10 @@ export default defineConfig({
     // the container-provisioning controls are confined to a single shard.
     include: ['test/gate/c18-mutation-controls-*.ctl.ts'],
     fileParallelism: true,
+    // Use every core the runner has. Vitest's default leaves one idle, which on a four-core hosted
+    // runner is a quarter of the available throughput for a suite that is entirely CPU-bound.
+    maxWorkers: '100%',
+    minWorkers: 1,
     testTimeout: 120_000,
     hookTimeout: 120_000,
   },
