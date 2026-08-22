@@ -53,6 +53,8 @@ import { buildCoverageReport as legacy53aCoverage } from './fixtures/c18-legacy-
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyA42 } from './fixtures/c18-legacy-a424505/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacyA42Coverage } from './fixtures/c18-legacy-a424505/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy2c3 } from './fixtures/c18-legacy-2c3cab3/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy2c3Coverage } from './fixtures/c18-legacy-2c3cab3/lib/c18-seed-coverage.mjs';
@@ -150,6 +152,17 @@ function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknow
 function downgradeTo53a4eec(dir: string) {
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '53a4eec', (preseed, before) => legacy53aCoverage({ preseed, before })));
+}
+
+/**
+ * C18.1.12 classifies the two governed-lifetime columns as source-owned formulas rather than bare
+ * timestamps, which changes the delivered coverage REPORT. Every frozen differential regenerates
+ * the report with its OWN module, so each one keeps measuring the semantic change it was written
+ * for rather than a contract version number.
+ */
+function downgradeToA424505(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, 'a424505', (preseed, before) => legacyA42Coverage({ preseed, before })));
 }
 
 function downgradeTo77489f5(dir: string) {
@@ -2951,7 +2964,7 @@ describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
   it('NON-VACUITY: the frozen a424505 verifier accepts the genuine archive', async () => {
-    const { dir, zip } = mutateArchive(() => {});
+    const { dir, zip } = mutateArchive(downgradeToA424505);
     try {
       const r = await legacyA42({ zipPath: zip, root: REPO });
       expect(r.problems).toEqual([]);
@@ -2960,7 +2973,7 @@ describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C
   });
 
   it.each(C11811_MUTATIONS)('%s — a424505 ACCEPTS it; C18.1.11 REJECTS it', async (_label, mutate, pattern) => {
-    const legacyCase = mutateArchive(mutate);
+    const legacyCase = mutateArchive((d) => { downgradeToA424505(d); mutate(d); });
     try {
       const old = await legacyA42({ zipPath: legacyCase.zip, root: REPO });
       expect(old.ok, `the frozen a424505 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
