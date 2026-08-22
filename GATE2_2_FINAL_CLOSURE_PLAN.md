@@ -2653,7 +2653,7 @@ for, re-exporting the same production package.
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.10 review, and no
 part of C19 has been started.
 
-## 26. C18.1.11 — THE POST-UPGRADE WORLD CLASSIFIED AND EXECUTED, AND A SECRET THAT CANNOT REACH A LOG (delivered; awaiting independent review)
+## 26. C18.1.11 — THE POST-UPGRADE WORLD CLASSIFIED AND EXECUTED, AND A SECRET THAT CANNOT REACH A LOG (delivered; SUPERSEDED by §27)
 
 **Evidence-bearing source `2c3cab3442b4bd495bf74aca803bd9be9bd7d0ea`.**
 Candidate CI: pull-request run `32574792444` (3/3 green, attempt 1). Source run `32575145266`
@@ -2809,4 +2809,184 @@ untouched. `a424505` is recorded as **authentic and leak-free**, superseded only
 verifier incompletely authenticates the post-upgrade world and the credential lifecycle.
 
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.11 review, and no
+part of C19 has been started.
+
+## 27. C18.1.12 — THE RESIDUAL SEMANTIC PACKAGES CLOSED, AND A CHILD'S OUTPUT THAT CANNOT LEAK (delivered; awaiting independent review)
+
+**Evidence-bearing source `220b26cf591d0ecd30060942040ee3341be798e6`.**
+Candidate CI: pull-request run `32591391366` (3/3 green, attempt 1). Source run `32591765637`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32592075561`
+(green, attempt 1).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-67f2bd5c42878f02ce5242820b820e1ddedc11c1eeac783a736aa4dfb569debe`
+(353,307 B wrapper) — exactly the archive `c18-db-paths-evidence-220b26c….zip` (outer sha256
+`67f2bd5c42878f02ce5242820b820e1ddedc11c1eeac783a736aa4dfb569debe`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+delivered archive: **336 commands; 1,008 raw stream files; 11 fixed top-level regular files; 1,019
+regular files; + the `raw/` directory entry = 1,020 ZIP entries.** The checksum manifest binds
+1,018 members with none unbound, none mismatched and no self-entry; no unsafe, absolute,
+traversing or duplicate ZIP paths; `source_sha` equals the evidence SHA. Verified from a fresh
+foreign checkout at exactly `220b26c` offline and **online-hosted** (`standing=delivery-online`).
+
+### 27.1 Reproduced first, against the frozen predecessor
+
+The exact `2c3cab3` verifier was frozen byte-for-byte — twelve files, each pinned by sha256 and
+asserted against `git show 2c3cab3:<path>` — and executed from a clean checkout AT that SHA, since
+it binds the manifest's `source_sha` to the checkout's own HEAD. Pristine evidence passes it with
+**zero findings**, and **eleven of eleven** residual packages were accepted by the complete frozen
+verifier with **zero findings each**, every attacker-controlled binding rebound: the processed
+snapshots, the command-bound raw receipts, those commands' byte lengths and digests,
+`commands.json`, the manifest and seed record where relevant, the audit canonicalization, row
+hashes, projections and heads where relevant, and `SHA256SUMS.txt`.
+
+The packages: one planned capability tuple minted twice and the other never; a non-uuid family
+shared by the new session and its refresh row; a non-digest written to both linked token-hash
+fields; those same fields DELETED from both rows; the family DELETED from both rows; both linked
+issue instants respelled to the same moment; every seeded and post-upgrade session lifetime doubled
+consistently; the same for every capability lifetime; the advanced chain head's stamp respelled;
+the closing event's instant respelled in row and body with the chain, projections and head fully
+rebuilt; and the post-upgrade decision identifier replaced everywhere with a coordinated non-uuid.
+
+Two further reproductions: the watchdog inherited a synthetic secret through the environment and
+reprinted it verbatim on **both** stdout and stderr the moment the child echoed it; and the
+bootstrap credential's fully rebound `expires_at - 10 ms` was accepted — see §27.7, where that
+result is accepted as a stated limit rather than repaired by assertion.
+
+Each reproduction is non-vacuous in all three directions: pristine accepted, mutation accepted by
+the frozen verifier, corrected verifier rejecting it **for its own owning rule** rather than for
+any incidental disagreement.
+
+### 27.2 An exact multiset, not a per-row membership test
+
+The governed operation mints exactly two capabilities: one sessionless identity capability and one
+C1 capability bound to the new session. C18.1.11 checked each ROW against the plan with `find()`,
+so rewriting the C1 row's whole `(op_class, bound_action, session_id)` triple into the identity
+row's triple produced two rows that each matched a plan entry — one entry consumed twice, the other
+never — and passed. Membership is not consumption: the planned and minted tuples are now compared
+as MULTISETS, so a duplicate, an omission and an unplanned tuple are each their own finding, and
+the per-row membership rule still runs alongside.
+
+### 27.3 Rules that are conjunctive, and a binding that cannot pass by default
+
+`bound()` returned success when its expectation did not resolve. Deleting a field from BOTH linked
+rows therefore made each side's expectation undefined and silenced both directions at once —
+silence reading as approval, the most dangerous shape a validator can have. An unresolved
+counterpart is now a finding. `allOf`, `uuidBound`, `digestBound` and `canonicalTimestampBound`
+compose a grammar with an equality so that neither can stand in for the other: coordinated equality
+alone no longer satisfies a claim about shape.
+
+A row's FIELD SET is itself a claim. An inserted row must carry exactly the columns the source
+classifies; an updated row must carry exactly its own pre-update field set and exactly the
+delivered catalog's. The shape findings and the column findings are independent — neither
+suppresses the other.
+
+### 27.4 Lifetimes the source owns
+
+C18.1.11 recovered the governed TTL from the run's OWN prior rows, so an archive whose lifetimes
+were all doubled — seeded and post-upgrade, every snapshot, consistently — doubled the expectation
+with them and passed. `scripts/gate/lib/c18-lifetimes.mjs` now states each governed lifetime once
+and both the PRODUCER and the verifier read it: session 3,600 s and capability 60 s, plus the
+bootstrap capability's 120 s, which `ctx.issue_bootstrap` hard-codes inside migration 0011 and
+which is therefore MIRRORED under a control asserting the mirror against the migration text. Six
+literal TTL arguments in the producer became one named constant. The only slack is an explicitly
+justified sub-second clock allowance, documented where it is defined: a session's expiry is
+computed in the application while its issue instant is stamped by the database, and a capability's
+two ends come from `now()` and `clock_timestamp()` within one transaction. The largest deviation in
+the delivered evidence is 8 ms; the allowance is a quarter second, and it is a tolerance on the
+CLOCK, never on the TTL.
+
+### 27.5 Canonical spelling, everywhere it is recorded
+
+A same-instant respelling is not the value the database wrote. Linked session and refresh instants
+are bound by SPELLING as well as by instant; the advanced head copies its closing event's stamp
+byte for byte; the closing audit row's `occurred_at` is byte-identical to its canonical body's,
+which must itself be the exact millisecond JSON grammar. All of these now fail even when every
+linked field, canonicalization, row hash, projection and head is rebound to agree.
+
+### 27.6 Identifiers and digests carry grammars
+
+Every generated identifier in the post-upgrade world — correlation, decision, session, family,
+event, effect, operation — is required to be a uuid as well as to equal its counterpart; both
+refresh-token hash fields and every digest must be sha-256 hex; `outbox:<uuid>` and
+`principal:<uuid>` must carry real uuid suffixes.
+
+### 27.7 The bootstrap marking instant: the interval is what is proved
+
+C18.1.11 described the marking instant as narrowed "to the marking itself" and reported that a
+cited millisecond drift "now fails". Replayed against the delivered verifier, a fully rebound
+`expires_at - 10 ms` was still accepted. The enforcement was correct; the CLAIM was not.
+
+`identity.bootstrap_mark_one_time` (migration 0012, frozen) sets `clock_timestamp() + interval '24
+hours'` and records nothing else about that read, so the evidence bounds a causal INTERVAL, not an
+instant. Any value inside it is a legitimate reading of the clock, which makes an in-window
+rebinding observationally indistinguishable from the authentic archive. Recording a tighter
+producer-side bracket would not change that: the bracket is archive data too, and an attacker
+moving the expiry moves it as well. The claim is therefore narrowed to the interval it establishes,
+and the residual is declared in `scripts/gate/lib/c18-observational-limits.mjs` — what is
+undecidable, why, what IS proved, and that only a signed external time attestation over the
+bootstrap transaction can close it — routed to **C19's external-anchoring ledger**. A control
+asserts that list is exactly the set of limits the gate tolerates, and the interval rule itself is
+still enforced: a drift large enough to push the implied marking past the audited bootstrap stamp
+fails.
+
+### 27.8 A child's output that cannot leak
+
+`stdio: 'inherit'` connected the child straight to the watchdog's own descriptors, so nothing the
+child wrote passed through redaction at all — the original incident's exact shape, one layer down.
+Both streams are now PIPED through a streaming redactor that forwards a line at a time, so a token
+cannot escape by landing across a chunk boundary, with a bounded carry and an overlap so a
+pathological writer cannot defeat it either. Stream separation, exit codes, signals and the timeout
+diagnostics are unchanged; `close` and a bounded post-`exit` drain race so a surviving grandchild
+holding a pipe cannot make the watchdog wait indefinitely — the very failure this watchdog exists
+to prevent.
+
+Writing the controls found a second, independent gap: every provider-token pattern was anchored
+with `\b`, which requires a non-word character before the match, so a token abutting other output
+was left verbatim. The anchors are gone.
+
+Controls prove no synthetic secret inherited through the environment survives when the child prints
+it to stdout, to stderr, without a trailing newline, split into single-character writes, buried in
+200 KB of other output, thrown inside an error, or written by a child that ignores SIGTERM and is
+killed at the deadline — and that no gate script hands a credential to a child through argv.
+
+### 27.9 Controls, and a suite that finishes
+
+Hermetic gate **682** (was 600) · in-gate mutation/differential **280** (was 265) · API hermetic
+**1,631** · integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and
+boundaries clean · migrations 0001–0021 byte-identical (21 files, zero drift).
+
+The multi-axis matrix is GENERATED from the links and invariants rather than written per column,
+because a package that moves several columns at once so they still agree cannot be found by a
+one-column-at-a-time matrix. Its axes: coordinated invalid values at both ends of a link, both ends
+deleted, coordinated respellings, consistent lifetime rewrites across every snapshot, exact
+multiset duplication, coordinated identifier corruption, full audit rechain and reprojection, and
+an anti-suppression axis proving a shape defect, a grammar defect and a multiset defect are all
+reported from one run.
+
+**Runtime.** The in-gate suite ran in a single worker; with each differential judging a whole
+archive twice — once with the frozen predecessor's verifier and once with this one — that put the
+hosted measurement at 107.42 s. The controls are now split across four shards packed by MEASURED
+cost, plus one serial phase for the single control that must temporarily write an untracked file
+into the checkout (under parallel shards, any other worker deriving a source binding in that window
+would correctly, and irrelevantly, report an unclean tree). Nothing is sampled, skipped or relaxed:
+the same controls run, on more cores.
+
+Local wall clock, three clean runs: **68 s / 66 s / 63 s → median 66 s, max 68 s** (≤180 s), with
+**15 more controls** than the 148 s median it replaces. Hosted control suite **49.89 s** (candidate:
+47.21 s parallel + 2.68 s serial) and **49.54 s** (push/`main`: 47.03 s + 2.51 s) — both ≤90 s and
+both a substantial improvement on C18.1.11's 107.42 s. Complete hosted C18 gate **2 m 09 s**
+(≤6 min). Every long command ran under the portable 900-second process-group watchdog; no
+background work, stale monitors, orphaned processes or leftover gate containers.
+
+**Scope discipline.** Only `scripts/gate/**`, `apps/api/test/gate/**`, the two C18 vitest configs
+and the C18 gate step in `.github/workflows/ci.yml` change — the last solely to run the serial
+control phase. Migrations 0001–0021, C15–C17 verifier logic, unrelated product code and all prior
+authentic evidence are untouched.
+
+`2c3cab3` is recorded as **authentic, leak-free and provenance-valid**. Its evidence is NOT
+contaminated. It is superseded because its verifier accepts the residual semantic packages above
+and its watchdog does not redact child output.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.12 review, and no
 part of C19 has been started.
