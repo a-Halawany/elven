@@ -17,6 +17,7 @@ import {
   seedOutboxPayload,
 } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 import { SEED_COVERAGE, modelCoveredColumns } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
+import { GOVERNED_LIFETIMES, capabilityLifetimeSeconds } from '../../../../scripts/gate/lib/c18-lifetimes.mjs';
 
 const sha256 = (b: string) => createHash('sha256').update(b).digest('hex');
 const u = (n: string) => `aaaaaaaa-${n.padStart(4, '0').slice(0, 4)}-4aaa-8aaa-aaaaaaaaaaaa`;
@@ -152,7 +153,8 @@ export function buildSeedWorld(): SeedWorld {
     status: P.session.status, refresh_token_hash: hex(String(i + 1)),
     prev_refresh_token_hash: P.session.prev_refresh_token_hash,
     context_key_hash: hex(String.fromCharCode(97 + i)),
-    issued_at: t(CREATED[entityOf(s.slot)!]), expires_at: t(CREATED[entityOf(s.slot)!] + 3600),
+    issued_at: t(CREATED[entityOf(s.slot)!]),
+    expires_at: t(CREATED[entityOf(s.slot)!] + GOVERNED_LIFETIMES.sessionSeconds),
     revoked_at: P.session.revoked_at,
     bound_epoch: s.principalSlot === SEED_ADMIN.slot
       ? P.principalRevocationEpoch.admin : P.principalRevocationEpoch.governed,
@@ -181,7 +183,12 @@ export function buildSeedWorld(): SeedWorld {
       nonce: u(`07${String(capSeq).padStart(2, '0')}`), op_class: c.op_class,
       bound_action: c.bound_action,
       session_id: c.sessionSlot === null ? CAPABILITY_SESSIONLESS_ID : entityOf(c.sessionSlot),
-      issued_at: t(40 + capSeq), expires_at: t(40 + capSeq + 60), consumed_at: c.consumed_at,
+      // The bootstrap capability is minted by `ctx.issue_bootstrap`, which carries its own fixed
+      // TTL; every other capability is issued with the TTL the producer passes. The synthetic
+      // world reads both from the same source-owned spec the real producer does.
+      issued_at: t(40 + capSeq),
+      expires_at: t(40 + capSeq + capabilityLifetimeSeconds(c.op_class)),
+      consumed_at: c.consumed_at,
     };
   }));
 

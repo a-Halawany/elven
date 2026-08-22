@@ -44,11 +44,16 @@ export function redactSecrets(text) {
   const SECRET_KEY = '(?:[A-Za-z0-9_-]*(?:TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY|SESSION|COOKIE|BEARER|AUTH)[A-Za-z0-9_-]*)';
   return text
     // Provider token shapes, redacted wherever they appear.
-    .replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[REDACTED]')
-    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}/g, '[REDACTED]')
-    .replace(/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, '[REDACTED]')
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED]')
-    .replace(/\bey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED]')
+    //
+    // C18.1.12: these deliberately carry NO leading `\b`. A word boundary requires a non-word
+    // character before the match, so a token abutting other output — which is exactly what a
+    // forced chunk boundary or an unlucky log line produces — was left verbatim. The anchor bought
+    // nothing but a hole.
+    .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[REDACTED]')
+    .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[REDACTED]')
+    .replace(/xox[abprs]-[A-Za-z0-9-]{10,}/g, '[REDACTED]')
+    .replace(/AKIA[0-9A-Z]{16}/g, '[REDACTED]')
+    .replace(/ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED]')
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[REDACTED]')
     // KEY=value and KEY: value where the KEY names a secret.
     .replace(new RegExp(`(${SECRET_KEY}\\s*[=:]\\s*)(\\S+)`, 'gi'), '$1[REDACTED]')

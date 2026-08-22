@@ -72,6 +72,20 @@ import {
 } from '../../../../scripts/gate/lib/c18-post-upgrade.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { POST_UPGRADE_DELTA } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  GOVERNED_LIFETIMES, capabilityLifetimeSeconds, judgeLifetime,
+} from '../../../../scripts/gate/lib/c18-lifetimes.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  OBSERVATIONAL_LIMITS, observationalLimitIds,
+} from '../../../../scripts/gate/lib/c18-observational-limits.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  allOf, boundValue, canonicalTimestampBound, digestBound, prefixedUuid, uuidBound,
+} from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { createRedactingStream } from '../../../../scripts/gate/c18-watchdog.mjs';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
@@ -2557,7 +2571,7 @@ describe('C18.1.11 — the post-upgrade world is classified and executed, not co
     const sessions = w.final.tables['identity.sessions'].rows;
     const target = sessions[sessions.length - 1];
     target.expires_at = new Date(Date.parse(target.expires_at) + 1_000).toISOString().replace('Z', '+00:00');
-    expect(judgePostUpgrade(w).problems.join('\n')).toMatch(/every session in this run is issued for/);
+    expect(judgePostUpgrade(w).problems.join('\n')).toMatch(/the source governs every session at 3600s/);
   });
 
   /** One rule-aware mutation per registered post-upgrade column. */
@@ -2571,5 +2585,606 @@ describe('C18.1.11 — the post-upgrade world is classified and executed, not co
     expect(subject, `${spec} has no changed row to mutate`).toBeDefined();
     mutatePostUpgradeColumn(w, table, column, subject);
     expect(judgePostUpgrade(w).problems.length, `${spec} accepted a well-typed wrong value`).toBeGreaterThan(0);
+  });
+});
+
+describe('C18.1.12 — the frozen 2c3cab3 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '2c3cab3442b4bd495bf74aca803bd9be9bd7d0ea';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '377eaf6dfbc698b0ba843e8236fbc7ad1a6bbd5b08da7759a0c908eb46b0e0c6'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', 'c080924d0d9af5e52153b1ec868f1bb724c103b1645ae3e980d5535a2871db88'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-post-upgrade.mjs', 'scripts/gate/lib/c18-post-upgrade.mjs', '2361079b52f49382aed2207bbe7249ddb61771dfb085c97df8ebdc8cf94e69e1'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '97af2b2605d8fd53e71f00f2b1470bfff2ec895ab4bac076c54f62c6d30acb79'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', '86f56a040fa9c9647d30f806f01fe5f14fb0006528a7f843f96bfdd09b30afa3'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '19d3c4e14598f95d03b852e1b38e64a8cdb90098fabd578c0a07b7fcae1978c1'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', '1578e89715b7cc20ca7e6106b40eb54584fcf71f7b6a399614eb2539a36ce1d0'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-2c3cab3/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-2c3cab3', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+
+  it('the frozen predecessor carries every file its verifier executes', () => {
+    // A differential is only meaningful if the frozen leg can actually run.
+    const dir = join(__dirname, 'fixtures', 'c18-legacy-2c3cab3');
+    for (const f of ['c18-db-paths.mjs', 'lib/c18-post-upgrade.mjs', 'lib/c18-seed-validators.mjs',
+      'lib/c18-seed-coverage.mjs', 'lib/c18-seed-0012.mjs', 'lib/hosted-run.mjs',
+      'lib/c18-inventory.mjs', 'lib/c18-query-plan.mjs', 'lib/c18-seed-spec.mjs']) {
+      expect(existsSync(join(dir, f)), f).toBe(true);
+    }
+  });
+});
+
+describe('C18.1.12 — a binding that cannot pass by default', () => {
+  // §2B. The C18.1.11 shape returned success when its expectation did not resolve, so silencing
+  // BOTH ends of a link silenced the link. Silence must never read as approval.
+  it('an unresolved counterpart is a finding, not a pass', () => {
+    const rule = boundValue(() => undefined, 'the counterpart');
+    expect(rule('anything', {}, {})).toHaveLength(1);
+    expect(rule('anything', {}, {}).join('')).toMatch(/did not resolve, so this binding proves nothing/);
+  });
+  it('an absent value against a resolved counterpart is a finding', () => {
+    expect(boundValue(() => 'x', 'the counterpart')(undefined, {}, {}).join('')).toMatch(/is absent/);
+  });
+  it('a counterpart lookup that throws is a finding, not an exception', () => {
+    const rule = boundValue(() => { throw new Error('boom'); }, 'the counterpart');
+    expect(rule('x', {}, {}).join('')).toMatch(/could not resolve the counterpart: boom/);
+  });
+  it('allOf reports EVERY violated claim; no rule masks another', () => {
+    const rule = allOf(() => ['first'], () => [], () => ['second']);
+    expect(rule('v', {}, {})).toEqual(['first', 'second']);
+  });
+
+  // §2F. Coordinated equality alone is not sufficient: the grammar is a separate claim.
+  const OK_UUID = 'bbbbbbbb-0001-4bbb-8bbb-bbbbbbbbbbbb';
+  it.each([
+    ['a uuid binding rejects a coordinated non-uuid', uuidBound(() => 'not-a-uuid', 'its pair'), 'not-a-uuid', /not a uuid/],
+    ['a uuid binding rejects a valid uuid that is the wrong one', uuidBound(() => OK_UUID, 'its pair'), 'bbbbbbbb-0002-4bbb-8bbb-bbbbbbbbbbbb', /its pair is/],
+    ['a digest binding rejects a coordinated non-digest', digestBound(() => 'not-a-digest', 'its pair'), 'not-a-digest', /not a sha-256 hex digest/],
+    ['a digest binding rejects a valid digest that is the wrong one', digestBound(() => '1'.repeat(64), 'its pair'), '2'.repeat(64), /its pair is/],
+    ['a timestamp binding rejects a coordinated respelling', canonicalTimestampBound(() => '2026-09-01T00:00:00+0000', 'its pair'), '2026-09-01T00:00:00+0000', /not the canonical governed timestamp grammar/],
+    ['a timestamp binding rejects the same instant spelled differently', canonicalTimestampBound(() => '2026-09-01T00:00:00+00:00', 'its pair'), '2026-09-01T00:00:00.000+00:00', /its pair is/],
+    ['a prefixed identifier rejects a non-uuid suffix', prefixedUuid('principal'), 'principal:nope', /whose principal suffix is not a uuid/],
+    ['a prefixed identifier rejects a missing prefix', prefixedUuid('outbox'), OK_UUID, /not a outbox:<uuid> identifier/],
+  ] as ReadonlyArray<[string, (v: unknown, r: unknown, c: unknown) => string[], unknown, RegExp]>)(
+    '%s', (_label, rule, value, pattern) => {
+      expect(rule(value, {}, {}).join('\n')).toMatch(pattern);
+    },
+  );
+  it('each conjunctive binding accepts the one value it governs', () => {
+    expect(uuidBound(() => OK_UUID, 'its pair')(OK_UUID, {}, {})).toEqual([]);
+    expect(digestBound(() => '1'.repeat(64), 'its pair')('1'.repeat(64), {}, {})).toEqual([]);
+    expect(canonicalTimestampBound(() => '2026-09-01T00:00:00+00:00', 'p')('2026-09-01T00:00:00+00:00', {}, {})).toEqual([]);
+    expect(prefixedUuid('principal')(`principal:${OK_UUID}`, {}, {})).toEqual([]);
+  });
+});
+
+describe('C18.1.12 — the governed lifetimes are owned by the source', () => {
+  // §2D. C18.1.11 recovered the TTL from the archive's own prior rows, so doubling every lifetime
+  // doubled the expectation with it.
+  it('the spec states each governed lifetime exactly once', () => {
+    expect(GOVERNED_LIFETIMES.sessionSeconds).toBe(3_600);
+    expect(GOVERNED_LIFETIMES.capabilitySeconds).toBe(60);
+    expect(GOVERNED_LIFETIMES.bootstrapCapabilitySeconds).toBe(120);
+    expect(GOVERNED_LIFETIMES.clockSkewMs).toBeLessThan(1_000);
+  });
+  it('the bootstrap TTL MIRRORS migration 0011, which owns it', () => {
+    // The bootstrap capability's TTL is hard-coded inside ctx.issue_bootstrap and takes no
+    // argument. Migrations are frozen, so the constant mirrors that text — and must not drift.
+    const sql = readFileSync(join(MIGRATIONS, '0011_authority_boundary_closure.sql'), 'utf8');
+    const fn = sql.slice(sql.indexOf('FUNCTION ctx.issue_bootstrap'));
+    const body = fn.slice(0, fn.indexOf('$$ LANGUAGE plpgsql'));
+    expect(body).toContain(`, ${GOVERNED_LIFETIMES.bootstrapCapabilitySeconds})`);
+  });
+  it('the producer issues capabilities at the spec TTL, with no literal of its own', () => {
+    const producer = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-seed-0012.mjs'), 'utf8');
+    expect(producer).toContain('GOVERNED_LIFETIMES.capabilitySeconds');
+    expect(producer).toContain('sessionExpiresAt()');
+    // No `ctx.issue_*(..., <literal>)` TTL argument survives.
+    expect(producer).not.toMatch(/ctx\.issue_[a-z_]+\([^)]*,\s*\d+\)/);
+  });
+  it('a lifetime inside the declared clock allowance is accepted', () => {
+    const seconds = GOVERNED_LIFETIMES.sessionSeconds;
+    const base = Date.parse('2026-09-01T00:00:00.000Z');
+    const drift = GOVERNED_LIFETIMES.clockSkewMs;
+    expect(judgeLifetime({
+      issuedAt: new Date(base).toISOString(),
+      expiresAt: new Date(base + seconds * 1_000 + drift).toISOString(),
+      seconds,
+      label: 'session',
+    })).toEqual([]);
+  });
+  it('a lifetime just beyond the declared clock allowance is a finding', () => {
+    const seconds = GOVERNED_LIFETIMES.sessionSeconds;
+    const base = Date.parse('2026-09-01T00:00:00.000Z');
+    expect(judgeLifetime({
+      issuedAt: new Date(base).toISOString(),
+      expiresAt: new Date(base + seconds * 1_000 + GOVERNED_LIFETIMES.clockSkewMs + 1).toISOString(),
+      seconds,
+      label: 'session',
+    }).join('')).toMatch(/the source governs every session at 3600s/);
+  });
+  it('a capability lifetime is judged by its own class', () => {
+    expect(capabilityLifetimeSeconds('bootstrap')).toBe(GOVERNED_LIFETIMES.bootstrapCapabilitySeconds);
+    expect(capabilityLifetimeSeconds('C1')).toBe(GOVERNED_LIFETIMES.capabilitySeconds);
+  });
+});
+
+describe('C18.1.12 — what this evidence cannot decide is declared, not implied', () => {
+  // §2I. C18.1.11 called the bootstrap marking instant narrowed "to the marking itself" and
+  // reported that a cited millisecond drift failed. Replayed, that drift was still accepted.
+  it('the tolerated limits are exactly the declared list', () => {
+    expect(observationalLimitIds()).toEqual(['bootstrap-marking-instant']);
+  });
+  it('each declared limit says what is proved, what is not, and where the anchor must come from', () => {
+    for (const l of OBSERVATIONAL_LIMITS) {
+      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires', 'ledger']) {
+        expect(typeof (l as Record<string, unknown>)[field], `${l.id}.${field}`).toBe('string');
+        expect(String((l as Record<string, unknown>)[field]).length).toBeGreaterThan(20);
+      }
+    }
+  });
+  it('the bootstrap limit is routed to C19 external anchoring', () => {
+    const limit = OBSERVATIONAL_LIMITS.find((l) => l.id === 'bootstrap-marking-instant');
+    expect(limit?.ledger).toBe('C19 external-anchoring');
+  });
+  it('the credential model no longer claims an exact marking instant', () => {
+    const runner = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c18-coverage-runner.mjs'), 'utf8');
+    expect(runner).toContain('WHAT IS PROVED IS THE INTERVAL, NOT THE INSTANT');
+    expect(runner).toContain('c18-observational-limits.mjs');
+  });
+  it('the interval itself is still enforced: a marking outside it is a finding', () => {
+    // The narrowing is a real rule, not a disclaimer. A drift large enough to push the implied
+    // marking past the audited bootstrap stamp still fails.
+    const w = buildSeedWorld();
+    const creds = w.before.tables['identity.credentials'].rows as Array<Record<string, unknown>>;
+    const rotated = creds.find((c) => c.status === 'rotated')!;
+    rotated.expires_at = new Date(Date.parse(String(rotated.expires_at)) + 10_000)
+      .toISOString().replace('Z', '+00:00');
+    expect(runCoverageValidators({ before: w.before, slots: worldSlots(w) }).problems.join('\n'))
+      .toMatch(/credential lifecycle: the expiry implies a marking instant/);
+  });
+});
+
+describe('C18.1.12 — the capability multiset is consumed exactly once', () => {
+  // §2A. C18.1.11 tested each row for MEMBERSHIP with find(), so rewriting the C1 capability's
+  // whole tuple into the identity capability's tuple left one plan entry consumed twice and the
+  // other never — two rows, each matching a plan entry, zero findings.
+  const inserted = (w: { after: any; final: any }) => {
+    const seen = new Set((w.after.tables['ctx.issued'].rows as any[]).map((r) => r.nonce));
+    return (w.final.tables['ctx.issued'].rows as any[]).filter((r) => !seen.has(r.nonce));
+  };
+  const judged = (mutate: (w: any) => void) => {
+    const w = buildPostUpgradeWorld();
+    mutate(w);
+    return judgePostUpgrade(w).problems.join('\n');
+  };
+
+  it('the pristine boundary mints exactly the planned multiset', () => {
+    expect(judgePostUpgrade(buildPostUpgradeWorld()).problems).toEqual([]);
+  });
+  it('one planned tuple duplicated and the other omitted is a finding', () => {
+    expect(judged((w) => {
+      const [identity, c1] = inserted(w).sort((a, b) => (a.op_class === 'identity' ? -1 : 1));
+      c1.op_class = identity.op_class;
+      c1.bound_action = identity.bound_action;
+      c1.session_id = identity.session_id;
+    })).toMatch(/post-upgrade capabilities: the operation mints 1 capability with/);
+  });
+  it('the omitted tuple is named as missing, not merely as a count', () => {
+    expect(judged((w) => {
+      const [identity, c1] = inserted(w).sort((a, b) => (a.op_class === 'identity' ? -1 : 1));
+      c1.op_class = identity.op_class;
+      c1.bound_action = identity.bound_action;
+      c1.session_id = identity.session_id;
+    })).toMatch(/the evidence carries 0/);
+  });
+  it('a capability bound to the WRONG session is a finding even with the right class and action', () => {
+    expect(judged((w) => {
+      const c1 = inserted(w).find((r) => r.op_class !== 'identity')!;
+      c1.session_id = (w.final.tables['identity.sessions'].rows as any[])[0].id;
+    })).toMatch(/post-upgrade capabilities|that capability carries/);
+  });
+  it('a capability belonging to no planned tuple is a finding', () => {
+    expect(judged((w) => {
+      inserted(w)[0].bound_action = 'objects.delete';
+    })).toMatch(/belongs to no planned capability|which the operation does not mint/);
+  });
+  it('the multiset is stated only when the new session resolves', () => {
+    // A plan entry whose session cannot be named must not silently compare as undefined.
+    expect(judged((w) => {
+      w.final.tables['identity.sessions'].rows = [(w.after.tables['identity.sessions'].rows as any[])[0]];
+      w.final.tables['identity.sessions'].row_count = 1;
+    })).toMatch(/post-upgrade/);
+  });
+});
+
+describe('C18.1.12 — a row’s field set is itself a claim', () => {
+  // §2C. A deleted field had no rule to fail; deleting BOTH ends of a link made both bindings
+  // unresolved and both rules silent.
+  const judged = (mutate: (w: any) => void) => {
+    const w = buildPostUpgradeWorld();
+    mutate(w);
+    return judgePostUpgrade(w).problems.join('\n');
+  };
+  const newSession = (w: any) => (w.final.tables['identity.sessions'].rows as any[])
+    .find((r) => !(w.after.tables['identity.sessions'].rows as any[]).some((p: any) => p.id === r.id));
+  const newRefresh = (w: any) => (w.final.tables['identity.refresh_tokens'].rows as any[])
+    .find((r) => !(w.after.tables['identity.refresh_tokens'].rows as any[]).some((p: any) => p.id === r.id));
+
+  it('a field deleted from BOTH linked rows is reported for both rows', () => {
+    const out = judged((w) => { delete newSession(w).family_id; delete newRefresh(w).family_id; });
+    expect(out).toMatch(/'identity\.sessions' row is MISSING field 'family_id'/);
+    expect(out).toMatch(/'identity\.refresh_tokens' row is MISSING field 'family_id'/);
+  });
+  it('both paired token-hash fields deleted together is reported for both rows', () => {
+    const out = judged((w) => {
+      delete newSession(w).refresh_token_hash;
+      delete newRefresh(w).token_hash;
+    });
+    expect(out).toMatch(/'identity\.sessions' row is MISSING field 'refresh_token_hash'/);
+    expect(out).toMatch(/'identity\.refresh_tokens' row is MISSING field 'token_hash'/);
+  });
+  it('an EXTRA field on an inserted row is a finding', () => {
+    expect(judged((w) => { newSession(w).smuggled = 'x'; }))
+      .toMatch(/'identity\.sessions' row carries field 'smuggled'/);
+  });
+  it('an update that changes the row’s shape is a finding', () => {
+    expect(judged((w) => { delete (w.final.tables['audit.audit_chain_heads'].rows as any[])[0].frozen; }))
+      .toMatch(/an update changes values, not shape|MISSING field 'frozen'/);
+  });
+  it('a wrong field set does NOT suppress the column rules, and vice versa', () => {
+    // Independent findings stay independent: the shape defect and an unrelated value defect are
+    // both reported from the same run.
+    const out = judged((w) => {
+      delete newSession(w).family_id;
+      delete newRefresh(w).family_id;
+      (w.final.tables['ctx.operation'].rows as any[])[0].runtime_role = 'not-eye';
+    });
+    expect(out).toMatch(/MISSING field 'family_id'/);
+    expect(out).toMatch(/ctx\.operation\.runtime_role/);
+  });
+});
+
+describe('C18.1.12 — same-instant respellings are not the recorded value', () => {
+  // §2E, §2G. Every one of these keeps the instant and rebinds every linked field.
+  const judged = (mutate: (w: any) => void) => {
+    const w = buildPostUpgradeWorld();
+    mutate(w);
+    return judgePostUpgrade(w).problems.join('\n');
+  };
+  const respell = (v: string) => v.replace('+00:00', '+0000');
+  const newSession = (w: any) => (w.final.tables['identity.sessions'].rows as any[])[1];
+  const newRefresh = (w: any) => (w.final.tables['identity.refresh_tokens'].rows as any[])[1];
+  const closing = (w: any) => (w.final.tables['audit.audit_events'].rows as any[])[1];
+
+  it('both linked issue instants respelled together is a finding', () => {
+    expect(judged((w) => {
+      newSession(w).issued_at = respell(newSession(w).issued_at);
+      newRefresh(w).issued_at = respell(newRefresh(w).issued_at);
+    })).toMatch(/identity\.sessions\.issued_at .* not the canonical governed timestamp grammar/);
+  });
+  it('the advanced head’s stamp respelled is a finding', () => {
+    expect(judged((w) => {
+      const head = (w.final.tables['audit.audit_chain_heads'].rows as any[])[0];
+      head.updated_at = respell(head.updated_at);
+    })).toMatch(/audit_chain_heads\.updated_at .* not the canonical governed timestamp grammar/);
+  });
+  it('the head’s stamp moved to another canonical instant is a finding', () => {
+    expect(judged((w) => {
+      const head = (w.final.tables['audit.audit_chain_heads'].rows as any[])[0];
+      head.updated_at = new Date(Date.parse(head.updated_at) + 1_000).toISOString().replace('Z', '+00:00');
+    })).toMatch(/the head is stamped when its closing event lands/);
+  });
+  it('the closing body’s instant respelled to extra precision, fully rechained, is a finding', () => {
+    expect(judged((w) => {
+      const row = closing(w);
+      const body = { ...row.event, occurred_at: String(row.event.occurred_at).replace(/\.(\d{3})Z$/, '.$1000Z') };
+      row.event = body;
+      row.occurred_at = body.occurred_at;
+      row.event_jcs = jcsCanonicalize(body as never);
+      row.row_hash = auditRowHash({
+        partitionId: row.partition_id, auditSeq: Number(row.audit_seq),
+        previousHash: row.previous_hash, event: body as never,
+      });
+      const head = (w.final.tables['audit.audit_chain_heads'].rows as any[])[0];
+      head.head_hash = row.row_hash;
+    })).toMatch(/not the exact millisecond JSON instant grammar/);
+  });
+  it('the closing ROW instant respelled away from its body is a finding', () => {
+    expect(judged((w) => { closing(w).occurred_at = `${closing(w).occurred_at.replace('Z', '')}+00:00`; }))
+      .toMatch(/audit_events\.occurred_at is .*; its canonical body records/);
+  });
+});
+
+describe('C18.1.12 — a secret handed to a child cannot reach any output', () => {
+  // §2H. C18.1.11 redacted what the WATCHDOG printed, then gave the child `stdio: 'inherit'`,
+  // which connects it straight to this process's descriptors. Nothing the child wrote was
+  // filtered at all — the original incident's exact shape.
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const CANARY = 'gho_c18canary000000000000000000000000';
+  const run = (script: string, seconds = '20') => spawnSync(
+    'node', [WATCHDOG, seconds, 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, EYE_CANARY_TOKEN: CANARY }, timeout: 90_000 },
+  );
+
+  it.each([
+    ['the child prints it to stdout', 'process.stdout.write(process.env.EYE_CANARY_TOKEN + "\\n")'],
+    ['the child prints it to stderr', 'process.stderr.write(process.env.EYE_CANARY_TOKEN + "\\n")'],
+    ['the child prints it with no trailing newline', 'process.stdout.write(process.env.EYE_CANARY_TOKEN)'],
+    ['the child throws it in an error', 'throw new Error("failed using " + process.env.EYE_CANARY_TOKEN)'],
+    ['the child splits it across many writes',
+      'const t = process.env.EYE_CANARY_TOKEN; for (const c of t) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['the child interleaves it with bulk output',
+      'process.stdout.write("x".repeat(200000)); process.stdout.write(process.env.EYE_CANARY_TOKEN + "\\n")'],
+  ] as ReadonlyArray<[string, string]>)('no canary survives when %s', (_label, script) => {
+    const r = run(script);
+    expect(`${r.stdout}${r.stderr}`).not.toContain(CANARY);
+  });
+
+  it('no canary survives when the child ignores SIGTERM and is killed at the deadline', () => {
+    const r = run(
+      'process.on("SIGTERM", () => {}); process.stdout.write(process.env.EYE_CANARY_TOKEN + "\\n");'
+      + ' setInterval(() => {}, 1000)',
+      '2',
+    );
+    expect(`${r.stdout}${r.stderr}`).not.toContain(CANARY);
+    expect(r.stderr).toMatch(/DEADLINE EXCEEDED/);
+    expect(r.status).toBe(124);
+  });
+
+  it('the child’s stdout and stderr stay separate, and its exit code survives', () => {
+    // The markers travel in the ENVIRONMENT, so they cannot reach either stream through the
+    // watchdog's own echoed command line — which is where a naive version of this control fails.
+    const r = spawnSync('node', [
+      WATCHDOG, '20', 'node', '-e',
+      'process.stdout.write(process.env.M_OUT); process.stderr.write(process.env.M_ERR); process.exit(9)',
+    ], { encoding: 'utf8', env: { ...process.env, M_OUT: 'marker-out\n', M_ERR: 'marker-err\n' } });
+    expect(r.status).toBe(9);
+    expect(r.stdout).toContain('marker-out');
+    expect(r.stdout).not.toContain('marker-err');
+    expect(r.stderr).toContain('marker-err');
+    expect(r.stderr).not.toContain('marker-out');
+  });
+
+  it('non-secret child output is forwarded unchanged, in order', () => {
+    const r = run('for (let i = 0; i < 50; i += 1) process.stdout.write(`line ${i}\\n`)');
+    const lines = r.stdout.trim().split('\n');
+    expect(lines).toHaveLength(50);
+    expect(lines[0]).toBe('line 0');
+    expect(lines[49]).toBe('line 49');
+  });
+
+  it('the watchdog no longer inherits the child’s output descriptors', () => {
+    const src = readFileSync(WATCHDOG, 'utf8');
+    const code = src.split('\n').filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l)).join('\n');
+    expect(code).not.toContain("stdio: 'inherit'");
+    expect(code).toContain("stdio: ['inherit', 'pipe', 'pipe']");
+  });
+
+  it('the streaming redactor catches a secret split across chunk boundaries', () => {
+    // The unit-level proof of the same property: a pipe splits wherever the kernel chooses.
+    const seen: string[] = [];
+    const stream = createRedactingStream((t: string) => seen.push(t));
+    for (const c of `prefix ${CANARY} suffix\n`) stream.push(c);
+    stream.flush();
+    expect(seen.join('')).not.toContain(CANARY);
+    expect(seen.join('')).toContain('[REDACTED]');
+  });
+
+  it('the streaming redactor forwards everything it is given', () => {
+    const seen: string[] = [];
+    const stream = createRedactingStream((t: string) => seen.push(t));
+    stream.push('alpha\nbeta\n');
+    stream.push('gamma');       // no trailing newline: held until flush
+    expect(seen.join('')).toBe('alpha\nbeta\n');
+    stream.flush();
+    expect(seen.join('')).toBe('alpha\nbeta\ngamma');
+  });
+
+  it('the streaming redactor bounds its buffer without dropping a straddling secret', () => {
+    const seen: string[] = [];
+    const stream = createRedactingStream((t: string) => seen.push(t));
+    stream.push('y'.repeat(1 << 17));   // one enormous line, no newline at all
+    stream.push(CANARY);                // abutting it directly, with no separator of any kind
+    stream.push('y'.repeat(1 << 17));
+    stream.flush();
+    expect(seen.join('')).not.toContain(CANARY);
+  });
+
+  it('the credential is never handed to a child through argv anywhere in the gate scripts', () => {
+    // Credentials travel through the environment. An argv-borne secret is the mistake itself.
+    const dir = join(REPO, 'scripts', 'gate');
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+    for (const f of walk(dir).filter((f) => f.endsWith('.mjs'))) {
+      const src = readFileSync(f, 'utf8');
+      expect(src, f).not.toMatch(/--(?:token|password|api-key)[= ]\$\{/);
+      expect(src, f).not.toMatch(/'--token',\s*[A-Za-z_$]/);
+    }
+  });
+});
+
+describe('C18.1.12 — the multi-axis mutation matrix', () => {
+  /**
+   * §3. Every package the review reproduced was FULLY REBOUND: it moved several columns at once so
+   * that each one still agreed with the others. A matrix that changes one column at a time cannot
+   * find that class at all, so the axes here are generated from the LINKS and the INVARIANTS
+   * themselves rather than from a list of columns.
+   *
+   * Each axis states its own expectation, so a mutation that stops being caught fails loudly
+   * instead of quietly narrowing what the suite covers.
+   */
+  const world = () => buildPostUpgradeWorld();
+  const judged = (mutate: (w: any) => void) => {
+    const w = world();
+    mutate(w);
+    return judgePostUpgrade(w).problems.join('\n');
+  };
+  const fresh = (w: any, table: string, key: string) => {
+    const seen = new Set((w.after.tables[table].rows as any[]).map((r) => r[key]));
+    return (w.final.tables[table].rows as any[]).find((r) => !seen.has(r[key]));
+  };
+  const respell = (v: string) => v.replace('+00:00', '+0000');
+
+  /** The pairs of columns that must agree; both ends move together in every generated package. */
+  const LINKS: ReadonlyArray<{
+    name: string;
+    kind: 'uuid' | 'digest' | 'timestamp';
+    ends: ReadonlyArray<readonly [string, string, string]>;   // table, key column, field
+  }> = [
+    {
+      name: 'the session family',
+      kind: 'uuid',
+      ends: [['identity.sessions', 'id', 'family_id'], ['identity.refresh_tokens', 'id', 'family_id']],
+    },
+    {
+      name: 'the refresh token hash',
+      kind: 'digest',
+      ends: [['identity.sessions', 'id', 'refresh_token_hash'], ['identity.refresh_tokens', 'id', 'token_hash']],
+    },
+    {
+      name: 'the issue instant',
+      kind: 'timestamp',
+      ends: [['identity.sessions', 'id', 'issued_at'], ['identity.refresh_tokens', 'id', 'issued_at']],
+    },
+  ];
+  const INVALID = { uuid: 'not-a-uuid', digest: 'not-a-digest', timestamp: 'not-a-timestamp' };
+
+  // AXIS 1 — a coordinated INVALID relationship: both ends carry the same illegitimate value, so
+  // every equality between them still holds.
+  it.each(LINKS.map((l) => [l.name, l]) as ReadonlyArray<[string, typeof LINKS[number]]>)(
+    'a coordinated invalid value written to both ends of %s is a finding', (_n, link) => {
+      const out = judged((w) => {
+        for (const [table, key, field] of link.ends) fresh(w, table, key)[field] = INVALID[link.kind];
+      });
+      for (const [table, , field] of link.ends) expect(out).toContain(`${table}.${field}`);
+    },
+  );
+
+  // AXIS 2 — BOTH ends deleted, so neither binding has anything left to disagree with.
+  it.each(LINKS.map((l) => [l.name, l]) as ReadonlyArray<[string, typeof LINKS[number]]>)(
+    'deleting both ends of %s is a finding for both rows', (_n, link) => {
+      const out = judged((w) => {
+        for (const [table, key, field] of link.ends) delete fresh(w, table, key)[field];
+      });
+      for (const [table, , field] of link.ends) {
+        expect(out).toContain(`'${table}' row is MISSING field '${field}'`);
+      }
+    },
+  );
+
+  // AXIS 3 — a coordinated RESPELLING: the same instant, written another way at both ends.
+  it.each(LINKS.filter((l) => l.kind === 'timestamp').map((l) => [l.name, l]) as ReadonlyArray<[string, typeof LINKS[number]]>)(
+    'respelling both ends of %s without changing the instant is a finding', (_n, link) => {
+      const out = judged((w) => {
+        for (const [table, key, field] of link.ends) {
+          const row = fresh(w, table, key);
+          row[field] = respell(row[field]);
+        }
+      });
+      expect(out).toMatch(/not the canonical governed timestamp grammar/);
+    },
+  );
+
+  // AXIS 4 — a consistent lifetime rewrite across EVERY snapshot, prior rows included.
+  it.each([
+    ['every session lifetime', 'identity.sessions'],
+    ['every capability lifetime', 'ctx.issued'],
+  ] as ReadonlyArray<[string, string]>)('doubling %s consistently everywhere is a finding', (_n, table) => {
+    expect(judged((w) => {
+      for (const snap of [w.after, w.final]) {
+        for (const row of snap.tables[table].rows as any[]) {
+          const lived = Date.parse(row.expires_at) - Date.parse(row.issued_at);
+          row.expires_at = new Date(Date.parse(row.issued_at) + lived * 2).toISOString().replace('Z', '+00:00');
+        }
+      }
+    })).toMatch(/the source governs every (session|capability) at \d+s/);
+  });
+
+  // AXIS 5 — the exact capability multiset, duplicated and omitted rather than mistyped.
+  it('an exact duplicate of one planned capability tuple is a finding', () => {
+    expect(judged((w) => {
+      const seen = new Set((w.after.tables['ctx.issued'].rows as any[]).map((r) => r.nonce));
+      const minted = (w.final.tables['ctx.issued'].rows as any[]).filter((r) => !seen.has(r.nonce));
+      const [a, b] = minted;
+      b.op_class = a.op_class; b.bound_action = a.bound_action; b.session_id = a.session_id;
+    })).toMatch(/post-upgrade capabilities:/);
+  });
+
+  // AXIS 6 — a coordinated generated-identifier corruption: every appearance moved together.
+  it.each([
+    ['the decision id', (w: any, bad: string) => {
+      const old = (w.final.tables['policy.policy_decisions'].rows as any[])[0].id;
+      (w.final.tables['policy.policy_decisions'].rows as any[])[0].id = bad;
+      (w.final.tables['ctx.operation'].rows as any[])[0].decision_id = bad;
+      w.expected.decisionId = bad;
+      const closing = (w.final.tables['audit.audit_events'].rows as any[])[1];
+      if (closing.event.policy_decision_id === old) {
+        closing.event = { ...closing.event, policy_decision_id: bad };
+        closing.event_jcs = jcsCanonicalize(closing.event as never);
+        closing.row_hash = auditRowHash({
+          partitionId: closing.partition_id, auditSeq: Number(closing.audit_seq),
+          previousHash: closing.previous_hash, event: closing.event as never,
+        });
+        (w.final.tables['audit.audit_chain_heads'].rows as any[])[0].head_hash = closing.row_hash;
+      }
+    }],
+    ['the operation id', (w: any, bad: string) => {
+      (w.final.tables['ctx.operation'].rows as any[])[0].operation_id = bad;
+      (w.final.tables['ctx.operation_effect'].rows as any[])[0].operation_id = bad;
+    }],
+  ] as ReadonlyArray<[string, (w: any, bad: string) => void]>)(
+    'replacing %s everywhere with a coordinated non-uuid is a finding', (_n, apply) => {
+      expect(judged((w) => apply(w, 'definitely-not-a-uuid'))).toMatch(/which is not a uuid/);
+    },
+  );
+
+  // AXIS 7 — the audit chain rebuilt around the change: JCS, row hash, projections and head.
+  it('a rechained and reprojected closing event still fails on its body grammar', () => {
+    expect(judged((w) => {
+      const closing = (w.final.tables['audit.audit_events'].rows as any[])[1];
+      const body = { ...closing.event, occurred_at: String(closing.event.occurred_at).replace(/\.(\d{3})Z$/, '.$10Z') };
+      closing.event = body;
+      closing.occurred_at = body.occurred_at;
+      closing.event_jcs = jcsCanonicalize(body as never);
+      closing.row_hash = auditRowHash({
+        partitionId: closing.partition_id, auditSeq: Number(closing.audit_seq),
+        previousHash: closing.previous_hash, event: body as never,
+      });
+      (w.final.tables['audit.audit_chain_heads'].rows as any[])[0].head_hash = closing.row_hash;
+    })).toMatch(/not the exact millisecond JSON instant grammar/);
+  });
+
+  // AXIS 8 — anti-suppression: independent defects are reported independently.
+  it('a shape defect, a grammar defect and a multiset defect are ALL reported together', () => {
+    const out = judged((w) => {
+      delete fresh(w, 'identity.sessions', 'id').family_id;
+      delete fresh(w, 'identity.refresh_tokens', 'id').family_id;
+      (w.final.tables['ctx.operation'].rows as any[])[0].correlation_id = 'not-a-uuid';
+      const seen = new Set((w.after.tables['ctx.issued'].rows as any[]).map((r) => r.nonce));
+      const minted = (w.final.tables['ctx.issued'].rows as any[]).filter((r) => !seen.has(r.nonce));
+      minted[1].op_class = minted[0].op_class;
+      minted[1].bound_action = minted[0].bound_action;
+      minted[1].session_id = minted[0].session_id;
+    });
+    expect(out).toMatch(/MISSING field 'family_id'/);
+    expect(out).toMatch(/ctx\.operation\.correlation_id is "not-a-uuid"/);
+    expect(out).toMatch(/post-upgrade capabilities:/);
+  });
+
+  it('the matrix is non-vacuous: the unmutated world produces no findings', () => {
+    expect(judgePostUpgrade(world()).problems).toEqual([]);
   });
 });

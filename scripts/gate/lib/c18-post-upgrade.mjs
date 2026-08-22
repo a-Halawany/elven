@@ -624,15 +624,15 @@ export function runPostUpgradeCoverage({
         // respelling BOTH — say to microsecond precision — named the same instant and passed.
         const bodyTime = row.event?.occurred_at ?? null;
         const out = [];
-        if (!ctx.canonicalTimestamp(value)) {
-          out.push(`is ${j(value)}, which is not the canonical governed timestamp grammar`);
-        }
         if (typeof bodyTime !== 'string' || !helpers.ISO_Z_MILLIS_RE.test(bodyTime)) {
           out.push(`has a canonical body occurred_at of ${j(bodyTime)}, which is not the exact `
             + 'millisecond JSON instant grammar');
         }
-        if (Date.parse(value) !== Date.parse(bodyTime)) {
-          out.push(`is detached from its canonical body's occurred_at ${j(bodyTime)}`);
+        // The column is populated FROM the body, so it carries the body's own spelling byte for
+        // byte. C18.1.11 compared only `Date.parse`, so respelling both to microsecond precision
+        // named the same instant and passed; comparing instants at all is weaker than the truth.
+        if (value !== bodyTime) {
+          out.push(`is ${j(value)}; its canonical body records ${j(bodyTime)}`);
         }
         return out;
       }
