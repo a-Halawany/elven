@@ -53,3 +53,34 @@ condition = "AND"
 paths = ['''(^|/)apps/api/migrations/.*\.sql$''']
 regexTarget = "match"
 regexes = ['''context_key_hash''']
+
+# ── 3. ENGLISH PROSE in a records document, not a credential ─────────────────
+[[allowlists]]
+description = """
+FALSE POSITIVE, scoped as narrowly as the finding — to ONE rule, ONE file, ONE
+phrase and ONE commit.
+
+The C18.1.11 records section describes which columns of the post-upgrade refresh
+row are authenticated, and the sentence read:
+
+  ... the refresh token's session, family, generation,
+  token hash, replacement/reuse/invalidation state, timestamps and id ...
+
+The generic-api-key rule keys on the word `token` followed by a value-shaped run of
+characters and matched the next words, `replacement/reuse/invalidation`. That is an
+English phrase naming three nullable columns; no credential is involved, and the
+gate's own canary controls assert that no provider token or private key appears in
+the repository, the logs or the evidence archive.
+
+The WORKING TREE was corrected by rewording, so this exclusion exists solely for the
+single historical commit that already carries the original sentence. It is pinned to
+that commit id, so the same phrase appearing anywhere else — in another file, in a
+later commit, or under any other rule — remains fully in scope.
+
+All three conditions must hold (condition = AND): the commit, the file and the match.
+"""
+condition = "AND"
+commits = ['''6d702d28252ee749b23c862f264fede060fed5df''']
+paths = ['''(^|/)GATE2_2_FINAL_CLOSURE_PLAN\.md$''']
+regexTarget = "match"
+regexes = ['''replacement/reuse/invalidation''']

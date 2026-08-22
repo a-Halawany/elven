@@ -2697,8 +2697,9 @@ findings**, and **22 of 22** claimed false packages were accepted by the complet
 with **zero findings each** — every attacker-controlled binding rebound: the processed final
 snapshot, its command-bound raw stdout, that command's byte length and digest, the manifest and
 `SHA256SUMS.txt`. The families: the new session's status, assurance, principal, family, bound
-epoch, timestamps, token hashes and context key; the refresh token's session, family, generation,
-token hash, replacement/reuse/invalidation state, timestamps and id; either capability's session,
+epoch, timestamps, hashes and context key; the refresh row's session, family, generation, its
+hash, its replacement and reuse and invalidation state, timestamps and id; either capability's
+session,
 class, action, nonce and issuance/expiry/consumption; `ctx.operation`'s txid, opened_at,
 backend_pid, runtime_role and obligations_executed; `ctx.operation_effect`'s id and recorded_at;
 the decision's created_at; the outbox row's payload, attempts, created_at, causation_id and
