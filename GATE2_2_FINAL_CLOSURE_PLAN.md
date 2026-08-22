@@ -2655,21 +2655,33 @@ part of C19 has been started.
 
 ## 26. C18.1.11 — THE POST-UPGRADE WORLD CLASSIFIED AND EXECUTED, AND A SECRET THAT CANNOT REACH A LOG (delivered; awaiting independent review)
 
-**Evidence-bearing source `3dbf78736adb0f3e14c16112aebb6b470e3f583a`.**
-Candidate CI: pull-request run `32571494533` (3/3 green, attempt 1). Source run `32571797819`
-(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32572074661`
+**Evidence-bearing source `77c723f8171bbeadd88f7f5ef95a01c05819d156`.**
+Candidate CI: pull-request run `32573318668` (3/3 green, attempt 1). Source run `32573661621`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32573952177`
 (`macos-14`, green).
 
+**A superseded delivery, recorded honestly.** `3dbf787` was itself a complete green delivery —
+candidate `32571494533`, source `32571797819`, finalizer `32572074661`, artifact `feba8637…`
+verified, and a foreign checkout passing offline and `standing=delivery-online`. Its records child
+`6d702d2` then FAILED the blocking C15 supply-chain gate (run `32572490921`): gitleaks'
+`generic-api-key` rule keys on the word `token` followed by a value-shaped run of characters, and a
+sentence in this very section matched `replacement/reuse/invalidation` — an English phrase naming
+three nullable columns, not a credential. The working tree was corrected by rewording, and because
+the full-history scan still sees the original sentence in the commit that carries it, one allowlist
+entry covers exactly that: one rule, one file, one phrase, one commit id, `condition = AND`, no rule
+disabled. That is a source change, so a NEW EVIDENCE SHA was produced and the complete candidate and
+delivery sequence was repeated. No evidence from an earlier SHA is reused.
+
 **Delivery artifact (attempt-scoped, digest-bound, leak-free).**
-`c18-db-paths-evidence-a1-feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`
-(353,102 B wrapper) — exactly the archive `c18-db-paths-evidence-3dbf787….zip` (outer sha256
-`feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`, equal to both the sidecar and
+`c18-db-paths-evidence-a1-4631da3f9f4fb5fa1176eb886b3fb0d879f9327dd1bbd49821ab5a2e8f72cfab`
+(353,565 B wrapper) — exactly the archive `c18-db-paths-evidence-77c723f….zip` (outer sha256
+`4631da3f9f4fb5fa1176eb886b3fb0d879f9327dd1bbd49821ab5a2e8f72cfab`, equal to both the sidecar and
 the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
 delivered archive: **336 commands; 1,008 raw stream files; 11 fixed top-level regular files; 1,019
 regular files; + the `raw/` directory entry = 1,020 ZIP entries.** Checksum manifest binds 1,018
 members with none unbound, none mismatched and no self-entry; no unsafe or duplicate ZIP paths;
 `source_sha` equals the evidence SHA; secret scan clean. Verified from a fresh foreign checkout at
-exactly `3dbf787` offline and **online-hosted** (`standing=delivery-online`).
+exactly `77c723f` offline and **online-hosted** (`standing=delivery-online`).
 
 ### 26.1 Credential incident, closed before any hosted action
 
@@ -2765,9 +2777,10 @@ Hermetic gate **596** (was 467) · in-gate mutation/differential **265** (was 24
 boundaries clean · migrations 0001–0021 byte-identical (21 files, zero drift).
 
 In-gate control suite, three clean local runs: 146.38 s / 148.16 s / 151.40 s → **median 148.16 s,
-max 151.40 s** (≤180 s). Hosted control suite **78.35 s** (candidate) and **88.61 s** (push/main),
-both ≤90 s. Complete C18 gate **2 m 23 s** hosted (≤6 min) and under four minutes locally
-(≤10 min). Hard process-group watchdog 900 s throughout; no stale monitors or orphaned processes,
+max 151.40 s** (≤180 s), and 155.79 s at the delivered SHA. Hosted control suite **78.35 s** and
+**88.61 s** at the superseded SHA; the delivered SHA's hosted gate ran 3 m 01 s (candidate) and
+2 m 43 s (push/`main`), each including producer, offline self-verification and the 265-control
+suite. Complete C18 gate under four minutes locally (≤10 min) and under 6 min hosted. Hard process-group watchdog 900 s throughout; no stale monitors or orphaned processes,
 and no gate containers left behind.
 
 **Scope discipline.** Only `scripts/gate/**` and `apps/api/test/gate/**` change. Migrations

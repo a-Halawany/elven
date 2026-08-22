@@ -58,7 +58,7 @@ from this point; further database corrections use forward migrations **0020+**.
 | **C16 CLOSED** | `scripts/gate/assert-final-manifests.mjs`, `scripts/gate/lib/*`, `docs/SCANNER_DISPOSITIONS.md`, `docs/evidence/govulncheck-gosu-b6a16ed0.{json,txt}` | ✅ **CLOSED by bounded independent review** at `d63318e099a152cef18682e97d84ea7e1a70abd9` after five remediation rounds (R3.1–R3.4.5). Hosted run `31806239862`, all three jobs green; evidence archive sha256 `27ba79b0681b855e710c8b82e0d95c39ff971dc7770bee601d08fe7858027e04`. Measured at closure: gate **587**, API unit + gate **601** (= 587 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Container findings reconcile at **18** across **4** governed records (SCX-0001/2/3 `RISK_ACCEPTED`, SCX-0004 `NOT_AFFECTED` on symbol-aware govulncheck evidence). |
 | C17 CycloneDX + obligations | *(superseded row removed at C17.1)* | ➡️ See the **C17.1** row below. The original C17 row claimed this area was NEXT and was never updated when C17 landed, so the ledger carried a stale entry alongside a completed one. |
 | **C17 + C17.1 CycloneDX, licences and obligations** | `vendor/{cyclonedx/1.6.2,spdx-licenses/v3.28.0}/**`, `scripts/gate/lib/{cyclonedx-schema,license-closure,licence-texts,legal-dispositions}.mjs`, `scripts/gate/{licence-obligations,package-c17-evidence}.mjs`, `scripts/gate/{legal-dispositions,source-offers}.json`, `apps/api/test/gate/c17-*.test.ts`, `pnpm-workspace.yaml`, `.github/workflows/ci.yml` | ✅ **COMPLETE (internal verification)** — evidence-bearing SHA `084ce19f4edef71825b0d34dfe230c4915a1b3fb`, hosted run `31893384717` (build-test, supply-chain, browser-regression all success). Archive `c17-evidence-084ce19f4edef71825b0d34dfe230c4915a1b3fb.zip`, **576771 bytes**, sha256 `e0a24dd12ddb4ca4f5b34bca87f075056ad8245e16c46a100206f376e6b62d6c`, built by the tracked packager inside the run: **19 payload files + 1 checksum manifest = 20 regular files across 25 ZIP entries**, **19 checksum lines**, manifest excludes itself. Verified from a genuinely foreign clean clone with `--online`: both SBOMs re-derived and schema-valid, licence reconciliation rerun, and the run receipt checked against GitHub's public API (id, head_sha, conclusion=success). SBOM digests production `c65ea1250232438fbf642920e2beb07f5497be7fe7942d847b166f8fd21de2cb` (195 components) and development `804ca78c0d63524032555571cd08f7b6802bbb5a313cb82247813623a18fbc2a` (296 components), both **0 schema errors** against the official CycloneDX 1.6.2 schema (tag `1.6.2`, commit `e833d732337dd33aceb45ff1991f896796f1e5e7`) compiled offline with Ajv **8.18.0** / ajv-formats **3.0.1** / ajv-formats-draft2019 **1.6.1**. Licence inventory: production **195** classified, development **312**, **0 unresolved**, **0 reconciliation problems** in both directions. Notices carry **475** shipped-text blocks and **25** canonical-SPDX-text blocks, every copyright line, named CC-BY attribution and **3** source-offer records; **0** legal dispositions, deliberately. **Cross-host determinism proven**: all 8 target artifacts byte-identical between a darwin/arm64 clean clone and hosted ubuntu Linux. C15, C16 and C17 all PASS in `--final` from a Darwin clean clone. Measured suites: gate **721**, API unit + gate **735** (721 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Migrations 0001–0021 byte-identical; content digest `43e15e642efaecca1be224af0936e223f14cf17ffc846b79f40896d717f65588`, Git-tree digest `47a651c95228429a5f10c497dfbd5b4a3588bce7256af65f0c90554bf3b5baca`. |
-| **C18 → C18.1.11 dual-path database history proof** | `scripts/gate/c18-db-paths.mjs`, `scripts/gate/c18-watchdog.mjs`, `scripts/gate/lib/{c18-contract,c18-query-plan,c18-seed-0012,c18-seed-spec,c18-seed-coverage,c18-seed-validators,c18-coverage-runner,c18-post-upgrade,c18-inventory}.mjs`, `scripts/gate/lib/c18-catalog-contract.json`, `apps/api/test/gate/c18-*.{test.ts,ctl.ts}`, `apps/api/test/gate/c18-{seed,post-upgrade}-world.ts`, `apps/api/test/gate/fixtures/c18-legacy-{…,77489f5,53a4eec,a424505}/**`, `apps/api/vitest.c18.config.ts`, `.github/workflows/ci.yml` | ⏳ **DELIVERED, AWAITING INDEPENDENT REVIEW** — evidence-bearing SHA `3dbf78736adb0f3e14c16112aebb6b470e3f583a`; see the C18.1.11 provenance section below and `GATE2_2_FINAL_CLOSURE_PLAN.md` §26. C18 is NOT closed: independent review of C18.1.11 has not been granted. Interim deliveries `d5061b8` … `77489f5`, `53a4eec` and `a424505` (all authentic and LEAK-FREE, superseded for verification gaps only) are SUPERSEDED. |
+| **C18 → C18.1.11 dual-path database history proof** | `scripts/gate/c18-db-paths.mjs`, `scripts/gate/c18-watchdog.mjs`, `scripts/gate/lib/{c18-contract,c18-query-plan,c18-seed-0012,c18-seed-spec,c18-seed-coverage,c18-seed-validators,c18-coverage-runner,c18-post-upgrade,c18-inventory}.mjs`, `scripts/gate/lib/c18-catalog-contract.json`, `apps/api/test/gate/c18-*.{test.ts,ctl.ts}`, `apps/api/test/gate/c18-{seed,post-upgrade}-world.ts`, `apps/api/test/gate/fixtures/c18-legacy-{…,77489f5,53a4eec,a424505}/**`, `apps/api/vitest.c18.config.ts`, `.github/workflows/ci.yml` | ⏳ **DELIVERED, AWAITING INDEPENDENT REVIEW** — evidence-bearing SHA `77c723f8171bbeadd88f7f5ef95a01c05819d156`; see the C18.1.11 provenance section below and `GATE2_2_FINAL_CLOSURE_PLAN.md` §26. C18 is NOT closed: independent review of C18.1.11 has not been granted. Interim deliveries `d5061b8` … `77489f5`, `53a4eec` and `a424505` (all authentic and LEAK-FREE, superseded for verification gaps only) are SUPERSEDED. |
 | C19 docs + NOLOGIN roles | — | ⏳ (`eye_system` + legacy roles still LOGIN) |
 | **Evidence sequencing (applied)** | `.gitignore` | ✅ `evidence/authority-matrix.json`, the `evidence/supply-chain/` runner outputs, `evidence/supply-chain/c16/` and `evidence/db-paths/` are **untracked**: generated gate OUTPUTS are regenerated from the FROZEN source during the isolated run and committed only in the evidence-only attestation child commit. The GENERATORS (`scripts/authority-inventory.mjs`, `scripts/gate/authority-matrix-report.mjs`, `scripts/gate/supply-chain.mjs`, `scripts/gate/generate-closures.mjs`) remain in source. The matrix generated at `caac521` and the C16 closures generated during this pass are **preliminary** and are not final evidence — the C16 report carries a `status` field saying so, so a stray copy cannot be mistaken for final. |
 | Freeze + external-review handoff + ZIP | — | ⏳ |
@@ -815,26 +815,37 @@ no part of C19 has been started.
 
 ## C18.1.11 evidence provenance (no SHA cycle)
 
-The C18 evidence-bearing source is **`3dbf78736adb0f3e14c16112aebb6b470e3f583a`**. Candidate CI ran
-green as pull-request run **`32571494533`** (attempt 1, 3/3); source run **`32571797819`** (push,
+The C18 evidence-bearing source is **`77c723f8171bbeadd88f7f5ef95a01c05819d156`**. Candidate CI ran
+green as pull-request run **`32573318668`** (attempt 1, 3/3); source run **`32573661621`** (push,
 `main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
 gate — the producer, offline self-verification and the **265-test** in-gate mutation/differential
-suite. Finalizer run **`32572074661`** (`macos-14`, green). Delivery artifact:
+suite. Finalizer run **`32573952177`** (`macos-14`, green).
 
-* **`c18-db-paths-evidence-a1-feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`**
-  (353,102 B wrapper) — exactly the archive `c18-db-paths-evidence-3dbf787….zip` (outer sha256
-  `feba8637304a24e0aca2274410438ebc68578f749d9041b288f2154f4afe7053`, equal to both the sidecar and
+**A superseded delivery, recorded honestly.** `3dbf787` was itself a complete green delivery
+(candidate `32571494533`, source `32571797819`, finalizer `32572074661`, artifact `feba8637…`,
+foreign checkout offline and `standing=delivery-online`). Its records child `6d702d2` then failed
+the blocking C15 supply-chain gate (run `32572490921`) because a sentence in the records text
+matched gitleaks' `generic-api-key` rule — the English phrase `replacement/reuse/invalidation`
+following the word `token`, naming three nullable columns. The sentence was reworded and one
+allowlist entry, pinned to that single rule, file, phrase and commit id, covers the historical
+occurrence. That is a source change, so a new evidence SHA was produced and the complete candidate
+and delivery sequence repeated; no evidence from an earlier SHA is reused. Delivery artifact:
+
+* **`c18-db-paths-evidence-a1-4631da3f9f4fb5fa1176eb886b3fb0d879f9327dd1bbd49821ab5a2e8f72cfab`**
+  (353,565 B wrapper) — exactly the archive `c18-db-paths-evidence-77c723f….zip` (outer sha256
+  `4631da3f9f4fb5fa1176eb886b3fb0d879f9327dd1bbd49821ab5a2e8f72cfab`, equal to both the sidecar and
   the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
   delivered archive: **336 commands**, **1,008 raw stream files**, **11 fixed top-level regular
   files**, **1,019 regular files**, + the `raw/` directory entry = **1,020 ZIP entries**. The
   checksum manifest binds 1,018 members with none unbound, none mismatched and no self-entry; there
   are no unsafe or duplicate ZIP paths; `source_sha` equals the evidence SHA; and the secret scan is
-  clean. Verified from a fresh foreign checkout at exactly `3dbf787` both offline and with
+  clean. Verified from a fresh foreign checkout at exactly `77c723f` both offline and with
   **`--online --require-hosted`** (`standing=delivery-online`).
 
 **Measured durations.** In-gate control suite, three clean local runs: 146.38 s / 148.16 s /
-151.40 s → **median 148.16 s, max 151.40 s**. Hosted control suite **78.35 s** (candidate) and
-**88.61 s** (push/main). Complete C18 gate **2 m 23 s** hosted. Hosted CI also ran API hermetic
+151.40 s → **median 148.16 s, max 151.40 s**, and 155.79 s at the delivered SHA. Hosted C18 gate
+3 m 01 s (candidate) and 2 m 43 s (push/`main`), each including the producer, offline
+self-verification and the 265-control suite. Hosted CI also ran API hermetic
 1,536 + 9, integration 297 and acceptance 58, all green.
 
 **Credential incident.** A GitHub token had been passed through argv and echoed into a watchdog log.
