@@ -52,6 +52,10 @@ import { verifyEvidence as legacy53a } from './fixtures/c18-legacy-53a4eec/c18-d
 import { buildCoverageReport as legacy53aCoverage } from './fixtures/c18-legacy-53a4eec/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyA42 } from './fixtures/c18-legacy-a424505/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacy2c3 } from './fixtures/c18-legacy-2c3cab3/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy2c3Coverage } from './fixtures/c18-legacy-2c3cab3/lib/c18-seed-coverage.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -2986,5 +2990,230 @@ describe('C18.1.11 — one finding never suppresses an independent check', () =>
     });
     const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
     expect(r.problems.join('\n')).toMatch(/'identity\.sessions\.smuggled' is in the delivered catalog but not classified/);
+  });
+});
+
+/**
+ * C18.1.12's contract classifies the two governed-lifetime columns as source-owned formulas rather
+ * than bare timestamps, so the delivered coverage REPORT differs from 2c3cab3's. Regenerating it
+ * with the FROZEN module reproduces exactly what that producer emitted, which keeps the
+ * differential measuring the SEMANTIC change rather than a contract version number.
+ */
+function downgradeTo2c3cab3(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, '2c3cab3', (preseed, before) => legacy2c3Coverage({ preseed, before })));
+}
+
+/** Respell an instant without moving it: the PostgreSQL offset written another legal way. */
+const respellPg = (v: string) => String(v).replace('+00:00', '+0000');
+
+/** Rebuild every audit chain in the FINAL snapshot, plus its heads, projections and receipts. */
+function rechainFinal(d: string) {
+  editJson(d, 'path-a-final.json', (doc: any) => {
+    const rows = doc.tables['audit.audit_events'].rows;
+    for (const partition of [...new Set(rows.map((r: any) => r.partition_id))]) {
+      const chain = rows.filter((r: any) => r.partition_id === partition)
+        .sort((a: any, b: any) => Number(a.audit_seq) - Number(b.audit_seq));
+      let previous = '0'.repeat(64);
+      for (const r of chain) {
+        r.event_jcs = jcsCanonicalize(r.event);
+        r.previous_hash = previous;
+        r.row_hash = auditRowHash({
+          partitionId: r.partition_id, auditSeq: Number(r.audit_seq),
+          previousHash: previous, event: r.event,
+        });
+        previous = r.row_hash;
+        const view = doc.audit.events.find((e: any) => e.partition_id === r.partition_id
+          && Number(e.audit_seq) === Number(r.audit_seq));
+        if (view !== undefined) {
+          view.event_jcs = r.event_jcs;
+          view.previous_hash = r.previous_hash;
+          view.row_hash = r.row_hash;
+          if (r.event?.policy_decision_id !== undefined) view.policy_decision_id = r.event.policy_decision_id;
+          if (r.event?.correlation_id !== undefined) view.correlation_id = r.event.correlation_id;
+        }
+      }
+      const last = chain[chain.length - 1];
+      for (const h of [...doc.tables['audit.audit_chain_heads'].rows, ...doc.audit.heads]) {
+        if (h.partition_id !== partition) continue;
+        h.head_hash = last.row_hash;
+        h.next_seq = Number(last.audit_seq) + 1;
+      }
+    }
+  });
+  const now = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'));
+  setStream(d, 'a-a-final-audit-events', 'stdout', Buffer.from(JSON.stringify(now.audit.events)));
+  setStream(d, 'a-a-final-audit-heads', 'stdout', Buffer.from(JSON.stringify(now.audit.heads)));
+  setStream(d, 'a-a-final-rows-audit_audit_events', 'stdout',
+    Buffer.from(JSON.stringify(now.tables['audit.audit_events'].rows)));
+  setStream(d, 'a-a-final-rows-audit_audit_chain_heads', 'stdout',
+    Buffer.from(JSON.stringify(now.tables['audit.audit_chain_heads'].rows)));
+}
+
+/** The head the governed operation advanced: the one final changed relative to after. */
+function advancedHead(d: string) {
+  const stale = new Set(JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'))
+    .tables['audit.audit_chain_heads'].rows.map((h: any) => JSON.stringify(h)));
+  return JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'))
+    .tables['audit.audit_chain_heads'].rows.find((h: any) => !stale.has(JSON.stringify(h)));
+}
+
+/**
+ * The eleven residual packages the C18.1.12 review reproduced, at ARCHIVE level. Every one is
+ * fully rebound — the processed snapshots, the command-bound raw receipts, those commands' byte
+ * lengths and digests, the manifest and seed record where relevant, the audit canonicalization,
+ * row hashes and heads where relevant, and SHA256SUMS.txt.
+ */
+const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['one planned capability tuple is minted twice and the other never', (d) => {
+    const after = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8')).tables['ctx.issued'].rows;
+    const seen = new Set(after.map((r: any) => r.nonce));
+    const minted = JSON.parse(readFileSync(join(d, 'path-a-final.json'), 'utf8'))
+      .tables['ctx.issued'].rows.filter((r: any) => !seen.has(r.nonce));
+    const identity = minted.find((r: any) => r.op_class === 'identity');
+    const other = minted.find((r: any) => r.op_class !== 'identity');
+    finalOnly(d, 'ctx.issued', (t: any) => {
+      const row = t.rows.find((r: any) => r.nonce === other.nonce);
+      row.op_class = identity.op_class;
+      row.bound_action = identity.bound_action;
+      row.session_id = identity.session_id;
+    });
+  }, /post-upgrade capabilities:/],
+
+  ['the new session and its refresh row share a non-uuid family', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    const r = insertedRow(d, 'identity.refresh_tokens', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => {
+      t.rows.find((x: any) => x.id === s.id).family_id = 'not-a-uuid';
+    });
+    finalOnly(d, 'identity.refresh_tokens', (t: any) => {
+      t.rows.find((x: any) => x.id === r.id).family_id = 'not-a-uuid';
+    });
+  }, /family_id is "not-a-uuid", which is not a uuid/],
+
+  ['both linked refresh-token hashes are not digests', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    const r = insertedRow(d, 'identity.refresh_tokens', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => {
+      t.rows.find((x: any) => x.id === s.id).refresh_token_hash = 'not-a-digest';
+    });
+    finalOnly(d, 'identity.refresh_tokens', (t: any) => {
+      t.rows.find((x: any) => x.id === r.id).token_hash = 'not-a-digest';
+    });
+  }, /which is not a sha-256 hex digest/],
+
+  ['the family is DELETED from both linked rows', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    const r = insertedRow(d, 'identity.refresh_tokens', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => { delete t.rows.find((x: any) => x.id === s.id).family_id; });
+    finalOnly(d, 'identity.refresh_tokens', (t: any) => { delete t.rows.find((x: any) => x.id === r.id).family_id; });
+  }, /'identity\.sessions' row is MISSING field 'family_id'/],
+
+  ['both linked token-hash fields are DELETED', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    const r = insertedRow(d, 'identity.refresh_tokens', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => { delete t.rows.find((x: any) => x.id === s.id).refresh_token_hash; });
+    finalOnly(d, 'identity.refresh_tokens', (t: any) => { delete t.rows.find((x: any) => x.id === r.id).token_hash; });
+  }, /row is MISSING field 'refresh_token_hash'/],
+
+  ['both linked issue instants are respelled to the same moment', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    const r = insertedRow(d, 'identity.refresh_tokens', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => {
+      const row = t.rows.find((x: any) => x.id === s.id);
+      row.issued_at = respellPg(row.issued_at);
+    });
+    finalOnly(d, 'identity.refresh_tokens', (t: any) => {
+      const row = t.rows.find((x: any) => x.id === r.id);
+      row.issued_at = respellPg(row.issued_at);
+    });
+  }, /issued_at is ".*\+0000", which is not the canonical governed timestamp grammar/],
+
+  ['every seeded and post-upgrade session lifetime is doubled consistently', (d) => {
+    everywhereA(d, 'identity.sessions', (row: any) => {
+      const lived = Date.parse(row.expires_at) - Date.parse(row.issued_at);
+      row.expires_at = new Date(Date.parse(row.issued_at) + lived * 2).toISOString().replace('Z', '+00:00');
+    });
+  }, /the source governs every session at 3600s/],
+
+  ['every seeded and post-upgrade capability lifetime is doubled consistently', (d) => {
+    everywhereA(d, 'ctx.issued', (row: any) => {
+      const lived = Date.parse(row.expires_at) - Date.parse(row.issued_at);
+      row.expires_at = new Date(Date.parse(row.issued_at) + lived * 2).toISOString().replace('Z', '+00:00');
+    });
+  }, /the source governs every capability at \d+s/],
+
+  ['the advanced head’s stamp is respelled to the same instant', (d) => {
+    const head = advancedHead(d);
+    finalOnly(d, 'audit.audit_chain_heads', (t: any) => {
+      const row = t.rows.find((h: any) => h.partition_id === head.partition_id);
+      row.updated_at = respellPg(row.updated_at);
+    });
+  }, /audit_chain_heads\.updated_at is ".*\+0000", which is not the canonical governed timestamp grammar/],
+
+  ['the closing event’s instant is respelled in row AND body, then fully rechained', (d) => {
+    editJson(d, 'path-a-final.json', (doc: any) => {
+      const aft = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'));
+      const seen = new Set(aft.tables['audit.audit_events'].rows
+        .map((e: any) => `${e.partition_id}#${e.audit_seq}`));
+      const closing = doc.tables['audit.audit_events'].rows
+        .find((e: any) => !seen.has(`${e.partition_id}#${e.audit_seq}`));
+      const respelt = String(closing.event.occurred_at).replace(/\.(\d{3})Z$/, '.$1000Z');
+      closing.event = { ...closing.event, occurred_at: respelt };
+      closing.occurred_at = respelt;
+    });
+    rechainFinal(d);
+  }, /not the exact millisecond JSON instant grammar/],
+
+  ['the post-upgrade decision id is a coordinated non-uuid everywhere', (d) => {
+    const BAD = 'decision-not-a-uuid';
+    const old = insertedRow(d, 'policy.policy_decisions', 'id').id;
+    finalOnly(d, 'policy.policy_decisions', (t: any) => {
+      t.rows.find((r: any) => r.id === old).id = BAD;
+    });
+    finalOnly(d, 'ctx.operation', (t: any) => {
+      for (const r of t.rows) if (r.decision_id === old) r.decision_id = BAD;
+    });
+    editJson(d, 'path-a-final.json', (doc: any) => {
+      for (const r of doc.tables['audit.audit_events'].rows) {
+        if (r.event?.policy_decision_id === old) r.event = { ...r.event, policy_decision_id: BAD };
+        if (r.policy_decision_id === old) r.policy_decision_id = BAD;
+      }
+    });
+    rechainFinal(d);
+    editJson(d, 'c18-manifest.json', (m: any) => {
+      if (m.post_upgrade_operation?.decisionId === old) m.post_upgrade_operation.decisionId = BAD;
+    });
+    editJson(d, 'path-a-seed-record.json', (r: any) => {
+      if (r.post_upgrade_operation?.decisionId === old) r.post_upgrade_operation.decisionId = BAD;
+    });
+  }, /decision_id is "decision-not-a-uuid", which is not a uuid/],
+];
+
+describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C18.1.12 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  it('NON-VACUITY: the frozen 2c3cab3 verifier accepts the genuine archive', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo2c3cab3);
+    try {
+      const r = await legacy2c3({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C11812_MUTATIONS)('%s — 2c3cab3 ACCEPTS it; C18.1.12 REJECTS it', async (_label, mutate, pattern) => {
+    const legacyCase = mutateArchive((d) => { downgradeTo2c3cab3(d); mutate(d); });
+    try {
+      const old = await legacy2c3({ zipPath: legacyCase.zip, root: REPO });
+      expect(old.ok, `the frozen 2c3cab3 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    await expectReject(mutate, pattern);
+  });
+
+  it('the same judgement holds through the real ZIP ingress, not only the member map', async () => {
+    // The semantic core is exercised above for speed; this proves the production path agrees.
+    await expectRejectViaZip(C11812_MUTATIONS[0]![1], C11812_MUTATIONS[0]![2]);
+    await expectRejectViaZip(C11812_MUTATIONS[3]![1], C11812_MUTATIONS[3]![2]);
   });
 });
