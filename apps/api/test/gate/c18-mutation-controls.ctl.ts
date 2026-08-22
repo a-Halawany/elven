@@ -51,11 +51,17 @@ import { verifyEvidence as legacy53a } from './fixtures/c18-legacy-53a4eec/c18-d
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy53aCoverage } from './fixtures/c18-legacy-53a4eec/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
-import { verifyEvidence as legacyA42 } from './fixtures/c18-legacy-a424505/c18-db-paths.mjs';
+import {
+  deriveSourceBinding as deriveA42Binding, verifyEvidence as legacyA42,
+  verifySemantics as legacyA42Semantics,
+} from './fixtures/c18-legacy-a424505/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacyA42Coverage } from './fixtures/c18-legacy-a424505/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
-import { verifyEvidence as legacy2c3 } from './fixtures/c18-legacy-2c3cab3/c18-db-paths.mjs';
+import {
+  deriveSourceBinding as derive2c3Binding, verifyEvidence as legacy2c3,
+  verifySemantics as legacy2c3Semantics,
+} from './fixtures/c18-legacy-2c3cab3/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy2c3Coverage } from './fixtures/c18-legacy-2c3cab3/lib/c18-seed-coverage.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
@@ -324,6 +330,20 @@ let SOURCE_BINDING: unknown = null;
 const sourceBinding = () => {
   if (SOURCE_BINDING === null) SOURCE_BINDING = deriveSourceBinding(REPO);
   return SOURCE_BINDING;
+};
+
+/**
+ * C18.1.12 — the frozen legs run through the MEMBER MAP too.
+ *
+ * A differential leg that builds a real ZIP and re-ingests it costs about a second per case, and
+ * the frozen a424505 and 2c3cab3 verifiers both carry the split ingress/semantic architecture, so
+ * they can judge the same member map the corrected verifier judges. Real-ZIP ingress controls are
+ * kept separately and unchanged — this only stops paying for ingress twice per semantic case.
+ */
+const LEGACY_BINDINGS = new Map<string, unknown>();
+const legacyBinding = (key: string, derive: (root: string) => unknown) => {
+  if (!LEGACY_BINDINGS.has(key)) LEGACY_BINDINGS.set(key, derive(REPO));
+  return LEGACY_BINDINGS.get(key);
 };
 
 async function expectReject(mutate: Mutator, pattern: RegExp, opts: { rebindAfter?: boolean } = {}) {
@@ -2963,7 +2983,20 @@ const C11811_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
 describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
+  const judgeA42 = async (mutate: Mutator) => {
+    const { members } = mutateMembers((d) => { downgradeToA424505(d); mutate(d); });
+    return legacyA42Semantics({
+      members, root: REPO, sourceBinding: legacyBinding('a424505', deriveA42Binding),
+    });
+  };
+
   it('NON-VACUITY: the frozen a424505 verifier accepts the genuine archive', async () => {
+    const r = await judgeA42(() => {});
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('the frozen a424505 leg agrees through the real ZIP ingress as well', async () => {
     const { dir, zip } = mutateArchive(downgradeToA424505);
     try {
       const r = await legacyA42({ zipPath: zip, root: REPO });
@@ -2973,11 +3006,8 @@ describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C
   });
 
   it.each(C11811_MUTATIONS)('%s — a424505 ACCEPTS it; C18.1.11 REJECTS it', async (_label, mutate, pattern) => {
-    const legacyCase = mutateArchive((d) => { downgradeToA424505(d); mutate(d); });
-    try {
-      const old = await legacyA42({ zipPath: legacyCase.zip, root: REPO });
-      expect(old.ok, `the frozen a424505 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
-    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    const old = await judgeA42(mutate);
+    expect(old.ok, `the frozen a424505 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
     await expectReject(mutate, pattern);
   });
 });
@@ -3206,7 +3236,20 @@ const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
 describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C18.1.12 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
+  const judge2c3 = async (mutate: Mutator) => {
+    const { members } = mutateMembers((d) => { downgradeTo2c3cab3(d); mutate(d); });
+    return legacy2c3Semantics({
+      members, root: REPO, sourceBinding: legacyBinding('2c3cab3', derive2c3Binding),
+    });
+  };
+
   it('NON-VACUITY: the frozen 2c3cab3 verifier accepts the genuine archive', async () => {
+    const r = await judge2c3(() => {});
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('the frozen 2c3cab3 leg agrees through the real ZIP ingress as well', async () => {
     const { dir, zip } = mutateArchive(downgradeTo2c3cab3);
     try {
       const r = await legacy2c3({ zipPath: zip, root: REPO });
@@ -3216,11 +3259,8 @@ describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C
   });
 
   it.each(C11812_MUTATIONS)('%s — 2c3cab3 ACCEPTS it; C18.1.12 REJECTS it', async (_label, mutate, pattern) => {
-    const legacyCase = mutateArchive((d) => { downgradeTo2c3cab3(d); mutate(d); });
-    try {
-      const old = await legacy2c3({ zipPath: legacyCase.zip, root: REPO });
-      expect(old.ok, `the frozen 2c3cab3 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
-    } finally { rmSync(legacyCase.dir, { recursive: true, force: true }); }
+    const old = await judge2c3(mutate);
+    expect(old.ok, `the frozen 2c3cab3 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
     await expectReject(mutate, pattern);
   });
 
