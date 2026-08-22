@@ -288,16 +288,55 @@ function mutateMembers(mutate: Mutator, { rebindAfter = true } = {}) {
  * Real-ZIP form, for archive-boundary properties and the frozen-predecessor differentials, whose
  * verifiers are frozen and take a zipPath. It reuses the pristine tree rather than re-extracting
  * the archive for each control, and restores it byte-exactly afterwards.
+ *
+ * C18.1.12 — THE ZIP IS UPDATED, NOT REBUILT. Compressing all 1,020 entries cost about 1.3 s, and
+ * with roughly seventy real-ZIP controls that single line was most of the suite's wall clock. A
+ * mutation touches a handful of members, so the pristine ZIP is built ONCE and each control copies
+ * it and rewrites only the members that actually changed — the same bytes, reached far more
+ * cheaply. `PRISTINE_ZIP_DIGEST` proves the baseline archive is never modified in place, and
+ * `verifiesIdenticallyToAFullRebuild` (below) proves an incrementally updated archive is accepted
+ * or rejected exactly as a fully rebuilt one is.
  */
-function mutateArchive(mutate: Mutator, { rebindAfter = true } = {}) {
+let PRISTINE_ZIP: string | null = null;
+let PRISTINE_ZIP_DIGEST = '';
+const pristineZip = () => {
+  if (PRISTINE_ZIP === null) {
+    const d = mkdtempSync(join(tmpdir(), 'c18-basezip-'));
+    const z = join(d, 'pristine.zip');
+    expect(spawnSync('zip', ['-qrX', z, '.'], { cwd: pristineDir() }).status).toBe(0);
+    PRISTINE_ZIP = z;
+    PRISTINE_ZIP_DIGEST = sha256(readFileSync(z));
+  }
+  expect(sha256(readFileSync(PRISTINE_ZIP)), 'the baseline archive was modified in place')
+    .toBe(PRISTINE_ZIP_DIGEST);
+  return PRISTINE_ZIP;
+};
+
+function mutateArchive(mutate: Mutator, { rebindAfter = true, fullRebuild = false } = {}) {
   const src = pristineDir();
   const pristine = pristineMembers();
+  const base = fullRebuild ? null : pristineZip();
   const out = mkdtempSync(join(tmpdir(), 'c18-zip-'));
   const zip = join(out, 'mutated.zip');
   try {
     mutate(src);
     if (rebindAfter) rebind(src);
-    expect(spawnSync('zip', ['-qrX', zip, '.'], { cwd: src }).status).toBe(0);
+    if (base === null) {
+      expect(spawnSync('zip', ['-qrX', zip, '.'], { cwd: src }).status).toBe(0);
+    } else {
+      const now: string[] = [];
+      walkFiles(src, src, now);
+      const changed = now.filter((f) => !pristine.has(f)
+        || sha256(readFileSync(join(src, f))) !== sha256(pristine.get(f) as Buffer));
+      const removed = [...pristine.keys()].filter((f) => !now.includes(f));
+      writeFileSync(zip, readFileSync(base));
+      if (removed.length > 0) {
+        expect(spawnSync('zip', ['-qd', zip, ...removed], { cwd: src }).status).toBe(0);
+      }
+      if (changed.length > 0) {
+        expect(spawnSync('zip', ['-qX', zip, ...changed], { cwd: src }).status).toBe(0);
+      }
+    }
   } finally {
     const now: string[] = [];
     walkFiles(src, src, now);
