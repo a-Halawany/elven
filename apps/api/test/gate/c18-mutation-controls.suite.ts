@@ -2509,27 +2509,6 @@ describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)'
     }
   });
 
-  it('REFUSES a hidden untracked file: status.showUntrackedFiles=no cannot fool final mode', () => {
-    const stealth = join(REPO, '.c18-stealth-untracked.txt');
-    const prior = spawnSync('git', ['config', '--get', 'status.showUntrackedFiles'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
-    try {
-      spawnSync('git', ['config', 'status.showUntrackedFiles', 'no'], { cwd: REPO });
-      writeFileSync(stealth, 'hidden');
-      // The repo config HIDES the file from a plain porcelain status — the exact seam.
-      expect(spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout).not.toContain('.c18-stealth-untracked');
-      const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
-      const out = join(tmpdir(), `c18-stealth-${process.pid}`);
-      const r = cli(['run', '--final', '--expected-sha', head, '--out', out]);
-      rmSync(out, { recursive: true, force: true });
-      expect(r.status).not.toBe(0);
-      expect(`${r.stderr}${r.stdout}`).toMatch(/requires a clean worktree[\s\S]*\.c18-stealth-untracked\.txt/);
-    } finally {
-      rmSync(stealth, { force: true });
-      if (prior === '') spawnSync('git', ['config', '--unset', 'status.showUntrackedFiles'], { cwd: REPO });
-      else spawnSync('git', ['config', 'status.showUntrackedFiles', prior], { cwd: REPO });
-    }
-  });
-
   it('SIGTERM mid-provisioning: checked cleanup runs and failure evidence is written', async () => {
     const c18Containers = () => spawnSync('docker', ['ps', '-a', '--format', '{{.Names}}'], { encoding: 'utf8' })
       .stdout.split('\n').filter((n) => /^c18-[ab]-[0-9a-f]{8}-(pg|redis)$/.test(n));
@@ -3359,5 +3338,51 @@ describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C
     await expectRejectViaZip(C11812_MUTATIONS[0]![1], C11812_MUTATIONS[0]![2]);
     await expectRejectViaZip(C11812_MUTATIONS[3]![1], C11812_MUTATIONS[3]![2]);
   });
+});
+}
+
+/**
+ * C18.1.12 — THE ONE CONTROL THAT MUST RUN ALONE.
+ *
+ * This control deliberately writes an untracked file into the REPOSITORY and hides it with a
+ * repo-local `status.showUntrackedFiles=no`, because that is precisely the seam it exists to
+ * close. The runner derives its root from its own location, so the control cannot be pointed at a
+ * throwaway checkout — it has to dirty the real one.
+ *
+ * That was harmless while the whole suite ran in a single worker. Once the controls were sharded
+ * across parallel workers it stopped being harmless: for the moment the stealth file exists, every
+ * OTHER shard's verifier correctly reports an unclean checkout, and a differential control fails
+ * for a reason that has nothing to do with what it is testing. Splitting it out is not a
+ * concession — the control is unchanged and still runs; it simply runs in its own phase, where
+ * nothing else can observe the repository it must temporarily disturb.
+ */
+export function registerSerial() {
+describe('C18.1 — producer refusals that must disturb the real checkout (serial)', () => {
+  const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
+  const cli = (args: string[], env: Record<string, string> = {}) => spawnSync('node', [RUNNER, ...args], {
+    cwd: REPO, encoding: 'utf8', timeout: 120_000, env: { ...process.env, ...env },
+  });
+
+  it('REFUSES a hidden untracked file: status.showUntrackedFiles=no cannot fool final mode', () => {
+    const stealth = join(REPO, '.c18-stealth-untracked.txt');
+    const prior = spawnSync('git', ['config', '--get', 'status.showUntrackedFiles'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+    try {
+      spawnSync('git', ['config', 'status.showUntrackedFiles', 'no'], { cwd: REPO });
+      writeFileSync(stealth, 'hidden');
+      // The repo config HIDES the file from a plain porcelain status — the exact seam.
+      expect(spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout).not.toContain('.c18-stealth-untracked');
+      const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+      const out = join(tmpdir(), `c18-stealth-${process.pid}`);
+      const r = cli(['run', '--final', '--expected-sha', head, '--out', out]);
+      rmSync(out, { recursive: true, force: true });
+      expect(r.status).not.toBe(0);
+      expect(`${r.stderr}${r.stdout}`).toMatch(/requires a clean worktree[\s\S]*\.c18-stealth-untracked\.txt/);
+    } finally {
+      rmSync(stealth, { force: true });
+      if (prior === '') spawnSync('git', ['config', '--unset', 'status.showUntrackedFiles'], { cwd: REPO });
+      else spawnSync('git', ['config', 'status.showUntrackedFiles', prior], { cwd: REPO });
+    }
+  });
+
 });
 }

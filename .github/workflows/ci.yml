@@ -165,6 +165,10 @@ jobs:
           # every single-defect mutation is rejected (and that the frozen d5061b8 verifier
           # accepted the false passes C18.1 closes).
           C18_ARCHIVE="$C18_ZIP" pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts
+          # One producer refusal must temporarily write an untracked file into the checkout, so it
+          # runs on its own rather than beside the parallel shards, which would correctly report an
+          # unclean tree while it does. Same controls, two phases.
+          C18_ARCHIVE="$C18_ZIP" pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
           # The digest-bound artifact carries EXACTLY the archive and its sidecar.
           mkdir -p "$RUNNER_TEMP/c18-artifact"
           cp "$C18_ZIP" "$C18_ZIP.sha256" "$RUNNER_TEMP/c18-artifact/"
