@@ -404,6 +404,7 @@ async function expectRejectViaZip(mutate: Mutator, pattern: RegExp, opts: { rebi
   }
 }
 
+export function register01() {
 describe('C18.1 — the genuine archive verifies, then every single-defect mutation is rejected', () => {
   beforeAll(() => {
     expect(ARCHIVE, 'C18_ARCHIVE must point at the archive the gate just produced').not.toBe('');
@@ -651,7 +652,9 @@ describe('C18.1 — the genuine archive verifies, then every single-defect mutat
     }
   });
 });
+}
 
+export function register02() {
 describe('C18.1 — DIFFERENTIAL: the frozen d5061b8 verifier ACCEPTED what C18.1 rejects', () => {
   /** The wholesale-forged archive the OLD verifier accepted: fake SHA, arbitrary suite text,
    * self-declared exits, empty audit world, thin posture — built exactly in the old synthetic
@@ -759,7 +762,9 @@ describe('C18.1 — DIFFERENTIAL: the frozen d5061b8 verifier ACCEPTED what C18.
     }
   });
 });
+}
 
+export function register03() {
 describe('C18.1.1 — new single-defect mutations against the genuine archive are rejected', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -846,7 +851,9 @@ describe('C18.1.1 — new single-defect mutations against the genuine archive ar
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register04() {
 describe('C18.1.1 — DIFFERENTIAL: the frozen 8a23526 verifier ACCEPTED what C18.1.1 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -887,6 +894,7 @@ describe('C18.1.1 — DIFFERENTIAL: the frozen 8a23526 verifier ACCEPTED what C1
     } finally { rmSync(m.dir, { recursive: true, force: true }); }
   });
 });
+}
 
 /** Rewrite a processed snapshot table AND its command-bound raw receipt consistently, with
  * the ledger's stream digest rebound — the full-rebinding discipline every C18.1.2 mutation
@@ -950,6 +958,7 @@ function renumberCommands(dir: string) {
   });
 }
 
+export function register05() {
 describe('C18.1.2 — DIFFERENTIAL: the TEN false passes the frozen 567a70f verifier ACCEPTED', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1034,7 +1043,9 @@ describe('C18.1.2 — DIFFERENTIAL: the TEN false passes the frozen 567a70f veri
     },
   );
 });
+}
 
+export function register06() {
 describe('C18.1.2 — command-graph, binding and projection controls (new-verifier rejections)', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1096,6 +1107,7 @@ describe('C18.1.2 — command-graph, binding and projection controls (new-verifi
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /**
  * C18.1.3 raises the EVIDENCE format (governed migration-execution receipts, sanitized seeding
@@ -1357,6 +1369,7 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /command environment is not the path-[ab].* instance binding/],
 ];
 
+export function register07() {
 describe('C18.1.3 — DIFFERENTIAL: the frozen 15e8239 verifier ACCEPTED what C18.1.3 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1397,7 +1410,9 @@ describe('C18.1.3 — DIFFERENTIAL: the frozen 15e8239 verifier ACCEPTED what C1
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+}
 
+export function register08() {
 describe('C18.1.3 — direct rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1479,6 +1494,7 @@ describe('C18.1.3 — direct rejections on the genuine archive', () => {
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /** Mutations that exist in BOTH the C18.1.4 and 83d158c evidence formats. */
 const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
@@ -1598,6 +1614,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /absence probe for .* exited 125/],
 ];
 
+export function register09() {
 describe('C18.1.4 — DIFFERENTIAL: the frozen 83d158c verifier ACCEPTED what C18.1.4 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1619,7 +1636,9 @@ describe('C18.1.4 — DIFFERENTIAL: the frozen 83d158c verifier ACCEPTED what C1
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register10() {
 describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1698,6 +1717,7 @@ describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /** Mutations expressible in BOTH the C18.1.5 and 7be02b8 evidence formats. */
 const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
@@ -1798,6 +1818,7 @@ const C1815_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /wrote \d+ bytes to stderr.*the state is UNKNOWN/],
 ];
 
+export function register11() {
 describe('C18.1.5 — DIFFERENTIAL: the frozen 7be02b8 verifier ACCEPTED what C18.1.5 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1819,7 +1840,9 @@ describe('C18.1.5 — DIFFERENTIAL: the frozen 7be02b8 verifier ACCEPTED what C1
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register12() {
 describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -1898,6 +1921,7 @@ describe('C18.1.5 — adjacent-field rejections on the genuine archive', () => {
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /** Rewrite every path-A snapshot table AND its raw receipt consistently. */
 function renameEverywhere(d: string, table: string, match: (r: any) => boolean, apply: (r: any) => void) {
@@ -2003,6 +2027,7 @@ const C1816_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /unclaimed session\(s\) belong to principal slot 'alpha-admin'|matches no source-owned session slot/],
 ];
 
+export function register13() {
 describe('C18.1.6 — DIFFERENTIAL: the frozen 8362cba verifier ACCEPTED what C18.1.6 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2031,7 +2056,9 @@ describe('C18.1.6 — DIFFERENTIAL: the frozen 8362cba verifier ACCEPTED what C1
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register14() {
 describe('C18.1.6 — inventory and seed-spec adjacent rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2107,6 +2134,7 @@ describe('C18.1.6 — inventory and seed-spec adjacent rejections on the genuine
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /** The header exactly as ADMITTED (string version, ISO-Z times), so a digest recomputes. */
 const admittedHeader = (row: any) => {
@@ -2181,6 +2209,7 @@ const C1817_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /names audit correlation .* which is not the correlation of the operation that admitted it/],
 ];
 
+export function register15() {
 describe('C18.1.7 — DIFFERENTIAL: the frozen dccfcf26 verifier ACCEPTED what C18.1.7 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2202,7 +2231,9 @@ describe('C18.1.7 — DIFFERENTIAL: the frozen dccfcf26 verifier ACCEPTED what C
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register16() {
 describe('C18.1.7 — adjacent single-defect rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2283,6 +2314,7 @@ describe('C18.1.7 — adjacent single-defect rejections on the genuine archive',
     await expectReject(mutate, pattern);
   });
 });
+}
 
 /** Append one production-valid audit event to every path-A snapshot, fully rebound. */
 function appendAuditEvent(d: string) {
@@ -2355,6 +2387,7 @@ const C1818_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     /belongs to no planned seed operation or standalone event|the source-owned plan writes exactly/],
 ];
 
+export function register17() {
 describe('C18.1.8 — DIFFERENTIAL: the frozen bfc8695 verifier ACCEPTED what C18.1.8 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2376,7 +2409,9 @@ describe('C18.1.8 — DIFFERENTIAL: the frozen bfc8695 verifier ACCEPTED what C1
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register18() {
 describe('C18.1.8 — adjacent single-defect rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2440,7 +2475,9 @@ describe('C18.1.8 — adjacent single-defect rejections on the genuine archive',
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register19() {
 describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)', () => {
   const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
   const cli = (args: string[], env: Record<string, string> = {}) => spawnSync('node', [RUNNER, ...args], {
@@ -2542,6 +2579,7 @@ describe('C18.1 — producer lifecycle and output-directory refusals (real CLI)'
     }
   });
 });
+}
 
 /**
  * Rewrite one audit event's canonical BODY and rechain its whole partition with the production
@@ -2669,6 +2707,7 @@ const C1819_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /body policy_version is "bundle-v1"; the specification requires null/],
 ];
 
+export function register20() {
 describe('C18.1.9 — DIFFERENTIAL: the frozen 77489f5 verifier ACCEPTED what C18.1.9 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2690,7 +2729,9 @@ describe('C18.1.9 — DIFFERENTIAL: the frozen 77489f5 verifier ACCEPTED what C1
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register21() {
 describe('C18.1.9 — adjacent single-defect rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2756,6 +2797,7 @@ describe('C18.1.9 — adjacent single-defect rejections on the genuine archive',
     await expectReject(mutate, pattern);
   });
 });
+}
 
 
 /**
@@ -2848,6 +2890,7 @@ function inFinalOnly(d: string, table: string, apply: (t: any) => void) {
     Buffer.from(JSON.stringify(now.tables[table].rows)));
 }
 
+export function register22() {
 describe('C18.1.10 — DIFFERENTIAL: the frozen 53a4eec verifier ACCEPTED what C18.1.10 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2869,7 +2912,9 @@ describe('C18.1.10 — DIFFERENTIAL: the frozen 53a4eec verifier ACCEPTED what C
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register23() {
 describe('C18.1.10 — the semantic core and the production CLI agree', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -2895,6 +2940,7 @@ describe('C18.1.10 — the semantic core and the production CLI agree', () => {
     expect(changed).toHaveLength(4);
   });
 });
+}
 
 
 /**
@@ -3019,6 +3065,7 @@ const C11811_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /credential lifecycle: the expiry implies a marking instant/],
 ];
 
+export function register24() {
 describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -3050,7 +3097,9 @@ describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C
     await expectReject(mutate, pattern);
   });
 });
+}
 
+export function register25() {
 describe('C18.1.11 — one finding never suppresses an independent check', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -3074,6 +3123,7 @@ describe('C18.1.11 — one finding never suppresses an independent check', () =>
     expect(r.problems.join('\n')).toMatch(/'identity\.sessions\.smuggled' is in the delivered catalog but not classified/);
   });
 });
+}
 
 /**
  * C18.1.12's contract classifies the two governed-lifetime columns as source-owned formulas rather
@@ -3272,6 +3322,7 @@ const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /decision_id is "decision-not-a-uuid", which is not a uuid/],
 ];
 
+export function register26() {
 describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C18.1.12 rejects', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
@@ -3309,3 +3360,4 @@ describe('C18.1.12 — DIFFERENTIAL: the frozen 2c3cab3 verifier ACCEPTED what C
     await expectRejectViaZip(C11812_MUTATIONS[3]![1], C11812_MUTATIONS[3]![2]);
   });
 });
+}

@@ -8,8 +8,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['test/gate/c18-mutation-controls.ctl.ts'],
-    fileParallelism: false,
+    // C18.1.12: the controls are split across four shard files purely so they run in parallel
+    // workers. They share no mutable state — each worker extracts its own pristine archive — and
+    // the container-provisioning controls are confined to a single shard.
+    include: ['test/gate/c18-mutation-controls-*.ctl.ts'],
+    fileParallelism: true,
     testTimeout: 120_000,
     hookTimeout: 120_000,
   },
