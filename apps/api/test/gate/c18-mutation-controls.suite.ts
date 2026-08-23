@@ -3267,7 +3267,7 @@ const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       const row = t.rows.find((h: any) => h.partition_id === head.partition_id);
       row.updated_at = respellPg(row.updated_at);
     });
-  }, /audit_chain_heads\.updated_at is ".*\+0000", which is parseable but NOT the canonical db timestamp grammar/],
+  }, /audit_chain_heads\.updated_at is ".*\+0000", which is not the canonical database timestamp grammar/],
 
   ['the closing event’s instant is respelled in row AND body, then fully rechained', (d) => {
     editJson(d, 'path-a-final.json', (doc: any) => {
