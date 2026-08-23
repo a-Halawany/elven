@@ -3514,6 +3514,26 @@ describe('C18.1.13 — DIFFERENTIAL: the frozen 220b26c verifier ACCEPTED what C
     await expectRejectViaZip(C11813_MUTATIONS[4]![1], C11813_MUTATIONS[4]![2]);
   });
 
+  it('the delivered archive carries no credential material of any kind', () => {
+    // §7's evidence secret scan, as a permanent claim rather than a one-off command. A raw
+    // `generic-api-key` heuristic flags this archive's own sha-256 content digests, because they
+    // follow keys whose names contain "secret"; those are digests, not secrets. What must be
+    // absent is real material — provider tokens, private-key blocks, and the synthetic canaries
+    // the watchdog controls use.
+    const bytes = readFileSync(ARCHIVE).toString('latin1');
+    for (const [what, re] of [
+      ['a GitHub OAuth or PAT token', /gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}/],
+      ['a Slack token', /xox[abprs]-[A-Za-z0-9-]{10,}/],
+      ['an AWS access key id', /AKIA[0-9A-Z]{16}/],
+      ['a private-key block', /-----BEGIN [A-Z0-9 ]*(PRIVATE KEY|CERTIFICATE)-----/],
+      ['the generic watchdog canary', /Zq7mK3xTvR9pLw2eN5hJ8sQ4dC6bF0aY/],
+      ['the shaped watchdog canary', /gho_c18canary0{20,}/],
+      ['the synthetic private-material body', /c18syntheticprivatebodyline/],
+    ] as ReadonlyArray<[string, RegExp]>) {
+      expect(re.test(bytes), `the archive must not contain ${what}`).toBe(false);
+    }
+  });
+
   it('a shape defect, a type defect and a timestamp-family defect are ALL reported together', async () => {
     // Anti-suppression across the three new families of finding.
     const { members } = mutateMembers((d) => {
