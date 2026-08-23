@@ -20,6 +20,7 @@
  *   • C18.1.3 — direct rejections on the genuine archive
  */
 import {
+  register28,
   register07,
   register24,
   register18,
@@ -32,3 +33,4 @@ register24();
 register18();
 register03();
 register08();
+register28();

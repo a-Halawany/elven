@@ -63,6 +63,13 @@ import {
   verifySemantics as legacy2c3Semantics,
 } from './fixtures/c18-legacy-2c3cab3/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import {
+  deriveSourceBinding as derive220Binding, verifyEvidence as legacy220,
+  verifySemantics as legacy220Semantics,
+} from './fixtures/c18-legacy-220b26c/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy220Coverage } from './fixtures/c18-legacy-220b26c/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy2c3Coverage } from './fixtures/c18-legacy-2c3cab3/lib/c18-seed-coverage.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 
@@ -3384,5 +3391,149 @@ describe('C18.1 — producer refusals that must disturb the real checkout (seria
     }
   });
 
+});
+}
+
+/**
+ * C18.1.13 classifies the two governed-lifetime columns' notes differently again, so the delivered
+ * coverage REPORT differs from 220b26c's. Regenerating it with the FROZEN module reproduces what
+ * that producer emitted, keeping the differential on the semantic change.
+ */
+function downgradeTo220b26c(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, '220b26c', (preseed, before) => legacy220Coverage({ preseed, before })));
+}
+
+/** The same instant, spelled in the OTHER canonical family. */
+const toOtherTimestampFamily = (v: string) => (String(v).endsWith('+00:00')
+  ? new Date(Date.parse(v)).toISOString()
+  : new Date(Date.parse(v)).toISOString().replace('Z', '+00:00'));
+
+/** Apply an edit to a table in EVERY path-A snapshot that carries it, rebinding each receipt. */
+function everySnapshot(d: string, table: string, apply: (rows: any[]) => void) {
+  for (const [snapFile, pfx] of presentSnaps(d)) {
+    editJson(d, snapFile, (doc: any) => {
+      if (doc.tables?.[table] === undefined) return;
+      apply(doc.tables[table].rows);
+      doc.tables[table].row_count = doc.tables[table].rows.length;
+    });
+    const now = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    if (now.tables?.[table] === undefined) continue;
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(now.tables[table].rows)));
+  }
+}
+
+/**
+ * The five ARCHIVE packages the C18.1.13 review reproduced, fully rebound: the processed
+ * snapshots, the command-bound raw receipts, those commands' byte counts and digests, the audit
+ * projections and hashes where relevant, and `SHA256SUMS.txt`.
+ */
+const C11813_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['the post-upgrade session expiry is respelled into the JSON timestamp family', (d) => {
+    const s = insertedRow(d, 'identity.sessions', 'id');
+    finalOnly(d, 'identity.sessions', (t: any) => {
+      const row = t.rows.find((x: any) => x.id === s.id);
+      row.expires_at = toOtherTimestampFamily(row.expires_at);
+    });
+  }, /identity\.sessions\.expires_at .* (canonical database timestamp grammar|body timestamp grammar)/],
+
+  ['a SEEDED session expiry is respelled into the JSON timestamp family everywhere', (d) => {
+    const seeded = new Set(JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'))
+      .tables['identity.sessions'].rows.map((r: any) => r.id));
+    everySnapshot(d, 'identity.sessions', (rows) => {
+      for (const r of rows) if (seeded.has(r.id)) r.expires_at = toOtherTimestampFamily(r.expires_at);
+    });
+  }, /identity\.sessions\.expires_at .* (canonical database timestamp grammar|body timestamp grammar)/],
+
+  ['a nullable seeded field is OMITTED consistently from every snapshot', (d) => {
+    const seeded = new Set(JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'))
+      .tables['identity.sessions'].rows.map((r: any) => r.id));
+    everySnapshot(d, 'identity.sessions', (rows) => {
+      for (const r of rows) if (seeded.has(r.id)) delete r.revoked_at;
+    });
+  }, /row shape: .* is MISSING field "revoked_at"/],
+
+  ['the closing audit sequence becomes an equivalent numeric string', (d) => {
+    const aft = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'));
+    const seen = new Set(aft.tables['audit.audit_events'].rows
+      .map((e: any) => `${e.partition_id}#${e.audit_seq}`));
+    editJson(d, 'path-a-final.json', (doc: any) => {
+      const closing = doc.tables['audit.audit_events'].rows
+        .find((e: any) => !seen.has(`${e.partition_id}#${e.audit_seq}`));
+      const seq = closing.audit_seq;
+      closing.audit_seq = String(seq);
+      for (const e of doc.audit.events) {
+        if (e.partition_id === closing.partition_id && Number(e.audit_seq) === Number(seq)) {
+          e.audit_seq = String(seq);
+        }
+      }
+    });
+    rechainFinal(d);
+  }, /audit\.audit_events\.audit_seq is serialized as string/],
+
+  ['ctx.operation.txid becomes a JSON number', (d) => {
+    finalOnly(d, 'ctx.operation', (t: any) => { t.rows[0].txid = Number(t.rows[0].txid); });
+  }, /ctx\.operation\.txid is serialized as integer/],
+];
+
+export function register28() {
+describe('C18.1.13 — DIFFERENTIAL: the frozen 220b26c verifier ACCEPTED what C18.1.13 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  const judge220 = async (mutate: Mutator) => {
+    const { members } = mutateMembers((d) => { downgradeTo220b26c(d); mutate(d); });
+    return legacy220Semantics({
+      members, root: REPO, sourceBinding: legacyBinding('220b26c', derive220Binding),
+    });
+  };
+
+  it('NON-VACUITY: the frozen 220b26c verifier accepts the genuine archive', async () => {
+    const r = await judge220(() => {});
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('the frozen 220b26c leg agrees through the real ZIP ingress as well', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo220b26c);
+    try {
+      const r = await legacy220({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C11813_MUTATIONS)('%s — 220b26c ACCEPTS it; C18.1.13 REJECTS it', async (_label, mutate, pattern) => {
+    const old = await judge220(mutate);
+    expect(old.ok, `the frozen 220b26c verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    await expectReject(mutate, pattern);
+  });
+
+  it('the same judgement holds through the real ZIP ingress', async () => {
+    await expectRejectViaZip(C11813_MUTATIONS[2]![1], C11813_MUTATIONS[2]![2]);
+    await expectRejectViaZip(C11813_MUTATIONS[4]![1], C11813_MUTATIONS[4]![2]);
+  });
+
+  it('a shape defect, a type defect and a timestamp-family defect are ALL reported together', async () => {
+    // Anti-suppression across the three new families of finding.
+    const { members } = mutateMembers((d) => {
+      const seeded = new Set(JSON.parse(readFileSync(join(d, 'path-a-before.json'), 'utf8'))
+        .tables['identity.sessions'].rows.map((r: any) => r.id));
+      everySnapshot(d, 'identity.sessions', (rows) => {
+        for (const r of rows) if (seeded.has(r.id)) delete r.revoked_at;
+      });
+      finalOnly(d, 'ctx.operation', (t: any) => { t.rows[0].txid = Number(t.rows[0].txid); });
+      const s = insertedRow(d, 'identity.sessions', 'id');
+      finalOnly(d, 'identity.sessions', (t: any) => {
+        const row = t.rows.find((x: any) => x.id === s.id);
+        row.issued_at = toOtherTimestampFamily(row.issued_at);
+      });
+    });
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    const text = r.problems.join('\n');
+    expect(text, 'the shape finding must survive').toMatch(/is MISSING field "revoked_at"/);
+    expect(text, 'the type finding must survive').toMatch(/txid is serialized as integer/);
+    expect(text, 'the timestamp-family finding must survive').toMatch(/issued_at/);
+  });
 });
 }

@@ -3670,3 +3670,63 @@ describe('C18.1.13 — the watchdog redacts by VALUE, and never emits what it ha
     for (const canary of [GENERIC, SHAPED, PEM_BODY]) expect(bytes).not.toContain(canary);
   });
 });
+
+describe('C18.1.13 — every control block is registered exactly once', () => {
+  /**
+   * §6. The in-gate controls live in one suite module and are registered by four parallel shards
+   * plus one serial shard. A block that no shard registers still typechecks, still looks present
+   * in review, and simply never runs — the quietest way a control suite can shrink. This proves
+   * the registration is a bijection.
+   */
+  const SUITE = join(REPO, 'apps', 'api', 'test', 'gate', 'c18-mutation-controls.suite.ts');
+  const shardFiles = () => readdirSync(join(REPO, 'apps', 'api', 'test', 'gate'))
+    .filter((f) => /^c18-mutation-controls-.*\.ctl\.ts$/.test(f))
+    .map((f) => join(REPO, 'apps', 'api', 'test', 'gate', f));
+
+  const exported = () => [...readFileSync(SUITE, 'utf8')
+    .matchAll(/^export function (register[A-Za-z0-9]*)\(\)/gm)].map((m) => m[1] as string).sort();
+  const invoked = () => shardFiles()
+    .flatMap((f) => [...readFileSync(f, 'utf8').matchAll(/^(register[A-Za-z0-9]*)\(\);$/gm)]
+      .map((m) => m[1] as string));
+
+  it('the suite exports a substantial set of registration blocks', () => {
+    expect(exported().length).toBeGreaterThan(20);
+  });
+  it('every exported block is registered by exactly one shard', () => {
+    const counts = new Map<string, number>();
+    for (const name of invoked()) counts.set(name, (counts.get(name) ?? 0) + 1);
+    for (const name of exported()) {
+      expect(counts.get(name) ?? 0, `${name} must be registered exactly once`).toBe(1);
+    }
+  });
+  it('no shard registers a block the suite does not export', () => {
+    for (const name of invoked()) expect(exported()).toContain(name);
+  });
+  it('the shard set the parallel config collects, plus the serial one, is every shard file', () => {
+    const parallel = shardFiles().filter((f) => /-\d\.ctl\.ts$/.test(f));
+    const serial = shardFiles().filter((f) => /-serial\.ctl\.ts$/.test(f));
+    expect(parallel.length).toBeGreaterThan(1);
+    expect(serial).toHaveLength(1);
+    expect(parallel.length + serial.length).toBe(shardFiles().length);
+  });
+  it('the serial shard registers ONLY the checkout-disturbing block', () => {
+    // Under parallel shards, any other worker deriving a source binding while the checkout is
+    // deliberately dirty would correctly — and irrelevantly — report an unclean tree.
+    const serial = shardFiles().find((f) => /-serial\.ctl\.ts$/.test(f))!;
+    const names = [...readFileSync(serial, 'utf8').matchAll(/^(register[A-Za-z0-9]*)\(\);$/gm)]
+      .map((m) => m[1]);
+    expect(names).toEqual(['registerSerial']);
+  });
+  it('the two vitest configs partition the shard files without overlap', () => {
+    const par = readFileSync(join(REPO, 'apps', 'api', 'vitest.c18.config.ts'), 'utf8');
+    const ser = readFileSync(join(REPO, 'apps', 'api', 'vitest.c18-serial.config.ts'), 'utf8');
+    expect(par).toContain('c18-mutation-controls-[0-9].ctl.ts');
+    expect(par).not.toContain('serial');
+    expect(ser).toContain('c18-mutation-controls-serial.ctl.ts');
+  });
+  it('the C18 gate step runs BOTH configs', () => {
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    expect(ci).toContain('vitest.c18.config.ts');
+    expect(ci).toContain('vitest.c18-serial.config.ts');
+  });
+});
