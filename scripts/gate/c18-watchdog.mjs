@@ -114,7 +114,11 @@ export function redactSecrets(text) {
     .replace(/xox[abprs]-[A-Za-z0-9-]{10,}/g, '[REDACTED]')
     .replace(/AKIA[0-9A-Z]{16}/g, '[REDACTED]')
     .replace(/ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED]')
-    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[REDACTED]')
+    // C18.1.13: the same marker set the streaming block tracker uses, so a block that arrives on
+    // ONE line and a block split across writes are redacted by the same definition. The narrower
+    // `PRIVATE KEY`-only form left `-----BEGIN … KEY-----` and certificate blocks untouched here
+    // while the stream tracker suppressed them, which is an inconsistency waiting to be a hole.
+    .replace(/-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|KEY|CERTIFICATE)-----[\s\S]*?-----END [A-Z0-9 ]*(?:PRIVATE KEY|KEY|CERTIFICATE)-----/g, '[REDACTED]')
     // KEY=value and KEY: value where the KEY names a secret.
     .replace(new RegExp(`(${SECRET_KEY}\\s*[=:]\\s*)(\\S+)`, 'gi'), '$1[REDACTED]')
     // --token VALUE / --password VALUE, and Authorization headers.

@@ -59,14 +59,21 @@ const A = SEED_AUDIT_POSTURE;
  */
 const credentialLifecycle = (field) => (v, row) => {
   const active = row.status === P.credential.activeStatus;
+  // C18.1.13: an ABSENT property is not an explicit null. The two were indistinguishable here.
+  if (v === undefined) return ['is ABSENT; this column records an explicit value, not nothing'];
   if (active) {
-    return (v ?? null) === null ? []
+    return v === null ? []
       : [`is ${JSON.stringify(v)} on an ACTIVE credential; the specification requires null`];
   }
-  if ((v ?? null) === null) return [`is null on a RETIRED credential; the specification requires an instant`];
+  if (v === null) return ['is null on a RETIRED credential; the specification requires an instant'];
+  // C18.1.13: a DATABASE column, so the database grammar — `new Date(v)` accepted prose, alternate
+  // offsets and the body family alike, which is how a cross-family respelling passed.
+  if (!isPgTimestamp(v)) {
+    return [`is ${JSON.stringify(v)}, which is not the canonical database timestamp grammar`];
+  }
   const t = new Date(v).getTime();
-  if (!Number.isFinite(t)) return [`is ${JSON.stringify(v)}, which is not a valid instant`];
-  if (field === 'rotated_at' && !(new Date(row.created_at).getTime() <= t)) {
+  if (field === 'rotated_at' && !(isPgTimestamp(row.created_at)
+    && new Date(row.created_at).getTime() <= t)) {
     return ['retires the credential before it was created'];
   }
   return [];

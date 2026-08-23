@@ -8,6 +8,7 @@
  * the contract without a value here fails loudly rather than going unexercised.
  */
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { auditRowHash, jcsCanonicalize } from '@eye/contracts';
 import {
   CAPABILITY_SESSIONLESS_ID, SEED_ADMIN, SEED_AUDIT_POSTURE, SEED_BASE_POSTURE,
@@ -18,6 +19,36 @@ import {
 } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 import { SEED_COVERAGE, modelCoveredColumns } from '../../../../scripts/gate/lib/c18-seed-coverage.mjs';
 import { GOVERNED_LIFETIMES, capabilityLifetimeSeconds } from '../../../../scripts/gate/lib/c18-lifetimes.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { loadSerializedTypes } from '../../../../scripts/gate/lib/c18-serialized-types.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { loadCatalogContract as loadCatalog } from '../../../../scripts/gate/lib/c18-contract.mjs';
+
+const GATE_LIB = join(__dirname, '..', '..', '..', '..', 'scripts', 'gate', 'lib');
+const CATALOG: any = loadCatalog(GATE_LIB);
+const TYPES: any = loadSerializedTypes(GATE_LIB);
+
+/**
+ * Complete a partially modelled row to the full catalogued column set, giving each unmodelled
+ * column a value of its declared serialized type. A synthetic snapshot row must be shaped like a
+ * real one; padding it here keeps the world honest without inventing semantics the coverage
+ * contract does not claim.
+ */
+function padToCatalog(table: string, row: Record<string, unknown>) {
+  const columns: string[] = CATALOG.historical.tables[table]?.columns ?? [];
+  const declared: Record<string, string> = TYPES.historical[table] ?? {};
+  const out: Record<string, unknown> = { ...row };
+  for (const column of columns) {
+    if (column in out) continue;
+    const kinds = String(declared[column] ?? 'null').split('|');
+    const kind = kinds.includes('null') ? 'null' : kinds[0];
+    out[column] = {
+      null: null, string: 'c18-unmodelled', integer: 0, number: 0, boolean: false,
+      object: {}, array: [], unobserved: null,
+    }[kind] ?? null;
+  }
+  return out;
+}
 
 const sha256 = (b: string) => createHash('sha256').update(b).digest('hex');
 const u = (n: string) => `aaaaaaaa-${n.padStart(4, '0').slice(0, 4)}-4aaa-8aaa-aaaaaaaaaaaa`;
@@ -299,7 +330,13 @@ export function buildSeedWorld(): SeedWorld {
     'policy.policy_decisions': decisions,
     'audit.audit_events': events,
     'audit.audit_chain_heads': heads,
-    'objects.canonical_objects': SEED_OBJECTS.map((o: any) => ({ object_id: entityOf(o.slot) })),
+    // C18.1.13: the seed coverage classifies only this table's identity, but a snapshot row is a
+    // COMPLETE row — the shape and type pass reads every catalogued column. The unmodelled columns
+    // are padded from the source-owned type contract so the synthetic world is shaped like real
+    // evidence rather than like the subset one rule happens to look at.
+    'objects.canonical_objects': SEED_OBJECTS.map(
+      (o: any) => padToCatalog('objects.canonical_objects', { object_id: entityOf(o.slot) }),
+    ),
   };
 
   const table = (t2: string, r: any[]) => ({

@@ -86,6 +86,20 @@ import {
 } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { createRedactingStream } from '../../../../scripts/gate/c18-watchdog.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  MAX_LINE, PRIVATE_BLOCK_MARKER, TRUNCATION_MARKER, credentialValuesFromEnv, redactValues,
+} from '../../../../scripts/gate/c18-watchdog.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  BODY_FAMILY_COLUMNS, isJsonBodyTimestamp, isPgTimestamp, timestampFamilyOf,
+} from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  judgeSerializedType, loadSerializedTypes, serializedKind, verifySerializedTypeRegistry,
+  verifySnapshotShapes,
+} from '../../../../scripts/gate/lib/c18-serialized-types.mjs';
+
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 const RUNNER = join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs');
@@ -3186,5 +3200,473 @@ describe('C18.1.12 — the multi-axis mutation matrix', () => {
 
   it('the matrix is non-vacuous: the unmutated world produces no findings', () => {
     expect(judgePostUpgrade(world()).problems).toEqual([]);
+  });
+});
+
+describe('C18.1.13 — the frozen 220b26c predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '220b26cf591d0ecd30060942040ee3341be798e6';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '377eaf6dfbc698b0ba843e8236fbc7ad1a6bbd5b08da7759a0c908eb46b0e0c6'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', '238f0b12bacdee79b58299e90fdcd8f1d8ed8da71d764a7f72ec347168383d38'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-lifetimes.mjs', 'scripts/gate/lib/c18-lifetimes.mjs', '098b8b62a542a33dcdefab863a254029c4f794bb43072452172be162bab731fc'],
+    ['lib/c18-observational-limits.mjs', 'scripts/gate/lib/c18-observational-limits.mjs', '082ba58b2f17e47913c35e25e717de4e119dcc475a8b22828b0761282889bf65'],
+    ['lib/c18-post-upgrade.mjs', 'scripts/gate/lib/c18-post-upgrade.mjs', '83e774894e08148e8fb207a3e4555efdb1f4ad8c1449fbef2031feab4728fde8'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '109d00978809e1f08c41e6f8eb0a17f67488b46f3586ded0522c67a0e097de52'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', 'deb009b518af5ccbdd55a67c9784a5216ae58898c2fa0cd35a574b3f1fa7bee2'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '19d3c4e14598f95d03b852e1b38e64a8cdb90098fabd578c0a07b7fcae1978c1'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', '6806d1d064c653a9e7e32a149de1245a65ff525950333a79aa943a0578d9d68b'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-220b26c/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-220b26c', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+});
+
+describe('C18.1.13 — a timestamp is canonical only for the producer that wrote it', () => {
+  // §2. C18.1.10 accepted EITHER canonical shape wherever a governed instant appeared, and
+  // C18.1.12 kept that union, so a database column could change format FAMILY without changing
+  // its instant. The post-upgrade session's expiry and a seeded session's expiry both passed that
+  // way, fully rebound, with zero findings.
+  const PG = '2026-09-01T00:00:01.234+00:00';
+  const BODY = '2026-09-01T00:00:01.234Z';
+
+  it('the db grammar accepts only the PostgreSQL rendering', () => {
+    expect(isPgTimestamp(PG)).toBe(true);
+    expect(isPgTimestamp(BODY)).toBe(false);
+    expect(isPgTimestamp('2026-09-01T00:00:01+0000')).toBe(false);
+    expect(isPgTimestamp('2026-09-01 00:00:01+00:00')).toBe(false);
+    expect(isPgTimestamp('2026-09-01T00:00:01.234+01:00')).toBe(false);
+  });
+  it('the body grammar accepts only the exact millisecond JSON rendering', () => {
+    expect(isJsonBodyTimestamp(BODY)).toBe(true);
+    expect(isJsonBodyTimestamp(PG)).toBe(false);
+    expect(isJsonBodyTimestamp('2026-09-01T00:00:01Z')).toBe(false);       // no fraction
+    expect(isJsonBodyTimestamp('2026-09-01T00:00:01.234000Z')).toBe(false); // microseconds
+  });
+  it('the two families are disjoint', () => {
+    for (const v of [PG, BODY]) {
+      expect(isPgTimestamp(v) && isJsonBodyTimestamp(v)).toBe(false);
+    }
+  });
+  it('the body-family column list is exactly the one column the application copies', () => {
+    expect([...BODY_FAMILY_COLUMNS]).toEqual(['audit.audit_events.occurred_at']);
+    expect(timestampFamilyOf('audit.audit_events', 'occurred_at')).toBe('body');
+    expect(timestampFamilyOf('identity.sessions', 'expires_at')).toBe('db');
+  });
+
+  /**
+   * The GENERATED cross-family matrix. Every timestamp-valued column of the synthetic seeded and
+   * post-upgrade worlds is respelled into the OTHER family, in both directions, and must fail.
+   * Generating it from the worlds rather than from a list means a column added later is covered
+   * without anyone remembering to add it.
+   */
+  const toOtherFamily = (v: string) => (isPgTimestamp(v)
+    ? new Date(Date.parse(v)).toISOString()
+    : new Date(Date.parse(v)).toISOString().replace('Z', '+00:00'));
+
+  const seedTimestampColumns = () => {
+    const w = buildSeedWorld();
+    const found: Array<[string, string]> = [];
+    for (const [table, t] of Object.entries(w.before.tables as Record<string, any>)) {
+      for (const row of t.rows ?? []) {
+        for (const [c, v] of Object.entries(row as Record<string, unknown>)) {
+          if (typeof v === 'string' && (isPgTimestamp(v) || isJsonBodyTimestamp(v))) {
+            if (!found.some(([tt, cc]) => tt === table && cc === c)) found.push([table, c]);
+          }
+        }
+      }
+    }
+    return found;
+  };
+
+  it('the seeded world offers a nonempty set of timestamp columns to respell', () => {
+    expect(seedTimestampColumns().length).toBeGreaterThan(10);
+  });
+
+  it.each(seedTimestampColumns().map(([t, c]) => [`${t}.${c}`, t, c]))(
+    'respelling seeded %s into the other timestamp family is a finding', (_label, table, column) => {
+      const w = buildSeedWorld();
+      const rows = (w.before.tables as Record<string, any>)[table as string].rows as any[];
+      let touched = false;
+      for (const row of rows) {
+        const v = row[column as string];
+        if (typeof v === 'string' && (isPgTimestamp(v) || isJsonBodyTimestamp(v))) {
+          row[column as string] = toOtherFamily(v);
+          touched = true;
+        }
+      }
+      expect(touched, 'the generated case must actually change a value').toBe(true);
+      const out = runCoverageValidators({ before: w.before, slots: worldSlots(w) }).problems.join('\n');
+      expect(out).toMatch(new RegExp(`${(table as string).replace('.', '\\.')}\\.${column}`));
+    },
+  );
+
+  const postUpgradeTimestampColumns = () => {
+    const w = buildPostUpgradeWorld();
+    const found: Array<[string, string]> = [];
+    for (const [table, t] of Object.entries(w.final.tables as Record<string, any>)) {
+      for (const row of t.rows ?? []) {
+        for (const [c, v] of Object.entries(row as Record<string, unknown>)) {
+          if (typeof v === 'string' && (isPgTimestamp(v) || isJsonBodyTimestamp(v))) {
+            if (!found.some(([tt, cc]) => tt === table && cc === c)) found.push([table, c]);
+          }
+        }
+      }
+    }
+    return found;
+  };
+
+  it.each(postUpgradeTimestampColumns().map(([t, c]) => [`${t}.${c}`, t, c]))(
+    'respelling post-upgrade %s into the other timestamp family is a finding', (_label, table, column) => {
+      const w = buildPostUpgradeWorld();
+      const rows = (w.final.tables as Record<string, any>)[table as string].rows as any[];
+      let touched = false;
+      for (const row of rows) {
+        const v = row[column as string];
+        if (typeof v === 'string' && (isPgTimestamp(v) || isJsonBodyTimestamp(v))) {
+          row[column as string] = toOtherFamily(v);
+          touched = true;
+        }
+      }
+      expect(touched).toBe(true);
+      expect(judgePostUpgrade(w).problems.length,
+        `${table}.${column} respelled into the other family must be a finding`).toBeGreaterThan(0);
+    },
+  );
+});
+
+describe('C18.1.13 — every row’s exact shape and every value’s exact serialized type', () => {
+  // §3, §4. C18.1.12 gave the post-upgrade INSERTS an exact field set; seeded rows had none, so a
+  // nullable rule could not tell `revoked_at: null` from a `revoked_at` that was not there. And
+  // every coercing check — `Number(v)`, `String(v)`, a loose comparison — accepted a value whose
+  // JSON type had changed underneath it.
+  const LIB = join(REPO, 'scripts', 'gate', 'lib');
+  const catalog = loadCatalogContract(LIB) as any;
+  const types = loadSerializedTypes(LIB) as any;
+
+  it('the type contract and the catalog contract name the same columns, both ways', () => {
+    expect(verifySerializedTypeRegistry({ catalog, types }).problems).toEqual([]);
+  });
+  it('the type contract covers both eras and every catalogued table', () => {
+    for (const era of ['historical', 'latest']) {
+      expect(Object.keys(types[era]).sort()).toEqual(Object.keys(catalog[era].tables).sort());
+    }
+  });
+
+  it('serializedKind separates the shapes a coercion would blur', () => {
+    expect(serializedKind(5)).toBe('integer');
+    expect(serializedKind('5')).toBe('string');
+    expect(serializedKind(5.5)).toBe('number');
+    expect(serializedKind(true)).toBe('boolean');
+    expect(serializedKind('true')).toBe('string');
+    expect(serializedKind(null)).toBe('null');
+    expect(serializedKind(undefined)).toBe('absent');
+    expect(serializedKind([])).toBe('array');
+    expect(serializedKind({})).toBe('object');
+  });
+
+  it.each([
+    ['an integer written as a numeric string', 'integer', '5', /serialized as string/],
+    ['a string written as an integer', 'string', 810, /serialized as integer/],
+    ['a boolean written as a string', 'boolean', 'true', /serialized as string/],
+    ['a boolean written as a number', 'boolean', 1, /serialized as integer/],
+    ['an explicit null replaced by absence', 'null', undefined, /is ABSENT from the row/],
+    ['an object written as its stringified form', 'object', '{}', /serialized as string/],
+    ['an array written as its stringified form', 'array', '[]', /serialized as string/],
+    ['a float where an integer is declared', 'integer', 5.5, /serialized as number/],
+    ['a value in a column the contract records as unobserved', 'unobserved', 'x', /records no value/],
+  ] as ReadonlyArray<[string, string, unknown, RegExp]>)('%s is a finding', (_l, spec, value, pattern) => {
+    expect(judgeSerializedType(spec, value).join('\n')).toMatch(pattern);
+  });
+  it('a value matching its declared type raises nothing', () => {
+    expect(judgeSerializedType('integer', 5)).toEqual([]);
+    expect(judgeSerializedType('null|string', null)).toEqual([]);
+    expect(judgeSerializedType('null|string', 'x')).toEqual([]);
+  });
+
+  /**
+   * The GENERATED type-substitution matrix. Every catalogued column of the delivered synthetic
+   * worlds is rewritten into each type it is NOT declared as, and must be a finding. Generating it
+   * from the contract means a column added later is covered without anyone remembering it.
+   */
+  const SUBSTITUTIONS: ReadonlyArray<readonly [string, (v: unknown) => unknown]> = [
+    ['number->numeric string', (v) => String(v)],
+    ['string->number', (v) => Number(v)],
+    ['boolean->string', (v) => String(v)],
+    ['boolean->number', (v) => (v === true ? 1 : 0)],
+    ['object/array->stringified', (v) => JSON.stringify(v)],
+    ['explicit null->missing', () => undefined],
+  ];
+  const world = () => {
+    const w = buildSeedWorld();
+    return w.before as any;
+  };
+  const sampleColumns = () => {
+    const snap = world();
+    const out: Array<[string, string, string]> = [];
+    for (const [table, spec] of Object.entries(catalog.historical.tables as Record<string, any>)) {
+      const rows = snap.tables?.[table]?.rows ?? [];
+      if (rows.length === 0) continue;
+      for (const column of spec.columns as string[]) {
+        const declared = types.historical[table]?.[column];
+        if (declared === undefined || declared === 'unobserved') continue;
+        out.push([`${table}.${column}`, table, column]);
+      }
+    }
+    return out;
+  };
+
+  it('the generated matrix has a substantial column set to work over', () => {
+    expect(sampleColumns().length).toBeGreaterThan(80);
+  });
+
+  it.each(SUBSTITUTIONS.map(([n, f]) => [n, f]))(
+    'the substitution "%s" is rejected wherever it changes a declared type', (_name, apply) => {
+      const snap = world();
+      let applied = 0;
+      let reported = 0;
+      for (const [, table, column] of sampleColumns()) {
+        const rows = snap.tables[table].rows as any[];
+        for (const row of rows) {
+          const before = row[column];
+          const declared = String(types.historical[table][column]).split('|');
+          const after = (apply as (v: unknown) => unknown)(before);
+          // Only a substitution that actually CHANGES the serialized kind into a disallowed one
+          // is a case; anything else would be asserting on a no-op.
+          const kind = serializedKind(after);
+          if (kind === serializedKind(before) || declared.includes(kind)) continue;
+          if (Number.isNaN(after as number)) continue;
+          row[column] = after;
+          applied += 1;
+          const found = verifySnapshotShapes({
+            snapshot: snap, era: 'historical', label: 'before', catalog, types,
+          }).problems;
+          if (found.length > 0) reported += 1;
+          row[column] = before;
+          if (before === undefined) delete row[column];
+        }
+      }
+      expect(applied, 'the generated substitution must apply somewhere').toBeGreaterThan(0);
+      expect(reported).toBe(applied);
+    },
+  );
+
+  it('a field deleted consistently from every seeded row is a finding, not a null', () => {
+    const snap = world();
+    for (const row of snap.tables['identity.sessions'].rows as any[]) delete row.revoked_at;
+    expect(verifySnapshotShapes({ snapshot: snap, era: 'historical', label: 'before', catalog, types })
+      .problems.join('\n')).toMatch(/is MISSING field "revoked_at"/);
+  });
+  it('an extra field smuggled onto a seeded row is a finding', () => {
+    const snap = world();
+    (snap.tables['identity.sessions'].rows as any[])[0].smuggled = 1;
+    expect(verifySnapshotShapes({ snapshot: snap, era: 'historical', label: 'before', catalog, types })
+      .problems.join('\n')).toMatch(/carries field "smuggled"/);
+  });
+  it('a shape finding does not suppress the type findings on the same row', () => {
+    const snap = world();
+    const row = (snap.tables['identity.sessions'].rows as any[])[0];
+    delete row.revoked_at;
+    row.bound_epoch = String(row.bound_epoch);
+    const out = verifySnapshotShapes({ snapshot: snap, era: 'historical', label: 'before', catalog, types })
+      .problems.join('\n');
+    expect(out).toMatch(/is MISSING field "revoked_at"/);
+    expect(out).toMatch(/identity\.sessions\.bound_epoch is serialized as string/);
+  });
+  it('the conformant seeded world raises no shape or type finding at all', () => {
+    expect(verifySnapshotShapes({
+      snapshot: world(), era: 'historical', label: 'before', catalog, types,
+    }).problems).toEqual([]);
+  });
+});
+
+describe('C18.1.13 — the watchdog redacts by VALUE, and never emits what it has not inspected', () => {
+  /**
+   * §5. Three disclosure paths survived C18.1.12, all from one mistake: the filter knew credential
+   * SHAPES but not credential VALUES, and it emitted text it had not finished inspecting. Every
+   * canary below is synthetic.
+   */
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  // An arbitrary credential resembling no published provider format at all.
+  const GENERIC = 'Zq7mK3xTvR9pLw2eN5hJ8sQ4dC6bF0aY';
+  const SHAPED = 'gho_c18canary000000000000000000000000';
+  const PEM_BEGIN = '-----BEGIN TESTING KEY-----';
+  const PEM_BODY = 'c18syntheticprivatebodyline';
+  const PEM_END = '-----END TESTING KEY-----';
+
+  const run = (script: string, env: Record<string, string>, seconds = '20') => spawnSync(
+    'node', [WATCHDOG, seconds, 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 90_000 },
+  );
+  const combined = (r: { stdout: string; stderr: string }) => `${r.stdout}${r.stderr}`;
+
+  it('the value set is taken from credential-named environment variables', () => {
+    const values = credentialValuesFromEnv({
+      EYE_TEST_TOKEN: GENERIC,
+      DB_PASSWORD: 'a-long-enough-password',
+      SOMETHING_SECRET: 'another-long-value',
+      PATH: '/usr/bin:/bin',
+      SSH_AUTH_SOCK: '/private/tmp/listener/socket',   // a pointer, not a secret
+      SHORT_TOKEN: 'abc',                              // too short to be a credential
+    });
+    expect(values.has(GENERIC)).toBe(true);
+    expect(values.has('a-long-enough-password')).toBe(true);
+    expect(values.has('another-long-value')).toBe(true);
+    expect(values.has('/usr/bin:/bin')).toBe(false);
+    expect(values.has('/private/tmp/listener/socket')).toBe(false);
+    expect(values.has('abc')).toBe(false);
+  });
+  it('exact values are redacted wherever they appear, in any formatting', () => {
+    const values = new Set([GENERIC]);
+    for (const surround of [`${GENERIC}`, `prefix${GENERIC}suffix`, `"${GENERIC}"`,
+      `json:{"k":"${GENERIC}"}`, `${GENERIC}\n${GENERIC}`]) {
+      expect(redactValues(surround, values)).not.toContain(GENERIC);
+    }
+  });
+  it('the value set is never printed by the watchdog itself', () => {
+    const src = readFileSync(WATCHDOG, 'utf8');
+    // It may be read and used, but never written to a stream or a file.
+    expect(src).not.toMatch(/console\.(log|error)\([^)]*secretValues/);
+    expect(src).not.toMatch(/writeFileSync\([^)]*secretValues/);
+  });
+
+  it.each([
+    ['an arbitrary env credential on stdout', 'process.stdout.write(process.env.EYE_TEST_TOKEN + "\\n")'],
+    ['an arbitrary env credential on stderr', 'process.stderr.write(process.env.EYE_TEST_TOKEN + "\\n")'],
+    ['an arbitrary env credential thrown in an error', 'throw new Error("using " + process.env.EYE_TEST_TOKEN)'],
+    ['an arbitrary env credential one character at a time',
+      'for (const c of process.env.EYE_TEST_TOKEN) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['an arbitrary env credential with no trailing newline', 'process.stdout.write(process.env.EYE_TEST_TOKEN)'],
+    ['an arbitrary env credential after a very long line',
+      'process.stdout.write("y".repeat(70000) + "\\n" + process.env.EYE_TEST_TOKEN + "\\n")'],
+    ['an arbitrary env credential before a very long line',
+      'process.stdout.write(process.env.EYE_TEST_TOKEN + "\\n" + "y".repeat(70000) + "\\n")'],
+    ['an arbitrary env credential inside a very long unbroken line',
+      'process.stdout.write("y".repeat(70000) + process.env.EYE_TEST_TOKEN + "y".repeat(70000) + "\\n")'],
+  ] as ReadonlyArray<[string, string]>)('%s never reaches the output', (_label, script) => {
+    expect(combined(run(script, { EYE_TEST_TOKEN: GENERIC }))).not.toContain(GENERIC);
+  });
+
+  it('a child that ignores SIGTERM discloses nothing, and still times out', () => {
+    const r = run(
+      'process.on("SIGTERM", () => {}); process.stdout.write(process.env.EYE_TEST_TOKEN + "\\n");'
+      + ' setInterval(() => {}, 1000)', { EYE_TEST_TOKEN: GENERIC }, '2',
+    );
+    expect(combined(r)).not.toContain(GENERIC);
+    expect(r.stderr).toMatch(/DEADLINE EXCEEDED/);
+    expect(r.status).toBe(124);
+  });
+
+  it('multiline private material split across delayed writes is suppressed whole', () => {
+    const r = run(
+      'const lines = process.env.EYE_TEST_PEM.split("|");'
+      + ' let i = 0; const tick = () => { if (i >= lines.length) return;'
+      + ' process.stdout.write(lines[i] + "\\n"); i += 1; setTimeout(tick, 25); }; tick();',
+      { EYE_TEST_PEM: [PEM_BEGIN, `${PEM_BODY}1`, `${PEM_BODY}2`, PEM_END].join('|') },
+    );
+    expect(combined(r)).not.toContain(PEM_BODY);
+    expect(combined(r)).not.toContain(PEM_BEGIN);
+    expect(r.stdout).toContain('[REDACTED: private material block]');
+  });
+  it('private material that never closes is still suppressed at flush', () => {
+    const r = run(
+      'process.stdout.write(process.env.EYE_TEST_PEM.split("|").join("\\n") + "\\n")',
+      { EYE_TEST_PEM: [PEM_BEGIN, `${PEM_BODY}1`].join('|') },
+    );
+    expect(combined(r)).not.toContain(PEM_BODY);
+  });
+
+  it('stdout and stderr stay separate, and the exit code survives', () => {
+    const r = spawnSync('node', [
+      WATCHDOG, '20', 'node', '-e',
+      'process.stdout.write(process.env.M_OUT); process.stderr.write(process.env.M_ERR); process.exit(9)',
+    ], { encoding: 'utf8', env: { ...process.env, M_OUT: 'marker-out\n', M_ERR: 'marker-err\n' } });
+    expect(r.status).toBe(9);
+    expect(r.stdout).toContain('marker-out');
+    expect(r.stdout).not.toContain('marker-err');
+    expect(r.stderr).toContain('marker-err');
+    expect(r.stderr).not.toContain('marker-out');
+  });
+  it('normal output is forwarded unchanged and in order', () => {
+    const r = run('for (let i = 0; i < 200; i += 1) process.stdout.write(`line ${i}\\n`)',
+      { EYE_TEST_TOKEN: GENERIC });
+    const lines = r.stdout.trim().split('\n');
+    expect(lines).toHaveLength(200);
+    expect(lines[0]).toBe('line 0');
+    expect(lines[199]).toBe('line 199');
+  });
+
+  // ── the streaming filter, at every internal boundary ────────────────────────
+  it('a shaped canary at EVERY position across the oversized-line boundary is contained', () => {
+    // C18.1.12's carry-and-overlap scheme emitted the prefix of a token spanning its forced cut:
+    // 19 of 36 split offsets disclosed the canary or a distinctive prefix of it.
+    for (let k = 1; k < SHAPED.length; k += 1) {
+      const seen: string[] = [];
+      const s = createRedactingStream((t: string) => seen.push(t), new Set([SHAPED]));
+      s.push('y'.repeat(MAX_LINE + 4000) + SHAPED + 'y'.repeat(4096 - k));
+      s.push('y'.repeat(1000));
+      s.flush();
+      const out = seen.join('');
+      expect(out, `split offset ${k}`).not.toContain(SHAPED);
+      expect(out, `split offset ${k} prefix`).not.toContain(SHAPED.slice(0, Math.max(k, 8)));
+    }
+  });
+  it('an oversized unbroken line is dropped whole, with a truncation marker', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    // The line must arrive INCOMPLETE and oversized: a line that arrives whole in one chunk has
+    // been inspected whole and is safe to forward, however long it is.
+    s.push('y'.repeat(MAX_LINE + 10));
+    s.push('tail\n');
+    s.push('after\n');
+    s.flush();
+    const out = seen.join('');
+    expect(out).toContain(TRUNCATION_MARKER.trim());
+    expect(out).not.toContain('tail');
+    expect(out).toContain('after');
+  });
+  it('the filter emits nothing it has not seen whole', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t), new Set([GENERIC]));
+    for (const c of `prefix ${GENERIC} suffix`) s.push(c);   // no newline until the end
+    expect(seen.join('')).toBe('');                          // nothing forwarded yet
+    s.push('\n');
+    expect(seen.join('')).not.toContain(GENERIC);
+    expect(seen.join('')).toContain('prefix');
+  });
+  it('private-block state survives arbitrary chunk boundaries', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    for (const c of `${PEM_BEGIN}\n${PEM_BODY}1\n${PEM_BODY}2\n${PEM_END}\nplain\n`) s.push(c);
+    s.flush();
+    const out = seen.join('');
+    expect(out).not.toContain(PEM_BODY);
+    expect(out).toContain(PRIVATE_BLOCK_MARKER.trim());
+    expect(out).toContain('plain');
+  });
+  it('a single-line private block is still redacted by shape', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    s.push(`${PEM_BEGIN}${PEM_BODY}${PEM_END}\n`);
+    s.flush();
+    expect(seen.join('')).not.toContain(PEM_BODY);
+  });
+
+  it('no canary of any kind appears in the delivered evidence archive', () => {
+    const archive = process.env['C18_ARCHIVE'];
+    if (archive === undefined || archive === '') return;   // exercised in-gate
+    const bytes = readFileSync(archive).toString('latin1');
+    for (const canary of [GENERIC, SHAPED, PEM_BODY]) expect(bytes).not.toContain(canary);
   });
 });
