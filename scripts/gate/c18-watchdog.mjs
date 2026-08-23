@@ -23,12 +23,31 @@
  * on stdout and stderr the moment the child echoed it, which is exactly the shape of the original
  * incident. The child's streams are now PIPED and filtered.
  *
- * The filter is cross-chunk safe. A pipe splits wherever the kernel happens to split it, so a
- * token can straddle two reads and a naive per-chunk `replace` would miss it entirely. Output is
- * therefore held until a line is complete before it is redacted and forwarded, with a bounded
- * carry so a pathological writer that never emits a newline cannot grow the buffer without limit.
+ * C18.1.13 — REDACTION BY VALUE, AND BOUNDARIES THAT CANNOT LEAK. Three disclosure paths survived
+ * C18.1.12, and all three came from the same mistake: the filter knew credential SHAPES but not
+ * credential VALUES, and its buffering emitted text it had not finished inspecting.
+ *
+ *   1. An arbitrary credential — a provider-specific token, a database password, anything that
+ *      matches no published format — passed straight through. The gate hands credentials to
+ *      children through the ENVIRONMENT, so the watchdog now READS the values it is being asked to
+ *      protect: at startup it collects the values of environment variables whose names indicate a
+ *      credential and redacts those exact strings wherever they appear, in any formatting. The set
+ *      is held in memory only; it is never printed, logged or written anywhere.
+ *   2. A shaped canary straddling the forced carry cut had its prefix emitted before its suffix
+ *      was ever seen — 19 of 36 split offsets disclosed the canary or a prefix of it. Output is
+ *      now emitted only in COMPLETE LINES, so nothing is forwarded that the filter has not seen
+ *      whole, and no prefix of a pending credential can escape.
+ *   3. Multiline private material written as separate delayed writes was forwarded line by line
+ *      long before its END marker arrived, so the single-pass block regex never matched. The
+ *      filter now tracks begin/end state ACROSS chunks and lines and suppresses the whole block.
+ *
+ * An unbroken line longer than `MAX_LINE` is DROPPED in full and replaced by a truncation marker
+ * until the next newline. Emitting a bounded prefix of a line the filter cannot finish reading is
+ * precisely the defect above, so the safe direction is to lose the line, not to guess at it.
+ *
  * stdout and stderr keep their own filters and their own destinations, so the separation callers
- * rely on survives; exit codes, signals and the timeout diagnostics are unchanged.
+ * rely on survives; ordering of normal output, exit codes, signals and the timeout diagnostics are
+ * unchanged.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -39,6 +58,47 @@ import { fileURLToPath } from 'node:url';
  * a secret, `--flag value` pairs likewise, and Authorization headers. Deliberately broad — a
  * false redaction costs a little legibility, a missed one costs a credential.
  */
+/**
+ * Environment variable names that indicate a credential VALUE. The suffix exclusions keep ordinary
+ * pointers — a socket path, a file location — out of the value set: redacting those would hide
+ * useful diagnostics without protecting anything, because the value is not itself a secret.
+ */
+const SECRET_ENV_NAME_RE = /(TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY|PASSPHRASE|BEARER|COOKIE|AUTH)/i;
+const NON_SECRET_ENV_SUFFIX_RE = /(_SOCK|_SOCKET|_FILE|_PATH|_DIR|_HOME|_URL|_ENABLED|_REQUIRED)$/i;
+/** Below this length a value is too short to be a credential and too likely to be common text. */
+const MIN_SECRET_VALUE_LENGTH = 8;
+
+/**
+ * The exact credential values this process must never emit, taken from the environment it was
+ * given. Returned for the caller to hold in memory; it is never printed, logged or persisted.
+ */
+export function credentialValuesFromEnv(env = process.env) {
+  const values = new Set();
+  for (const [name, value] of Object.entries(env ?? {})) {
+    if (typeof value !== 'string') continue;
+    if (value.length < MIN_SECRET_VALUE_LENGTH) continue;
+    if (!SECRET_ENV_NAME_RE.test(name)) continue;
+    if (NON_SECRET_ENV_SUFFIX_RE.test(name)) continue;
+    values.add(value);
+  }
+  return values;
+}
+
+const escapeLiteral = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Redact a set of EXACT values wherever they appear, whatever surrounds them. Longest first, so a
+ * value that contains another is replaced whole rather than piecemeal.
+ */
+export function redactValues(text, values) {
+  if (typeof text !== 'string' || text.length === 0) return text;
+  if (values === undefined || values === null || values.size === 0) return text;
+  const ordered = [...values].sort((a, b) => b.length - a.length);
+  let out = text;
+  for (const v of ordered) out = out.split(v).join('[REDACTED]');
+  return out;
+}
+
 export function redactSecrets(text) {
   if (typeof text !== 'string' || text.length === 0) return text;
   const SECRET_KEY = '(?:[A-Za-z0-9_-]*(?:TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY|SESSION|COOKIE|BEARER|AUTH)[A-Za-z0-9_-]*)';
@@ -62,36 +122,82 @@ export function redactSecrets(text) {
     .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]');
 }
 
+/** The marker that replaces a line too long for the filter to inspect whole. */
+export const TRUNCATION_MARKER = '[c18-watchdog: oversized line dropped without inspection]\n';
+/** The marker that replaces a suppressed block of private material. */
+export const PRIVATE_BLOCK_MARKER = '[REDACTED: private material block]\n';
+/** The longest unbroken line the filter will hold, and therefore inspect, before dropping it. */
+export const MAX_LINE = 1 << 16;
+
+const BEGIN_PRIVATE_RE = /-----BEGIN [A-Z0-9 ]*(PRIVATE KEY|KEY|CERTIFICATE)-----/;
+const END_PRIVATE_RE = /-----END [A-Z0-9 ]*(PRIVATE KEY|KEY|CERTIFICATE)-----/;
+
 /**
- * A streaming redactor. Text is forwarded a whole line at a time so a secret cannot be missed by
- * landing across a chunk boundary; `flush()` emits whatever is left when the stream ends.
+ * A streaming redactor that forwards COMPLETE LINES only.
  *
- * `CARRY_LIMIT` bounds the held text. A writer that produces a very long line without a newline
- * would otherwise buffer unboundedly; when the limit is reached the held text is redacted and
- * forwarded, keeping a `OVERLAP` tail behind so a secret straddling that forced boundary is still
- * seen whole by the next pass.
+ * Nothing is emitted that the filter has not seen whole, which is what closes the straddling-token
+ * path: a credential cannot span a newline, so a complete line is a complete inspection unit. The
+ * two states that DO span lines are tracked explicitly — an oversized line being dropped, and a
+ * block of private material between its begin and end markers — and both survive arbitrary chunk
+ * boundaries because they live in the filter, not in the buffer.
+ *
+ * `values` is the set of exact credential values to redact in addition to the shape patterns. It
+ * is read here and never emitted.
  */
-export function createRedactingStream(sink) {
-  const CARRY_LIMIT = 1 << 16;
-  const OVERLAP = 4_096;
+export function createRedactingStream(sink, values = null) {
   let held = '';
+  let dropping = false;        // inside an oversized line, until its newline arrives
+  let inPrivate = false;       // inside a private-material block, until its end marker
+
+  const clean = (text) => redactValues(redactSecrets(text), values);
+
+  const emitLine = (line) => {
+    if (inPrivate) {
+      if (END_PRIVATE_RE.test(line)) {
+        inPrivate = false;
+        sink(PRIVATE_BLOCK_MARKER);
+      }
+      return;                                   // the body never reaches the sink
+    }
+    if (BEGIN_PRIVATE_RE.test(line)) {
+      // A block that begins and ends on one line is handled by the shape patterns; otherwise the
+      // filter holds the state until the end marker arrives, however many writes later.
+      if (END_PRIVATE_RE.test(line)) { sink(clean(line)); return; }
+      inPrivate = true;
+      return;
+    }
+    sink(clean(line));
+  };
+
   return {
     push(chunk) {
       held += chunk;
-      const cut = held.lastIndexOf('\n');
-      if (cut >= 0) {
-        sink(redactSecrets(held.slice(0, cut + 1)));
-        held = held.slice(cut + 1);
-      }
-      if (held.length > CARRY_LIMIT) {
-        const emit = held.slice(0, held.length - OVERLAP);
-        sink(redactSecrets(emit));
-        held = held.slice(held.length - OVERLAP);
+      for (;;) {
+        const nl = held.indexOf('\n');
+        if (nl >= 0) {
+          const line = held.slice(0, nl + 1);
+          held = held.slice(nl + 1);
+          if (dropping) dropping = false;       // the oversized line ends here; drop it entirely
+          else emitLine(line);
+          continue;
+        }
+        if (dropping) { held = ''; break; }     // still inside the dropped line
+        if (held.length > MAX_LINE) {
+          // The filter cannot inspect this line whole, and emitting a bounded prefix of it is
+          // exactly how a credential straddling a buffer boundary escaped before. Drop it.
+          dropping = true;
+          held = '';
+          sink(TRUNCATION_MARKER);
+          continue;
+        }
+        break;
       }
     },
     flush() {
+      if (dropping) { dropping = false; held = ''; return; }
+      if (inPrivate) { inPrivate = false; held = ''; sink(PRIVATE_BLOCK_MARKER); return; }
       if (held === '') return;
-      sink(redactSecrets(held));
+      emitLine(held);
       held = '';
     },
   };
@@ -115,15 +221,20 @@ if (isMain) {
   const child = spawn(command[0], command.slice(1), {
     stdio: ['inherit', 'pipe', 'pipe'], detached: true,
   });
-  const out = createRedactingStream((t) => process.stdout.write(t));
-  const err = createRedactingStream((t) => process.stderr.write(t));
+  // The exact credential values this process was given, held in memory and never emitted.
+  const secretValues = credentialValuesFromEnv(process.env);
+  const out = createRedactingStream((t) => process.stdout.write(t), secretValues);
+  const err = createRedactingStream((t) => process.stderr.write(t), secretValues);
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (c) => out.push(c));
   child.stderr.on('data', (c) => err.push(c));
   // The command line is redacted before it is ever printed. A secret should arrive through the
   // environment, which this process never echoes.
-  console.error(redactSecrets(`c18-watchdog: pid=${child.pid} deadline=${deadline}s command=${command.join(' ')}`));
+  console.error(redactValues(
+    redactSecrets(`c18-watchdog: pid=${child.pid} deadline=${deadline}s command=${command.join(' ')}`),
+    secretValues,
+  ));
 
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -131,7 +242,9 @@ if (isMain) {
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
     console.error(`c18-watchdog: DEADLINE EXCEEDED after ${elapsed}s — surviving process tree:`);
     const tree = spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-g', String(child.pid)], { encoding: 'utf8' });
-    console.error(redactSecrets(tree.stdout ?? tree.stderr ?? '(process tree unavailable)'));
+    console.error(redactValues(
+      redactSecrets(tree.stdout ?? tree.stderr ?? '(process tree unavailable)'), secretValues,
+    ));
     try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
     setTimeout(() => {
       try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }

@@ -23,7 +23,7 @@
 import { createHash } from 'node:crypto';
 import {
   allOf, boundValue, canonicalTimestampBound, digest, digestBound, exact, exactShape, helpers,
-  isJsonBodyTimestamp, isPgTimestamp, oneOf, prefixedUuid, uuidBound,
+  oneOf, prefixedUuid, uuidBound,
 } from './c18-seed-validators.mjs';
 import { POST_UPGRADE_OPERATION_SPEC } from './c18-contract.mjs';
 import { GOVERNED_LIFETIMES, capabilityLifetimeSeconds, judgeLifetime } from './c18-lifetimes.mjs';
@@ -36,8 +36,8 @@ const SPEC = POST_UPGRADE_OPERATION_SPEC;
 /** The sessionless sentinel the identity capability carries. */
 const SENTINEL_SESSION = '00000000-0000-0000-0000-000000000000';
 
-/** The canonical DATABASE timestamp grammar, without needing an execution context. */
-const canonicalOnly = (v) => isPgTimestamp(v);
+/** The canonical governed timestamp grammar, without needing an execution context. */
+const canonicalOnly = (v) => helpers.finiteTime(v);
 
 /**
  * The governed post-upgrade posture that is fixed in SOURCE rather than observed. Anything not
@@ -111,8 +111,8 @@ const uniqueUuid = () => (v, row, ctx) => {
  * reads, and the only slack is the explicitly justified sub-second clock skew documented there.
  */
 const governedLifetime = (seconds, label) => (v, row) => {
-  if (!canonicalOnly(v)) {
-    return [`is ${j(v)}, which is not the canonical database timestamp grammar`];
+  if (!helpers.finiteTime(v) || !canonicalOnly(v)) {
+    return [`is ${j(v)}, which is not the canonical governed timestamp grammar`];
   }
   return judgeLifetime({
     issuedAt: row.issued_at, expiresAt: v, seconds: seconds(row), label,
@@ -122,8 +122,8 @@ const puTimestamp = ({ nullable = false, notBefore = null, notAfter = null } = {
   if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires an instant'];
   }
-  if (!ctx.isPgTimestamp(v)) {
-    return [`is ${j(v)}, which is not the canonical database timestamp grammar`];
+  if (!ctx.canonicalTimestamp(v)) {
+    return [`is ${j(v)}, which is not the canonical governed timestamp grammar`];
   }
   const t = Date.parse(v);
   const out = [];
@@ -413,7 +413,7 @@ export function derivePostUpgradeTables(after, final) {
  * complete post-upgrade world in both directions.
  */
 export function runPostUpgradeCoverage({
-  after, final, expected, isPgTimestamp, audit, coverage = POST_UPGRADE_COVERAGE,
+  after, final, expected, canonicalTimestamp, audit, coverage = POST_UPGRADE_COVERAGE,
 }) {
   const problems = [];
   const executed = [];
@@ -509,7 +509,7 @@ export function runPostUpgradeCoverage({
 
   const ctx = {
     op: expected,
-    isPgTimestamp,
+    canonicalTimestamp,
     table: null,
     column: null,
     tableRows: [],
@@ -622,17 +622,11 @@ export function runPostUpgradeCoverage({
         // the body carries the millisecond JSON spelling. Each must be canonical in its own
         // grammar, and they must name the same instant. C18.1.11 compared only `Date.parse`, so
         // respelling BOTH — say to microsecond precision — named the same instant and passed.
-        // BOTH sides of this one are BODY family: the column is populated from the canonical
-        // body, so it carries the body's grammar, not PostgreSQL's.
         const bodyTime = row.event?.occurred_at ?? null;
         const out = [];
-        if (!isJsonBodyTimestamp(bodyTime)) {
+        if (typeof bodyTime !== 'string' || !helpers.ISO_Z_MILLIS_RE.test(bodyTime)) {
           out.push(`has a canonical body occurred_at of ${j(bodyTime)}, which is not the exact `
             + 'millisecond JSON instant grammar');
-        }
-        if (!isJsonBodyTimestamp(value)) {
-          out.push(`is ${j(value)}, which is not the exact millisecond JSON instant grammar the `
-            + 'canonical body writes');
         }
         // The column is populated FROM the body, so it carries the body's own spelling byte for
         // byte. C18.1.11 compared only `Date.parse`, so respelling both to microsecond precision
@@ -683,7 +677,7 @@ export function runPostUpgradeCoverage({
         || !String(body.actor).startsWith('principal:')) {
         out.push(`body actor is ${j(body.actor)}, which is not a principal:<uuid> identifier`);
       }
-      if (!isJsonBodyTimestamp(body.occurred_at)) {
+      if (typeof body.occurred_at !== 'string' || !helpers.ISO_Z_MILLIS_RE.test(body.occurred_at)) {
         out.push(`body occurred_at is ${j(body.occurred_at)}, which is not the exact millisecond `
           + 'JSON instant grammar');
       }
@@ -712,8 +706,8 @@ export function runPostUpgradeCoverage({
       }[field];
       if (field === 'updated_at') {
         const out = [];
-        if (!ctx.isPgTimestamp(value)) {
-          out.push(`is ${j(value)}, which is not the canonical database timestamp grammar`);
+        if (!ctx.canonicalTimestamp(value)) {
+          out.push(`is ${j(value)}, which is not the canonical governed timestamp grammar`);
         }
         // Byte equality, not instant equality: the head copies the closing event's own stamp, so a
         // same-instant alternative spelling is a value the database did not write.

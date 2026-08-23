@@ -19,7 +19,7 @@ import {
   byModel, digest, exact, exactBy, exactShape, exactShapeBy, formula, generatedId, helpers,
   inSeedWindow, notBefore, oneOf, phcArgon2id, sameTimeAs, slotRef, timestamp, volatileField,
   before as tsBefore,
-  isPgTimestamp,
+  canonicalTimestamp,
 } from './c18-seed-validators.mjs';
 import {
   SEED_ARGON2ID_PARAMS, SEED_AUDIT_POSTURE, SEED_BASE_POSTURE, SEED_CREDENTIAL_LIFECYCLE,
@@ -38,9 +38,8 @@ import { GOVERNED_LIFETIMES, capabilityLifetimeSeconds, judgeLifetime } from './
  * same `c18-lifetimes.mjs` spec the rule below reads.
  */
 const governedSeedLifetime = (seconds, label) => (v, row) => {
-  // A governed lifetime lives on DATABASE columns; the body grammar is not a spelling of it.
-  if (!isPgTimestamp(v)) {
-    return [`is ${JSON.stringify(v)}, which is not the canonical database timestamp grammar`];
+  if (typeof v !== 'string' || !canonicalTimestamp(v)) {
+    return [`is ${JSON.stringify(v)}, which is not the canonical governed timestamp grammar`];
   }
   return judgeLifetime({
     issuedAt: row.issued_at, expiresAt: v, seconds: seconds(row), label,

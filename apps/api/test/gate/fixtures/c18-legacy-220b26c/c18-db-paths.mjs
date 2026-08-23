@@ -124,11 +124,7 @@ import {
 import {
   postUpgradeRegisteredColumns, runPostUpgradeCoverage, verifyPostUpgradeRegistry,
 } from './lib/c18-post-upgrade.mjs';
-import { isPgTimestamp } from './lib/c18-seed-validators.mjs';
-// eslint-disable-next-line import/order
-import {
-  loadSerializedTypes, verifySerializedTypeRegistry, verifySnapshotShapes,
-} from './lib/c18-serialized-types.mjs';
+import { canonicalTimestamp } from './lib/c18-seed-validators.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
@@ -694,7 +690,6 @@ async function runCommand(args) {
     const migrationExecutions = [];
     const transforms = deriveIntentionalTransforms(tracked.dir, tracked.files);
     const catalogContract = loadCatalogContract(LIB_DIR);
-    const serializedTypeContract = loadSerializedTypes(LIB_DIR);
     const audit = await productionAudit(ROOT);
     const problems = [];
 
@@ -748,11 +743,9 @@ async function runCommand(args) {
       problems.push(...crossCheckAuditTable(snap, lbl));
       // The live catalog must EQUAL the tracked source contract; drift fails the run, so the
       // contract can never rot away from the migrations it describes.
-      const era = universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest';
-      problems.push(...verifyCatalogContract(snap, era, catalogContract, lbl));
-      problems.push(...verifySnapshotShapes({
-        snapshot: snap, era, label: lbl, catalog: catalogContract, types: serializedTypeContract,
-      }).problems);
+      problems.push(...verifyCatalogContract(
+        snap, universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest', catalogContract, lbl,
+      ));
     }
     problems.push(...verifyTableUniverse(preseed, TABLE_UNIVERSE_HISTORICAL, 'a-preseed'));
     problems.push(...verifyCatalogContract(preseed, 'historical', catalogContract, 'a-preseed'));
@@ -807,7 +800,7 @@ async function runCommand(args) {
       final: finalSnap, registered: postUpgradeRegisteredColumns(),
     }).problems);
     problems.push(...runPostUpgradeCoverage({
-      after, final: finalSnap, expected: postOp, isPgTimestamp,
+      after, final: finalSnap, expected: postOp, canonicalTimestamp,
       audit: { jcs: audit.jcs, rowHash: audit.rowHash },
     }).problems);
     problems.push(...verifyMigrationLedger({
@@ -1255,17 +1248,10 @@ export async function verifySemantics({
       problems.push(...crossCheckAuditTable(snap, lbl));
       // THE SOURCE-OWNED CATALOG CONTRACT, read from the verifier's own checkout: every table's
       // ordinal columns and primary key, and every FK's complete definition.
-      const era = universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest';
-      const catalogContract = loadCatalogContract(join(root, 'scripts', 'gate', 'lib'));
-      problems.push(...verifyCatalogContract(snap, era, catalogContract, lbl));
-      // C18.1.13 — EVERY ROW'S EXACT SHAPE AND EVERY VALUE'S EXACT SERIALIZED TYPE, in every
-      // snapshot of every era. A field omitted consistently from every snapshot used to read as a
-      // legitimate null, and a value whose JSON type changed used to survive every coercing check.
-      const serializedTypes = loadSerializedTypes(join(root, 'scripts', 'gate', 'lib'));
-      problems.push(...verifySerializedTypeRegistry({ catalog: catalogContract, types: serializedTypes }).problems);
-      problems.push(...verifySnapshotShapes({
-        snapshot: snap, era, label: lbl, catalog: catalogContract, types: serializedTypes,
-      }).problems);
+      problems.push(...verifyCatalogContract(
+        snap, universe === TABLE_UNIVERSE_HISTORICAL ? 'historical' : 'latest',
+        loadCatalogContract(join(root, 'scripts', 'gate', 'lib')), lbl,
+      ));
     }
 
     // ── BIND PROCESSED SNAPSHOTS TO THEIR COMMAND-BOUND RAW RECEIPTS ──────────
@@ -1397,7 +1383,7 @@ export async function verifySemantics({
       final: finalSnap, registered: postUpgradeRegisteredColumns(),
     }).problems);
     problems.push(...runPostUpgradeCoverage({
-      after, final: finalSnap, expected: (manifest.post_upgrade_operation ?? null), isPgTimestamp,
+      after, final: finalSnap, expected: (manifest.post_upgrade_operation ?? null), canonicalTimestamp,
       audit: { jcs: audit.jcs, rowHash: audit.rowHash },
     }).problems);
     problems.push(...comparePosture(after.posture, virgin.posture));

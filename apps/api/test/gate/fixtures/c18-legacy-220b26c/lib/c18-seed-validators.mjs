@@ -49,78 +49,27 @@ const j = (v) => JSON.stringify(v);
  */
 export const PG_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00:00$/;
 export const ISO_Z_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
-/** The canonical JSON body instant, to exact millisecond precision. */
-export const ISO_Z_MILLIS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-
+export const canonicalTimestamp = (v) => typeof v === 'string'
+  && (PG_TIMESTAMP_RE.test(v) || ISO_Z_TIMESTAMP_RE.test(v));
 /**
- * C18.1.13 — TWO GRAMMARS, TWO PRODUCERS, TWO VALIDATORS.
- *
- * C18.1.10 accepted EITHER canonical shape wherever a governed instant appeared, and C18.1.12 kept
- * that union. It is a structural hole rather than a missing rule: a spelling is only canonical for
- * the producer that WROTE it, and a union lets a database column change format FAMILY without
- * changing its instant. A PostgreSQL `expires_at` rewritten from `…+00:00` to `…Z` names the same
- * moment, satisfied every grammar check because the union admitted both, satisfied every instant
- * comparison because the moment did not move, and passed — on the post-upgrade session and on a
- * seeded one alike.
- *
- * The two families are now distinct, and a value is judged against ITS OWN:
- *   • `db` — a PostgreSQL column instant, `YYYY-MM-DDTHH:MM:SS[.ffffff]+00:00` (UTC, 0-6 fraction
- *     digits, because the driver trims trailing zeros). `Z` is refused.
- *   • `body` — a canonical JSON body instant, `YYYY-MM-DDTHH:MM:SS.fffZ`, exactly three fraction
- *     digits, as the application and the JCS canonicalization write it. `+00:00` is refused.
- *
- * Where one producer literally COPIES the other's spelling, byte equality is the rule, not instant
- * equality. Where two producers genuinely represent the same instant differently, each side is
- * validated in its own family FIRST and only then compared as instants.
- *
- * The partition is source-owned: `BODY_FAMILY_COLUMNS` names every delivered column written in the
- * body family, and a control proves every other timestamp-valued column of every snapshot is
- * db-family, in both directions.
+ * Parse ONLY a canonical instant. A noncanonical string is not "a different spelling of the same
+ * time" — it is not a governed timestamp at all, and yields NaN so every rule rejects it.
  */
-export const TIMESTAMP_FAMILIES = Object.freeze(['db', 'body']);
-export const isPgTimestamp = (v) => typeof v === 'string' && PG_TIMESTAMP_RE.test(v);
-export const isJsonBodyTimestamp = (v) => typeof v === 'string' && ISO_Z_MILLIS_RE.test(v);
-export const inTimestampFamily = (family, v) => (family === 'body'
-  ? isJsonBodyTimestamp(v) : isPgTimestamp(v));
-
-/**
- * The only columns whose delivered values are written in the BODY family. `audit_events.occurred_at`
- * is populated FROM the canonical body, so the column carries the body's own spelling; every other
- * timestamp column in the evidence is a PostgreSQL rendering.
- */
-export const BODY_FAMILY_COLUMNS = Object.freeze(['audit.audit_events.occurred_at']);
-export const timestampFamilyOf = (table, column) => (
-  BODY_FAMILY_COLUMNS.includes(`${table}.${column}`) ? 'body' : 'db');
-
-/**
- * Parse ONLY an instant canonical for the named family. A value in the OTHER family is not "the
- * same time written differently" — for this producer it is not a governed timestamp at all, and it
- * yields NaN so every rule rejects it.
- */
-const at = (v, family = 'db') => (inTimestampFamily(family, v) ? new Date(v) : new Date(NaN));
-const finiteTime = (v, family = 'db') => Number.isFinite(at(v, family).getTime());
-/** The reason a value is not canonical FOR ITS OWN FAMILY, for a precise finding. */
-const whyNotCanonical = (v, family = 'db') => {
+const at = (v) => (canonicalTimestamp(v) ? new Date(v) : new Date(NaN));
+const finiteTime = (v) => Number.isFinite(at(v).getTime());
+/** The reason a value is not a canonical instant, for a precise finding. */
+const whyNotCanonical = (v) => {
   if (typeof v !== 'string') return `is ${j(v)}, which is not a timestamp string`;
-  const other = family === 'db' ? 'body' : 'db';
-  if (inTimestampFamily(other, v)) {
-    return `is ${j(v)}, which is the ${other} timestamp grammar; this value is written by the `
-      + `${family} producer and must carry the ${family} grammar`;
-  }
   if (Number.isFinite(new Date(v).getTime())) {
-    return `is ${j(v)}, which is parseable but NOT the canonical ${family} timestamp grammar`;
+    return `is ${j(v)}, which is parseable but NOT the canonical governed timestamp grammar`;
   }
   return `is ${j(v)}, which is not a valid instant`;
 };
 const stable = (v) => JSON.stringify(v, (k, val) => (
   val !== null && typeof val === 'object' && !Array.isArray(val)
     ? Object.fromEntries(Object.keys(val).sort().map((kk) => [kk, val[kk]])) : val));
-/**
- * Compare instants that may have been written by DIFFERENT producers: each side is validated in its
- * own family first, and only then compared as moments.
- */
-const sameInstant = (a, b, famA = 'db', famB = 'db') => finiteTime(a, famA) && finiteTime(b, famB)
-  && at(a, famA).getTime() === at(b, famB).getTime();
+/** PostgreSQL renders '+00:00'; the specification writes ISO 'Z'. Compare the instants. */
+const sameInstant = (a, b) => finiteTime(a) && finiteTime(b) && at(a).getTime() === at(b).getTime();
 
 // ── Rule builders ─────────────────────────────────────────────────────────────
 /** exact: one source-owned value. */
@@ -200,13 +149,11 @@ export const phcArgon2id = (params) => (v) => {
   return out;
 };
 /** timestamp: a finite canonical instant, plus its declared lifecycle relationships. */
-export const timestamp = ({ nullable = false, relations = [], family = null } = {}) => (v, row, ctx) => {
-  const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
-  if (v === undefined) return ['is ABSENT; a recorded column carries an explicit value, not nothing'];
-  if (v === null) {
+export const timestamp = ({ nullable = false, relations = [] } = {}) => (v, row, ctx) => {
+  if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires a recorded time'];
   }
-  if (!finiteTime(v, fam)) return [whyNotCanonical(v, fam)];
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
   const problems = [];
   for (const rel of relations) {
     const p = rel(v, row, ctx);
@@ -215,31 +162,22 @@ export const timestamp = ({ nullable = false, relations = [], family = null } = 
   return problems;
 };
 /** timestamp relation: this value must be the same instant as another source-owned time. */
-export const sameTimeAs = (pick, what, { family = null, otherFamily = null } = {}) => (v, row, ctx) => {
-  const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
-  const otherFam = otherFamily ?? fam;
+export const sameTimeAs = (pick, what) => (v, row, ctx) => {
   const other = pick(row, ctx);
   if (other === undefined) return null;
-  return sameInstant(v, other, fam, otherFam) ? null
-    : `is ${j(v)}, which is not the same instant as ${what} (${j(other)})`;
+  return sameInstant(v, other) ? null : `is ${j(v)}, which is not the same instant as ${what} (${j(other)})`;
 };
 /** timestamp relation: this value must be strictly before another. */
-export const before = (pick, what, { family = null, otherFamily = null } = {}) => (v, row, ctx) => {
-  const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
-  const otherFam = otherFamily ?? fam;
+export const before = (pick, what) => (v, row, ctx) => {
   const other = pick(row, ctx);
-  if (other === undefined || !finiteTime(other, otherFam)) return null;
-  return at(v, fam).getTime() < at(other, otherFam).getTime() ? null
-    : `is ${j(v)}, which is not before ${what} (${j(other)})`;
+  if (other === undefined || !finiteTime(other)) return null;
+  return at(v).getTime() < at(other).getTime() ? null : `is ${j(v)}, which is not before ${what} (${j(other)})`;
 };
 /** timestamp relation: this value must be at or after another. */
-export const notBefore = (pick, what, { family = null, otherFamily = null } = {}) => (v, row, ctx) => {
-  const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
-  const otherFam = otherFamily ?? fam;
+export const notBefore = (pick, what) => (v, row, ctx) => {
   const other = pick(row, ctx);
-  if (other === undefined || !finiteTime(other, otherFam)) return null;
-  return at(v, fam).getTime() >= at(other, otherFam).getTime() ? null
-    : `is ${j(v)}, which precedes ${what} (${j(other)})`;
+  if (other === undefined || !finiteTime(other)) return null;
+  return at(v).getTime() >= at(other).getTime() ? null : `is ${j(v)}, which precedes ${what} (${j(other)})`;
 };
 /** volatile: an explicit allowed set, type and nullability — never "unchecked". */
 export const volatileField = ({ allowed = null, type = null, nullable = true, era = null }) => (v, row, ctx) => {
@@ -324,8 +262,9 @@ export const digestBound = (pick, what) => allOf(
  * that name the same moment in different notations are not the same recorded value, and rebinding
  * every linked field to the same alternative spelling must not launder the change.
  */
-export const canonicalTimestampBound = (pick, what, { family = 'db' } = {}) => allOf(
-  (v) => (inTimestampFamily(family, v) ? [] : [whyNotCanonical(v, family)]),
+export const canonicalTimestampBound = (pick, what) => allOf(
+  (v) => (canonicalTimestamp(v) ? []
+    : [`is ${j(v)}, which is not the canonical governed timestamp grammar`]),
   boundValue(pick, what),
 );
 
@@ -338,22 +277,21 @@ export const prefixedUuid = (prefix) => (v) => {
   return UUID_RE.test(suffix) ? [] : [`is ${j(v)}, whose ${prefix} suffix is not a uuid`];
 };
 
+/** The canonical JSON body instant, to exact millisecond precision. */
+export const ISO_Z_MILLIS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 export const helpers = { UUID_RE, HEX64_RE, ISO_Z_MILLIS_RE, at, finiteTime, sameInstant, stable };
 
 /**
  * A timestamp stamped INSIDE the governed seeding window. `offsetMs` widens the window's upper
  * bound for a column whose value is a governed lifetime in the future (a credential expiry).
  */
-export const inSeedWindow = ({
-  nullable = false, offsetMs = 0, relations = [], family = null,
-} = {}) => (v, row, ctx) => {
-  const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
-  if (v === undefined) return ['is ABSENT; a recorded column carries an explicit value, not nothing'];
-  if (v === null) {
+export const inSeedWindow = ({ nullable = false, offsetMs = 0, relations = [] } = {}) => (v, row, ctx) => {
+  if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires an instant'];
   }
-  if (!finiteTime(v, fam)) return [whyNotCanonical(v, fam)];
-  const t = at(v, fam).getTime();
+  if (!finiteTime(v)) return [whyNotCanonical(v)];
+  const t = at(v).getTime();
   const w = ctx.seedWindow?.();
   const out = [];
   if (w !== undefined && w !== null) {

@@ -27,20 +27,9 @@ import {
   seedInputDigestSource, C18_SEED_SPEC_FULL, POST_UPGRADE_DELTA,
 } from './c18-seed-spec.mjs';
 import { COLUMN_MODEL_TABLES, SEED_COVERAGE } from './c18-seed-coverage.mjs';
-import { inTimestampFamily } from './c18-seed-validators.mjs';
 
-/**
- * C18.1.13 — the world-level models parse instants by FAMILY too.
- *
- * These helpers used a bare `new Date(v)`, which accepts prose, alternate offsets and either
- * canonical family indiscriminately — a wider hole than the column rules had, sitting underneath
- * the credential, head and audit-projection models. A value is now parsed only if it is canonical
- * for the producer that wrote it: `db` for PostgreSQL columns, `body` for the canonical JSON body
- * (and for `audit_events.occurred_at`, which is copied from it).
- */
-const at = (v, family = 'db') => (inTimestampFamily(family, v) ? new Date(v).getTime() : null);
-const same = (a, b, famA = 'db', famB = 'db') => at(a, famA) !== null && at(b, famB) !== null
-  && at(a, famA) === at(b, famB);
+const at = (v) => (v === null || v === undefined ? null : new Date(v).getTime());
+const same = (a, b) => at(a) !== null && at(b) !== null && at(a) === at(b);
 const stable = (v) => JSON.stringify(v);
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 
@@ -240,7 +229,7 @@ function buildContext({ before, slots, spec }) {
 
   // THE GOVERNED SEEDING WINDOW: anchored on the audit events' occurred_at values, which are
   // covered by the production row hashes and so cannot be moved without breaking the chain.
-  const occurred = auditRows.map((r) => at(r.event?.occurred_at, 'body')).filter((x) => x !== null);
+  const occurred = auditRows.map((r) => at(r.event?.occurred_at)).filter((x) => x !== null);
   const seedWindow = occurred.length === 0 ? null : {
     lo: Math.min(...occurred) - SEED_WINDOW_SLACK_MS,
     hi: Math.max(...occurred) + SEED_WINDOW_SLACK_MS,
@@ -314,17 +303,11 @@ function buildContext({ before, slots, spec }) {
           : ['does not equal the row hash of its predecessor in the same partition'];
       }
       if (field === 'occurred_at') {
-        // Both sides are BODY family: the column is populated from the canonical body, so it
-        // carries the body's own spelling byte for byte rather than PostgreSQL's.
         const bodyTime = row.event?.occurred_at ?? null;
-        const out = [];
-        if (at(value, 'body') === null) {
-          out.push(`is ${stable(value)}, which is not the canonical body instant grammar`);
+        if (!same(value, bodyTime)) {
+          return [`is detached from the canonical body's occurred_at ${stable(bodyTime)}`];
         }
-        if (value !== bodyTime) {
-          out.push(`is ${stable(value)}; its canonical body records ${stable(bodyTime)}`);
-        }
-        return out;
+        return at(value) === null ? ['is not a valid instant'] : [];
       }
       // The PROJECTION check runs for every body-projected column, whether or not the plan
       // fixes a value: a column that disagrees with the hash-protected body is a finding on its
@@ -378,17 +361,8 @@ function buildContext({ before, slots, spec }) {
           : [];
       }
       if (field === 'updated_at') {
-        // The head copies its last event's own `created_at`, so this is byte equality between two
-        // db-family values, not an instant comparison between two spellings.
-        const out = [];
-        if (at(value, 'db') === null) {
-          out.push(`is ${stable(value)}, which is not the canonical database timestamp grammar`);
-        }
-        if (value !== want.updated_at) {
-          out.push(`is ${stable(value)}; the head is stamped when its last event lands `
-            + `(${stable(want.updated_at)})`);
-        }
-        return out;
+        return same(value, want.updated_at) ? []
+          : [`is ${stable(value)}; the head is stamped when its last event lands (${stable(want.updated_at)})`];
       }
       return stable(value) === stable(want[field]) ? []
         : [`is ${stable(value)}; the authenticated chain derives ${stable(want[field])}`];
@@ -432,7 +406,7 @@ function buildContext({ before, slots, spec }) {
       if (ev.length !== 1) {
         return [`cannot be authenticated: ${ev.length} audited bootstrap events exist`];
       }
-      const ordered = [...auditRows].sort((a, b) => at(a.created_at, 'db') - at(b.created_at, 'db'));
+      const ordered = [...auditRows].sort((a, b) => at(a.created_at) - at(b.created_at));
       if (ordered[0] !== ev[0]) {
         return ['is not stamped by the EARLIEST governed event; the audited bootstrap is not first'];
       }
@@ -549,10 +523,7 @@ function buildContext({ before, slots, spec }) {
         if (bootstrapEvent === null) {
           out.push('credential lifecycle: no audited bootstrap event bounds the marking instant');
         } else {
-          // Cross-family on purpose: the credential columns are PostgreSQL renderings, the
-          // audited bootstrap stamp is a canonical body instant. Each is validated in its own
-          // family above and here, and only then are the two moments compared.
-          const stamped = at(bootstrapEvent.event?.occurred_at ?? null, 'body');
+          const stamped = at(bootstrapEvent.event?.occurred_at ?? null);
           if (stamped !== null && !(tau <= stamped)) {
             out.push(`credential lifecycle: the expiry implies a marking instant ${new Date(tau).toISOString()}, `
               + `after the audited bootstrap was stamped (${stable(bootstrapEvent.event.occurred_at)}); the marking `
