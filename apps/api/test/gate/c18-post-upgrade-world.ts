@@ -16,7 +16,7 @@ import {
   POST_UPGRADE_COVERAGE, POST_UPGRADE_POSTURE, runPostUpgradeCoverage,
 } from '../../../../scripts/gate/lib/c18-post-upgrade.mjs';
 import { POST_UPGRADE_OPERATION_SPEC } from '../../../../scripts/gate/lib/c18-contract.mjs';
-import { canonicalTimestamp } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
+import { isPgTimestamp } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
 
 const sha256 = (b: string) => createHash('sha256').update(b).digest('hex');
 const u = (n: string) => `bbbbbbbb-${n.padStart(4, '0').slice(0, 4)}-4bbb-8bbb-bbbbbbbbbbbb`;
@@ -210,7 +210,7 @@ export function buildPostUpgradeWorld() {
 /** Run the real contract against a world. */
 export function judgePostUpgrade(w: { after: any; final: any; expected: any }) {
   return runPostUpgradeCoverage({
-    after: w.after, final: w.final, expected: w.expected, canonicalTimestamp,
+    after: w.after, final: w.final, expected: w.expected,
     audit: { jcs: jcsCanonicalize, rowHash: auditRowHash },
   });
 }
@@ -256,7 +256,7 @@ export function mutatePostUpgradeColumn(
     return;
   }
   if (typeof v === 'string') {
-    if (canonicalTimestamp(v)) { row[column] = t(Date.parse(v) - BASE + 7_000); return; }
+    if (isPgTimestamp(v)) { row[column] = t(Date.parse(v) - BASE + 7_000); return; }
     if (/^[0-9a-f]{64}$/.test(v)) { row[column] = hex('9'); return; }
     if (/^\d+$/.test(v)) { row[column] = 'not-a-number'; return; }
     row[column] = `${v}-wrong`;

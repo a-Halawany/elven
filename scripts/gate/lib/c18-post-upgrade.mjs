@@ -122,7 +122,7 @@ const puTimestamp = ({ nullable = false, notBefore = null, notAfter = null } = {
   if (v === null || v === undefined) {
     return nullable ? [] : ['is null; the specification requires an instant'];
   }
-  if (!ctx.isPgTimestamp(v)) {
+  if (!isPgTimestamp(v)) {
     return [`is ${j(v)}, which is not the canonical database timestamp grammar`];
   }
   const t = Date.parse(v);
@@ -413,7 +413,7 @@ export function derivePostUpgradeTables(after, final) {
  * complete post-upgrade world in both directions.
  */
 export function runPostUpgradeCoverage({
-  after, final, expected, isPgTimestamp, audit, coverage = POST_UPGRADE_COVERAGE,
+  after, final, expected, audit, coverage = POST_UPGRADE_COVERAGE,
 }) {
   const problems = [];
   const executed = [];
@@ -509,7 +509,6 @@ export function runPostUpgradeCoverage({
 
   const ctx = {
     op: expected,
-    isPgTimestamp,
     table: null,
     column: null,
     tableRows: [],
@@ -712,7 +711,7 @@ export function runPostUpgradeCoverage({
       }[field];
       if (field === 'updated_at') {
         const out = [];
-        if (!ctx.isPgTimestamp(value)) {
+        if (!isPgTimestamp(value)) {
           out.push(`is ${j(value)}, which is not the canonical database timestamp grammar`);
         }
         // Byte equality, not instant equality: the head copies the closing event's own stamp, so a

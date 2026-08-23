@@ -124,7 +124,6 @@ import {
 import {
   postUpgradeRegisteredColumns, runPostUpgradeCoverage, verifyPostUpgradeRegistry,
 } from './lib/c18-post-upgrade.mjs';
-import { isPgTimestamp } from './lib/c18-seed-validators.mjs';
 // eslint-disable-next-line import/order
 import {
   loadSerializedTypes, verifySerializedTypeRegistry, verifySnapshotShapes,
@@ -807,7 +806,7 @@ async function runCommand(args) {
       final: finalSnap, registered: postUpgradeRegisteredColumns(),
     }).problems);
     problems.push(...runPostUpgradeCoverage({
-      after, final: finalSnap, expected: postOp, isPgTimestamp,
+      after, final: finalSnap, expected: postOp,
       audit: { jcs: audit.jcs, rowHash: audit.rowHash },
     }).problems);
     problems.push(...verifyMigrationLedger({
@@ -1397,7 +1396,7 @@ export async function verifySemantics({
       final: finalSnap, registered: postUpgradeRegisteredColumns(),
     }).problems);
     problems.push(...runPostUpgradeCoverage({
-      after, final: finalSnap, expected: (manifest.post_upgrade_operation ?? null), isPgTimestamp,
+      after, final: finalSnap, expected: (manifest.post_upgrade_operation ?? null),
       audit: { jcs: audit.jcs, rowHash: audit.rowHash },
     }).problems);
     problems.push(...comparePosture(after.posture, virgin.posture));

@@ -2235,13 +2235,13 @@ describe('C18.1.10 — rule-specific valid-looking-but-wrong variants', () => {
       // Offset respelled without its colon: identical instant, so only the grammar can object.
       const t = R(b, 'tenancy.domains')[0];
       t.activated_at = String(t.activated_at).replace('+00:00', '+0000');
-    }, /parseable but NOT the canonical governed timestamp grammar/],
+    }, /parseable but NOT the canonical db timestamp grammar/],
     ['a timestamp with a non-UTC offset', (b: any) => {
       R(b, 'tenancy.domains')[0].activated_at = '2026-08-01T02:00:12.000+01:00';
-    }, /parseable but NOT the canonical governed timestamp grammar/],
+    }, /parseable but NOT the canonical db timestamp grammar/],
     ['a timestamp with a space instead of T', (b: any) => {
       R(b, 'tenancy.domains')[0].activated_at = '2026-08-01 00:00:12.000+00:00';
-    }, /NOT the canonical governed timestamp grammar/],
+    }, /NOT the canonical db timestamp grammar/],
     ['an outbox row repointed at ANOTHER genuine correlation', (b: any) => {
       const o = R(b, 'objects.object_outbox');
       o[0].correlation_id = o[1].correlation_id;
@@ -2653,7 +2653,7 @@ describe('C18.1.12 — a binding that cannot pass by default', () => {
     ['a uuid binding rejects a valid uuid that is the wrong one', uuidBound(() => OK_UUID, 'its pair'), 'bbbbbbbb-0002-4bbb-8bbb-bbbbbbbbbbbb', /its pair is/],
     ['a digest binding rejects a coordinated non-digest', digestBound(() => 'not-a-digest', 'its pair'), 'not-a-digest', /not a sha-256 hex digest/],
     ['a digest binding rejects a valid digest that is the wrong one', digestBound(() => '1'.repeat(64), 'its pair'), '2'.repeat(64), /its pair is/],
-    ['a timestamp binding rejects a coordinated respelling', canonicalTimestampBound(() => '2026-09-01T00:00:00+0000', 'its pair'), '2026-09-01T00:00:00+0000', /not the canonical governed timestamp grammar/],
+    ['a timestamp binding rejects a coordinated respelling', canonicalTimestampBound(() => '2026-09-01T00:00:00+0000', 'its pair'), '2026-09-01T00:00:00+0000', /canonical (db|database) timestamp grammar|is the body timestamp grammar/],
     ['a timestamp binding rejects the same instant spelled differently', canonicalTimestampBound(() => '2026-09-01T00:00:00+00:00', 'its pair'), '2026-09-01T00:00:00.000+00:00', /its pair is/],
     ['a prefixed identifier rejects a non-uuid suffix', prefixedUuid('principal'), 'principal:nope', /whose principal suffix is not a uuid/],
     ['a prefixed identifier rejects a missing prefix', prefixedUuid('outbox'), OK_UUID, /not a outbox:<uuid> identifier/],
@@ -2873,13 +2873,13 @@ describe('C18.1.12 — same-instant respellings are not the recorded value', () 
     expect(judged((w) => {
       newSession(w).issued_at = respell(newSession(w).issued_at);
       newRefresh(w).issued_at = respell(newRefresh(w).issued_at);
-    })).toMatch(/identity\.sessions\.issued_at .* not the canonical governed timestamp grammar/);
+    })).toMatch(/identity\.sessions\.issued_at .* canonical (db|database) timestamp grammar/);
   });
   it('the advanced head’s stamp respelled is a finding', () => {
     expect(judged((w) => {
       const head = (w.final.tables['audit.audit_chain_heads'].rows as any[])[0];
       head.updated_at = respell(head.updated_at);
-    })).toMatch(/audit_chain_heads\.updated_at .* not the canonical governed timestamp grammar/);
+    })).toMatch(/audit_chain_heads\.updated_at .* canonical (db|database) timestamp grammar/);
   });
   it('the head’s stamp moved to another canonical instant is a finding', () => {
     expect(judged((w) => {
@@ -3094,7 +3094,7 @@ describe('C18.1.12 — the multi-axis mutation matrix', () => {
           row[field] = respell(row[field]);
         }
       });
-      expect(out).toMatch(/not the canonical governed timestamp grammar/);
+      expect(out).toMatch(/canonical (db|database) timestamp grammar|is the body timestamp grammar/);
     },
   );
 
