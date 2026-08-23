@@ -2856,7 +2856,7 @@ const C11810_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     everywhereA(d, 'tenancy.domains', (r) => {
       if (r.id === id) r.activated_at = String(r.activated_at).replace('+00:00', '+0000');
     });
-  }, /parseable but NOT the canonical governed timestamp grammar/],
+  }, /parseable but NOT the canonical db timestamp grammar/],
 
   ['bootstrap timing moved later but still inside the seed window', (d: string) => {
     everywhereA(d, 'identity.bootstrap_claim', (r) => {
@@ -3245,7 +3245,7 @@ const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       const row = t.rows.find((x: any) => x.id === r.id);
       row.issued_at = respellPg(row.issued_at);
     });
-  }, /issued_at is ".*\+0000", which is not the canonical governed timestamp grammar/],
+  }, /issued_at is ".*\+0000", which is parseable but NOT the canonical db timestamp grammar/],
 
   ['every seeded and post-upgrade session lifetime is doubled consistently', (d) => {
     everywhereA(d, 'identity.sessions', (row: any) => {
@@ -3267,7 +3267,7 @@ const C11812_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       const row = t.rows.find((h: any) => h.partition_id === head.partition_id);
       row.updated_at = respellPg(row.updated_at);
     });
-  }, /audit_chain_heads\.updated_at is ".*\+0000", which is not the canonical governed timestamp grammar/],
+  }, /audit_chain_heads\.updated_at is ".*\+0000", which is parseable but NOT the canonical db timestamp grammar/],
 
   ['the closing event’s instant is respelled in row AND body, then fully rechained', (d) => {
     editJson(d, 'path-a-final.json', (doc: any) => {
