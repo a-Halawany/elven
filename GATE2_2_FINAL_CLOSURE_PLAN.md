@@ -2811,7 +2811,7 @@ verifier incompletely authenticates the post-upgrade world and the credential li
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.11 review, and no
 part of C19 has been started.
 
-## 27. C18.1.12 — THE RESIDUAL SEMANTIC PACKAGES CLOSED, AND A CHILD'S OUTPUT THAT CANNOT LEAK (delivered; awaiting independent review)
+## 27. C18.1.12 — THE RESIDUAL SEMANTIC PACKAGES CLOSED, AND A CHILD'S OUTPUT THAT CANNOT LEAK (delivered; SUPERSEDED by §28)
 
 **Evidence-bearing source `220b26cf591d0ecd30060942040ee3341be798e6`.**
 Candidate CI: pull-request run `32591391366` (3/3 green, attempt 1). Source run `32591765637`
@@ -2989,4 +2989,169 @@ contaminated. It is superseded because its verifier accepts the residual semanti
 and its watchdog does not redact child output.
 
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.12 review, and no
+part of C19 has been started.
+
+## 28. C18.1.13 — A TIMESTAMP IS CANONICAL ONLY FOR ITS OWN PRODUCER, A ROW HAS A SHAPE, A VALUE HAS A TYPE (delivered; awaiting independent review)
+
+**Evidence-bearing source `53fb8897053b20e810ba05be695d62d81ea65475`.**
+Candidate CI: pull-request run `32639332615` (3/3 green, attempt 1). Source run `32639658788`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32639913439`
+(green, attempt 1).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-13badf6fb1566fcf36c667ae343abab2ef79ea282da409c3d035737af2abc2b6`
+(348,848 B wrapper) — exactly the archive `c18-db-paths-evidence-53fb889….zip` (outer sha256
+`13badf6fb1566fcf36c667ae343abab2ef79ea282da409c3d035737af2abc2b6`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+delivered archive: **336 commands; 1,008 raw stream files; 11 fixed top-level regular files; 1,019
+regular files; + the `raw/` directory entry = 1,020 ZIP entries.** The checksum manifest binds
+1,018 members with none unbound, none mismatched and no self-entry; no unsafe, absolute,
+traversing or duplicate ZIP paths; `source_sha` equals the evidence SHA. Verified from a fresh
+foreign checkout at exactly `53fb889` offline and **online-hosted**
+(`standing=delivery-online`). C18.1.12's artifact and delivery provenance mechanisms are
+unchanged; this pass did not touch them.
+
+### 28.1 Reproduced first, against the frozen predecessor
+
+The exact `220b26c` verifier was frozen byte-for-byte — fourteen files, each pinned by sha256 and
+asserted against `git show 220b26c:<path>` — and executed from a clean checkout AT that SHA.
+Pristine evidence passes it with **zero findings**, and every claimed package was accepted by it:
+
+* the post-upgrade session's `expires_at` respelled from the PostgreSQL `+00:00` form into the
+  same-instant JSON `Z` form;
+* the same respelling applied to a seeded session, consistently across every snapshot;
+* `identity.sessions.revoked_at` omitted from every seeded row of every snapshot;
+* the closing audit sequence written as an equivalent numeric string, rechained and reprojected;
+* `ctx.operation.txid` written as a JSON number instead of its delivered string.
+
+Each with every attacker-controlled binding rebound: the processed snapshots, the command-bound
+raw receipts, those commands' byte counts and digests, `commands.json`, the audit projections and
+hashes where relevant, and `SHA256SUMS.txt`.
+
+Three further reproductions against the frozen watchdog: an arbitrary synthetic credential passed
+through a secret-named environment variable and printed by the child leaked verbatim on stdout, on
+stderr and inside a thrown error; a credential-shaped synthetic canary positioned across the forced
+carry-buffer boundary disclosed the canary or a distinctive prefix of it at **19 of 36** split
+offsets; and a synthetic multiline private-material block emitted as separate delayed writes was
+forwarded line by line.
+
+Every reproduction is non-vacuous in all three directions: pristine accepted, mutation accepted by
+the frozen verifier, corrected verifier rejecting it for its own owning rule.
+
+### 28.2 Two grammars, two producers, two validators
+
+The remaining timestamp defect was structural rather than a missing rule. C18.1.10 accepted EITHER
+canonical shape wherever a governed instant appeared and C18.1.12 kept that union, so a database
+column could change format FAMILY without changing its instant: the moment did not move, so every
+instant comparison agreed, and the union admitted both spellings, so every grammar check agreed
+too.
+
+`canonicalTimestamp` is replaced by two validators, and a value is judged against ITS OWN:
+
+* **`pgTimestamp`** — the exact PostgreSQL column form, `YYYY-MM-DDTHH:MM:SS[.ffffff]+00:00`. `Z`
+  is refused.
+* **`jsonBodyTimestamp`** — the exact application/JCS body form, `YYYY-MM-DDTHH:MM:SS.fffZ`, three
+  fraction digits. `+00:00` is refused.
+
+Where one producer literally COPIES the other's spelling — the advanced chain head from its closing
+event, the audit row's `occurred_at` from its canonical body — the rule is byte equality, not
+instant equality. Where two producers genuinely differ — the credential columns bounded by the
+audited bootstrap stamp — each side is validated in its own family first and only then compared as
+moments. The partition is source-owned: `BODY_FAMILY_COLUMNS` names the one delivered column
+written in the body family, and a control proves every other timestamp-valued column is db-family.
+
+Two further holes surfaced while auditing every rule. The world-level models — credential, head,
+audit projection — parsed instants with a bare `new Date(v)`, which accepts prose and either family
+indiscriminately; and `identity.credentials.expires_at`/`rotated_at` carried no grammar rule at all,
+so the generated matrix caught them rather than a reviewer having to.
+
+A generated matrix respells **every** timestamp column of the seeded and post-upgrade worlds into
+the other family, in both directions, and requires a finding each time.
+
+### 28.3 A row has a shape; a value has a type
+
+C18.1.12 gave the post-upgrade INSERTS an exact field set but left seeded rows without one, and a
+nullable rule cannot distinguish `revoked_at: null` from a `revoked_at` that is not there. Every row
+of every catalogued table, in every era and every snapshot, is now required to carry EXACTLY the
+authenticated catalog's columns — a missing field and an extra field are each their own finding.
+
+Separately, every remaining coercion — `Number(v)`, `String(v)`, a loose comparison — accepted a
+value whose JSON type had changed underneath it. `c18-serialized-types.json` is a tracked source
+artifact beside the catalog contract, declaring for each era, table and column the exact set of JSON
+types the producer writes: **517 column declarations** across the two eras, proven equal to the
+catalog in both directions. `unobserved` marks a table no snapshot of that era carries rows for, and
+a value appearing in such a column is itself a finding rather than an exemption.
+
+A generated substitution matrix rewrites every declared column into each type it is not — number ↔
+numeric string, boolean ↔ string/number, explicit null ↔ missing, object/array ↔ stringified — and
+requires every substitution that changes a declared type to be reported. Shape findings, type
+findings and value findings are independent: a malformed row still has every column rule executed.
+
+### 28.4 A watchdog that redacts by value
+
+Three disclosure paths survived C18.1.12, all from one mistake: the filter knew credential SHAPES
+but not credential VALUES, and it emitted text it had not finished inspecting.
+
+* **Values.** The gate hands credentials to children through the environment, so at startup the
+  watchdog now reads the values it is being asked to protect — the values of environment variables
+  whose names indicate a credential, excluding pointer-shaped names like `_SOCK` and `_PATH` — and
+  redacts those exact strings wherever they appear, in any formatting. The set is held in memory
+  only; it is never printed, logged or written anywhere, and a control asserts that.
+* **Boundaries.** Output is emitted in COMPLETE LINES only, so nothing is forwarded that the filter
+  has not seen whole. An unbroken line longer than 64 KiB is dropped in full behind a truncation
+  marker: emitting a bounded prefix of a line the filter cannot finish reading is precisely the
+  defect being closed, so the safe direction is to lose the line rather than guess at it.
+* **Blocks.** Private-material begin/end state is tracked ACROSS chunks and lines, so a block split
+  over separate delayed writes is suppressed whole. Writing that also exposed an inconsistency: the
+  single-line block pattern matched only `PRIVATE KEY`, while the stream tracker also covered `KEY`
+  and `CERTIFICATE`. Both now use the same definition.
+
+Controls cover the generic canary on stdout, on stderr, in a thrown error, one character at a time,
+with no trailing newline, before and after a very long line, inside a very long unbroken line, and
+from a child that ignores SIGTERM and is killed at the deadline; the shaped canary at **every**
+offset across the oversized-line boundary; multiline private material in delayed writes and a block
+that never closes; and that stdout/stderr separation, output ordering, exit status, signals and
+timeout behaviour are unchanged. Every canary is synthetic.
+
+The delivered archive is asserted to contain no provider token, no private-key block and none of
+the canaries. A raw `generic-api-key` heuristic flags 76 strings in the extracted archive; all 76
+are the evidence's own sha-256 content digests, which follow keys whose names contain "secret".
+Those are digests, not secrets, and the control states the claim precisely rather than relying on a
+scanner's default heuristic.
+
+### 28.5 The declared observational limit is preserved
+
+The bootstrap marking instant remains bounded to the causal interval the evidence proves, with the
+residual declared in `c18-observational-limits.mjs` and routed to C19's external-anchoring ledger.
+It is not described as exact, and this pass did not weaken or re-argue it.
+
+### 28.6 Controls, and a suite that still finishes
+
+Hermetic gate **789** (was 682) · in-gate mutation/differential **289** (was 280) · API hermetic
+**1,738** · integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and
+boundaries clean (238 modules, 820 dependencies, no violations) · migrations 0001–0021
+byte-identical (21 files, zero drift).
+
+A new meta-control proves the registration is a BIJECTION: every block the suite exports is
+registered by exactly one shard, no shard registers a block that does not exist, the serial shard
+registers only the checkout-disturbing block, the two vitest configs partition the shard files
+without overlap, and the CI step runs both. A control that no shard registers still typechecks and
+simply never runs — the quietest way a control suite can shrink.
+
+Local in-gate wall clock, three clean runs: **66 s / 67 s / 66 s → median 66 s** (≤180 s), with
+**nine more controls** than C18.1.12. Hosted control suite **50.44 s** (candidate: 47.83 s parallel
++ 2.61 s serial) and **40.68 s** (push/`main`: 38.51 s + 2.17 s) — both ≤90 s. Complete hosted C18
+gate **2 m 06 s** (≤6 min). Every long command ran under the portable 900-second process-group
+watchdog; no background work, stale monitors, orphaned processes or leftover gate containers.
+
+**Scope discipline.** Only `scripts/gate/**` and `apps/api/test/gate/**` change. Migrations
+0001–0021, C15–C17 verifier logic, unrelated product code, the artifact and delivery provenance
+mechanisms, and all prior authentic evidence are untouched.
+
+`220b26c` is recorded as **authentic, leak-free and provenance-valid**. Its evidence is NOT
+contaminated. It is superseded because its verifier accepts cross-family timestamp, missing-field
+and serialized-type substitutions, and its watchdog remains incomplete at value and stream
+boundaries.
+
+**Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.13 review, and no
 part of C19 has been started.
