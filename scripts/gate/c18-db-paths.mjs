@@ -131,7 +131,7 @@ import {
 // eslint-disable-next-line import/order
 import {
   compareMigrationOwnedAcrossPaths, loadMigrationOwned, verifyMigrationOwned,
-  verifyMigrationOwnedRegistry,
+  verifyMigrationOwnedRegistry, verifyPerInstanceDistinctness,
 } from './lib/c18-migration-owned.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
