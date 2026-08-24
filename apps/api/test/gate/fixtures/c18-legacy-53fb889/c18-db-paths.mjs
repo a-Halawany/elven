@@ -128,11 +128,6 @@ import {
 import {
   loadSerializedTypes, verifySerializedTypeRegistry, verifySnapshotShapes,
 } from './lib/c18-serialized-types.mjs';
-// eslint-disable-next-line import/order
-import {
-  compareMigrationOwnedAcrossPaths, loadMigrationOwned, verifyMigrationOwned,
-  verifyMigrationOwnedRegistry,
-} from './lib/c18-migration-owned.mjs';
 import {
   POSTURE_LABEL, auditEventsSql, auditHeadsSql, fkMetaSql, fkPairsSql, ledgerSql, postureSql,
   tableRowsSql, tablesMetaSql, verifyCommandGraph,
@@ -699,7 +694,6 @@ async function runCommand(args) {
     const transforms = deriveIntentionalTransforms(tracked.dir, tracked.files);
     const catalogContract = loadCatalogContract(LIB_DIR);
     const serializedTypeContract = loadSerializedTypes(LIB_DIR);
-    const migrationOwnedContract = loadMigrationOwned(LIB_DIR);
     const audit = await productionAudit(ROOT);
     const problems = [];
 
@@ -757,9 +751,6 @@ async function runCommand(args) {
       problems.push(...verifyCatalogContract(snap, era, catalogContract, lbl));
       problems.push(...verifySnapshotShapes({
         snapshot: snap, era, label: lbl, catalog: catalogContract, types: serializedTypeContract,
-      }).problems);
-      problems.push(...verifyMigrationOwned({
-        snapshot: snap, label: lbl, declared: migrationOwnedContract,
       }).problems);
     }
     problems.push(...verifyTableUniverse(preseed, TABLE_UNIVERSE_HISTORICAL, 'a-preseed'));
@@ -843,10 +834,6 @@ async function runCommand(args) {
     }).map((p) => `path-b-ledger: ${p}`));
     phase = 'posture-equivalence';
     problems.push(...comparePosture(after.posture, virgin.posture));
-    problems.push(...compareMigrationOwnedAcrossPaths({
-      a: after, b: virgin, declared: migrationOwnedContract,
-      labelA: 'path-a-after', labelB: 'path-b-virgin',
-    }).problems);
 
     phase = 'isolation';
     const receiptFor = (inst, path) => ({
@@ -1278,18 +1265,7 @@ export async function verifySemantics({
       problems.push(...verifySnapshotShapes({
         snapshot: snap, era, label: lbl, catalog: catalogContract, types: serializedTypes,
       }).problems);
-      // C18.1.14 — THE MIGRATION-OWNED ROWS. Six catalogued tables carry rows the frozen
-      // migrations write and that no value model claimed; their deterministic values are declared
-      // in source and checked in every snapshot of both eras.
-      const migrationOwned = loadMigrationOwned(join(root, 'scripts', 'gate', 'lib'));
-      problems.push(...verifyMigrationOwnedRegistry({ catalog: catalogContract, declared: migrationOwned }).problems);
-      problems.push(...verifyMigrationOwned({ snapshot: snap, label: lbl, declared: migrationOwned }).problems);
     }
-    // …and the complementary claim: two independent runs of the same frozen migrations agree.
-    problems.push(...compareMigrationOwnedAcrossPaths({
-      a: after, b: virgin, declared: loadMigrationOwned(join(root, 'scripts', 'gate', 'lib')),
-      labelA: 'path-a-after', labelB: 'path-b-virgin',
-    }).problems);
 
     // ── BIND PROCESSED SNAPSHOTS TO THEIR COMMAND-BOUND RAW RECEIPTS ──────────
     // Every processed snapshot view is RECONSTRUCTED from the raw psql receipts (same
