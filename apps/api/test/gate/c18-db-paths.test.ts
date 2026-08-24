@@ -106,7 +106,9 @@ import {
 } from '../../../../scripts/gate/lib/c18-migration-owned.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import {
-  REDACTABLE_MIN_LENGTH, isCredentialName, isNonSecretValue, isProtectedBlockLine,
+  BOOLEAN_LITERALS, CREDENTIAL_NAME_COMPONENTS, REDACTABLE_MIN_LENGTH, blockLabel,
+  classifyEnvVariable, credentialComponents, credentialPreflight, isBooleanLiteral,
+  isCredentialName, isFlagShapedName, isProtectedBlockLine, nameComponents, refusalDiagnostic,
   unprotectableCredentialNames,
 } from '../../../../scripts/gate/c18-watchdog.mjs';
 // eslint-disable-next-line import/no-relative-packages
@@ -4086,8 +4088,8 @@ describe('C18.1.14-final — the watchdog protects every class it claims to', ()
     expect(unprotectableCredentialNames({ SDK_HAS_OAUTH_REFRESH: '1' })).toEqual([]);
     expect(unprotectableCredentialNames({ EYE_AUTH_ENABLED: 'on' })).toEqual([]);
     expect(unprotectableCredentialNames({ EYE_TINY_PASSWORD: 'ab' })).toEqual(['EYE_TINY_PASSWORD']);
-    expect(isCredentialName('SDK_HAS_OAUTH_REFRESH')).toBe(false);
-    expect(isNonSecretValue('TRUE')).toBe(true);
+    expect(classifyEnvVariable('SDK_HAS_OAUTH_REFRESH', '1')).toBe('flag');
+    expect(isBooleanLiteral('TRUE')).toBe(true);
     expect(REDACTABLE_MIN_LENGTH).toBeLessThan(8);
   });
 
@@ -4318,5 +4320,330 @@ describe('C18.1.14-final — the frozen 7959ec9 predecessor is byte-verbatim', (
     expect(frozen).toMatch(/BEGIN \[A-Z0-9 \]\*\(PRIVATE KEY\|KEY\|CERTIFICATE\)/);
     expect(frozen).toMatch(/\[\^\\s\/:@\]\+\):\(\[\^\\s\/@\]\+\)@/);   // username required
     expect(frozen).not.toContain('unprotectableCredentialNames');
+  });
+});
+
+describe('C18 watchdog redesign — Stage 1 completes before any child exists', () => {
+  /**
+   * Bypass A. `spawn()` came first and the refusal came six lines later, so a run that exited 3 had
+   * already started a DETACHED child — which outlives the parent and completes its side effects.
+   * The probe is a harmless marker file: with the frozen watchdog it appears, with this one it
+   * never can, because nothing is spawned until preflight has succeeded.
+   */
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const FROZEN = join(__dirname, 'fixtures', 'c18-legacy-e2077e1', 'c18-watchdog.mjs');
+
+  const sideEffectProbe = (watchdog: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'c18-preflight-'));
+    const marker = join(dir, 'child-ran.marker');
+    try {
+      const r = spawnSync('node', [watchdog, '10', 'node', '-e',
+        `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x')`], {
+        encoding: 'utf8', env: { ...process.env, EYE_TINY_PASSWORD: 'ab' }, timeout: 60_000,
+      });
+      // The child is detached, so it can land AFTER the parent exits: give it a bounded moment.
+      const deadline = Date.now() + 3_000;
+      while (!existsSync(marker) && Date.now() < deadline) {
+        spawnSync('node', ['-e', 'setTimeout(() => {}, 50)']);
+      }
+      return { status: r.status, stderr: r.stderr, ran: existsSync(marker) };
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  };
+
+  it('the FROZEN watchdog exits 3 but the child still runs', () => {
+    const r = sideEffectProbe(FROZEN);
+    expect(r.status).toBe(3);
+    expect(r.ran, 'the frozen watchdog must exhibit the bypass this control closes').toBe(true);
+  });
+  it('this watchdog exits 3 and the child is never spawned', () => {
+    const r = sideEffectProbe(WATCHDOG);
+    expect(r.status).toBe(3);
+    expect(r.ran).toBe(false);
+  });
+  it('the refusal diagnostic names only variables', () => {
+    const text = refusalDiagnostic(['EYE_TINY_PASSWORD']);
+    expect(text).toContain('EYE_TINY_PASSWORD');
+    expect(text).toMatch(/No value, component, length or position is printed/);
+  });
+  it('preflight precedes spawn in the source, not merely in effect', () => {
+    const src = readFileSync(WATCHDOG, 'utf8');
+    const code = src.split('\n').filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l)).join('\n');
+    expect(code.indexOf('credentialPreflight(process.env)')).toBeGreaterThan(0);
+    expect(code.indexOf('credentialPreflight(process.env)')).toBeLessThan(code.indexOf('spawn(command[0]'));
+  });
+});
+
+describe('C18 watchdog redesign — a credential-named variable is a credential', () => {
+  // Bypass B. A closed set of boolean literals was excused wherever it appeared.
+  it.each(['0', '1', 'true', 'false', 'yes', 'no', 'on', 'off'])(
+    'EYE_TEST_PASSWORD=%s is not exempted', (value) => {
+      expect(classifyEnvVariable('EYE_TEST_PASSWORD', value)).not.toBe('flag');
+      expect(classifyEnvVariable('EYE_TEST_PASSWORD', value)).not.toBe('ignore');
+    },
+  );
+  it.each(['0', '1', 'true', 'false'])('a password of %s refuses rather than printing', (value) => {
+    const r = spawnSync('node', [join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs'), '10', 'node', '-e',
+      'process.stdout.write(String(process.env.EYE_TEST_PASSWORD))'], {
+      encoding: 'utf8', env: { ...process.env, EYE_TEST_PASSWORD: value }, timeout: 60_000,
+    });
+    // Every one of these is too short to redact safely, so the run refuses rather than printing.
+    expect(r.status).toBe(3);
+    expect(r.stderr).toContain('EYE_TEST_PASSWORD');
+    expect(r.stdout).toBe('');
+  });
+  it('a genuine flag name WITH a boolean value is exempt', () => {
+    expect(classifyEnvVariable('SDK_HAS_OAUTH_REFRESH', '1')).toBe('flag');
+    expect(classifyEnvVariable('EYE_USE_AUTH', 'true')).toBe('flag');
+    expect(credentialPreflight({ SDK_HAS_OAUTH_REFRESH: '1' }).ok).toBe(true);
+  });
+  it('a flag-shaped NAME with a real value is NOT exempt', () => {
+    expect(classifyEnvVariable('EYE_USE_PASSWORD', 'abc')).toBe('unprotectable');
+    expect(classifyEnvVariable('EYE_USE_PASSWORD', 'c18longsecretvalue')).toBe('protect');
+    expect(isFlagShapedName('EYE_USE_PASSWORD')).toBe(true);
+  });
+  it('a credential name with a boolean-looking value is NOT exempt', () => {
+    expect(isFlagShapedName('EYE_TEST_PASSWORD')).toBe(false);
+    expect(classifyEnvVariable('EYE_TEST_PASSWORD', 'true')).toBe('unprotectable');
+  });
+  it('both halves are required, and the closed literal set is exactly the booleans', () => {
+    expect([...BOOLEAN_LITERALS].sort()).toEqual(['0', '1', 'false', 'no', 'off', 'on', 'true', 'yes']);
+    expect(isBooleanLiteral('maybe')).toBe(false);
+  });
+});
+
+describe('C18 watchdog redesign — credential names are components, not substrings', () => {
+  // Bypass C. `PASS` was absent, so DB_PASS/REDIS_PASS/POSTGRES_PASS were invisible; adding it as a
+  // substring would have made COMPASS_HEADING a credential.
+  it.each([
+    'DB_PASS', 'REDIS_PASS', 'POSTGRES_PASS', 'EYE_TOKEN', 'APP_SECRET', 'X_PASSWORD',
+    'MYSQL_PASSWD', 'API_KEY', 'APIKEY', 'SVC_CREDENTIAL', 'GPG_PASSPHRASE', 'AUTH_BEARER',
+    'SESSION_COOKIE', 'EYE_AUTH', 'TLS_PRIVATE_KEY',
+  ])('%s is recognised as credential-named', (name) => {
+    expect(isCredentialName(name)).toBe(true);
+  });
+  it.each([
+    'COMPASS', 'COMPASS_HEADING', 'PASSAGE_COUNT', 'BYPASS_MODE', 'CLASSPATH', 'KEYBOARD_LAYOUT',
+    'MONKEY_INDEX', 'AUTHOR_NAME', 'TOKENIZER_MODE',
+  ])('%s is NOT a credential name', (name) => {
+    expect(isCredentialName(name)).toBe(false);
+  });
+  it('a pointer to a credential is not the credential', () => {
+    expect(isCredentialName('SSH_AUTH_SOCK')).toBe(false);
+    expect(isCredentialName('TOKEN_FILE')).toBe(false);
+    expect(isCredentialName('SECRET_PATH')).toBe(false);
+  });
+  it('camelCase and mixed separators split into components too', () => {
+    expect(nameComponents('dbPass')).toEqual(['DB', 'PASS']);
+    expect(nameComponents('eye.api-key')).toEqual(['EYE', 'API', 'KEY']);
+    expect(isCredentialName('dbPass')).toBe(true);
+  });
+  it('the declared component list covers every word the contract names', () => {
+    for (const word of ['TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'APIKEY', 'CREDENTIAL',
+      'PASSPHRASE', 'BEARER', 'COOKIE', 'AUTH']) {
+      expect([...CREDENTIAL_NAME_COMPONENTS]).toContain(word);
+    }
+    expect(isCredentialName('API_KEY')).toBe(true);
+    expect(isCredentialName('PRIVATE_KEY')).toBe(true);
+  });
+  it.each(['DB_PASS', 'REDIS_PASS', 'POSTGRES_PASS'])('%s is protected end to end', (name) => {
+    const VALUE = 'c18SyntheticPassValue';
+    const r = spawnSync('node', [join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs'), '10', 'node', '-e',
+      `process.stdout.write(String(process.env.${name}))`], {
+      encoding: 'utf8', env: { ...process.env, [name]: VALUE }, timeout: 60_000,
+    });
+    expect(`${r.stdout}${r.stderr}`).not.toContain(VALUE);
+  });
+});
+
+describe('C18 watchdog redesign — every component of a multiline credential is judged', () => {
+  // Bypass D. Preflight measured the whole value's length, so a three-character first line printed.
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  it('components are the whole value and every nonempty line, LF and CRLF', () => {
+    const c = credentialComponents('c18alpha\nc18bravo');
+    expect([...c]).toContain('c18alpha');
+    expect([...c]).toContain('c18bravo');
+    expect([...c]).toContain('c18alpha\nc18bravo');
+    expect([...c]).toContain('c18alpha\r\nc18bravo');
+  });
+  it('empty lines contribute no component', () => {
+    expect([...credentialComponents('c18alpha\n\nc18bravo')]).not.toContain('');
+  });
+  it.each([
+    ['a one-character component', 'a\nc18longsecretcomponent'],
+    ['a two-character component', 'ab\nc18longsecretcomponent'],
+    ['a three-character component', 'abc\nc18longsecretcomponent'],
+    ['a short component last', 'c18longsecretcomponent\nxy'],
+    ['a short component in the middle', 'c18alphacomponent\nq\nc18bravocomponent'],
+    ['CRLF separators', 'abc\r\nc18longsecretcomponent'],
+  ] as ReadonlyArray<[string, string]>)('%s makes the value unprotectable', (_l, value) => {
+    expect(classifyEnvVariable('EYE_TEST_TOKEN', value)).toBe('unprotectable');
+  });
+  it('a multiline value whose components are all long enough is protected', () => {
+    expect(classifyEnvVariable('EYE_TEST_TOKEN', 'c18alpha\nc18bravo\nc18charlie')).toBe('protect');
+  });
+  it('the short-component case refuses before spawning, naming only the variable', () => {
+    const r = spawnSync('node', [WATCHDOG, '10', 'node', '-e',
+      'process.stdout.write(String(process.env.EYE_TEST_TOKEN))'], {
+      encoding: 'utf8', env: { ...process.env, EYE_TEST_TOKEN: 'abc\nc18longsecretcomponent' },
+      timeout: 60_000,
+    });
+    expect(r.status).toBe(3);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toContain('EYE_TEST_TOKEN');
+    expect(r.stderr).not.toContain('abc');
+    expect(r.stderr).not.toContain('c18longsecretcomponent');
+    expect(r.stderr).not.toMatch(/\b3\b/);          // no length is disclosed
+  });
+  it('a protectable multiline secret never survives, LF or CRLF, with or without a final newline', () => {
+    const LINES = ['c18alphaLINE', 'c18bravoLINE', 'c18charlieLINE'];
+    for (const [sep, tail] of [['\n', '\n'], ['\r\n', '\r\n'], ['\n', ''], ['\r\n', '']]) {
+      // The ENV VALUE must itself carry the separators — the protected components come from the
+      // value, so handing a pipe-separated value and printing a newline-separated one would test
+      // nothing.
+      const r = spawnSync('node', [WATCHDOG, '10', 'node', '-e',
+        'process.stdout.write(process.env.EYE_TEST_SECRET + (process.env.EYE_TEST_TAIL || ""))'], {
+        encoding: 'utf8',
+        env: { ...process.env, EYE_TEST_SECRET: LINES.join(sep), EYE_TEST_TAIL: tail },
+        timeout: 60_000,
+      });
+      const text = `${r.stdout}${r.stderr}`;
+      for (const line of LINES) expect(text, `${sep}/${tail} ${line}`).not.toContain(line);
+    }
+  });
+});
+
+describe('C18 watchdog redesign — a block closes only on its own END label', () => {
+  // Bypasses E and F.
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const PGP = 'PGP PRIVATE KEY BLOCK';
+  const run = (script: string, env: Record<string, string> = {}) => spawnSync(
+    'node', [WATCHDOG, '20', 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 90_000 },
+  );
+  const all = (r: { stdout: string; stderr: string }) => `${r.stdout}${r.stderr}`;
+
+  it('blockLabel captures and normalises the exact label', () => {
+    expect(blockLabel(`-----BEGIN ${PGP}-----`, 'begin')).toBe(PGP);
+    expect(blockLabel('-----END CERTIFICATE-----', 'end')).toBe('CERTIFICATE');
+    expect(blockLabel('-----BEGIN SECTION-----', 'begin')).toBeNull();
+    expect(isProtectedBlockLine('-----BEGIN OPENSSH PRIVATE KEY-----', 'begin')).toBe(true);
+  });
+
+  it('a mismatched END does not close the block', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    s.push(`-----BEGIN ${PGP}-----\nc18payloadbefore\n-----END CERTIFICATE-----\n`);
+    expect(s.openBlockLabel()).toBe(PGP);
+    s.push('c18payloadafter\n');
+    s.push(`-----END ${PGP}-----\nplain\n`);
+    s.flush();
+    const out = seen.join('');
+    expect(out).not.toContain('c18payloadbefore');
+    expect(out).not.toContain('c18payloadafter');
+    expect(out).not.toContain('CERTIFICATE');
+    expect(out).toContain('plain');
+  });
+  it('through the real CLI, nothing after a mismatched END escapes', () => {
+    const block = [`-----BEGIN ${PGP}-----`, 'c18payloadbefore', '-----END CERTIFICATE-----',
+      'c18payloadafter', `-----END ${PGP}-----`, 'plain'];
+    const text = all(run('process.stdout.write(process.env.EYE_TEST_BLOCK.split("|").join("\\n") + "\\n")',
+      { EYE_TEST_BLOCK: block.join('|') }));
+    expect(text).not.toContain('c18payloadbefore');
+    expect(text).not.toContain('c18payloadafter');
+    expect(text).toContain('plain');
+  });
+  it('repeated and nested BEGIN markers stay inside the first block', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    s.push(`-----BEGIN ${PGP}-----\nc18one\n-----BEGIN CERTIFICATE-----\nc18two\n`);
+    expect(s.openBlockLabel()).toBe(PGP);
+    s.push(`-----END ${PGP}-----\nplain\n`);
+    s.flush();
+    const out = seen.join('');
+    expect(out).not.toContain('c18one');
+    expect(out).not.toContain('c18two');
+    expect(out).toContain('plain');
+  });
+  it('an unterminated block stays suppressed through EOF', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    s.push(`-----BEGIN ${PGP}-----\nc18unterminated\n`);
+    s.flush();
+    const out = seen.join('');
+    expect(out).not.toContain('c18unterminated');
+    expect(out).toContain(PRIVATE_BLOCK_MARKER.trim());
+  });
+
+  it('an OVERSIZED BEGIN line still records the block state, at every chunk boundary', () => {
+    // Bypass F: detection used to happen only when a line was emitted, so a BEGIN marker on a line
+    // too long to hold went to the bin with the line.
+    const beginLine = `-----BEGIN ${PGP}-----${'y'.repeat(MAX_LINE + 5000)}\n`;
+    const rest = `c18oversizedpayload\n-----END ${PGP}-----\nplain\n`;
+    const whole = beginLine + rest;
+    for (const cut of [1, 40, 4096, MAX_LINE - 1, MAX_LINE, MAX_LINE + 1,
+      beginLine.length - 1, beginLine.length, beginLine.length + 5, whole.length - 1]) {
+      const seen: string[] = [];
+      const s = createRedactingStream((t: string) => seen.push(t));
+      s.push(whole.slice(0, cut));
+      s.push(whole.slice(cut));
+      s.flush();
+      const out = seen.join('');
+      expect(out, `cut at ${cut}`).not.toContain('c18oversizedpayload');
+      expect(out, `cut at ${cut}`).toContain('plain');
+    }
+  });
+  it('through the real CLI, an oversized BEGIN line suppresses what follows', () => {
+    // The canary travels in the ENVIRONMENT: the watchdog echoes its own command line, so a canary
+    // written into the child's `-e` script would be read back out of that echo and the control
+    // would fail for a reason that has nothing to do with the filter.
+    const text = all(run(`const pad = "y".repeat(${MAX_LINE + 5000});`
+      + ' process.stdout.write(process.env.EYE_BEGIN + pad + "\n");'
+      + ' process.stdout.write(process.env.EYE_PAYLOAD + "\n");'
+      + ' process.stdout.write(process.env.EYE_END + "\n");'
+      + ' process.stdout.write("plain\n");',
+    { EYE_BEGIN: `-----BEGIN ${PGP}-----`, EYE_PAYLOAD: 'c18oversizedpayload', EYE_END: `-----END ${PGP}-----` }));
+    expect(text).not.toContain('c18oversizedpayload');
+    expect(text).toContain('plain');
+  });
+  it('an unterminated OVERSIZED block stays suppressed through EOF', () => {
+    const text = all(run(`const pad = "y".repeat(${MAX_LINE + 5000});`
+      + ' process.stdout.write(process.env.EYE_BEGIN + pad + "\n");'
+      + ' process.stdout.write(process.env.EYE_PAYLOAD + "\n");',
+    { EYE_BEGIN: `-----BEGIN ${PGP}-----`, EYE_PAYLOAD: 'c18oversizedpayload' }));
+    expect(text).not.toContain('c18oversizedpayload');
+  });
+
+  it.each([
+    ['on stderr', 'process.stderr.write(process.env.EYE_TEST_BLOCK.split("|").join("\\n") + "\\n")'],
+    ['in a thrown error', 'throw new Error(process.env.EYE_TEST_BLOCK.split("|").join("\\n"))'],
+    ['with a nonzero exit', 'process.stdout.write(process.env.EYE_TEST_BLOCK.split("|").join("\\n") + "\\n"); process.exit(5)'],
+    ['one character per write', 'for (const c of process.env.EYE_TEST_BLOCK.split("|").join("\\n")) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['with CRLF endings', 'process.stdout.write(process.env.EYE_TEST_BLOCK.split("|").join("\\r\\n") + "\\r\\n")'],
+    ['with no final newline', 'process.stdout.write(process.env.EYE_TEST_BLOCK.split("|").join("\\n"))'],
+  ] as ReadonlyArray<[string, string]>)('a mismatched-END block never escapes %s', (_l, script) => {
+    const block = [`-----BEGIN ${PGP}-----`, 'c18payloadbefore', '-----END CERTIFICATE-----',
+      'c18payloadafter', `-----END ${PGP}-----`];
+    const text = all(run(script, { EYE_TEST_BLOCK: block.join('|') }));
+    expect(text).not.toContain('c18payloadbefore');
+    expect(text).not.toContain('c18payloadafter');
+  });
+  it('a block never escapes a watchdog timeout either', () => {
+    const block = [`-----BEGIN ${PGP}-----`, 'c18timeoutpayload'];
+    const r = spawnSync('node', [WATCHDOG, '2', 'node', '-e',
+      'process.on("SIGTERM", () => {});'
+      + ' process.stdout.write(process.env.EYE_TEST_BLOCK.split("|").join("\\n") + "\\n");'
+      + ' setInterval(() => {}, 1000)'], {
+      encoding: 'utf8', env: { ...process.env, EYE_TEST_BLOCK: block.join('|') }, timeout: 90_000,
+    });
+    expect(all(r)).not.toContain('c18timeoutpayload');
+    expect(r.status).toBe(124);
+  });
+  it('ordinary surrounding output stays readable', () => {
+    const text = all(run('process.stdout.write("before\\n");'
+      + ` process.stdout.write("-----BEGIN ${PGP}-----\\nc18body\\n-----END ${PGP}-----\\n");`
+      + ' process.stdout.write("after\\n")'));
+    expect(text).toContain('before');
+    expect(text).toContain('after');
+    expect(text).not.toContain('c18body');
   });
 });

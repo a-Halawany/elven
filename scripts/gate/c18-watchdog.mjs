@@ -163,7 +163,13 @@ export function classifyEnvVariable(name, value) {
   // exactly the mistake that let `EYE_TEST_PASSWORD=1` and `EYE_USE_PASSWORD=abc` through.
   if (isFlagShapedName(name) && isBooleanLiteral(value)) return 'flag';
   const components = [...credentialComponents(value)];
-  if (components.some((c) => c.length < REDACTABLE_MIN_LENGTH)) return 'unprotectable';
+  // A component is unprotectable when replacing it literally would damage ordinary output: when it
+  // is too short, or when it is a common word. `EYE_TEST_PASSWORD=true` is a credential — the flag
+  // exemption above did not apply — but redacting the literal `true` would rewrite that word
+  // throughout every line, so the safe answer is to refuse rather than to mangle the run.
+  if (components.some((c) => c.length < REDACTABLE_MIN_LENGTH || isBooleanLiteral(c))) {
+    return 'unprotectable';
+  }
   return 'protect';
 }
 
