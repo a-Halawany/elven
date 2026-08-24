@@ -3451,7 +3451,7 @@ chains, suite binding, cleanup evidence and runtime sharding — were not reopen
 
 `7959ec9` is recorded as **authentic and provenance-valid**, superseded only by this completion.
 
-## 31. C18 — A BOUNDED WATCHDOG REDESIGN: PREFLIGHT BEFORE SPAWN, COMPONENTS NOT SUBSTRINGS, EXACT BLOCK LABELS
+## 31. C18 — A BOUNDED WATCHDOG REDESIGN: PREFLIGHT BEFORE SPAWN, COMPONENTS NOT SUBSTRINGS, EXACT BLOCK LABELS (delivered; SUPERSEDED by §32)
 
 **Evidence-bearing source `04442ed956fb3e45b36694f0d084bcfe1df9cfaf`.**
 Candidate CI: pull-request run `32760180744` (3/3 green, attempt 1). Source run `32760983596`
@@ -3568,3 +3568,157 @@ differential. The complete local and hosted chain is green on one attempt at eac
 `e2077e1` is recorded as **authentic and provenance-valid**, its evidence internally valid,
 secret-clean and its database verifier accepted; it is superseded solely for the watchdog preflight
 and state-machine defects above.
+
+## 32. C18 CLOSED — THE WATCHDOG REDESIGNED, THE GATE ACTUALLY BOUND, AND THE ACCOUNTING CORRECTED
+
+**Evidence-bearing source `a8d34c4d1dc91d1f205fac6044332907da210d46`.**
+Candidate CI: pull-request run `32771796350` (3/3 green). Source run `32772872150`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32773496008`
+(green, attempt 1). An earlier candidate attempt, run `32771230855`, failed and is recorded
+honestly in §32.5.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-f2e7e42f682e4a51f92f6445a2ee584daacef9ceafdb18552beb86a35c3a0b1c`
+(353,025 B wrapper) containing exactly the archive and its sidecar. The artifact-name digest, the
+computed digest and the sidecar all equal
+`f2e7e42f682e4a51f92f6445a2ee584daacef9ceafdb18552beb86a35c3a0b1c`. **336 commands; 1,008 raw
+stream files; 11 top-level regular files; 1,020 ZIP entries; all 1,018 member checksums verify;**
+no unsafe, absolute, traversing or duplicate paths; `source_sha` equals the evidence SHA; the
+secret scan finds no provider token, no private-key block and none of the synthetic canaries.
+Verified from a fresh foreign checkout at exactly `a8d34c4` offline and **online-hosted**
+(`standing=delivery-online`).
+
+**Scope.** `scripts/gate/c18-watchdog.mjs` (redesigned), `scripts/gate/c18-gate.mjs` (new), the CI
+gate step, one package script, and the controls. The database verifier, the evidence format, the
+catalog/type registries, the seed and post-upgrade models, the migration-owned contract, the
+context-secret distinctness rule, audit reconstruction, hosted standing and artifact authentication
+are untouched.
+
+### 32.1 Ten defects, reproduced before anything changed
+
+The exact `04442ed` watchdog was frozen byte-for-byte
+(`c7029c2487083e17a10881da3da547230d4c5b9657407ac63d81e8f2fa63dcff`) alongside the existing
+`e2077e1` fixture (`40be1dfe47d16d749e0c8817fb4ba97e5c2d16511859fea4bd1485e4aa93ee3d`, whose digest
+was never pinned until now). Thirteen probes over ten defects: **13 hits on the frozen watchdog, 0
+on this one.**
+
+### 32.2 The redesign
+
+**Stage 1 — preflight, complete before any child exists.** It now also scans ARGV, because a
+credential in a command line is visible in the OS process list to every user on the machine and no
+redaction inside this process can undo that. Names classify through a source-owned registry of the
+credential variables this repository actually uses, conventional compact aliases (`PGPASSWORD`,
+`DBPASS`, `CLIENTSECRET`), and whole components (`DB_PASS`) — with compact words matched only as a
+SUFFIX, so `TOKENIZER_MODE` and `COMPASS` stay ordinary. Pointer and flag exemptions require the
+VALUE grammar as well as the name: a secret under `EYE_TOKEN_FILE` is still a secret, and only a
+real path is a pointer. URL values are parsed before spawn and both the encoded and the decoded
+password are protected, because a child that parses the URL prints the decoded one alone.
+
+**Stage 2 — an ordered streaming parser over a block STACK.** Marker events are processed in
+TEXTUAL ORDER, so a line that opens, closes and opens again keeps its second BEGIN, and same-label
+nesting no longer closes on the inner END. Parser state is independent of the output buffer: text
+dropped for being uninspectably long is still scanned, and a `MARKER_CARRY` tail is retained across
+drops so a marker split over any number of discarded chunks is recognised. Drop behaviour depends
+on LINE LENGTH, never on how the kernel happened to split the pipe — without that, the same output
+would be emitted or suppressed according to chunking, and no model could check it.
+
+**Stage 3 — lifecycle.** A spawn failure is reported by code alone; Node's default error object
+carries `spawnargs` and would print the whole command line. SIGINT, SIGTERM and SIGHUP terminate
+the child's process group instead of orphaning it. Output is piped with backpressure.
+
+**The gate is actually bound.** `scripts/gate/c18-gate.mjs` makes the four stages — production,
+offline self-verification, the parallel shards, the serial lifecycle controls — ONE command, and
+CI invokes it through `c18-watchdog.mjs 900`. Until now the workflow ran the stages itself while
+the records claimed a 900-second watchdog; the claim was false for as long as it was made. The
+job-level `timeout-minutes` remains an outer defence, and the hosted log carries a non-secret
+`c18-watchdog: ACTIVE deadline=900s` marker.
+
+### 32.3 The threat boundary
+
+The watchdog is a LOG REDACTOR, not an information-flow monitor, and the source says so.
+
+**Guaranteed** — literal UTF-8 reproduction of values classified from the environment by the
+source-owned registry, of components derived from them (URL userinfo encoded and decoded, the lines
+of a multiline value), and of the registered syntactic shapes: provider tokens, secret assignments,
+secret flags, Authorization headers, URL userinfo and private-material blocks. Held across
+arbitrary chunk boundaries, LF and CRLF, oversized lines, nested and mismatched markers, multiple
+markers on one line, EOF, timeout, signals, spawn failure and ordinary process failure.
+
+**Not guaranteed** — a deliberately malicious child that encodes, hashes, encrypts, reorders or
+fragments a secret into pieces that are not literal reproductions; cross-stream or timing covert
+channels; credential formats absent from the registry; and SIGKILL delivered to the watchdog
+itself, which no process can handle. General JSON-escaped and URL-encoded forms are NOT claimed;
+the only transformed representation registered is a URL password's decoded form, because the
+value's own derivation produces it. Least-privilege environment allowlisting and sandboxing are
+**C19** work.
+
+The three observational limits are unchanged: the bootstrap marking instant, backend-assigned
+identifiers, and the drawn values of per-instance secrets — whose grammar, stability and
+cross-instance distinctness remain proved.
+
+### 32.4 Reconciliation
+
+| # | Item | Predecessor | Reproduced | Correction | Permanent control | Result |
+|---|---|---|---|---|---|---|
+| 1 | drop mode swallows a split BEGIN | `04442ed` | yes | `dropCarry` across discarded chunks | every-character drop-split sweep | CLOSED |
+| 2 | same-label nesting closes early | `04442ed` | yes | block stack | oracle nesting cases | CLOSED |
+| 3 | markers on one line out of order | `04442ed` | yes | ordered scan | open/close/open cases | CLOSED |
+| 4 | compact names missed | `04442ed` | yes | registry + alias + suffix rule | both-watchdog differentials | CLOSED |
+| 5 | URL password printed alone | `04442ed` | yes | preflight URL parsing | both-watchdog differential | CLOSED |
+| 6 | pointer/flag exempt by name alone | `04442ed` | yes | value grammar required | both-watchdog differentials | CLOSED |
+| 7 | spawn failure serialises `spawnargs` | `04442ed` | yes | error handler, code only | both-watchdog differential | CLOSED |
+| 8 | parent signal orphans the child | `04442ed` | yes | group termination on signals | both-watchdog differential | CLOSED |
+| 9 | secret argv reaches `ps` | `04442ed` | yes | argv scan, refuse before spawn | refusal + shape cases | CLOSED |
+| 10 | CI did not run under the watchdog | `04442ed` | yes | `c18-gate.mjs` + CI wiring | wiring + activation-marker controls | CLOSED |
+| 11 | stdout/stderr backpressure ignored | `04442ed` | hardening, not a false pass | pause/resume on drain | high-volume bounded-memory control | CLOSED |
+| 12 | main-module guard could throw | `04442ed` | hardening, not a false pass | tolerant `isMainModule` | missing/nonexistent argv cases | CLOSED |
+| 13 | historical differentials incomplete | records | yes — only bypass A ran both legs | five more real CLI differentials | both-watchdog table | CLOSED |
+| 14 | `e2077e1` digest unpinned | records | yes | pinned + tracked + byte-equal | fixture pin controls | CLOSED |
+| 15 | malicious-child transformation | — | — | not a defect | boundary stated and asserted | THREAT BOUNDARY → C19 |
+| 16 | covert/timing channels | — | — | not a defect | boundary stated | THREAT BOUNDARY → C19 |
+| 17 | SIGKILL to the watchdog | — | — | unhandleable | stated in source | THREAT BOUNDARY |
+| 18 | bootstrap marking instant | `a424505` | yes | interval proved, instant not | ledger + interval rule | OBSERVATIONAL LIMIT → C19 |
+| 19 | backend-assigned identifiers | audit | — | type and grammar proved | ledger + grammar rules | OBSERVATIONAL LIMIT → C19 |
+| 20 | per-instance secret values | `7959ec9` | yes | equality structure enforced | distinctness controls | OBSERVATIONAL LIMIT → C19 |
+
+### 32.5 Mistakes in this pass, corrected
+
+Four, all caught by the controls rather than by inspection, and all fixed here:
+
+* rewriting `redactSecrets` **dropped the private-block rule**, so a block in a diagnostic line
+  would have been forwarded. The existing single-line block control failed immediately;
+* the first compact-name rule matched a credential word ANYWHERE inside a component, which made
+  `TOKENIZER_MODE` a credential — the same substring mistake in a new place. It matches only as a
+  suffix now;
+* `NON_CREDENTIAL_NAMES` was tested per COMPONENT, so `EYE_SECRET_PATH` was not a credential name
+  at all because one component is `PATH`. It applies to the whole name only;
+* the first candidate CI run (`32771230855`) failed because a new fixture control asserted
+  `git show <sha>` unconditionally and a hosted checkout is shallow. The digest pin stays
+  unconditional; the history comparison runs where history is present.
+
+Two of my own probes were also wrong before they were right: the spawn-failure probe matched the
+watchdog's own redacted argv echo rather than a leak, and the preflight probe checked for the
+child's marker before the detached child had time to write it.
+
+### 32.6 Counts and timings
+
+Hermetic gate **1,083** (was 994) · in-gate mutation/differential **309** · API hermetic **2,032** ·
+integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and boundaries
+clean · migrations 0001–0021 byte-identical (21 files, zero drift) · both gitleaks scans clean.
+
+Whole gate under the watchdog: **141 s local**, **138.4 s hosted** — well inside the 900-second
+bound, which is now real rather than claimed.
+
+### 32.7 Closure
+
+* **C18 is CLOSED.** Every reproduced defect has a permanent, non-vacuous differential; the ordered
+  streaming model passes its generated matrix against a source-owned oracle; preflight precedes
+  spawn and prevents credential-bearing argv; spawn errors and parent signals neither leak nor
+  orphan; backpressure and bounded drain are implemented; CI genuinely runs the complete gate under
+  the watchdog; fixture digests and registrations are pinned; and the records match what the tests
+  prove.
+* **C19 is the next gate and has not been implemented.**
+
+`04442ed` is recorded as **authentic, leak-free, database-verifier-valid and provenance-valid**. Its
+evidence is not contaminated and is not withdrawn. It is superseded only for the watchdog,
+gate-integration and differential-accounting defects above.
