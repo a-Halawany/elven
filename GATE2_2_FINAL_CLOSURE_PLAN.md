@@ -3319,7 +3319,7 @@ contaminated. It is superseded because its verifier accepts the migration-owned 
 review; if that review finds no remaining reproducible claim-breaking false pass, C18 is closed and
 the next gate is C19. No part of C19 has been started.
 
-## 30. C18.1.14 COMPLETION — FIVE REPRODUCED DEFECTS CLOSED; C18 IS CLOSED
+## 30. C18.1.14 COMPLETION — FIVE REPRODUCED DEFECTS CLOSED (delivered; watchdog SUPERSEDED by §31)
 
 **Evidence-bearing source `e2077e1c7e1997bb3814e87871d356ec0353ded5`.**
 Candidate CI: pull-request run `32752573402` (3/3 green, attempt 1). Source run `32753238367`
@@ -3450,3 +3450,121 @@ serialized-type contracts, the seed and post-upgrade models, the migration-owned
 chains, suite binding, cleanup evidence and runtime sharding — were not reopened.
 
 `7959ec9` is recorded as **authentic and provenance-valid**, superseded only by this completion.
+
+## 31. C18 — A BOUNDED WATCHDOG REDESIGN: PREFLIGHT BEFORE SPAWN, COMPONENTS NOT SUBSTRINGS, EXACT BLOCK LABELS
+
+**Evidence-bearing source `04442ed956fb3e45b36694f0d084bcfe1df9cfaf`.**
+Candidate CI: pull-request run `32760180744` (3/3 green, attempt 1). Source run `32760983596`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32761622339`
+(green, attempt 1).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-b51db97e9eb6a4a461dcad8fb9670b913200b9b347126b52900d2853b2bb1e66`
+(353,353 B wrapper) — exactly the archive `c18-db-paths-evidence-04442ed….zip` (outer sha256
+`b51db97e9eb6a4a461dcad8fb9670b913200b9b347126b52900d2853b2bb1e66`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar. **336 commands; 1,008 raw stream files; 11
+fixed top-level regular files; 1,019 regular files; + the `raw/` directory entry = 1,020 ZIP
+entries.** All 1,018 member checksums verify; no unsafe, absolute, traversing or duplicate paths;
+`source_sha` equals the evidence SHA; the secret scan finds no provider token, no private-key block
+and none of the synthetic canaries. Verified from a fresh foreign checkout at exactly `04442ed`
+offline and **online-hosted** (`standing=delivery-online`).
+
+**Scope.** This pass changes ONE production file, `scripts/gate/c18-watchdog.mjs`, plus its
+controls. The database verifier, the evidence format, and every other part of C18 are untouched.
+
+### 31.1 Reproduced first, against the frozen predecessor
+
+The exact `e2077e1` watchdog was frozen byte-for-byte — `40be1dfe47d16d749e0c8817fb4ba97e5c2d16511859fea4bd1485e4aa93ee3d`,
+self-contained, with no dependencies to pin alongside it. Twelve probes across six bypasses run
+against both watchdogs: **12 bypasses on the frozen one, 0 on this one.**
+
+| | Bypass | Frozen `e2077e1` behaviour |
+|---|---|---|
+| A | the child was spawned before the refusal | exit 3, and the DETACHED child still created its marker file |
+| B | boolean-looking passwords were exempted | `EYE_TEST_PASSWORD=1` and `=true` printed verbatim |
+| C | `_PASS` names were missed | `DB_PASS`, `REDIS_PASS`, `POSTGRES_PASS` all leaked |
+| D | only the whole multiline value was measured | the three-character first line printed |
+| E | any protected END closed any protected block | the payload after `-----END CERTIFICATE-----` escaped |
+| F | an oversized BEGIN line was dropped unread | the payload and END that followed were treated as ordinary output |
+
+### 31.2 The redesign
+
+The file had grown one defence at a time — provider shapes, then piped output, then exact values,
+then a preflight — and every one of the six bypasses lived in a seam between those layers. It is
+now three stages with an explicit contract between them.
+
+**Stage 1 — credential preflight, complete before any child exists.** This closes A structurally
+rather than by reordering two lines: refusal is a stage that must succeed before Stage 3 begins.
+The old code called `spawn()` first and refused six lines later, and because the child is
+DETACHED it outlived the parent's `exit(3)` and finished its work regardless.
+
+Within the stage:
+
+* **Names are components, not substrings** (C). `DB_PASS` splits to `DB`/`PASS` and matches;
+  `COMPASS_HEADING` splits to `COMPASS`/`HEADING` and does not. Adding `PASS` to a substring regex
+  would have made every compass a credential — which is why the classifier is a component list.
+  Pointer components (`_FILE`, `_PATH`, `_SOCK`) still mean a pointer, not the credential.
+* **A flag exemption needs both halves** (B). The old code excused a closed set of boolean literals
+  wherever they appeared, so `EYE_TEST_PASSWORD=1` was ignored. A credential-named variable is a
+  credential whatever its value looks like: the exemption now requires an unambiguously flag-shaped
+  NAME *and* a boolean literal. `SDK_HAS_OAUTH_REFRESH=1` is a flag; `EYE_TEST_PASSWORD=1` is not,
+  and neither is `EYE_USE_PASSWORD=abc`, whose name is flag-shaped but whose value is real.
+* **Every component of a multiline value is judged** (D). The old check measured the whole value's
+  length, so `$'abc\nlong-secret-part'` passed while its first line could not be safely redacted and
+  was printed. A value is decomposed into the whole string plus every nonempty line, in LF and CRLF
+  spellings, and each is judged.
+* **Unsafe means refuse, and the refusal says nothing.** A component that is too short — or that is
+  a common word such as `true`, where literal replacement would rewrite ordinary output — makes the
+  variable unprotectable, and the run refuses with exit 3. The diagnostic names the VARIABLE only:
+  no value, no component, no length, no position.
+
+**Stage 2 — one streaming state machine per output stream.** Two invariants carry it. Nothing is
+emitted that has not been seen whole, so a credential cannot escape by straddling a chunk boundary,
+and a line too long to hold is dropped behind a marker rather than emitted in part. And **marker
+state advances for every line the parser OBSERVES**, including lines it truncates or drops — which
+is what closes F, where detection and emission had been the same decision, so an oversized BEGIN
+line took its block state to the bin with it. Suppression is keyed on the exact normalised label
+BEGIN captured (E): only the matching END closes it, a mismatched END stays inside the block, and
+an unterminated block stays suppressed through EOF.
+
+**Stage 3 — process lifecycle.** Spawn, pipe, bounded drain, process-group termination, sanitised
+diagnostics. Exit codes, signals and timeout behaviour are unchanged; every diagnostic and
+process-tree line still passes through the same redactors.
+
+### 31.3 Controls
+
+Hermetic gate **994** (was 917) · in-gate mutation/differential **309** · API hermetic **1,943** ·
+integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and boundaries
+clean · migrations 0001–0021 byte-identical (21 files, zero drift) · both gitleaks scans clean.
+
+The new controls cover: the child side-effect probe against BOTH watchdogs, so the differential is
+non-vacuous in each direction; password values `0`, `1`, `true` and `false`; a genuine flag name
+with a boolean value; a flag-shaped credential name with a non-boolean value; `DB_PASS`,
+`REDIS_PASS`, `POSTGRES_PASS` and eleven other credential names; nine near-miss names including
+`COMPASS`, `COMPASS_HEADING`, `BYPASS_MODE` and `CLASSPATH`; multiline secrets with one-, two- and
+three-character components, and short components first, last and in the middle; LF, CRLF, empty
+lines and EOF without a final newline; mismatched END labels; nested and repeated BEGIN markers;
+oversized BEGIN lines across ten meaningful chunk boundaries; unterminated oversized blocks through
+EOF; stdout, stderr, thrown errors, nonzero exit and the timeout path; and ordinary surrounding
+output remaining readable. Every canary is synthetic, and each assertion requires that neither the
+complete value nor any meaningful substring survives.
+
+Two of these controls were wrong when first written and the suite said so: one asserted a refusal
+where the run legitimately redacts instead, and two read a canary out of the watchdog's own echoed
+command line rather than from the filtered stream. Both were corrected — the canaries now travel
+through the environment — rather than the assertions being relaxed.
+
+### 31.4 Closure
+
+All six reproduced bypasses are closed, each with a permanent control and a frozen-predecessor
+differential. The complete local and hosted chain is green on one attempt at each stage.
+
+* **C18 is CLOSED.**
+* The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
+  the drawn values of per-instance generated secrets — remain **C19 external-anchoring concerns**,
+  declared with what IS proved of each. None is a hidden verifier claim.
+* **C19 is the next gate and has not been implemented.**
+
+`e2077e1` is recorded as **authentic and provenance-valid**, its evidence internally valid,
+secret-clean and its database verifier accepted; it is superseded solely for the watchdog preflight
+and state-machine defects above.
