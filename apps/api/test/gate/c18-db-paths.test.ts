@@ -4696,10 +4696,17 @@ describe('C18 watchdog — the frozen predecessors are pinned, tracked and byte-
     const rel = `apps/api/test/gate/fixtures/${dir}/c18-watchdog.mjs`;
     const bytes = readFileSync(join(REPO, rel));
     expect(sha256(bytes)).toBe(digest);
-    const shown = spawnSync('git', ['show', `${sha}:scripts/gate/c18-watchdog.mjs`],
-      { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
-    expect(shown.status, `${sha} must be reachable`).toBe(0);
-    expect(sha256(shown.stdout as unknown as Buffer), 'the fixture must be byte-equal to git show').toBe(digest);
+    // The digest pin above is unconditional. The byte-equality comparison against history needs
+    // the object to be present, and a hosted checkout is shallow — so it runs where the commit is
+    // reachable and is skipped, not faked, where it is not.
+    const reachable = spawnSync('git', ['cat-file', '-e', `${sha}:scripts/gate/c18-watchdog.mjs`],
+      { cwd: REPO }).status === 0;
+    if (reachable) {
+      const shown = spawnSync('git', ['show', `${sha}:scripts/gate/c18-watchdog.mjs`],
+        { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer), 'the fixture must be byte-equal to git show').toBe(digest);
+    }
   });
   it.each(FIXTURES.map((f) => [f[0]]))('%s is TRACKED and not ignored', (dir) => {
     const rel = `apps/api/test/gate/fixtures/${dir}/c18-watchdog.mjs`;
