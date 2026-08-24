@@ -137,8 +137,14 @@ export const oneOf = (values) => (v) => (values.includes(v) ? []
 /** slot: the value must be exactly the id the named slot resolved to (or exactly null). */
 export const slotRef = (pick) => (v, row, ctx) => {
   const want = pick(row, ctx);
-  return (v ?? null) === (want ?? null) ? []
-    : [`is ${j(v)}; the resolved slot relationship requires ${j(want)}`];
+  // C18.1.14: `(v ?? null) === (want ?? null)` equated an UNRESOLVED slot with a legitimate null,
+  // so a slot that failed to resolve validated a null column. Absence and null are distinguished,
+  // and an unresolved expectation is a finding.
+  if (want === undefined) {
+    return ['cannot be judged: the slot relationship did not resolve, so this reference proves nothing'];
+  }
+  if (v === undefined) return [`is ABSENT; the resolved slot relationship requires ${j(want)}`];
+  return v === want ? [] : [`is ${j(v)}; the resolved slot relationship requires ${j(want)}`];
 };
 /** generated-id: UUID grammar, and — where given — uniqueness within its table. */
 export const generatedId = ({ unique = false } = {}) => (v, row, ctx) => {
@@ -219,7 +225,9 @@ export const sameTimeAs = (pick, what, { family = null, otherFamily = null } = {
   const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
   const otherFam = otherFamily ?? fam;
   const other = pick(row, ctx);
-  if (other === undefined) return null;
+  // C18.1.14: an unresolved counterpart is a FINDING; returning `null` reported the relation
+  // satisfied when it had not been checked at all.
+  if (other === undefined) return `cannot be judged: ${what} did not resolve`;
   return sameInstant(v, other, fam, otherFam) ? null
     : `is ${j(v)}, which is not the same instant as ${what} (${j(other)})`;
 };
@@ -228,7 +236,10 @@ export const before = (pick, what, { family = null, otherFamily = null } = {}) =
   const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
   const otherFam = otherFamily ?? fam;
   const other = pick(row, ctx);
-  if (other === undefined || !finiteTime(other, otherFam)) return null;
+  if (other === undefined) return `cannot be judged: ${what} did not resolve`;
+  if (!finiteTime(other, otherFam)) {
+    return `cannot be judged: ${what} (${j(other)}) is not canonical for its own family`;
+  }
   return at(v, fam).getTime() < at(other, otherFam).getTime() ? null
     : `is ${j(v)}, which is not before ${what} (${j(other)})`;
 };
@@ -237,7 +248,10 @@ export const notBefore = (pick, what, { family = null, otherFamily = null } = {}
   const fam = family ?? timestampFamilyOf(ctx?.table, ctx?.column);
   const otherFam = otherFamily ?? fam;
   const other = pick(row, ctx);
-  if (other === undefined || !finiteTime(other, otherFam)) return null;
+  if (other === undefined) return `cannot be judged: ${what} did not resolve`;
+  if (!finiteTime(other, otherFam)) {
+    return `cannot be judged: ${what} (${j(other)}) is not canonical for its own family`;
+  }
   return at(v, fam).getTime() >= at(other, otherFam).getTime() ? null
     : `is ${j(v)}, which precedes ${what} (${j(other)})`;
 };
@@ -254,7 +268,12 @@ export const volatileField = ({ allowed = null, type = null, nullable = true, er
 /** formula: independently recomputed from source-owned inputs. */
 export const formula = (compute, what) => (v, row, ctx) => {
   const want = compute(row, ctx);
-  if (want === undefined) return [];
+  // C18.1.14: an unresolved computation is a FINDING, not a pass. C18.1.12 closed exactly this
+  // shape in `bound()`; the audit found it still standing here, where a slot that fails to resolve
+  // would silence the rule that depends on it.
+  if (want === undefined) {
+    return ['cannot be judged: ' + what + ' did not resolve, so this formula proves nothing'];
+  }
   const same = (typeof want === 'object' && want !== null) ? stable(v) === stable(want) : v === want;
   return same ? [] : [`is ${j(v)}; ${what} recomputes to ${j(want)}`];
 };

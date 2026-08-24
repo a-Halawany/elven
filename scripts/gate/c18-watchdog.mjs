@@ -64,7 +64,10 @@ import { fileURLToPath } from 'node:url';
  * useful diagnostics without protecting anything, because the value is not itself a secret.
  */
 const SECRET_ENV_NAME_RE = /(TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY|PASSPHRASE|BEARER|COOKIE|AUTH)/i;
-const NON_SECRET_ENV_SUFFIX_RE = /(_SOCK|_SOCKET|_FILE|_PATH|_DIR|_HOME|_URL|_ENABLED|_REQUIRED)$/i;
+// C18.1.14: `_URL` was here, and it should never have been. A connection URL is one of the most
+// common places a password actually lives — `postgres://user:pw@host/db` — so excluding
+// credential-named URL variables from the value set excluded exactly the values worth protecting.
+const NON_SECRET_ENV_SUFFIX_RE = /(_SOCK|_SOCKET|_FILE|_DIR|_HOME|_ENABLED|_REQUIRED)$/i;
 /** Below this length a value is too short to be a credential and too likely to be common text. */
 const MIN_SECRET_VALUE_LENGTH = 8;
 
@@ -123,7 +126,10 @@ export function redactSecrets(text) {
     .replace(new RegExp(`(${SECRET_KEY}\\s*[=:]\\s*)(\\S+)`, 'gi'), '$1[REDACTED]')
     // --token VALUE / --password VALUE, and Authorization headers.
     .replace(/(--[A-Za-z0-9-]*(?:token|secret|password|api-key|credential)[A-Za-z0-9-]*[= ])(\S+)/gi, '$1[REDACTED]')
-    .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]');
+    .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]')
+    // C18.1.14: userinfo embedded in a URL — `scheme://user:password@host` — is a credential
+    // wherever it appears, whatever the variable holding it was called.
+    .replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/g, '$1$2:[REDACTED]@');
 }
 
 /** The marker that replaces a line too long for the filter to inspect whole. */

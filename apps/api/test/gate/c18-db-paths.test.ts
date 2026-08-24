@@ -2712,9 +2712,11 @@ describe('C18.1.12 — the governed lifetimes are owned by the source', () => {
     const seconds = GOVERNED_LIFETIMES.sessionSeconds;
     const base = Date.parse('2026-09-01T00:00:00.000Z');
     const drift = GOVERNED_LIFETIMES.clockSkewMs;
+    // Both ends are DATABASE columns, so both carry the database grammar.
+    const pg = (ms: number) => new Date(ms).toISOString().replace('Z', '+00:00');
     expect(judgeLifetime({
-      issuedAt: new Date(base).toISOString(),
-      expiresAt: new Date(base + seconds * 1_000 + drift).toISOString(),
+      issuedAt: pg(base),
+      expiresAt: pg(base + seconds * 1_000 + drift),
       seconds,
       label: 'session',
     })).toEqual([]);
@@ -2722,9 +2724,10 @@ describe('C18.1.12 — the governed lifetimes are owned by the source', () => {
   it('a lifetime just beyond the declared clock allowance is a finding', () => {
     const seconds = GOVERNED_LIFETIMES.sessionSeconds;
     const base = Date.parse('2026-09-01T00:00:00.000Z');
+    const pg = (ms: number) => new Date(ms).toISOString().replace('Z', '+00:00');
     expect(judgeLifetime({
-      issuedAt: new Date(base).toISOString(),
-      expiresAt: new Date(base + seconds * 1_000 + GOVERNED_LIFETIMES.clockSkewMs + 1).toISOString(),
+      issuedAt: pg(base),
+      expiresAt: pg(base + seconds * 1_000 + GOVERNED_LIFETIMES.clockSkewMs + 1),
       seconds,
       label: 'session',
     }).join('')).toMatch(/the source governs every session at 3600s/);

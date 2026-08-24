@@ -40,6 +40,8 @@
  * matter how consistently every other row in the archive was rewritten to agree with it.
  */
 
+import { isPgTimestamp } from './c18-seed-validators.mjs';
+
 export const GOVERNED_LIFETIMES = Object.freeze({
   sessionSeconds: 3_600,
   capabilitySeconds: 60,
@@ -66,11 +68,15 @@ export const capabilityLifetimeSeconds = (opClass) => (opClass === 'bootstrap'
  * caller supplies the label used in the finding.
  */
 export function judgeLifetime({ issuedAt, expiresAt, seconds, label }) {
+  // C18.1.14: both ends are DATABASE columns, so both are parsed in the database family. The
+  // caller validated the expiry; `Date.parse` on the raw `issuedAt` would have accepted prose, an
+  // alternate offset or the body family for the other end of the same measurement.
+  if (!isPgTimestamp(issuedAt) || !isPgTimestamp(expiresAt)) {
+    return [`cannot be measured: ${JSON.stringify(issuedAt)} → ${JSON.stringify(expiresAt)} is not `
+      + 'a pair of canonical database instants'];
+  }
   const issued = Date.parse(issuedAt);
   const expires = Date.parse(expiresAt);
-  if (!Number.isFinite(issued) || !Number.isFinite(expires)) {
-    return [`cannot be measured against ${JSON.stringify(issuedAt)}`];
-  }
   const lived = expires - issued;
   if (lived < 0) return [`is ${JSON.stringify(expiresAt)}, which precedes its own issue instant`];
   const drift = Math.abs(lived - seconds * 1_000);

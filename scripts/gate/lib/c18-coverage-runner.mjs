@@ -187,12 +187,17 @@ function buildContext({ before, slots, spec }) {
   const headOf = new Map(); // partition → { next_seq, head_hash, updated_at }
   const partitions = [...new Set(auditRows.map((r) => r.partition_id))].sort();
   for (const p of partitions) {
-    const chain = auditRows.filter((r) => r.partition_id === p)
-      .sort((a, b) => Number(a.audit_seq) - Number(b.audit_seq));
+    // C18.1.14: no coercion. A non-integer sequence is reported by its own rule and by the
+    // serialized-type contract; ordering and arithmetic here operate on integers only, so a
+    // numeric string can never be silently accepted as a chain position.
+    const chain = auditRows.filter((r) => r.partition_id === p
+      && Number.isInteger(r.audit_seq))
+      .sort((a, b) => a.audit_seq - b.audit_seq);
+    if (chain.length === 0) continue;
     const last = chain[chain.length - 1];
     headOf.set(p, {
       partition_id: p,
-      next_seq: Number(last.audit_seq) + 1,
+      next_seq: last.audit_seq + 1,
       head_hash: last.row_hash,
       // The head is stamped when its last event lands: an exact, source-derivable value rather
       // than the "present timestamp" 77489f5 claimed.
@@ -275,9 +280,9 @@ function buildContext({ before, slots, spec }) {
           : [`is ${stable(row.partition_id)}; the planned event belongs to partition ${stable(paired.partition)}`];
       }
       if (field === 'audit_seq') {
-        const n = Number(value);
-        return Number.isInteger(n) && n >= 1 ? []
-          : [`is ${stable(value)}; a chain position must be a positive integer`];
+        // C18.1.14: `Number(value)` accepted the string "5"; the delivered type is an integer.
+        return Number.isInteger(value) && value >= 1 ? []
+          : [`is ${stable(value)}; a chain position must be a positive integer, not ${typeof value}`];
       }
       if (field === 'event') {
         // The `event` column IS the canonical body; its own rule is that it canonicalizes to
@@ -293,9 +298,12 @@ function buildContext({ before, slots, spec }) {
       if (field === 'row_hash') {
         let recomputed;
         try {
+          if (!Number.isInteger(row.audit_seq)) {
+            return ['cannot be recomputed: its chain position is not the delivered integer type'];
+          }
           recomputed = auditRowHash({
             partitionId: row.partition_id,
-            auditSeq: Number(row.audit_seq),
+            auditSeq: row.audit_seq,
             previousHash: row.previous_hash,
             event: row.event,
           });
@@ -307,8 +315,11 @@ function buildContext({ before, slots, spec }) {
       }
       if (field === 'previous_hash') {
         const chain = row.audit_seq;
+        if (!Number.isInteger(chain)) {
+          return ['cannot be judged: its chain position is not the delivered integer type'];
+        }
         const prior = (before.tables?.['audit.audit_events']?.rows ?? [])
-          .find((r) => r.partition_id === row.partition_id && Number(r.audit_seq) === Number(chain) - 1);
+          .find((r) => r.partition_id === row.partition_id && r.audit_seq === chain - 1);
         const want = prior === undefined ? '0'.repeat(64) : prior.row_hash;
         return value === want ? []
           : ['does not equal the row hash of its predecessor in the same partition'];

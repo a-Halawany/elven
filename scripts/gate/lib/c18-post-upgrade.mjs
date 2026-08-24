@@ -591,10 +591,21 @@ export function runPostUpgradeCoverage({
       if (closing === null) return [];
       const partition = row.partition_id;
       const prior = afterEvents.filter((e) => e.partition_id === partition)
-        .sort((a, b) => Number(a.audit_seq) - Number(b.audit_seq)).pop() ?? null;
+        .filter((e) => Number.isInteger(e.audit_seq))
+        .sort((a, b) => a.audit_seq - b.audit_seq).pop() ?? null;
       if (field === 'audit_seq') {
-        const want = prior === null ? 1 : Number(prior.audit_seq) + 1;
-        return Number(value) === want ? [] : [`is ${j(value)}; the chain continues at ${want}`];
+        // C18.1.14: no coercion. `Number(value)` accepted the string "5" for the integer 5, which
+        // then re-hashed identically because the chain hash coerces too. The serialized-type
+        // contract reports the type separately; this rule refuses to arithmetic on a non-integer
+        // rather than quietly agreeing with one.
+        if (!Number.isInteger(value)) {
+          return [`is ${j(value)}, which is not the delivered integer sequence type`];
+        }
+        if (prior !== null && !Number.isInteger(prior.audit_seq)) {
+          return ['cannot be judged: the prior row in this partition carries a non-integer sequence'];
+        }
+        const want = prior === null ? 1 : prior.audit_seq + 1;
+        return value === want ? [] : [`is ${j(value)}; the chain continues at ${want}`];
       }
       if (field === 'previous_hash') {
         const want = prior === null ? '0'.repeat(64) : prior.row_hash;
@@ -605,11 +616,16 @@ export function runPostUpgradeCoverage({
           : ['is not the production canonicalization of the delivered body'];
       }
       if (field === 'row_hash') {
+        // C18.1.14: the production hash coerces its sequence argument, so a numeric-string
+        // sequence re-hashed identically. Refuse to hash a non-integer position at all.
+        if (!Number.isInteger(row.audit_seq)) {
+          return ['cannot be recomputed: its chain position is not the delivered integer type'];
+        }
         let want;
         try {
           want = audit.rowHash({
             partitionId: row.partition_id,
-            auditSeq: Number(row.audit_seq),
+            auditSeq: row.audit_seq,
             previousHash: row.previous_hash,
             event: row.event,
           });
@@ -705,7 +721,7 @@ export function runPostUpgradeCoverage({
     headField(row, field, value) {
       if (closing === null || row.partition_id !== closing.partition_id) return [];
       const want = {
-        next_seq: Number(closing.audit_seq) + 1,
+        next_seq: Number.isInteger(closing.audit_seq) ? closing.audit_seq + 1 : undefined,
         head_hash: closing.row_hash,
         updated_at: closing.created_at,
       }[field];
