@@ -37,9 +37,46 @@
  *
  * So the claim is narrowed to what is proved: the marking happened within a bounded causal
  * interval. It is no longer described as exact.
+ *
+ * ── C18.1.14: THE REMAINING UNOWNED VALUES, DECLARED RATHER THAN LEFT IMPLICIT ──
+ *
+ * The comprehensive audit inventoried every `source_owned_value:false`, opaque, nullable and
+ * per-instance declaration in the verifier. Most turned out to be constrained after all — the six
+ * volatile seed columns are pinned to `null` by their own rules, and the migration-owned
+ * per-instance columns gained explicit grammars in this pass. Five values genuinely cannot be
+ * derived from any source artifact, and they are declared below rather than sitting as quiet
+ * exemptions inside a coverage table. Each still carries a real rule; what cannot be decided is
+ * WHICH legitimate value was assigned, and that is stated plainly instead of implied to be proven.
  */
 
 export const OBSERVATIONAL_LIMITS = Object.freeze([
+  Object.freeze({
+    id: 'backend-assigned-identifiers',
+    subject: 'ctx.operation.txid, ctx.operation.backend_pid, ctx.operation_effect.id',
+    undecidable: 'the specific values PostgreSQL assigns to a transaction id, a backend process id '
+      + 'and a bare sequence',
+    because: 'the database chooses them at run time from state no source artifact fixes, and no '
+      + 'other recorded value derives from them',
+    proved: 'each carries its exact delivered serialized type and grammar — a digit string, a '
+      + 'positive integer and a positive serial — and each row carries the column',
+    residual: 'one legitimate backend-assigned value can be exchanged for another legitimate one '
+      + 'without contradicting anything the evidence records',
+    anchorRequires: 'the database emitting a signed statement of the identifiers it assigned',
+    ledger: 'C19 external-anchoring',
+  }),
+  Object.freeze({
+    id: 'per-instance-generated-secrets',
+    subject: 'identity.sessions.context_key_hash and ctx.context_secret.secret',
+    undecidable: 'the specific value of a secret generated independently by each instance',
+    because: 'the value is random by construction — deriving it from source would defeat its '
+      + 'purpose — and the two paths legitimately disagree on it',
+    proved: 'each is a sha-256 hex digest, present on every row it belongs to, and unique across '
+      + 'the sessions of a run',
+    residual: 'one well-formed random digest can be exchanged for another without contradicting '
+      + 'anything the evidence records',
+    anchorRequires: 'a key-management attestation binding the generated value to the instance',
+    ledger: 'C19 external-anchoring',
+  }),
   Object.freeze({
     id: 'bootstrap-marking-instant',
     subject: 'identity.credentials.expires_at (the rotated bootstrap predecessor)',

@@ -22,6 +22,7 @@
  *   • C18.1.5 — adjacent-field rejections on the genuine archive
  */
 import {
+  register29,
   register05,
   register13,
   register17,
@@ -38,3 +39,4 @@ register14();
 register16();
 register21();
 register12();
+register29();

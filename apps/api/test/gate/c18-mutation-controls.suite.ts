@@ -68,6 +68,13 @@ import {
   verifySemantics as legacy220Semantics,
 } from './fixtures/c18-legacy-220b26c/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import {
+  deriveSourceBinding as derive53fBinding, verifyEvidence as legacy53f,
+  verifySemantics as legacy53fSemantics,
+} from './fixtures/c18-legacy-53fb889/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy53fCoverage } from './fixtures/c18-legacy-53fb889/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy220Coverage } from './fixtures/c18-legacy-220b26c/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy2c3Coverage } from './fixtures/c18-legacy-2c3cab3/lib/c18-seed-coverage.mjs';
@@ -3554,6 +3561,128 @@ describe('C18.1.13 — DIFFERENTIAL: the frozen 220b26c verifier ACCEPTED what C
     expect(text, 'the shape finding must survive').toMatch(/is MISSING field "revoked_at"/);
     expect(text, 'the type finding must survive').toMatch(/txid is serialized as integer/);
     expect(text, 'the timestamp-family finding must survive').toMatch(/issued_at/);
+  });
+});
+}
+
+/** Apply an edit to a table in EVERY snapshot of BOTH paths, rebinding every receipt. */
+function everySnapshotBothPaths(d: string, table: string, apply: (rows: any[], t: any) => void) {
+  const ALL: ReadonlyArray<[string, string]> = [
+    ['path-a-preseed.json', 'a-a-preseed'], ['path-a-before.json', 'a-a-before'],
+    ['path-a-after.json', 'a-a-after'], ['path-a-final.json', 'a-a-final'],
+    ['path-b-virgin.json', 'b-b-virgin'],
+  ];
+  for (const [snapFile, pfx] of ALL) {
+    if (!existsSync(join(d, snapFile))) continue;
+    editJson(d, snapFile, (doc: any) => {
+      if (doc.tables?.[table] === undefined) return;
+      apply(doc.tables[table].rows, doc.tables[table]);
+      doc.tables[table].row_count = doc.tables[table].rows.length;
+    });
+    const now = JSON.parse(readFileSync(join(d, snapFile), 'utf8'));
+    if (now.tables?.[table] === undefined) continue;
+    setStream(d, `${pfx}-rows-${table.replace('.', '_')}`, 'stdout',
+      Buffer.from(JSON.stringify(now.tables[table].rows)));
+  }
+}
+
+/** C18.1.14's coverage notes differ again, so the frozen leg regenerates its own report. */
+function downgradeTo53fb889(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, '53fb889', (preseed, before) => legacy53fCoverage({ preseed, before })));
+}
+
+/**
+ * The migration-owned false packages the C18.1.14 audit found. Each is applied to EVERY snapshot of
+ * BOTH paths, so no cross-snapshot or A/B comparison can see it, and every receipt is rebound.
+ */
+const C11814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
+  ['a governed role is re-scoped, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'identity.roles', (rows) => {
+      const r = rows.find((x: any) => x.code === 'auditor');
+      if (r !== undefined) r.scope = 'PLATFORM';
+    });
+  }, /migration-owned: .* 'identity\.roles'/],
+
+  ['a role is deleted from the authority catalog, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'identity.roles', (rows, t) => { t.rows = rows.filter((x: any) => x.code !== 'auditor'); });
+  }, /migration-owned: .* 'identity\.roles'/],
+
+  ['the runtime profile claims production, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'config.runtime_profile', (rows) => { rows[0].profile = 'production'; });
+  }, /migration-owned: .* 'config\.runtime_profile'/],
+
+  ['canonical field registry rows are deleted, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'objects.canonical_field_registry', (rows, t) => { t.rows = rows.slice(3); });
+  }, /migration-owned: .* 'objects\.canonical_field_registry'/],
+
+  ['an authoritative field is de-authorised, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'objects.canonical_field_registry', (rows) => {
+      const r = rows.find((x: any) => x.authoritative === true);
+      if (r !== undefined) r.authoritative = false;
+    });
+  }, /migration-owned: .* 'objects\.canonical_field_registry'/],
+
+  ['the cited policy bundle is marked draft, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'policy.policy_bundles', (rows) => { rows[0].status = 'draft'; });
+  }, /migration-owned: .* 'policy\.policy_bundles'/],
+
+  ['the cited policy bundle is renamed, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'policy.policy_bundles', (rows) => { rows[0].version = 'bundle-v9'; });
+  }, /migration-owned: .* 'policy\.policy_bundles'/],
+
+  ['the per-instance context secret stops being a digest, on both paths', (d) => {
+    everySnapshotBothPaths(d, 'ctx.context_secret', (rows) => { rows[0].secret = 'short'; });
+  }, /migration-owned: .* not a sha-256 hex digest/],
+];
+
+export function register29() {
+describe('C18.1.14 — DIFFERENTIAL: the frozen 53fb889 verifier ACCEPTED what C18.1.14 rejects', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  const judge53f = async (mutate: Mutator) => {
+    const { members } = mutateMembers((d) => { downgradeTo53fb889(d); mutate(d); });
+    return legacy53fSemantics({
+      members, root: REPO, sourceBinding: legacyBinding('53fb889', derive53fBinding),
+    });
+  };
+
+  it('NON-VACUITY: the frozen 53fb889 verifier accepts the genuine archive', async () => {
+    const r = await judge53f(() => {});
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('the frozen 53fb889 leg agrees through the real ZIP ingress as well', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo53fb889);
+    try {
+      const r = await legacy53f({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each(C11814_MUTATIONS)('%s — 53fb889 ACCEPTS it; C18.1.14 REJECTS it', async (_label, mutate, pattern) => {
+    const old = await judge53f(mutate);
+    expect(old.ok, `the frozen 53fb889 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    await expectReject(mutate, pattern);
+  });
+
+  it('rewriting only ONE path is caught by the A/B comparison as well', async () => {
+    const { members } = mutateMembers((d) => {
+      editJson(d, 'path-b-virgin.json', (doc: any) => {
+        doc.tables['identity.roles'].rows.find((r: any) => r.code === 'auditor').scope = 'PLATFORM';
+      });
+      const now = JSON.parse(readFileSync(join(d, 'path-b-virgin.json'), 'utf8'));
+      setStream(d, 'b-b-virgin-rows-identity_roles', 'stdout',
+        Buffer.from(JSON.stringify(now.tables['identity.roles'].rows)));
+    });
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.problems.join('\n')).toMatch(/differs between path-a-after and path-b-virgin|'identity\.roles'/);
+  });
+
+  it('the same judgement holds through the real ZIP ingress', async () => {
+    await expectRejectViaZip(C11814_MUTATIONS[0]![1], C11814_MUTATIONS[0]![2]);
   });
 });
 }

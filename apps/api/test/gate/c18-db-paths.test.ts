@@ -99,6 +99,13 @@ import {
   judgeSerializedType, loadSerializedTypes, serializedKind, verifySerializedTypeRegistry,
   verifySnapshotShapes,
 } from '../../../../scripts/gate/lib/c18-serialized-types.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  compareMigrationOwnedAcrossPaths, loadMigrationOwned, migrationOwnedTables,
+  verifyMigrationOwned, verifyMigrationOwnedRegistry,
+} from '../../../../scripts/gate/lib/c18-migration-owned.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { formula, slotRef, before as tsBefore2 } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
 
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -2742,7 +2749,11 @@ describe('C18.1.12 — what this evidence cannot decide is declared, not implied
   // §2I. C18.1.11 called the bootstrap marking instant narrowed "to the marking itself" and
   // reported that a cited millisecond drift failed. Replayed, that drift was still accepted.
   it('the tolerated limits are exactly the declared list', () => {
-    expect(observationalLimitIds()).toEqual(['bootstrap-marking-instant']);
+    // C18.1.14 added two entries after the comprehensive audit; the point of the control is that
+    // the list is EXACT, not that it never grows.
+    expect(observationalLimitIds()).toEqual([
+      'backend-assigned-identifiers', 'bootstrap-marking-instant', 'per-instance-generated-secrets',
+    ]);
   });
   it('each declared limit says what is proved, what is not, and where the anchor must come from', () => {
     for (const l of OBSERVATIONAL_LIMITS) {
@@ -3731,5 +3742,274 @@ describe('C18.1.13 — every control block is registered exactly once', () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
     expect(ci).toContain('vitest.c18.config.ts');
     expect(ci).toContain('vitest.c18-serial.config.ts');
+  });
+});
+
+describe('C18.1.14 — the migration-owned world has a value model', () => {
+  /**
+   * §9 audit finding, blocking. Six catalogued tables carry rows in every snapshot of both eras and
+   * had no value model at all: the frozen migrations write them, so neither the seed coverage nor
+   * the post-upgrade coverage claimed them, and `comparePosture` compares catalog posture
+   * categories — never table rows. Seven fully rebound false packages followed.
+   */
+  const LIB = join(REPO, 'scripts', 'gate', 'lib');
+  const catalog = loadCatalogContract(LIB) as any;
+  const declared = loadMigrationOwned(LIB) as any;
+  /**
+   * A conformant migration-owned snapshot, built FROM the declaration: the declared deterministic
+   * rows, each completed with a well-formed value for its per-instance columns. The synthetic seed
+   * world models the seeded tables, not these, so the subject is constructed here rather than
+   * bolted onto that world.
+   */
+  const PER_INSTANCE_SAMPLE: Record<string, unknown> = {
+    'db-timestamp': '2026-09-01T00:00:00.123456+00:00',
+    'sha256-hex': 'a'.repeat(64),
+  };
+  const world = () => {
+    const tables: Record<string, unknown> = {};
+    for (const [table, spec] of Object.entries(declared) as Array<[string, any]>) {
+      const rows = spec.rows.map((r: Record<string, unknown>) => {
+        const row = { ...r };
+        for (const c of spec.perInstanceColumns) row[c] = PER_INSTANCE_SAMPLE[spec.perInstanceRules[c]];
+        return row;
+      });
+      tables[table] = { rows, columns: [...spec.deterministicColumns, ...spec.perInstanceColumns], row_count: rows.length };
+    }
+    return { tables };
+  };
+
+  it('the declaration names exactly the migration-owned tables', () => {
+    expect(migrationOwnedTables(declared)).toEqual([
+      'config.runtime_profile', 'ctx.context_secret', 'identity.roles',
+      'objects.canonical_field_registry', 'objects.schema_registry', 'policy.policy_bundles',
+    ]);
+  });
+  it('the declaration is catalogued, complete and partitioned in both directions', () => {
+    expect(verifyMigrationOwnedRegistry({ catalog, declared }).problems).toEqual([]);
+  });
+  it('every declared table partitions its columns with nothing left over', () => {
+    for (const [table, spec] of Object.entries(declared) as Array<[string, any]>) {
+      const columns = catalog.historical.tables[table]?.columns
+        ?? catalog.latest.tables[table].columns;
+      const named = [...spec.deterministicColumns, ...spec.perInstanceColumns].sort();
+      expect(named, table).toEqual([...columns].sort());
+      expect(spec.deterministicColumns.filter((c: string) => spec.perInstanceColumns.includes(c)))
+        .toEqual([]);
+    }
+  });
+  it('every per-instance column declares a grammar; none is left unchecked', () => {
+    for (const [table, spec] of Object.entries(declared) as Array<[string, any]>) {
+      for (const column of spec.perInstanceColumns) {
+        expect(['db-timestamp', 'sha256-hex'], `${table}.${column}`)
+          .toContain(spec.perInstanceRules[column]);
+      }
+    }
+  });
+  it('the declaration fixes a substantial row set, not a token one', () => {
+    const rows = Object.values(declared).reduce((a: number, s: any) => a + s.rows.length, 0);
+    expect(rows).toBeGreaterThan(40);
+  });
+
+  const judge = (mutate: (s: any) => void) => {
+    const s = world();
+    mutate(s);
+    return verifyMigrationOwned({ snapshot: s, label: 'before', declared }).problems.join('\n');
+  };
+  const rowsOf = (s: any, t: string) => s.tables[t].rows as any[];
+
+  it.each([
+    ['a governed role is re-scoped', (s: any) => {
+      rowsOf(s, 'identity.roles').find((r) => r.code === 'auditor').scope = 'PLATFORM';
+    }, /identity\.roles/],
+    ['a role is deleted from the authority catalog', (s: any) => {
+      s.tables['identity.roles'].rows = rowsOf(s, 'identity.roles').filter((r) => r.code !== 'auditor');
+    }, /identity\.roles/],
+    ['a role is added to the authority catalog', (s: any) => {
+      rowsOf(s, 'identity.roles').push({ ...rowsOf(s, 'identity.roles')[0], code: 'smuggled' });
+    }, /which the frozen migrations do not write/],
+    ['the runtime profile claims production', (s: any) => {
+      rowsOf(s, 'config.runtime_profile')[0].profile = 'production';
+    }, /config\.runtime_profile/],
+    ['canonical field registry rows are deleted', (s: any) => {
+      s.tables['objects.canonical_field_registry'].rows = rowsOf(s, 'objects.canonical_field_registry').slice(3);
+    }, /objects\.canonical_field_registry/],
+    ['an authoritative field is de-authorised', (s: any) => {
+      // Three of the declared rows are legitimately non-authoritative, so the mutation must target
+      // one that is — otherwise the case is a no-op and proves nothing.
+      const row = rowsOf(s, 'objects.canonical_field_registry').find((r) => r.authoritative === true);
+      expect(row, 'the declaration must contain an authoritative field to de-authorise').toBeDefined();
+      row.authoritative = false;
+    }, /objects\.canonical_field_registry/],
+    ['the cited policy bundle is marked draft', (s: any) => {
+      rowsOf(s, 'policy.policy_bundles')[0].status = 'draft';
+    }, /policy\.policy_bundles/],
+    ['the cited policy bundle is renamed', (s: any) => {
+      rowsOf(s, 'policy.policy_bundles')[0].version = 'bundle-v9';
+    }, /policy\.policy_bundles/],
+    ['the schema registry body is rewritten', (s: any) => {
+      rowsOf(s, 'objects.schema_registry')[0].json_schema = { type: 'object' };
+    }, /objects\.schema_registry/],
+    ['the per-instance context secret is not a digest', (s: any) => {
+      rowsOf(s, 'ctx.context_secret')[0].secret = 'short';
+    }, /not a sha-256 hex digest/],
+    ['a per-instance timestamp is not the database grammar', (s: any) => {
+      rowsOf(s, 'policy.policy_bundles')[0].created_at = '2026-09-01T00:00:00.000Z';
+    }, /not the canonical database timestamp grammar/],
+    ['a per-instance column is missing entirely', (s: any) => {
+      delete rowsOf(s, 'ctx.context_secret')[0].secret;
+    }, /missing the per-instance column/],
+  ] as ReadonlyArray<[string, (s: any) => void, RegExp]>)('%s is a finding', (_l, mutate, pattern) => {
+    expect(judge(mutate)).toMatch(pattern);
+  });
+
+  it('the conformant world raises no migration-owned finding', () => {
+    expect(verifyMigrationOwned({ snapshot: world(), label: 'before', declared }).problems).toEqual([]);
+  });
+  it('the two paths must agree, independently of the declaration', () => {
+    const a = world(); const b = world();
+    rowsOf(b, 'identity.roles')[0].scope = 'PLATFORM';
+    expect(compareMigrationOwnedAcrossPaths({ a, b, declared }).problems.join('\n'))
+      .toMatch(/'identity\.roles' differs between path-a and path-b/);
+  });
+  it('the declaration and the A/B comparison do not stand in for each other', () => {
+    // Rewriting BOTH paths defeats the comparison but not the declaration; rewriting ONE defeats
+    // the declaration on one side but is also caught by the comparison. Both must exist.
+    const a = world(); const b = world();
+    for (const s of [a, b]) rowsOf(s, 'identity.roles')[0].scope = 'PLATFORM';
+    expect(compareMigrationOwnedAcrossPaths({ a, b, declared }).problems).toEqual([]);
+    expect(verifyMigrationOwned({ snapshot: a, label: 'a', declared }).problems.length).toBeGreaterThan(0);
+  });
+});
+
+describe('C18.1.14 — no rule reports success it did not establish', () => {
+  // §9 audit: every validator that returned success when a counterpart could not resolve, and
+  // every coercion that could silently validate an evidence value.
+  it('formula() reports an unresolved computation instead of passing', () => {
+    expect(formula(() => undefined, 'the derived value')('x', {}, {}).join(''))
+      .toMatch(/did not resolve, so this formula proves nothing/);
+  });
+  it('slotRef() no longer equates an unresolved slot with a legitimate null', () => {
+    expect(slotRef(() => undefined)(null, {}, {}).join('')).toMatch(/did not resolve/);
+    expect(slotRef(() => null)(undefined, {}, {}).join('')).toMatch(/is ABSENT/);
+    expect(slotRef(() => null)(null, {}, {})).toEqual([]);
+  });
+  it('a timestamp relation reports an unresolved counterpart', () => {
+    expect(String(tsBefore2(() => undefined, 'its expiry')('2026-09-01T00:00:00+00:00', {}, {})))
+      .toMatch(/did not resolve/);
+  });
+  it('a timestamp relation reports a counterpart that is not canonical for its own family', () => {
+    expect(String(tsBefore2(() => '2026-09-01T00:00:00.000Z', 'its expiry')('2026-09-01T00:00:00+00:00', {}, {})))
+      .toMatch(/is not canonical for its own family/);
+  });
+  it('a governed lifetime refuses a non-database instant at either end', () => {
+    const pg = '2026-09-01T00:00:00+00:00';
+    expect(judgeLifetime({ issuedAt: '2026-09-01T00:00:00.000Z', expiresAt: pg, seconds: 0, label: 'x' })
+      .join('')).toMatch(/not a pair of canonical database instants/);
+  });
+  it('a chain position that is not the delivered integer type is never coerced', () => {
+    const w = buildPostUpgradeWorld();
+    const rows = (w.final.tables['audit.audit_events'].rows as any[]);
+    rows[rows.length - 1].audit_seq = String(rows[rows.length - 1].audit_seq);
+    const out = judgePostUpgrade(w).problems.join('\n');
+    expect(out).toMatch(/not the delivered integer sequence type|not the delivered integer type/);
+  });
+  it('no verifier module coerces a chain position with Number()', () => {
+    for (const f of ['lib/c18-coverage-runner.mjs', 'lib/c18-post-upgrade.mjs']) {
+      const src = readFileSync(join(REPO, 'scripts', 'gate', f), 'utf8');
+      expect(src, f).not.toMatch(/Number\([a-zA-Z.]*audit_seq/);
+    }
+  });
+});
+
+describe('C18.1.14 — the remaining unowned values are declared, not implied', () => {
+  it('the ledger names every value the evidence genuinely cannot decide', () => {
+    expect(observationalLimitIds()).toEqual([
+      'backend-assigned-identifiers', 'bootstrap-marking-instant', 'per-instance-generated-secrets',
+    ]);
+  });
+  it('each declares what IS proved and where the anchor must come from', () => {
+    for (const l of OBSERVATIONAL_LIMITS) {
+      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires']) {
+        expect(String((l as Record<string, unknown>)[field]).length, `${l.id}.${field}`)
+          .toBeGreaterThan(20);
+      }
+      expect(l.ledger).toBe('C19 external-anchoring');
+    }
+  });
+  it('every post-upgrade column without a source-owned value appears in the ledger', () => {
+    const unowned = postUpgradeUnownedColumns();
+    const subjects = OBSERVATIONAL_LIMITS.map((l) => l.subject).join(' ');
+    for (const column of unowned) {
+      expect(subjects, `${column} must be declared as an observational limit`).toContain(column);
+    }
+  });
+});
+
+describe('C18.1.14 — a credential in a URL is still a credential', () => {
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const URL_CANARY = 'Zx9pQ2mL7vT4nR8sK3wY';
+  it('userinfo embedded in a URL is redacted by shape, whatever holds it', () => {
+    const line = `connecting to postgres://eye:${URL_CANARY}@db.internal:5432/eye now`;
+    expect(redactSecrets(line)).not.toContain(URL_CANARY);
+    expect(redactSecrets(line)).toContain('postgres://eye:[REDACTED]@');
+  });
+  it('a credential-named URL variable is no longer excluded from the value set', () => {
+    // `_URL` sat in the non-secret suffix list, excluding exactly the variables most likely to
+    // carry a password in their value.
+    const values = credentialValuesFromEnv({ EYE_PASSWORD_URL: `postgres://u:${URL_CANARY}@h/db` });
+    expect([...values]).toHaveLength(1);
+  });
+  it('the child cannot leak a URL credential through the watchdog', () => {
+    const r = spawnSync('node', [WATCHDOG, '20', 'node', '-e',
+      'process.stdout.write(process.env.EYE_TEST_DSN + "\\n")'], {
+      encoding: 'utf8', env: { ...process.env, EYE_TEST_DSN: `postgres://u:${URL_CANARY}@h/db` },
+      timeout: 90_000,
+    });
+    expect(`${r.stdout}${r.stderr}`).not.toContain(URL_CANARY);
+  });
+});
+
+describe('C18.1.14 — the frozen 53fb889 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '53fb8897053b20e810ba05be695d62d81ea65475';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', 'aea0929d20149fd240c40d5a395ffa0971c4588d0251dadc49583c22ff8c4157'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', '235f7f859893b89c61edc5d772916d3c91622d5a60befab8e4093885b0c87229'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-lifetimes.mjs', 'scripts/gate/lib/c18-lifetimes.mjs', '098b8b62a542a33dcdefab863a254029c4f794bb43072452172be162bab731fc'],
+    ['lib/c18-observational-limits.mjs', 'scripts/gate/lib/c18-observational-limits.mjs', '082ba58b2f17e47913c35e25e717de4e119dcc475a8b22828b0761282889bf65'],
+    ['lib/c18-post-upgrade.mjs', 'scripts/gate/lib/c18-post-upgrade.mjs', '4f2d7c06f60a790d5b22ebc47d98b2b5fe6b3ede7e82cb2c8f526d9affb74c49'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '109d00978809e1f08c41e6f8eb0a17f67488b46f3586ded0522c67a0e097de52'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', 'f146e1166916ae4da3c84ec84ef39f86ed47a764c7d0261fd5141b8cf1d8791c'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '19d3c4e14598f95d03b852e1b38e64a8cdb90098fabd578c0a07b7fcae1978c1'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', 'f71fe3ac0275c545356d2fc8956283ed4b46c31ae9e410a840828d911365ad2f'],
+    ['lib/c18-serialized-types.json', 'scripts/gate/lib/c18-serialized-types.json', '591e058a1f5e5ecf64188524eb6136333aeed03088d85e7dcca2dbdd0d9b110b'],
+    ['lib/c18-serialized-types.mjs', 'scripts/gate/lib/c18-serialized-types.mjs', 'ab97939541c9af1c0b7a79bddd44bc0d64d885387aa1f22feea6cdd96374d837'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-53fb889/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-53fb889', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+  it('every frozen predecessor fixture is TRACKED and not ignored', () => {
+    // A fixture that exists locally but is excluded by .gitignore passes here and vanishes in CI —
+    // the C18.1.10 failure, made a permanent check for every frozen leg.
+    const dirs = readdirSync(join(__dirname, 'fixtures')).filter((d) => d.startsWith('c18-legacy-'));
+    expect(dirs.length).toBeGreaterThan(10);
+    for (const d of dirs) {
+      const rel = `apps/api/test/gate/fixtures/${d}`;
+      const tracked = spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO, encoding: 'utf8' });
+      expect(tracked.status, `${rel} must be tracked`).toBe(0);
+      const ignored = spawnSync('git', ['check-ignore', rel], { cwd: REPO, encoding: 'utf8' });
+      expect(ignored.status, `${rel} must not be ignored`).not.toBe(0);
+    }
   });
 });
