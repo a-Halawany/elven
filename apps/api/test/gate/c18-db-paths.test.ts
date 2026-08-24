@@ -102,8 +102,13 @@ import {
 // eslint-disable-next-line import/no-relative-packages
 import {
   compareMigrationOwnedAcrossPaths, loadMigrationOwned, migrationOwnedTables,
-  verifyMigrationOwned, verifyMigrationOwnedRegistry,
+  verifyMigrationOwned, verifyMigrationOwnedRegistry, verifyPerInstanceDistinctness,
 } from '../../../../scripts/gate/lib/c18-migration-owned.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import {
+  REDACTABLE_MIN_LENGTH, isCredentialName, isNonSecretValue, isProtectedBlockLine,
+  unprotectableCredentialNames,
+} from '../../../../scripts/gate/c18-watchdog.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { formula, slotRef, before as tsBefore2 } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
 
@@ -4011,5 +4016,262 @@ describe('C18.1.14 — the frozen 53fb889 predecessor is byte-verbatim', () => {
       const ignored = spawnSync('git', ['check-ignore', rel], { cwd: REPO, encoding: 'utf8' });
       expect(ignored.status, `${rel} must not be ignored`).not.toBe(0);
     }
+  });
+});
+
+describe('C18.1.14-final — the watchdog protects every class it claims to', () => {
+  /**
+   * The five reproduced defects, as permanent controls. Every canary below is synthetic and none is
+   * a real credential. The matrix covers stdout and stderr; one write and delayed writes; split
+   * points around the secret and around each marker; adjacent prefix and suffix text; LF and CRLF;
+   * EOF with and without a final newline; long lines; child failure and watchdog timeout; and the
+   * thrown-error and diagnostic paths.
+   */
+  const WATCHDOG = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const SHORT = 'aB3!xY7';                       // A — seven characters
+  const MULTI_LINES = ['c18alphaLINE', 'c18bravoLINE', 'c18charlieLINE'];
+  const MULTI = MULTI_LINES.join('\n');          // B
+  const PGP_BODY = 'c18syntheticpgppayload';     // C
+  const PGP = ['-----BEGIN PGP PRIVATE KEY BLOCK-----', PGP_BODY, '-----END PGP PRIVATE KEY BLOCK-----'];
+  const URL_PW = 'SyntheticRedisPass123';        // D
+  const REDIS = `redis://:${URL_PW}@127.0.0.1:6379/0`;
+
+  const run = (script: string, env: Record<string, string>, seconds = '20') => spawnSync(
+    'node', [WATCHDOG, seconds, 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 90_000 },
+  );
+  const all = (r: { stdout: string; stderr: string }) => `${r.stdout}${r.stderr}`;
+  /** A canary is disclosed if the whole value OR any nontrivial substring of it survives. */
+  const disclosed = (text: string, canary: string) => {
+    if (text.includes(canary)) return true;
+    const n = Math.max(4, Math.floor(canary.length / 2));
+    for (let i = 0; i + n <= canary.length; i += 1) {
+      if (text.includes(canary.slice(i, i + n))) return true;
+    }
+    return false;
+  };
+
+  // ── A: no secret is too short to protect ────────────────────────────────────
+  it('a seven-character secret-named value is protected, not ignored', () => {
+    expect(credentialValuesFromEnv({ EYE_TEST_PASSWORD: SHORT }).has(SHORT)).toBe(true);
+  });
+  it.each([
+    ['on stdout', 'process.stdout.write(process.env.EYE_TEST_PASSWORD)'],
+    ['on stderr', 'process.stderr.write(process.env.EYE_TEST_PASSWORD)'],
+    ['inside a thrown error', 'throw new Error("using " + process.env.EYE_TEST_PASSWORD)'],
+    ['with text either side', 'process.stdout.write("before " + process.env.EYE_TEST_PASSWORD + " after\\n")'],
+    ['one character per write', 'for (const c of process.env.EYE_TEST_PASSWORD) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['at EOF with no trailing newline', 'process.stdout.write("x" + process.env.EYE_TEST_PASSWORD)'],
+    ['after a very long line', 'process.stdout.write("y".repeat(70000) + "\\n" + process.env.EYE_TEST_PASSWORD)'],
+    ['when the child exits nonzero', 'process.stdout.write(process.env.EYE_TEST_PASSWORD + "\\n"); process.exit(4)'],
+  ] as ReadonlyArray<[string, string]>)('a short secret never survives %s', (_l, script) => {
+    expect(disclosed(all(run(script, { EYE_TEST_PASSWORD: SHORT })), SHORT)).toBe(false);
+  });
+  it('a short secret never survives a watchdog timeout', () => {
+    const r = run('process.on("SIGTERM", () => {}); process.stdout.write(process.env.EYE_TEST_PASSWORD + "\\n");'
+      + ' setInterval(() => {}, 1000)', { EYE_TEST_PASSWORD: SHORT }, '2');
+    expect(disclosed(all(r), SHORT)).toBe(false);
+    expect(r.status).toBe(124);
+  });
+  it('a value too short to redact safely refuses to launch, naming only the variable', () => {
+    const r = run('process.stdout.write("never runs")', { EYE_TINY_PASSWORD: 'ab' });
+    expect(r.stderr).toMatch(/REFUSING TO LAUNCH/);
+    expect(r.stderr).toContain('EYE_TINY_PASSWORD');
+    expect(all(r)).not.toContain('ab"');
+    expect(all(r)).not.toContain('never runs');
+    expect(r.status).toBe(3);
+  });
+  it('the refusal does not fire on flag-shaped names or boolean values', () => {
+    // `..._HAS_OAUTH_REFRESH=1` matches AUTH; refusing to launch over a boolean would be a bug.
+    expect(unprotectableCredentialNames({ SDK_HAS_OAUTH_REFRESH: '1' })).toEqual([]);
+    expect(unprotectableCredentialNames({ EYE_AUTH_ENABLED: 'on' })).toEqual([]);
+    expect(unprotectableCredentialNames({ EYE_TINY_PASSWORD: 'ab' })).toEqual(['EYE_TINY_PASSWORD']);
+    expect(isCredentialName('SDK_HAS_OAUTH_REFRESH')).toBe(false);
+    expect(isNonSecretValue('TRUE')).toBe(true);
+    expect(REDACTABLE_MIN_LENGTH).toBeLessThan(8);
+  });
+
+  // ── B: multiline secrets ────────────────────────────────────────────────────
+  it('every line of a multiline secret enters the protected set', () => {
+    const v = credentialValuesFromEnv({ EYE_TEST_SECRET: MULTI });
+    for (const line of MULTI_LINES) expect([...v]).toContain(line);
+    expect([...v]).toContain(MULTI);
+    expect([...v]).toContain(MULTI.replace(/\n/g, '\r\n'));
+  });
+  it.each([
+    ['line by line on stdout', 'const p = process.env.EYE_TEST_SECRET.split("\\n"); let i = 0;'
+      + ' const t = () => { if (i >= p.length) return; process.stdout.write(p[i] + "\\n"); i += 1; setTimeout(t, 15); }; t();'],
+    ['line by line on stderr', 'const p = process.env.EYE_TEST_SECRET.split("\\n"); let i = 0;'
+      + ' const t = () => { if (i >= p.length) return; process.stderr.write(p[i] + "\\n"); i += 1; setTimeout(t, 15); }; t();'],
+    ['whole, in one write', 'process.stdout.write(process.env.EYE_TEST_SECRET + "\\n")'],
+    ['as CRLF with no trailing newline', 'process.stdout.write(process.env.EYE_TEST_SECRET.split("\\n").join("\\r\\n"))'],
+    ['one character per write', 'for (const c of process.env.EYE_TEST_SECRET) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['interleaved with ordinary output', 'const p = process.env.EYE_TEST_SECRET.split("\\n");'
+      + ' p.forEach((l, i) => process.stdout.write(`step ${i}: ${l}\\n`));'],
+  ] as ReadonlyArray<[string, string]>)('no line of a multiline secret survives %s', (_l, script) => {
+    const text = all(run(script, { EYE_TEST_SECRET: MULTI }));
+    for (const line of MULTI_LINES) expect(disclosed(text, line), line).toBe(false);
+  });
+  it('ordinary output around a multiline secret stays intelligible', () => {
+    const r = run('const p = process.env.EYE_TEST_SECRET.split("\\n");'
+      + ' p.forEach((l, i) => process.stdout.write(`step ${i}: ${l}\\n`));', { EYE_TEST_SECRET: MULTI });
+    expect(r.stdout).toContain('step 0:');
+    expect(r.stdout).toContain('step 2:');
+  });
+
+  // ── C: PGP and the other protected block families ───────────────────────────
+  it.each([
+    ['a PGP private-key block', 'PGP PRIVATE KEY BLOCK'],
+    ['an OpenSSH private key', 'OPENSSH PRIVATE KEY'],
+    ['a PKCS RSA private key', 'RSA PRIVATE KEY'],
+    ['an encrypted private key', 'ENCRYPTED PRIVATE KEY'],
+    ['a certificate', 'CERTIFICATE'],
+    ['a PGP message', 'PGP MESSAGE'],
+  ] as ReadonlyArray<[string, string]>)('%s is a protected block label', (_l, label) => {
+    expect(isProtectedBlockLine(`-----BEGIN ${label}-----`, 'begin')).toBe(true);
+    expect(isProtectedBlockLine(`-----END ${label}-----`, 'end')).toBe(true);
+  });
+  it('an ordinary banner is NOT treated as a protected block', () => {
+    expect(isProtectedBlockLine('-----BEGIN SECTION-----', 'begin')).toBe(false);
+  });
+  it.each([
+    ['delayed writes, one line each', 'const p = process.env.EYE_TEST_PGP.split("|"); let i = 0;'
+      + ' const t = () => { if (i >= p.length) return; process.stdout.write(p[i] + "\\n"); i += 1; setTimeout(t, 15); }; t();'],
+    ['one write on stdout', 'process.stdout.write(process.env.EYE_TEST_PGP.split("|").join("\\n") + "\\n")'],
+    ['one write on stderr', 'process.stderr.write(process.env.EYE_TEST_PGP.split("|").join("\\n") + "\\n")'],
+    ['one character per write', 'for (const c of process.env.EYE_TEST_PGP.split("|").join("\\n")) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['CRLF line endings', 'process.stdout.write(process.env.EYE_TEST_PGP.split("|").join("\\r\\n") + "\\r\\n")'],
+    ['no trailing newline at EOF', 'process.stdout.write(process.env.EYE_TEST_PGP.split("|").join("\\n"))'],
+    ['unterminated, through EOF', 'process.stdout.write(process.env.EYE_TEST_PGP.split("|").slice(0, 2).join("\\n") + "\\n")'],
+  ] as ReadonlyArray<[string, string]>)('a PGP block never survives %s', (_l, script) => {
+    const text = all(run(script, { EYE_TEST_PGP: PGP.join('|') }));
+    expect(disclosed(text, PGP_BODY)).toBe(false);
+    expect(text).not.toContain('BEGIN PGP PRIVATE KEY BLOCK');
+  });
+  it('the block state survives arbitrary chunk boundaries in the filter itself', () => {
+    for (let cut = 1; cut < PGP.join('\n').length; cut += 7) {
+      const whole = `${PGP.join('\n')}\nplain\n`;
+      const seen: string[] = [];
+      const s = createRedactingStream((t: string) => seen.push(t));
+      s.push(whole.slice(0, cut));
+      s.push(whole.slice(cut));
+      s.flush();
+      const out = seen.join('');
+      expect(out, `cut at ${cut}`).not.toContain(PGP_BODY);
+      expect(out, `cut at ${cut}`).toContain('plain');
+    }
+  });
+
+  // ── D: URL userinfo, with or without a username ─────────────────────────────
+  it.each([
+    ['password-only userinfo', 'redis://:PW@127.0.0.1:6379/0'],
+    ['user and password', 'postgres://eye:PW@db.internal:5432/eye'],
+    ['a percent-encoded username', 'postgres://ey%65:PW@db/eye'],
+    ['a percent-encoded password', 'amqp://u:PW%21@host/vh'],
+    ['an amqps scheme', 'amqps://:PW@broker:5671/'],
+    ['a mongodb scheme', 'mongodb://:PW@mongo:27017/db'],
+  ] as ReadonlyArray<[string, string]>)('%s is redacted by shape', (_l, template) => {
+    const line = `connecting to ${template.replace('PW', URL_PW)} now`;
+    expect(redactSecrets(line)).not.toContain(URL_PW);
+    expect(redactSecrets(line)).toContain('[REDACTED]');
+  });
+  it.each([
+    ['printed whole', 'process.stdout.write(process.env.EYE_TEST_DSN + "\\n")'],
+    ['printed on stderr', 'process.stderr.write(process.env.EYE_TEST_DSN + "\\n")'],
+    ['one character per write', 'for (const c of process.env.EYE_TEST_DSN) process.stdout.write(c); process.stdout.write("\\n")'],
+    ['with no trailing newline', 'process.stdout.write(process.env.EYE_TEST_DSN)'],
+    ['inside a thrown error', 'throw new Error("dsn " + process.env.EYE_TEST_DSN)'],
+  ] as ReadonlyArray<[string, string]>)('a password-only URL never survives %s', (_l, script) => {
+    expect(disclosed(all(run(script, { EYE_TEST_DSN: REDIS })), URL_PW)).toBe(false);
+  });
+  it('the existing assignment and Authorization redaction still holds', () => {
+    expect(redactSecrets(`PASSWORD=${URL_PW}`)).not.toContain(URL_PW);
+    expect(redactSecrets(`Authorization: Bearer ${URL_PW}`)).not.toContain(URL_PW);
+    expect(redactSecrets(`?api_key=${URL_PW}`)).not.toContain(URL_PW);
+  });
+
+  // ── the sanitizer is not bypassable ─────────────────────────────────────────
+  it('no child output bypasses the sanitizer', () => {
+    const src = readFileSync(WATCHDOG, 'utf8');
+    const code = src.split('\n').filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l)).join('\n');
+    expect(code).not.toContain("stdio: 'inherit'");
+    expect(code).toContain("stdio: ['inherit', 'pipe', 'pipe']");
+    // Every sink write goes through the redacting stream or through an explicitly redacted string.
+    expect(code).not.toMatch(/child\.std(out|err)\.pipe\(/);
+  });
+  it('nonsecret output is forwarded unchanged and in order', () => {
+    const r = run('for (let i = 0; i < 120; i += 1) process.stdout.write(`line ${i}\\n`)',
+      { EYE_TEST_PASSWORD: SHORT });
+    const lines = r.stdout.trim().split('\n');
+    expect(lines).toHaveLength(120);
+    expect(lines[0]).toBe('line 0');
+    expect(lines[119]).toBe('line 119');
+  });
+});
+
+describe('C18.1.14-final — a per-instance secret is stable within an instance and distinct between them', () => {
+  const LIB = join(REPO, 'scripts', 'gate', 'lib');
+  const declared = loadMigrationOwned(LIB) as any;
+  const DIGEST_A = 'a'.repeat(64);
+  const DIGEST_B = 'b'.repeat(64);
+  const snap = (secret: string) => ({ tables: { 'ctx.context_secret': { rows: [{ id: 1, secret }] } } });
+  const world = (a: string, b: string) => ({
+    declared,
+    paths: [
+      { label: 'path-a', snapshots: [
+        { label: 'a-preseed', snapshot: snap(a) }, { label: 'a-before', snapshot: snap(a) },
+        { label: 'a-after', snapshot: snap(a) }, { label: 'a-final', snapshot: snap(a) },
+      ] },
+      { label: 'path-b', snapshots: [{ label: 'b-virgin', snapshot: snap(b) }] },
+    ],
+  });
+
+  it('the declaration marks the context secret distinct-per-instance', () => {
+    expect(declared['ctx.context_secret'].distinctPerInstanceColumns).toEqual(['secret']);
+    expect(verifyMigrationOwnedRegistry({
+      catalog: loadCatalogContract(LIB) as any, declared,
+    }).problems).toEqual([]);
+  });
+  it('two distinct digests, each stable within its own path, raise nothing', () => {
+    expect(verifyPerInstanceDistinctness(world(DIGEST_A, DIGEST_B)).problems).toEqual([]);
+  });
+  it('ONE digest shared by both independent instances is a finding', () => {
+    expect(verifyPerInstanceDistinctness(world(DIGEST_A, DIGEST_A)).problems.join('\n'))
+      .toMatch(/is SHARED between path-a and path-b/);
+  });
+  it('a digest that moves within one instance is a finding', () => {
+    const w = world(DIGEST_A, DIGEST_B);
+    w.paths[0].snapshots[2].snapshot.tables['ctx.context_secret'].rows[0].secret = 'c'.repeat(64);
+    expect(verifyPerInstanceDistinctness(w).problems.join('\n'))
+      .toMatch(/takes 2 different values across path-a's own snapshots/);
+  });
+  it('a missing digest is its own finding', () => {
+    const w = world(DIGEST_A, DIGEST_B);
+    delete (w.paths[0].snapshots[0].snapshot.tables['ctx.context_secret'].rows[0] as any).secret;
+    expect(verifyPerInstanceDistinctness(w).problems.join('\n'))
+      .toMatch(/is missing, so its equality structure cannot be judged/);
+  });
+  it('a malformed digest is its own finding', () => {
+    const w = world(DIGEST_A, DIGEST_B);
+    w.paths[1].snapshots[0].snapshot.tables['ctx.context_secret'].rows[0].secret = 'short';
+    expect(verifyPerInstanceDistinctness(w).problems.join('\n'))
+      .toMatch(/is malformed, so its equality structure cannot be judged/);
+  });
+  it('the four failures are independent of one another', () => {
+    const w = world(DIGEST_A, DIGEST_A);
+    w.paths[0].snapshots[1].snapshot.tables['ctx.context_secret'].rows[0].secret = 'nope';
+    const out = verifyPerInstanceDistinctness(w).problems.join('\n');
+    expect(out).toMatch(/is malformed/);
+    expect(out).toMatch(/is SHARED between/);
+  });
+  it('the raw secret never enters the comparison — only its digest does', () => {
+    // The contract reads the already-digested column; nothing hashes or stores a raw value.
+    const src = readFileSync(join(LIB, 'c18-migration-owned.mjs'), 'utf8');
+    expect(src).not.toMatch(/createHash|createHmac/);
+  });
+  it('the ledger records that equality structure is observable while the value is not', () => {
+    const limit = OBSERVATIONAL_LIMITS.find((l) => l.id === 'per-instance-generated-secrets');
+    expect(limit?.proved).toMatch(/DISTINCT between the two independently provisioned instances/);
+    expect(limit?.residual).toMatch(/preserves that whole equality structure/);
   });
 });
