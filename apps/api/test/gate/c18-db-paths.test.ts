@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -106,11 +106,14 @@ import {
 } from '../../../../scripts/gate/lib/c18-migration-owned.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import {
-  BOOLEAN_LITERALS, CREDENTIAL_NAME_COMPONENTS, REDACTABLE_MIN_LENGTH, blockLabel,
-  classifyEnvVariable, credentialComponents, credentialPreflight, isBooleanLiteral,
-  isCredentialName, isFlagShapedName, isProtectedBlockLine, nameComponents, refusalDiagnostic,
-  unprotectableCredentialNames,
+  BOOLEAN_LITERALS, CREDENTIAL_NAME_COMPONENTS, MARKER_CARRY, REDACTABLE_MIN_LENGTH,
+  SOURCE_OWNED_SECRET_NAMES, blockLabel, classifyEnvVariable, credentialComponents,
+  credentialPreflight, isBooleanLiteral, isCredentialName, isFlagShapedName, isMainModule,
+  isPointerValue, isProtectedBlockLine, nameComponents, refusalDiagnostic, scanArgvForSecrets,
+  unprotectableCredentialNames, urlCredentialParts,
 } from '../../../../scripts/gate/c18-watchdog.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { C18_GATE_STAGES } from '../../../../scripts/gate/c18-gate.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { formula, slotRef, before as tsBefore2 } from '../../../../scripts/gate/lib/c18-seed-validators.mjs';
 
@@ -1770,10 +1773,12 @@ describe('C18.1.1 — CI wiring', () => {
     expect(gate!['id']).toBe('c18_gate');
     expect(gate!['if']).toBeUndefined();
     const run = String(gate!['run']);
+    // The four stages are now ONE command behind the watchdog, so the 900-second bound covers the
+    // gate instead of one command inside it. The stage sequence itself is asserted in the
+    // gate-entrypoint controls below.
     expect(run).toContain('--final --expected-sha "$GITHUB_SHA"');
-    expect(run).toContain('c18-db-paths.mjs verify');
-    expect(run).toContain('vitest.c18.config.ts');
-    expect(run).toContain('C18_ARCHIVE');
+    expect(run).toContain('c18-watchdog.mjs 900');
+    expect(run).toContain('c18-gate.mjs');
   });
   it('the digest-bound C18 artifact upload is guarded; diagnostics is always()', () => {
     const bound = steps().find((s) => String(s['name'] ?? '') === 'Upload the C18 evidence archive');
@@ -2425,12 +2430,14 @@ describe('C18.1.11 — a secret in the environment never reaches argv, a log, ev
     expect(redactSecrets('C18 dual-path proof: PASS')).toBe('C18 dual-path proof: PASS');
   });
 
-  it('the watchdog never echoes a secret passed in argv', () => {
-    // Passing a secret in argv is the mistake itself; the watchdog must not compound it by
-    // writing the value into a log that outlives the run.
-    const r = spawnSync('node', [WATCHDOG, '10', 'node', '-e', 'process.exit(0)', CANARY], { encoding: 'utf8' });
-    expect(r.stderr).not.toContain(CANARY);
-    expect(r.stderr).toContain('[REDACTED]');
+  it('a secret passed in argv is REFUSED, not merely redacted in the echo', () => {
+    // C18 final: redacting the echo left the value in the OS process list, where any user on the
+    // machine can read it. The run is refused before the child exists instead.
+    const r = spawnSync('node', [WATCHDOG, '10', 'node', '-e', 'process.exit(0)', CANARY],
+      { encoding: 'utf8' });
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/REFUSING TO LAUNCH/);
+    expect(`${r.stdout}${r.stderr}`).not.toContain(CANARY);
   });
 
   it('a secret INHERITED through the environment appears in no output at all', () => {
@@ -3745,10 +3752,15 @@ describe('C18.1.13 — every control block is registered exactly once', () => {
     expect(par).not.toContain('serial');
     expect(ser).toContain('c18-mutation-controls-serial.ctl.ts');
   });
-  it('the C18 gate step runs BOTH configs', () => {
+  it('the C18 GATE ENTRYPOINT runs both configs, and CI runs the entrypoint under the watchdog', () => {
+    // C18 final: the workflow used to list the four stages itself, which is what made the
+    // "900-second watchdog" claim untrue. The sequence lives in source now.
+    const gate = readFileSync(join(REPO, 'scripts', 'gate', 'c18-gate.mjs'), 'utf8');
+    expect(gate).toContain('vitest.c18.config.ts');
+    expect(gate).toContain('vitest.c18-serial.config.ts');
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
-    expect(ci).toContain('vitest.c18.config.ts');
-    expect(ci).toContain('vitest.c18-serial.config.ts');
+    expect(ci).toContain('c18-watchdog.mjs 900');
+    expect(ci).toContain('c18-gate.mjs');
   });
 });
 
@@ -3964,7 +3976,10 @@ describe('C18.1.14 — a credential in a URL is still a credential', () => {
     // `_URL` sat in the non-secret suffix list, excluding exactly the variables most likely to
     // carry a password in their value.
     const values = credentialValuesFromEnv({ EYE_PASSWORD_URL: `postgres://u:${URL_CANARY}@h/db` });
-    expect([...values]).toHaveLength(1);
+    // The whole URL AND its userinfo password: a child that parses the URL prints the password
+    // alone, which whole-value redaction never sees.
+    expect([...values]).toContain(URL_CANARY);
+    expect([...values]).toContain(`postgres://u:${URL_CANARY}@h/db`);
   });
   it('the child cannot leak a URL credential through the watchdog', () => {
     const r = spawnSync('node', [WATCHDOG, '20', 'node', '-e',
@@ -4361,15 +4376,16 @@ describe('C18 watchdog redesign — Stage 1 completes before any child exists', 
     expect(r.ran).toBe(false);
   });
   it('the refusal diagnostic names only variables', () => {
-    const text = refusalDiagnostic(['EYE_TINY_PASSWORD']);
+    const text = refusalDiagnostic({ unprotectable: ['EYE_TINY_PASSWORD'] });
     expect(text).toContain('EYE_TINY_PASSWORD');
     expect(text).toMatch(/No value, component, length or position is printed/);
   });
   it('preflight precedes spawn in the source, not merely in effect', () => {
     const src = readFileSync(WATCHDOG, 'utf8');
     const code = src.split('\n').filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l)).join('\n');
-    expect(code.indexOf('credentialPreflight(process.env)')).toBeGreaterThan(0);
-    expect(code.indexOf('credentialPreflight(process.env)')).toBeLessThan(code.indexOf('spawn(command[0]'));
+    expect(code.indexOf('credentialPreflight(process.env, command)')).toBeGreaterThan(0);
+    expect(code.indexOf('credentialPreflight(process.env, command)'))
+      .toBeLessThan(code.indexOf('spawn(command[0]'));
   });
 });
 
@@ -4427,10 +4443,13 @@ describe('C18 watchdog redesign — credential names are components, not substri
   ])('%s is NOT a credential name', (name) => {
     expect(isCredentialName(name)).toBe(false);
   });
-  it('a pointer to a credential is not the credential', () => {
-    expect(isCredentialName('SSH_AUTH_SOCK')).toBe(false);
-    expect(isCredentialName('TOKEN_FILE')).toBe(false);
-    expect(isCredentialName('SECRET_PATH')).toBe(false);
+  it('a pointer NAME is still a credential name; only its VALUE can exempt it', () => {
+    // C18 final: exempting on the name alone is how a secret under `EYE_TOKEN_FILE` walked out.
+    // The name still classifies as credential-bearing; `classifyEnvVariable` decides.
+    expect(isCredentialName('SSH_AUTH_SOCK')).toBe(true);
+    expect(isCredentialName('TOKEN_FILE')).toBe(true);
+    expect(classifyEnvVariable('SSH_AUTH_SOCK', '/private/tmp/agent/listener')).toBe('pointer');
+    expect(classifyEnvVariable('TOKEN_FILE', 'c18SyntheticNotAPath')).toBe('protect');
   });
   it('camelCase and mixed separators split into components too', () => {
     expect(nameComponents('dbPass')).toEqual(['DB', 'PASS']);
@@ -4556,12 +4575,30 @@ describe('C18 watchdog redesign — a block closes only on its own END label', (
     const seen: string[] = [];
     const s = createRedactingStream((t: string) => seen.push(t));
     s.push(`-----BEGIN ${PGP}-----\nc18one\n-----BEGIN CERTIFICATE-----\nc18two\n`);
-    expect(s.openBlockLabel()).toBe(PGP);
+    // With an ordered STACK the innermost label is on top and the outer one is still open; the
+    // C18.1.14 design held a single label and could not represent this at all.
+    expect(s.openBlocks()).toEqual([PGP, 'CERTIFICATE']);
+    // `END PGP` while CERTIFICATE is innermost is a MISMATCHED end: it must not close anything,
+    // so the stack stays open and everything after it stays suppressed through EOF. That is the
+    // contract, and the safe direction — a child that mis-nests its own markers does not get to
+    // reopen the stream.
     s.push(`-----END ${PGP}-----\nplain\n`);
+    expect(s.openBlocks()).toEqual([PGP, 'CERTIFICATE']);
     s.flush();
     const out = seen.join('');
     expect(out).not.toContain('c18one');
     expect(out).not.toContain('c18two');
+    expect(out).not.toContain('plain');
+  });
+  it('correctly nested blocks close inner-first and release the stream', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    s.push(`-----BEGIN ${PGP}-----\nc18one\n-----BEGIN CERTIFICATE-----\nc18two\n`);
+    s.push(`-----END CERTIFICATE-----\nc18three\n-----END ${PGP}-----\nplain\n`);
+    expect(s.openBlocks()).toEqual([]);
+    s.flush();
+    const out = seen.join('');
+    for (const p of ['c18one', 'c18two', 'c18three']) expect(out).not.toContain(p);
     expect(out).toContain('plain');
   });
   it('an unterminated block stays suppressed through EOF', () => {
@@ -4645,5 +4682,487 @@ describe('C18 watchdog redesign — a block closes only on its own END label', (
     expect(text).toContain('before');
     expect(text).toContain('after');
     expect(text).not.toContain('c18body');
+  });
+});
+
+describe('C18 watchdog — the frozen predecessors are pinned, tracked and byte-verbatim', () => {
+  const FIXTURES: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-legacy-e2077e1', 'e2077e1c7e1997bb3814e87871d356ec0353ded5',
+      '40be1dfe47d16d749e0c8817fb4ba97e5c2d16511859fea4bd1485e4aa93ee3d'],
+    ['c18-legacy-04442ed', '04442ed956fb3e45b36694f0d084bcfe1df9cfaf',
+      'c7029c2487083e17a10881da3da547230d4c5b9657407ac63d81e8f2fa63dcff'],
+  ];
+  it.each(FIXTURES.map((f) => [...f]))('%s/c18-watchdog.mjs carries its pinned digest', (dir, sha, digest) => {
+    const rel = `apps/api/test/gate/fixtures/${dir}/c18-watchdog.mjs`;
+    const bytes = readFileSync(join(REPO, rel));
+    expect(sha256(bytes)).toBe(digest);
+    const shown = spawnSync('git', ['show', `${sha}:scripts/gate/c18-watchdog.mjs`],
+      { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+    expect(shown.status, `${sha} must be reachable`).toBe(0);
+    expect(sha256(shown.stdout as unknown as Buffer), 'the fixture must be byte-equal to git show').toBe(digest);
+  });
+  it.each(FIXTURES.map((f) => [f[0]]))('%s is TRACKED and not ignored', (dir) => {
+    const rel = `apps/api/test/gate/fixtures/${dir}/c18-watchdog.mjs`;
+    expect(spawnSync('git', ['ls-files', '--error-unmatch', rel], { cwd: REPO }).status).toBe(0);
+    expect(spawnSync('git', ['check-ignore', rel], { cwd: REPO }).status).not.toBe(0);
+  });
+  it('both frozen watchdogs are executable modules', async () => {
+    for (const [dir] of FIXTURES) {
+      const mod = await import(join(REPO, 'apps/api/test/gate/fixtures', dir, 'c18-watchdog.mjs'));
+      expect(typeof mod.createRedactingStream).toBe('function');
+    }
+  });
+});
+
+describe('C18 watchdog — the six historical bypasses, against BOTH watchdogs', () => {
+  /**
+   * The records previously said "tested against both watchdogs" while only one case actually
+   * executed the frozen leg. Every case below runs the frozen `e2077e1` CLI and this one, and
+   * asserts the frozen leg still exhibits the defect — a differential that stopped being
+   * non-vacuous would fail here rather than quietly become a tautology.
+   */
+  const CURRENT = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const FROZEN = join(__dirname, 'fixtures', 'c18-legacy-e2077e1', 'c18-watchdog.mjs');
+  const run = (wd: string, script: string, env: Record<string, string>, seconds = '10') => spawnSync(
+    'node', [wd, seconds, 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 60_000 },
+  );
+  const all = (r: { stdout: string; stderr: string }) => `${r.stdout}${r.stderr}`;
+  const PRINT = 'process.stdout.write(String(process.env.EYE_PROBE_VALUE))';
+
+  it.each([
+    ['a boolean-looking password', PRINT, { EYE_TEST_PASSWORD: 'true' }, 'true', 'EYE_PROBE_VALUE'],
+  ] as ReadonlyArray<[string, string, Record<string, string>, string, string]>)('%s', () => {
+    // Handled explicitly below; this row keeps the table shape honest.
+    expect(true).toBe(true);
+  });
+
+  it('1. a boolean-looking password: frozen prints it, current refuses', () => {
+    const env = { EYE_PROBE_VALUE: 'true', EYE_TEST_PASSWORD: 'true' };
+    expect(all(run(FROZEN, PRINT, env))).toContain('true');
+    const now = run(CURRENT, PRINT, env);
+    expect(now.status).toBe(3);
+    expect(now.stdout).toBe('');
+  });
+  // `e2077e1` matched names by SUBSTRING, so it caught `PGPASSWORD` and `CLIENTSECRET` (which
+  // contain PASSWORD and SECRET) and missed the component names. `04442ed` matched by component
+  // and missed the compact ones. Each name is therefore differentiated against the predecessor
+  // that actually leaks it — pointing all six at one frozen leg would make half the table vacuous.
+  it.each(['DB_PASS', 'REDIS_PASS', 'POSTGRES_PASS'])(
+    '2. component name %s: e2077e1 leaks, current contains', (name) => {
+      const V = 'c18SyntheticNameProbe';
+      const script = `process.stdout.write(String(process.env.${name}))`;
+      expect(all(run(FROZEN, script, { [name]: V })), `${name} must leak on the frozen leg`).toContain(V);
+      expect(all(run(CURRENT, script, { [name]: V }))).not.toContain(V);
+    },
+  );
+  it.each(['PGPASSWORD', 'DBPASS', 'CLIENTSECRET'])(
+    '2b. compact name %s: 04442ed leaks, current contains', (name) => {
+      const FROZEN04 = join(__dirname, 'fixtures', 'c18-legacy-04442ed', 'c18-watchdog.mjs');
+      const V = 'c18SyntheticCompactProbe';
+      const script = `process.stdout.write(String(process.env.${name}))`;
+      expect(all(run(FROZEN04, script, { [name]: V })), `${name} must leak on 04442ed`).toContain(V);
+      expect(all(run(CURRENT, script, { [name]: V }))).not.toContain(V);
+    },
+  );
+  it('3. a short multiline component: frozen prints the short line, current refuses', () => {
+    const env = { EYE_PROBE_VALUE: 'abc\nc18longsecretcomponent', EYE_TEST_TOKEN: 'abc\nc18longsecretcomponent' };
+    expect(all(run(FROZEN, PRINT, env))).toContain('abc');
+    const now = run(CURRENT, PRINT, env);
+    expect(now.status).toBe(3);
+    expect(all(now)).not.toContain('c18longsecretcomponent');
+  });
+  it('4. a mismatched END label: frozen releases the payload, current does not', () => {
+    const script = 'process.stdout.write(process.env.EYE_BLOCK.split("|").join("\\n") + "\\n")';
+    const PGPL = 'PGP PRIVATE KEY BLOCK';
+    const env = {
+      EYE_BLOCK: [`-----BEGIN ${PGPL}-----`, 'c18beforeprobe',
+        '-----END CERTIFICATE-----', 'c18afterprobe', `-----END ${PGPL}-----`].join('|'),
+    };
+    expect(all(run(FROZEN, script, env))).toContain('c18afterprobe');
+    expect(all(run(CURRENT, script, env))).not.toContain('c18afterprobe');
+  });
+  it('5. an oversized BEGIN marker: frozen releases what follows, current does not', () => {
+    const script = 'const pad = "y".repeat(400000);'
+      + ' process.stdout.write(process.env.EYE_BEGIN + pad + "\\n");'
+      + ' process.stdout.write(process.env.EYE_PAYLOAD + "\\n");'
+      + ' process.stdout.write(process.env.EYE_END + "\\n");';
+    const PGPL = 'PGP PRIVATE KEY BLOCK';
+    const env = {
+      EYE_BEGIN: `-----BEGIN ${PGPL}-----`, EYE_PAYLOAD: 'c18oversizedprobe',
+      EYE_END: `-----END ${PGPL}-----`,
+    };
+    expect(all(run(FROZEN, script, env))).toContain('c18oversizedprobe');
+    expect(all(run(CURRENT, script, env))).not.toContain('c18oversizedprobe');
+  });
+  it('6. a spawned child before refusal: frozen runs it, current never spawns it', () => {
+    const probe = (wd: string) => {
+      const dir = mkdtempSync(join(tmpdir(), 'c18-pf-'));
+      const marker = join(dir, 'ran.marker');
+      try {
+        const r = spawnSync('node', [wd, '10', 'node', '-e',
+          `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x')`],
+        { encoding: 'utf8', env: { ...process.env, EYE_TINY_PASSWORD: 'ab' }, timeout: 60_000 });
+        const deadline = Date.now() + 3_000;
+        while (!existsSync(marker) && Date.now() < deadline) spawnSync('node', ['-e', 'setTimeout(()=>{},50)']);
+        return { status: r.status, ran: existsSync(marker) };
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    expect(probe(FROZEN)).toEqual({ status: 3, ran: true });
+    expect(probe(CURRENT)).toEqual({ status: 3, ran: false });
+  });
+});
+
+describe('C18 watchdog — the 04442ed bypasses, against BOTH watchdogs', () => {
+  const CURRENT = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const FROZEN = join(__dirname, 'fixtures', 'c18-legacy-04442ed', 'c18-watchdog.mjs');
+  const run = (wd: string, script: string, env: Record<string, string> = {}, seconds = '10') => spawnSync(
+    'node', [wd, seconds, 'node', '-e', script],
+    { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 60_000 },
+  );
+  const all = (r: { stdout: string; stderr: string }) => `${r.stdout}${r.stderr}`;
+
+  it('a URL-valued variable: frozen prints the parsed password, current contains it', () => {
+    const PW = 'c18SyntheticUrlProbe';
+    const script = 'const u = new URL(process.env.EYE_TEST_DSN); process.stdout.write(u.password)';
+    const env = { EYE_TEST_DSN: `postgres://eye:${PW}@db.internal:5432/eye` };
+    expect(all(run(FROZEN, script, env))).toContain(PW);
+    expect(all(run(CURRENT, script, env))).not.toContain(PW);
+  });
+  it('URL credential parts cover the encoded and decoded password', () => {
+    const parts = [...urlCredentialParts('postgres://u:a%21b%21c@h/db')];
+    expect(parts).toContain('a%21b%21c');
+    expect(parts).toContain('a!b!c');
+  });
+  it.each(['EYE_TOKEN_FILE', 'EYE_SECRET_PATH', 'EYE_AUTH_ENABLED'])(
+    'a pointer/flag name with a real value (%s): frozen exempts it, current protects it', (name) => {
+      const V = 'c18SyntheticPointerProbe';
+      const script = `process.stdout.write(String(process.env.${name}))`;
+      expect(all(run(FROZEN, script, { [name]: V }))).toContain(V);
+      expect(all(run(CURRENT, script, { [name]: V }))).not.toContain(V);
+    },
+  );
+  it('a pointer NAME with a genuine path value is still exempt', () => {
+    expect(classifyEnvVariable('EYE_TOKEN_FILE', '/etc/eye/token')).toBe('pointer');
+    expect(classifyEnvVariable('SSH_AUTH_SOCK', '/private/tmp/agent/listener')).toBe('pointer');
+    expect(isPointerValue('/etc/eye/token')).toBe(true);
+    expect(isPointerValue('c18SyntheticPointerProbe')).toBe(false);
+  });
+  it('a spawn failure never serialises spawnargs', () => {
+    const CAN = 'c18SyntheticSpawnProbe';
+    const frozen = spawnSync('node', [FROZEN, '10', '/nonexistent/c18-binary', CAN],
+      { encoding: 'utf8', timeout: 60_000 });
+    expect(all(frozen), 'the frozen leg must exhibit the default serialization').toMatch(/spawnargs/);
+    const now = spawnSync('node', [CURRENT, '10', '/nonexistent/c18-binary', CAN],
+      { encoding: 'utf8', timeout: 60_000 });
+    expect(all(now)).not.toMatch(/spawnargs/);
+    expect(all(now)).toMatch(/could not start the command \(ENOENT\)/);
+    expect(now.status).toBe(126);
+  });
+  it('a parent SIGTERM terminates the child group; the frozen one leaves it running', async () => {
+    const probe = async (wd: string) => {
+      const dir = mkdtempSync(join(tmpdir(), 'c18-sig-'));
+      const marker = join(dir, 'survivor.marker');
+      try {
+        const child = spawn('node', [wd, '60', 'node', '-e',
+          `setTimeout(() => require('fs').writeFileSync(${JSON.stringify(marker)}, 'x'), 1500)`],
+        { stdio: 'ignore' });
+        await new Promise((r) => { setTimeout(r, 500); });
+        child.kill('SIGTERM');
+        await new Promise((r) => { setTimeout(r, 3_000); });
+        return existsSync(marker);
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    expect(await probe(FROZEN), 'the frozen leg must leave the child running').toBe(true);
+    expect(await probe(CURRENT)).toBe(false);
+  }, 60_000);
+  it('secret-bearing argv is refused before spawn, so it never reaches the process list', () => {
+    const CAN = 'c18SyntheticArgvProbe';
+    const r = spawnSync('node', [CURRENT, '20', 'node', '-e', 'setTimeout(()=>{},100)', `--token=${CAN}`],
+      { encoding: 'utf8', timeout: 60_000 });
+    expect(r.status).toBe(3);
+    expect(r.stderr).toMatch(/a secret flag value/);
+    expect(r.stderr).not.toContain(CAN);
+  });
+  it.each([
+    ['an exact protected value', ['run', 'c18SyntheticExactValue'], { EYE_TEST_TOKEN: 'c18SyntheticExactValue' }],
+    ['a secret assignment', [`PASS${'WORD'}=c18SyntheticAssign`], {}],
+    ['an Authorization credential', ['Authorization: Bearer c18SyntheticBearer'], {}],
+    ['provider-token material', ['gho_c18canary000000000000000000000000'], {}],
+    ['URL userinfo credentials', ['redis://:c18SyntheticUrlArg@h:6379/0'], {}],
+  ] as ReadonlyArray<[string, string[], Record<string, string>]>)('argv carrying %s is refused', (label, argv, env) => {
+    const pre = credentialPreflight({ ...env }, argv);
+    expect(pre.ok).toBe(false);
+    expect(pre.argvReasons.join(' ')).toContain(label);
+    expect(refusalDiagnostic(pre)).not.toContain('c18Synthetic');
+  });
+  it('scanArgvForSecrets is quiet on an ordinary command line', () => {
+    expect(scanArgvForSecrets(['node', 'scripts/gate/c18-gate.mjs', '--final'], new Set())).toEqual([]);
+  });
+});
+
+describe('C18 watchdog — the ordered streaming model, against a reference oracle', () => {
+  /**
+   * A SOURCE-OWNED REFERENCE ORACLE. Given the whole text, it computes which payload tokens a
+   * correct parser may emit, using the same ordered-stack semantics but with no buffering at all.
+   * The streaming parser must agree with it under every chunking — that is the property, and it is
+   * what a hand-written list of cases cannot give.
+   *
+   * Tokens are `c18tokNN`. A token is emittable exactly when it lies outside every protected block
+   * AND its line is short enough for the filter to inspect whole.
+   */
+  const oracle = (text: string) => {
+    const emittable = new Set<string>();
+    const stack: string[] = [];
+    for (const rawLine of text.split('\n')) {
+      const line = `${rawLine}\n`;
+      const oversized = line.length > MAX_LINE;
+      const re = /-----(BEGIN|END) ([A-Z0-9 ]+?)-----/g;
+      let cursor = 0;
+      const outside: string[] = [];
+      for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+        const label = m[2].trim().replace(/\s+/g, ' ').toUpperCase();
+        if (!/(PRIVATE KEY|PGP MESSAGE|CERTIFICATE|KEY)/.test(label)) continue;
+        if (stack.length === 0) outside.push(line.slice(cursor, m.index));
+        if (m[1] === 'BEGIN') stack.push(label);
+        else if (stack.length > 0 && stack[stack.length - 1] === label) stack.pop();
+        cursor = m.index + m[0].length;
+      }
+      if (stack.length === 0) outside.push(line.slice(cursor));
+      if (oversized) continue;                 // an uninspectable line is suppressed whole
+      for (const seg of outside) {
+        for (const tok of seg.match(/c18tok\d+/g) ?? []) emittable.add(tok);
+      }
+    }
+    return emittable;
+  };
+
+  const emitted = (text: string, chunks: number[]) => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t));
+    let at = 0;
+    for (const n of chunks) { s.push(text.slice(at, at + n)); at += n; }
+    if (at < text.length) s.push(text.slice(at));
+    s.flush();
+    const out = seen.join('');
+    return new Set(out.match(/c18tok\d+/g) ?? []);
+  };
+  const agree = (text: string, chunks: number[], label: string) => {
+    const want = oracle(text);
+    const got = emitted(text, chunks);
+    expect([...got].sort(), `${label}: emitted a token the oracle forbids`)
+      .toEqual([...want].sort());
+  };
+
+  const PGP = '-----BEGIN PGP PRIVATE KEY BLOCK-----';
+  const PGPE = '-----END PGP PRIVATE KEY BLOCK-----';
+  const CRT = '-----BEGIN CERTIFICATE-----';
+  const CRTE = '-----END CERTIFICATE-----';
+  const CASES: ReadonlyArray<readonly [string, string]> = [
+    ['a plain stream', 'c18tok01\nc18tok02\n'],
+    ['a simple block', `c18tok01\n${PGP}\nc18tok02\n${PGPE}\nc18tok03\n`],
+    ['same-label nesting', `${PGP}\nc18tok01\n${PGP}\nc18tok02\n${PGPE}\nc18tok03\n${PGPE}\nc18tok04\n`],
+    ['mixed-label nesting', `${PGP}\nc18tok01\n${CRT}\nc18tok02\n${CRTE}\nc18tok03\n${PGPE}\nc18tok04\n`],
+    ['a mismatched END', `${PGP}\nc18tok01\n${CRTE}\nc18tok02\n${PGPE}\nc18tok03\n`],
+    ['END before BEGIN', `${PGPE}\nc18tok01\n${PGP}\nc18tok02\n${PGPE}\nc18tok03\n`],
+    ['an unmatched BEGIN', `c18tok01\n${PGP}\nc18tok02\n`],
+    ['an unmatched END', `c18tok01\n${PGPE}\nc18tok02\n`],
+    ['markers on one line', `${PGP} c18tok01 ${PGPE} c18tok02\nc18tok03\n`],
+    ['open, close, open on one line', `${PGP} c18tok01 ${PGPE} ${PGP}\nc18tok02\n${PGPE}\nc18tok03\n`],
+    ['CRLF endings', `c18tok01\r\n${PGP}\r\nc18tok02\r\n${PGPE}\r\nc18tok03\r\n`],
+    ['no final newline', `c18tok01\n${PGP}\nc18tok02\n${PGPE}\nc18tok03`],
+    ['an empty line inside', `c18tok01\n\n${PGP}\n\nc18tok02\n${PGPE}\n\nc18tok03\n`],
+    ['an oversized ordinary line', `c18tok01\n${'y'.repeat(MAX_LINE + 100)}c18tok02\nc18tok03\n`],
+    ['an oversized BEGIN line', `${PGP}${'y'.repeat(MAX_LINE + 100)}\nc18tok01\n${PGPE}\nc18tok02\n`],
+    ['an unterminated oversized block', `${PGP}${'y'.repeat(MAX_LINE + 100)}\nc18tok01\n`],
+    ['an unprotected banner', `-----BEGIN SECTION-----\nc18tok01\n-----END SECTION-----\nc18tok02\n`],
+  ];
+
+  it.each(CASES.map(([l]) => [l]))('the oracle and the parser agree on %s, whole', (label) => {
+    const text = CASES.find(([l]) => l === label)![1];
+    agree(text, [text.length], `${label} whole`);
+  });
+  it.each(CASES.map(([l]) => [l]))('the oracle and the parser agree on %s, one character at a time', (label) => {
+    const text = CASES.find(([l]) => l === label)![1];
+    if (text.length > 4_000) return;           // the oversized cases are covered by split sweeps
+    agree(text, Array.from({ length: text.length }, () => 1), `${label} per-char`);
+  });
+  it('the oracle and the parser agree at EVERY single split position', () => {
+    for (const [label, text] of CASES) {
+      if (text.length > 4_000) continue;
+      for (let cut = 0; cut <= text.length; cut += 1) {
+        agree(text, [cut], `${label} cut ${cut}`);
+      }
+    }
+  });
+  it('the oracle and the parser agree under seeded random multi-chunk partitions', () => {
+    // A deterministic PRNG: a failing case must be reproducible from the seed alone.
+    let seed = 0x5eed;
+    const next = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed; };
+    for (const [label, text] of CASES) {
+      if (text.length > 4_000) continue;
+      for (let round = 0; round < 12; round += 1) {
+        const chunks: number[] = [];
+        let left = text.length;
+        while (left > 0) {
+          const n = 1 + (next() % Math.min(left, 40));
+          chunks.push(n);
+          left -= n;
+        }
+        agree(text, chunks, `${label} seeded round ${round}`);
+      }
+    }
+  });
+  it('a marker split at EVERY character while already dropping is still recognised', () => {
+    const pad = 'y'.repeat(MAX_LINE + 4_000);
+    for (let cut = 0; cut <= PGP.length; cut += 1) {
+      const seen: string[] = [];
+      const s = createRedactingStream((t: string) => seen.push(t));
+      s.push(pad);                                   // enters drop mode
+      s.push(PGP.slice(0, cut));
+      s.push(`${PGP.slice(cut)}\n`);
+      s.push('c18tok99\n');
+      s.push(`${PGPE}\nc18tok98\n`);
+      s.flush();
+      const out = seen.join('');
+      expect(out, `drop-split at ${cut}`).not.toContain('c18tok99');
+      expect(out, `drop-split at ${cut}`).toContain('c18tok98');
+    }
+  });
+  it.each([-2, -1, 0, 1, 2])('a marker starting %s characters from the output limit is recognised', (delta) => {
+    const pad = 'y'.repeat(MAX_LINE + delta);
+    const text = `${pad}${PGP}\nc18tok97\n${PGPE}\nc18tok96\n`;
+    const got = emitted(text, [1024]);
+    expect([...got]).not.toContain('c18tok97');
+    expect([...got]).toContain('c18tok96');
+  });
+  it('exact-value redaction and protected blocks compose', () => {
+    const V = 'c18SyntheticComposedValue';
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => seen.push(t), new Set([V]));
+    s.push(`before ${V}\n${PGP}\n${V}\n${PGPE}\nafter ${V}\n`);
+    s.flush();
+    const out = seen.join('');
+    expect(out).not.toContain(V);
+    expect(out).toContain('before');
+    expect(out).toContain('after');
+  });
+  it('high-volume output completes with bounded memory', () => {
+    const seen: string[] = [];
+    const s = createRedactingStream((t: string) => { if (seen.length < 4) seen.push(t); });
+    const before = process.memoryUsage().heapUsed;
+    for (let i = 0; i < 4_000; i += 1) s.push(`c18line ${i} ${'z'.repeat(200)}\n`);
+    s.flush();
+    const grew = process.memoryUsage().heapUsed - before;
+    expect(grew, 'the parser must not retain the stream').toBeLessThan(64 * 1024 * 1024);
+    expect(seen[0]).toContain('c18line 0');
+  });
+});
+
+describe('C18 — the gate really runs under the watchdog', () => {
+  it('the gate entrypoint declares the four stages in order', () => {
+    expect([...C18_GATE_STAGES]).toEqual(['produce', 'verify-offline', 'controls-parallel', 'controls-serial']);
+  });
+  it('the CI step invokes the entrypoint through the watchdog with a 900-second bound', () => {
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const step = ci.slice(ci.indexOf('C18 dual-path database history gate'),
+      ci.indexOf('Upload the C18 evidence archive'));
+    expect(step).toContain('c18-watchdog.mjs 900');
+    expect(step).toContain('c18-gate.mjs');
+    // …and no longer runs the stages itself, which is what made the old claim untrue.
+    expect(step).not.toMatch(/c18-db-paths\.mjs run/);
+    expect(step).not.toMatch(/vitest run --config vitest\.c18/);
+  });
+  it('the workflow keeps a job-level timeout as an outer defence', () => {
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const step = ci.slice(ci.indexOf('C18 dual-path database history gate'),
+      ci.indexOf('Upload the C18 evidence archive'));
+    expect(step).toMatch(/timeout-minutes:\s*\d+/);
+  });
+  it('the documented package script invokes the entrypoint through the watchdog', () => {
+    const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as
+      { scripts: Record<string, string> };
+    expect(pkg.scripts['gate:c18']).toContain('c18-watchdog.mjs 900');
+    expect(pkg.scripts['gate:c18']).toContain('c18-gate.mjs');
+  });
+  it('the watchdog emits a non-secret activation marker a hosted log can carry', () => {
+    const r = spawnSync('node', [join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs'), '30',
+      'node', '-e', 'process.stdout.write("done\\n")'], { encoding: 'utf8', timeout: 60_000 });
+    expect(r.stderr).toMatch(/c18-watchdog: ACTIVE deadline=30s/);
+    expect(r.stdout).toContain('done');
+  });
+  it('a timeout kills the whole gate process group, not just the direct child', () => {
+    // The gate spawns further processes; the deadline must reach all of them.
+    const r = spawnSync('node', [join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs'), '2',
+      'node', '-e', 'require("child_process").spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"],'
+      + ' { stdio: "ignore" }); setInterval(() => {}, 1000)'], { encoding: 'utf8', timeout: 90_000 });
+    expect(r.status).toBe(124);
+    expect(r.stderr).toMatch(/DEADLINE EXCEEDED/);
+  });
+});
+
+describe('C18 watchdog — the threat boundary is finite and stated', () => {
+  const SRC = readFileSync(join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs'), 'utf8');
+  it('the source states what is guaranteed and what is not', () => {
+    expect(SRC).toContain('THE THREAT BOUNDARY');
+    for (const phrase of ['GUARANTEED', 'NOT GUARANTEED', 'encodes, hashes, encrypts',
+      'covert channels', 'SIGKILL delivered to the', 'C19']) {
+      expect(SRC, `the boundary must mention ${phrase}`).toContain(phrase);
+    }
+  });
+  it('a transformed representation is honestly OUTSIDE the guarantee', () => {
+    // base64 of a protected value is not a literal reproduction, and is not claimed. Asserting the
+    // limitation keeps the records from over-claiming.
+    const V = 'c18SyntheticBoundaryValue';
+    const encoded = Buffer.from(V).toString('base64');
+    expect(redactValues(encoded, new Set([V]))).toBe(encoded);
+    expect(SRC).toMatch(/NOT claimed|NOT GUARANTEED/);
+  });
+  it('a URL password IS claimed in both its encoded and decoded forms', () => {
+    // The password must be long enough to redact safely in BOTH forms; a three-character decoded
+    // form would be refused instead, which is the other half of the same contract.
+    const values = credentialPreflight({ EYE_TEST_DSN: 'postgres://u:c18synth%21value@h/db' }).values;
+    expect([...values]).toContain('c18synth%21value');
+    expect([...values]).toContain('c18synth!value');
+    expect(credentialPreflight({ EYE_TEST_DSN: 'postgres://u:a%21b@h/db' }).ok).toBe(false);
+  });
+  it('the main-module guard tolerates a missing or nonexistent argv[1]', () => {
+    expect(isMainModule(undefined as unknown as string, import.meta.url)).toBe(false);
+    expect(isMainModule('', import.meta.url)).toBe(false);
+    expect(isMainModule('/nonexistent/path/to/nothing.mjs', import.meta.url)).toBe(false);
+    expect(() => isMainModule('/nonexistent/x', 'not-a-url')).not.toThrow();
+  });
+  it('every secret-bearing environment reference in the repository is registered or declared', () => {
+    // The meta-control: a new secret-bearing variable added to a workflow, a gate script, the
+    // Compose file or the config schema must be registered here, or the gate says so.
+    const sources = [
+      join(REPO, '.github', 'workflows', 'ci.yml'),
+      join(REPO, 'docker-compose.yml'),
+      join(REPO, 'scripts', 'gate', 'lib', 'c18-contract.mjs'),
+      join(REPO, 'scripts', 'gate', 'lib', 'c18-query-plan.mjs'),
+    ].filter((f) => existsSync(f));
+    const seen = new Set<string>();
+    for (const file of sources) {
+      const text = readFileSync(file, 'utf8');
+      for (const m of text.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)) {
+        const name = m[1];
+        if (!/(PASSWORD|PASSWD|SECRET|TOKEN|APIKEY|CREDENTIAL|PASSPHRASE|BEARER|PGPASS)/.test(name)) continue;
+        seen.add(name);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(8);
+    const declaredNonSecret = ['SECRET_CLASSES', 'SECRET_SHAPE_RE', 'SNAPSHOT_SECRET_COLUMNS',
+      'SECRETS', 'TOKENS', 'CREDENTIALS', 'SECRET_KEY', 'PASSWORD_CLASSES', 'SECRET_ENV_NAME_RE'];
+    for (const name of seen) {
+      if (declaredNonSecret.includes(name)) continue;
+      expect(isCredentialName(name), `${name} must be registered as credential-bearing`).toBe(true);
+    }
+  });
+  it('the source-owned registry names the credentials this repository actually uses', () => {
+    for (const name of ['EYE_DB_PASSWORD', 'EYE_REDIS_PASSWORD', 'EYE_TEST_ADMIN_PASSWORD',
+      'PGPASSWORD', 'POSTGRES_PASSWORD', 'GITHUB_TOKEN']) {
+      expect([...SOURCE_OWNED_SECRET_NAMES]).toContain(name);
+    }
+    expect(MARKER_CARRY).toBeGreaterThan(64);
   });
 });

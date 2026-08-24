@@ -1,58 +1,44 @@
 #!/usr/bin/env node
 /**
- * A PORTABLE WHOLE-SUITE WATCHDOG, IN THREE EXPLICIT STAGES.
+ * THE C18 WATCHDOG — A BOUNDED RUNNER WITH A FINITE CONTAINMENT GUARANTEE.
  *
- * `timeout(1)` is not present on macOS, so a long phase had no bounded way to run and a hung suite
- * simply ran until someone noticed. This runs a command in its OWN process group with a hard
- * deadline, and sanitises everything that passes through it.
+ * `timeout(1)` is absent on macOS, so a long phase had no bounded way to run. This runs a command
+ * in its own process group under a hard deadline and sanitises everything that passes through it.
  *
- * The file grew one defence at a time — provider shapes, then piped output, then exact values,
- * then a preflight — and the seams between those layers are where six reproducible bypasses lived
- * at `e2077e1`. It is now organised as three stages with an explicit contract between them:
+ * Three stages, with an explicit contract between them:
  *
- *   STAGE 1  CREDENTIAL PREFLIGHT — classify, decide, and either produce the protected-value set
- *            or refuse. Runs to completion BEFORE any child exists.
- *   STAGE 2  STREAMING SANITISER — one state machine per stream, which sees every byte of child
- *            output whether that byte is emitted, redacted, truncated or dropped.
- *   STAGE 3  PROCESS LIFECYCLE — spawn, pipe, drain, terminate, report.
+ *   STAGE 1  CREDENTIAL PREFLIGHT — classify the environment and the argv, decide, and either
+ *            produce the protected-value set or refuse. Completes BEFORE any child exists.
+ *   STAGE 2  ORDERED STREAMING SANITISER — one parser per stream that processes marker events in
+ *            textual order over a block STACK, keeping parser state independent of the bounded
+ *            output buffer.
+ *   STAGE 3  LIFECYCLE — spawn, backpressure-aware piping, signals, bounded drain, termination.
  *
- * ── THE SIX BYPASSES THIS ORGANISATION CLOSES ──
+ * ── THE THREAT BOUNDARY (read this before trusting anything below) ──
  *
- * A. THE CHILD WAS SPAWNED BEFORE THE REFUSAL. `spawn()` came first and the preflight refusal came
- *    six lines later, so a run that exited 3 had already started a DETACHED child — which outlives
- *    the parent and completes its side effects regardless. Refusal is now a stage that finishes
- *    before Stage 3 begins; nothing spawns unless it succeeded.
+ * This is a LOG REDACTOR, not an information-flow monitor. The guarantee is finite, and it is
+ * stated so it can be checked:
  *
- * B. BOOLEAN-LOOKING PASSWORDS WERE EXEMPTED GLOBALLY. A closed set of literals (`0`, `1`, `true`,
- *    `false`, …) was excused wherever it appeared, so `EYE_TEST_PASSWORD=1` printed verbatim. A
- *    credential-named variable is a credential whatever its value looks like. The exemption now
- *    requires BOTH an unambiguously flag-shaped name AND a boolean literal, so
- *    `SDK_HAS_OAUTH_REFRESH=1` is a flag while `EYE_TEST_PASSWORD=1` is protected and
- *    `EYE_USE_PASSWORD=abc` — flag-shaped name, real value — is protected too.
+ *   GUARANTEED — literal UTF-8 reproduction of (a) values classified from the environment by the
+ *   source-owned registry below, (b) components derived from those values (URL userinfo in both
+ *   encoded and decoded form, the individual lines of a multiline value), and (c) the registered
+ *   syntactic shapes: provider tokens, secret assignments, secret flags, Authorization headers,
+ *   URL userinfo and private-material blocks. Held across arbitrary chunk boundaries, LF and CRLF
+ *   line boundaries, oversized lines, nested and mismatched block markers, multiple markers on one
+ *   line, EOF, timeout, signals, spawn failure and ordinary process failure.
  *
- * C. NAME MATCHING WAS SUBSTRING GUESSING. `PASS` was absent from the component list, so `DB_PASS`,
- *    `REDIS_PASS` and `POSTGRES_PASS` were invisible; adding it as a bare substring would have made
- *    `COMPASS_HEADING` a credential. Names are now split into COMPONENTS on the boundaries real
- *    variable names use, and a component must MATCH a credential word — not contain one.
+ *   NOT GUARANTEED — a deliberately malicious child that encodes, hashes, encrypts, reorders or
+ *   fragments a secret into pieces that are not literal reproductions; cross-stream or timing
+ *   covert channels; credential formats absent from the registry; and SIGKILL delivered to the
+ *   watchdog itself, which no process can handle. JSON-escaped and general URL-encoded forms are
+ *   NOT claimed: the only transformed representation registered is a URL password's decoded form,
+ *   because the value's own derivation produces it.
  *
- * D. ONLY THE WHOLE MULTILINE VALUE WAS CONSIDERED. Preflight measured the value's total length, so
- *    `$'abc\nlong-secret-part'` passed the length test while its three-character first line could
- *    not be safely redacted and was printed. Preflight now decomposes a multiline value into its
- *    logical components and judges EVERY one.
- *
- * E. ANY PROTECTED END CLOSED ANY PROTECTED BLOCK. The tracker held a boolean, so an `-----END
- *    CERTIFICATE-----` inside a PGP private-key block ended suppression and the rest of the key was
- *    forwarded. The tracker now holds the exact normalised label captured by BEGIN and closes only
- *    on the matching END; a mismatched END stays suppressed, and an unterminated block stays
- *    suppressed through EOF.
- *
- * F. AN OVERSIZED LINE WAS DROPPED WITHOUT BEING READ. Marker detection happened when a line was
- *    EMITTED, so a BEGIN marker on a line too long to hold was discarded together with the line —
- *    and the payload and END that followed were treated as ordinary output. Marker state is now
- *    updated for every line the parser observes, including the ones it refuses to emit.
+ * Stronger isolation against a malicious child needs least-privilege environment allowlisting and
+ * sandboxing. That is C19's work, and nothing here pretends otherwise.
  *
  * Usage: node scripts/gate/c18-watchdog.mjs <seconds> <command> [args...]
- * Exit:  the child's code · 2 usage · 3 preflight refusal · 124 deadline exceeded.
+ * Exit:  the child's code · 2 usage · 3 preflight refusal · 124 deadline exceeded · 126 spawn error.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -63,66 +49,67 @@ import { fileURLToPath } from 'node:url';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * The credential words a variable NAME may carry, as whole components rather than substrings.
- *
- * `PASS` belongs here — `DB_PASS`, `REDIS_PASS` and `POSTGRES_PASS` are ordinary names for a
- * password — but only as a component: `COMPASS_HEADING` splits into `COMPASS`/`HEADING`, neither
- * of which IS `PASS`, so it stays an ordinary variable. That distinction is the whole reason this
- * is a component list and not a regular expression over the raw name.
+ * The SOURCE-OWNED credential registry: every secret-bearing environment name this repository
+ * actually uses, so classification is a declaration rather than a guess. A meta-control proves
+ * this list covers every secret-bearing reference in the workflows, the gate scripts, the Compose
+ * configuration and the config schema.
  */
+export const SOURCE_OWNED_SECRET_NAMES = Object.freeze([
+  'EYE_DB_PASSWORD', 'EYE_DB_APP_PASSWORD', 'EYE_DB_ALLOCATOR_PASSWORD', 'EYE_DB_SYSTEM_PASSWORD',
+  'EYE_DB_COMMIT_PASSWORD', 'EYE_DB_IDENTITY_PASSWORD', 'EYE_DB_PUBLISHER_PASSWORD',
+  'EYE_DB_VERIFIER_PASSWORD', 'EYE_DB_RECOVERY_PASSWORD', 'EYE_DB_MIGRATE_PASSWORD',
+  'EYE_TEST_BOOTSTRAP_PASSWORD', 'EYE_TEST_ADMIN_PASSWORD', 'EYE_REDIS_PASSWORD',
+  'EYE_IDENTITY_JWT_SECRET', 'REDIS_HEALTHCHECK_PASSWORD', 'POSTGRES_PASSWORD',
+  'PGPASSWORD', 'GITHUB_TOKEN', 'GH_TOKEN',
+]);
+
+/**
+ * CONVENTIONAL COMPACT ALIASES — credential names written without separators, which component
+ * splitting cannot see. `PGPASSWORD` is used by this repository's own `psql` invocations; the rest
+ * are the conventional spellings a caller is likely to reach for.
+ */
+export const COMPACT_CREDENTIAL_ALIASES = Object.freeze([
+  'PGPASSWORD', 'PGPASS', 'DBPASS', 'DBPASSWORD', 'CLIENTSECRET', 'CLIENTKEY', 'APIKEY',
+  'APISECRET', 'AUTHTOKEN', 'ACCESSTOKEN', 'REFRESHTOKEN', 'IDTOKEN', 'PRIVATEKEY', 'SECRETKEY',
+  'AUTHPASS', 'MYSQLPASS', 'REDISPASS',
+]);
+
+/**
+ * Long credential words unambiguous enough to match INSIDE a compact name. `PASS`, `KEY` and
+ * `AUTH` are deliberately absent: they occur inside ordinary words (`COMPASS`, `MONKEY`,
+ * `AUTHOR`), and are matched only as whole components or through the alias list above.
+ */
+export const COMPACT_CREDENTIAL_WORDS = Object.freeze([
+  'PASSWORD', 'PASSWD', 'PASSPHRASE', 'SECRET', 'TOKEN', 'CREDENTIAL', 'APIKEY', 'BEARER',
+]);
+
+/** Credential words that count when they are a WHOLE component of a separated name. */
 export const CREDENTIAL_NAME_COMPONENTS = Object.freeze([
   'TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'APIKEY', 'CREDENTIAL', 'CREDENTIALS',
   'PASSPHRASE', 'BEARER', 'COOKIE', 'AUTH', 'OAUTH', 'PRIVATEKEY', 'KEY',
 ]);
 
-/**
- * Two-component credential words: pairs of adjacent components that together name a credential
- * while neither alone should. `API`+`KEY` is a credential; a bare `KEY` component is too, but
- * `PRIVATE`+`KEY` is listed so the intent is legible rather than incidental.
- */
+/** Adjacent component pairs that name a credential together. */
 export const CREDENTIAL_NAME_PAIRS = Object.freeze([
-  ['API', 'KEY'], ['PRIVATE', 'KEY'], ['ACCESS', 'KEY'], ['SECRET', 'KEY'],
-]);
-
-/** Components that describe a POINTER to a credential rather than the credential itself. */
-export const POINTER_NAME_COMPONENTS = Object.freeze([
-  'SOCK', 'SOCKET', 'FILE', 'DIR', 'HOME', 'PATH', 'ENABLED', 'REQUIRED',
+  ['API', 'KEY'], ['PRIVATE', 'KEY'], ['ACCESS', 'KEY'], ['SECRET', 'KEY'], ['CLIENT', 'SECRET'],
 ]);
 
 /**
- * Leading components that make a name unambiguously a FLAG about a credential rather than one.
- * A flag exemption requires this AND a boolean value — see `classifyEnvVariable`.
+ * POINTER and FLAG components. These NEVER exempt on the name alone — the VALUE must also satisfy
+ * the declared grammar. A secret hidden under `EYE_TOKEN_FILE` is still a secret; only a value that
+ * really is a path is a pointer, and only a boolean literal is really a flag.
  */
+export const POINTER_NAME_COMPONENTS = Object.freeze(['SOCK', 'SOCKET', 'FILE', 'DIR', 'HOME', 'PATH']);
 export const FLAG_NAME_COMPONENTS = Object.freeze([
-  'HAS', 'IS', 'USE', 'USES', 'ENABLE', 'ENABLED', 'ALLOW', 'SKIP', 'REQUIRE', 'WITH', 'NO',
+  'HAS', 'IS', 'USE', 'USES', 'ENABLE', 'ENABLED', 'ALLOW', 'SKIP', 'REQUIRE', 'REQUIRED',
+  'WITH', 'NO',
 ]);
-
-/** The closed set of boolean literals. Membership alone never exempts a value — see B above. */
 export const BOOLEAN_LITERALS = Object.freeze(['0', '1', 'true', 'false', 'yes', 'no', 'on', 'off']);
+/** A pointer VALUE: a filesystem path, a Windows path, a UNC path, or a socket URL. */
+export const POINTER_VALUE_RE = /^(?:[A-Za-z]:[\\/]|\.{0,2}\/|\\\\)\S*$|^[a-z]+:\/\/\/\S*$/;
 
-/** Split a variable name into the components real names are built from. */
-export const nameComponents = (name) => String(name)
-  .split(/[^A-Za-z0-9]+/)
-  .flatMap((part) => part.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(' '))
-  .filter((part) => part !== '')
-  .map((part) => part.toUpperCase());
-
-/** Does this NAME carry a credential word as a whole component (or an adjacent pair)? */
-export function isCredentialName(name) {
-  const parts = nameComponents(name);
-  if (parts.some((p) => POINTER_NAME_COMPONENTS.includes(p))) return false;
-  if (parts.some((p) => CREDENTIAL_NAME_COMPONENTS.includes(p))) return true;
-  return CREDENTIAL_NAME_PAIRS.some(([a, b]) => parts.some(
-    (p, i) => p === a && parts[i + 1] === b,
-  ));
-}
-
-/** Is this NAME shaped like a flag ABOUT a credential — `SDK_HAS_OAUTH_REFRESH`, `USE_AUTH`? */
-export const isFlagShapedName = (name) => nameComponents(name)
-  .some((p) => FLAG_NAME_COMPONENTS.includes(p));
-
-/** Is this VALUE one of the closed boolean literals? */
-export const isBooleanLiteral = (value) => BOOLEAN_LITERALS.includes(String(value).toLowerCase());
+/** Names that must never be treated as credentials however they are spelled. */
+export const NON_CREDENTIAL_NAMES = Object.freeze(['COMPASS', 'CLASSPATH', 'PATH', 'MANPATH']);
 
 /**
  * Below this length a literal value cannot be replaced safely: redacting a one- or two-character
@@ -131,10 +118,62 @@ export const isBooleanLiteral = (value) => BOOLEAN_LITERALS.includes(String(valu
  */
 export const REDACTABLE_MIN_LENGTH = 4;
 
+/** Split a variable name into the components real names are built from. */
+export const nameComponents = (name) => String(name)
+  .split(/[^A-Za-z0-9]+/)
+  .flatMap((part) => part.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(' '))
+  .filter((part) => part !== '')
+  .map((part) => part.toUpperCase());
+
+/** Does this NAME denote a credential? Registry, then alias, then component, then compact word. */
+export function isCredentialName(name) {
+  const upper = String(name).toUpperCase();
+  if (SOURCE_OWNED_SECRET_NAMES.includes(upper)) return true;
+  if (NON_CREDENTIAL_NAMES.includes(upper)) return false;
+  // NON_CREDENTIAL_NAMES applies to the WHOLE name only. Testing it per COMPONENT made
+  // `EYE_SECRET_PATH` a non-credential because one of its components is `PATH` — the pointer
+  // exemption is a value question, decided in `classifyEnvVariable`, not a naming veto here.
+  const parts = nameComponents(name);
+  if (parts.some((p) => COMPACT_CREDENTIAL_ALIASES.includes(p))) return true;
+  if (parts.some((p) => CREDENTIAL_NAME_COMPONENTS.includes(p))) return true;
+  if (CREDENTIAL_NAME_PAIRS.some(([a, b]) => parts.some((p, i) => p === a && parts[i + 1] === b))) {
+    return true;
+  }
+  // A compact component carries no separators, so only the unambiguous long words apply — and only
+  // as a SUFFIX. Conventional compact credential names put the credential word last (`PGPASSWORD`,
+  // `CLIENTSECRET`, `AUTHTOKEN`); matching anywhere inside would make `TOKENIZER_MODE` a
+  // credential, which is the same substring mistake in a new place.
+  return parts.some((p) => COMPACT_CREDENTIAL_WORDS.some((w) => p.endsWith(w)));
+}
+
+export const isPointerShapedName = (name) => nameComponents(name)
+  .some((p) => POINTER_NAME_COMPONENTS.includes(p));
+export const isFlagShapedName = (name) => nameComponents(name)
+  .some((p) => FLAG_NAME_COMPONENTS.includes(p));
+export const isBooleanLiteral = (value) => BOOLEAN_LITERALS.includes(String(value).toLowerCase());
+export const isPointerValue = (value) => POINTER_VALUE_RE.test(String(value));
+
+/** The credential parts carried inside a connection URL: userinfo, encoded and decoded. */
+export function urlCredentialParts(text) {
+  const out = new Set();
+  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^\s/@]*)@/.exec(String(text));
+  if (m === null) return out;
+  const userinfo = m[2];
+  const colon = userinfo.indexOf(':');
+  const raw = colon >= 0 ? userinfo.slice(colon + 1) : '';
+  if (raw === '') return out;
+  out.add(raw);
+  try {
+    const decoded = decodeURIComponent(raw);
+    if (decoded !== raw) out.add(decoded);
+  } catch { /* a malformed escape is not a second form */ }
+  return out;
+}
+
 /**
- * The logical components of a credential value: the whole value plus every nonempty line, in both
- * LF and CRLF spellings. A multiline secret is emitted a line at a time, so protecting only the
- * whole value protects nothing that is actually printed.
+ * The logical components of a credential value: the value itself, every nonempty line (LF and
+ * CRLF), and — for a connection URL — the userinfo password in BOTH its encoded and decoded form,
+ * because a child that parses the URL prints the decoded one.
  */
 export function credentialComponents(value) {
   const out = new Set();
@@ -149,99 +188,137 @@ export function credentialComponents(value) {
       if (trimmed !== '') out.add(trimmed);
     }
   }
+  for (const part of urlCredentialParts(text)) out.add(part);
   return out;
 }
 
 /**
- * Classify ONE environment variable. Returns `'ignore'`, `'flag'`, `'protect'` or `'unprotectable'`.
- * The value is inspected but never returned, logged or embedded in a diagnostic.
+ * Classify ONE environment variable: `ignore`, `pointer`, `flag`, `protect` or `unprotectable`.
+ * The value is inspected and never returned, logged or embedded in a diagnostic.
  */
 export function classifyEnvVariable(name, value) {
   if (typeof value !== 'string' || value === '') return 'ignore';
+  // A connection URL carries a credential in its VALUE regardless of what the variable is called:
+  // `EYE_TEST_DSN=postgres://u:pw@host/db` names nothing secret, and holds a password. A child
+  // that parses the URL prints the password ALONE, which whole-value redaction never sees.
+  const urlParts = urlCredentialParts(value);
+  if (urlParts.size > 0) {
+    return [...urlParts].some((p) => p.length < REDACTABLE_MIN_LENGTH || isBooleanLiteral(p))
+      ? 'unprotectable' : 'protect';
+  }
   if (!isCredentialName(name)) return 'ignore';
-  // A flag exemption needs BOTH halves: a flag-shaped name AND a boolean literal. Either alone is
-  // exactly the mistake that let `EYE_TEST_PASSWORD=1` and `EYE_USE_PASSWORD=abc` through.
+  // An exemption needs the NAME shape AND the VALUE grammar. Name alone is how a secret hidden
+  // under `EYE_TOKEN_FILE` or `EYE_AUTH_ENABLED` walked out in the clear.
+  if (isPointerShapedName(name) && isPointerValue(value)) return 'pointer';
   if (isFlagShapedName(name) && isBooleanLiteral(value)) return 'flag';
   const components = [...credentialComponents(value)];
-  // A component is unprotectable when replacing it literally would damage ordinary output: when it
-  // is too short, or when it is a common word. `EYE_TEST_PASSWORD=true` is a credential — the flag
-  // exemption above did not apply — but redacting the literal `true` would rewrite that word
-  // throughout every line, so the safe answer is to refuse rather than to mangle the run.
   if (components.some((c) => c.length < REDACTABLE_MIN_LENGTH || isBooleanLiteral(c))) {
     return 'unprotectable';
   }
   return 'protect';
 }
 
+/** Shapes that must never appear in ARGV, whatever variable they came from. */
+export const ARGV_SECRET_SHAPES = Object.freeze([
+  ['a secret assignment', /(?:^|[^A-Za-z0-9_])[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|PASS|APIKEY|CREDENTIAL|PASSPHRASE|BEARER|COOKIE|AUTH)[A-Za-z0-9_]*=\S+/i],
+  ['a secret flag value', /--[A-Za-z0-9-]*(?:token|secret|password|pass|api-key|credential)[A-Za-z0-9-]*[= ]\S+/i],
+  ['an Authorization credential', /Authorization\s*:\s*\S+/i],
+  ['provider-token material', /gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}/],
+  ['URL userinfo credentials', /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/:@]*:[^\s/@]+@/],
+]);
+
 /**
- * STAGE 1. Classify the environment, and either produce the protected-value set or refuse.
- *
- * `values` is held in memory only — never printed, logged or persisted. `unprotectable` carries
- * NAMES alone, so a refusal can say what to fix without disclosing a value, a component, a length
- * or a position.
+ * Scan the command line for credential material. Credentials travel through the environment or
+ * stdin; argv is visible in the OS process list to every user on the machine, and no amount of
+ * redaction inside this process can undo that.
  */
-export function credentialPreflight(env = process.env) {
+export function scanArgvForSecrets(argv, protectedValues = new Set()) {
+  const reasons = [];
+  const text = argv.join(' ');
+  for (const v of protectedValues) {
+    if (v.length >= REDACTABLE_MIN_LENGTH && text.includes(v)) {
+      reasons.push('an exact protected value');
+      break;
+    }
+  }
+  for (const [label, re] of ARGV_SECRET_SHAPES) if (re.test(text)) reasons.push(label);
+  return [...new Set(reasons)];
+}
+
+/**
+ * STAGE 1. Classify the environment and the command line, then either produce the protected-value
+ * set or refuse. `values` is held in memory only; `unprotectable` and `argvReasons` name variables
+ * and rules, never values.
+ */
+export function credentialPreflight(env = process.env, argv = []) {
   const values = new Set();
   const unprotectable = [];
-  const flags = [];
+  const exempt = [];
   for (const [name, value] of Object.entries(env ?? {})) {
     const verdict = classifyEnvVariable(name, value);
-    if (verdict === 'flag') { flags.push(name); continue; }
+    if (verdict === 'flag' || verdict === 'pointer') { exempt.push(`${name}:${verdict}`); continue; }
     if (verdict === 'unprotectable') { unprotectable.push(name); continue; }
     if (verdict !== 'protect') continue;
     for (const component of credentialComponents(value)) values.add(component);
+    // A URL's credential parts are protected even when only the value identified it.
+    for (const part of urlCredentialParts(value)) values.add(part);
   }
-  return { ok: unprotectable.length === 0, values, unprotectable: unprotectable.sort(), flags: flags.sort() };
+  const argvReasons = scanArgvForSecrets(argv, values);
+  return {
+    ok: unprotectable.length === 0 && argvReasons.length === 0,
+    values,
+    unprotectable: unprotectable.sort(),
+    argvReasons,
+    exempt: exempt.sort(),
+  };
 }
 
-/** The refusal text. It names variables and nothing else. */
-export const refusalDiagnostic = (names) => 'c18-watchdog: REFUSING TO LAUNCH — these '
-  + `credential-named variables hold values that cannot be redacted safely: ${names.join(', ')}. `
-  + 'Lengthen the value, or rename the variable if it is not a credential. No value, component, '
-  + 'length or position is printed.';
+/** The refusal text. It names variables and rules, and nothing else. */
+export function refusalDiagnostic({ unprotectable = [], argvReasons = [] }) {
+  const parts = [];
+  if (unprotectable.length > 0) {
+    parts.push('these credential-named variables hold values that cannot be redacted safely: '
+      + `${unprotectable.join(', ')} (lengthen the value, or rename the variable if it is not a `
+      + 'credential)');
+  }
+  if (argvReasons.length > 0) {
+    parts.push(`the command line carries ${argvReasons.join(', ')} — argv is visible in the OS `
+      + 'process list; pass credentials through the environment or stdin');
+  }
+  return `c18-watchdog: REFUSING TO LAUNCH — ${parts.join('; ')}. `
+    + 'No value, component, length or position is printed.';
+}
 
-// ── back-compatible helpers the controls and callers use ──────────────────────
-export const credentialValuesFromEnv = (env = process.env) => credentialPreflight(env).values;
-export const unprotectableCredentialNames = (env = process.env) => credentialPreflight(env).unprotectable;
+// Back-compatible helpers used by controls and callers.
+export const credentialValuesFromEnv = (env = process.env) => credentialPreflight(env, []).values;
+export const unprotectableCredentialNames = (env = process.env) => credentialPreflight(env, []).unprotectable;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// STAGE 2 — STREAMING SANITISER
+// STAGE 2 — ORDERED STREAMING SANITISER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Redact credential-shaped text: provider token formats, `KEY=value` assignments whose key names a
- * secret, `--flag value` pairs likewise, Authorization headers, URL userinfo and private-material
- * blocks. Deliberately broad — a false redaction costs a little legibility, a missed one costs a
- * credential.
- */
+/** Redact the registered syntactic shapes. Broad within its declared boundary, and no wider. */
 export function redactSecrets(text) {
   if (typeof text !== 'string' || text.length === 0) return text;
   const SECRET_KEY = '(?:[A-Za-z0-9_-]*(?:TOKEN|SECRET|PASSWORD|PASSWD|PASS|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY|PASSPHRASE|BEARER|COOKIE|AUTH)[A-Za-z0-9_-]*)';
   return text
-    // Provider token shapes, redacted wherever they appear. No leading `\b`: a word boundary needs
-    // a non-word character before the match, so a token abutting other output escaped it.
     .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[REDACTED]')
     .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[REDACTED]')
     .replace(/xox[abprs]-[A-Za-z0-9-]{10,}/g, '[REDACTED]')
     .replace(/AKIA[0-9A-Z]{16}/g, '[REDACTED]')
     .replace(/ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED]')
-    // A whole block on one line, judged by the SAME label predicate the stream tracker uses.
+    // A whole protected block on ONE piece of text, judged by the SAME label predicate the
+    // streaming stack uses. `redactSecrets` is also what sanitises this process's own diagnostics
+    // and the process-tree dump, which the streaming parser never sees.
     .replace(/-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----/g,
       (block) => (isProtectedBlockLine(block, 'begin') ? '[REDACTED]' : block))
-    // KEY=value and KEY: value where the KEY names a secret.
     .replace(new RegExp(`(${SECRET_KEY}\\s*[=:]\\s*)(\\S+)`, 'gi'), '$1[REDACTED]')
-    // --token VALUE / --password VALUE, and Authorization headers.
     .replace(/(--[A-Za-z0-9-]*(?:token|secret|password|pass|api-key|credential)[A-Za-z0-9-]*[= ])(\S+)/gi, '$1[REDACTED]')
     .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]')
-    // URL userinfo, with or without a username: `scheme://user:pw@host` and `scheme://:pw@host`
-    // are both ordinary, and requiring a username left the second one in the clear.
     .replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^\s/:@]*):([^\s/@]+)@/g, '$1$2:[REDACTED]@');
 }
 
-const escapeLiteral = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** Redact a set of EXACT values wherever they appear. Longest first, so a value that contains
- * another is replaced whole rather than piecemeal. */
+/** Redact exact values wherever they appear, longest first. */
 export function redactValues(text, values) {
   if (typeof text !== 'string' || text.length === 0) return text;
   if (values === undefined || values === null || values.size === 0) return text;
@@ -252,69 +329,96 @@ export function redactValues(text, values) {
 
 export const TRUNCATION_MARKER = '[c18-watchdog: oversized line dropped without inspection]\n';
 export const PRIVATE_BLOCK_MARKER = '[REDACTED: private material block]\n';
-/** The longest unbroken line the filter will hold, and therefore inspect, before dropping it. */
 export const MAX_LINE = 1 << 16;
 
-/** The block labels whose contents must never be forwarded. */
+/** ONE source-owned block-label definition, used by the single-line and the streaming paths. */
 export const PROTECTED_BLOCK_LABEL_RE = /(PRIVATE KEY|PGP MESSAGE|CERTIFICATE|KEY)/;
-const BLOCK_BEGIN_RE = /-----BEGIN ([A-Z0-9 ]+?)-----/;
-const BLOCK_END_RE = /-----END ([A-Z0-9 ]+?)-----/;
+/** Every BEGIN/END marker, scanned in textual order. */
+const MARKER_SOURCE = '-----(BEGIN|END) ([A-Z0-9 ]+?)-----';
+/** The longest marker text the parser must recognise across a discarded boundary. */
+export const MARKER_CARRY = 128;
 
-/** The normalised label a BEGIN/END marker carries, or `null` if the line carries none. */
+const normaliseLabel = (raw) => raw.trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** The first protected BEGIN/END label on a line, or null. */
 export function blockLabel(line, which = 'begin') {
-  const m = (which === 'begin' ? BLOCK_BEGIN_RE : BLOCK_END_RE).exec(String(line));
-  if (m === null) return null;
-  const label = m[1].trim().replace(/\s+/g, ' ').toUpperCase();
-  return PROTECTED_BLOCK_LABEL_RE.test(label) ? label : null;
+  const re = new RegExp(MARKER_SOURCE, 'g');
+  for (let m = re.exec(String(line)); m !== null; m = re.exec(String(line))) {
+    if (m[1].toLowerCase() !== which) continue;
+    const label = normaliseLabel(m[2]);
+    if (PROTECTED_BLOCK_LABEL_RE.test(label)) return label;
+  }
+  return null;
 }
-/** Does this line open or close a block whose contents must never be forwarded? */
 export const isProtectedBlockLine = (line, which = 'begin') => blockLabel(line, which) !== null;
 
 /**
- * One state machine per output stream.
+ * One ordered streaming parser per output stream.
  *
- * Two invariants carry the design:
+ * THREE INVARIANTS.
  *
- *   1. NOTHING IS EMITTED THAT HAS NOT BEEN SEEN WHOLE. Output leaves only in complete lines, so a
- *      credential cannot escape by straddling a chunk boundary. A line too long to hold is DROPPED
- *      behind a marker rather than emitted in part — a bounded prefix of an uninspected line is
- *      precisely the disclosure this exists to prevent.
- *   2. MARKER STATE IS UPDATED FOR EVERY LINE THE PARSER OBSERVES, whether that line is emitted,
- *      redacted, truncated or dropped. Detection and emission were previously the same decision,
- *      so an oversized BEGIN line took its block state to the bin with it.
+ *   1. MARKER EVENTS ARE PROCESSED IN TEXTUAL ORDER over a block STACK. A begin-regex followed by
+ *      an end-regex sees at most one of each, and in the wrong order — which is how a line that
+ *      opened, closed and opened again lost its second BEGIN, and how a same-label nested block
+ *      closed on its inner END and released the outer payload.
+ *   2. PARSER STATE IS INDEPENDENT OF THE OUTPUT BUFFER. Text dropped for being uninspectably long
+ *      is still SCANNED for markers, and a `MARKER_CARRY` tail is retained across drops so a marker
+ *      split over any number of discarded chunks is still recognised.
+ *   3. NOTHING UNINSPECTED IS EMITTED. Output leaves in complete lines only; an oversized line is
+ *      dropped whole behind a marker rather than emitted in part.
  *
- * Suppression is keyed on the exact label BEGIN captured: only the matching END closes it, a
- * mismatched END stays inside the block, and an unterminated block stays suppressed through EOF.
+ * A marker contains no newline, so it can never straddle a line boundary — the only place a marker
+ * can be split is inside an oversized line, which is exactly what `dropCarry` covers.
  */
 export function createRedactingStream(sink, values = null) {
-  let held = '';
-  let dropping = false;        // inside an oversized line, until its newline arrives
-  let openLabel = null;        // the exact label of the block currently suppressed, or null
+  let held = '';               // the current partial line, while it is still emittable
+  let dropping = false;        // inside an oversized line
+  let dropCarry = '';          // tail of discarded text, so a split marker is still seen
+  const stack = [];            // open protected block labels, innermost last
 
   const clean = (text) => redactValues(redactSecrets(text), values);
 
   /**
-   * Observe one line. `emit` is false for a line the parser refuses to forward — the marker state
-   * still advances, which is what closes bypass F.
+   * Scan one unit in textual order, updating the stack, and return the text that lies outside
+   * every protected region. `offset` marks how much of `text` a previous pass already handled.
    */
-  const observeLine = (line, { emit = true } = {}) => {
-    if (openLabel !== null) {
-      // Only the MATCHING end closes this block. A mismatched END is part of the payload.
-      if (blockLabel(line, 'end') === openLabel) {
-        openLabel = null;
-        sink(PRIVATE_BLOCK_MARKER);
+  const scanUnit = (text, offset = 0) => {
+    const re = new RegExp(MARKER_SOURCE, 'g');
+    let cursor = offset;
+    let out = '';
+    for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+      const end = m.index + m[0].length;
+      if (end <= offset) continue;                          // wholly inside already-handled text
+      const label = normaliseLabel(m[2]);
+      if (!PROTECTED_BLOCK_LABEL_RE.test(label)) continue;  // an unprotected banner is ordinary text
+      if (stack.length === 0 && m.index > cursor) out += text.slice(cursor, m.index);
+      if (m[1] === 'BEGIN') {
+        if (stack.length === 0) sink(PRIVATE_BLOCK_MARKER);
+        stack.push(label);
+      } else if (stack.length > 0 && stack[stack.length - 1] === label) {
+        stack.pop();
       }
-      return;                                   // the body never reaches the sink
+      // A mismatched END, or an END with nothing open, changes nothing: it stays inside the block,
+      // or it is ordinary text that was already emitted above.
+      cursor = end;
     }
-    const begin = blockLabel(line, 'begin');
-    if (begin !== null) {
-      // A block that opens AND closes on one line is replaced by the marker: a redacted line still
-      // discloses its label and length.
-      if (blockLabel(line, 'end') === begin) { sink(PRIVATE_BLOCK_MARKER); return; }
-      openLabel = begin;
+    if (stack.length === 0 && cursor < text.length) out += text.slice(cursor);
+    return out;
+  };
+
+  /** Emit one complete line, or scan it for markers only. */
+  const takeLine = (line, { emit }) => {
+    if (!emit) {
+      // A dropped line is still SCANNED. `dropCarry` supplies whatever preceded it, so a marker
+      // split across discarded chunks is recognised whole.
+      const scan = dropCarry + line;
+      scanUnit(scan, dropCarry.length);
+      dropCarry = scan.slice(Math.max(0, scan.length - MARKER_CARRY));
       return;
     }
-    if (emit) sink(clean(line));
+    const text = scanUnit(line);
+    if (text !== '') sink(clean(text));
+    dropCarry = '';
   };
 
   return {
@@ -325,20 +429,22 @@ export function createRedactingStream(sink, values = null) {
         if (nl >= 0) {
           const line = held.slice(0, nl + 1);
           held = held.slice(nl + 1);
-          // A dropped line is still OBSERVED: its markers count even though its text does not.
-          observeLine(line, { emit: !dropping });
+          // An oversized line is dropped whether or not it happened to arrive whole. Making the
+          // decision depend on the CHUNKING would mean the same output is emitted or suppressed
+          // according to how the kernel split the pipe — a property no reader could rely on and no
+          // model could check. Length is the rule; arrival is not.
+          if (line.length > MAX_LINE) {
+            takeLine(line, { emit: false });
+            if (!dropping) sink(TRUNCATION_MARKER);
+          } else {
+            takeLine(line, { emit: !dropping });
+          }
           dropping = false;
           continue;
         }
-        if (dropping) {
-          // Still inside the dropped line. Observe what we have for markers, then discard it.
-          observeLine(held, { emit: false });
-          held = '';
-          break;
-        }
+        if (dropping) { takeLine(held, { emit: false }); held = ''; break; }
         if (held.length > MAX_LINE) {
-          // The filter cannot inspect this line whole. Observe it for markers, then drop the text.
-          observeLine(held, { emit: false });
+          takeLine(held, { emit: false });
           dropping = true;
           held = '';
           sink(TRUNCATION_MARKER);
@@ -348,25 +454,35 @@ export function createRedactingStream(sink, values = null) {
       }
     },
     flush() {
-      if (dropping) { dropping = false; held = ''; }
-      else if (held !== '') { observeLine(held); held = ''; }
-      // An unterminated protected block stays suppressed, and says so.
-      if (openLabel !== null) { openLabel = null; sink(PRIVATE_BLOCK_MARKER); }
+      if (dropping) { takeLine(held, { emit: false }); dropping = false; held = ''; }
+      else if (held !== '') { takeLine(held, { emit: true }); held = ''; }
+      // An unterminated protected block stays suppressed, and says so once.
+      if (stack.length > 0) { stack.length = 0; sink(PRIVATE_BLOCK_MARKER); }
+      dropCarry = '';
     },
-    /** For controls: the label currently suppressed, or null. Never contains payload. */
-    openBlockLabel: () => openLabel,
+    /** For controls: the open block labels, innermost last. Never contains payload. */
+    openBlocks: () => [...stack],
+    openBlockLabel: () => (stack.length === 0 ? null : stack[stack.length - 1]),
   };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// STAGE 3 — PROCESS LIFECYCLE
+// STAGE 3 — LIFECYCLE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Only run as a CLI. Imported (by the controls that prove redaction works) it exports the helpers
-// and does nothing else.
-const isMain = process.argv[1] !== undefined
-  && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-if (isMain) {
+/**
+ * Tolerant main-module detection. `process.argv[1]` may be missing, unresolved, a symlink, or a
+ * path that no longer exists; none of those is a reason to throw before the guard has decided.
+ */
+export function isMainModule(argv1, moduleUrl) {
+  if (typeof argv1 !== 'string' || argv1 === '') return false;
+  const resolve = (p) => { try { return realpathSync(p); } catch { return p; } };
+  let self;
+  try { self = fileURLToPath(moduleUrl); } catch { return false; }
+  return resolve(argv1) === resolve(self);
+}
+
+if (isMainModule(process.argv[1], import.meta.url)) {
   const [, , rawDeadline, ...command] = process.argv;
   const deadline = Number(rawDeadline);
   if (!Number.isFinite(deadline) || deadline <= 0 || command.length === 0) {
@@ -374,10 +490,10 @@ if (isMain) {
     process.exit(2);
   }
 
-  // ── STAGE 1, to completion, BEFORE anything is spawned ──────────────────────
-  const preflight = credentialPreflight(process.env);
+  // ── STAGE 1, to completion, before anything is spawned ──────────────────────
+  const preflight = credentialPreflight(process.env, command);
   if (!preflight.ok) {
-    console.error(refusalDiagnostic(preflight.unprotectable));
+    console.error(refusalDiagnostic(preflight));
     process.exit(3);
   }
   const secretValues = preflight.values;
@@ -385,46 +501,72 @@ if (isMain) {
 
   // ── STAGE 3 ─────────────────────────────────────────────────────────────────
   const started = Date.now();
-  // stdin is inherited so an interactive child still works; stdout and stderr are PIPED so every
-  // byte the child writes is sanitised before it reaches this process's streams.
   const child = spawn(command[0], command.slice(1), {
     stdio: ['inherit', 'pipe', 'pipe'], detached: true,
   });
+
+  let finished = false;
+  let timedOut = false;
+  let timer = null;
+
+  /** Terminate the child's whole process group, then hard-kill whatever survives. */
+  const terminateGroup = () => {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
+    setTimeout(() => {
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    }, 10_000).unref();
+  };
+
+  // A spawn failure must never reach Node's default error serialisation: that object carries
+  // `spawnargs`, and printing it would put the whole command line — credentials included — on
+  // stderr. The code alone is enough to diagnose it.
+  child.on('error', (error) => {
+    if (finished) return;
+    finished = true;
+    if (timer !== null) clearTimeout(timer);
+    say(`c18-watchdog: could not start the command (${error.code ?? error.name ?? 'spawn error'})`);
+    process.exit(126);
+  });
+
   const out = createRedactingStream((t) => process.stdout.write(t), secretValues);
   const err = createRedactingStream((t) => process.stderr.write(t), secretValues);
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (c) => out.push(c));
-  child.stderr.on('data', (c) => err.push(c));
-  say(`c18-watchdog: pid=${child.pid} deadline=${deadline}s command=${command.join(' ')}`);
 
-  let timedOut = false;
-  const timer = setTimeout(() => {
+  /**
+   * Pipe with BACKPRESSURE. A destination that cannot accept more sets `writableNeedDrain`; the
+   * child's stream is paused until `drain`, so a fast child's output cannot accumulate in this
+   * process without bound.
+   */
+  const pipe = (source, filter, destination) => {
+    source.setEncoding('utf8');
+    source.on('data', (chunk) => {
+      filter.push(chunk);
+      if (destination.writableNeedDrain) {
+        source.pause();
+        destination.once('drain', () => source.resume());
+      }
+    });
+  };
+  pipe(child.stdout, out, process.stdout);
+  pipe(child.stderr, err, process.stderr);
+
+  say(`c18-watchdog: pid=${child.pid} deadline=${deadline}s command=${command.join(' ')}`);
+  // A non-secret activation marker, so a hosted log can prove the gate really ran UNDER the
+  // watchdog rather than beside it.
+  say(`c18-watchdog: ACTIVE deadline=${deadline}s (whole-command bound enforced)`);
+
+  timer = setTimeout(() => {
     timedOut = true;
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
     say(`c18-watchdog: DEADLINE EXCEEDED after ${elapsed}s — surviving process tree:`);
     const tree = spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-g', String(child.pid)], { encoding: 'utf8' });
     say(tree.stdout ?? tree.stderr ?? '(process tree unavailable)');
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
-    setTimeout(() => {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-    }, 10_000).unref();
+    terminateGroup();
   }, deadline * 1000);
 
-  /**
-   * Finish once — from `close` normally, or from `exit` plus a bounded drain.
-   *
-   * `close` is the correct signal because it fires only after both pipes have ended, so nothing the
-   * child wrote is dropped. But a pipe stays open while ANY process holds its write end, and this
-   * child leads a detached process group: a surviving grandchild would keep `close` pending
-   * indefinitely, which is the unbounded wait this watchdog exists to prevent. So the child's own
-   * `exit` starts a short drain, and whichever arrives first ends the run.
-   */
-  let finished = false;
   const finish = (code, signal) => {
     if (finished) return;
     finished = true;
-    clearTimeout(timer);
+    if (timer !== null) clearTimeout(timer);
     out.flush();
     err.flush();
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
@@ -432,6 +574,20 @@ if (isMain) {
     if (timedOut) process.exit(124);
     process.exit(code === null ? 1 : code);
   };
+
+  /**
+   * A signal delivered to the WATCHDOG must not orphan the child's process group. SIGKILL sent to
+   * this process is unhandleable by any program — stated plainly rather than papered over.
+   */
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      if (finished) return;
+      say(`c18-watchdog: received ${sig} — terminating the child process group`);
+      terminateGroup();
+      setTimeout(() => finish(null, sig), 2_000).unref();
+    });
+  }
+
   const DRAIN_MS = 5_000;
   child.on('close', (code, signal) => finish(code, signal));
   child.on('exit', (code, signal) => {

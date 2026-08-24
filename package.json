@@ -2,7 +2,7 @@
   "name": "the-eye",
   "private": true,
   "version": "0.0.1",
-  "description": "The Eye — The Operating System for Strategic Intelligence (Phase 0: Foundation & Governance Spine)",
+  "description": "The Eye \u2014 The Operating System for Strategic Intelligence (Phase 0: Foundation & Governance Spine)",
   "engines": {
     "node": ">=24.0.0 <25",
     "pnpm": ">=11"
@@ -19,7 +19,8 @@
     "license:check": "node scripts/license-inventory.mjs",
     "gate:supply-chain": "node scripts/gate/supply-chain.mjs",
     "gate:closures": "node scripts/gate/generate-closures.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "gate:c18": "node scripts/gate/c18-watchdog.mjs 900 node scripts/gate/c18-gate.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

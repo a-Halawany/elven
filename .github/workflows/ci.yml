@@ -155,20 +155,16 @@ jobs:
           fi
           git restore evidence/clean-typecheck.txt 2>/dev/null || true
           C18_OUT="$RUNNER_TEMP/c18-out"
-          node scripts/gate/c18-db-paths.mjs run --out "$C18_OUT" \
+          # THE WHOLE GATE RUNS UNDER THE WATCHDOG. The four stages — production, offline
+          # self-verification, the parallel mutation/differential shards and the serial lifecycle
+          # controls — are one command (scripts/gate/c18-gate.mjs), so the 900-second bound covers
+          # the gate rather than one command inside it. Invoking the stages separately here is what
+          # made the "900-second watchdog" claim untrue for as long as it was made. The job-level
+          # timeout-minutes above remains as an outer defence.
+          node scripts/gate/c18-watchdog.mjs 900 \
+            node scripts/gate/c18-gate.mjs --out "$C18_OUT" \
             --final --expected-sha "$GITHUB_SHA"
-          # GITHUB_ENV exports apply to LATER steps; within this one, resolve the zip directly.
           C18_ZIP="$(ls "$C18_OUT"/c18-db-paths-evidence-*.zip)"
-          node scripts/gate/c18-db-paths.mjs verify \
-            --zip "$C18_ZIP" --root "$PWD"
-          # The mutation + differential control suite verifies THIS genuine archive and proves
-          # every single-defect mutation is rejected (and that the frozen d5061b8 verifier
-          # accepted the false passes C18.1 closes).
-          C18_ARCHIVE="$C18_ZIP" pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts
-          # One producer refusal must temporarily write an untracked file into the checkout, so it
-          # runs on its own rather than beside the parallel shards, which would correctly report an
-          # unclean tree while it does. Same controls, two phases.
-          C18_ARCHIVE="$C18_ZIP" pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
           # The digest-bound artifact carries EXACTLY the archive and its sidecar.
           mkdir -p "$RUNNER_TEMP/c18-artifact"
           cp "$C18_ZIP" "$C18_ZIP.sha256" "$RUNNER_TEMP/c18-artifact/"
