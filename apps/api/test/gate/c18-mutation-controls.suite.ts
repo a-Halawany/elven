@@ -3710,7 +3710,9 @@ describe('C18.1.14-final — DIFFERENTIAL: the frozen 7959ec9 verifier ACCEPTED 
    * independently provisioned databases — in every snapshot, fully rebound — passed with zero
    * findings. Two instances that each generate this value for themselves cannot agree on it.
    */
-  const SHARED_DIGEST = 'c18c18c18'.repeat(7).slice(0, 64).replace(/[^0-9a-f]/g, '0');
+  // Exactly 64 lowercase hex characters: the mutation must be a WELL-FORMED digest, otherwise the
+  // grammar rule fires and the case would prove nothing about distinctness.
+  const SHARED_DIGEST = 'c18'.repeat(22).slice(0, 64);
   const shareContextSecret: Mutator = (d) => {
     everySnapshotBothPaths(d, 'ctx.context_secret', (rows) => { rows[0].secret = SHARED_DIGEST; });
   };
