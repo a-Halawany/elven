@@ -73,6 +73,13 @@ import {
   verifySemantics as legacy53fSemantics,
 } from './fixtures/c18-legacy-53fb889/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import {
+  deriveSourceBinding as derive795Binding, verifyEvidence as legacy795,
+  verifySemantics as legacy795Semantics,
+} from './fixtures/c18-legacy-7959ec9/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { buildCoverageReport as legacy795Coverage } from './fixtures/c18-legacy-7959ec9/lib/c18-seed-coverage.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy53fCoverage } from './fixtures/c18-legacy-53fb889/lib/c18-seed-coverage.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { buildCoverageReport as legacy220Coverage } from './fixtures/c18-legacy-220b26c/lib/c18-seed-coverage.mjs';
@@ -3683,6 +3690,85 @@ describe('C18.1.14 — DIFFERENTIAL: the frozen 53fb889 verifier ACCEPTED what C
 
   it('the same judgement holds through the real ZIP ingress', async () => {
     await expectRejectViaZip(C11814_MUTATIONS[0]![1], C11814_MUTATIONS[0]![2]);
+  });
+});
+}
+
+/** C18.1.14-final leaves the coverage report unchanged, but the frozen leg regenerates its own. */
+function downgradeTo7959ec9(dir: string) {
+  writeFileSync(join(dir, 'seed-coverage.json'),
+    coverageFor(dir, '7959ec9', (preseed, before) => legacy795Coverage({ preseed, before })));
+}
+
+export function register30() {
+describe('C18.1.14-final — DIFFERENTIAL: the frozen 7959ec9 verifier ACCEPTED a shared context secret', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  /**
+   * The fifth reproduced defect, at ARCHIVE level. `ctx.context_secret.secret` was classified
+   * per-instance with a `sha256-hex` grammar and nothing else, so ONE valid digest shared by both
+   * independently provisioned databases — in every snapshot, fully rebound — passed with zero
+   * findings. Two instances that each generate this value for themselves cannot agree on it.
+   */
+  const SHARED_DIGEST = 'c18c18c18'.repeat(7).slice(0, 64).replace(/[^0-9a-f]/g, '0');
+  const shareContextSecret: Mutator = (d) => {
+    everySnapshotBothPaths(d, 'ctx.context_secret', (rows) => { rows[0].secret = SHARED_DIGEST; });
+  };
+
+  const judge795 = async (mutate: Mutator) => {
+    const { members } = mutateMembers((d) => { downgradeTo7959ec9(d); mutate(d); });
+    return legacy795Semantics({
+      members, root: REPO, sourceBinding: legacyBinding('7959ec9', derive795Binding),
+    });
+  };
+
+  it('NON-VACUITY: the frozen 7959ec9 verifier accepts the genuine archive', async () => {
+    const r = await judge795(() => {});
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+  it('NON-VACUITY: the corrected verifier accepts the genuine archive too', async () => {
+    const { members } = mutateMembers(() => {});
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.problems).toEqual([]);
+  });
+  it('the frozen 7959ec9 leg agrees through the real ZIP ingress as well', async () => {
+    const { dir, zip } = mutateArchive(downgradeTo7959ec9);
+    try {
+      const r = await legacy795({ zipPath: zip, root: REPO });
+      expect(r.problems).toEqual([]);
+      expect(r.ok).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a shared context secret — 7959ec9 ACCEPTS it; C18.1.14-final REJECTS it', async () => {
+    const old = await judge795(shareContextSecret);
+    expect(old.ok, `the frozen verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
+    await expectReject(shareContextSecret, /is SHARED between path-a and path-b/);
+  });
+  it('the rejection names cross-path context-secret reuse specifically', async () => {
+    const { members } = mutateMembers(shareContextSecret);
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.problems.join('\n')).toMatch(/per-instance distinctness: 'ctx\.context_secret\.secret' is SHARED/);
+  });
+  it('the same judgement holds through the real ZIP ingress', async () => {
+    await expectRejectViaZip(shareContextSecret, /is SHARED between path-a and path-b/);
+  });
+
+  it('an IN-PATH change to the secret is still rejected by the pre-existing contracts', async () => {
+    // The distinctness rule must not be doing work the snapshot-preservation contracts already do:
+    // changing the value in ONE path-A snapshot is caught independently of it.
+    const { members } = mutateMembers((d) => {
+      editJson(d, 'path-a-after.json', (doc: any) => {
+        doc.tables['ctx.context_secret'].rows[0].secret = 'd'.repeat(64);
+      });
+      const now = JSON.parse(readFileSync(join(d, 'path-a-after.json'), 'utf8'));
+      setStream(d, 'a-a-after-rows-ctx_context_secret', 'stdout',
+        Buffer.from(JSON.stringify(now.tables['ctx.context_secret'].rows)));
+    });
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join('\n')).toMatch(/ctx\.context_secret|preserv/i);
   });
 });
 }

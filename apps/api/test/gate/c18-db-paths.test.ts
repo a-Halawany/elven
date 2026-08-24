@@ -4275,3 +4275,48 @@ describe('C18.1.14-final — a per-instance secret is stable within an instance 
     expect(limit?.residual).toMatch(/preserves that whole equality structure/);
   });
 });
+
+describe('C18.1.14-final — the frozen 7959ec9 predecessor is byte-verbatim', () => {
+  const LEGACY_SHA = '7959ec993a00c7d29931e5546ccbe143328c6d02';
+  const PINNED: ReadonlyArray<readonly [string, string, string]> = [
+    ['c18-db-paths.mjs', 'scripts/gate/c18-db-paths.mjs', '2b021a9faaf2d43d0b475c5aecb19059d7531cad881dbe18883bc3eba6bbd923'],
+    ['c18-watchdog.mjs', 'scripts/gate/c18-watchdog.mjs', '58ee22be9b5fc8776101345291380abb34314dcc880b847a9be3e28118e4a88f'],
+    ['lib/c18-catalog-contract.json', 'scripts/gate/lib/c18-catalog-contract.json', '38d67568b48d52612692d78d371c087abfc1ebac5bf4c2bfc97dc52dfc809f47'],
+    ['lib/c18-contract.mjs', 'scripts/gate/lib/c18-contract.mjs', '187239fa4f8083c8efe8afce4f7a78ca81d150483dd9413a70dc937ab2b3be98'],
+    ['lib/c18-coverage-runner.mjs', 'scripts/gate/lib/c18-coverage-runner.mjs', '24d7e7518379e04cab415e71230e6209587b0c28fcce55a8e6b566867ef6e83f'],
+    ['lib/c18-inventory.mjs', 'scripts/gate/lib/c18-inventory.mjs', '8be6dfebb2222179e2a3c060a8bfb32049c2969678caa5c110e92fc536b9629b'],
+    ['lib/c18-lifetimes.mjs', 'scripts/gate/lib/c18-lifetimes.mjs', 'de6d36c36debb0a7bbcd29a7c3f61689f2cae066078e21ecbb4d9676be9e6ed6'],
+    ['lib/c18-migration-owned.json', 'scripts/gate/lib/c18-migration-owned.json', '390bbdd179a28e14ef2cc4fcf40d62fbd79d92f1b1a90f54d500fa78e1afc26a'],
+    ['lib/c18-migration-owned.mjs', 'scripts/gate/lib/c18-migration-owned.mjs', '2fbc265653bfb9dd245df3c904f86e39d4f8c3551169cc1194e723b132afa01e'],
+    ['lib/c18-observational-limits.mjs', 'scripts/gate/lib/c18-observational-limits.mjs', '1767b3ab161d44084dec1ebad5f51186ef4f35acab690fba741382f286183dba'],
+    ['lib/c18-post-upgrade.mjs', 'scripts/gate/lib/c18-post-upgrade.mjs', '25b9e2b57ad2f8f16d1fcfbe22f5fe5f6c61cca717d3a13b9befbb1f04f83532'],
+    ['lib/c18-query-plan.mjs', 'scripts/gate/lib/c18-query-plan.mjs', '6050f5c68dd703ce4e73541d8ee2a00f1f5d137057805c2d9fafd1e4145b60e5'],
+    ['lib/c18-seed-0012.mjs', 'scripts/gate/lib/c18-seed-0012.mjs', '109d00978809e1f08c41e6f8eb0a17f67488b46f3586ded0522c67a0e097de52'],
+    ['lib/c18-seed-coverage.mjs', 'scripts/gate/lib/c18-seed-coverage.mjs', 'f146e1166916ae4da3c84ec84ef39f86ed47a764c7d0261fd5141b8cf1d8791c'],
+    ['lib/c18-seed-spec.mjs', 'scripts/gate/lib/c18-seed-spec.mjs', '19d3c4e14598f95d03b852e1b38e64a8cdb90098fabd578c0a07b7fcae1978c1'],
+    ['lib/c18-seed-validators.mjs', 'scripts/gate/lib/c18-seed-validators.mjs', '6348bf9f69f4f87722b21875bf5996390e8c8e983bf97ec719a3e309a863929e'],
+    ['lib/c18-serialized-types.json', 'scripts/gate/lib/c18-serialized-types.json', '591e058a1f5e5ecf64188524eb6136333aeed03088d85e7dcca2dbdd0d9b110b'],
+    ['lib/c18-serialized-types.mjs', 'scripts/gate/lib/c18-serialized-types.mjs', 'ab97939541c9af1c0b7a79bddd44bc0d64d885387aa1f22feea6cdd96374d837'],
+    ['lib/hosted-run.mjs', 'scripts/gate/lib/hosted-run.mjs', '6ec536caa5f3d7d9ef55df0a7948a6df227896e5f1e7e265733d36f10da8f2d1'],
+  ];
+  it.each(PINNED.map((x) => [...x]))('fixtures/c18-legacy-7959ec9/%s carries the pinned bytes', (fixtureRel, repoRel, digest) => {
+    const fixture = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-7959ec9', fixtureRel as string));
+    expect(sha256(fixture)).toBe(digest);
+    const have = spawnSync('git', ['cat-file', '-e', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO });
+    if (have.status === 0) {
+      const shown = spawnSync('git', ['show', `${LEGACY_SHA}:${repoRel}`], { cwd: REPO, maxBuffer: 16 * 1024 * 1024 });
+      expect(shown.status).toBe(0);
+      expect(sha256(shown.stdout as unknown as Buffer)).toBe(digest);
+    }
+  });
+  it('the frozen WATCHDOG is executable and still exhibits the four disclosures', () => {
+    // A differential is only meaningful if the frozen leg runs. This asserts the predecessor's
+    // watchdog is present and carries the exact defects this pass closes, so the corrected
+    // behaviour above is a change and not a coincidence.
+    const frozen = readFileSync(join(__dirname, 'fixtures', 'c18-legacy-7959ec9', 'c18-watchdog.mjs'), 'utf8');
+    expect(frozen).toContain('MIN_SECRET_VALUE_LENGTH = 8');
+    expect(frozen).toMatch(/BEGIN \[A-Z0-9 \]\*\(PRIVATE KEY\|KEY\|CERTIFICATE\)/);
+    expect(frozen).toMatch(/\[\^\\s\/:@\]\+\):\(\[\^\\s\/@\]\+\)@/);   // username required
+    expect(frozen).not.toContain('unprotectableCredentialNames');
+  });
+});
