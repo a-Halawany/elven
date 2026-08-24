@@ -3156,7 +3156,7 @@ boundaries.
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.13 review, and no
 part of C19 has been started.
 
-## 29. C18.1.14 — THE FINAL COMPREHENSIVE PASS: A BROAD OMISSION AUDIT, AND THE MIGRATION-OWNED WORLD (delivered; awaiting final independent review)
+## 29. C18.1.14 — THE FINAL COMPREHENSIVE PASS: A BROAD OMISSION AUDIT, AND THE MIGRATION-OWNED WORLD (delivered; COMPLETED by §30)
 
 **Evidence-bearing source `7959ec993a00c7d29931e5546ccbe143328c6d02`.**
 Candidate CI: pull-request run `32720013004` (3/3 green, attempt 1). Source run `32720475317`
@@ -3318,3 +3318,135 @@ contaminated. It is superseded because its verifier accepts the migration-owned 
 **Status.** This is the final comprehensive C18 correction pass. It awaits final independent C18
 review; if that review finds no remaining reproducible claim-breaking false pass, C18 is closed and
 the next gate is C19. No part of C19 has been started.
+
+## 30. C18.1.14 COMPLETION — FIVE REPRODUCED DEFECTS CLOSED; C18 IS CLOSED
+
+**Evidence-bearing source `e2077e1c7e1997bb3814e87871d356ec0353ded5`.**
+Candidate CI: pull-request run `32752573402` (3/3 green, attempt 1). Source run `32753238367`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32753745417`
+(green, attempt 1).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-ef5a05ab7c79a16d919e7015eb69fd2107943cd956a39b6af40350094d19b8c2`
+(353,002 B wrapper) — exactly the archive `c18-db-paths-evidence-e2077e1….zip` (outer sha256
+`ef5a05ab7c79a16d919e7015eb69fd2107943cd956a39b6af40350094d19b8c2`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+delivered archive: **336 commands; 1,008 raw stream files; 11 fixed top-level regular files; 1,019
+regular files; + the `raw/` directory entry = 1,020 ZIP entries.** The checksum manifest binds
+1,018 members with none unbound, none mismatched and no self-entry; no unsafe, absolute, traversing
+or duplicate ZIP paths; `source_sha` equals the evidence SHA; the secret scan finds no provider
+token, no private-key block and none of the synthetic canaries. Verified from a fresh foreign
+checkout at exactly `e2077e1` offline and **online-hosted** (`standing=delivery-online`).
+
+### 30.1 Reproduced first, against the frozen predecessor
+
+The exact `7959ec9` verifier AND watchdog were frozen byte-for-byte — nineteen files, each pinned
+by sha256 and asserted against `git show 7959ec9:<path>` — and executed from a clean checkout at
+that SHA. Pristine evidence passes with zero findings, and all five defects reproduce:
+
+| | Defect | Frozen `7959ec9` behaviour |
+|---|---|---|
+| A | a seven-character secret-named value | printed verbatim on stdout, on stderr and inside a thrown error |
+| B | a multiline secret across delayed writes | every line forwarded unprotected, LF and CRLF alike |
+| C | `-----BEGIN PGP PRIVATE KEY BLOCK-----` | marker and payload forwarded whole |
+| D | `redis://:password@host` | password forwarded; the redactor required a nonempty username |
+| E | one context-secret digest shared by both paths | `{"ok":true,"problems":[]}` |
+
+### 30.2 Corrections
+
+**A — no secret is too short to protect.** `MIN_SECRET_VALUE_LENGTH = 8` silently dropped shorter
+values from the protected set; "too short to be a credential" is a guess about someone else's
+secret, and it was wrong. Every nonempty value of a credential-named variable is protected, and the
+length threshold now only chooses HOW: at or above a safe redaction length the value is redacted
+wherever it appears; below it the watchdog REFUSES TO LAUNCH with exit 3, naming the VARIABLE and
+never the value. Redacting a one- or two-character string would replace ordinary letters throughout
+every line and would itself disclose the value's length and positions, so refusing is the safe
+direction — and it is loud rather than silent.
+
+Writing that refusal surfaced a second problem immediately: `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH=1`
+matches `AUTH`, and refusing to launch over a boolean flag would have broken every run. Flag-shaped
+NAMES (`HAS_`, `IS_`, `USE_`, `ENABLE_`, …) and an enumerated set of boolean literals are excluded —
+exclusions on grammar, not another guess about length, so a genuinely short secret still refuses.
+
+**B — a multiline secret is protected line by line.** The filter emits complete lines, which is what
+makes a straddling token impossible; but an exact value containing a newline can never appear whole
+inside one emitted line, so a three-line secret was forwarded as three unprotected lines. Every
+nonempty line of a multiline value now joins the set alongside the whole value, in both LF and CRLF
+spellings.
+
+**C — one source-owned block-label definition.** The markers required a label ending directly in
+`PRIVATE KEY`, `KEY` or `CERTIFICATE`, so `PGP PRIVATE KEY BLOCK` matched none of them. Guessing at
+label suffixes one at a time is how that happened. The label is now captured whole and judged by a
+single predicate that BOTH the single-line pattern and the streaming tracker use, covering
+PKCS/PEM, OpenSSH, PGP and certificate families; the two can no longer disagree about what a
+protected block is. A block that opens and closes on one line is replaced by the marker too, since
+a redacted line still discloses its label and length. An unterminated block stays suppressed
+through EOF.
+
+**D — the username may be empty.** `redis://:password@host` is the ordinary shape for a cache URL,
+and requiring a nonempty username left exactly that password in the clear. Percent-encoded userinfo
+is covered; the existing query-parameter, assignment and Authorization redaction is unchanged.
+
+**E — a per-instance secret is stable within an instance and distinct between two.**
+`ctx.context_secret.secret` was classified per-instance with a `sha256-hex` grammar and nothing
+else, so ONE valid digest shared by both independently provisioned databases — in every snapshot,
+fully rebound — passed with zero findings: the deterministic-column comparison excludes
+per-instance columns by construction, and the grammar rule is satisfied by any well-formed digest.
+
+The distinction that closes it: a value the evidence must never contain can still have an
+observable EQUALITY STRUCTURE. Two instances that each generate a secret for themselves cannot
+agree on it, and one instance does not change it between snapshots. Both facts are decidable from
+the already-digested form alone. Missing, malformed, moved-within-a-path and shared-across-paths
+are four independent findings, and the raw secret never enters the comparison — a control asserts
+the contract module hashes nothing.
+
+This is reconciled with the ledger rather than contradicting it:
+`per-instance-generated-secrets` claimed presence, grammar and uniqueness while the verifier
+enforced only presence and grammar. The entry now states that the equality structure is observable
+and enforced, and that what remains undecidable is which particular value was drawn.
+
+### 30.3 Controls
+
+Hermetic gate **917** (was 839) · in-gate mutation/differential **309** (was 302) · API hermetic
+**1,866** · integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and
+boundaries clean · migrations 0001–0021 byte-identical (21 files, zero drift).
+
+The watchdog matrix covers, for every protected class: stdout and stderr; one write and delayed
+writes; every meaningful split point around the secret or marker — including a swept chunk boundary
+across the whole PGP block; adjacent prefix and suffix text; LF and CRLF; EOF with and without a
+final newline; long lines and truncation; child exit failure and watchdog timeout; and the
+thrown-error and diagnostic paths. Assertions require the complete canary absent AND every
+nontrivial substring of it absent, the private payload absent, userinfo and Authorization values
+absent, neighbouring nonsecret output still intelligible, and no child output bypassing the
+sanitizer. Every canary is synthetic. No existing control was weakened or removed.
+
+Local in-gate wall clock, three clean runs: **73 s / 76 s / 74 s → median 74 s** (≤180 s). Hosted
+control suite **56.11 s** (candidate: 52.88 s parallel + 3.23 s serial) and **43.33 s** (push/`main`:
+40.96 s + 2.37 s), both ≤90 s. Complete hosted C18 gate under six minutes. Every long command ran
+under the portable 900-second process-group watchdog; no stale monitors, orphaned processes or
+leftover gate containers.
+
+### 30.4 Closure
+
+All five reproduced defects are closed, each with a permanent control and a fully rebound
+differential proving the frozen predecessor accepted what the corrected verifier now rejects.
+Pristine evidence passes both. The complete local and hosted delivery chain is green on one
+attempt at each stage.
+
+* **C18.1.14 is COMPLETE.**
+* **C18 is CLOSED.**
+* The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
+  the specific values of per-instance generated secrets — remain **external-anchoring concerns for
+  C19**. They are declared in `c18-observational-limits.mjs` with what IS proved of each; none is a
+  hidden verifier claim, and none is described as proven.
+* **C19 is the next gate and has not been implemented.**
+
+Scope discipline held throughout: only `scripts/gate/**` and `apps/api/test/gate/**` change.
+Migrations 0001–0021, C15–C17 verifier logic, unrelated product code, the artifact and delivery
+provenance mechanisms, and all prior authentic evidence are untouched. The areas the independent
+audit found clear — ZIP ingress and safety, checksum and member binding, source-tree and
+hosted-artifact binding, raw-receipt reconstruction, the command graph, the catalog and
+serialized-type contracts, the seed and post-upgrade models, the migration-owned rows, the audit
+chains, suite binding, cleanup evidence and runtime sharding — were not reopened.
+
+`7959ec9` is recorded as **authentic and provenance-valid**, superseded only by this completion.
