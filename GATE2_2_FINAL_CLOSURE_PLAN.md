@@ -2991,7 +2991,7 @@ and its watchdog does not redact child output.
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.12 review, and no
 part of C19 has been started.
 
-## 28. C18.1.13 — A TIMESTAMP IS CANONICAL ONLY FOR ITS OWN PRODUCER, A ROW HAS A SHAPE, A VALUE HAS A TYPE (delivered; awaiting independent review)
+## 28. C18.1.13 — A TIMESTAMP IS CANONICAL ONLY FOR ITS OWN PRODUCER, A ROW HAS A SHAPE, A VALUE HAS A TYPE (delivered; SUPERSEDED by §29)
 
 **Evidence-bearing source `53fb8897053b20e810ba05be695d62d81ea65475`.**
 Candidate CI: pull-request run `32639332615` (3/3 green, attempt 1). Source run `32639658788`
@@ -3155,3 +3155,166 @@ boundaries.
 
 **Still open.** **C18 IS NOT CLOSED** — this delivery awaits independent C18.1.13 review, and no
 part of C19 has been started.
+
+## 29. C18.1.14 — THE FINAL COMPREHENSIVE PASS: A BROAD OMISSION AUDIT, AND THE MIGRATION-OWNED WORLD (delivered; awaiting final independent review)
+
+**Evidence-bearing source `7959ec993a00c7d29931e5546ccbe143328c6d02`.**
+Candidate CI: pull-request run `32720013004` (3/3 green, attempt 1). Source run `32720475317`
+(push/`main`, 3/3 green, attempt 1, with the blocking C18 gate) · finalizer run `32721043205`
+(green, attempt 1).
+
+**Delivery artifact (attempt-scoped, digest-bound, leak-free).**
+`c18-db-paths-evidence-a1-62cdd7d2419a02f7d5e3b271400d2b3ae7130e1c4f3e9ddc5ea4103f9dd6eb2b`
+(353,378 B wrapper) — exactly the archive `c18-db-paths-evidence-7959ec9….zip` (outer sha256
+`62cdd7d2419a02f7d5e3b271400d2b3ae7130e1c4f3e9ddc5ea4103f9dd6eb2b`, equal to both the sidecar and
+the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic: **336 commands;
+1,008 raw stream files; 11 fixed top-level regular files; 1,019 regular files; + the `raw/`
+directory entry = 1,020 ZIP entries.** The checksum manifest binds 1,018 members with none unbound,
+none mismatched and no self-entry; no unsafe, absolute, traversing or duplicate paths; `source_sha`
+equals the evidence SHA. Verified from a fresh foreign checkout at exactly `7959ec9` offline and
+**online-hosted** (`standing=delivery-online`).
+
+### 29.1 The audit, and what it found that no review had supplied
+
+This pass began with a broad omission audit of the whole verifier rather than with the supplied
+examples. The inventory covered migration-owned rows, every timestamp column of both eras, every
+`source_owned_value:false` / opaque / nullable / unobserved declaration, every coercion, every
+validator that could report success it had not established, every suppression-capable conditional,
+the Path A preservation rules and the A ↔ B comparisons, the raw-receipt reconstructions, the
+watchdog's thresholds and buffering, the offline / online / hosted paths, fixture trackedness, and
+control registration.
+
+**The blocking finding was not among the supplied examples.** Six catalogued tables carry rows in
+every snapshot of both eras and had **no value model at all**:
+
+    config.runtime_profile · ctx.context_secret · identity.roles ·
+    objects.canonical_field_registry · objects.schema_registry · policy.policy_bundles
+
+The frozen migrations write these rows, not the governed seed, so neither `SEED_COVERAGE` nor
+`POST_UPGRADE_COVERAGE` claimed them. The catalog contract fixed their COLUMNS and C18.1.13 fixed
+each row's field set and each value's JSON TYPE — and nothing fixed the values. The Path A ↔ Path B
+comparison did not close it either: `comparePosture` compares the fifteen CATALOG posture
+categories and never table rows.
+
+Eight fully rebound false packages followed, each accepted by the frozen `53fb889` verifier with
+zero findings, each applied identically to BOTH paths and every snapshot so no A/B or
+cross-snapshot comparison could see it. The most serious is `config.runtime_profile.profile` set to
+`production`: that is the value `ctx.issue_bootstrap` reads to decide whether a bootstrap
+capability may be minted at all, so the evidence would assert a production profile while carrying a
+bootstrap capability the migration forbids there — and pass.
+
+### 29.2 Corrections
+
+**The migration-owned contract.** `c18-migration-owned.json` is a tracked source artifact beside
+the catalog and serialized-type contracts, declaring each table's exact deterministic row multiset.
+It is checked in every snapshot of both eras; a deleted row, an added row and an altered value are
+each their own finding. A complementary Path A ↔ Path B row comparison is added, and the two do not
+stand in for one another: rewriting both paths defeats the comparison but not the declaration,
+rewriting one defeats neither. Columns whose values genuinely differ between two independent
+instances are separated explicitly as PER-INSTANCE and each carries a grammar — a per-instance
+value is not an unchecked one, which is why a five-character `ctx.context_secret.secret` now fails.
+
+**Coercions.** `Number(audit_seq)` in both chain models, in the head derivation, in the row-hash
+recomputation and in the predecessor lookup; `Date.parse` on an unvalidated `issued_at` inside the
+lifetime measurement. All removed: a non-integer chain position is refused rather than coerced into
+agreement, and a governed lifetime refuses a non-database instant at either end.
+
+**Rules that reported success they had not established.** `formula()` returned `[]` when its
+computation did not resolve — the very shape C18.1.12 closed in `bound()`, still standing.
+`slotRef()` used `(v ?? null) === (want ?? null)`, equating an UNRESOLVED slot with a legitimate
+null. The three timestamp relations returned `null` — meaning "satisfied" — on an unresolved or
+noncanonical counterpart. Each is now a finding.
+
+**A credential in a URL.** `_URL` sat in the watchdog's non-secret suffix list, excluding from the
+value set exactly the variables most likely to carry a password. It is removed, and
+`scheme://user:password@host` is redacted by shape wherever it appears.
+
+**The remaining unowned values, declared.** The audit inventoried every exemption. Most were
+constrained after all. Five values genuinely cannot be derived from any source artifact — the
+backend-assigned `txid`, `backend_pid` and effect serial, and the per-instance
+`context_key_hash` and context secret. They are declared in the observational-limits ledger with
+what IS proved of each, and routed to C19 external anchoring, rather than sitting as quiet
+exemptions inside a coverage table.
+
+### 29.3 Closed reconciliation
+
+Every issue from the supplied reviews and from this audit, with its disposition. "Reproduced"
+means accepted by the frozen predecessor named, fully rebound, with pristine evidence passing that
+same verifier with zero findings.
+
+| # | Issue | Reproduced against | Disposition | Permanent control | Final result |
+|---|---|---|---|---|---|
+| 1 | Capability tuple minted twice, the other never | `2c3cab3` | Corrected — exact multiset | multiset + duplicate/omission cases | PASS |
+| 2 | Non-uuid family on both linked rows | `2c3cab3` | Corrected — `uuidBound` | conjunctive-binding matrix | PASS |
+| 3 | Non-digest on both token-hash fields | `2c3cab3` | Corrected — `digestBound` | conjunctive-binding matrix | PASS |
+| 4 | Family deleted from both linked rows | `2c3cab3` | Corrected — exact field sets | deletion axis | PASS |
+| 5 | Both token-hash fields deleted | `2c3cab3` | Corrected — exact field sets | deletion axis | PASS |
+| 6 | Linked issue instants respelled `+0000` | `2c3cab3` | Corrected — canonical grammar | respelling axis | PASS |
+| 7 | Every session lifetime doubled | `2c3cab3` | Corrected — source-owned TTL | lifetime axis | PASS |
+| 8 | Every capability lifetime doubled | `2c3cab3` | Corrected — source-owned TTL | lifetime axis | PASS |
+| 9 | Chain-head stamp respelled | `2c3cab3` | Corrected — byte equality | head-stamp cases | PASS |
+| 10 | Closing `occurred_at` respelled, rechained | `2c3cab3` | Corrected — body grammar | rechain axis | PASS |
+| 11 | Decision id a coordinated non-uuid | `2c3cab3` | Corrected — id grammars | id-corruption axis | PASS |
+| 12 | Watchdog leaked an inherited secret | `2c3cab3` | Corrected — piped redaction | 8 stream cases | PASS |
+| 13 | Post-upgrade expiry `+00:00`→`Z` | `220b26c` | Corrected — `pgTimestamp` | generated family matrix | PASS |
+| 14 | Seeded expiry `+00:00`→`Z` | `220b26c` | Corrected — `pgTimestamp` | generated family matrix | PASS |
+| 15 | Nullable seeded field omitted everywhere | `220b26c` | Corrected — exact row shapes | shape cases, all eras | PASS |
+| 16 | `audit_seq` as a numeric string | `220b26c` | Corrected — serialized types | type matrix | PASS |
+| 17 | `txid` as a JSON number | `220b26c` | Corrected — serialized types | type matrix | PASS |
+| 18 | Generic env credential leaked | `220b26c` | Corrected — value-aware redaction | 8 canary cases | PASS |
+| 19 | Canary across the carry boundary (19/36) | `220b26c` | Corrected — complete lines only | every-offset case | PASS |
+| 20 | Multiline private material split | `220b26c` | Corrected — cross-chunk state | delayed-write cases | PASS |
+| 21 | A role re-scoped, both paths | `53fb889` | Corrected — migration-owned | 12 migration-owned cases | PASS |
+| 22 | A role deleted, both paths | `53fb889` | Corrected — migration-owned | multiset cases | PASS |
+| 23 | Runtime profile → `production` | `53fb889` | Corrected — migration-owned | profile case | PASS |
+| 24 | Field registry rows deleted | `53fb889` | Corrected — migration-owned | multiset cases | PASS |
+| 25 | An authoritative field de-authorised | `53fb889` | Corrected — migration-owned | de-authorisation case | PASS |
+| 26 | Cited bundle marked `draft` | `53fb889` | Corrected — migration-owned | bundle cases | PASS |
+| 27 | Cited bundle renamed | `53fb889` | Corrected — migration-owned | bundle cases | PASS |
+| 28 | Context secret not a digest | `53fb889` | Corrected — per-instance grammar | per-instance cases | PASS |
+| 29 | `formula()` passed on unresolved input | audit (code) | Corrected — finding | unresolved-counterpart cases | PASS |
+| 30 | `slotRef()` null/undefined equivalence | audit (code) | Corrected — finding | unresolved-counterpart cases | PASS |
+| 31 | Timestamp relations passed on unresolved | audit (code) | Corrected — finding | unresolved-counterpart cases | PASS |
+| 32 | `Number()` coercion of chain positions | audit (code) | Corrected — integer required | integer + source-scan cases | PASS |
+| 33 | `Date.parse` on an unvalidated instant | audit (code) | Corrected — family required | lifetime case | PASS |
+| 34 | `_URL` excluded credential URLs | audit (code) | Corrected — removed + shape rule | 3 URL cases | PASS |
+| 35 | Bootstrap marking instant | `a424505` | **Observationally unprovable** — interval proved, exact instant not | ledger + interval enforcement | DECLARED |
+| 36 | Backend-assigned `txid`/`pid`/serial | audit | **Observationally unprovable** — type and grammar proved | ledger + grammar rules | DECLARED |
+| 37 | Per-instance generated secrets | audit | **Observationally unprovable** — digest, presence, uniqueness proved | ledger + grammar rules | DECLARED |
+
+Non-blocking observations that were **not** turned into further correction cycles, in line with the
+final-pass instruction: the six volatile seed columns are already pinned to `null` by their own
+rules; the always-empty audit tables are already covered by the unobserved-column rule; and a raw
+`generic-api-key` heuristic flags 76 strings in the extracted archive, all of which are its own
+sha-256 content digests, already asserted by a control that names what must be absent.
+
+### 29.4 Controls, and runtime
+
+Hermetic gate **839** (was 789) · in-gate mutation/differential **302** (was 289) · API hermetic
+**1,788** · integration **297** · acceptance **58** · Playwright **10** · typecheck, build, lint and
+boundaries clean · migrations 0001–0021 byte-identical (21 files, zero drift).
+
+A new control asserts every frozen predecessor fixture is TRACKED and not ignored — the C18.1.10
+failure mode, made permanent for all thirteen frozen legs. The registration bijection control from
+C18.1.13 continues to prove every block runs exactly once.
+
+Local in-gate wall clock, three clean runs: **66 s / 65 s / 67 s → median 66 s** (≤180 s). Hosted
+control suite **38.19 s** (candidate: 36.18 s parallel + 2.01 s serial) and **55.99 s** (push/`main`:
+53.16 s + 2.83 s), both ≤90 s. Complete hosted C18 gate **1 m 41 s** (≤6 min). Every long command
+ran under the portable 900-second process-group watchdog; no stale monitors, orphaned processes or
+leftover gate containers.
+
+**A local scan caught what CI would have.** A new synthetic test constant named `URL_SECRET` tripped
+gitleaks' `generic-api-key` rule — the exact class that failed a C18.1.11 delivery. It was renamed
+before the branch was pushed, so no allowlist entry was needed and no delivery attempt was wasted.
+
+**Scope discipline.** Only `scripts/gate/**` and `apps/api/test/gate/**` change. Migrations
+0001–0021, C15–C17 verifier logic, unrelated product code, the artifact and delivery provenance
+mechanisms, and all prior authentic evidence are untouched.
+
+`53fb889` is recorded as **authentic, leak-free and provenance-valid**. Its evidence is NOT
+contaminated. It is superseded because its verifier accepts the migration-owned packages above.
+
+**Status.** This is the final comprehensive C18 correction pass. It awaits final independent C18
+review; if that review finds no remaining reproducible claim-breaking false pass, C18 is closed and
+the next gate is C19. No part of C19 has been started.
