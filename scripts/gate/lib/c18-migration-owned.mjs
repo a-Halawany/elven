@@ -148,6 +148,82 @@ export function verifyMigrationOwned({ snapshot, label, declared }) {
 }
 
 /**
+ * C18.1.14-final — A PER-INSTANCE SECRET MUST DIFFER BETWEEN INSTANCES.
+ *
+ * `ctx.context_secret.secret` was classified per-instance and given a `sha256-hex` grammar, and
+ * that was the whole of its contract. An archive in which BOTH independently provisioned databases
+ * carried the SAME valid 64-hex digest — in every snapshot, fully rebound — was accepted with zero
+ * findings, because the deterministic-column comparison excludes per-instance columns by
+ * construction and the grammar rule is satisfied by any well-formed digest.
+ *
+ * Two independent instances each generate this value for themselves; agreeing on it is not
+ * something that happens. What the evidence CAN decide about a value it must not contain is its
+ * EQUALITY STRUCTURE:
+ *
+ *   • stable within one instance — every snapshot of a path carries the same digest;
+ *   • distinct across instances — Path A and Path B must not share one.
+ *
+ * That is exactly the property `per-instance-generated-secrets` in the observational-limits ledger
+ * says is observable while the raw value is not: the ledger claims the digest's presence, grammar
+ * and uniqueness, and this closes the gap between that claim and what was enforced. The raw secret
+ * never enters the evidence — only its already-digested form is compared, and only for equality.
+ *
+ * Each failure is independent: a missing digest, a malformed one, one that moves within a path, and
+ * one shared across paths are four findings, not one.
+ */
+export function verifyPerInstanceDistinctness({ paths, declared }) {
+  const problems = [];
+  const checked = [];
+  for (const [table, spec] of Object.entries(declared)) {
+    for (const column of spec.distinctPerInstanceColumns ?? []) {
+      if (!spec.perInstanceColumns.includes(column)) {
+        problems.push(`migration-owned: '${table}.${column}' is declared distinct-per-instance but `
+          + 'is not a per-instance column');
+        continue;
+      }
+      const seen = new Map();       // path label → the single digest that path carries
+      for (const { label, snapshots } of paths) {
+        const values = new Set();
+        for (const { label: snapLabel, snapshot } of snapshots) {
+          const rows = snapshot?.tables?.[table]?.rows ?? [];
+          for (const row of rows) {
+            if (!(column in row)) {
+              problems.push(`per-instance distinctness: ${snapLabel} '${table}.${column}' is `
+                + 'missing, so its equality structure cannot be judged');
+              continue;
+            }
+            const rule = PER_INSTANCE_RULES[spec.perInstanceRules?.[column]];
+            if (rule !== undefined && rule(row[column]).length > 0) {
+              problems.push(`per-instance distinctness: ${snapLabel} '${table}.${column}' is `
+                + 'malformed, so its equality structure cannot be judged');
+              continue;
+            }
+            values.add(row[column]);
+          }
+        }
+        if (values.size > 1) {
+          problems.push(`per-instance distinctness: '${table}.${column}' takes ${values.size} `
+            + `different values across ${label}'s own snapshots; one instance generates it once`);
+        }
+        if (values.size === 1) seen.set(label, [...values][0]);
+      }
+      const labels = [...seen.keys()];
+      for (let i = 0; i < labels.length; i += 1) {
+        for (let k = i + 1; k < labels.length; k += 1) {
+          if (seen.get(labels[i]) === seen.get(labels[k])) {
+            problems.push(`per-instance distinctness: '${table}.${column}' is SHARED between `
+              + `${labels[i]} and ${labels[k]}; two independently provisioned instances each `
+              + 'generate this value for themselves and cannot agree on it');
+          }
+        }
+      }
+      checked.push(`${table}.${column}`);
+    }
+  }
+  return { problems, checked: checked.sort() };
+}
+
+/**
  * The migration-owned rows must be IDENTICAL on the two independent paths.
  *
  * The declaration alone already fails a package that rewrites both paths the same way; this adds
@@ -201,6 +277,12 @@ export function verifyMigrationOwnedRegistry({ catalog, declared }) {
       if (PER_INSTANCE_RULES[named] === undefined) {
         problems.push(`migration-owned: '${table}.${column}' is per-instance but declares no known `
           + `grammar (${j(named)})`);
+      }
+    }
+    for (const column of spec.distinctPerInstanceColumns ?? []) {
+      if (!spec.perInstanceColumns.includes(column)) {
+        problems.push(`migration-owned: '${table}.${column}' is declared distinct-per-instance but `
+          + 'is not classified per-instance');
       }
     }
     if (spec.rows.length === 0) {

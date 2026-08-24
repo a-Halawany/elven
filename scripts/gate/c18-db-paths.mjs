@@ -847,6 +847,20 @@ async function runCommand(args) {
       a: after, b: virgin, declared: migrationOwnedContract,
       labelA: 'path-a-after', labelB: 'path-b-virgin',
     }).problems);
+    // C18.1.14-final — a per-instance secret is stable WITHIN an instance and distinct BETWEEN
+    // them. Its raw value never enters the evidence; only the equality structure of its digest is
+    // judged, which is exactly what the observational-limits ledger says is observable.
+    problems.push(...verifyPerInstanceDistinctness({
+      declared: migrationOwnedContract,
+      paths: [
+        { label: 'path-a',
+          snapshots: [
+            { label: 'a-preseed', snapshot: preseed }, { label: 'a-before', snapshot: before },
+            { label: 'a-after', snapshot: after }, { label: 'a-final', snapshot: finalSnap },
+          ] },
+        { label: 'path-b', snapshots: [{ label: 'b-virgin', snapshot: virgin }] },
+      ],
+    }).problems);
 
     phase = 'isolation';
     const receiptFor = (inst, path) => ({
@@ -1286,9 +1300,25 @@ export async function verifySemantics({
       problems.push(...verifyMigrationOwned({ snapshot: snap, label: lbl, declared: migrationOwned }).problems);
     }
     // …and the complementary claim: two independent runs of the same frozen migrations agree.
+    const migrationOwnedDecl = loadMigrationOwned(join(root, 'scripts', 'gate', 'lib'));
     problems.push(...compareMigrationOwnedAcrossPaths({
-      a: after, b: virgin, declared: loadMigrationOwned(join(root, 'scripts', 'gate', 'lib')),
+      a: after, b: virgin, declared: migrationOwnedDecl,
       labelA: 'path-a-after', labelB: 'path-b-virgin',
+    }).problems);
+    // C18.1.14-final — stable within one instance, distinct between two. Only the equality
+    // structure of the already-digested value is judged; the raw secret never enters the evidence.
+    problems.push(...verifyPerInstanceDistinctness({
+      declared: migrationOwnedDecl,
+      paths: [
+        { label: 'path-a',
+          snapshots: [
+            ...(preseed === null ? [] : [{ label: 'a-preseed', snapshot: preseed }]),
+            { label: 'a-before', snapshot: before },
+            { label: 'a-after', snapshot: after },
+            { label: 'a-final', snapshot: finalSnap },
+          ] },
+        { label: 'path-b', snapshots: [{ label: 'b-virgin', snapshot: virgin }] },
+      ],
     }).problems);
 
     // ── BIND PROCESSED SNAPSHOTS TO THEIR COMMAND-BOUND RAW RECEIPTS ──────────

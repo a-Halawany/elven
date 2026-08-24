@@ -47,6 +47,20 @@
  * derived from any source artifact, and they are declared below rather than sitting as quiet
  * exemptions inside a coverage table. Each still carries a real rule; what cannot be decided is
  * WHICH legitimate value was assigned, and that is stated plainly instead of implied to be proven.
+ *
+ * ── C18.1.14-final: EQUALITY STRUCTURE IS OBSERVABLE EVEN WHEN THE VALUE IS NOT ──
+ *
+ * `per-instance-generated-secrets` claimed presence, grammar and uniqueness — and the verifier
+ * enforced only presence and grammar. An archive in which BOTH independently provisioned databases
+ * carried the SAME valid 64-hex `ctx.context_secret.secret`, in every snapshot and fully rebound,
+ * was accepted with zero findings. The gap was not in the honesty of the limit but in the reach of
+ * the enforcement behind it.
+ *
+ * The distinction that matters: a value the evidence must never contain can still have an
+ * observable EQUALITY STRUCTURE. Two instances that each generate a secret for themselves cannot
+ * agree on it, and one instance does not change it between snapshots. Both facts are decidable
+ * from the already-digested form alone, and both are now enforced. What remains undecidable — and
+ * is what this entry claims — is which particular value was drawn.
  */
 
 export const OBSERVATIONAL_LIMITS = Object.freeze([
@@ -70,10 +84,11 @@ export const OBSERVATIONAL_LIMITS = Object.freeze([
     undecidable: 'the specific value of a secret generated independently by each instance',
     because: 'the value is random by construction — deriving it from source would defeat its '
       + 'purpose — and the two paths legitimately disagree on it',
-    proved: 'each is a sha-256 hex digest, present on every row it belongs to, and unique across '
-      + 'the sessions of a run',
-    residual: 'one well-formed random digest can be exchanged for another without contradicting '
-      + 'anything the evidence records',
+    proved: 'each is a sha-256 hex digest, present on every row it belongs to, unique across the '
+      + "sessions of a run, stable across one instance's snapshots, and — for the context secret — "
+      + 'DISTINCT between the two independently provisioned instances',
+    residual: 'one well-formed random digest can be exchanged for another, provided the exchange '
+      + 'preserves that whole equality structure; the specific value remains undecidable',
     anchorRequires: 'a key-management attestation binding the generated value to the instance',
     ledger: 'C19 external-anchoring',
   }),

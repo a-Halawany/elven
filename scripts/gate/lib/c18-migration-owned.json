@@ -15,7 +15,8 @@
     ],
     "perInstanceRules": {
       "set_at": "db-timestamp"
-    }
+    },
+    "distinctPerInstanceColumns": []
   },
   "ctx.context_secret": {
     "perInstanceColumns": [
@@ -31,7 +32,10 @@
     ],
     "perInstanceRules": {
       "secret": "sha256-hex"
-    }
+    },
+    "distinctPerInstanceColumns": [
+      "secret"
+    ]
   },
   "identity.roles": {
     "perInstanceColumns": [],
@@ -67,7 +71,8 @@
         "scope": "TENANT"
       }
     ],
-    "perInstanceRules": {}
+    "perInstanceRules": {},
+    "distinctPerInstanceColumns": []
   },
   "objects.canonical_field_registry": {
     "perInstanceColumns": [],
@@ -293,7 +298,8 @@
         "note": null
       }
     ],
-    "perInstanceRules": {}
+    "perInstanceRules": {},
+    "distinctPerInstanceColumns": []
   },
   "objects.schema_registry": {
     "perInstanceColumns": [
@@ -341,7 +347,8 @@
     ],
     "perInstanceRules": {
       "created_at": "db-timestamp"
-    }
+    },
+    "distinctPerInstanceColumns": []
   },
   "policy.policy_bundles": {
     "perInstanceColumns": [
@@ -363,6 +370,7 @@
     ],
     "perInstanceRules": {
       "created_at": "db-timestamp"
-    }
+    },
+    "distinctPerInstanceColumns": []
   }
 }
