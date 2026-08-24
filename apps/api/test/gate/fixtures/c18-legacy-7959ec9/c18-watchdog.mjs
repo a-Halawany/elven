@@ -68,66 +68,8 @@ const SECRET_ENV_NAME_RE = /(TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENT
 // common places a password actually lives — `postgres://user:pw@host/db` — so excluding
 // credential-named URL variables from the value set excluded exactly the values worth protecting.
 const NON_SECRET_ENV_SUFFIX_RE = /(_SOCK|_SOCKET|_FILE|_DIR|_HOME|_ENABLED|_REQUIRED)$/i;
-/**
- * C18.1.14-final — names that describe a FLAG about a credential rather than a credential.
- * `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH=1` matches `AUTH`, and treating its value as an
- * unprotectable secret would refuse to launch over a boolean. The exclusion is on the NAME's
- * grammar, not on the value's length, so a genuinely short secret still refuses.
- */
-const FLAG_ENV_NAME_RE = /(^|_)(HAS|IS|USE|ENABLE|ALLOW|SKIP|REQUIRE|WITH|NO)_/i;
-/**
- * Values that cannot be a credential in any system: the boolean and empty-ish literals. Enumerated
- * exactly, so this is a closed exclusion rather than another length guess.
- */
-const NON_SECRET_VALUES = new Set(['0', '1', 'true', 'false', 'yes', 'no', 'on', 'off', 'null', 'none']);
-/**
- * C18.1.14-final — NO SECRET IS TOO SHORT TO PROTECT.
- *
- * A `MIN_SECRET_VALUE_LENGTH` of 8 silently dropped anything shorter from the protected set, so a
- * seven-character password in a secret-named variable was printed verbatim. "Too short to be a
- * credential" is a guess about someone else's secret, and it was wrong.
- *
- * Every nonempty value of a credential-named variable is now protected, and the length threshold
- * only chooses HOW:
- *
- *   • at or above `REDACTABLE_MIN_LENGTH`, the value is redacted wherever it appears;
- *   • below it, the watchdog REFUSES TO LAUNCH, naming the VARIABLE and never the value.
- *
- * The refusal exists because redacting a one- or two-character string would replace ordinary
- * letters throughout every line of output: the run would be unreadable, and the redaction pattern
- * would itself disclose the value's length and every position it occupies. Refusing is the safe
- * direction and it is loud — a secret that cannot be protected safely is a configuration problem,
- * not something to pass over in silence.
- */
-export const REDACTABLE_MIN_LENGTH = 4;
-
-/** Is this variable's NAME one that indicates a credential value? */
-export const isCredentialName = (name) => SECRET_ENV_NAME_RE.test(name)
-  && !NON_SECRET_ENV_SUFFIX_RE.test(name)
-  && !FLAG_ENV_NAME_RE.test(name);
-/** Is this VALUE one that cannot be a credential, whatever the variable is called? */
-export const isNonSecretValue = (value) => NON_SECRET_VALUES.has(String(value).toLowerCase());
-
-/**
- * C18.1.14-final — A MULTILINE SECRET IS PROTECTED LINE BY LINE TOO.
- *
- * The filter emits COMPLETE LINES, which is what makes a straddling token impossible; but an exact
- * value containing a newline can never appear whole inside one emitted line, so a three-line secret
- * was forwarded as three unprotected lines. Every nonempty line of a multiline value therefore
- * enters the set alongside the whole value, in both LF and CRLF spellings.
- */
-const expandValue = (value) => {
-  const out = new Set([value]);
-  if (/\r?\n/.test(value)) {
-    out.add(value.replace(/\r?\n/g, '\r\n'));
-    out.add(value.replace(/\r\n/g, '\n'));
-    for (const line of value.split(/\r?\n/)) {
-      const trimmed = line.replace(/\r$/, '');
-      if (trimmed.length >= REDACTABLE_MIN_LENGTH) out.add(trimmed);
-    }
-  }
-  return out;
-};
+/** Below this length a value is too short to be a credential and too likely to be common text. */
+const MIN_SECRET_VALUE_LENGTH = 8;
 
 /**
  * The exact credential values this process must never emit, taken from the environment it was
@@ -136,27 +78,13 @@ const expandValue = (value) => {
 export function credentialValuesFromEnv(env = process.env) {
   const values = new Set();
   for (const [name, value] of Object.entries(env ?? {})) {
-    if (typeof value !== 'string' || value === '') continue;
-    if (!isCredentialName(name) || isNonSecretValue(value)) continue;
-    if (value.length < REDACTABLE_MIN_LENGTH) continue;   // `unprotectableCredentialNames` owns these
-    for (const v of expandValue(value)) values.add(v);
+    if (typeof value !== 'string') continue;
+    if (value.length < MIN_SECRET_VALUE_LENGTH) continue;
+    if (!SECRET_ENV_NAME_RE.test(name)) continue;
+    if (NON_SECRET_ENV_SUFFIX_RE.test(name)) continue;
+    values.add(value);
   }
   return values;
-}
-
-/**
- * The NAMES of credential-named variables whose values are too short to redact safely. Only the
- * names are returned — never the values — so the caller can refuse to launch and say which
- * variable to fix.
- */
-export function unprotectableCredentialNames(env = process.env) {
-  const names = [];
-  for (const [name, value] of Object.entries(env ?? {})) {
-    if (typeof value !== 'string' || value === '') continue;
-    if (!isCredentialName(name) || isNonSecretValue(value)) continue;
-    if (value.length < REDACTABLE_MIN_LENGTH) names.push(name);
-  }
-  return names.sort();
 }
 
 const escapeLiteral = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -193,10 +121,7 @@ export function redactSecrets(text) {
     // ONE line and a block split across writes are redacted by the same definition. The narrower
     // `PRIVATE KEY`-only form left `-----BEGIN … KEY-----` and certificate blocks untouched here
     // while the stream tracker suppressed them, which is an inconsistency waiting to be a hole.
-    // C18.1.14-final: the same label definition the streaming tracker uses, so a block arriving on
-    // ONE line and a block split across writes are judged identically.
-    .replace(/-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----/g,
-      (block) => (isProtectedBlockLine(block, 'begin') ? '[REDACTED]' : block))
+    .replace(/-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|KEY|CERTIFICATE)-----[\s\S]*?-----END [A-Z0-9 ]*(?:PRIVATE KEY|KEY|CERTIFICATE)-----/g, '[REDACTED]')
     // KEY=value and KEY: value where the KEY names a secret.
     .replace(new RegExp(`(${SECRET_KEY}\\s*[=:]\\s*)(\\S+)`, 'gi'), '$1[REDACTED]')
     // --token VALUE / --password VALUE, and Authorization headers.
@@ -204,10 +129,7 @@ export function redactSecrets(text) {
     .replace(/(Authorization\s*:\s*)(\S+\s*\S*)/gi, '$1[REDACTED]')
     // C18.1.14: userinfo embedded in a URL — `scheme://user:password@host` — is a credential
     // wherever it appears, whatever the variable holding it was called.
-    // C18.1.14-final: the username may be EMPTY — `redis://:password@host` is the ordinary shape
-    // for a cache URL, and requiring a nonempty username left exactly that password in the clear.
-    // Percent-encoded userinfo is covered: `%` is an ordinary character in both classes.
-    .replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^\s/:@]*):([^\s/@]+)@/g, '$1$2:[REDACTED]@');
+    .replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/g, '$1$2:[REDACTED]@');
 }
 
 /** The marker that replaces a line too long for the filter to inspect whole. */
@@ -217,23 +139,8 @@ export const PRIVATE_BLOCK_MARKER = '[REDACTED: private material block]\n';
 /** The longest unbroken line the filter will hold, and therefore inspect, before dropping it. */
 export const MAX_LINE = 1 << 16;
 
-/**
- * C18.1.14-final — ONE SOURCE-OWNED BLOCK-LABEL DEFINITION.
- *
- * The previous markers required a label ending directly in `PRIVATE KEY`, `KEY` or `CERTIFICATE`,
- * so `-----BEGIN PGP PRIVATE KEY BLOCK-----` matched none of them and the whole block was
- * forwarded. Guessing at label suffixes one at a time is how that happened. The label is now
- * captured whole and judged by a single predicate that BOTH the single-line pattern and the
- * streaming tracker use, so the two can never disagree about what a protected block is.
- */
-export const PROTECTED_BLOCK_LABEL_RE = /(PRIVATE KEY|PGP MESSAGE|CERTIFICATE|KEY)/;
-const BLOCK_BEGIN_RE = /-----BEGIN ([A-Z0-9 ]+?)-----/;
-const BLOCK_END_RE = /-----END ([A-Z0-9 ]+?)-----/;
-/** Does this line open or close a block whose contents must never be forwarded? */
-export const isProtectedBlockLine = (line, which = 'begin') => {
-  const m = (which === 'begin' ? BLOCK_BEGIN_RE : BLOCK_END_RE).exec(String(line));
-  return m !== null && PROTECTED_BLOCK_LABEL_RE.test(m[1]);
-};
+const BEGIN_PRIVATE_RE = /-----BEGIN [A-Z0-9 ]*(PRIVATE KEY|KEY|CERTIFICATE)-----/;
+const END_PRIVATE_RE = /-----END [A-Z0-9 ]*(PRIVATE KEY|KEY|CERTIFICATE)-----/;
 
 /**
  * A streaming redactor that forwards COMPLETE LINES only.
@@ -256,17 +163,16 @@ export function createRedactingStream(sink, values = null) {
 
   const emitLine = (line) => {
     if (inPrivate) {
-      if (isProtectedBlockLine(line, 'end')) {
+      if (END_PRIVATE_RE.test(line)) {
         inPrivate = false;
         sink(PRIVATE_BLOCK_MARKER);
       }
       return;                                   // the body never reaches the sink
     }
-    if (isProtectedBlockLine(line, 'begin')) {
-      // A block that opens and closes on ONE line is replaced by the marker too: forwarding the
-      // redacted line would still disclose its label and length, and the marker says everything a
-      // reader needs.
-      if (isProtectedBlockLine(line, 'end')) { sink(PRIVATE_BLOCK_MARKER); return; }
+    if (BEGIN_PRIVATE_RE.test(line)) {
+      // A block that begins and ends on one line is handled by the shape patterns; otherwise the
+      // filter holds the state until the end marker arrives, however many writes later.
+      if (END_PRIVATE_RE.test(line)) { sink(clean(line)); return; }
       inPrivate = true;
       return;
     }
@@ -325,16 +231,6 @@ if (isMain) {
   const child = spawn(command[0], command.slice(1), {
     stdio: ['inherit', 'pipe', 'pipe'], detached: true,
   });
-  // C18.1.14-final: a credential-named value too short to redact safely stops the run before the
-  // child is spawned. The diagnostic names the VARIABLE and never the value, and exit code 3
-  // distinguishes it from a usage error (2) and from a timeout (124).
-  const unprotectable = unprotectableCredentialNames(process.env);
-  if (unprotectable.length > 0) {
-    console.error('c18-watchdog: REFUSING TO LAUNCH — these credential-named variables hold values '
-      + `too short to redact safely: ${unprotectable.join(', ')}. Lengthen the value or rename the `
-      + 'variable; the value itself is not printed.');
-    process.exit(3);
-  }
   // The exact credential values this process was given, held in memory and never emitted.
   const secretValues = credentialValuesFromEnv(process.env);
   const out = createRedactingStream((t) => process.stdout.write(t), secretValues);
