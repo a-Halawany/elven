@@ -644,37 +644,75 @@ export async function terminateTree({
  */
 
 /**
- * The environment variable carrying the run marker, and the docker label derived from it.
+ * ── THREE DISTINCT IDENTITIES, BECAUSE THEY ANSWER DIFFERENT QUESTIONS ──
  *
- * The name matters. `C19_RUN_TOKEN` would be classified as a CREDENTIAL by the Stage 1 registry —
- * `TOKEN` is a credential component — and its value would then be redacted out of the very
- * diagnostics that exist to report containment, and out of the docker label the sweep queries on.
- * A marker is a public identifier, so it is named as one.
+ * Collapsing these into one identifier is what made a nested watchdog kill its own parent: sharing
+ * one marker meant "processes I may terminate" and "resources this gate run created" were the same
+ * set, and an inner supervisor inherited authority over the entire outer run.
+ *
+ *   EYE_RUN_ID            this watchdog's OWN id. Minted fresh, never inherited.
+ *   EYE_RUN_ID_CHAIN      the ordered ids of every watchdog from the outermost to this one.
+ *   EYE_GATE_RESOURCE_ID  the OUTERMOST run's id, stable for the whole gate run, used to label
+ *                         docker resources so cleanup targets exact resources this run created.
+ *
+ * OWNERSHIP IS CHAIN CONTAINMENT, and that single rule gets both nested directions right:
+ *
+ *   • an OUTER watchdog owns a descendant of a nested watchdog, because that descendant's chain
+ *     still contains the outer id — so a grandchild that setsid'd and reparented under a nested
+ *     supervisor is still contained by the outer one;
+ *   • an INNER watchdog does NOT own its parent, the outer test runner, its workers or its
+ *     siblings, because their chains do not contain the inner id.
+ *
+ * The names matter too. A name containing TOKEN, SECRET, PASS or KEY would be classified as a
+ * CREDENTIAL by the Stage 1 registry, and its value would then be redacted out of the very
+ * diagnostics that report containment and out of the docker label the sweep queries on. These are
+ * public identifiers, so they are named as public identifiers.
  */
-export const RUN_MARKER_VAR = 'C19_RUN_MARKER';
-export const DOCKER_RUN_LABEL = 'c19.run';
+export const RUN_ID_VAR = 'EYE_RUN_ID';
+export const RUN_CHAIN_VAR = 'EYE_RUN_ID_CHAIN';
+export const GATE_RESOURCE_VAR = 'EYE_GATE_RESOURCE_ID';
+export const DOCKER_RUN_LABEL = 'eye.gate.run';
 
-/** Parse `ps -Eww -o pid=,command=` output, returning pids whose environment carries the token. */
-export function parseMarkedPs(text, token) {
+/** Split a chain value into ids. Tolerant of blanks so a malformed chain cannot throw on the
+ *  termination path, where giving up would leak exactly what it exists to prevent. */
+export const parseChain = (value) => String(value ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+
+/** Does this environment's chain make the process owned by the watchdog whose id is `runId`? */
+export const chainOwns = (chainValue, runId) => typeof runId === 'string' && runId !== ''
+  && parseChain(chainValue).includes(runId);
+
+/**
+ * Parse `ps -A -E -ww -o pid=,command=` output, returning pids whose environment chain contains
+ * `runId`. The chain is read out of the flattened environment text, so a process is matched by
+ * what it INHERITED rather than by who its parent happens to be now.
+ */
+export function parseMarkedPs(text, runId) {
   const pids = [];
-  if (typeof token !== 'string' || token === '') return pids;
+  if (typeof runId !== 'string' || runId === '') return pids;
   for (const line of String(text ?? '').split('\n')) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line);
     if (m === null) continue;
-    if (m[2].includes(`${RUN_MARKER_VAR}=${token}`)) pids.push(Number(m[1]));
+    const chain = new RegExp(`${RUN_CHAIN_VAR}=([^\\s]*)`).exec(m[2]);
+    if (chain !== null && chainOwns(chain[1], runId)) pids.push(Number(m[1]));
   }
   return pids;
 }
 
-/** Parse one `/proc/<pid>/environ` blob (NUL-separated) for the token. */
-export const environHasToken = (blob, token) => typeof token === 'string' && token !== ''
-  && String(blob ?? '').split('\0').includes(`${RUN_MARKER_VAR}=${token}`);
+/** Does this `/proc/<pid>/environ` blob (NUL-separated) place the process in `runId`'s chain? */
+export function environHasToken(blob, runId) {
+  for (const entry of String(blob ?? '').split('\0')) {
+    if (entry.startsWith(`${RUN_CHAIN_VAR}=`)) {
+      return chainOwns(entry.slice(RUN_CHAIN_VAR.length + 1), runId);
+    }
+  }
+  return false;
+}
 
 /**
  * Every pid owned by this run, by ENVIRONMENT rather than by ancestry. Injected readers keep the
  * whole thing testable; the defaults are the two real system interfaces.
  */
-export function ownedPids(token, {
+export function ownedPids(runId, {
   platform = process.platform,
   // `-A` is load-bearing: without it macOS `ps` lists only the CURRENT SESSION, which is exactly
   // what a process that called setsid has left. Omitting it made the ownership sweep blind to the
@@ -684,9 +722,9 @@ export function ownedPids(token, {
   readEnviron = (pid) => { try { return readFileSync(`/proc/${pid}/environ`, 'utf8'); } catch { return ''; } },
 } = {}) {
   if (platform === 'linux') {
-    return listProcPids().filter((pid) => environHasToken(readEnviron(pid), token));
+    return listProcPids().filter((pid) => environHasToken(readEnviron(pid), runId));
   }
-  return parseMarkedPs(readPsE(), token);
+  return parseMarkedPs(readPsE(), runId);
 }
 
 /**
@@ -712,8 +750,8 @@ export const parseDockerIds = (text) => String(text ?? '').split('\n')
  * The resources this run owns, by label. Returned as a flat inventory so a control can compare a
  * before and an after without knowing docker's output shapes.
  */
-export function dockerInventory(token, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
-  const filter = `label=${DOCKER_RUN_LABEL}=${token}`;
+export function dockerInventory(resourceId, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
+  const filter = `label=${DOCKER_RUN_LABEL}=${resourceId}`;
   return {
     containers: parseDockerIds(run(['ps', '-aq', '--filter', filter])),
     networks: parseDockerIds(run(['network', 'ls', '-q', '--filter', filter])),
@@ -724,8 +762,8 @@ export function dockerInventory(token, run = (args) => spawnSync('docker', args,
 /** The three queries are independent, so they are issued CONCURRENTLY: run serially they cost
  *  roughly half a second on every single watchdog invocation, which a control suite that spawns
  *  the watchdog dozens of times pays in full. */
-export async function dockerInventoryAsync(token, runAsync = spawnDockerAsync) {
-  const filter = `label=${DOCKER_RUN_LABEL}=${token}`;
+export async function dockerInventoryAsync(resourceId, runAsync = spawnDockerAsync) {
+  const filter = `label=${DOCKER_RUN_LABEL}=${resourceId}`;
   const [containers, networks, volumes] = await Promise.all([
     runAsync(['ps', '-aq', '--filter', filter]),
     runAsync(['network', 'ls', '-q', '--filter', filter]),
@@ -755,14 +793,14 @@ export function spawnDockerAsync(args) {
 }
 
 /** The async counterpart of `sweepDockerResources`, used on the real shutdown path. */
-export async function sweepDockerResourcesAsync(token, runAsync = spawnDockerAsync) {
-  const before = await dockerInventoryAsync(token, runAsync);
+export async function sweepDockerResourcesAsync(resourceId, runAsync = spawnDockerAsync) {
+  const before = await dockerInventoryAsync(resourceId, runAsync);
   await Promise.all([
     before.containers.length > 0 ? runAsync(['rm', '-f', ...before.containers]) : Promise.resolve(''),
     before.networks.length > 0 ? runAsync(['network', 'rm', ...before.networks]) : Promise.resolve(''),
     before.volumes.length > 0 ? runAsync(['volume', 'rm', '-f', ...before.volumes]) : Promise.resolve(''),
   ]);
-  const after = await dockerInventoryAsync(token, runAsync);
+  const after = await dockerInventoryAsync(resourceId, runAsync);
   return { before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after) };
 }
 
@@ -774,12 +812,12 @@ export const inventorySize = (inv) => (inv.containers.length + inv.networks.leng
  * the residue rather than a boolean is deliberate: a cleanup that silently failed and a cleanup
  * that succeeded must not look the same to the caller.
  */
-export function sweepDockerResources(token, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
-  const before = dockerInventory(token, run);
+export function sweepDockerResources(resourceId, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
+  const before = dockerInventory(resourceId, run);
   if (before.containers.length > 0) run(['rm', '-f', ...before.containers]);
   if (before.networks.length > 0) run(['network', 'rm', ...before.networks]);
   if (before.volumes.length > 0) run(['volume', 'rm', '-f', ...before.volumes]);
-  const after = dockerInventory(token, run);
+  const after = dockerInventory(resourceId, run);
   return { before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after) };
 }
 
@@ -802,18 +840,17 @@ if (isMainModule(process.argv[1], import.meta.url)) {
 
   // ── STAGE 3 ─────────────────────────────────────────────────────────────────
   const started = Date.now();
-  /**
-   * ALWAYS FRESH. Inheriting the outer marker when a watchdog runs under another watchdog looked
-   * like it would let the outer sweep own everything the inner one created. What it actually did
-   * was hand the INNER watchdog ownership of the ENTIRE OUTER RUN: a control that spawns a nested
-   * watchdog would, on that watchdog's shutdown, terminate every process carrying the shared
-   * marker — the outer test runner, its workers and the gate itself. It reproduced as the control
-   * suite being killed 75 seconds in with no output.
-   *
-   * Ownership is therefore scoped to the subtree each watchdog actually started. A nested run
-   * cleans up after itself, and its resources are not the outer watchdog's to sweep.
-   */
-  const marker = randomBytes(16).toString('hex');
+  // This watchdog's own identity: always fresh, never inherited.
+  const runId = randomBytes(16).toString('hex');
+  // The chain this watchdog sits in, outermost first. A nested watchdog EXTENDS its parent's
+  // chain rather than replacing it, which is what lets the outer supervisor still contain a
+  // descendant that a nested supervisor started and that then setsid'd away.
+  const parentChain = parseChain(process.env[RUN_CHAIN_VAR]);
+  const chain = [...parentChain, runId];
+  // Docker resources are labelled with the OUTERMOST run's id, so one gate run has one resource
+  // identity however deeply its work nests. Only the watchdog that owns that identity sweeps.
+  const resourceId = process.env[GATE_RESOURCE_VAR] ?? runId;
+  const isRootSupervisor = resourceId === runId;
   let finished = false;
   let timedOut = false;
   let timer = null;
@@ -835,11 +872,11 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   };
   const sampleCensus = () => {
     if (child === null || child.pid === undefined) return;
-    // ANCESTRY — catches a process that scrubbed the marker but was alive when we looked.
+    // ANCESTRY — catches a process that scrubbed its chain but was alive when we looked.
     try { for (const pid of descendantsOf(readTable(), child.pid)) census.add(pid); } catch { /* best effort */ }
     // OWNERSHIP — catches a process that setsid'd and reparented and was never seen as a
     // descendant at all. Inheritance cannot be missed by a sample the way ancestry can.
-    try { for (const pid of ownedPids(marker)) census.add(pid); } catch { /* best effort */ }
+    try { for (const pid of ownedPids(runId)) census.add(pid); } catch { /* best effort */ }
   };
 
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -866,7 +903,7 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     }
     // A final ownership sweep AFTER termination: a process that appeared only during shutdown is
     // still this run's to clean up.
-    const late = ownedPids(marker).filter((p) => isSignallablePid(p, process.pid));
+    const late = ownedPids(runId).filter((p) => isSignallablePid(p, process.pid));
     if (late.length > 0) {
       say(`c18-watchdog: ${late.length} late-appearing owned process(es); terminating`);
       await terminateTree({
@@ -878,14 +915,19 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     // Probed lazily, at shutdown, exactly once. A `docker version` handshake at STARTUP cost half
     // a second on every invocation, which a control suite that spawns the watchdog dozens of times
     // pays in full for no benefit. An absent docker simply yields an empty inventory.
+    // Only the ROOT supervisor sweeps docker. A nested watchdog removing resources labelled with
+    // the shared gate identity would destroy its parent's containers mid-run — the resource-side
+    // form of the same mistake that let a nested watchdog kill the outer process tree.
     let dockerResidue = 0;
-    const swept = await sweepDockerResourcesAsync(marker);
-    if (swept.removed > 0) say(`c18-watchdog: removed ${swept.removed} docker resource(s) labelled ${DOCKER_RUN_LABEL}=${marker}`);
-    dockerResidue = swept.residue;
-    if (dockerResidue > 0) {
-      say(`c18-watchdog: ${dockerResidue} docker resource(s) survived cleanup and are NOT contained`);
+    if (isRootSupervisor) {
+      const swept = await sweepDockerResourcesAsync(resourceId);
+      if (swept.removed > 0) say(`c18-watchdog: removed ${swept.removed} docker resource(s) labelled ${DOCKER_RUN_LABEL}=${resourceId}`);
+      dockerResidue = swept.residue;
+      if (dockerResidue > 0) {
+        say(`c18-watchdog: ${dockerResidue} docker resource(s) survived cleanup and are NOT contained`);
+      }
     }
-    const stragglers = ownedPids(marker).filter((p) => isSignallablePid(p, process.pid));
+    const stragglers = ownedPids(runId).filter((p) => isSignallablePid(p, process.pid));
     const contained = survivors.length === 0 && stragglers.length === 0 && dockerResidue === 0;
     out.flush();
     err.flush();
@@ -913,7 +955,12 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   child = spawn(command[0], command.slice(1), {
     stdio: ['inherit', 'pipe', 'pipe'], detached: true,
     // Every descendant inherits this, across fork, setsid, reparenting and exec.
-    env: { ...process.env, [RUN_MARKER_VAR]: marker },
+    env: {
+      ...process.env,
+      [RUN_ID_VAR]: runId,
+      [RUN_CHAIN_VAR]: chain.join(','),
+      [GATE_RESOURCE_VAR]: resourceId,
+    },
   });
 
   // A spawn failure must never reach Node's default error serialisation: that object carries
@@ -952,7 +999,8 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   // A non-secret activation marker, so a hosted log can prove the gate really ran UNDER the
   // watchdog rather than beside it.
   say(`c18-watchdog: ACTIVE deadline=${deadline}s (whole-command bound enforced)`);
-  say(`c18-watchdog: run marker ${marker} (docker label ${DOCKER_RUN_LABEL}=${marker})`);
+  say(`c18-watchdog: run ${runId} chain=${chain.join('>')} `
+    + `resource=${resourceId}${isRootSupervisor ? ' (root supervisor, sweeps docker)' : ' (nested)'}`);
 
   sampleCensus();
   censusTimer = setInterval(sampleCensus, CENSUS_INTERVAL_MS);
