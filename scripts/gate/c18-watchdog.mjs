@@ -482,6 +482,130 @@ export function isMainModule(argv1, moduleUrl) {
   return resolve(argv1) === resolve(self);
 }
 
+/**
+ * ── C19: THE LIFECYCLE, CORRECTED AGAINST A REPRODUCED SURVIVAL DEFECT ──
+ *
+ * The a8d34c4 lifecycle leaked processes on every external signal. Reproduced, not inferred:
+ * running a child that ignores SIGTERM and forks a grandchild into its own session, then sending
+ * SIGINT, SIGTERM or SIGHUP to the watchdog, left BOTH alive indefinitely (observed past t+14s),
+ * while the watchdog exited after 2.3 s with status 1.
+ *
+ * Two independent causes, each fixed here:
+ *
+ *   S1  ESCALATION WAS UNREACHABLE ON THE SIGNAL PATH. `terminateGroup` sent SIGTERM and scheduled
+ *       SIGKILL 10 s later on an `.unref()`'d timer, but the signal handler called `finish()` after
+ *       2 s and `finish()` calls `process.exit()`. The process was gone long before the escalation
+ *       could run, so a child that ignores SIGTERM simply survived. The deadline path did NOT have
+ *       this bug — there the loop stayed alive and the child was killed at deadline+10 s — which is
+ *       why the defect hid: the timeout case, the one everybody tested, worked.
+ *
+ *   S2  ONLY THE PROCESS GROUP WAS SIGNALLED. `process.kill(-child.pid, …)` reaches the child's
+ *       process group and nothing else, so any descendant that calls `setsid(2)` leaves the group
+ *       and is never signalled at all. This affected BOTH paths: at the deadline the child died and
+ *       its grandchild survived, and the watchdog's own `ps -g` diagnostic printed only the child,
+ *       which is exactly why the leak was invisible in the logs.
+ *
+ * The correction terminates a CENSUS, not a group: every pid ever observed as a descendant or a
+ * group member is recorded while the command runs, and termination signals that whole set with a
+ * bounded, verified reap. Escalation is awaited rather than scheduled, so it cannot be outrun.
+ *
+ * ── THE BOUNDARY, STATED HONESTLY ──
+ *
+ *   • SIGKILL delivered to the WATCHDOG ITSELF remains unhandleable by any program. It is the
+ *     explicit residual case, not an oversight.
+ *   • A process that forks, calls setsid and reparents to init ENTIRELY BETWEEN two census samples
+ *     is never observed and therefore never signalled. The sample interval bounds this window; it
+ *     does not close it.
+ *   • A process owned by another daemon — a container under dockerd — is not a descendant of this
+ *     process at all and is not reachable by any signal from here. Cleaning those up belongs to
+ *     whoever created them.
+ */
+
+/** Signal numbers for the handled signals, so an exit status can encode which one arrived. */
+export const SIGNAL_NUMBERS = Object.freeze({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
+
+/** POSIX shell convention: a process terminated by signal N reports 128+N. */
+export const signalExitCode = (sig) => 128 + (SIGNAL_NUMBERS[sig] ?? 0);
+
+export const TERM_GRACE_MS = 5_000;
+export const KILL_GRACE_MS = 5_000;
+export const CENSUS_INTERVAL_MS = 500;
+
+/**
+ * Parse `ps -eo pid=,ppid=,pgid=` output. Malformed lines are skipped rather than throwing: this
+ * runs on the termination path, where giving up would leak exactly what it exists to prevent.
+ */
+export function parseProcessTable(text) {
+  const rows = [];
+  for (const line of String(text ?? '').split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);
+    if (m !== null) rows.push({ pid: Number(m[1]), ppid: Number(m[2]), pgid: Number(m[3]) });
+  }
+  return rows;
+}
+
+/**
+ * Every pid reachable from `rootPid` as a transitive child, UNION every pid in `rootPid`'s process
+ * group. The union is the point: the group catches what the parent walk misses when an intermediate
+ * process has already been reaped, and the parent walk catches what the group misses when a
+ * descendant called setsid. Neither alone is sufficient — S2 is precisely the group-only case.
+ */
+export function descendantsOf(rows, rootPid) {
+  const byParent = new Map();
+  for (const r of rows) {
+    if (!byParent.has(r.ppid)) byParent.set(r.ppid, []);
+    byParent.get(r.ppid).push(r.pid);
+  }
+  const found = new Set();
+  const queue = [rootPid];
+  while (queue.length > 0) {
+    const pid = queue.pop();
+    for (const kid of byParent.get(pid) ?? []) {
+      if (!found.has(kid)) { found.add(kid); queue.push(kid); }
+    }
+  }
+  for (const r of rows) if (r.pgid === rootPid) found.add(r.pid);
+  found.add(rootPid);
+  return found;
+}
+
+/**
+ * A pid this process may signal. Refusing 0 and negatives is not defensive noise: `kill(0, SIG)`
+ * signals the CALLER'S ENTIRE PROCESS GROUP, which on a CI runner is the job. A parse slip that
+ * produced 0 would turn cleanup into self-destruction.
+ */
+export const isSignallablePid = (pid, selfPid) => Number.isInteger(pid) && pid > 1 && pid !== selfPid;
+
+/**
+ * Terminate a set of pids with a BOUNDED, VERIFIED reap: SIGTERM, poll until the set is empty or
+ * the grace expires, SIGKILL the survivors, poll again, then report whatever is still alive.
+ *
+ * Every primitive is injected so a control can drive the whole state machine deterministically —
+ * including the case where a process refuses to die — without spawning anything.
+ */
+export async function terminateTree({
+  pids, selfPid, kill, alive, sleep, termGraceMs = TERM_GRACE_MS, killGraceMs = KILL_GRACE_MS,
+  pollMs = 100,
+}) {
+  const targets = [...pids].filter((p) => isSignallablePid(p, selfPid));
+  const stillAlive = () => targets.filter((p) => alive(p));
+  const sweep = async (signal, graceMs) => {
+    for (const pid of stillAlive()) { try { kill(pid, signal); } catch { /* already gone */ } }
+    const deadline = graceMs;
+    let waited = 0;
+    while (waited < deadline) {
+      if (stillAlive().length === 0) return true;
+      await sleep(pollMs);
+      waited += pollMs;
+    }
+    return stillAlive().length === 0;
+  };
+  const termed = await sweep('SIGTERM', termGraceMs);
+  if (termed) return { survivors: [], escalated: false };
+  await sweep('SIGKILL', killGraceMs);
+  return { survivors: stillAlive(), escalated: true };
+}
+
 if (isMainModule(process.argv[1], import.meta.url)) {
   const [, , rawDeadline, ...command] = process.argv;
   const deadline = Number(rawDeadline);
@@ -501,21 +625,71 @@ if (isMainModule(process.argv[1], import.meta.url)) {
 
   // ── STAGE 3 ─────────────────────────────────────────────────────────────────
   const started = Date.now();
-  const child = spawn(command[0], command.slice(1), {
-    stdio: ['inherit', 'pipe', 'pipe'], detached: true,
-  });
-
   let finished = false;
   let timedOut = false;
   let timer = null;
+  let censusTimer = null;
+  let child = null;
+  /** A signal that arrives BEFORE the child exists still has to be honoured once it does. */
+  let pendingSignal = null;
 
-  /** Terminate the child's whole process group, then hard-kill whatever survives. */
-  const terminateGroup = () => {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
-    setTimeout(() => {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-    }, 10_000).unref();
+  /**
+   * The running census. A pid seen at any sample is remembered even if it later reparents to init,
+   * which is what makes a double-forked descendant reachable at termination time.
+   */
+  const census = new Set();
+  const readTable = () => {
+    const r = spawnSync('ps', ['-eo', 'pid=,ppid=,pgid='], { encoding: 'utf8' });
+    return parseProcessTable(r.stdout ?? '');
   };
+  const sampleCensus = () => {
+    if (child === null || child.pid === undefined) return;
+    try { for (const pid of descendantsOf(readTable(), child.pid)) census.add(pid); } catch { /* best effort */ }
+  };
+
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * The single termination path. Signals are handled by AWAITING this, never by scheduling it, so
+   * the escalation to SIGKILL cannot be outrun by our own exit — which is defect S1 exactly.
+   */
+  let shuttingDown = false;
+  const shutdown = async (reason, exitCode) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    finished = true;
+    if (timer !== null) clearTimeout(timer);
+    if (censusTimer !== null) clearInterval(censusTimer);
+    sampleCensus();
+    const { survivors, escalated } = await terminateTree({
+      pids: census, selfPid: process.pid, kill: (p, s) => process.kill(p, s), alive, sleep,
+    });
+    if (escalated) say(`c18-watchdog: ${reason} — SIGTERM did not clear the tree; escalated to SIGKILL`);
+    if (survivors.length > 0) {
+      say(`c18-watchdog: ${survivors.length} process(es) survived SIGKILL and are NOT contained`);
+    }
+    out.flush();
+    err.flush();
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+    say(`c18-watchdog: ${reason} after ${elapsed}s (exit=${exitCode} contained=${survivors.length === 0})`);
+    process.exit(exitCode);
+  };
+
+  /**
+   * Handlers are registered BEFORE the spawn. Registering them after left a window in which the
+   * default disposition terminated the watchdog and orphaned a child that already existed.
+   */
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      if (finished) return;
+      if (child === null) { pendingSignal = sig; return; }
+      say(`c18-watchdog: received ${sig} — terminating the whole descendant tree`);
+      void shutdown(`terminated by ${sig}`, signalExitCode(sig));
+    });
+  }
+
+  child = spawn(command[0], command.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], detached: true });
 
   // A spawn failure must never reach Node's default error serialisation: that object carries
   // `spawnargs`, and printing it would put the whole command line — credentials included — on
@@ -554,46 +728,38 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   // watchdog rather than beside it.
   say(`c18-watchdog: ACTIVE deadline=${deadline}s (whole-command bound enforced)`);
 
+  sampleCensus();
+  censusTimer = setInterval(sampleCensus, CENSUS_INTERVAL_MS);
+  censusTimer.unref();
+
   timer = setTimeout(() => {
     timedOut = true;
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    say(`c18-watchdog: DEADLINE EXCEEDED after ${elapsed}s — surviving process tree:`);
-    const tree = spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-g', String(child.pid)], { encoding: 'utf8' });
-    say(tree.stdout ?? tree.stderr ?? '(process tree unavailable)');
-    terminateGroup();
+    say(`c18-watchdog: DEADLINE EXCEEDED after ${deadline}s — surviving process tree:`);
+    sampleCensus();
+    const survivors = [...census].filter((p) => alive(p));
+    say(`c18-watchdog: ${survivors.length} live process(es) in the tracked tree: ${survivors.join(' ')}`);
+    void shutdown('deadline exceeded', 124);
   }, deadline * 1000);
 
-  const finish = (code, signal) => {
-    if (finished) return;
-    finished = true;
-    if (timer !== null) clearTimeout(timer);
-    out.flush();
-    err.flush();
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    say(`c18-watchdog: finished in ${elapsed}s (code=${code} signal=${signal})`);
-    if (timedOut) process.exit(124);
-    process.exit(code === null ? 1 : code);
-  };
-
-  /**
-   * A signal delivered to the WATCHDOG must not orphan the child's process group. SIGKILL sent to
-   * this process is unhandleable by any program — stated plainly rather than papered over.
-   */
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(sig, () => {
-      if (finished) return;
-      say(`c18-watchdog: received ${sig} — terminating the child process group`);
-      terminateGroup();
-      setTimeout(() => finish(null, sig), 2_000).unref();
-    });
-  }
-
   const DRAIN_MS = 5_000;
-  child.on('close', (code, signal) => finish(code, signal));
-  child.on('exit', (code, signal) => {
+  const onChildGone = (code) => {
+    if (finished || shuttingDown) return;
+    // Even a clean exit gets a cleanup sweep: a bounded runner that returns 0 while leaving a
+    // descendant running has not bounded anything.
+    void shutdown(timedOut ? 'deadline exceeded' : 'finished',
+      timedOut ? 124 : (code === null ? 1 : code));
+  };
+  child.on('close', (code) => onChildGone(code));
+  child.on('exit', (code) => {
     setTimeout(() => {
       if (!finished) say('c18-watchdog: child exited but its output pipes are still held; draining stopped');
-      finish(code, signal);
+      onChildGone(code);
     }, DRAIN_MS).unref();
   });
+
+  // A signal that beat the spawn is honoured now that there is something to terminate.
+  if (pendingSignal !== null) {
+    say(`c18-watchdog: received ${pendingSignal} before the child was ready — terminating`);
+    void shutdown(`terminated by ${pendingSignal}`, signalExitCode(pendingSignal));
+  }
 }
