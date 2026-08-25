@@ -6,7 +6,6 @@
  * other worker that derived a source binding during that window would correctly — and irrelevantly
  * — report an unclean checkout. This shard therefore runs on its own, after the parallel ones.
  */
-import { registerSerial, register32 } from './c18-mutation-controls.suite';
+import { registerSerial } from './c18-mutation-controls.suite';
 
 registerSerial();
-register32();

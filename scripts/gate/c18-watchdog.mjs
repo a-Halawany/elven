@@ -672,7 +672,8 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     out.flush();
     err.flush();
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    say(`c18-watchdog: ${reason} after ${elapsed}s (exit=${exitCode} contained=${survivors.length === 0})`);
+    say(`c18-watchdog: finished in ${elapsed}s (${reason}, exit=${exitCode}, `
+      + `contained=${survivors.length === 0})`);
     process.exit(exitCode);
   };
 
@@ -737,7 +738,16 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     say(`c18-watchdog: DEADLINE EXCEEDED after ${deadline}s — surviving process tree:`);
     sampleCensus();
     const survivors = [...census].filter((p) => alive(p));
-    say(`c18-watchdog: ${survivors.length} live process(es) in the tracked tree: ${survivors.join(' ')}`);
+    // The frozen implementation printed `ps -g <pid>`, which by construction could not show the
+    // setsid descendants that were the actual leak. The census can, so the diagnostic now names
+    // every tracked process rather than one process group.
+    // One comma-separated -p list: repeated -p flags are not portable, and an EMPTY list would
+    // make `ps` print every process on the machine.
+    const tree = survivors.length === 0 ? { stdout: '  PID  PPID  PGID ELAPSED COMMAND\n' }
+      : spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-p', survivors.join(',')],
+        { encoding: 'utf8' });
+    say(tree.stdout ?? tree.stderr ?? '(process tree unavailable)');
+    say(`c18-watchdog: ${survivors.length} live process(es) in the tracked tree`);
     void shutdown('deadline exceeded', 124);
   }, deadline * 1000);
 
