@@ -829,6 +829,16 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     process.exit(2);
   }
 
+  /**
+   * Handlers are installed BEFORE the preflight and before the spawn. Installing them after the
+   * spawn left a window in which the default disposition terminated the watchdog and orphaned a
+   * child that already existed. The only window that remains is this module's own load, during
+   * which no child exists — so there is nothing that could be orphaned in it.
+   */
+  let pendingSignal = null;
+  let onSignal = (sig) => { pendingSignal = sig; };
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => onSignal(sig));
+
   // ── STAGE 1, to completion, before anything is spawned ──────────────────────
   const preflight = credentialPreflight(process.env, command);
   if (!preflight.ok) {
@@ -858,8 +868,6 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   let child = null;
   /** How the child itself ended, so the report can say whether it had to be hard-killed. */
   let childSignal = null;
-  /** A signal that arrives BEFORE the child exists still has to be honoured once it does. */
-  let pendingSignal = null;
 
   /**
    * The running census. A pid seen at any sample is remembered even if it later reparents to init,
@@ -939,18 +947,12 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     process.exit(contained ? exitCode : (exitCode === 0 ? CONTAINMENT_FAILURE_EXIT : exitCode));
   };
 
-  /**
-   * Handlers are registered BEFORE the spawn. Registering them after left a window in which the
-   * default disposition terminated the watchdog and orphaned a child that already existed.
-   */
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(sig, () => {
-      if (finished) return;
-      if (child === null) { pendingSignal = sig; return; }
-      say(`c18-watchdog: received ${sig} — terminating the whole descendant tree`);
-      void shutdown(`terminated by ${sig}`, signalExitCode(sig));
-    });
-  }
+  onSignal = (sig) => {
+    if (finished) return;
+    if (child === null) { pendingSignal = sig; return; }
+    say(`c18-watchdog: received ${sig} — terminating the whole descendant tree`);
+    void shutdown(`terminated by ${sig}`, signalExitCode(sig));
+  };
 
   child = spawn(command[0], command.slice(1), {
     stdio: ['inherit', 'pipe', 'pipe'], detached: true,
