@@ -209,10 +209,6 @@ function setCredentialPosition(c: any, key: string, value: string) {
 }
 
 function downgradeC19(dir: string) {
-  // 1 — the isolation receipts predate the resource-owner field.
-  editJson(dir, 'c18-manifest.json', (doc: any) => {
-    for (const r of doc.isolation ?? []) delete r.gate_resource_id;
-  });
 
   // 2 — translate the ledger back, and RENUMBER, because the pre-C19 producer emitted two fewer
   //     commands per instance. Command ids embed their sequence and name their raw receipt files,
@@ -263,6 +259,31 @@ function downgradeC19(dir: string) {
     });
     cmds.length = 0;
     cmds.push(...kept);
+  });
+
+  // Renumbering changes ids that the manifest NAMES in many places — suite receipts, cleanup
+  // removals, migration executions and their attestation and inventory bindings. Enumerating those
+  // sites would mean rediscovering each one every time the manifest grows a field, so the remap is
+  // applied STRUCTURALLY: any string that is exactly an old id becomes the new id, and any raw
+  // receipt path built from an old id is rewritten to match the file that now exists.
+  const remap = new Map(renames);
+  const remapDeep = (node: any): any => {
+    if (typeof node === 'string') {
+      const direct = remap.get(node);
+      if (direct !== undefined) return direct;
+      const m = /^raw\/(.+?)\.(stdout|stderr|exit)\.txt$/.exec(node);
+      const mapped = m === null ? undefined : remap.get(m[1]);
+      return mapped === undefined ? node : `raw/${mapped}.${m![2]}.txt`;
+    }
+    if (Array.isArray(node)) return node.map(remapDeep);
+    if (node !== null && typeof node === 'object') {
+      for (const k of Object.keys(node)) node[k] = remapDeep(node[k]);
+    }
+    return node;
+  };
+  editJson(dir, 'c18-manifest.json', (doc: any) => {
+    for (const r of Object.values(doc.receipts ?? {}) as any[]) delete r.gate_resource_id;
+    remapDeep(doc);
   });
 
   // Two phases, so a rename can never land on a name another record still holds.
