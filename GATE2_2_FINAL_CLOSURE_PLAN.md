@@ -3933,3 +3933,34 @@ Implementation is blocked on one choice that is the owner's, not the implementer
 external authority this repository will depend on.** The options, their security differences and
 their costs are presented separately. Nothing is provisioned, purchased or enabled until that
 choice is made.
+
+## C19.9 A reproduced item-4 defect in the C18 producer
+
+The isolation audit found a real disclosure inside the C18 producer, and it is reproduced rather
+than asserted.
+
+`scripts/gate/lib/c18-query-plan.mjs` builds every PostgreSQL invocation as
+
+    docker exec -e PGPASSWORD=<value> <container> psql …
+
+and the provisioning step passes `-e POSTGRES_PASSWORD=<value>` the same way. The recorded evidence
+is clean — the ledger stores `PGPASSWORD=<REDACTED:a:EYE_DB_PASSWORD>` — but the **live** `docker`
+client process carries the real value in its argv, where the host process list shows it to every
+user on the machine for the lifetime of the call.
+
+**Reproduction (synthetic canary, no real credential):** starting a container and running
+`docker exec -e "PGPASSWORD=$CANARY" …`, then reading `ps -eo command`, shows the canary. This is
+exactly the C19 item-4 rule "credentials through environment or stdin only; no credential-bearing
+argv", broken by the evidence producer itself.
+
+**The fix is minimal and verified available:** `docker` accepts `-e VAR` **without** `=value`, in
+which case it passes the value through from the docker client's own environment and the value never
+enters argv. Verified: `docker run --rm -e HOME alpine:3 sh -c 'echo $HOME'` prints the host value.
+
+**Why this is a permitted C18 change.** A new, non-vacuous control reproduces a specific defect, so
+the C18 boundary rule is satisfied. The change is a compatibility change to the recorded argv shape
+— the position becomes `PGPASSWORD` rather than `PGPASSWORD=<REDACTED:…>` — so the query-plan
+contract and every control that pins a credential POSITION to its CLASS must be carried across
+intact: the class binding moves from the argv placeholder to the typed redacted environment record
+the ledger already captures. No existing C18 control may be dropped; each must be preserved with
+its intent unchanged.
