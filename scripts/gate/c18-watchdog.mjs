@@ -802,9 +802,18 @@ if (isMainModule(process.argv[1], import.meta.url)) {
 
   // ── STAGE 3 ─────────────────────────────────────────────────────────────────
   const started = Date.now();
-  // Inherited when a watchdog runs under another watchdog, so nested runs share one identity and
-  // the outer sweep still owns everything the inner one created.
-  const marker = process.env[RUN_MARKER_VAR] ?? randomBytes(16).toString('hex');
+  /**
+   * ALWAYS FRESH. Inheriting the outer marker when a watchdog runs under another watchdog looked
+   * like it would let the outer sweep own everything the inner one created. What it actually did
+   * was hand the INNER watchdog ownership of the ENTIRE OUTER RUN: a control that spawns a nested
+   * watchdog would, on that watchdog's shutdown, terminate every process carrying the shared
+   * marker — the outer test runner, its workers and the gate itself. It reproduced as the control
+   * suite being killed 75 seconds in with no output.
+   *
+   * Ownership is therefore scoped to the subtree each watchdog actually started. A nested run
+   * cleans up after itself, and its resources are not the outer watchdog's to sweep.
+   */
+  const marker = randomBytes(16).toString('hex');
   let finished = false;
   let timedOut = false;
   let timer = null;
