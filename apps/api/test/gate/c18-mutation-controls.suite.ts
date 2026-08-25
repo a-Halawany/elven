@@ -3196,6 +3196,7 @@ describe('C18.1.11 — one finding never suppresses an independent check', () =>
  * differential measuring the SEMANTIC change rather than a contract version number.
  */
 function downgradeTo2c3cab3(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '2c3cab3', (preseed, before) => legacy2c3Coverage({ preseed, before })));
 }
@@ -3478,6 +3479,7 @@ describe('C18.1 — producer refusals that must disturb the real checkout (seria
  * that producer emitted, keeping the differential on the semantic change.
  */
 function downgradeTo220b26c(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '220b26c', (preseed, before) => legacy220Coverage({ preseed, before })));
 }
@@ -3659,6 +3661,7 @@ function everySnapshotBothPaths(d: string, table: string, apply: (rows: any[], t
 
 /** C18.1.14's coverage notes differ again, so the frozen leg regenerates its own report. */
 function downgradeTo53fb889(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '53fb889', (preseed, before) => legacy53fCoverage({ preseed, before })));
 }
@@ -3760,6 +3763,7 @@ describe('C18.1.14 — DIFFERENTIAL: the frozen 53fb889 verifier ACCEPTED what C
 
 /** C18.1.14-final leaves the coverage report unchanged, but the frozen leg regenerates its own. */
 function downgradeTo7959ec9(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '7959ec9', (preseed, before) => legacy795Coverage({ preseed, before })));
 }
