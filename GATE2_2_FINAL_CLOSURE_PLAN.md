@@ -3722,3 +3722,214 @@ bound, which is now real rather than claimed.
 `04442ed` is recorded as **authentic, leak-free, database-verifier-valid and provenance-valid**. Its
 evidence is not contaminated and is not withdrawn. It is superseded only for the watchdog,
 gate-integration and differential-accounting defects above.
+
+# GATE C19 — EXTERNAL ANCHORING AND LEAST-PRIVILEGE CHILD ISOLATION (design; not yet implemented)
+
+C18 closed at `a8d34c4d1dc91d1f205fac6044332907da210d46`. It left four declared limitations, each
+recorded in source rather than as an open question. C19 owns them. This section is the source-owned
+design, written before implementation, and it ends at the one decision that is genuinely the
+owner's: which external authority this repository will depend on.
+
+## C19.0 What C18 actually established, and why it is not enough
+
+C18's verifier recomputes every claim from the delivered bytes. That is exactly its strength and
+exactly its ceiling: **the evidence producer is its own sole authority**. Everything the archive
+asserts about itself is checked for internal consistency, and an attacker who rebinds every
+attacker-controlled binding consistently produces an archive that is internally perfect.
+
+C18 already has one external check — hosted standing fetches the artifact from GitHub's
+authenticated API and compares digests — but that authenticates the artifact's *existence in a run*,
+not a signature over a canonical statement. Nothing in the archive is signed by anyone other than
+the process that produced it.
+
+C19's job is to introduce a trust root the evidence process does not control, and to bind the
+specific facts C18 cannot prove to statements that root makes.
+
+## C19.1 Trust and threat model
+
+**Assets.** The claim that a specific evidence archive was produced by a specific source tree, in a
+specific hosted run, against specific database instances, at a bounded time — and that the
+credentials used were not disclosed.
+
+**Adversary.** Someone with full write access to the repository's working tree and to the evidence
+producer, able to rebind every hash, receipt and manifest consistently; able to replay any artifact
+this repository has ever published; able to run the producer as often as they like. Explicitly
+**not** assumed: control of GitHub's OIDC signing key, or of the runner's kernel.
+
+**What an external anchor must therefore resist.** Substitution (a valid attestation for a
+different payload), replay (an older valid attestation), cross-binding (an attestation from another
+run, SHA, path or instance), rollback (an attestation predating the source change it is supposed to
+cover), and self-assertion (the producer signing its own claims and calling it independent).
+
+**What no anchor can fix.** A malicious child that transforms a secret before printing it. That is
+an isolation problem, which is why C19.5 exists — the answer is to deny the child the credential,
+not to detect its transformation.
+
+## C19.2 Architecture: one adapter, one provider-neutral signed contract
+
+    producer ──► canonical payload (JCS) ──► digest
+                                              │
+                              ┌───────────────┴───────────────┐
+                              │        SIGNER ADAPTER          │   ← provider-specific, thin
+                              │  github-oidc │ sigstore │ tsa  │
+                              │        │  local-dev (test)     │
+                              └───────────────┬───────────────┘
+                                              ▼
+                              attestation envelope (versioned, schema'd)
+                                              │
+    verifier ◄── canonical bytes ◄────────────┘  ← provider-NEUTRAL verification
+
+The signed contract is provider-neutral: an envelope carrying a canonical payload, a signature, a
+signer identity and a key version. Provider specifics live only in acquisition. A verifier that can
+check one adapter's envelope checks them all, and adding a provider never changes the contract.
+
+**Non-negotiable:** a local development signer may exist **only** as an explicitly non-delivery test
+seam. It is registered with `deliveryCapable: false`, and hosted delivery standing refuses it. A
+signer controlled by the evidence process is not independent, and calling it independent would be
+the single worst thing this gate could do.
+
+## C19.3 Canonical payload and envelope
+
+**Canonicalization.** JCS (RFC 8785) — already used by the audit chain, already proven, already
+under control. Signatures are verified over the canonical bytes, never over a reparsed projection
+of attacker-controlled JSON.
+
+**Domain separation.** Every signature context is prefixed `eye/c19/<purpose>/v1`, so a signature
+made for one purpose can never be replayed as another.
+
+**The canonical payload binds, at minimum:**
+
+| Field | Why |
+|---|---|
+| `schema`, `version` | closed, versioned; unknown versions are rejected, not ignored |
+| `purpose` | domain separation |
+| `sourceSha`, `sourceTree` | the exact commit and tree |
+| `runId`, `runAttempt`, `workflowRef` | the exact hosted run |
+| `pathLabel` (`a` / `b`), `instanceId` | which database instance |
+| `transactionId`, `correlationId` | the exact transaction, where applicable |
+| `evidenceDigest` | the archive the statement is about |
+| `nonce` | a fresh per-run challenge, replay cache keyed on it |
+| `issuedAt`, `notBefore`, `expiresAt` | freshness with explicit uncertainty |
+| `signerId`, `keyVersion`, `algorithm` | allowlisted; unknown algorithm is a rejection |
+
+**Envelope.** `{ schema, payload (canonical string), payloadDigest, signature, signerId, keyVersion,
+algorithm, acquiredAt }` — with the digest recomputed by the verifier from the payload, never
+trusted from the envelope.
+
+## C19.4 The four inherited items, and what each anchor can honestly prove
+
+### 1. Bootstrap marking instant
+
+**Proposed anchor:** a GitHub-signed statement obtained *inside the same hosted run*, whose payload
+digest binds the run, the source SHA and the evidence digest, and whose `iat` is GitHub's clock.
+
+**What this proves:** the run — and therefore the bootstrap transaction inside it — occurred within
+an interval bounded below and above by statements a party other than the producer signed.
+
+**What it does NOT prove, and will be recorded as still undecidable:** the exact instant
+`identity.bootstrap_mark_one_time` read `clock_timestamp()`. No external party observes that read.
+The anchor tightens the interval from "somewhere in this archive's own account of itself" to
+"inside a GitHub-signed run window", which is a real strengthening and is not exactness. **The
+ledger entry stays, with its `proved` field upgraded and its `undecidable` field unchanged.**
+Claiming exact time here would be manufacturing certainty.
+
+### 2. Backend-assigned identifiers
+
+**Proposed mechanism:** the identifiers are read *inside the same transaction that performs the
+governed work* and committed to a database-side row whose content is then covered by the audit
+chain — and the run that produced it is covered by the external anchor. The chain of custody is:
+identifier → same-transaction commitment → hash-chained audit row → archive digest → signed payload.
+
+**What this resists:** substituting another valid identifier (the commitment is inside the audited
+chain), copying from another transaction or instance (the commitment binds `instanceId`,
+`pathLabel`, `transactionId`), replaying an older attestation (the nonce and `evidenceDigest`),
+and producer self-assertion (the signature is not the producer's).
+
+**Honest limit:** the database is not itself a signer. What is authenticated is that *this run's*
+audited chain recorded those identifiers and that an external party attested to this run and this
+archive. A database that lied to its own client cannot be caught by this, and that is stated. If
+implementation shows a specific field cannot be bound this way, it is classified rather than
+claimed — that decision belongs to implementation evidence, not to this design.
+
+### 3. Per-instance generated secrets
+
+**Proposed mechanism:** a domain-separated commitment, never the value.
+
+    commitment = HMAC-SHA256( key = perRunChallenge,
+                              msg = "eye/c19/secret-commitment/v1"
+                                  ‖ secretClass ‖ instanceId ‖ pathLabel
+                                  ‖ sourceSha ‖ runId ‖ runAttempt ‖ generationEventId )
+
+The per-run challenge makes the commitment fresh, so a commitment cannot be reused across runs;
+the domain separation and class binding make a commitment for one secret class unusable for
+another. The raw secret never leaves the database side of the boundary and never enters evidence,
+argv, logs, errors, artifacts or process listings.
+
+**Detects:** reuse, cross-instance substitution, staleness, wrong class, wrong path, wrong source
+SHA, wrong signer, wrong key version and altered commitments.
+
+**Honest limit:** this binds the secret to an instance without revealing it. It does not prove the
+secret was generated with good entropy — no external party observes the generation. Stated.
+
+### 4. Least-privilege child isolation
+
+A source-owned execution contract, enforced before the child exists, declaring **per command**:
+the exact environment allowlist (deny-by-default inheritance), the credentials that command
+actually needs, the working directory, the temporary directory, filesystem and network policy, and
+resource, time and output limits.
+
+**OS honesty — this is where over-claiming is easiest and worst.**
+
+| | Linux (`ubuntu-latest`, where the gate runs) | macOS (`macos-14` finalizer, local dev) |
+|---|---|---|
+| Env allowlist, argv ban, cwd, temp isolation, process group, limits, cleanup | enforced | enforced |
+| Filesystem confinement | namespaces where available | `sandbox-exec` only; weaker and deprecated |
+| Network denial | namespace-based where available | not claimed |
+
+`bwrap`, `unshare`, `nsjail` and `firejail` are **absent on the local macOS host** (verified);
+`sandbox-exec` is present. The gate's evidence production runs on Linux. The design therefore
+**fails closed for the evidence-producing gate** if the declared policy cannot be enforced, and on
+any host where only the reduced boundary is available the reduced boundary is *stated and
+enforced*, never silently substituted. No Linux guarantee is claimed on macOS.
+
+## C19.5 Replay, substitution, rollback, expiry, revocation, rotation
+
+* **Replay** — per-run nonce plus `evidenceDigest`; a replay cache rejects a repeated nonce.
+* **Substitution** — the payload digest is recomputed from the canonical payload; the signature is
+  checked over those bytes.
+* **Rollback** — `sourceSha` and `sourceTree` must equal the verifying checkout's; an attestation
+  predating a source change cannot cover it.
+* **Expiry** — `notBefore`/`expiresAt` are checked against the verification instant, with the
+  uncertainty stated rather than assumed away.
+* **Revocation** — a source-owned revocation list keyed by `signerId` + `keyVersion` + optional
+  `jti`; a revoked key fails closed.
+* **Rotation** — the signer registry is versioned and holds multiple keys per signer; rotation adds
+  a key version and, where needed, revokes the old one. A documented procedure, exercised by a
+  control that verifies an envelope across a rotation boundary.
+
+## C19.6 Offline foreign-checkout verification
+
+The verifier fetches nothing. Public keys are pinned in the source-owned signer registry, so a
+fresh foreign clone at the exact evidence SHA verifies every signature offline. Online
+`--require-hosted` continues to prove hosted standing on top, exactly as C18 does today.
+
+## C19.7 Acceptance criteria
+
+C19 may be called closed only when: every anchor has an independent signer whose key is pinned and
+whose signature is verified over canonical bytes; every binding in C19.3 is checked; the mutation
+matrix in the mandate is permanent, non-vacuous and registered; the child-isolation contract is
+enforced and authenticated without recording credential values; the OS boundary is stated and
+matches what is enforced; offline foreign-checkout verification passes; the full delivery chain is
+green; and every limitation that remains genuinely undecidable is in the ledger with the strongest
+property actually proved.
+
+**Signatures existing is not closure.** Independent trust, complete binding, replay resistance,
+offline verification, least-privilege isolation, permanent controls and the full delivery chain
+are.
+
+## C19.8 The decision this design stops at
+
+Implementation is blocked on one choice that is the owner's, not the implementer's: **which
+external authority this repository will depend on.** The options, their security differences and
+their costs are presented separately. Nothing is provisioned, purchased or enabled until that
+choice is made.
