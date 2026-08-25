@@ -208,7 +208,8 @@ function downgradeC19(dir: string) {
         const at = argv.indexOf('-e');
         const pass = env['REDIS_PASSWORD'] as string;
         argv.splice(at, 2);
-        argv.splice(argv.length - 3, 3, argv[argv.length - 3] as string, 'redis-server', '--requirepass', pass);
+        // …leaving `<image> sh -c <entrypoint>`; the last three become the old server invocation.
+        argv.splice(argv.length - 3, 3, 'redis-server', '--requirepass', pass);
         c.env = {};
       }
       c.argv = argv;
