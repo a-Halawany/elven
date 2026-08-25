@@ -10,8 +10,8 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import {
-  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync,
-  writeFileSync,
+  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync,
+  symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
@@ -209,29 +209,79 @@ function setCredentialPosition(c: any, key: string, value: string) {
 }
 
 function downgradeC19(dir: string) {
-  editJson(dir, 'commands.json', (cmds: any[]) => {
-    for (const c of cmds) {
-      const env = (c.env ?? {}) as Record<string, string>;
-      const argv = (c.argv ?? []) as string[];
-      if (env['PGPASSWORD'] !== undefined) {
-        argv[argv.indexOf('PGPASSWORD')] = `PGPASSWORD=${env['PGPASSWORD']}`;
-        c.env = {};
-      } else if (env['POSTGRES_PASSWORD'] !== undefined) {
-        argv[argv.indexOf('POSTGRES_PASSWORD')] = `POSTGRES_PASSWORD=${env['POSTGRES_PASSWORD']}`;
-        c.env = {};
-      } else if (env['REDIS_PASSWORD'] !== undefined) {
-        // `-e REDIS_PASSWORD <image> sh -c <entrypoint>` becomes the old
-        // `<image> redis-server --requirepass <placeholder>`.
-        const at = argv.indexOf('-e');
-        const pass = env['REDIS_PASSWORD'] as string;
-        argv.splice(at, 2);
-        // …leaving `<image> sh -c <entrypoint>`; the last three become the old server invocation.
-        argv.splice(argv.length - 3, 3, 'redis-server', '--requirepass', pass);
-        c.env = {};
-      }
-      c.argv = argv;
-    }
+  // 1 — the isolation receipts predate the resource-owner field.
+  editJson(dir, 'c18-manifest.json', (doc: any) => {
+    for (const r of doc.isolation ?? []) delete r.gate_resource_id;
   });
+
+  // 2 — translate the ledger back, and RENUMBER, because the pre-C19 producer emitted two fewer
+  //     commands per instance. Command ids embed their sequence and name their raw receipt files,
+  //     so a faithful downgrade has to move those files too.
+  const raw = join(dir, 'raw');
+  const renames: Array<[string, string]> = [];
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    const kept: any[] = [];
+    for (const c of cmds) {
+      const label = String(c.label ?? '');
+      const argv = (c.argv ?? []) as string[];
+      // The stdin handoff did not exist before C19; its command disappears entirely.
+      if (/-(pg|redis)-secret$/.test(label)) continue;
+      delete c.stdin_bytes;
+
+      const letter = label.slice(0, 1);
+      if (/-pg-run$/.test(label)) {
+        // `--label X --tmpfs Y … POSTGRES_PASSWORD_FILE=… <image> sh -c <entrypoint>` becomes
+        // `… POSTGRES_PASSWORD=<placeholder> … <image>`.
+        const out = argv.filter((a, i) => {
+          const prev = argv[i - 1];
+          return a !== '--label' && a !== '--tmpfs' && prev !== '--label' && prev !== '--tmpfs';
+        });
+        const fi = out.findIndex((a) => String(a).startsWith('POSTGRES_PASSWORD_FILE='));
+        out[fi] = `POSTGRES_PASSWORD=<REDACTED:${letter}:EYE_DB_PASSWORD>`;
+        c.argv = out.slice(0, out.length - 3);            // drop `sh -c <entrypoint>`
+      } else if (/-redis-run$/.test(label)) {
+        const out = argv.filter((a, i) => {
+          const prev = argv[i - 1];
+          return a !== '--label' && a !== '--tmpfs' && prev !== '--label' && prev !== '--tmpfs';
+        });
+        out.splice(out.length - 3, 3, 'redis-server', '--requirepass',
+          `<REDACTED:${letter}:EYE_REDIS_PASSWORD>`);
+        c.argv = out;
+      } else if ((c.env ?? {}).PGPASSWORD !== undefined) {
+        argv[argv.indexOf('PGPASSWORD')] = `PGPASSWORD=${c.env.PGPASSWORD}`;
+        c.env = {};
+        c.argv = argv;
+      }
+      kept.push(c);
+    }
+    kept.forEach((c, i) => {
+      const seq = String(i + 1).padStart(3, '0');
+      const oldId = String(c.id);
+      const newId = `${seq}-${String(c.label).replace(/[^a-z0-9-]+/gi, '_').slice(0, 60)}`;
+      if (oldId !== newId) renames.push([oldId, newId]);
+      c.id = newId;
+    });
+    cmds.length = 0;
+    cmds.push(...kept);
+  });
+
+  // Two phases, so a rename can never land on a name another record still holds.
+  for (const [oldId, newId] of renames) {
+    for (const ext of ['stdout.txt', 'stderr.txt', 'exit.txt']) {
+      const from = join(raw, `${oldId}.${ext}`);
+      if (existsSync(from)) renameSync(from, join(raw, `tmp-${newId}.${ext}`));
+    }
+  }
+  for (const [, newId] of renames) {
+    for (const ext of ['stdout.txt', 'stderr.txt', 'exit.txt']) {
+      const from = join(raw, `tmp-${newId}.${ext}`);
+      if (existsSync(from)) renameSync(from, join(raw, `${newId}.${ext}`));
+    }
+  }
+  // Receipts belonging to the removed handoff commands have no place in a pre-C19 archive.
+  for (const f of readdirSync(raw)) {
+    if (/-(pg|redis)-secret\.(stdout|stderr|exit)\.txt$/.test(f)) unlinkSync(join(raw, f));
+  }
 }
 
 function downgradeTo53a4eec(dir: string) {
