@@ -178,7 +178,46 @@ function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknow
  * source-owned value; 53a4eec's did not carry the last field, and several kinds and notes differ.
  * Regenerating with the FROZEN module reproduces exactly what that producer emitted.
  */
+/**
+ * C19 — TRANSLATE THE ARCHIVE BACK TO THE PRE-C19 CREDENTIAL SHAPE.
+ *
+ * C19 moved every credential out of argv and into the child's environment, because
+ * `docker … -e NAME=value` published the real password in the host process list. That is an ERA
+ * change to the evidence format: every frozen predecessor's contract REQUIRED the credential to
+ * stand in argv, so none of them can judge a C19 archive at all.
+ *
+ * Each differential therefore shows its predecessor a FAITHFUL DOWNGRADE — exactly the bytes that
+ * producer would have emitted — so it keeps measuring the semantic change it was written for
+ * rather than tripping over a format version. This is the same device the earlier era downgrades
+ * use, applied at the root of every chain because every chain now crosses this boundary.
+ */
+function downgradeC19(dir: string) {
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (const c of cmds) {
+      const env = (c.env ?? {}) as Record<string, string>;
+      const argv = (c.argv ?? []) as string[];
+      if (env['PGPASSWORD'] !== undefined) {
+        argv[argv.indexOf('PGPASSWORD')] = `PGPASSWORD=${env['PGPASSWORD']}`;
+        c.env = {};
+      } else if (env['POSTGRES_PASSWORD'] !== undefined) {
+        argv[argv.indexOf('POSTGRES_PASSWORD')] = `POSTGRES_PASSWORD=${env['POSTGRES_PASSWORD']}`;
+        c.env = {};
+      } else if (env['REDIS_PASSWORD'] !== undefined) {
+        // `-e REDIS_PASSWORD <image> sh -c <entrypoint>` becomes the old
+        // `<image> redis-server --requirepass <placeholder>`.
+        const at = argv.indexOf('-e');
+        const pass = env['REDIS_PASSWORD'] as string;
+        argv.splice(at, 2);
+        argv.splice(argv.length - 3, 3, argv[argv.length - 3] as string, 'redis-server', '--requirepass', pass);
+        c.env = {};
+      }
+      c.argv = argv;
+    }
+  });
+}
+
 function downgradeTo53a4eec(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '53a4eec', (preseed, before) => legacy53aCoverage({ preseed, before })));
 }
@@ -190,16 +229,19 @@ function downgradeTo53a4eec(dir: string) {
  * for rather than a contract version number.
  */
 function downgradeToA424505(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, 'a424505', (preseed, before) => legacyA42Coverage({ preseed, before })));
 }
 
 function downgradeTo77489f5(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '77489f5', (preseed, before) => legacy774Coverage({ preseed, before })));
 }
 
 function downgradeToBfc8695(dir: string) {
+  downgradeC19(dir);
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (let i = cmds.length - 1; i >= 0; i -= 1) {
       if (!String(cmds[i].label).startsWith('a-a-preseed-')) continue;
