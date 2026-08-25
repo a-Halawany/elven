@@ -19,7 +19,7 @@
  *   PATH B (virgin latest): a fully disjoint instance, 0001–0021 directly, posture equal to
  *     the upgraded Path A posture in EVERY authority-relevant category.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   C18_SEED_SPEC_FULL as C18_SEED_SPEC, SEED_CARDINALITIES, seedInputDigestSource, seedObjectHeader,
   seedObjectPayload, seedOutboxPayload,
@@ -46,15 +46,29 @@ export const C18_GATE_STEP = 'C18 dual-path database history gate (tracked runne
 // ── SECRETS ────────────────────────────────────────────────────────────────────
 /** Every generated secret class. The producer generates one value per class PER PATH. */
 /**
- * C19 — THE REDIS ENTRYPOINT, SOURCE-OWNED.
+ * C19 — THE SECRET HANDOFF CONTRACT, SOURCE-OWNED SO THE VERIFIER PINS IT EXACTLY.
  *
- * `redis-server --requirepass <value>` placed the password in the docker client's argv, where the
- * host process list showed it to every user on the machine. The password now reaches the server
- * through the container's environment, expanded by the container's own shell.
+ * A container needs its password before it can start, and every ordinary way of giving it one
+ * leaves the value somewhere durable:
  *
- * The boundary is stated rather than overclaimed: the value is still an argument of `redis-server`
- * INSIDE the container, visible to anything that can read that container's process table. What is
- * eliminated is exposure on the HOST, which is where this gate's untrusted neighbours are.
+ *   • `--requirepass <value>` / `-e NAME=value`  → the docker client's ARGV, and therefore the
+ *     host process list, for the lifetime of the call;
+ *   • `-e NAME` (pass-through)                   → docker resolves it and stores it in the
+ *     container's Config.Env, where `docker inspect` reports it for the container's lifetime;
+ *   • a file copied in with `docker cp`          → the container's WRITABLE LAYER, which persists
+ *     even after the file is deleted.
+ *
+ * So the container starts with a memory-backed tmpfs and an entrypoint that waits for its secret,
+ * and the secret is written over the STDIN of a `docker exec` whose argv names only a path. The
+ * value lives in the producer's memory and the container's tmpfs and nowhere else.
+ *
+ * A NOTE ON THE HISTORICAL REDIS FINDING, CORRECTED. The original form put the password in
+ * `redis-server --requirepass <value>`. Redis rewrites its own process title at startup, so the
+ * value was NOT persistently visible in the container's process table — an earlier reading that
+ * said otherwise was a probe artifact. The durable exposure was docker METADATA (`Config.Cmd`),
+ * which `docker inspect` returns for as long as the container exists. Evidence archives produced
+ * under the old form remain authentic: the ledger always recorded the redacted placeholder, so no
+ * archive ever carried the value.
  */
 /**
  * C19 — the redaction placeholder shape. A placeholder standing in an ARGV position proves the real
@@ -62,7 +76,63 @@ export const C18_GATE_STEP = 'C18 dual-path database history gate (tracked runne
  */
 export const CREDENTIAL_PLACEHOLDER_RE = /<REDACTED:[a-z]:[A-Z0-9_]+>/;
 
-export const REDIS_ENTRYPOINT = 'exec redis-server --requirepass "$REDIS_PASSWORD"';
+export const SECRET_TMPFS = '/run/secrets:rw,nosuid,nodev,mode=0700';
+export const PG_SECRET_PATH = '/run/secrets/pg';
+export const REDIS_SECRET_PATH = '/run/secrets/redis.conf';
+
+/** The reader side of the handoff: a shell that takes the secret from STDIN, never from argv. */
+export const SECRET_SINK = (path) => `umask 077; cat > ${path}`;
+
+/** Entrypoints that wait for their secret to land in tmpfs before exec'ing the real server. */
+export const PG_ENTRYPOINT = `while [ ! -s ${PG_SECRET_PATH} ]; do sleep 0.05; done; exec docker-entrypoint.sh postgres`;
+export const REDIS_ENTRYPOINT = `while [ ! -s ${REDIS_SECRET_PATH} ]; do sleep 0.05; done; exec redis-server ${REDIS_SECRET_PATH}`;
+
+/** The docker label every governed resource carries FROM CREATION, so cleanup is an exact query. */
+export const DOCKER_RUN_LABEL = 'eye.gate.run';
+
+/**
+ * The gate resource identity, shared with the supervising watchdog through the environment so that
+ * the watchdog's label sweep and the producer's own teardown address exactly the same resources.
+ * Minted when absent, so a resource is never created without an owner to clean it up.
+ */
+export function gateResourceId(env = process.env, mint = () => randomBytes(16).toString('hex')) {
+  const existing = env.EYE_GATE_RESOURCE_ID;
+  if (typeof existing === 'string' && existing !== '') return existing;
+  // Minted ONCE per process and published back into the environment. Both paths of one gate run
+  // must share a single resource owner: two ids would mean two cleanup domains for one run, and a
+  // sweep for either would leave the other's containers stranded.
+  const minted = mint();
+  env.EYE_GATE_RESOURCE_ID = minted;
+  return minted;
+}
+
+/**
+ * C19 — PRE-SPAWN REFUSAL.
+ *
+ * The watchdog sanitises what a child PRINTS and can terminate what it starts, but it cannot see
+ * the argv of a grandchild that some other process spawns. The only place a credential can be kept
+ * out of a descendant's command line with certainty is the point where that command line is built.
+ *
+ * So the producer refuses. Any argv position containing a known secret VALUE — or a redaction
+ * placeholder, which proves a value stood there — stops the run. Failing closed here is what makes
+ * the argv guarantee a property of the system rather than a property of review.
+ */
+export function refuseCredentialArgv(label, argv, secrets) {
+  for (const [index, raw] of (argv ?? []).entries()) {
+    const value = String(raw ?? '');
+    if (CREDENTIAL_PLACEHOLDER_RE.test(value)) {
+      throw new Error(`command '${label}' argv[${index}] carries a redaction placeholder, which `
+        + 'means a credential occupied that position; credentials must reach a child over the '
+        + 'environment or stdin, never argv');
+    }
+    for (const [cls, secret] of secrets ?? []) {
+      if (typeof secret === 'string' && secret.length >= 8 && value.includes(secret)) {
+        throw new Error(`command '${label}' argv[${index}] contains the ${String(cls).split(':').pop()} `
+          + 'credential; credentials must reach a child over the environment or stdin, never argv');
+      }
+    }
+  }
+}
 
 export const SECRET_CLASSES = Object.freeze([
   'EYE_DB_PASSWORD', 'EYE_DB_APP_PASSWORD', 'EYE_DB_ALLOCATOR_PASSWORD', 'EYE_DB_SYSTEM_PASSWORD',
@@ -2596,7 +2666,8 @@ export function verifySuiteReceipts(matrix, receipts, { readFile = null, command
 
 // ── ISOLATION ─────────────────────────────────────────────────────────────────
 export const ISOLATION_FIELDS = Object.freeze([
-  'path', 'container_id', 'container_name', 'redis_container_id', 'redis_container',
+  'path', 'gate_resource_id',
+  'container_id', 'container_name', 'redis_container_id', 'redis_container',
   'database', 'port', 'redis_port', 'postgres_image', 'redis_image', 'credential_digests',
 ]);
 
@@ -2608,6 +2679,13 @@ export const ISOLATION_FIELDS = Object.freeze([
  */
 export function verifyIsolation(receiptA, receiptB, images = null) {
   const problems = [];
+  // ONE gate run, ONE resource owner. Two ids would mean two cleanup domains for a single run, and
+  // a sweep for either would leave the other path's containers stranded.
+  if (receiptA?.gate_resource_id !== receiptB?.gate_resource_id) {
+    problems.push('isolation: the two paths record different gate_resource_id values '
+      + `(${JSON.stringify(receiptA?.gate_resource_id)} and ${JSON.stringify(receiptB?.gate_resource_id)}); `
+      + 'one run must have exactly one cleanup owner');
+  }
   const grammar = {
     container_id: /^[0-9a-f]{12,64}$/,
     container_name: /^c18-[ab]-[0-9a-f]{8}-pg$/,
@@ -2632,6 +2710,10 @@ export function verifyIsolation(receiptA, receiptB, images = null) {
     if (images !== null) {
       if (r.postgres_image !== images.postgres) problems.push(`path-${tag.toLowerCase()} postgres image is not the digest-pinned Compose reference`);
       if (r.redis_image !== images.redis) problems.push(`path-${tag.toLowerCase()} redis image is not the digest-pinned Compose reference`);
+    }
+    if (typeof r?.gate_resource_id !== 'string' || !/^[0-9a-f]{6,64}$/.test(r.gate_resource_id)) {
+      problems.push(`path-${tag.toLowerCase()} gate_resource_id ${JSON.stringify(r?.gate_resource_id)} `
+        + 'is not a resource identity; a resource with no owner has nothing to clean it up');
     }
     const credKeys = Object.keys(r?.credential_digests ?? {}).sort();
     if (JSON.stringify(credKeys) !== JSON.stringify([...SECRET_CLASSES].sort())) {
@@ -2660,6 +2742,9 @@ export function verifyIsolation(receiptA, receiptB, images = null) {
 export const COMMAND_RECORD_FIELDS = Object.freeze([
   'id', 'label', 'argv', 'cwd', 'env', 'timeout_ms', 'exit', 'signal',
   'stdout_bytes', 'stdout_sha256', 'stderr_bytes', 'stderr_sha256', 'exit_bytes', 'exit_sha256',
+  // C19 — the LENGTH of a stdin-delivered secret, never its content. A command that received one
+  // is distinguishable from one that did not, without the ledger carrying the value.
+  'stdin_bytes',
 ]);
 export const commandIdFor = (seq, label) => `${String(seq).padStart(3, '0')}-${label.replace(/[^a-z0-9-]+/gi, '_').slice(0, 60)}`;
 

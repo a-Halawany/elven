@@ -18,6 +18,8 @@ import {
   attestArgv, inventoryArgv, placeholder,
   REDIS_ENTRYPOINT,
   CREDENTIAL_PLACEHOLDER_RE,
+  DOCKER_RUN_LABEL, PG_ENTRYPOINT, PG_SECRET_PATH,
+  REDIS_SECRET_PATH, SECRET_SINK, SECRET_TMPFS,
 } from './c18-contract.mjs';
 
 const schemasIn = () => SNAPSHOT_SCHEMAS.map((s) => `'${s}'`).join(',');
@@ -344,6 +346,33 @@ export function verifyCommandGraph({
     return [];
   };
   /**
+   * C19 — NO ARGV POSITION MAY CARRY A CREDENTIAL, ANYWHERE.
+   *
+   * The producer redacts secret values out of recorded argv, so a redaction placeholder in an argv
+   * position is PROOF that the real value stood there in the live process list. This is therefore
+   * the argv-disclosure detector, and it is general: it does not need to know which commands take
+   * credentials, only that none of them may take one this way.
+   */
+  const noCredentialArgv = (c) => {
+    if (c === null) return;
+    for (const [index, raw] of (Array.isArray(c.argv) ? c.argv : []).entries()) {
+      if (CREDENTIAL_PLACEHOLDER_RE.test(String(raw ?? ''))) {
+        problems.push(`command '${c.label}' argv[${index}] carries a redaction placeholder, which `
+          + 'means a credential occupied that position in the live process list');
+      }
+    }
+  };
+
+  /** A stdin handoff must actually have delivered something. */
+  const deliveredSecret = (c) => {
+    if (c === null) return;
+    if (!Number.isInteger(c.stdin_bytes) || c.stdin_bytes <= 0) {
+      problems.push(`command '${c.label}' is a secret handoff but records `
+        + `${JSON.stringify(c.stdin_bytes)} stdin bytes; the handoff did not happen`);
+    }
+  };
+
+  /**
    * C19 — A CREDENTIAL POSITION IS NOW AN ENVIRONMENT POSITION.
    *
    * The credential left argv because `docker … -e NAME=value` published it in the host process
@@ -397,21 +426,42 @@ export function verifyCommandGraph({
 
   const walkInstance = (letter, r) => {
     const pg = next(`${letter}-pg-run`);
-    mustSucceed(pg); credEnv(pg, letter, r, { POSTGRES_PASSWORD: 'EYE_DB_PASSWORD' });
-    matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name, '-e', 'POSTGRES_USER=eye', '-e',
-      'POSTGRES_PASSWORD', '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
+    mustSucceed(pg); emptyEnv(pg);
+    matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name,
+      '--label', `${DOCKER_RUN_LABEL}=${r.gate_resource_id}`,
+      '--tmpfs', SECRET_TMPFS, '-e', 'POSTGRES_USER=eye',
+      '-e', `POSTGRES_PASSWORD_FILE=${PG_SECRET_PATH}`,
+      '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres,
+      'sh', '-c', PG_ENTRYPOINT]);
+    noCredentialArgv(pg);
     const pgOut = stdoutOf(pg);
     if (pg !== null && pgOut !== null && pgOut.trim() !== r.container_id) {
       problems.push(`'${pg.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
+    // The secret arrives over STDIN. Its argv names only a path, its environment is empty, and the
+    // ledger records that a secret of some length was delivered — never the value.
+    const pgSecret = next(`${letter}-pg-secret`);
+    mustSucceed(pgSecret); emptyEnv(pgSecret);
+    matchArgv(pgSecret, ['docker', 'exec', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)]);
+    noCredentialArgv(pgSecret);
+    deliveredSecret(pgSecret);
+
     const rd = next(`${letter}-redis-run`);
-    mustSucceed(rd); credEnv(rd, letter, r, { REDIS_PASSWORD: 'EYE_REDIS_PASSWORD' });
-    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379',
-      '-e', 'REDIS_PASSWORD', images.redis, 'sh', '-c', REDIS_ENTRYPOINT]);
+    mustSucceed(rd); emptyEnv(rd);
+    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container,
+      '--label', `${DOCKER_RUN_LABEL}=${r.gate_resource_id}`,
+      '--tmpfs', SECRET_TMPFS, '-p', '127.0.0.1:0:6379', images.redis,
+      'sh', '-c', REDIS_ENTRYPOINT]);
+    noCredentialArgv(rd);
     const rdOut = stdoutOf(rd);
     if (rd !== null && rdOut !== null && rdOut.trim() !== r.redis_container_id) {
       problems.push(`'${rd.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
+    const rdSecret = next(`${letter}-redis-secret`);
+    mustSucceed(rdSecret); emptyEnv(rdSecret);
+    matchArgv(rdSecret, ['docker', 'exec', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)]);
+    noCredentialArgv(rdSecret);
+    deliveredSecret(rdSecret);
     for (const [inner, container, portField] of [['5432', r.container_name, 'port'], ['6379', r.redis_container, 'redis_port']]) {
       const pc = next(`${letter}-port-${inner}`);
       mustSucceed(pc); emptyEnv(pc);
