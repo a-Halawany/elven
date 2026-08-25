@@ -226,6 +226,7 @@ function downgradeC19(dir: string) {
       // The stdin handoff did not exist before C19; its command disappears entirely.
       if (/-(pg|redis)-secret$/.test(label)) continue;
       delete c.stdin_bytes;
+      delete c.stdin_class;
 
       const letter = label.slice(0, 1);
       if (/-pg-run$/.test(label)) {
