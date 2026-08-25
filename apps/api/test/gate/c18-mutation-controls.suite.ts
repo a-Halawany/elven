@@ -191,6 +191,23 @@ function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknow
  * rather than tripping over a format version. This is the same device the earlier era downgrades
  * use, applied at the root of every chain because every chain now crosses this boundary.
  */
+/**
+ * C19 — set a CREDENTIAL POSITION regardless of which era's archive this is.
+ *
+ * These controls assert an INTENT that outlives the mechanism: a credential position carrying the
+ * wrong class, or another path's material, must be rejected. C19 moved that position out of argv
+ * and into the environment, and each differential applies the same mutator to two archives — the
+ * pre-C19 downgrade the frozen verifier judges, and the C19 archive the corrected one judges. One
+ * mutator therefore has to address the position in whichever era it is looking at.
+ */
+function setCredentialPosition(c: any, key: string, value: string) {
+  if ((c.env ?? {})[key] !== undefined) { c.env[key] = value; return; }
+  const argv = c.argv as string[];
+  if (key === 'REDIS_PASSWORD') { argv[argv.length - 1] = value; return; }
+  const i = argv.findIndex((a) => String(a).startsWith(`${key}=`));
+  argv[i] = `${key}=${value}`;
+}
+
 function downgradeC19(dir: string) {
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (const c of cmds) {
@@ -1364,10 +1381,10 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /env EYE_DB_PASSWORD is .*attacker:WRONG_CLASS/],
   ['6: wrong Redis secret class', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
-      const c = cmds.find((x) => x.label === 'a-redis-run');
-      c.argv[c.argv.length - 1] = '<REDACTED:a:EYE_DB_PASSWORD>';
+      setCredentialPosition(cmds.find((x) => x.label === 'a-redis-run'), 'REDIS_PASSWORD',
+        '<REDACTED:a:EYE_DB_PASSWORD>');
     });
-  }, /requirepass is not the path-a EYE_REDIS_PASSWORD class/],
+  }, /path-a EYE_REDIS_PASSWORD class/],
   ['7: Path-A command carrying a Path-B placeholder', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
       cmds.find((x) => x.label === 'a-suite-integration').env.EYE_DB_APP_PASSWORD = '<REDACTED:b:EYE_DB_APP_PASSWORD>';
@@ -1380,9 +1397,10 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       c.env.EYE_DB_IDENTITY_PASSWORD = '<REDACTED:a:EYE_DB_COMMIT_PASSWORD>';
     });
   }, /env EYE_DB_COMMIT_PASSWORD is/],
-  ['7c: wrong-path PGPASSWORD in argv', (d) => {
+  ['7c: a wrong-path PGPASSWORD in the credential position', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
-      cmds.find((x) => x.label === 'a-a-before-ledger').argv[3] = 'PGPASSWORD=<REDACTED:b:EYE_DB_PASSWORD>';
+      setCredentialPosition(cmds.find((x) => x.label === 'a-a-before-ledger'), 'PGPASSWORD',
+        '<REDACTED:b:EYE_DB_PASSWORD>');
     });
   }, /carries path 'b' credential material in a path-'a' command/],
   ['8: forged session familyId', (d) => {
@@ -1568,7 +1586,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     editJson(d, 'commands.json', (cmds: any[]) => {
       for (const c of cmds) {
         if (c.label === 'a-a-before-ledger' || c.label === 'a-pg-confirm-0') {
-          c.argv[3] = '<REDACTED:a:EYE_DB_APP_PASSWORD>'.replace(/^/, 'PGPASSWORD=');
+          setCredentialPosition(c, 'PGPASSWORD', '<REDACTED:a:EYE_DB_APP_PASSWORD>');
         }
       }
     });
@@ -1711,15 +1729,16 @@ describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
   it.each([
     ['a POSTGRES_PASSWORD carrying another valid class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        cmds.find((c) => c.label === 'a-pg-run').argv[8] = 'POSTGRES_PASSWORD=<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>';
+        setCredentialPosition(cmds.find((c) => c.label === 'a-pg-run'), 'POSTGRES_PASSWORD',
+          '<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>');
       });
     }, /this position requires the path-a EYE_DB_PASSWORD class/],
     ['a --requirepass carrying the database class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        const c = cmds.find((x) => x.label === 'b-redis-run');
-        c.argv[c.argv.length - 1] = '<REDACTED:b:EYE_DB_PASSWORD>';
+        setCredentialPosition(cmds.find((x) => x.label === 'b-redis-run'), 'REDIS_PASSWORD',
+          '<REDACTED:b:EYE_DB_PASSWORD>');
       });
-    }, /this position requires the path-b EYE_REDIS_PASSWORD class/],
+    }, /path-b EYE_REDIS_PASSWORD class/],
     ['an attestation that hashed a foreign migration file', (d: string) => {
       const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
       const attest = cmds.find((c: any) => c.label === 'b-migrate-latest-attest');

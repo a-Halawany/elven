@@ -355,6 +355,13 @@ export function verifyCommandGraph({
     if (c === null) return;
     const got = c.env ?? {};
     for (const [key, cls] of Object.entries(spec)) {
+      const where = `command '${c.label}' credential environment ${key} ${JSON.stringify(got[key])}`;
+      // The same two-stage judgement `exactPh` made in argv: first that the value is a well-formed
+      // placeholder naming THIS path and a class the receipt actually registers, then that it is
+      // the one class this position requires. Running checkPlaceholder first is what keeps the
+      // cross-path and unknown-class diagnostics exactly as specific as they were before C19.
+      const structural = checkPlaceholder(got[key], letter, r, where);
+      if (structural.length > 0) { problems.push(...structural); continue; }
       const want = placeholder(letter, cls);
       if (got[key] !== want) {
         problems.push(`command '${c.label}' credential environment ${key} is ${JSON.stringify(got[key])}; this position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`);
