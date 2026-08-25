@@ -247,6 +247,8 @@ describe('C18.1.1 — exact isolation for postgres AND redis', () => {
   const creds = (p: string) => Object.fromEntries(SECRET_CLASSES.map((k: string) => [k, sha256(`${p}:${k}`)]));
   const mk = (tag: 'a' | 'b', over: Record<string, unknown> = {}) => ({
     path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+    // One run, one resource owner — both paths share it, as the C19 contract requires.
+    gate_resource_id: 'f'.repeat(32),
     container_id: `${tag}`.repeat(12), container_name: `c18-${tag}-0123abcd-pg`,
     redis_container_id: `${tag}f`.repeat(6), redis_container: `c18-${tag}-0123abcd-redis`,
     database: `eye_${tag}_0123abcd`, port: tag === 'a' ? 5001 : 5002, redis_port: tag === 'a' ? 6001 : 6002,
@@ -370,7 +372,10 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
     id: commandIdFor(seq, label), label, argv: ['docker', 'ps'], cwd: '.', env: {},
     timeout_ms: 120_000, exit: 0, signal: null,
     stdout_bytes: 3, stdout_sha256: sha256('ok\n'), stderr_bytes: 0, stderr_sha256: sha256(''),
-    exit_bytes: 2, exit_sha256: sha256('0\n'), ...over,
+    exit_bytes: 2, exit_sha256: sha256('0\n'),
+    // C19 — a command that received no stdin secret still declares the fields, so the record set
+    // stays CLOSED: an absent field and a zero-length handoff must not be the same thing.
+    stdin_bytes: 0, stdin_class: null, ...over,
   });
   it('a well-formed ledger passes typing; every forgery axis fails', () => {
     expect(verifyCommandRecords([record(1, 'one'), record(2, 'two')])).toEqual([]);
@@ -400,7 +405,8 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
   });
   it('the command graph fails closed on an empty or truncated ledger', () => {
     const receipt = (tag: 'a' | 'b') => ({
-      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin', container_id: 'c'.repeat(12),
+      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      gate_resource_id: 'f'.repeat(32), container_id: 'c'.repeat(12),
       container_name: `c18-${tag}-01234567-pg`, redis_container_id: 'd'.repeat(12),
       redis_container: `c18-${tag}-01234567-redis`, database: `eye_${tag}_01234567`,
       port: 5001, redis_port: 6001, postgres_image: 'p', redis_image: 'r', credential_digests: {},
@@ -560,6 +566,7 @@ describe('C18.1.3 — the query plan is source-owned and exact', () => {
   it('the graph rejects a substituted query even when its output is genuine', () => {
     const iso = (tag: 'a' | 'b') => ({
       path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      gate_resource_id: 'f'.repeat(32),
       container_id: 'c'.repeat(12), container_name: `c18-${tag}-01234567-pg`,
       redis_container_id: 'd'.repeat(12), redis_container: `c18-${tag}-01234567-redis`,
       database: `eye_${tag}_01234567`, port: 5001, redis_port: 6001,
