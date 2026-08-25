@@ -1,0 +1,65 @@
+{
+  "schema": "eye/c19/trust-registry",
+  "version": 1,
+  "algorithms": [
+    "RS256",
+    "ES256"
+  ],
+  "signers": {
+    "github-actions-oidc": {
+      "kind": "oidc-jwt",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "deliveryCapable": true,
+      "description": "GitHub Actions OIDC. GitHub signs the token; neither its key nor its clock is controlled by the evidence process.",
+      "keys": {
+        "cc413527-173f-5a05-976e-9c52b1d7b431": {
+          "version": "cc413527-173f-5a05-976e-9c52b1d7b431",
+          "algorithm": "RS256",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw4M936N3ZxNaEblcUoBm\n+xu0+V9JxNx5S7TmF0M3SBK+2bmDyAeDdeIOTcIVZHG+ZX9N9W0u1yWafgWewHrs\nz66BkxXq3bscvQUTAw7W3s6TEeYY7o9shPkFfOiU3x/KYgOo06SpiFdymwJflRs9\ncnbaU88i5fZJmUepUHVllP2tpPWTi+7UA3AdP3cdcCs5bnFfTRKzH2W0xqKsY/jI\nG95aQJRBDpbiesefjuyxcQnOv88j9tCKWzHpJzRKYjAUM6OPgN4HYnaSWrPJj1v4\n1eEkFM1kORuj+GSH2qMVD02VklcqaerhQHIqM+RjeHsN7G05YtwYzomE5G+fZuwg\nvQIDAQAB\n-----END PUBLIC KEY-----"
+        },
+        "38826b17-6a30-5f9b-b169-8beb8202f723": {
+          "version": "38826b17-6a30-5f9b-b169-8beb8202f723",
+          "algorithm": "RS256",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Manmy+zwsk3wEftXNdK\nFZec4rSWENW4jTGevlvAcU9z3bgLBogQVvqYLtu9baVm2B3rfe5onadobq8po5Ua\nkJ0YsTiiEfXWdST7YI2Sdkvv+hOYMcZKYZ4dFvuSO1vQ2DgEkw/OZNiYI1S518MW\nEcNxnPU5u67zkawAGsLlmXNbOylgVfBRJrG8gj6scr+sBs4LaCa3kg5IuaCHe1pB\n+nSYHovGV/z0egE83C098FfwO1dNZBWeo4Obhb5Z+ZYFLJcZfngMY0zJnCVNmpHQ\nWOgxfGikh3cwi4MYrFrbB4NTlxbrQ3bL+rGKR5X318veyDlo8Dyz2KWMobT4wB9U\n1QIDAQAB\n-----END PUBLIC KEY-----"
+        },
+        "38E9B30B3A023A1B72309921A69A42FCC496C42C": {
+          "version": "38E9B30B3A023A1B72309921A69A42FCC496C42C",
+          "algorithm": "RS256",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtEq2Fp9HcdT5MwMsB/UT\nm8j/woJJLi3sA+y0RX2tioTm581seyfvOH6lJ5JmHVtS+/fb8B2tRT1pznHQSNq1\n4PsJdu9bp5egbWmIz+5RvhqoM+oKem/MJENCNFuqXijRLT47FRdfH3inqde1vJlA\n/JJHCqYMKIpHH7kqNFYcCpwr0vk80Hc2rTyL0uBXI7NqBZbtUgNoyucWO5O7QQrP\nNOmlr+GI8aFckFRfobCaCOiH9qW02FtkV74fwBGVCNhNf3a1CK81+O8xEGimvVyd\nI/pQA5B8QqVuQjY/ntOu555HdirA0hKkY6fsE9eZCMFmWDHZ2kSWLjhabxWxIzSz\nXQIDAQAB\n-----END PUBLIC KEY-----"
+        },
+        "4F3E9AD8C9A6F5EB3173006F4FA630E28F43DCE9": {
+          "version": "4F3E9AD8C9A6F5EB3173006F4FA630E28F43DCE9",
+          "algorithm": "RS256",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtGevqhkBGn8NB0dKxs8D\ndxhn+xZPm55svcSlkJZEOwDOXDLl/0+iVOVKNJfcHHLHvMqa6zh2DDcpAWZi2Fpe\nBAJupsrymqwzllxOODWKWoVIoaIjOO7h1JLiF9Knwuq+o6BPtKdwOT+bOrXRzChM\ntQsc5C1Auex+D0Z6loObBuK1Lkm0RK9ISQsLqBEwq8g0OOupI/shU1r2rT2G0nkZ\n0CvxVlQeUGShFi8Mdys2s5LPqBwjC4LKwjk8moWQV32KEccbTPKxnG/539DxRglH\nJgHPHisSVGsfZIUXi2chtXdQHZPdVve8ZRmknCykZtkJ6K87llSUXi7oyzhCIZdi\nUQIDAQAB\n-----END PUBLIC KEY-----"
+        }
+      }
+    },
+    "sigstore-fulcio": {
+      "kind": "x509-chain",
+      "deliveryCapable": true,
+      "description": "Sigstore Fulcio issues a short-lived certificate bound to the GitHub OIDC identity; Rekor records it in a public append-only log.",
+      "keys": {
+        "fulcio-2022": {
+          "version": "fulcio-2022",
+          "algorithm": "ES256",
+          "chainPem": [
+            "-----BEGIN CERTIFICATE-----\nMIICGjCCAaGgAwIBAgIUALnViVfnU0brJasmRkHrn/UnfaQwCgYIKoZIzj0EAwMw\nKjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MREwDwYDVQQDEwhzaWdzdG9yZTAeFw0y\nMjA0MTMyMDA2MTVaFw0zMTEwMDUxMzU2NThaMDcxFTATBgNVBAoTDHNpZ3N0b3Jl\nLmRldjEeMBwGA1UEAxMVc2lnc3RvcmUtaW50ZXJtZWRpYXRlMHYwEAYHKoZIzj0C\nAQYFK4EEACIDYgAE8RVS/ysH+NOvuDZyPIZtilgUF9NlarYpAd9HP1vBBH1U5CV7\n7LSS7s0ZiH4nE7Hv7ptS6LvvR/STk798LVgMzLlJ4HeIfF3tHSaexLcYpSASr1kS\n0N/RgBJz/9jWCiXno3sweTAOBgNVHQ8BAf8EBAMCAQYwEwYDVR0lBAwwCgYIKwYB\nBQUHAwMwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4EFgQU39Ppz1YkEZb5qNjp\nKFWixi4YZD8wHwYDVR0jBBgwFoAUWMAeX5FFpWapesyQoZMi0CrFxfowCgYIKoZI\nzj0EAwMDZwAwZAIwPCsQK4DYiZYDPIaDi5HFKnfxXx6ASSVmERfsynYBiX2X6SJR\nnZU84/9DZdnFvvxmAjBOt6QpBlc4J/0DxvkTCqpclvziL6BCCPnjdlIB3Pu3BxsP\nmygUY7Ii2zbdCdliiow=\n-----END CERTIFICATE-----",
+            "-----BEGIN CERTIFICATE-----\nMIIB9zCCAXygAwIBAgIUALZNAPFdxHPwjeDloDwyYChAO/4wCgYIKoZIzj0EAwMw\nKjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MREwDwYDVQQDEwhzaWdzdG9yZTAeFw0y\nMTEwMDcxMzU2NTlaFw0zMTEwMDUxMzU2NThaMCoxFTATBgNVBAoTDHNpZ3N0b3Jl\nLmRldjERMA8GA1UEAxMIc2lnc3RvcmUwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAT7\nXeFT4rb3PQGwS4IajtLk3/OlnpgangaBclYpsYBr5i+4ynB07ceb3LP0OIOZdxex\nX69c5iVuyJRQ+Hz05yi+UF3uBWAlHpiS5sh0+H2GHE7SXrk1EC5m1Tr19L9gg92j\nYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRY\nwB5fkUWlZql6zJChkyLQKsXF+jAfBgNVHSMEGDAWgBRYwB5fkUWlZql6zJChkyLQ\nKsXF+jAKBggqhkjOPQQDAwNpADBmAjEAj1nHeXZp+13NWBNa+EDsDP8G1WWg1tCM\nWP/WHPqpaVo0jhsweNFZgSs0eE7wYI4qAjEA2WB9ot98sIkoF3vZYdd3/VtWB5b9\nTNMea7Ix/stJ5TfcLLeABLE4BNJOsQ4vnBHJ\n-----END CERTIFICATE-----"
+          ]
+        }
+      },
+      "transparencyLog": {
+        "name": "rekor",
+        "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2G2Y+2tabdTV5BcGiBIx0a9fAFwr\nkBbmLSGtks4L3qX6yYY0zufBnhC8Ur/iy55GhWP/9A/bY2LhC30M9+RYtw==\n-----END PUBLIC KEY-----",
+        "algorithm": "ES256"
+      }
+    },
+    "local-dev": {
+      "kind": "ed25519-local",
+      "deliveryCapable": false,
+      "description": "NON-DELIVERY test seam only. Controlled by the evidence process, therefore NOT independent. Hosted delivery standing refuses it by construction.",
+      "keys": {}
+    }
+  },
+  "revoked": []
+}
