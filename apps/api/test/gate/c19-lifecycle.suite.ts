@@ -399,6 +399,72 @@ process.exit(0);
     });
   });
 
+  describe('C19 — the anchor proves provenance, not the claims inside it', () => {
+    const authorityPath = join(REPO, 'scripts', 'gate', 'lib', 'c19-authority.mjs');
+
+    it('the ledger is self-consistent: nothing is closed without an independent authority', async () => {
+      const a = await import(/* @vite-ignore */ authorityPath);
+      expect(a.verifyAuthorityLedger()).toEqual([]);
+    });
+
+    it('NON-VACUITY: closing a claim without an independent authority is refused', async () => {
+      const a = await import(/* @vite-ignore */ authorityPath);
+      // The exact failure this file exists to prevent — a limit marked closed because the bytes
+      // around it became signed.
+      const forged = [{
+        id: 'bootstrap-marking-instant', claim: 'the exact instant', authority: null,
+        independent: false, proves: 'a bounded interval', closes: true,
+      }];
+      expect(a.verifyAuthorityLedger(forged).join('\n'))
+        .toMatch(/marked closed without an independent authority/);
+      // And a signature-bearing but self-asserted authority is equally refused.
+      const selfSigned = [{
+        id: 'x', claim: 'c', authority: 'local-dev', independent: false, proves: 'p', closes: true,
+      }];
+      expect(a.verifyAuthorityLedger(selfSigned).length).toBeGreaterThan(0);
+    });
+
+    it('every open limit says what would be required to close it', async () => {
+      const a = await import(/* @vite-ignore */ authorityPath);
+      expect(a.openLimits().length).toBeGreaterThan(0);
+      for (const e of a.C19_CLAIM_AUTHORITY.filter((x: any) => !x.closes)) {
+        expect(typeof e.wouldRequire, `${e.id} must say what would close it`).toBe('string');
+        expect(e.wouldRequire.length).toBeGreaterThan(10);
+      }
+    });
+
+    it('the database, identifier, secret, docker and clock claims all remain OPEN', async () => {
+      const a = await import(/* @vite-ignore */ authorityPath);
+      // These are exactly the claims a signature cannot testify to. If a future pass closes one,
+      // it must do so by naming an authority, and this control is where that is noticed.
+      expect(a.openLimits()).toEqual([
+        'backend-assigned-identifiers', 'bootstrap-marking-instant', 'docker-resource-identity',
+        'per-instance-generated-secrets', 'producer-local-clock',
+      ]);
+    });
+
+    it('the anchor does not claim more than workflow identity, bytes, inclusion and a time window',
+      async () => {
+        const a = await import(/* @vite-ignore */ authorityPath);
+        expect([...a.ANCHOR_PROVES].sort()).toEqual([
+          'log-inclusion', 'publication-time-window', 'signed-bytes', 'workflow-identity',
+        ]);
+      });
+
+    it('the C18 limits that C19 inherited are all still accounted for', async () => {
+      const limits = await import(/* @vite-ignore */
+        join(REPO, 'scripts', 'gate', 'lib', 'c18-observational-limits.mjs'));
+      const a = await import(/* @vite-ignore */ authorityPath);
+      const classified = new Set(a.C19_CLAIM_AUTHORITY.map((c: any) => c.id));
+      // Every limit C18 declared must appear in the C19 classification — closed with a named
+      // authority, or carried forward as still open. Silently dropping one is how a limit
+      // disappears without ever being resolved.
+      for (const id of limits.observationalLimitIds()) {
+        expect(classified.has(id), `C18 limit '${id}' is not classified by C19`).toBe(true);
+      }
+    });
+  });
+
   describe('C19 — credentials never enter a live command line', () => {
     it('the producer refuses to spawn a command carrying a credential in argv', async () => {
       const contract = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'lib', 'c18-contract.mjs'));
