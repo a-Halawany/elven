@@ -721,6 +721,51 @@ export function dockerInventory(token, run = (args) => spawnSync('docker', args,
   };
 }
 
+/** The three queries are independent, so they are issued CONCURRENTLY: run serially they cost
+ *  roughly half a second on every single watchdog invocation, which a control suite that spawns
+ *  the watchdog dozens of times pays in full. */
+export async function dockerInventoryAsync(token, runAsync = spawnDockerAsync) {
+  const filter = `label=${DOCKER_RUN_LABEL}=${token}`;
+  const [containers, networks, volumes] = await Promise.all([
+    runAsync(['ps', '-aq', '--filter', filter]),
+    runAsync(['network', 'ls', '-q', '--filter', filter]),
+    runAsync(['volume', 'ls', '-q', '--filter', filter]),
+  ]);
+  return {
+    containers: parseDockerIds(containers),
+    networks: parseDockerIds(networks),
+    volumes: parseDockerIds(volumes),
+  };
+}
+
+/** One `docker` invocation, resolved with its stdout. A missing docker yields '' rather than
+ *  throwing, so an environment without it simply reports an empty inventory. */
+export function spawnDockerAsync(args) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(out); } };
+    try {
+      const p = spawn('docker', args, { stdio: ['ignore', 'pipe', 'ignore'] });
+      p.stdout.on('data', (b) => { out += b.toString(); });
+      p.on('error', finish);
+      p.on('close', finish);
+    } catch { finish(); }
+  });
+}
+
+/** The async counterpart of `sweepDockerResources`, used on the real shutdown path. */
+export async function sweepDockerResourcesAsync(token, runAsync = spawnDockerAsync) {
+  const before = await dockerInventoryAsync(token, runAsync);
+  await Promise.all([
+    before.containers.length > 0 ? runAsync(['rm', '-f', ...before.containers]) : Promise.resolve(''),
+    before.networks.length > 0 ? runAsync(['network', 'rm', ...before.networks]) : Promise.resolve(''),
+    before.volumes.length > 0 ? runAsync(['volume', 'rm', '-f', ...before.volumes]) : Promise.resolve(''),
+  ]);
+  const after = await dockerInventoryAsync(token, runAsync);
+  return { before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after) };
+}
+
 /** Total resources in an inventory — the number a baseline comparison actually cares about. */
 export const inventorySize = (inv) => (inv.containers.length + inv.networks.length + inv.volumes.length);
 
@@ -825,7 +870,7 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     // a second on every invocation, which a control suite that spawns the watchdog dozens of times
     // pays in full for no benefit. An absent docker simply yields an empty inventory.
     let dockerResidue = 0;
-    const swept = sweepDockerResources(marker);
+    const swept = await sweepDockerResourcesAsync(marker);
     if (swept.removed > 0) say(`c18-watchdog: removed ${swept.removed} docker resource(s) labelled ${DOCKER_RUN_LABEL}=${marker}`);
     dockerResidue = swept.residue;
     if (dockerResidue > 0) {
