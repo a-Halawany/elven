@@ -630,6 +630,8 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   let timer = null;
   let censusTimer = null;
   let child = null;
+  /** How the child itself ended, so the report can say whether it had to be hard-killed. */
+  let childSignal = null;
   /** A signal that arrives BEFORE the child exists still has to be honoured once it does. */
   let pendingSignal = null;
 
@@ -673,7 +675,7 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     err.flush();
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
     say(`c18-watchdog: finished in ${elapsed}s (${reason}, exit=${exitCode}, `
-      + `contained=${survivors.length === 0})`);
+      + `signal=${childSignal ?? 'none'}, contained=${survivors.length === 0})`);
     process.exit(exitCode);
   };
 
@@ -759,8 +761,9 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     void shutdown(timedOut ? 'deadline exceeded' : 'finished',
       timedOut ? 124 : (code === null ? 1 : code));
   };
-  child.on('close', (code) => onChildGone(code));
-  child.on('exit', (code) => {
+  child.on('close', (code, signal) => { childSignal = signal ?? childSignal; onChildGone(code); });
+  child.on('exit', (code, signal) => {
+    childSignal = signal ?? childSignal;
     setTimeout(() => {
       if (!finished) say('c18-watchdog: child exited but its output pipes are still held; draining stopped');
       onChildGone(code);
