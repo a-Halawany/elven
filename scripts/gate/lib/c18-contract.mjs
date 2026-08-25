@@ -2744,7 +2744,7 @@ export const COMMAND_RECORD_FIELDS = Object.freeze([
   'stdout_bytes', 'stdout_sha256', 'stderr_bytes', 'stderr_sha256', 'exit_bytes', 'exit_sha256',
   // C19 — the LENGTH of a stdin-delivered secret, never its content. A command that received one
   // is distinguishable from one that did not, without the ledger carrying the value.
-  'stdin_bytes',
+  'stdin_bytes', 'stdin_class',
 ]);
 export const commandIdFor = (seq, label) => `${String(seq).padStart(3, '0')}-${label.replace(/[^a-z0-9-]+/gi, '_').slice(0, 60)}`;
 

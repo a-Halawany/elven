@@ -363,12 +363,25 @@ export function verifyCommandGraph({
     }
   };
 
-  /** A stdin handoff must actually have delivered something. */
-  const deliveredSecret = (c) => {
+  /**
+   * A stdin handoff must have delivered something, and the ledger must say WHICH class it was.
+   * The value is gone from the record by design; the class binding is not, so a handoff carrying
+   * the wrong class or another path's material is still a finding.
+   */
+  const deliveredSecret = (c, letter, r, cls) => {
     if (c === null) return;
     if (!Number.isInteger(c.stdin_bytes) || c.stdin_bytes <= 0) {
       problems.push(`command '${c.label}' is a secret handoff but records `
         + `${JSON.stringify(c.stdin_bytes)} stdin bytes; the handoff did not happen`);
+    }
+    const want = placeholder(letter, cls);
+    if (c.stdin_class !== want) {
+      problems.push(`command '${c.label}' hands over ${JSON.stringify(c.stdin_class)}; this `
+        + `position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`);
+    }
+    for (const problem of checkPlaceholder(String(c.stdin_class ?? ''), letter, r,
+      `command '${c.label}' stdin class ${JSON.stringify(c.stdin_class)}`)) {
+      problems.push(problem);
     }
   };
 
@@ -444,7 +457,7 @@ export function verifyCommandGraph({
     mustSucceed(pgSecret); emptyEnv(pgSecret);
     matchArgv(pgSecret, ['docker', 'exec', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)]);
     noCredentialArgv(pgSecret);
-    deliveredSecret(pgSecret);
+    deliveredSecret(pgSecret, letter, r, 'EYE_DB_PASSWORD');
 
     const rd = next(`${letter}-redis-run`);
     mustSucceed(rd); emptyEnv(rd);
@@ -461,7 +474,7 @@ export function verifyCommandGraph({
     mustSucceed(rdSecret); emptyEnv(rdSecret);
     matchArgv(rdSecret, ['docker', 'exec', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)]);
     noCredentialArgv(rdSecret);
-    deliveredSecret(rdSecret);
+    deliveredSecret(rdSecret, letter, r, 'EYE_REDIS_PASSWORD');
     for (const [inner, container, portField] of [['5432', r.container_name, 'port'], ['6379', r.redis_container, 'redis_port']]) {
       const pc = next(`${letter}-port-${inner}`);
       mustSucceed(pc); emptyEnv(pc);

@@ -106,7 +106,7 @@ import {
   SECRET_TMPFS, SEED_FLOOR,
   SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL,
   TABLE_UNIVERSE_LATEST, authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt,
-  commandIdFor, compareSnapshots, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
+  commandIdFor, compareSnapshots, placeholder, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
   deriveSeedSummary, orderedMigrations, parseResultReceipt, redactArgv, redactString, secretDigest,
   verifyAuditShapes, verifyChainRows, verifyCleanupReceipt, verifyCommandRecords,
   verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape,
@@ -202,7 +202,7 @@ class Evidence {
    * class, because the whole point of the stdin channel is that the value has nowhere durable to
    * live. Recording it — even redacted — would put it back into the ledger it was moved out of.
    */
-  run(label, argv, { env = {}, cwd = ROOT, timeoutMs = 120_000, allowFail = false, input } = {}) {
+  run(label, argv, { env = {}, cwd = ROOT, timeoutMs = 120_000, allowFail = false, input, inputClass } = {}) {
     this.seq += 1;
     const id = commandIdFor(this.seq, label);
     // C19 PRE-SPAWN REFUSAL. The outer watchdog cannot inspect a grandchild's argv, so the
@@ -231,6 +231,10 @@ class Evidence {
       // Presence and length only. A stdin-delivered secret must not be reconstructible from the
       // ledger, and its length class is what a verifier needs to prove the handoff happened.
       stdin_bytes: input === undefined ? 0 : Buffer.byteLength(String(input)),
+      // WHICH class was delivered, in the same path-and-class notation every other credential
+      // position uses. Moving the secret to stdin must not cost the ledger its class binding: a
+      // handoff of the wrong class, or of another path's material, stays detectable.
+      stdin_class: inputClass ?? null,
       stdout_bytes: stdoutRed.byteLength, stdout_sha256: sha256(stdoutRed),
       stderr_bytes: stderrRed.byteLength, stderr_sha256: sha256(stderrRed),
       exit_bytes: exitText.byteLength, exit_sha256: sha256(exitText),
@@ -299,7 +303,7 @@ function startInstance(ev, letter, images, cleanup) {
   inst.containerId = pgRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.container);
   ev.run(`${letter}-pg-secret`, ['docker', 'exec', '-i', inst.container, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)],
-    { input: passwords.EYE_DB_PASSWORD });
+    { input: passwords.EYE_DB_PASSWORD, inputClass: placeholder(letter, 'EYE_DB_PASSWORD') });
 
   const redisRun = ev.run(`${letter}-redis-run`, ['docker', 'run', '-d', '--name', inst.redisContainer,
     '--label', `${DOCKER_RUN_LABEL}=${resourceId}`,
@@ -308,7 +312,8 @@ function startInstance(ev, letter, images, cleanup) {
   inst.redisContainerId = redisRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.redisContainer);
   ev.run(`${letter}-redis-secret`, ['docker', 'exec', '-i', inst.redisContainer, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)],
-    { input: `requirepass ${passwords.EYE_REDIS_PASSWORD}\n` });
+    { input: `requirepass ${passwords.EYE_REDIS_PASSWORD}\n`,
+      inputClass: placeholder(letter, 'EYE_REDIS_PASSWORD') });
   const portOf = (container, inner) => {
     const r = ev.run(`${letter}-port-${inner}`, ['docker', 'port', container, String(inner)]);
     const m = /:(\d+)\s*$/m.exec(r.stdout.trim());

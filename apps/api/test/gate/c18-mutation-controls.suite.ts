@@ -201,6 +201,9 @@ function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknow
  * mutator therefore has to address the position in whichever era it is looking at.
  */
 function setCredentialPosition(c: any, key: string, value: string) {
+  // C19 — a provisioning credential no longer occupies argv or env at all; it is handed over on
+  // stdin, and the ledger records WHICH class was handed over. That class field is the position.
+  if (c.stdin_class !== undefined && c.stdin_class !== null) { c.stdin_class = value; return; }
   if ((c.env ?? {})[key] !== undefined) { c.env[key] = value; return; }
   const argv = c.argv as string[];
   if (key === 'REDIS_PASSWORD') { argv[argv.length - 1] = value; return; }
@@ -1798,16 +1801,16 @@ describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
   it.each([
-    ['a POSTGRES_PASSWORD carrying another valid class', (d: string) => {
+    ['a postgres handoff carrying another valid class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        setCredentialPosition(cmds.find((c) => c.label === 'a-pg-run'), 'POSTGRES_PASSWORD',
-          '<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>');
+        setCredentialPosition(cmds.find((c) => c.label === 'a-pg-secret') ?? cmds.find((c) => c.label === 'a-pg-run'),
+          'POSTGRES_PASSWORD', '<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>');
       });
     }, /this position requires the path-a EYE_DB_PASSWORD class/],
-    ['a --requirepass carrying the database class', (d: string) => {
+    ['a redis handoff carrying the database class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        setCredentialPosition(cmds.find((x) => x.label === 'b-redis-run'), 'REDIS_PASSWORD',
-          '<REDACTED:b:EYE_DB_PASSWORD>');
+        setCredentialPosition(cmds.find((x) => x.label === 'b-redis-secret') ?? cmds.find((x) => x.label === 'b-redis-run'),
+          'REDIS_PASSWORD', '<REDACTED:b:EYE_DB_PASSWORD>');
       });
     }, /path-b EYE_REDIS_PASSWORD class/],
     ['an attestation that hashed a foreign migration file', (d: string) => {
@@ -3935,7 +3938,10 @@ describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
     // password stand in argv. Both directions are proved — frozen demands it, corrected forbids it.
     const r = await legacyA8d({ zipPath: ARCHIVE, root: REPO });
     expect(r.ok).toBe(false);
-    expect(r.problems.join('\n')).toMatch(/PGPASSWORD=|POSTGRES_PASSWORD=|requirepass/);
+    // Its contract cannot describe an archive whose credentials never enter argv: the ledger
+    // record set it demands has no field for a stdin handoff, and its command graph requires the
+    // password to stand in a `docker run` argument. Either objection is the same refusal.
+    expect(r.problems.join('\n')).toMatch(/closed record set|PGPASSWORD=|POSTGRES_PASSWORD=|requirepass/);
   });
 
   it('the corrected verifier ACCEPTS the same archive the frozen one refused', async () => {
@@ -3957,17 +3963,14 @@ describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
     ['the postgres container password restored to argv', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
         const c = cmds.find((x: any) => x.label === 'a-pg-run');
-        const i = c.argv.indexOf('POSTGRES_PASSWORD');
-        c.argv[i] = `POSTGRES_PASSWORD=${c.env['POSTGRES_PASSWORD']}`;
-        c.env = {};
+        const i = c.argv.findIndex((a: string) => String(a).startsWith('POSTGRES_PASSWORD_FILE='));
+        c.argv[i] = 'POSTGRES_PASSWORD=<REDACTED:a:EYE_DB_PASSWORD>';
       });
     }],
     ['the redis password restored to the command line', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
         const c = cmds.find((x: any) => x.label === 'a-redis-run');
-        c.argv = [...c.argv.slice(0, c.argv.indexOf('-e')), ...c.argv.slice(c.argv.indexOf('-e') + 2)];
-        c.argv.push('redis-server', '--requirepass', c.env['REDIS_PASSWORD']);
-        c.env = {};
+        c.argv.push('--requirepass', '<REDACTED:a:EYE_REDIS_PASSWORD>');
       });
     }],
   ] as ReadonlyArray<[string, Mutator]>)('REJECTS %s', async (_label, mutate) => {
