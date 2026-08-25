@@ -1456,7 +1456,11 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /env EYE_DB_PASSWORD is .*attacker:WRONG_CLASS/],
   ['6: wrong Redis secret class', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
-      setCredentialPosition(cmds.find((x) => x.label === 'a-redis-run'), 'REDIS_PASSWORD',
+      // The credential position is the stdin handoff in the C19 era and the `docker run` argv in
+      // the downgraded one; the control's intent — a redis position carrying the DATABASE class
+      // must be rejected — is the same in both.
+      setCredentialPosition(cmds.find((x) => x.label === 'a-redis-secret')
+        ?? cmds.find((x) => x.label === 'a-redis-run'), 'REDIS_PASSWORD',
         '<REDACTED:a:EYE_DB_PASSWORD>');
     });
   }, /path-a EYE_REDIS_PASSWORD class/],
