@@ -63,6 +63,47 @@
  * is what this entry claims — is which particular value was drawn.
  */
 
+
+/**
+ * ── C19: WHAT AN EXTERNAL ANCHOR ACTUALLY PROVES, AND WHAT IT DOES NOT ──
+ *
+ * C19 introduces a trust root the evidence producer does not control: a GitHub Actions OIDC
+ * identity and a Sigstore signature published to the Rekor transparency log. It is worth stating
+ * precisely what that buys, because the tempting error — treating a signed claim as a proved claim
+ * — would be a worse failure than the gap it purports to close.
+ *
+ * A Sigstore/Rekor anchor proves FOUR things, all of them about the ARTIFACT rather than about the
+ * world the artifact describes:
+ *
+ *   1. IDENTITY   — which workflow, in which repository, at which source SHA and run/attempt,
+ *                   produced the signature. Fulcio binds it to an OIDC identity the producer
+ *                   cannot mint for itself.
+ *   2. INTEGRITY  — exactly which bytes were signed. Any later edit invalidates the signature.
+ *   3. PUBLICATION— that those bytes were entered in a public append-only log, so the producer
+ *                   cannot quietly withdraw or replace them afterwards.
+ *   4. AN UPPER TIME BOUND — the log's signed entry timestamp proves the bytes existed BY then.
+ *
+ * What it does NOT prove is anything about the DATABASE. Postgres does not sign its own
+ * observations, and the container it runs in is started, configured and clocked by the producer.
+ * A signature over a claim about `txid` proves that the producer COMMITTED to that value before
+ * publication; it says nothing about whether the value is the one Postgres actually assigned.
+ *
+ * That distinction is the whole of C19's honesty. Each entry below therefore separates:
+ *
+ *   • `proved`      — what holds after anchoring, including the genuinely new property;
+ *   • `undecidable` — the proposition that remains open, unchanged in substance;
+ *   • `authority`   — the independent factual authority for the claim, or an explicit statement
+ *                     that NONE EXISTS, with what it would take to create one.
+ *
+ * The new property anchoring adds, and it is worth having, is NON-RETROFITTABILITY: once a claim
+ * is signed under a workflow identity and published to a transparency log, the producer can no
+ * longer choose its value with hindsight. An adversary who could previously rebind every
+ * attacker-controlled field consistently must now do so BEFORE publication, under an identity it
+ * does not control, leaving a permanent public record. That narrows the attack from "undetectable"
+ * to "committed and attributable". It does not make a database observation externally true, and
+ * this file does not claim it does.
+ */
+
 export const OBSERVATIONAL_LIMITS = Object.freeze([
   Object.freeze({
     id: 'backend-assigned-identifiers',
@@ -75,7 +116,19 @@ export const OBSERVATIONAL_LIMITS = Object.freeze([
       + 'positive integer and a positive serial — and each row carries the column',
     residual: 'one legitimate backend-assigned value can be exchanged for another legitimate one '
       + 'without contradicting anything the evidence records',
+    authority: 'NONE EXISTS. PostgreSQL does not sign its own observations, and the instance is '
+      + 'started and clocked by the producer, so there is no party outside the producer that can '
+      + 'attest what the backend assigned. Creating one would mean a database that signs its own '
+      + 'transaction metadata under a key the producer cannot reach — no such deployment exists '
+      + 'here, and inventing a signer inside the producer would be self-assertion wearing a '
+      + 'signature.',
+    anchorAdds: 'the values are bound into a canonically-serialised payload signed under a GitHub '
+      + 'Actions OIDC identity and published to Rekor, so they cannot be chosen with hindsight or '
+      + 'silently replaced after the fact; substitution now requires forging an identity the '
+      + 'producer does not hold, and leaves a permanent public record',
+    stillUndecidable: 'whether the recorded values are the ones PostgreSQL actually assigned',
     anchorRequires: 'the database emitting a signed statement of the identifiers it assigned',
+    anchorOutcome: 'anchored for non-retrofittability, NOT for truth',
     ledger: 'C19 external-anchoring',
   }),
   Object.freeze({
@@ -89,7 +142,20 @@ export const OBSERVATIONAL_LIMITS = Object.freeze([
       + 'DISTINCT between the two independently provisioned instances',
     residual: 'one well-formed random digest can be exchanged for another, provided the exchange '
       + 'preserves that whole equality structure; the specific value remains undecidable',
+    authority: 'NONE EXISTS WITHOUT PAID INFRASTRUCTURE. A hosted key-management service that '
+      + 'generated the secret and attested its origin under its own key would be a genuine '
+      + 'independent authority; that is a provisioning and cost decision outside this gate, and it '
+      + 'is deliberately NOT taken here. A signer controlled by the evidence process is not an '
+      + 'authority, and is registered deliveryCapable:false precisely so it can never be mistaken '
+      + 'for one.',
+    anchorAdds: 'an HMAC commitment binding the secret to its instance, path, source SHA and run '
+      + 'is signed and published without revealing the value, so the committed secret cannot be '
+      + 'exchanged for another after publication, and reuse across instances or runs is detectable '
+      + 'from the commitments alone',
+    stillUndecidable: 'whether the committed value was genuinely generated by that database '
+      + 'instance rather than chosen by the producer before provisioning it',
     anchorRequires: 'a key-management attestation binding the generated value to the instance',
+    anchorOutcome: 'commitment anchored, origin still unproved',
     ledger: 'C19 external-anchoring',
   }),
   Object.freeze({
@@ -101,7 +167,19 @@ export const OBSERVATIONAL_LIMITS = Object.freeze([
       + "the audited bootstrap event's stamp, and strictly before the rotation",
     residual: 'a rebinding that keeps the implied marking instant inside that causal interval is '
       + 'observationally indistinguishable from an authentic reading of the clock',
-    anchorRequires: 'a signed external time attestation over the bootstrap transaction',
+    authority: 'PARTIAL. Rekor\'s signed entry timestamp is a genuine external time authority, but '
+      + 'it can only bound the marking from ABOVE — the evidence demonstrably existed by then. A '
+      + 'lower bound requires an externally-signed nonce obtained BEFORE provisioning and carried '
+      + 'into the run. Together these bound the marking to an INTERVAL between two externally '
+      + 'attested instants. No available authority observes the database clock itself.',
+    anchorAdds: 'the marking is bounded by two instants neither of which the producer authored, '
+      + 'rather than only by causal ordering among values the producer wrote',
+    stillUndecidable: 'the exact instant within that interval, and whether the container clock the '
+      + 'database read was truthful at all. The interval is reported WITH its width; it is never '
+      + 'collapsed to a point, because the authority does not prove a point.',
+    anchorRequires: 'a signed external time attestation over the bootstrap transaction, plus an '
+      + 'externally-signed nonce obtained before provisioning to bound it from below',
+    anchorOutcome: 'bounded to an attested interval, never to an instant',
     ledger: 'C19 external-anchoring',
   }),
 ]);

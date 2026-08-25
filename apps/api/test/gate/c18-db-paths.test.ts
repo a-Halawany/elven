@@ -2776,10 +2776,23 @@ describe('C18.1.12 — what this evidence cannot decide is declared, not implied
   });
   it('each declared limit says what is proved, what is not, and where the anchor must come from', () => {
     for (const l of OBSERVATIONAL_LIMITS) {
-      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires', 'ledger']) {
+      // C19 added the authority analysis. Requiring it of EVERY limit is what stops a future
+      // entry from being routed to an anchor without anyone saying who the independent authority
+      // is — or admitting that there isn't one.
+      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires',
+        'ledger', 'authority', 'anchorAdds', 'stillUndecidable', 'anchorOutcome']) {
         expect(typeof (l as Record<string, unknown>)[field], `${l.id}.${field}`).toBe('string');
         expect(String((l as Record<string, unknown>)[field]).length).toBeGreaterThan(20);
       }
+    }
+  });
+  it('no limit describes a SIGNED claim as a PROVED one', () => {
+    // The one error C19 must not make. An anchor proves identity, integrity, publication and a
+    // time bound over BYTES; it does not make a database observation externally true. Every entry
+    // must therefore still name something it cannot decide.
+    for (const l of OBSERVATIONAL_LIMITS) {
+      expect(String(l.stillUndecidable).length, `${l.id}.stillUndecidable`).toBeGreaterThan(20);
+      expect(l.authority, `${l.id}.authority`).toMatch(/NONE EXISTS|PARTIAL/);
     }
   });
   it('the bootstrap limit is routed to C19 external anchoring', () => {
