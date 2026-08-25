@@ -3915,7 +3915,7 @@ describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
         const c = cmds.find((x: any) => x.label.startsWith('a-') && (x.env ?? {})['PGPASSWORD'] !== undefined);
         c.env['PGPASSWORD'] = '<REDACTED:b:EYE_DB_PASSWORD>';
       });
-    }, /requires the path-a EYE_DB_PASSWORD class/],
+    }, /carries path 'b' credential material in a path-'a' command/],
     ['an environment binding the graph never authorized', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
         const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
@@ -3927,7 +3927,7 @@ describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
         const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
         c.env = {};
       });
-    }, /requires the path-[ab] EYE_DB_PASSWORD class/],
+    }, /is not an exact <REDACTED:path:CLASS> placeholder/],
     ['the redis entrypoint rewritten to something the source does not own', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
         const c = cmds.find((x: any) => x.label === 'a-redis-run');
