@@ -101,8 +101,7 @@ import { spawnSync } from 'node:child_process';
 
 import {
   AUDIT_HASH_VERSION, C18_ARTIFACT_PREFIX, C18_GATE_STEP, HISTORICAL_LAST, LATEST_LAST,
-  MANIFEST_FIELDS, POSTURE_CATEGORIES, POSTURE_COMMAND_LABELS, REDIS_ENTRYPOINT,
-  SECRET_CLASSES, SEED_FLOOR,
+  MANIFEST_FIELDS, POSTURE_CATEGORIES, POSTURE_COMMAND_LABELS, SECRET_CLASSES, SEED_FLOOR,
   SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL,
   TABLE_UNIVERSE_LATEST, authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt,
   commandIdFor, compareSnapshots, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
@@ -249,18 +248,14 @@ function startInstance(ev, letter, images, cleanup) {
     container: `${name}-pg`, redisContainer: `${name}-redis`,
     containerId: null, redisContainerId: null, port: null, redisPort: null,
   };
-  // C19 — `-e NAME` WITHOUT a value tells docker to pass the variable through from its own
-  // environment, so the credential never enters the docker client's argv and never appears in the
-  // host process list. `-e NAME=value` put it there for the lifetime of every call.
   const pgRun = ev.run(`${letter}-pg-run`, ['docker', 'run', '-d', '--name', inst.container,
-    '-e', 'POSTGRES_USER=eye', '-e', 'POSTGRES_PASSWORD',
-    '-e', `POSTGRES_DB=${database}`, '-p', '127.0.0.1:0:5432', images.postgres],
-    { env: { POSTGRES_PASSWORD: passwords.EYE_DB_PASSWORD } });
+    '-e', 'POSTGRES_USER=eye', '-e', `POSTGRES_PASSWORD=${passwords.EYE_DB_PASSWORD}`,
+    '-e', `POSTGRES_DB=${database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
   inst.containerId = pgRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.container);
   const redisRun = ev.run(`${letter}-redis-run`, ['docker', 'run', '-d', '--name', inst.redisContainer,
-    '-p', '127.0.0.1:0:6379', '-e', 'REDIS_PASSWORD', images.redis,
-    'sh', '-c', REDIS_ENTRYPOINT], { env: { REDIS_PASSWORD: passwords.EYE_REDIS_PASSWORD } });
+    '-p', '127.0.0.1:0:6379', images.redis,
+    'redis-server', '--requirepass', passwords.EYE_REDIS_PASSWORD]);
   inst.redisContainerId = redisRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.redisContainer);
   const portOf = (container, inner) => {
@@ -280,9 +275,9 @@ function startInstance(ev, letter, images, cleanup) {
       { allowFail: true, timeoutMs: 10_000 });
     if (probe.exit === 0) {
       const confirm = ev.run(`${letter}-pg-confirm-${i}`,
-        ['docker', 'exec', '-e', 'PGPASSWORD', inst.container,
+        ['docker', 'exec', '-e', `PGPASSWORD=${passwords.EYE_DB_PASSWORD}`, inst.container,
           'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', database, '-c', 'select 1'],
-        { allowFail: true, timeoutMs: 10_000, env: { PGPASSWORD: passwords.EYE_DB_PASSWORD } });
+        { allowFail: true, timeoutMs: 10_000 });
       ready = confirm.exit === 0 && confirm.stdout.trim() === '1';
     }
     if (!ready) spawnSync('sleep', ['1']);
@@ -297,9 +292,9 @@ function startInstance(ev, letter, images, cleanup) {
     ...extra,
   });
   inst.psql = (sql, { label = 'psql' } = {}) => ev.run(`${letter}-${label}`,
-    ['docker', 'exec', '-e', 'PGPASSWORD', '-i', inst.container,
+    ['docker', 'exec', '-e', `PGPASSWORD=${passwords.EYE_DB_PASSWORD}`, '-i', inst.container,
       'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', database, '-c', sql],
-    { timeoutMs: 300_000, env: { PGPASSWORD: passwords.EYE_DB_PASSWORD } });
+    { timeoutMs: 300_000 });
   inst.json = (sql, label = 'json') => {
     const text = inst.psql(sql, { label }).rawStdout.trim();
     return text === '' ? null : JSON.parse(text);

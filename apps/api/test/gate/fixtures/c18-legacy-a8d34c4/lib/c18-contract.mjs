@@ -45,25 +45,6 @@ export const C18_GATE_STEP = 'C18 dual-path database history gate (tracked runne
 
 // ── SECRETS ────────────────────────────────────────────────────────────────────
 /** Every generated secret class. The producer generates one value per class PER PATH. */
-/**
- * C19 — THE REDIS ENTRYPOINT, SOURCE-OWNED.
- *
- * `redis-server --requirepass <value>` placed the password in the docker client's argv, where the
- * host process list showed it to every user on the machine. The password now reaches the server
- * through the container's environment, expanded by the container's own shell.
- *
- * The boundary is stated rather than overclaimed: the value is still an argument of `redis-server`
- * INSIDE the container, visible to anything that can read that container's process table. What is
- * eliminated is exposure on the HOST, which is where this gate's untrusted neighbours are.
- */
-/**
- * C19 — the redaction placeholder shape. A placeholder standing in an ARGV position proves the real
- * credential stood there in the live process list, so this is the argv-disclosure detector.
- */
-export const CREDENTIAL_PLACEHOLDER_RE = /<REDACTED:[a-z]:[A-Z0-9_]+>/;
-
-export const REDIS_ENTRYPOINT = 'exec redis-server --requirepass "$REDIS_PASSWORD"';
-
 export const SECRET_CLASSES = Object.freeze([
   'EYE_DB_PASSWORD', 'EYE_DB_APP_PASSWORD', 'EYE_DB_ALLOCATOR_PASSWORD', 'EYE_DB_SYSTEM_PASSWORD',
   'EYE_DB_COMMIT_PASSWORD', 'EYE_DB_IDENTITY_PASSWORD', 'EYE_DB_PUBLISHER_PASSWORD',

@@ -59,6 +59,11 @@ import { ingestArchive, verifySemantics } from '../../../../scripts/gate/c18-db-
 // eslint-disable-next-line import/no-relative-packages
 import { redactSecrets } from '../../../../scripts/gate/c18-watchdog.mjs';
 import {
+  descendantsOf as wdDescendantsOf, isSignallablePid as wdIsSignallablePid,
+  parseProcessTable as wdParseProcessTable, signalExitCode as wdSignalExitCode,
+  terminateTree as wdTerminateTree,
+} from '../../../../scripts/gate/c18-watchdog.mjs';
+import {
   opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
 import { WORLD_IDS, buildSeedWorld, worldSlots } from './c18-seed-world';
@@ -5171,5 +5176,142 @@ describe('C18 watchdog — the threat boundary is finite and stated', () => {
       expect([...SOURCE_OWNED_SECRET_NAMES]).toContain(name);
     }
     expect(MARKER_CARRY).toBeGreaterThan(64);
+  });
+});
+
+/**
+ * C19 — THE WATCHDOG'S TERMINATION CONTRACT.
+ *
+ * Reproduced against the frozen a8d34c4 watchdog: SIGINT, SIGTERM and SIGHUP each left the child
+ * AND a setsid grandchild alive indefinitely while the watchdog exited after 2.3 s with status 1.
+ * Two independent causes — escalation scheduled on an unref'd timer that the handler's own
+ * `process.exit()` outran, and termination that signalled only the child's process group, which
+ * any descendant leaves by calling setsid.
+ *
+ * The state machine is exercised through injected primitives, so the controls decide the
+ * behaviour deterministically — including a process that refuses to die — without spawning
+ * anything or depending on timing.
+ */
+describe('C19 — the watchdog terminates a descendant CENSUS, not a process group', () => {
+  it('parses a process table and skips malformed lines rather than throwing', () => {
+    const rows = wdParseProcessTable(' 100 1 100\n 200 100 100\nnot a row\n 300 200 300\n\n');
+    expect(rows).toEqual([
+      { pid: 100, ppid: 1, pgid: 100 },
+      { pid: 200, ppid: 100, pgid: 100 },
+      { pid: 300, ppid: 200, pgid: 300 },
+    ]);
+    // The termination path must never throw: giving up there leaks exactly what it prevents.
+    expect(() => wdParseProcessTable(undefined)).not.toThrow();
+    expect(wdParseProcessTable(undefined)).toEqual([]);
+  });
+
+  it('finds a GRANDCHILD that left the process group — the reproduced S2 leak', () => {
+    // pid 300 called setsid: its pgid is its own, so a group-only signal never reaches it. This is
+    // exactly the process that survived every signal against the frozen implementation.
+    const rows = [
+      { pid: 100, ppid: 1, pgid: 100 },     // the watchdog
+      { pid: 200, ppid: 100, pgid: 200 },   // the child, in its own group
+      { pid: 300, ppid: 200, pgid: 300 },   // the grandchild, in ITS own group
+      { pid: 400, ppid: 1, pgid: 999 },     // unrelated: must NOT be swept up
+    ];
+    const found = wdDescendantsOf(rows, 200);
+    expect([...found].sort((a, b) => a - b)).toEqual([200, 300]);
+    expect(found.has(400)).toBe(false);
+  });
+
+  it('finds a group member whose intermediate parent has already been reaped', () => {
+    // The union is what makes the census complete: the parent walk alone misses a reparented
+    // process, and the group alone misses a setsid escapee.
+    const rows = [
+      { pid: 200, ppid: 100, pgid: 200 },
+      { pid: 300, ppid: 1, pgid: 200 },     // reparented to init, still in the group
+    ];
+    expect([...wdDescendantsOf(rows, 200)].sort((a, b) => a - b)).toEqual([200, 300]);
+  });
+
+  it('refuses to signal pid 0, pid 1, negatives or itself', () => {
+    // kill(0, SIG) signals the CALLER'S ENTIRE PROCESS GROUP. On a CI runner that is the job, so a
+    // parse slip that produced 0 would turn cleanup into self-destruction.
+    expect(wdIsSignallablePid(0, 55)).toBe(false);
+    expect(wdIsSignallablePid(1, 55)).toBe(false);
+    expect(wdIsSignallablePid(-200, 55)).toBe(false);
+    expect(wdIsSignallablePid(55, 55)).toBe(false);
+    expect(wdIsSignallablePid(200, 55)).toBe(true);
+  });
+
+  it('reaps with SIGTERM alone when the tree is cooperative, and does NOT escalate', async () => {
+    const live = new Set([10, 11, 12]);
+    const sent: Array<[number, string]> = [];
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: (p: number) => live.has(p),
+      kill: (p: number, s: string) => { sent.push([p, s]); if (s === 'SIGTERM') live.delete(p); },
+      sleep: async () => {}, termGraceMs: 500, killGraceMs: 500, pollMs: 100,
+    });
+    expect(r).toEqual({ survivors: [], escalated: false });
+    expect(sent.every(([, s]) => s === 'SIGTERM')).toBe(true);
+  });
+
+  it('ESCALATES to SIGKILL when SIGTERM does not clear the tree — the reproduced S1 defect', async () => {
+    // Against the frozen implementation this escalation was scheduled on an unref'd 10 s timer
+    // while the handler exited after 2 s, so it never ran and the child simply survived.
+    const live = new Set([10, 11]);
+    const sent: Array<[number, string]> = [];
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: (p: number) => live.has(p),
+      kill: (p: number, s: string) => { sent.push([p, s]); if (s === 'SIGKILL') live.delete(p); },
+      sleep: async () => {}, termGraceMs: 300, killGraceMs: 300, pollMs: 100,
+    });
+    expect(r.escalated).toBe(true);
+    expect(r.survivors).toEqual([]);
+    expect(sent.filter(([, s]) => s === 'SIGKILL').map(([p]) => p).sort()).toEqual([10, 11]);
+  });
+
+  it('reports survivors HONESTLY when even SIGKILL does not clear them', async () => {
+    // An unkillable process (uninterruptible sleep) is a real state. Claiming containment there
+    // would be the one failure mode this whole contract exists to prevent.
+    const live = new Set([10]);
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: () => true, kill: () => {},
+      sleep: async () => {}, termGraceMs: 200, killGraceMs: 200, pollMs: 100,
+    });
+    expect(r.escalated).toBe(true);
+    expect(r.survivors).toEqual([10]);
+  });
+
+  it('never signals an unsignallable pid even when the census contains one', async () => {
+    const sent: number[] = [];
+    await wdTerminateTree({
+      pids: new Set([0, 1, 9, 200]), selfPid: 9, alive: () => false,
+      kill: (p: number) => { sent.push(p); }, sleep: async () => {},
+      termGraceMs: 100, killGraceMs: 100, pollMs: 100,
+    });
+    expect(sent).not.toContain(0);
+    expect(sent).not.toContain(1);
+    expect(sent).not.toContain(9);
+  });
+
+  it('encodes WHICH signal terminated the run in the exit status', () => {
+    // The frozen implementation exited 1 on every signal, indistinguishable from an ordinary child
+    // failure. A caller could not tell a cancelled run from a failed one.
+    expect(wdSignalExitCode('SIGHUP')).toBe(129);
+    expect(wdSignalExitCode('SIGINT')).toBe(130);
+    expect(wdSignalExitCode('SIGTERM')).toBe(143);
+  });
+
+  it('the frozen a8d34c4 watchdog had NO census machinery at all — non-vacuity', async () => {
+    // The differential's first leg: these exports do not exist in the frozen implementation, so
+    // the correction adds a mechanism rather than renaming one.
+    const frozen = await import('./fixtures/c18-legacy-a8d34c4/c18-watchdog.mjs');
+    for (const name of ['parseProcessTable', 'descendantsOf', 'terminateTree', 'signalExitCode']) {
+      expect((frozen as Record<string, unknown>)[name]).toBeUndefined();
+    }
+    // …while every credential-classification export it DID have is still present and unchanged,
+    // so the correction is additive and the C18 threat boundary is untouched.
+    const corrected = await import('../../../../scripts/gate/c18-watchdog.mjs');
+    for (const name of ['classifyEnvVariable', 'credentialPreflight', 'createRedactingStream',
+      'redactSecrets', 'scanArgvForSecrets', 'isCredentialName']) {
+      expect(typeof (corrected as Record<string, unknown>)[name]).toBe('function');
+      expect(typeof (frozen as Record<string, unknown>)[name]).toBe('function');
+    }
   });
 });

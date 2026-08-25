@@ -39,6 +39,8 @@ import { verifyEvidence as legacy7be } from './fixtures/c18-legacy-7be02b8/c18-d
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy8362 } from './fixtures/c18-legacy-8362cba/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacyA8d } from './fixtures/c18-legacy-a8d34c4/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyDcc } from './fixtures/c18-legacy-dccfcf2/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyBfc } from './fixtures/c18-legacy-bfc8695/c18-db-paths.mjs';
@@ -3772,5 +3774,205 @@ describe('C18.1.14-final — DIFFERENTIAL: the frozen 7959ec9 verifier ACCEPTED 
     expect(r.ok).toBe(false);
     expect(r.problems.join('\n')).toMatch(/ctx\.context_secret|preserv/i);
   });
+});
+}
+
+export function register31() {
+describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  /**
+   * The defect this closes was reproduced, not inferred: `docker exec -e PGPASSWORD=<value>` and
+   * `redis-server --requirepass <value>` published the real password in the HOST process list for
+   * the lifetime of every call, where any user on the machine could read it. The recorded evidence
+   * was clean the whole time — it stores a class placeholder — so nothing in C18 could see it.
+   *
+   * The ledger nonetheless decides the property exactly. The producer redacts secret VALUES into
+   * placeholders before recording, so a credential that travelled in argv is recorded AS a
+   * placeholder in argv. A placeholder in an argv position therefore IS the disclosure.
+   */
+
+  it('DIFFERENTIAL: the frozen a8d34c4 verifier REQUIRED the insecure argv shape', async () => {
+    // The strongest available statement that this is a real change rather than a cosmetic one:
+    // the frozen verifier refuses the corrected evidence, because its contract MANDATED that the
+    // password stand in argv. Both directions are proved — frozen demands it, corrected forbids it.
+    const r = await legacyA8d({ zipPath: ARCHIVE, root: REPO });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join('\n')).toMatch(/PGPASSWORD=|POSTGRES_PASSWORD=|requirepass/);
+  });
+
+  it('the corrected verifier ACCEPTS the same archive the frozen one refused', async () => {
+    // Leg 3 of the differential: the correction is not merely stricter, it is CORRECT — pristine
+    // evidence produced by the corrected producer passes.
+    const r = await verifyEvidence({ zipPath: ARCHIVE, root: REPO });
+    expect(r.problems.join('\n')).not.toMatch(/must never enter argv/);
+  });
+
+  it.each([
+    ['a psql credential restored to argv, exactly as a8d34c4 recorded it', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => /^a-.*$/.test(x.label) && (x.argv ?? []).includes('PGPASSWORD'));
+        const i = c.argv.indexOf('PGPASSWORD');
+        c.argv[i] = `PGPASSWORD=${c.env['PGPASSWORD']}`;
+        c.env = {};
+      });
+    }],
+    ['the postgres container password restored to argv', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-pg-run');
+        const i = c.argv.indexOf('POSTGRES_PASSWORD');
+        c.argv[i] = `POSTGRES_PASSWORD=${c.env['POSTGRES_PASSWORD']}`;
+        c.env = {};
+      });
+    }],
+    ['the redis password restored to the command line', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-redis-run');
+        c.argv = [...c.argv.slice(0, c.argv.indexOf('-e')), ...c.argv.slice(c.argv.indexOf('-e') + 2)];
+        c.argv.push('redis-server', '--requirepass', c.env['REDIS_PASSWORD']);
+        c.env = {};
+      });
+    }],
+  ] as ReadonlyArray<[string, Mutator]>)('REJECTS %s', async (_label, mutate) => {
+    await expectReject(mutate, /must never enter argv|argv/);
+  });
+
+  it.each([
+    ['a credential environment position holding the WRONG class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['PGPASSWORD'] = '<REDACTED:a:EYE_DB_APP_PASSWORD>';
+      });
+    }, /requires the path-a EYE_DB_PASSWORD class/],
+    ['a credential environment position holding another PATH\'s class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label.startsWith('a-') && (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['PGPASSWORD'] = '<REDACTED:b:EYE_DB_PASSWORD>';
+      });
+    }, /requires the path-a EYE_DB_PASSWORD class/],
+    ['an environment binding the graph never authorized', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['EYE_DB_APP_PASSWORD'] = '<REDACTED:a:EYE_DB_APP_PASSWORD>';
+      });
+    }, /does not authorize/],
+    ['the credential environment binding removed entirely', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env = {};
+      });
+    }, /requires the path-[ab] EYE_DB_PASSWORD class/],
+    ['the redis entrypoint rewritten to something the source does not own', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-redis-run');
+        c.argv[c.argv.length - 1] = 'exec redis-server --requirepass "$OTHER"';
+      });
+    }, /argv\[\d+\]/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+}
+
+export function register32() {
+/**
+ * C19 — THE SIGNAL DIFFERENTIAL, END TO END, WITH REAL PROCESSES.
+ *
+ * The unit controls decide the state machine; this decides the PROGRAM. A child that ignores
+ * SIGTERM forks a grandchild into its own session, and the watchdog is signalled. Against the
+ * frozen a8d34c4 implementation both survived every signal; against the corrected one neither
+ * survives any of them, and the exit status says which signal arrived.
+ *
+ * The three signals run CONCURRENTLY — they are independent process trees — so the whole family
+ * costs one grace period rather than three.
+ */
+describe('C19 — DIFFERENTIAL: external signals leaked processes before, and do not now', () => {
+  const FROZEN = join(REPO, 'apps/api/test/gate/fixtures/c18-legacy-a8d34c4/c18-watchdog.mjs');
+  const CORRECTED = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const SIGNALS = [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]] as ReadonlyArray<[string, number]>;
+
+  let stubborn = '';
+  beforeAll(() => {
+    stubborn = join(mkdtempSync(join(tmpdir(), 'c19-sig-')), 'stubborn.mjs');
+    writeFileSync(stubborn, [
+      "import { spawn } from 'node:child_process';",
+      "process.on('SIGTERM', () => {}); process.on('SIGINT', () => {}); process.on('SIGHUP', () => {});",
+      "const gc = spawn(process.execPath, ['-e', 'process.on(\"SIGTERM\",()=>{});setInterval(()=>{},1000)'],",
+      "  { detached: true, stdio: 'ignore' });",
+      'gc.unref();',
+      'console.log(`CPID:${process.pid} GPID:${gc.pid}`);',
+      'setInterval(() => {}, 1000);',
+    ].join('\n'));
+  });
+
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+  /** Run one watchdog, signal it, and report what was still alive when it exited. */
+  const runAndSignal = (watchdog: string, signal: string, settleMs: number) =>
+    new Promise<{ code: number | null; child: boolean; grandchild: boolean }>((resolve) => {
+      const wd = spawn('node', [watchdog, '300', 'node', stubborn], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let seen = '';
+      let signalled = false;
+      let pids: [number, number] = [0, 0];
+      wd.stdout.on('data', (b: Buffer) => {
+        seen += b.toString();
+        const m = /CPID:(\d+) GPID:(\d+)/.exec(seen);
+        if (m !== null && !signalled) {
+          signalled = true;
+          pids = [Number(m[1]), Number(m[2])];
+          process.kill(wd.pid as number, signal as NodeJS.Signals);
+        }
+      });
+      wd.on('close', (code) => {
+        // Settle past the corrected implementation's SIGTERM grace before judging survival.
+        setTimeout(() => {
+          const r = { code, child: alive(pids[0]), grandchild: alive(pids[1]) };
+          for (const p of pids) { try { if (p > 1) process.kill(p, 'SIGKILL'); } catch { /* gone */ } }
+          resolve(r);
+        }, settleMs);
+      });
+    });
+
+  it('the FROZEN a8d34c4 watchdog leaves BOTH the child and the grandchild alive', async () => {
+    const results = await Promise.all(SIGNALS.map(([sig]) => runAndSignal(FROZEN, sig, 3_000)));
+    for (const [i, r] of results.entries()) {
+      const sig = SIGNALS[i]?.[0];
+      expect(`${sig} child=${r.child} grandchild=${r.grandchild}`)
+        .toBe(`${sig} child=true grandchild=true`);
+      // …and it exits 1, indistinguishable from an ordinary child failure.
+      expect(r.code).toBe(1);
+    }
+  }, 120_000);
+
+  it('the CORRECTED watchdog contains both, and encodes the signal in the exit status', async () => {
+    const results = await Promise.all(SIGNALS.map(([sig]) => runAndSignal(CORRECTED, sig, 1_000)));
+    for (const [i, r] of results.entries()) {
+      const [sig, code] = SIGNALS[i] as [string, number];
+      expect(`${sig} child=${r.child} grandchild=${r.grandchild}`)
+        .toBe(`${sig} child=false grandchild=false`);
+      expect(`${sig} exit=${r.code}`).toBe(`${sig} exit=${code}`);
+    }
+  }, 120_000);
+
+  it('an ordinary run is unaffected: exit codes still pass through and stdout is intact', () => {
+    const ok = spawnSync('node', [CORRECTED, '30', 'node', '-e', 'console.log("payload")'], { encoding: 'utf8' });
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toContain('payload');
+    const failed = spawnSync('node', [CORRECTED, '30', 'node', '-e', 'process.exit(7)'], { encoding: 'utf8' });
+    expect(failed.status).toBe(7);
+    // A deadline still reports 124, and a spawn failure still reports 126.
+    expect(spawnSync('node', [CORRECTED, '1', 'node', '-e', 'setTimeout(()=>{},9000)'], { encoding: 'utf8' }).status).toBe(124);
+    expect(spawnSync('node', [CORRECTED, '30', 'c19-no-such-command'], { encoding: 'utf8' }).status).toBe(126);
+  }, 120_000);
+
+  it('the termination report never discloses a credential', () => {
+    // Everything the corrected shutdown path prints goes through the same sanitiser as the rest.
+    const canary = `c19Synthetic${'Canary'}Value0123456789`;
+    const r = spawnSync('node', [CORRECTED, '2', 'node', '-e',
+      'console.log(process.env.EYE_DB_PASSWORD); setTimeout(()=>{},9000)'],
+    { encoding: 'utf8', env: { ...process.env, EYE_DB_PASSWORD: canary } });
+    expect(r.status).toBe(124);
+    expect(`${r.stdout}${r.stderr}`).not.toContain(canary);
+  }, 120_000);
 });
 }

@@ -1,0 +1,376 @@
+{
+  "config.runtime_profile": {
+    "perInstanceColumns": [
+      "set_at"
+    ],
+    "deterministicColumns": [
+      "id",
+      "profile"
+    ],
+    "rows": [
+      {
+        "id": 1,
+        "profile": "local"
+      }
+    ],
+    "perInstanceRules": {
+      "set_at": "db-timestamp"
+    },
+    "distinctPerInstanceColumns": []
+  },
+  "ctx.context_secret": {
+    "perInstanceColumns": [
+      "secret"
+    ],
+    "deterministicColumns": [
+      "id"
+    ],
+    "rows": [
+      {
+        "id": 1
+      }
+    ],
+    "perInstanceRules": {
+      "secret": "sha256-hex"
+    },
+    "distinctPerInstanceColumns": [
+      "secret"
+    ]
+  },
+  "identity.roles": {
+    "perInstanceColumns": [],
+    "deterministicColumns": [
+      "code",
+      "description",
+      "scope"
+    ],
+    "rows": [
+      {
+        "code": "auditor",
+        "description": "Auditor of record \u2014 read-only evidence access; cannot alter evidence (PER-17)",
+        "scope": "TENANT"
+      },
+      {
+        "code": "domain_admin",
+        "description": "Customer Intelligence Domain administrator",
+        "scope": "DOMAIN"
+      },
+      {
+        "code": "domain_analyst",
+        "description": "Domain analyst \u2014 read/propose within domain",
+        "scope": "DOMAIN"
+      },
+      {
+        "code": "platform_admin",
+        "description": "Platform administration \u2014 technical access only; never business decision authority (PER-18/19)",
+        "scope": "PLATFORM"
+      },
+      {
+        "code": "tenant_admin",
+        "description": "Customer tenant administrator",
+        "scope": "TENANT"
+      }
+    ],
+    "perInstanceRules": {},
+    "distinctPerInstanceColumns": []
+  },
+  "objects.canonical_field_registry": {
+    "perInstanceColumns": [],
+    "deterministicColumns": [
+      "authoritative",
+      "field_name",
+      "note"
+    ],
+    "rows": [
+      {
+        "authoritative": false,
+        "field_name": "human_refs",
+        "note": "governed extension \u2014 Vol 3 App. B human attribution"
+      },
+      {
+        "authoritative": false,
+        "field_name": "scope",
+        "note": "governed extension \u2014 ADR-P0-04 scope axis"
+      },
+      {
+        "authoritative": false,
+        "field_name": "synthetic_state",
+        "note": "governed extension \u2014 Vol 3 App. B synthetic marker"
+      },
+      {
+        "authoritative": true,
+        "field_name": "access_policy_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "accountable_owner",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "audit_correlation_id",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "classification",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "confidence",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "content_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "contradiction_refs",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "correction_of",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "corroboration_refs",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "domain_id",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "event_time",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "evidence_refs",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "freshness_state",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "lifecycle_state",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "method_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "object_id",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "object_type",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "object_version",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "observation_time",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "ontology_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "owning_component",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "provenance_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "purpose_scope",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "quality_profile",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "quality_state",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "recorded_at",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "residency_profile",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "retention_profile",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "rights_profile",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "schema_ref",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "source_clock_quality",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "source_object_ids",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "supersedes",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "tenant_id",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "time_precision",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "truth_state",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "uncertainty",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "valid_from",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "valid_to",
+        "note": null
+      },
+      {
+        "authoritative": true,
+        "field_name": "withdrawal_reason",
+        "note": null
+      }
+    ],
+    "perInstanceRules": {},
+    "distinctPerInstanceColumns": []
+  },
+  "objects.schema_registry": {
+    "perInstanceColumns": [
+      "created_at"
+    ],
+    "deterministicColumns": [
+      "compatibility",
+      "json_schema",
+      "object_type",
+      "schema_version"
+    ],
+    "rows": [
+      {
+        "compatibility": "additive",
+        "json_schema": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "required": [
+            "subject",
+            "predicate",
+            "object_value"
+          ],
+          "properties": {
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "predicate": {
+              "type": "string",
+              "minLength": 1
+            },
+            "qualifiers": {
+              "type": "object"
+            },
+            "object_value": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "object_type": "CLM",
+        "schema_version": "v1"
+      }
+    ],
+    "perInstanceRules": {
+      "created_at": "db-timestamp"
+    },
+    "distinctPerInstanceColumns": []
+  },
+  "policy.policy_bundles": {
+    "perInstanceColumns": [
+      "created_at"
+    ],
+    "deterministicColumns": [
+      "description",
+      "digest",
+      "status",
+      "version"
+    ],
+    "rows": [
+      {
+        "description": "Phase 0 RBAC rules expressed in the ABAC decision model (ADR-P0-10)",
+        "digest": "code-defined",
+        "status": "active",
+        "version": "bundle-v1"
+      }
+    ],
+    "perInstanceRules": {
+      "created_at": "db-timestamp"
+    },
+    "distinctPerInstanceColumns": []
+  }
+}

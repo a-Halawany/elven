@@ -16,8 +16,6 @@ import {
   POSTURE_CATEGORIES, SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX,
   TABLE_UNIVERSE_HISTORICAL, TABLE_UNIVERSE_LATEST, checkPlaceholder, expectedInstanceEnv,
   attestArgv, inventoryArgv, placeholder,
-  REDIS_ENTRYPOINT,
-  CREDENTIAL_PLACEHOLDER_RE,
 } from './c18-contract.mjs';
 
 const schemasIn = () => SNAPSHOT_SCHEMAS.map((s) => `'${s}'`).join(',');
@@ -273,21 +271,6 @@ export function verifyCommandGraph({
       return null;
     }
     pos += 1;
-    // C19 — NO COMMAND MAY CARRY A CREDENTIAL IN ARGV, ANYWHERE.
-    //
-    // The producer redacts secret VALUES into class placeholders before recording, so a credential
-    // that travelled in argv is recorded as a placeholder in argv. That makes the property exactly
-    // decidable from the ledger: a placeholder in any argv position IS the disclosure, because the
-    // real value stood in that position in the live process list. Checking the recorded form rather
-    // than enumerating command shapes is what makes the rule general — it holds for every command
-    // in the ledger, including ones added later.
-    if (Array.isArray(c.argv)) {
-      c.argv.forEach((a, i) => {
-        if (CREDENTIAL_PLACEHOLDER_RE.test(String(a))) {
-          problems.push(`command '${c.label}' argv[${i}] carries a credential (${JSON.stringify(String(a))}); a credential must reach a child through the environment or stdin, never argv, where the host process list publishes it`);
-        }
-      });
-    }
     return c;
   };
   const mustSucceed = (c) => {
@@ -343,28 +326,6 @@ export function verifyCommandGraph({
     }
     return [];
   };
-  /**
-   * C19 — A CREDENTIAL POSITION IS NOW AN ENVIRONMENT POSITION.
-   *
-   * The credential left argv because `docker … -e NAME=value` published it in the host process
-   * list. The BINDING did not weaken: `exactPh` required a position to carry the exact placeholder
-   * for one class on one path, and `credEnv` requires exactly that of the environment record —
-   * exactly these keys, no others, each holding the exact path-and-class placeholder.
-   */
-  const credEnv = (c, letter, r, spec) => {
-    if (c === null) return;
-    const got = c.env ?? {};
-    for (const [key, cls] of Object.entries(spec)) {
-      const want = placeholder(letter, cls);
-      if (got[key] !== want) {
-        problems.push(`command '${c.label}' credential environment ${key} is ${JSON.stringify(got[key])}; this position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`);
-      }
-    }
-    for (const k of Object.keys(got)) {
-      if (!(k in spec)) problems.push(`command '${c.label}' carries environment binding '${k}' the graph does not authorize`);
-    }
-  };
-
   /** Exact instance environment, with per-class placeholders — no prefix matching. */
   const connEnv = (c, letter, r, extra = {}) => {
     if (c === null) return;
@@ -379,28 +340,33 @@ export function verifyCommandGraph({
       if (!(k in want)) problems.push(`command '${c.label}' carries unauthorized environment key '${k}'`);
     }
   };
-  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', 'PGPASSWORD', '-i',
+  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), '-i',
     r.container_name, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', r.database, '-c', sql];
   const planned = (letter, r) => (step) => {
     const c = next(step.label);
-    mustSucceed(c); credEnv(c, letter, r, { PGPASSWORD: 'EYE_DB_PASSWORD' });
-    matchArgv(c, psqlArgv(letter, r, step.sql));
+    mustSucceed(c); emptyEnv(c); matchArgv(c, psqlArgv(letter, r, step.sql));
     return c;
   };
 
   const walkInstance = (letter, r) => {
     const pg = next(`${letter}-pg-run`);
-    mustSucceed(pg); credEnv(pg, letter, r, { POSTGRES_PASSWORD: 'EYE_DB_PASSWORD' });
+    mustSucceed(pg); emptyEnv(pg);
     matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name, '-e', 'POSTGRES_USER=eye', '-e',
-      'POSTGRES_PASSWORD', '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
+      exactPh(letter, r, 'EYE_DB_PASSWORD', 'POSTGRES_PASSWORD='), '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
+    if (pg !== null && Array.isArray(pg.argv) && pg.argv[8] !== `POSTGRES_PASSWORD=${placeholder(letter, 'EYE_DB_PASSWORD')}`) {
+      problems.push(`command '${pg.label}' container password is not the path-${letter} EYE_DB_PASSWORD class`);
+    }
     const pgOut = stdoutOf(pg);
     if (pg !== null && pgOut !== null && pgOut.trim() !== r.container_id) {
       problems.push(`'${pg.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
     const rd = next(`${letter}-redis-run`);
-    mustSucceed(rd); credEnv(rd, letter, r, { REDIS_PASSWORD: 'EYE_REDIS_PASSWORD' });
-    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379',
-      '-e', 'REDIS_PASSWORD', images.redis, 'sh', '-c', REDIS_ENTRYPOINT]);
+    mustSucceed(rd); emptyEnv(rd);
+    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379', images.redis,
+      'redis-server', '--requirepass', exactPh(letter, r, 'EYE_REDIS_PASSWORD')]);
+    if (rd !== null && Array.isArray(rd.argv) && rd.argv[rd.argv.length - 1] !== placeholder(letter, 'EYE_REDIS_PASSWORD')) {
+      problems.push(`command '${rd.label}' requirepass is not the path-${letter} EYE_REDIS_PASSWORD class`);
+    }
     const rdOut = stdoutOf(rd);
     if (rd !== null && rdOut !== null && rdOut.trim() !== r.redis_container_id) {
       problems.push(`'${rd.label}' raw container id does not match the ${r.path} isolation receipt`);
@@ -426,8 +392,8 @@ export function verifyCommandGraph({
       if (w.exit === 0 && w.signal === null) {
         const conf = next(`${letter}-pg-confirm-${i}`);
         if (conf === null) break;
-        credEnv(conf, letter, r, { PGPASSWORD: 'EYE_DB_PASSWORD' });
-        matchArgv(conf, ['docker', 'exec', '-e', 'PGPASSWORD', r.container_name,
+        emptyEnv(conf);
+        matchArgv(conf, ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), r.container_name,
           'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', r.database, '-c', READINESS_CONFIRM_SQL]);
         if (conf.exit === 0 && conf.signal === null && (stdoutOf(conf) ?? '').trim() === '1') confirmed = true;
       }
