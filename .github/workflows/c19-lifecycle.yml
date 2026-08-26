@@ -1,0 +1,79 @@
+# C19 — CROSS-PLATFORM LIFECYCLE AND CONTAINMENT PROOF.
+#
+# The containment contract claims the SAME properties on Linux and macOS, so it has to be measured
+# on both. `ci` runs on ubuntu only, which means a macOS regression in signal handling, ownership
+# tracking or bounded reap would not be caught until the finalizer — long after the decision that
+# depended on it.
+#
+# ── THIS WORKFLOW CANNOT PUBLISH ANYTHING ──
+#
+# There is no `id-token: write` here, at any level. Without that token no signing identity can be
+# minted, so publication is not merely gated in this workflow, it is impossible. That is deliberate:
+# the workflow that runs on every pull request should not be one edit away from being able to sign.
+name: C19 lifecycle
+on:
+  pull_request:
+  push:
+    branches: [main, 'c19-**']
+
+# Read-only, everywhere. No id-token, no contents:write, no packages, no attestations.
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Anchor selftest with the network denied
+        run: node scripts/gate/c19-anchor-cli.mjs selftest --offline
+
+      - name: Lifecycle and containment controls (signals, races, nesting, reap, cleanup)
+        run: pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
+
+      - name: Anchor attack matrix
+        run: pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts test/gate/c19-anchor.ctl.ts
+
+      - name: No owned process survived
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A NON-EMPTY chain is what ownership means; an empty one owns nothing by construction.
+          if [ "$(uname)" = "Linux" ]; then
+            n=$(grep -l . /proc/*/environ 2>/dev/null | xargs -r grep -alZ 'EYE_RUN_ID_CHAIN=[0-9a-f]' 2>/dev/null | tr -d '\0' | wc -l)
+          else
+            n=$(ps -A -E -ww -o pid=,command= 2>/dev/null | grep -oE 'EYE_RUN_ID_CHAIN=[0-9a-f][0-9a-f,]*' | wc -l)
+          fi
+          echo "processes carrying a non-empty ownership chain: $n"
+          [ "$n" -eq 0 ] || { echo "C19: owned processes survived the run" >&2; exit 1; }
+
+      - name: No owned docker resource survived
+        run: node scripts/gate/c19-anchor-cli.mjs leftovers
+
+      - name: Prove this job holds no publication capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          # If an id-token were ever granted here, this fails loudly rather than silently gaining
+          # the ability to sign.
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "C19: this workflow must never hold an OIDC token" >&2
+            exit 1
+          fi
+          echo "C19: no OIDC token present — publication is structurally impossible here"
