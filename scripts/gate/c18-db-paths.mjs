@@ -99,6 +99,9 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { applyEnvironmentPolicy, undeclaredCredentials } from './lib/c19-isolation.mjs';
+import { isCredentialName } from './c18-watchdog.mjs';
+
 import {
   AUDIT_HASH_VERSION, C18_ARTIFACT_PREFIX, C18_GATE_STEP, HISTORICAL_LAST, LATEST_LAST,
   DOCKER_RUN_LABEL, MANIFEST_FIELDS, gateResourceId, refuseCredentialArgv, PG_ENTRYPOINT, PG_SECRET_PATH, POSTURE_CATEGORIES,
@@ -209,8 +212,18 @@ class Evidence {
     // producer refuses at the point of spawn: no known credential VALUE may appear in any argv
     // position of any command this producer starts. This is a hard stop, not a redaction.
     refuseCredentialArgv(label, argv, this.secrets);
+    // C19 DENY-BY-DEFAULT INHERITANCE. `{...process.env}` handed every child every secret the job
+    // was given, whether or not the command needed one. A child now receives the source-owned
+    // allowlist plus exactly what this command declared, so a compromised step can leak the one
+    // credential it was given rather than all of them.
+    const { env: childEnv } = applyEnvironmentPolicy(process.env, env);
+    const leaked = undeclaredCredentials(childEnv, env, isCredentialName);
+    if (leaked.length > 0) {
+      throw new Error(`command '${label}' would receive undeclared credential(s) `
+        + `${leaked.join(', ')}; a child must receive only what it declares`);
+    }
     const r = spawnSync(argv[0], argv.slice(1), {
-      cwd, env: { ...process.env, ...env }, encoding: 'utf8',
+      cwd, env: childEnv, encoding: 'utf8',
       timeout: timeoutMs, maxBuffer: 256 * 1024 * 1024,
       ...(input === undefined ? {} : { input }),
     });

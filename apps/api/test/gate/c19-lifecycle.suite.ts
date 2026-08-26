@@ -399,6 +399,91 @@ process.exit(0);
     });
   });
 
+  describe('C19 — a child sees only what it declares', () => {
+    const isoPath = join(REPO, 'scripts', 'gate', 'lib', 'c19-isolation.mjs');
+
+    it('DENY BY DEFAULT: an undeclared credential never reaches the child', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      const ambient = {
+        PATH: '/usr/bin', HOME: '/h', GITHUB_TOKEN: 'ghp_x', AWS_SECRET_ACCESS_KEY: 'a',
+        EYE_DB_PASSWORD: 'p', EYE_IDENTITY_JWT_SECRET: 's', RANDOM: 'r',
+      };
+      const { env, withheld } = iso.applyEnvironmentPolicy(ambient, { PGPASSWORD: 'declared' });
+      for (const secret of ['GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'EYE_DB_PASSWORD', 'EYE_IDENTITY_JWT_SECRET']) {
+        expect(env[secret], `${secret} must not reach an undeclaring child`).toBeUndefined();
+        expect(withheld).toContain(secret);
+      }
+      // What the command DID declare still travels — declaring is the whole mechanism.
+      expect(env.PGPASSWORD).toBe('declared');
+      expect(iso.undeclaredCredentials(env, { PGPASSWORD: 1 }, wd.isCredentialName)).toEqual([]);
+    });
+
+    it('an unknown non-secret variable is withheld too: an allowlist, not a blocklist', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      const { env, withheld } = iso.applyEnvironmentPolicy({ SOMETHING_NEW: '1', PATH: '/usr/bin' }, {});
+      // A blocklist is a list of the leaks somebody thought of; the one that matters is the one
+      // nobody did. An unrecognised name must fail closed.
+      expect(env.SOMETHING_NEW).toBeUndefined();
+      expect(withheld).toContain('SOMETHING_NEW');
+      expect(env.PATH).toBe('/usr/bin');
+    });
+
+    it('the OWNERSHIP MARKERS survive scrubbing, or containment silently breaks', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      const ambient = { EYE_RUN_ID: 'r', EYE_RUN_ID_CHAIN: 'a,b', EYE_GATE_RESOURCE_ID: 'g' };
+      const { env } = iso.applyEnvironmentPolicy(ambient, {});
+      // A child that does not inherit these is an UNOWNED child: it would survive every sweep.
+      expect(env[wd.RUN_ID_VAR]).toBe('r');
+      expect(env[wd.RUN_CHAIN_VAR]).toBe('a,b');
+      expect(env[wd.GATE_RESOURCE_VAR]).toBe('g');
+      for (const v of [wd.RUN_ID_VAR, wd.RUN_CHAIN_VAR, wd.GATE_RESOURCE_VAR]) {
+        expect(iso.C19_ENV_ALLOWLIST).toContain(v);
+      }
+    });
+
+    it('the producer ENFORCES the policy rather than merely declaring it', () => {
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c18-db-paths.mjs'), 'utf8');
+      expect(src).toMatch(/applyEnvironmentPolicy\(process\.env, env\)/);
+      expect(src).toMatch(/would receive undeclared credential/);
+      // The unfiltered spread is exactly what this replaced; its return would undo the contract.
+      expect(src).not.toMatch(/env:\s*\{\s*\.\.\.process\.env,\s*\.\.\.env\s*\}/);
+    });
+
+    it('the OS enforcement table claims the SAME properties on Linux and macOS', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      for (const [name, row] of Object.entries(iso.C19_OS_ENFORCEMENT) as [string, any][]) {
+        expect(typeof row.linux, `${name} must state a Linux position`).toBe('string');
+        expect(typeof row.darwin, `${name} must state a macOS position`).toBe('string');
+        // Parity is the point: a property enforced on one platform and not the other is a
+        // guarantee the delivery chain cannot rely on, so either both enforce or both decline.
+        const enforcedL = row.linux.startsWith('enforced');
+        const enforcedD = row.darwin.startsWith('enforced');
+        expect(enforcedL, `${name} must not be enforced on only one platform`).toBe(enforcedD);
+      }
+    });
+
+    it('kernel sandboxing and hostile-child containment are explicitly NOT claimed', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      expect(iso.C19_OS_ENFORCEMENT['kernel-sandbox'].linux).toMatch(/NOT claimed/);
+      expect(iso.C19_OS_ENFORCEMENT['kernel-sandbox'].darwin).toMatch(/NOT claimed/);
+      expect(iso.C19_OS_ENFORCEMENT['arbitrary-hostile-child'].linux).toMatch(/NOT claimed/);
+      expect(iso.C19_OS_ENFORCEMENT['arbitrary-hostile-child'].darwin).toMatch(/NOT claimed/);
+      // And each says WHY, so the boundary is a decision on the record rather than an omission.
+      expect(iso.C19_OS_ENFORCEMENT['kernel-sandbox'].why.length).toBeGreaterThan(40);
+      expect(iso.C19_OS_ENFORCEMENT['arbitrary-hostile-child'].why.length).toBeGreaterThan(40);
+    });
+
+    it('the never-inherited list covers the tokens that would compromise the anchor itself', async () => {
+      const iso = await import(/* @vite-ignore */ isoPath);
+      // A child holding the OIDC request token could mint a signing identity for this workflow.
+      for (const n of ['ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL', 'GITHUB_TOKEN']) {
+        expect(iso.C19_NEVER_INHERITED).toContain(n);
+      }
+    });
+  });
+
   describe('C19 — the anchor proves provenance, not the claims inside it', () => {
     const authorityPath = join(REPO, 'scripts', 'gate', 'lib', 'c19-authority.mjs');
 
