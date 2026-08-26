@@ -1,0 +1,53 @@
+{
+  "schema": "eye/c19/artifact-cleanup-ledger",
+  "version": 1,
+  "_comment": [
+    "AUDIT RECORD of the historical leaked-artifact cleanup. No secret value appears here, and none",
+    "was printed, hashed, archived or otherwise preserved during the investigation: every finding is",
+    "a COUNT and a variable NAME. The scan covered all 28 artifacts attached to the runs of both",
+    "commits, not only the ones previously suspected."
+  ],
+  "scanned": { "commits": ["d5061b8", "8a23526"], "runs": 6, "artifacts": 28, "method": "full extraction including nested evidence archives, matched against credential-assignment shapes" },
+  "findings": {
+    "contaminated": 2,
+    "clean": 26,
+    "classes": ["PGPASSWORD", "POSTGRES_PASSWORD"],
+    "classesNote": "per-run PostgreSQL container passwords only. No GitHub token, no PAT, no AWS key, no npm token and no private key was present — each of those was searched for explicitly and returned zero.",
+    "correction": "The 8a23526 artifacts were previously SUSPECTED of carrying leaked material. The complete scan found all fifteen of them clean, so they were RETAINED rather than deleted, and this ledger corrects the earlier suspicion."
+  },
+  "deleted": [
+    {
+      "artifactId": 9329319708, "name": "c18-db-paths-evidence-a1",
+      "run": 32149519358, "commit": "d5061b8add0f9d138110816ff504e0dfd4967aee",
+      "occurrences": 332, "sizeBytes": 447957, "wouldHaveExpired": "2026-11-16T14:37:59Z",
+      "why": "the command ledger recorded unredacted PGPASSWORD/POSTGRES_PASSWORD assignments; the repository is public, so the artifact was retrievable by anyone until expiry",
+      "tombstone": "GitHub API returns 404 Not Found for both the metadata and the download endpoint, and the id no longer appears in the run's artifact listing"
+    },
+    {
+      "artifactId": 9329549705, "name": "c18-db-paths-evidence-a1",
+      "run": 32150089911, "commit": "d5061b8add0f9d138110816ff504e0dfd4967aee",
+      "occurrences": 332, "sizeBytes": 451689, "wouldHaveExpired": "2026-11-16T14:43:32Z",
+      "why": "same defect, same commit, second CI run",
+      "tombstone": "GitHub API returns 404 Not Found for both the metadata and the download endpoint, and the id no longer appears in the run's artifact listing"
+    }
+  ],
+  "retained": {
+    "count": 26,
+    "why": "scanned and clean. Deleting evidence that carries no leaked material would destroy provenance for no security benefit."
+  },
+  "liveness": {
+    "rotated": false,
+    "_comment": [
+      "NOT a rotation, and deliberately not described as one. There is nothing to rotate: the",
+      "exposed values are per-run credentials for database containers that no longer exist. Claiming",
+      "a rotation here would assert an action that was never taken and could never have been taken."
+    ],
+    "reasoning": "the values are generated per run by randomBytes(24) and are used by nothing else",
+    "evidence": [
+      "the recorded argv binds every container port to 127.0.0.1 with an ephemeral host port — four loopback bindings, zero 0.0.0.0 bindings — so the databases were never reachable from outside the runner",
+      "both runs executed on GitHub-hosted runners (runner group 'GitHub Actions', label 'ubuntu-latest'), which are single-use virtual machines destroyed when the job ends",
+      "the credentials are minted fresh per run and per path, so no later run and no other environment ever accepted them"
+    ],
+    "conclusion": "the environment these credentials authenticated to no longer exists; the residual risk was the PUBLIC RETRIEVABILITY of the artifacts, and that is what the deletion closed"
+  }
+}

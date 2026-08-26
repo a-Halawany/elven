@@ -421,6 +421,84 @@ export function registerC19Anchor(): void {
     });
   });
 
+  describe('C19 — publication recovery is idempotent', () => {
+    const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
+
+    it('an existing bundle is VERIFIED and reused, never signed again', () => {
+      // A second signing event for the same bytes is a second identity assertion, and it turns the
+      // transparency log into a record of our retries rather than of our releases.
+      const recover = cli.indexOf('a bundle already exists for this run');
+      const sign = cli.indexOf("'sign-blob'");
+      expect(recover).toBeGreaterThan(0);
+      expect(sign).toBeGreaterThan(0);
+      expect(recover, 'recovery must be attempted BEFORE signing').toBeLessThan(sign);
+      expect(cli).toMatch(/no new signing event/);
+    });
+
+    it('REJECTS failure-after-rekor-acceptance-before-bundle-persistence', () => {
+      // The dangerous interruption: Rekor accepted the entry, the bundle never landed. Re-running
+      // must find the existing entry rather than creating a second one.
+      expect(cli).toMatch(/search Rekor for an existing entry over this exact digest/);
+      expect(cli).toMatch(/reuse that entry if found, and sign exactly once if not/);
+    });
+
+    it('a recovered bundle that does not verify is a FAILURE, not a silent reuse', () => {
+      expect(cli).toMatch(/the existing bundle does not verify/);
+    });
+
+    it('a dry run reaches no irreversible step', () => {
+      expect(cli).toMatch(/DRY RUN — nothing was published/);
+      const dry = cli.indexOf('DRY RUN — nothing was published');
+      const sign = cli.indexOf("'sign-blob'");
+      expect(dry).toBeLessThan(sign);
+    });
+
+    it('the raw OIDC token is never read, written or logged by the command', () => {
+      expect(cli).not.toMatch(/ACTIONS_ID_TOKEN_REQUEST_TOKEN/);
+      expect(cli).not.toMatch(/writeFileSync\([^)]*[Tt]oken/);
+      expect(cli).toMatch(/never written anywhere|never handled here/);
+    });
+
+    it('publication refuses to proceed without the commit it attests', () => {
+      expect(cli).toMatch(/SOURCE_SHA is not set/);
+    });
+  });
+
+  describe('C19 — the artifact cleanup ledger is honest', () => {
+    const ledger = JSON.parse(readFileSync(join(LIB, 'c19-artifact-cleanup.json'), 'utf8'));
+
+    it('records a deletion only where contamination was actually found', () => {
+      expect(ledger.deleted.length).toBe(ledger.findings.contaminated);
+      for (const d of ledger.deleted) {
+        expect(d.occurrences).toBeGreaterThan(0);
+        expect(d.why.length).toBeGreaterThan(20);
+        expect(d.tombstone).toMatch(/404|Not Found/);
+      }
+    });
+
+    it('claims NO rotation, and backs the liveness claim with concrete evidence', () => {
+      // Claiming a rotation that never happened would be worse than the leak: it asserts a
+      // remediation nobody performed.
+      expect(ledger.liveness.rotated).toBe(false);
+      expect(ledger.liveness.evidence.length).toBeGreaterThanOrEqual(3);
+      for (const e of ledger.liveness.evidence) expect(e.length).toBeGreaterThan(30);
+      expect(ledger.liveness.conclusion).toMatch(/no longer exists/);
+    });
+
+    it('contains no credential value, only names and counts', () => {
+      const text = JSON.stringify(ledger).replace(/[0-9a-f]{40}/g, 'SHA');
+      // The investigation never printed a value; the ledger must not have become the place one
+      // survives either.
+      expect(text).not.toMatch(/[0-9a-f]{24,}/);
+      expect(ledger.findings.classes).toEqual(['PGPASSWORD', 'POSTGRES_PASSWORD']);
+    });
+
+    it('records the CORRECTION: previously suspected artifacts were retained, not deleted', () => {
+      expect(ledger.findings.correction).toMatch(/RETAINED rather than deleted/);
+      expect(ledger.retained.count).toBeGreaterThan(0);
+    });
+  });
+
   describe('C19 — the frozen criteria and the routing rule', () => {
     it('every frozen attack family is a real string and the set has no duplicates', async () => {
       const c = await load('c19-criteria.mjs');
