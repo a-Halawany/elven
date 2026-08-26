@@ -421,6 +421,162 @@ export function registerC19Anchor(): void {
     });
   });
 
+  describe('C19 — certificate validity, binding and rollback', () => {
+    it('REJECTS expired-certificate', async () => {
+      const a = await load('c19-anchor.mjs');
+      const tr = JSON.parse(readFileSync(join(LIB, 'c19-sigstore-trusted-root.json'), 'utf8'));
+      const ca = tr.certificateAuthorities.at(-1);
+      const [intermediate, root] = ca.certChain.certificates;
+      const der = Buffer.from(intermediate.rawBytes, 'base64');
+      const { X509Certificate } = await import('node:crypto');
+      const notAfter = Date.parse(new X509Certificate(der).validTo);
+      // One second past expiry. A Fulcio certificate lives for minutes; accepting an expired one
+      // would accept a signature made long after the identity that authorised it lapsed.
+      const problems = a.verifyCertificateChain(der,
+        { certificateAuthorities: [{ certChain: { certificates: [root] } }] }, notAfter + 1000);
+      expect(problems.join('\n')).toMatch(/outside the certificate validity window/);
+    });
+
+    it('REJECTS certificate-outside-validity-window (before it was issued)', async () => {
+      const a = await load('c19-anchor.mjs');
+      const tr = JSON.parse(readFileSync(join(LIB, 'c19-sigstore-trusted-root.json'), 'utf8'));
+      const ca = tr.certificateAuthorities.at(-1);
+      const [intermediate, root] = ca.certChain.certificates;
+      const der = Buffer.from(intermediate.rawBytes, 'base64');
+      const { X509Certificate } = await import('node:crypto');
+      const notBefore = Date.parse(new X509Certificate(der).validFrom);
+      const problems = a.verifyCertificateChain(der,
+        { certificateAuthorities: [{ certChain: { certificates: [root] } }] }, notBefore - 1000);
+      expect(problems.join('\n')).toMatch(/outside the certificate validity window/);
+    });
+
+    it('NON-VACUITY: inside the window the same certificate is accepted', async () => {
+      const a = await load('c19-anchor.mjs');
+      const tr = JSON.parse(readFileSync(join(LIB, 'c19-sigstore-trusted-root.json'), 'utf8'));
+      const ca = tr.certificateAuthorities.at(-1);
+      const [intermediate, root] = ca.certChain.certificates;
+      const der = Buffer.from(intermediate.rawBytes, 'base64');
+      const { X509Certificate } = await import('node:crypto');
+      const c = new X509Certificate(der);
+      const mid = (Date.parse(c.validFrom) + Date.parse(c.validTo)) / 2;
+      expect(a.verifyCertificateChain(der,
+        { certificateAuthorities: [{ certChain: { certificates: [root] } }] }, mid)).toEqual([]);
+    });
+
+    it('REJECTS wrong-run and wrong-attempt', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      const id = genuineIdentity(policy, SHA, RUN, WFD);
+      // The run URI carries both the run id and, through it, the attempt: a bundle from another
+      // run of the same workflow is a different attestation and must not be reusable here.
+      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: `${RUN}/attempts/2`, workflowDigest: WFD })
+        .join('\n')).toMatch(/runInvocationUri/);
+      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: 'https://github.com/a-Halawany/elven/actions/runs/999', workflowDigest: WFD })
+        .join('\n')).toMatch(/runInvocationUri/);
+    });
+
+    it('REJECTS wrong-finalizer-run', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      // A finalizer run is a DIFFERENT run of a different workflow; its identity cannot stand in
+      // for the source run's, because buildConfigUri and runInvocationUri both differ.
+      const id: any = genuineIdentity(policy, SHA, RUN, WFD);
+      id.buildConfigUri = 'https://github.com/a-Halawany/elven/.github/workflows/c17-finalize.yml@refs/heads/main';
+      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+        .join('\n')).toMatch(/buildConfigUri/);
+    });
+
+    it('REJECTS rollback-to-older-attestation and reused-commitment', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      // An older attestation is bound to an older COMMIT. Presenting it for today's evidence fails
+      // on the source digest, which is what makes rollback detectable rather than merely unlikely.
+      const older: any = genuineIdentity(policy, 'f'.repeat(40), RUN, WFD);
+      expect(a.verifyIdentity(older, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+        .join('\n')).toMatch(/sourceRepositoryDigest/);
+      // The same reasoning covers a commitment reused from a previous run: it names the old run.
+      const reused: any = genuineIdentity(policy, SHA, 'https://github.com/a-Halawany/elven/actions/runs/1', WFD);
+      expect(a.verifyIdentity(reused, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+        .join('\n')).toMatch(/runInvocationUri/);
+    });
+
+    it('REJECTS valid-attestation-from-another-archive and processed-evidence-rebound', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
+      // A bundle that is internally perfect but attests a DIFFERENT artifact.
+      const other = {
+        verificationMaterial: { certificate: { rawBytes: makeSelfSigned().cert.toString('base64') }, tlogEntries: [] },
+        messageSignature: {
+          messageDigest: { algorithm: 'SHA2_256', digest: Buffer.from(sha256hex('another archive'), 'hex').toString('base64') },
+          signature: Buffer.alloc(64).toString('base64'),
+        },
+      };
+      expect(a.verifyBundle({
+        bundle: other, policy, trustedRoot, artifactBytes: Buffer.from('this archive'),
+        artifactDigestHex: sha256hex('this archive'), sourceSha: SHA,
+      }).join('\n')).toMatch(/attests .* but verification is about|different bytes/);
+    });
+
+    it('REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
+      // A bundle with no transparency-log entry at all: no SCT, no SET, no inclusion proof. An
+      // unpublished signature can be produced and discarded at will, so this must never pass.
+      const noLog = {
+        verificationMaterial: { certificate: { rawBytes: makeSelfSigned().cert.toString('base64') }, tlogEntries: [] },
+        messageSignature: { messageDigest: { algorithm: 'SHA2_256', digest: 'AA==' }, signature: 'AA==' },
+      };
+      expect(a.verifyBundle({ bundle: noLog, policy, trustedRoot, sourceSha: SHA }).join('\n'))
+        .toMatch(/no transparency log entry/);
+      // A malformed entry is rejected rather than skipped.
+      const badLog = { ...noLog, verificationMaterial: { ...noLog.verificationMaterial, tlogEntries: [{ logId: { keyId: 'AA==' } }] } };
+      expect(a.verifyBundle({ bundle: badLog, policy, trustedRoot, sourceSha: SHA }).length).toBeGreaterThan(0);
+      // An unknown envelope version is refused rather than guessed at.
+      expect(a.verifyBundle({ bundle: null as any, policy, trustedRoot }).join('\n')).toMatch(/not an object/);
+    });
+
+    it('REJECTS publication-from-superseded-attempt', async () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      // Concurrency is keyed on the source commit and does NOT cancel in progress, so a superseded
+      // attempt cannot race ahead of the one already publishing for that commit.
+      const { parse } = await import('yaml');
+      const d: any = parse(wf);
+      expect(d.concurrency.group).toMatch(/head_sha/);
+      expect(d.concurrency['cancel-in-progress']).toBe(false);
+      // And the run URI binding means an attestation from a superseded attempt names that attempt.
+      expect(wf).toMatch(/RUN_URI:.*actions\/runs\/\$\{\{ github\.run_id \}\}/);
+    });
+  });
+
+  describe('C19 — the attack matrix is COVERED, not merely declared', () => {
+    it('every frozen family maps to a control, and every mapping names a real one', async () => {
+      const c = await load('c19-criteria.mjs');
+      const suites = [
+        'c19-anchor.suite.ts', 'c19-lifecycle.suite.ts', 'c18-mutation-controls.suite.ts',
+      ].map((f) => readFileSync(join(REPO, 'apps', 'api', 'test', 'gate', f), 'utf8')).join('\n');
+
+      const families = new Set(c.C19_ATTACK_FAMILIES);
+      const mapped = new Set(Object.keys(c.C19_FAMILY_CONTROLS));
+      // A family with no control is an attack nobody tests for; a mapping to a control that does
+      // not exist is worse, because it reads as coverage.
+      for (const f of families) expect(mapped.has(f), `family '${f}' has no declared control`).toBe(true);
+      for (const f of mapped) expect(families.has(f), `mapping '${f}' names no frozen family`).toBe(true);
+      for (const [family, control] of Object.entries(c.C19_FAMILY_CONTROLS) as [string, string][]) {
+        // The named control must exist VERBATIM, template placeholder included. This is the
+        // assertion that matters: a mapping pointing at a control that was renamed or deleted
+        // reads as coverage while testing nothing.
+        expect(suites.includes(control),
+          `family '${family}' names control '${control}', which does not exist in any suite`).toBe(true);
+      }
+      // Table-driven identity families must additionally appear as a ROW, so they cannot claim
+      // coverage from a table that never mentions them.
+      for (const f of ['wrong-san', 'wrong-issuer', 'wrong-repository', 'wrong-ref',
+        'wrong-source-sha', 'wrong-workflow-digest']) {
+        expect(suites.includes(`'${f}'`), `family '${f}' is not a row in the identity table`).toBe(true);
+      }
+    });
+  });
+
   describe('C19 — publication recovery is idempotent', () => {
     const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
 

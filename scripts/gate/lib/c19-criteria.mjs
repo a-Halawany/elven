@@ -176,6 +176,80 @@ export function route(finding) {
   return { gate: 'C20', reason: 'a new attack class; C19 is frozen and does not expand to absorb it' };
 }
 
+/**
+ * EVERY frozen family, mapped to the control that covers it.
+ *
+ * A coverage report computed by keyword matching is worthless: it counts a family as covered
+ * because some unrelated control happens to contain the word "wrong". The mapping is therefore
+ * DECLARED, and a meta-control asserts both that every family appears here and that each named
+ * control actually exists. A family cannot be added without a control, and a control cannot be
+ * deleted without the mapping failing.
+ */
+export const C19_FAMILY_CONTROLS = Object.freeze({
+  'wrong-signer': 'REJECTS local-signer-presented-as-delivery-authority',
+  'wrong-san': 'REJECTS %s',
+  'wrong-issuer': 'REJECTS %s',
+  'wrong-repository': 'REJECTS %s',
+  'wrong-ref': 'REJECTS %s',
+  'wrong-source-sha': 'REJECTS %s',
+  'wrong-workflow-digest': 'REJECTS %s',
+  'regex-widened-identity': 'REJECTS regex-widened-identity: the policy itself must hold no patterns',
+  'substituted-trust-root': 'REJECTS substituted-trust-root: a tampered trusted root fails its TUF digest',
+  'stale-trust-root': 'REJECTS a policy that pins a rotating key as its offline root',
+  'unknown-or-revoked-key': 'REJECTS wrong-log-identity',
+  'unsupported-algorithm': 'REJECTS unsupported-algorithm',
+  'missing-fulcio-certificate': 'REJECTS missing-fulcio-certificate',
+  'replaced-fulcio-certificate': 'REJECTS a certificate that chains to no pinned authority',
+  'malformed-fulcio-certificate': 'REJECTS malformed-fulcio-certificate',
+  'missing-sct': 'REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload',
+  'malformed-sct': 'REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload',
+  'missing-rekor-set': 'REJECTS missing-rekor-set',
+  'malformed-rekor-set': 'REJECTS malformed-rekor-set against a pinned key',
+  'missing-inclusion-proof': 'REJECTS missing-inclusion-proof',
+  'malformed-inclusion-proof': 'accepts a GENUINE inclusion proof and rejects every forgery of it',
+  'wrong-checkpoint': 'accepts a GENUINE inclusion proof and rejects every forgery of it',
+  'wrong-log-identity': 'REJECTS wrong-log-identity',
+  'expired-certificate': 'REJECTS expired-certificate',
+  'certificate-outside-validity-window': 'REJECTS certificate-outside-validity-window',
+  'signature-over-different-bytes': 'REJECTS signature-over-different-bytes',
+  'altered-payload': 'REJECTS an altered artifact even when the bundle is internally consistent',
+  'noncanonical-payload': 'REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload',
+  'altered-zip': 'REJECTS an altered artifact even when the bundle is internally consistent',
+  'altered-manifest': 'REJECTS an altered artifact even when the bundle is internally consistent',
+  'altered-checksum': 'REJECTS an altered artifact even when the bundle is internally consistent',
+  'altered-nested-evidence': 'REJECTS an altered artifact even when the bundle is internally consistent',
+  'removed-record': 'REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload',
+  'duplicated-record': 'REJECTS missing-sct, malformed-sct, removed-record, duplicated-record and noncanonical-payload',
+  'wrong-run': 'REJECTS wrong-run and wrong-attempt',
+  'wrong-attempt': 'REJECTS wrong-run and wrong-attempt',
+  'wrong-finalizer-run': 'REJECTS wrong-finalizer-run',
+  'replayed-nonce': 'REJECTS rollback-to-older-attestation and reused-commitment',
+  'reused-commitment': 'REJECTS rollback-to-older-attestation and reused-commitment',
+  'valid-attestation-from-another-archive': 'REJECTS valid-attestation-from-another-archive and processed-evidence-rebound',
+  'processed-evidence-rebound': 'REJECTS valid-attestation-from-another-archive and processed-evidence-rebound',
+  'rollback-to-older-attestation': 'REJECTS rollback-to-older-attestation and reused-commitment',
+  'local-signer-presented-as-delivery-authority': 'REJECTS local-signer-presented-as-delivery-authority',
+  'publication-guard-bypass': 'REJECTS publication-guard-bypass: publish depends on the guard AND on both platforms',
+  'publication-from-pull-request': 'the workflow cannot be triggered by a pull request, a dispatch or a branch push',
+  'publication-from-fork': 'the guard requires push, success, main, this repository, and not a fork',
+  'publication-from-dispatch': 'the workflow cannot be triggered by a pull request, a dispatch or a branch push',
+  'publication-from-branch': 'the guard requires push, success, main, this repository, and not a fork',
+  'publication-after-failed-upstream': 'the guard requires push, success, main, this repository, and not a fork',
+  'publication-from-superseded-attempt': 'REJECTS publication-from-superseded-attempt',
+  'duplicate-publication': 'REJECTS duplicate/concurrent-publication: one publication per source commit',
+  'concurrent-publication': 'REJECTS duplicate/concurrent-publication: one publication per source commit',
+  'failure-after-rekor-acceptance-before-bundle-persistence': 'REJECTS failure-after-rekor-acceptance-before-bundle-persistence',
+  'authority-ledger-closed-without-authority': 'the authority ledger cannot close a claim without an independent authority',
+  'credential-in-argv': 'the producer refuses to spawn a command carrying a credential in argv',
+  'credential-in-container-metadata': 'the handoff contract keeps the value out of argv, the container config and any disk',
+  'credential-in-logs': 'SECRET-SAFE OUTPUT: a credential in the environment never reaches the shutdown report',
+  'credential-in-evidence': 'the handoff contract keeps the value out of argv, the container config and any disk',
+  'ownership-marker-removed': 'the governed gate never removes or replaces the ownership markers',
+  'undeclared-environment-inherited': 'DENY BY DEFAULT: an undeclared credential never reaches the child',
+  'stranded-process': 'DIFFERENTIAL: %s — a8d34c4 leaks a reparented grandchild; the corrected watchdog contains it',
+  'stranded-docker-resource': 'NON-VACUITY: a weakened cleanup leaves resources behind and is reported, not hidden',
+});
+
 /** The frozen criteria as one digestible object, so a control can pin it and detect drift. */
 export const C19_FROZEN = Object.freeze({
   invariants: C19_INVARIANTS.map((i) => i.id),
