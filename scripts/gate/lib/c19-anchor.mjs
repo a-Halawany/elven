@@ -190,23 +190,25 @@ export function verifyCertificateChain(leafDer, trustedRoot, at) {
 /** The signature must verify over the ARTIFACT DIGEST with the leaf's key. */
 export function verifyArtifactSignature({ leafDer, signatureB64, artifactDigestHex, artifactBytes }) {
   const problems = [];
-  let key;
-  try { key = createPublicKey(new X509Certificate(leafDer)); } catch (e) {
-    return [`c19 signature: no usable key in the leaf (${e.message})`];
-  }
+  // The bytes are checked BEFORE the key is touched. If the artifact does not hash to what the
+  // bundle attests, the signature is over different bytes and nothing about the key matters — and
+  // reporting a key problem there would name the wrong cause.
   if (artifactBytes !== undefined) {
     const actual = sha256(artifactBytes).toString('hex');
     if (actual !== artifactDigestHex) {
-      problems.push(`c19 signature: the bundle attests digest ${artifactDigestHex} but the artifact `
-        + `hashes to ${actual}; the signature is over different bytes`);
-      return problems;
+      return [`c19 signature: the bundle attests digest ${artifactDigestHex} but the artifact `
+        + `hashes to ${actual}; the signature is over different bytes`];
     }
+  }
+  let key;
+  try { key = new X509Certificate(leafDer).publicKey; } catch (e) {
+    return [`c19 signature: no usable key in the leaf (${e.message})`];
   }
   const sig = Buffer.from(String(signatureB64), 'base64');
   const digest = Buffer.from(String(artifactDigestHex), 'hex');
   let ok = false;
   try {
-    // Sigstore signs the artifact; the digest IS the message for a pre-hashed verification.
+    // Sigstore signs the artifact digest, so the digest IS the message for this verification.
     ok = verifyOneShot(null, digest, { key, dsaEncoding: 'der' }, sig);
   } catch { ok = false; }
   if (!ok) problems.push('c19 signature: does not verify over the attested artifact digest');
