@@ -13,7 +13,7 @@ honest target.
 | | |
 |---|---|
 | Base SHA | `3d9c80c7e088fa9359ac2428aab688dc898b39bf` (`origin/main`) |
-| **Candidate SHA** | **`96bbc89182f1d429cf3c4e283fb20e664a3ec26f`** |
+| **Candidate SHA** | the tip of `c19-external-anchoring` — see §11; a packet cannot name its own commit without changing it |
 | Branch | `c19-external-anchoring` (pushed, unmerged) |
 | Pull request | [#21](https://github.com/a-Halawany/elven/pull/21) — draft, review only |
 | Working tree | clean |
@@ -228,7 +228,7 @@ items 1–3 are green.
 
 ```bash
 git fetch origin c19-external-anchoring
-git checkout 96bbc89182f1d429cf3c4e283fb20e664a3ec26f
+git checkout c19-external-anchoring   # verify the tip matches the SHA in the handoff
 pnpm install --frozen-lockfile
 
 # offline anchor verification — asserts zero network attempts
