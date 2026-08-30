@@ -40,6 +40,10 @@ jobs:
           node-version: 24.11.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The serial suite's coverage runner imports @eye/contracts from its BUILT output, so an
+      # install alone leaves it resolving a dist/ that does not exist yet. Caught by CI on both
+      # platforms, where 36 controls passed and the runner then failed on ERR_MODULE_NOT_FOUND.
+      - run: pnpm build
 
       - name: Anchor selftest with the network denied
         run: node scripts/gate/c19-anchor-cli.mjs selftest --offline
