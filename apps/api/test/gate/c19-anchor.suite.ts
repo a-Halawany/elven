@@ -10,8 +10,8 @@
  * crafted inputs at its own boundary, which is stronger than one end-to-end fixture: an end-to-end
  * bundle proves the happy path and hides which check is load-bearing.
  */
-import { describe, expect, it } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { describe, expect, it, beforeAll } from 'vitest';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -402,13 +402,15 @@ export function registerC19Anchor(): void {
       // `workflow_run` after ci is what makes publication unreachable without a completed upstream
       // run; a `push` or `pull_request` trigger would put an `if:` in charge instead.
       expect(Object.keys(on)).toEqual(['workflow_run']);
-      expect(on.workflow_run.workflows).toEqual(['ci']);
+      // Triggered by the FINALIZER, not by ci: both were previously triggered by ci completing,
+      // so they raced and this workflow could query before the finalizer had succeeded.
+      expect(on.workflow_run.workflows).toEqual(['C17 finalize']);
     });
 
     it('the guard requires push, success, main, this repository, and not a fork', async () => {
       // Each condition defends a different bypass, so a single missing one is a hole.
       for (const needed of [
-        /"\$EV" = "push"/, /"\$CONCLUSION" = "success"/, /"\$BRANCH" = "main"/,
+        /"\$EV" = "workflow_run"/, /"\$CONCLUSION" = "success"/, /"\$BRANCH" = "main"/,
         /"\$REPO" = "a-Halawany\/elven"/, /"\$SRC_REPO" = "a-Halawany\/elven"/, /"\$IS_FORK" != "true"/,
       ]) expect(wf).toMatch(needed);
     });
@@ -666,7 +668,7 @@ export function registerC19Anchor(): void {
       const { decideRecovery } = await load2();
       let signings = 0;
       const d = await decideRecovery({
-        digestHex: 'aa', expectedIdentity: {},
+        digestHex: 'aa', expectedIdentity: { sourceSha: 'x' },
         search: async () => ['uuid-1'],                 // Rekor already has it
         fetchEntry: async () => ({ logIndex: 7 }),      // and it retrieves
         verifyEntry: ok,                                // and it verifies
@@ -679,7 +681,7 @@ export function registerC19Anchor(): void {
     it('NON-VACUITY: with no existing record it DOES decide to sign, exactly once', async () => {
       const { decideRecovery } = await load2();
       const d = await decideRecovery({
-        digestHex: 'aa', expectedIdentity: {},
+        digestHex: 'aa', expectedIdentity: { sourceSha: 'x' },
         search: async () => [], fetchEntry: async () => null, verifyEntry: ok,
       });
       expect(d.action).toBe('sign');
@@ -688,7 +690,7 @@ export function registerC19Anchor(): void {
     it('REFUSES on ambiguity rather than resolving it by guessing', async () => {
       const { decideRecovery } = await load2();
       const d = await decideRecovery({
-        digestHex: 'aa', expectedIdentity: {},
+        digestHex: 'aa', expectedIdentity: { sourceSha: 'x' },
         search: async () => ['a', 'b'], fetchEntry: async () => ({}), verifyEntry: ok,
       });
       expect(d.action).toBe('refuse');
@@ -698,7 +700,7 @@ export function registerC19Anchor(): void {
     it('REFUSES when an existing record does not verify', async () => {
       const { decideRecovery } = await load2();
       const d = await decideRecovery({
-        digestHex: 'aa', expectedIdentity: {},
+        digestHex: 'aa', expectedIdentity: { sourceSha: 'x' },
         search: async () => ['uuid-1'], fetchEntry: async () => ({}),
         verifyEntry: () => ['the signed entry timestamp does not verify'],
       });
@@ -709,7 +711,7 @@ export function registerC19Anchor(): void {
     it('REFUSES when the log cannot be queried — never blind-signs', async () => {
       const { decideRecovery } = await load2();
       const d = await decideRecovery({
-        digestHex: 'aa', expectedIdentity: {},
+        digestHex: 'aa', expectedIdentity: { sourceSha: 'x' },
         search: async () => { throw new Error('network down'); },
         fetchEntry: async () => ({}), verifyEntry: ok,
       });
@@ -734,18 +736,99 @@ export function registerC19Anchor(): void {
 
     it('the anchor workflow actually acquires an artifact and passes explicit paths', () => {
       const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      expect(wf).toMatch(/actions\/artifacts\/\$id\/zip/);
+      expect(wf).toMatch(/c19-acquire\.mjs/);
       expect(wf).toMatch(/--artifact \/tmp\/c19\/finalized\.zip/);
       expect(wf).toMatch(/--bundle\s+\/tmp\/c19\/payload\.sigstore\.json/);
       expect(wf).toMatch(/--payload\s+\/tmp\/c19\/payload\.json/);
-      // Exactly one artifact, or refuse.
-      expect(wf).toMatch(/expected exactly one unexpired finalized artifact/);
+      // Exactly one artifact, or refuse — now enforced in c19-acquire.mjs, which also
+      // authenticates the wrapper digest and verifies the inner finalized evidence.
+      const acq = readFileSync(join(REPO, 'scripts', 'gate', 'c19-acquire.mjs'), 'utf8');
+      expect(acq).toMatch(/expected exactly one unexpired finalized artifact/);
+      expect(acq).toMatch(/the API reports/);
+      expect(acq).toMatch(/C17 finalization verifier/);
+      expect(acq).toMatch(/refused rather than sanitised/);
       // An old successful run must not publish after main has moved on.
       expect(wf).toMatch(/no longer the main tip/);
       // The verify job must build, or it repeats the defect already fixed in c19-lifecycle.yml.
       expect(wf).toMatch(/- run: pnpm build/);
       // And the bundle must be persisted, or nothing downstream can verify it.
       expect(wf).toMatch(/upload-artifact/);
+    });
+  });
+
+  describe('C19 — the REAL dispatcher, invoked as the workflow invokes it', () => {
+    // Every control below spawns the CLI as a subprocess with the exact argument vector the
+    // workflow uses. The previous 74 controls exercised the helper functions and all passed while
+    // the dispatcher silently dropped --payload, so `publish` and `verify` were both unusable from
+    // the workflow. Testing the callee while the caller is broken proves nothing about the system.
+    const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
+
+    /** The literal argv the workflow passes, so drift between YAML and controls is impossible. */
+    const workflowArgs = (cmd: 'publish' | 'verify', extra: string[]) => [
+      cmd, ...extra,
+      '--artifact', '/tmp/c19-ctl/finalized.zip',
+      '--payload', '/tmp/c19-ctl/payload.json',
+      '--bundle', '/tmp/c19-ctl/payload.sigstore.json',
+    ];
+
+    let dir = '';
+    beforeAll(() => {
+      dir = '/tmp/c19-ctl';
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'finalized.zip'), 'not-a-real-zip');
+      writeFileSync(join(dir, 'payload.json'), '{}');
+      writeFileSync(join(dir, 'payload.sigstore.json'), '{}');
+    });
+
+    const run = (args: string[], env: Record<string, string> = {}) => spawnSync(
+      process.execPath, [CLI, ...args],
+      { encoding: 'utf8', env: { ...process.env, ...env } },
+    );
+
+    it('publish ACCEPTS the workflow\'s exact argument vector', () => {
+      const r = run(workflowArgs('publish', ['--dry-run']), { SOURCE_SHA: 'a'.repeat(40), RUN_URI: 'https://x' });
+      // The bug: the dispatcher read --artifact and --bundle but never --payload, so this exact
+      // command line died with "--payload is required".
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/--payload is required/);
+      expect(`${r.stdout}`).toMatch(/payload  sha256/);
+    });
+
+    it('verify ACCEPTS the workflow\'s exact argument vector', () => {
+      const r = run(workflowArgs('verify', ['--offline', '--require-delivery-standing']),
+        { SOURCE_SHA: 'a'.repeat(40) });
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/requires --artifact, --payload and --bundle/);
+    });
+
+    it('publish is AWAITED: a rejected publication cannot exit 0', () => {
+      // Without `await`, a rejection became an unhandled promise and the process could report
+      // success while publication had failed.
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
+      expect(src).toMatch(/await publish\(\{/);
+    });
+
+    it('every path flag the workflow passes is read by the dispatcher', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
+      // Any flag the YAML passes must appear in a valueOf()/has() call, or it is silently dropped.
+      const flags = new Set([...wf.matchAll(/(--[a-z-]+)\s/g)].map((m) => m[1]));
+      for (const f of flags) {
+        if (!['--artifact', '--payload', '--bundle', '--out', '--offline', '--dry-run',
+          '--recover-or-publish', '--require-delivery-standing', '--docker-only'].includes(f)) continue;
+        expect(src.includes(`'${f}'`), `the dispatcher never reads ${f}, which the workflow passes`)
+          .toBe(true);
+      }
+    });
+
+    it('each command line the workflow runs is at least DISPATCHABLE', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      const invocations = [...wf.matchAll(/c19-anchor-cli\.mjs\s+([a-z-]+)/g)].map((m) => m[1]);
+      expect(invocations.length).toBeGreaterThan(0);
+      for (const cmd of new Set(invocations)) {
+        const r = run([cmd, '--help-probe-unknown-flag']);
+        // Exit 2 is "unknown command". Anything the workflow invokes must be a known command.
+        expect(r.status, `the workflow invokes '${cmd}', which the dispatcher does not know`)
+          .not.toBe(2);
+      }
     });
   });
 

@@ -65,25 +65,72 @@ export const C19_PURPOSES = Object.freeze([
 /** Domain separation. One purpose, one context string, no overlap. */
 export const domainContext = (purpose) => `eye/c19/${purpose}/v1`;
 
-/** The fields every canonical payload must carry, whatever its purpose. */
+/**
+ * ── THE PAYLOAD IS DETERMINISTIC, AND THAT IS WHAT MAKES RECOVERY POSSIBLE ──
+ *
+ * The first version put the signer's own run id, a wall-clock `issuedAt` and a RANDOM nonce into
+ * the signed payload. Every retry therefore produced different bytes, a different digest, and a
+ * Rekor search that could not possibly find the entry the previous attempt had already published.
+ * "Idempotent recovery" was impossible by construction: the thing being searched for never had the
+ * same name twice.
+ *
+ * The signed payload now depends ONLY on the publication identity — which source run, which
+ * finalizer run, which artifact — so any attempt at publishing that identity produces byte-identical
+ * bytes and finds its own prior entry.
+ *
+ * The signer's own run is not lost: it is bound by the FULCIO CERTIFICATE's run invocation URI,
+ * which is where the identity of the signer belongs. Duplicating it inside the signed payload is
+ * what made the payload unstable, and it added nothing the certificate did not already prove.
+ */
 export const REQUIRED_PAYLOAD_FIELDS = Object.freeze([
   // identity of the statement itself
   'schema', 'version', 'purpose', 'context',
   // what source produced the evidence
   'sourceSha', 'sourceTree',
-  // the UPSTREAM run that produced it, distinct from the signer's own run
+  // the UPSTREAM run that produced it
   'sourceRunId', 'sourceRunAttempt', 'sourceEvent',
   // the FINALIZER run that produced the delivered artifact
   'finalizerRunId', 'finalizerRunAttempt',
-  // the signer's own invocation
-  'signerRunId', 'signerRunAttempt', 'workflowRef', 'workflowDigest',
-  // what is being attested
+  // which workflow configuration is authorised to sign this
+  'workflowRef', 'workflowDigest',
+  // what is being attested — both the wrapper and the finalized inner artifact
   'evidenceArtifactId', 'evidenceArtifactName', 'evidenceDigest',
-  // replay and validity
+  'finalizedInnerName', 'finalizedInnerDigest',
+  // replay and validity, both DERIVED from the publication identity rather than from the clock
   'nonce', 'issuedAt', 'notBefore', 'expiresAt',
   // who signed it and how
   'signerId', 'keyVersion', 'algorithm',
 ]);
+
+/**
+ * The bindings that DEFINE a publication. Two attempts that agree on all of these are the same
+ * publication and must produce the same bytes; a change to any of them is a different publication.
+ */
+export const PUBLICATION_IDENTITY_FIELDS = Object.freeze([
+  'sourceSha', 'sourceTree', 'sourceRunId', 'sourceRunAttempt', 'sourceEvent',
+  'finalizerRunId', 'finalizerRunAttempt',
+  'evidenceArtifactId', 'evidenceDigest', 'finalizedInnerDigest',
+  'workflowRef', 'workflowDigest',
+]);
+
+/**
+ * The stable identity of one publication, and the nonce derived from it.
+ *
+ * A random nonce would defeat the whole mechanism. This nonce is still a nonce in the sense that
+ * matters — it is unique per publication and domain-separated — but it is REPRODUCIBLE, so the
+ * retry of a crashed run computes the same one.
+ */
+export function publicationIdentity(facts) {
+  const missing = PUBLICATION_IDENTITY_FIELDS.filter((f) => facts[f] === undefined || facts[f] === '');
+  if (missing.length > 0) {
+    throw new Error(`c19: publication identity is missing ${missing.join(', ')}`);
+  }
+  const core = Object.fromEntries(PUBLICATION_IDENTITY_FIELDS.map((f) => [f, String(facts[f])]));
+  return createHash('sha256')
+    .update('eye/c19/publication-identity/v1\n')
+    .update(canonicalize(core))
+    .digest('hex');
+}
 
 /**
  * Bindings that are recorded when the producer knows them. They are not universally required — a
@@ -142,7 +189,7 @@ export function buildPayload(purpose, facts) {
   if (!C19_PURPOSES.includes(purpose)) throw new Error(`c19: unknown purpose ${j(purpose)}`);
   const payload = {
     schema: 'eye/c19/payload',
-    version: 1,
+    version: 2,
     purpose,
     context: domainContext(purpose),
     ...facts,

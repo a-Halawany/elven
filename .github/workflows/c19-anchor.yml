@@ -21,7 +21,12 @@
 name: C19 anchor
 on:
   workflow_run:
-    workflows: ['ci']
+    # ── TRIGGERED BY THE FINALIZER, NOT BY ci ──
+    #
+    # `C17 finalize` and this workflow were both triggered by `ci` completing, so they RACED: this
+    # one could query for a finalizer run before that finalizer had succeeded, or at all. Depending
+    # on the finalizer means waiting for it by construction rather than hoping it got there first.
+    workflows: ['C17 finalize']
     types: [completed]
 
 # Read-only by default. Publication capability is granted per job, never here.
@@ -62,7 +67,9 @@ jobs:
           # Each condition is named, so a refusal says WHICH one failed rather than just "no".
           # The first failure is kept: a later check overwriting it would report the wrong cause.
           note() { [ -n "$reason" ] || reason="$1"; }
-          [ "$EV" = "push" ]                   || note "upstream event was '$EV', not a push"
+          # The finalizer is itself workflow_run-triggered by ci; its own upstream event is what
+          # must have been a push.
+          [ "$EV" = "workflow_run" ]           || note "finalizer event was '$EV', not workflow_run"
           [ "$CONCLUSION" = "success" ]        || note "upstream run concluded '$CONCLUSION'"
           [ "$BRANCH" = "main" ]               || note "upstream branch was '$BRANCH', not main"
           [ "$REPO" = "a-Halawany/elven" ]     || note "repository is '$REPO'"
@@ -160,78 +167,99 @@ jobs:
       # Previously this workflow signed and "verified" nothing: no artifact was ever downloaded and
       # no --artifact/--bundle path was passed, so the step named "verify the published bundle"
       # verified no bundle. The delivery chain is now explicit and every binding is checked.
-      - name: Resolve the exact source and finalizer runs
+      - name: Resolve the finalizer that triggered us, and ITS source run
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ github.event.workflow_run.id }}
-          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          FIN_RUN: ${{ github.event.workflow_run.id }}
+          FIN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          # The source run must be the one that triggered us, and its head SHA must still be the
-          # current tip of main — an old successful run must not be able to publish after main
-          # has moved on.
+          # We were triggered BY this finalizer, so no search is needed and no race exists. What
+          # must still be established is which source run it finalized — selecting "any successful
+          # finalizer with the same SHA" would accept one belonging to a different source run.
+          fin="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN")"
+          [ "$(echo "$fin" | jq -r .conclusion)" = "success" ] || { echo "::error::finalizer did not succeed"; exit 1; }
+          src_id="$(echo "$fin" | jq -r '.referenced_workflows[0].sha // empty')"
+          # The finalizer records its triggering run in its own workflow_run payload; recover it
+          # from the finalizer's logs-independent metadata.
+          src="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name=="ci" and .conclusion=="success" and .event=="push")]')"
+          n="$(echo "$src" | jq 'length')"
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly one successful ci push run for $HEAD_SHA, found $n"
+            exit 1
+          fi
+          # An old successful run must not publish after main has moved on.
           tip="$(gh api repos/${{ github.repository }}/commits/main --jq .sha)"
           if [ "$tip" != "$HEAD_SHA" ]; then
-            echo "::error::source run head $HEAD_SHA is no longer the main tip ($tip); superseded"
+            echo "::error::head $HEAD_SHA is no longer the main tip ($tip); superseded"
             exit 1
           fi
-          # Exactly one successful finalizer run for this SHA, or refuse.
-          fin="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
-            --jq '[.workflow_runs[] | select(.name=="C17 finalize" and .conclusion=="success")]')"
-          n="$(echo "$fin" | jq 'length')"
-          if [ "$n" -ne 1 ]; then
-            echo "::error::expected exactly one successful finalizer run for $HEAD_SHA, found $n"
-            exit 1
-          fi
-          echo "finalizer_run=$(echo "$fin" | jq -r '.[0].id')" >> "$GITHUB_OUTPUT"
-          echo "finalizer_attempt=$(echo "$fin" | jq -r '.[0].run_attempt')" >> "$GITHUB_OUTPUT"
-          echo "source_run=$SOURCE_RUN" >> "$GITHUB_OUTPUT"
-          echo "source_attempt=$SOURCE_ATTEMPT" >> "$GITHUB_OUTPUT"
+          {
+            echo "finalizer_run=$FIN_RUN"
+            echo "finalizer_attempt=$FIN_ATTEMPT"
+            echo "finalizer_completed_at=$(echo "$fin" | jq -r .updated_at)"
+            echo "source_run=$(echo "$src" | jq -r '.[0].id')"
+            echo "source_attempt=$(echo "$src" | jq -r '.[0].run_attempt')"
+            echo "source_event=$(echo "$src" | jq -r '.[0].event')"
+            echo "source_tree=$(git rev-parse "$HEAD_SHA^{tree}")"
+            echo "workflow_digest=$(sha256sum .github/workflows/c19-anchor.yml | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Acquire exactly one finalized artifact, by immutable id
+      - name: Acquire the artifact, authenticate the wrapper, and verify the inner evidence
         id: artifact
         env:
           GH_TOKEN: ${{ github.token }}
           FIN_RUN: ${{ steps.resolve.outputs.finalizer_run }}
+          SOURCE_RUN: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
         run: |
           set -euo pipefail
-          arts="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN/artifacts" \
-            --jq '[.artifacts[] | select(.expired==false) | select(.name|startswith("c17-evidence-finalized-"))]')"
-          n="$(echo "$arts" | jq 'length')"
-          if [ "$n" -ne 1 ]; then
-            echo "::error::expected exactly one unexpired finalized artifact, found $n (missing, multiple or stale)"
-            exit 1
-          fi
-          id="$(echo "$arts" | jq -r '.[0].id')"
-          name="$(echo "$arts" | jq -r '.[0].name')"
           mkdir -p /tmp/c19
-          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > /tmp/c19/finalized.zip
-          digest="$(sha256sum /tmp/c19/finalized.zip | cut -d' ' -f1)"
-          echo "artifact_id=$id" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
-          echo "artifact_digest=$digest" >> "$GITHUB_OUTPUT"
-          echo "acquired artifact $id ($name) sha256=$digest"
+          node scripts/gate/c19-acquire.mjs \
+            --repo "${{ github.repository }}" \
+            --finalizer-run "$FIN_RUN" \
+            --source-run "$SOURCE_RUN" \
+            --source-attempt "$SOURCE_ATTEMPT" \
+            --out /tmp/c19 >> "$GITHUB_OUTPUT"
 
       - name: Build the canonical signed payload
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
           SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
           SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
           FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
           FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          SIGNER_RUN_ID: ${{ github.run_id }}
-          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          FINALIZER_COMPLETED_AT: ${{ steps.resolve.outputs.finalizer_completed_at }}
+          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
           EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
           EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.artifact_digest }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
+          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
+          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
         run: node scripts/gate/c19-anchor-cli.mjs payload --out /tmp/c19/payload.json
 
       - name: Publication dry run — everything except the irreversible step
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
+          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
+          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
+          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
+          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
+          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
+          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
+          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
+          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
+          SIGNER_RUN_ID: ${{ github.run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
           RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         run: |
           node scripts/gate/c19-anchor-cli.mjs publish --dry-run \
@@ -242,6 +270,20 @@ jobs:
       - name: Recover or publish, idempotently
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
+          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
+          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
+          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
+          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
+          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
+          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
+          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
+          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
+          SIGNER_RUN_ID: ${{ github.run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
           RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
           COSIGN: /tmp/cosign
         run: |
@@ -253,6 +295,18 @@ jobs:
       - name: Verify the published bundle OFFLINE against the delivered artifact
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
+          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
+          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
+          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
+          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
+          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
+          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
+          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
+          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
           SIGNER_RUN_ID: ${{ github.run_id }}
           SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -264,6 +318,18 @@ jobs:
       - name: Verify again from a FRESH FOREIGN CHECKOUT, offline
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
+          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
+          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
+          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
+          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
+          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
+          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
+          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
+          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
           SIGNER_RUN_ID: ${{ github.run_id }}
           SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |

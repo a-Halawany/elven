@@ -632,6 +632,8 @@ export function verifyBundle({
  * whether or not it was correct.
  */
 export const DELEGATED_TO_COSIGN = Object.freeze([
+  // EXECUTED by `runCosignVerify` in c19-anchor-cli.mjs on every delivery-standing verification.
+  // Listing a delegate without invoking one is a gap with a label on it, which is what this was.
   'SCT signature verification against the CT log key (presence and structure only are checked here)',
   'full X.509 path building and policy validation beyond the pinned-anchor check',
   'canonical Sigstore bundle schema validation',

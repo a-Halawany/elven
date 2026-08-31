@@ -17,8 +17,8 @@ honest target.
 | Branch | `c19-external-anchoring` (pushed, unmerged) |
 | Pull request | [#21](https://github.com/a-Halawany/elven/pull/21) — draft, review only |
 | Working tree | clean |
-| Commits ahead of main | 39 (this packet included) |
-| Diff | 69 files, +25,166 / −92 |
+| Commits ahead of main | see handoff (a committed count invalidates itself on the next commit) |
+| Diff | see handoff |
 | Migrations touched | **0** — `0001`–`0021` unchanged |
 | Fast-forward to main possible | yes (base is exactly `origin/main`) |
 
@@ -95,9 +95,9 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 
 | Check | Result |
 |---|---|
-| C18+C19 gate (under the 900 s watchdog) | **PASS** — 396 parallel + 44 serial, 227.7 s, `contained=true` |
-| Hermetic control suite | **PASS** — 1094/1094, 131.8 s |
-| Anchor attack matrix | **PASS** — 74/74 |
+| C18+C19 gate (under the 900 s watchdog) | see handoff — measured on the exact candidate |
+| Hermetic control suite | see handoff |
+| Anchor attack matrix | see handoff |
 | Offline anchor selftest | **PASS** — 0 network attempts |
 | Typecheck / lint | **PASS** |
 | gitleaks (228 commits, 16.4 MB) | **no leaks found** |
@@ -285,6 +285,56 @@ Docker parity that platform never had. Docker **installed but unqueryable** rema
 failure at exit 125: being unable to ask is not the same as there being nothing there. Three
 controls pin the distinction, including that a partial query failure is still undetermined — two
 good answers do not vouch for a third.
+
+### Second review round: the publication path was unusable
+
+A second independent review rejected the previous candidate. The findings were reproduced before
+anything was changed, and every one was real.
+
+**The dispatcher dropped `--payload`.** `publish` and `verify` both read `--artifact` and `--bundle`
+and never `--payload`, so the exact command lines in the workflow died with "--payload is required".
+`publish` was also called without `await`, so a rejection became an unhandled promise. The 74
+controls exercised the helper functions and passed while the caller was broken. Subprocess controls
+now invoke the workflow's literal argument vector, and four of them fail when the defect is
+reinstated.
+
+**The payload could not be recovered.** It embedded the signer's run id, a wall-clock `issuedAt` and
+a RANDOM nonce, so every retry produced different bytes and a different digest — the Rekor search
+could never find the entry a previous attempt had published. Idempotence was impossible by
+construction. The signed payload now depends only on the publication identity (source run, finalizer
+run, artifact), with the nonce DERIVED from those bindings; the signer's own run is bound by the
+Fulcio certificate, where it belongs. Two invocations two seconds apart are byte-identical.
+
+**Recovery wrote to the wrong path.** It produced `${bundlePath}.recovered.json` and returned, while
+every downstream step expected `bundlePath` — so recovery could never complete. It now reconstructs
+a real Sigstore bundle from the log entry, writes it where it is expected, and subjects it to the
+same verification a freshly signed bundle receives. `expectedIdentity: {}` is refused outright.
+
+**Delegation was a comment.** `DELEGATED_TO_COSIGN` named SCT verification, X.509 path validation
+and bundle schema validation, and nothing ever invoked cosign. `verify-blob` now runs with the exact
+certificate identity and issuer, offline against the pinned trusted root, and its absence fails
+delivery standing.
+
+**The finalizer was a race.** `C17 finalize` and this workflow were both triggered by `ci`
+completing, so the anchor could query before the finalizer had succeeded — and it then selected any
+successful finalizer with a matching SHA, without proving it belonged to the triggering run. The
+anchor is now triggered BY the finalizer, so waiting is structural.
+
+**The wrapper was signed instead of the evidence.** Acquisition hashed GitHub's download wrapper,
+never checked the API's reported digest, never looked inside, and never ran the existing C17
+finalization verifier. `c19-acquire.mjs` authenticates the wrapper, extracts exactly one inner
+evidence ZIP and its sidecar (refusing unsafe entries rather than sanitising them), checks the
+sidecar's name and digest bindings, runs the existing C17 verifier, and binds both wrapper and inner
+digests into the payload.
+
+**Most of the signed contract was ignored.** The verifier checked canonical form, evidence digest,
+source SHA and `expiresAt > notBefore`. Everything else was signed and never compared. All mandatory
+bindings are now checked against expectations established from GitHub's API, current validity is
+enforced, and the nonce must equal the publication identity its own bindings determine.
+
+**Expectations were not exported.** The workflow never set `WORKFLOW_DIGEST` for either verification
+step, so a mandatory check had no expectation to compare against. Every verification step now
+receives the full set, and a missing expectation is a refusal rather than a skip.
 
 ### One regression I introduced while correcting
 
