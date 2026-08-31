@@ -353,7 +353,17 @@ GitHub Actions was in a `major_outage` during the first CI window (incident open
 (`startup_failure`, 0 jobs) and `32985092165` (both jobs `cancelled`, 0 steps) — carry **no
 information about this branch in either direction** and are disregarded.
 
-Actions is now operational and the checks have run, with the results in §9a.
+Actions is now operational and the checks have run. On the candidate: `build-test` **success**,
+`browser-regression` **success**, both `C19 lifecycle` jobs **success** on `ubuntu-latest` *and*
+`macos-14`, and the hosted nonpublishing `delivery-chain-dry` job **success** — it resolved a real
+publication, acquired and authenticated the evidence, built the payload, passed every reversible
+check and stopped at `would-sign`, with zero OIDC requests, zero signing operations and zero Rekor
+writes.
+
+`ci` is **red on `supply-chain` only**, and only on `CVE-2026-14456` — see below. Two defects were
+found by the hosted runs and could not have been found locally, because they are Linux-only: the
+`sudo` environment reset described in §9a, and a control that reached the live GitHub API. Both are
+fixed in the candidate.
 
 **Hosted run status is deliberately NOT asserted in this file.**
 
