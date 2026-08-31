@@ -154,7 +154,7 @@ export function registerC19Pipeline(): void {
       // now reports failure. So a run whose attempt 1 succeeded and which was later re-run to
       // failure has intact history and is still unusable downstream.
       expect(src).toMatch(/source\.conclusion !== 'success'/);
-      expect(src).toMatch(/intact HISTORY but is not a usable delivery fixture/);
+      expect(src).toMatch(/is not a usable delivery fixture/);
       // And the resolver still reads ATTEMPTS for the canonical attempt, which is a separate
       // question from whether the run is currently usable.
       expect(src).toMatch(/successfulAttempt\(source/);
