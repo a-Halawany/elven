@@ -160,6 +160,21 @@ async function main() {
   say(`C19 deliver: wrapper ${acquisition.wrapperDigest.slice(0, 16)}… inner ${acquisition.innerName}`);
   say(`C19 deliver: authenticated source ${acquisition.authed.sourceRunId}#${acquisition.authed.sourceRunAttempt}`);
 
+  /**
+   * The workflow COMMIT is a signed claim, so it is required rather than defaulted.
+   *
+   * It used to fall back to the source commit. That is a different commit of a different thing:
+   * the payload would assert a workflow digest that is not the workflow's, and no Fulcio
+   * certificate could ever match it - a false binding, signed, produced silently by omitting a
+   * flag. An absent value is refused instead.
+   */
+  const workflowSha = val('--workflow-sha') ?? process.env.WORKFLOW_SHA;
+  if (workflowSha === undefined || workflowSha === '') {
+    die('the workflow commit is required (--workflow-sha, or WORKFLOW_SHA in the environment). '
+      + "Fulcio's Build Config Digest is GitHub's `workflow_sha`; substituting the source commit "
+      + 'would sign a binding that is false and could never verify.');
+  }
+
   // ── 10 the deterministic payload ─────────────────────────────────────────
   const sourceTree = spawnSync('git', ['rev-parse', `${acquisition.authed.sourceSha}^{tree}`],
     { encoding: 'utf8' }).stdout?.trim();
@@ -169,7 +184,7 @@ async function main() {
     authed: acquisition.authed, acquisition, sourceTree,
     workflowRef: policy.identity.workflowRef,
     // GitHub's workflow COMMIT, supplied by the workflow. Fulcio records this, not a YAML hash.
-    workflowDigest: val('--workflow-sha') ?? process.env.WORKFLOW_SHA ?? acquisition.authed.sourceSha,
+    workflowDigest: workflowSha,
     workflowYamlDigest: existsSync(wfPath) ? sha256(readFileSync(wfPath)) : 'unavailable',
     sourceEvent: source.event,
     finalizerCompletedAt: finalizer.completedAt,

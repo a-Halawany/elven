@@ -157,6 +157,31 @@ export function registerC19Pipeline(): void {
       expect(r.problems.join('\n')).toMatch(/no longer the tip of main/);
     });
 
+    it('REFUSES to build a payload without the workflow COMMIT, rather than substituting one', () => {
+      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
+      // It used to fall back to the SOURCE commit, which is a different commit of a different
+      // thing: the signed payload would assert a workflow digest that is not the workflow's, and no
+      // Fulcio certificate could match it. The failure was silent and the result was signed.
+      expect(cli).not.toMatch(/workflowDigest:.*acquisition\.authed\.sourceSha/);
+      const out = mkdtempSync(join(tmpdir(), 'c19wf-'));
+      const bin = mkdtempSync(join(tmpdir(), 'c19wfbin-'));
+      // A `gh` that answers the tip check, so the refusal under test is the one that is reached.
+      writeFileSync(join(bin, 'gh'),
+        '#!/bin/sh\nprintf "HTTP/2 200\\r\\n\\r\\n"\nprintf \'{"sha":"x"}\'\n', { mode: 0o755 });
+      for (const t of ['node', 'git', 'sh']) {
+        const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
+        if (found && !existsSync(join(bin, t))) symlinkSync(found, join(bin, t));
+      }
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+      delete env.WORKFLOW_SHA;
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'dry-run',
+        '--repo', 'a-Halawany/elven', '--sha', 'a'.repeat(40), '--out', out,
+      ], { encoding: 'utf8', env });
+      expect(r.status).not.toBe(0);
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/payload [0-9a-f]{16}/);
+    }, 120_000);
+
     it('EXECUTED: publish refuses a superseded commit, and no argument turns that off', () => {
       // The real CLI, in the mode that can sign, with a `gh` that reports a DIFFERENT tip. Standing
       // in for the transport keeps the control hermetic: the previous version called the live API,

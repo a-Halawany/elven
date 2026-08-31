@@ -233,11 +233,14 @@ whole pipeline against the live API and stops at the irreversible step:
 canonical source 32772872150#1, finalizer 32773496008#1 (same-SHA, unambiguous)
 wrapper aae9eefebee22c57… inner c17-cross-host-finalized-a8d34c4d….zip
 authenticated source 32772872150#1
-payload cc811b26ecfd3bbb… identity 3597dea2c89eb0ed…
+payload cde0148bfe948641… identity 08c70e35dc0b553a…
 all reversible validation passed
 would-sign — the log has no record for these bytes; a real run would sign exactly once here
 DRY RUN — zero OIDC requests, zero signing operations, zero Rekor writes
 ```
+
+The payload digest is a function of the workflow commit passed in, so it differs between a local
+reproduction and a hosted run — as it must, since that commit is part of what is being attested.
 
 ### What the redesign corrected
 
@@ -300,6 +303,19 @@ authoritative timestamp with deterministic ties, a 404 inside a run's declared a
 indeterminate rather than "did not succeed", malformed Rekor responses are refused rather than read
 as "no record exists" and signed over, uuids are validated and deduplicated, and a fetched entry
 must be the one that was requested.
+
+**`sudo` discards the environment, and the Linux boundary needs `sudo`.** The re-execution marker
+lived in the environment, so it never reached the child; the child took the outer branch and
+re-executed itself again, printing the re-execution line twice and never performing the
+verification — while still reporting that it had gone offline. macOS could not surface this, because
+`sandbox-exec` preserves the environment. The marker is now an argument, which survives an
+environment reset and is therefore also required to carry no secret. A control asserts the
+re-execution happens exactly once.
+
+**The workflow commit was defaulted to the source commit.** They are different commits of different
+things. Omitting the flag produced a signed payload asserting a workflow digest that is not the
+workflow's, which no Fulcio certificate could match — a false binding, signed, from a silent
+default. It is now required.
 
 **Offline was enforced inside Node.** That proves nothing about a spawned `cosign`, which is the
 process whose offline behaviour matters most. It is now `unshare --net` on Linux and `sandbox-exec`
@@ -396,8 +412,11 @@ pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
 REPO=a-Halawany/elven
 eval "$(node scripts/gate/c19-fixture.mjs --repo "$REPO" | grep -E '^(sha|finalizer_run|finalizer_attempt)=')"
 git worktree add --detach /tmp/c19-src "$sha" && (cd /tmp/c19-src && pnpm install --frozen-lockfile)
+# --workflow-sha is REQUIRED: Fulcio's Build Config Digest is GitHub's workflow commit, and
+# defaulting it to the source commit would sign a binding that is false.
 node scripts/gate/c19-deliver.mjs dry-run --repo "$REPO" --sha "$sha" \
   --finalizer-run "$finalizer_run" --finalizer-attempt "$finalizer_attempt" \
+  --workflow-sha "$(git rev-parse HEAD)" \
   --source-root /tmp/c19-src --out /tmp/c19-dry
 
 # the supply-chain gate. Its cache and output MUST live outside the worktree: writing them
