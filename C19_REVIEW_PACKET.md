@@ -95,12 +95,13 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 
 | Check | Result |
 |---|---|
-| C18+C19 gate (under the 900 s watchdog) | see handoff — measured on the exact candidate |
-| Hermetic control suite | see handoff |
-| Anchor attack matrix | see handoff |
+| C18+C19 gate (under the 900 s watchdog) | **PASS** — all 4 stages, 510 + 44 controls, 238.8 s, `contained=true` |
+| Anchor + pipeline control suites | **PASS** — 188 controls (105 anchor, 83 pipeline) |
 | Offline anchor selftest | **PASS** — 0 network attempts |
-| Typecheck / lint | **PASS** |
-| gitleaks (228 commits, 16.4 MB) | **no leaks found** |
+| OS network-denial boundary, this host | **PASS** — functionally proved via `sandbox-exec` |
+| Typecheck | **PASS** — all workspaces |
+| gitleaks | **no leaks in repository source** |
+| Supply-chain gate | **FAIL — `CVE-2026-14456` only**, see §10; no secret findings, no worktree mutation |
 | Owned processes surviving | **0** (non-empty ownership chains) |
 | Owned Docker resources surviving | **0** containers, networks, volumes |
 
@@ -223,6 +224,21 @@ something production never did.
 Workflow YAML now supplies triggers, permissions and inputs only. A control asserts neither
 workflow filters runs, walks attempts or downloads artifacts itself.
 
+### The live chain, executed end to end
+
+`dry-run` against fixture `a8d34c4d` (source `32772872150#1`, finalizer `32773496008#1`) runs the
+whole pipeline against the live API and stops at the irreversible step:
+
+```
+canonical source 32772872150#1, finalizer 32773496008#1 (same-SHA, unambiguous)
+wrapper aae9eefebee22c57… inner c17-cross-host-finalized-a8d34c4d….zip
+authenticated source 32772872150#1
+payload cc811b26ecfd3bbb… identity 3597dea2c89eb0ed…
+all reversible validation passed
+would-sign — the log has no record for these bytes; a real run would sign exactly once here
+DRY RUN — zero OIDC requests, zero signing operations, zero Rekor writes
+```
+
 ### What the redesign corrected
 
 **The publication runner was depending on another job's setup.** It now installs and builds for
@@ -248,6 +264,43 @@ Recovery also no longer requires the original run's conclusion to be `success`. 
 would have refused every case recovery exists for: Rekor accepted the signature and the run then
 failed or was cancelled before persisting the bundle.
 
+**Signing happened before the offline boundary was known to exist.** The publish job runs on Ubuntu,
+where unprivileged `unshare` does not work. The pipeline signed with cosign first and called offline
+verification afterwards, which threw — so a real publication would have written to Rekor and then
+deterministically failed before persisting anything. The boundary is now proved *functionally*
+before any irreversible operation, and `sudo unshare` is declared alongside the unprivileged form
+because the unprivileged form is not enough on hosted runners. No sandbox means zero signing
+attempts, not a post-publication failure.
+
+**The superseded-tip check ran only at resolution.** Acquisition, C17 verification and payload
+construction sit between resolution and signing, all against a live API, and main can move inside
+that window. Publish now re-reads the tip immediately before the irreversible step. The check also
+runs before the run lookup, so a superseded commit whose runs had aged out no longer reports "no
+push run exists" — a true statement about a different problem.
+
+**Recovery could never return `reuse`.** It supplied neither `sourceSha` nor `workflowDigest` to the
+fail-closed identity verifier, required the original run's conclusion to be `success`, and attached
+`_recoveredFromUuid` to the bundle, which is outside the Sigstore schema and rejected by strict
+cosign parsing. Expectations now come from the canonical signed payload, recovery provenance is
+written *beside* the bundle, and the positive differential asserts **exactly** `reuse` with exactly
+zero signing operations, the bundle at the normal path, and no `_`-prefixed keys.
+
+**TUF was never verified.** Comparing a digest to one declared in an unauthenticated `targets.json`
+authenticates nothing — it agrees with itself. Signatures, thresholds, versions, expiry, rollback
+and both hash *and* length are now verified from the source-held root. Ten mutations are rejected;
+the threshold controls show 2-of-5 corrupted signatures still passes and 3-of-5 does not, so the
+threshold is doing work rather than the check being uniformly strict.
+
+**The validity window was `1970`–`9999`,** which is the absence of a window. It is derived from the
+authenticated finalizer completion instant: bounded, and identical on every retry.
+
+**Attempt numbers are run-local and cannot be sorted globally.** The old ordering could replace an
+already-canonical run `10` attempt `2` with a later run `20` attempt `1`. Ordering is now by
+authoritative timestamp with deterministic ties, a 404 inside a run's declared attempt range is
+indeterminate rather than "did not succeed", malformed Rekor responses are refused rather than read
+as "no record exists" and signed over, uuids are validated and deduplicated, and a fetched entry
+must be the one that was requested.
+
 **Offline was enforced inside Node.** That proves nothing about a spawned `cosign`, which is the
 process whose offline behaviour matters most. It is now `unshare --net` on Linux and `sandbox-exec`
 with `(deny network*)` on macOS — both constrain descendants — and an unavailable mechanism refuses
@@ -264,9 +317,18 @@ C17-verified evidence *authenticates* it; acquisition refuses if they disagree.
 
 ### Controls
 
-51 behavioural controls execute the real code paths with injected GitHub responses. None asserts on
+188 behavioural controls execute the real code paths with injected GitHub responses. None asserts on
 comments, test names or YAML text — that is precisely what let three rounds of defects survive a
-green suite.
+green suite. Three controls that still did were replaced with executed ones this round: the
+superseded-tip guard, which was a grep for its own source line and would have passed unchanged while
+the guard was scoped wrongly; and the two offline-verification claims, which now run the real CLI
+with the denial mechanisms unreachable (it must refuse) and normally (the verification must happen
+in the re-executed child).
+
+Package verification previously had only negative controls, so nothing showed it could pass. A
+genuine package — real bytes, digests computed from the files actually written, a payload that is
+the canonical encoding of its own content — now raises no structural finding, and one flipped byte
+in the inner evidence is caught.
 
 ## 10. Unexecuted external steps
 
@@ -317,15 +379,32 @@ pnpm install --frozen-lockfile
 # offline anchor verification — asserts zero network attempts
 node scripts/gate/c19-anchor-cli.mjs selftest --offline
 
-# the whole gate under its 900-second bound (produce, verify, 387 + 37 controls)
+# the whole gate under its 900-second bound (produce, verify, 510 + 44 controls)
 node scripts/gate/c18-watchdog.mjs 900 node scripts/gate/c18-gate.mjs
 
 # hermetic suite
 pnpm --filter @eye/api exec vitest run test/gate/c18-db-paths.test.ts
 
-# anchor attack matrix and lifecycle/containment controls
-pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts test/gate/c19-anchor.ctl.ts
+# anchor attack matrix, delivery pipeline, and lifecycle/containment controls
+pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts \
+  test/gate/c19-anchor.ctl.ts test/gate/c19-pipeline.ctl.ts
 pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
+
+# the delivery pipeline against the live API, stopping at the irreversible step.
+# The source root must be an INSTALLED checkout of the fixture SHA: the C17 verifier
+# regenerates the archive from it, and an uninstalled tree is refused rather than skipped.
+REPO=a-Halawany/elven
+eval "$(node scripts/gate/c19-fixture.mjs --repo "$REPO" | grep -E '^(sha|finalizer_run|finalizer_attempt)=')"
+git worktree add --detach /tmp/c19-src "$sha" && (cd /tmp/c19-src && pnpm install --frozen-lockfile)
+node scripts/gate/c19-deliver.mjs dry-run --repo "$REPO" --sha "$sha" \
+  --finalizer-run "$finalizer_run" --finalizer-attempt "$finalizer_attempt" \
+  --source-root /tmp/c19-src --out /tmp/c19-dry
+
+# the supply-chain gate. Its cache and output MUST live outside the worktree: writing them
+# inside makes the gate report that scanning changed the source it was describing, and makes
+# gitleaks scan trivy's own vulnerability database. Expect exactly one failure class,
+# CVE-2026-14456, which is separate repository maintenance (see below).
+node scripts/gate/supply-chain.mjs --out /tmp/c15-out --trivy-cache /tmp/c15-cache
 
 # residue
 node scripts/gate/c19-anchor-cli.mjs leftovers
@@ -345,3 +424,14 @@ Frozen-versus-corrected differentials materialise the predecessor from git
    an outer one still reaches a nested orphan.
 5. **The authority ledger** — the closed claim is the one to challenge hardest.
 6. **The DER reader** — it parses attacker-supplied bytes; bounds are checked, but verify that.
+7. **The order of the irreversible step** — confirm that on a host with no denial mechanism the
+   pipeline performs zero signing operations, rather than signing and then failing to verify.
+8. **The TUF threshold** — confirm the mutations are non-vacuous: below-threshold corruption must
+   still pass, or the check is merely strict rather than correct.
+
+Two notes for a reviewer reproducing this locally. The scanner pins authenticate the *binary*, not
+the version string, so a Homebrew build of the correct version is refused by design; install the
+release binaries with `scripts/gate/install-scanners.sh` (`DEST=` to a writable directory, with that
+directory first on `PATH`). And `plan` and `dry-run` deliberately accept a historical commit: they
+cannot sign, and requiring them to describe main's current tip would make the harness impossible
+rather than safe. `publish` enforces the tip unconditionally, twice.

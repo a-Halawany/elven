@@ -35,6 +35,8 @@ const die = (s) => { process.stderr.write(`C19 deliver: ${s}\n`); process.exit(1
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 
 const argv = process.argv.slice(2);
+/** The re-execution marker. See `verify-offline` below for why it is argv and not the environment. */
+const INSIDE_SANDBOX = '--inside-sandbox';
 const has = (f) => argv.includes(f);
 const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 
@@ -78,13 +80,24 @@ async function main() {
     // The WHOLE verifier runs inside the OS boundary — this process re-executes itself under the
     // sandbox, so Node and every descendant it spawns are constrained. Verifying "offline" from an
     // unconstrained process proves nothing about what that process reaches for.
-    if (process.env.C19_INSIDE_SANDBOX !== '1') {
+    /**
+     * The marker is an ARGUMENT, not an environment variable.
+     *
+     * It was `C19_INSIDE_SANDBOX=1` in the environment, and `sudo` - which the Linux mechanism
+     * needs, because unprivileged `unshare` does not work on hosted runners - resets the
+     * environment of the command it runs. The marker never reached the child, so the child took
+     * the outer branch and re-executed itself again. On CI that printed the "re-executing" line
+     * twice and never ran the verification at all. An environment variable is strippable; argv
+     * is not, and it must carry no secret precisely because it is visible in the process table.
+     */
+    if (!argv.includes(INSIDE_SANDBOX)) {
       const proof = proveNetworkDenial();
       if (!proof.ok) die(`${proof.why}. Offline verification cannot be performed here.`);
       say(`C19 deliver: re-executing the whole verifier inside the ${proof.mechanism} boundary`);
-      const r = runWithoutNetwork([process.execPath, fileURLToPath(import.meta.url), ...argv], {
-        env: { ...process.env, C19_INSIDE_SANDBOX: '1' },
-      });
+      const r = runWithoutNetwork(
+        [process.execPath, fileURLToPath(import.meta.url), ...argv, INSIDE_SANDBOX],
+        { env: process.env, mechanism: proof.mechanism },
+      );
       process.stdout.write(r.stdout);
       process.stderr.write(r.stderr);
       process.exit(r.status === null ? 1 : r.status);

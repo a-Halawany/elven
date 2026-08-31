@@ -35,9 +35,15 @@ const SANDBOX_PROFILE = `(version 1)
  */
 export const MECHANISMS = Object.freeze([
   { name: 'unshare', platform: 'linux', prefix: ['unshare', '--net', '-r'] },
-  // GitHub-hosted runners have passwordless sudo; `-n` never prompts, so an unavailable sudo fails
-  // fast rather than hanging.
-  { name: 'sudo-unshare', platform: 'linux', prefix: ['sudo', '-n', 'unshare', '--net'] },
+  /**
+   * GitHub-hosted runners have passwordless sudo; `-n` never prompts, so an unavailable sudo fails
+   * fast rather than hanging.
+   *
+   * `resetsEnv` records that sudo DISCARDS the environment of the command it runs. Anything a
+   * caller needs the child to see must travel in argv, where it is also visible in the process
+   * table - so it must never be a secret.
+   */
+  { name: 'sudo-unshare', platform: 'linux', prefix: ['sudo', '-n', 'unshare', '--net'], resetsEnv: true },
   { name: 'sandbox-exec', platform: 'darwin', prefix: null },   // needs a generated profile
 ]);
 
@@ -127,9 +133,11 @@ export function denyNetworkArgv(command, {
  * an unconstrained run reported as offline is exactly the false assurance this replaces.
  */
 export function runWithoutNetwork(command, {
-  cwd, env, platform = process.platform, probe = worksHere,
+  cwd, env, platform = process.platform, probe = worksHere, mechanism,
 } = {}) {
-  const mech = networkDenialMechanism(platform, probe);
+  // A caller that has already PROVED a mechanism passes it, so the child is constrained by the
+  // same one rather than by whatever a second probe happens to pick.
+  const mech = mechanism ?? networkDenialMechanism(platform, probe);
   if (mech === null) {
     throw new Error('c19-sandbox: no OS-level network denial is available on this platform '
       + '(need `unshare` on Linux or `sandbox-exec` on macOS); refusing to run unconstrained and '
@@ -140,7 +148,7 @@ export function runWithoutNetwork(command, {
     profilePath = join(mkdtempSync(join(tmpdir(), 'c19-sb-')), 'deny-network.sb');
     writeFileSync(profilePath, SANDBOX_PROFILE);
   }
-  const argv = denyNetworkArgv(command, { platform, profilePath, probe });
+  const argv = denyNetworkArgv(command, { platform, profilePath, probe, mechanism: mech });
   const r = spawnSync(argv[0], argv.slice(1), {
     cwd, env, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
   });

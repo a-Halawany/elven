@@ -158,17 +158,28 @@ export function registerC19Pipeline(): void {
     });
 
     it('EXECUTED: publish refuses a superseded commit, and no argument turns that off', () => {
-      // The real CLI, in the mode that can sign, against a commit that is certainly not main's
-      // tip. It must refuse at resolution — before OIDC, before cosign, before Rekor.
+      // The real CLI, in the mode that can sign, with a `gh` that reports a DIFFERENT tip. Standing
+      // in for the transport keeps the control hermetic: the previous version called the live API,
+      // which made it a network test that failed on CI for a reason unrelated to what it asserts.
       const out = mkdtempSync(join(tmpdir(), 'c19tip-'));
+      const bin = mkdtempSync(join(tmpdir(), 'c19bin-'));
+      writeFileSync(join(bin, 'gh'),
+        '#!/bin/sh\n'
+        + 'printf "HTTP/2 200\\r\\n\\r\\n"\n'
+        + `printf '{"sha":"${'b'.repeat(40)}"}'\n`, { mode: 0o755 });
+      for (const t of ['node', 'git', 'sh']) {
+        const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
+        if (found && !existsSync(join(bin, t))) symlinkSync(found, join(bin, t));
+      }
       const r = spawnSync(process.execPath, [
         join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'publish',
-        '--repo', 'a-Halawany/elven', '--sha', '0'.repeat(40), '--out', out,
-      ], { encoding: 'utf8' });
+        '--repo', 'a-Halawany/elven', '--sha', 'a'.repeat(40), '--out', out,
+      ], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+      const all = `${r.stdout}${r.stderr}`;
       expect(r.status).not.toBe(0);
-      expect(`${r.stdout}${r.stderr}`).toMatch(/no longer the tip of main|resolution refused/);
-      // Nothing irreversible was reached.
-      expect(`${r.stdout}${r.stderr}`).not.toMatch(/would-sign|signed|offline boundary proved/);
+      expect(all).toMatch(/no longer the tip of main/);
+      // Nothing irreversible was reached, and nothing was even acquired.
+      expect(all).not.toMatch(/would-sign|offline boundary proved|wrapper /);
       // And there is no escape hatch to find.
       expect(readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8'))
         .not.toMatch(/--allow-superseded/);
@@ -722,6 +733,13 @@ export function registerC19Pipeline(): void {
       // The re-execution happened, and the package verification ran in the CHILD — so Node and
       // every descendant it spawns, cosign included, were constrained.
       expect(all).toMatch(/re-executing the whole verifier inside the \S+ boundary/);
+      /**
+       * EXACTLY ONE re-execution. The marker was an environment variable, and `sudo` - which the
+       * Linux mechanism needs - discards the environment of the command it runs, so the child took
+       * the outer branch and re-executed itself again. On CI that printed this line twice and never
+       * reached the verification at all, while still looking like it had gone offline.
+       */
+      expect(all.match(/re-executing the whole verifier/g)?.length).toBe(1);
       expect(all).toMatch(/package verification, \d+ finding/);
       // Structural findings must be absent even under the boundary: nothing here needs a network.
       expect(all.split('\n').filter((l) => STRUCTURAL.test(l))).toEqual([]);
