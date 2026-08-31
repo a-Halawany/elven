@@ -17,8 +17,8 @@ honest target.
 | Branch | `c19-external-anchoring` (pushed, unmerged) |
 | Pull request | [#21](https://github.com/a-Halawany/elven/pull/21) — draft, review only |
 | Working tree | clean |
-| Commits ahead of main | 33 |
-| Diff | 65 files, +23,700 / −92 (packet included) |
+| Commits ahead of main | 35 |
+| Diff | 66 files (packet and cross-platform workflow included) |
 | Migrations touched | **0** — `0001`–`0021` unchanged |
 | Fast-forward to main possible | yes (base is exactly `origin/main`) |
 
@@ -95,8 +95,8 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 
 | Check | Result |
 |---|---|
-| C18+C19 gate (under the 900 s watchdog) | **PASS** — 387 parallel + 37 serial, 224.4 s, `contained=true` |
-| Hermetic control suite | **PASS** — 1094/1094, 133.9 s |
+| C18+C19 gate (under the 900 s watchdog) | **PASS** — 387 parallel + 37 serial, 212.1 s, `contained=true` |
+| Hermetic control suite | **PASS** — 1094/1094, 130.4 s |
 | Anchor attack matrix | **PASS** — 65/65 |
 | Offline anchor selftest | **PASS** — 0 network attempts |
 | Typecheck / lint | **PASS** |
@@ -198,29 +198,86 @@ retrievability from a public repository** until the November expiry, and deletio
 
 ---
 
+## 9a. What CI found, and what it did not
+
+Two failures appeared once Actions recovered. They have different causes and different owners.
+
+### A genuine defect in this branch — found by CI, fixed, proven
+
+`C19 lifecycle` failed on **both platforms** at the controls step: the serial suite's coverage
+runner imports `@eye/contracts` from its **built** output, and the workflow only ran
+`pnpm install`. Both platforms executed 36 controls and then failed with `ERR_MODULE_NOT_FOUND`
+for `packages/contracts/dist/index.js`.
+
+The local battery had been passing only because a `dist/` from an earlier build was still on disk.
+That is stale state, not a correct workflow, and it is exactly the class of defect a hosted run
+exists to catch. Reproduced locally by deleting `dist/` — identical failure, then 37/37 after
+`pnpm build`. A `pnpm build` step is now part of the workflow.
+
+**What CI proved before failing:** the offline anchor selftest passed on **both** `ubuntu-latest`
+and `macos-14`. The remaining steps — attack matrix, zero-owned-process, zero-Docker-leftover, and
+the assertion that the job holds no OIDC token — were **skipped**, so they are not yet proven in a
+hosted run.
+
+### A repository-wide blocker that this branch did not introduce
+
+`ci` failed on `supply-chain` with four ungoverned HIGH findings for **`CVE-2026-14456`**
+(`libcrypto3` and `libssl3`) in the pinned postgres and redis images.
+
+Re-running main's own CI at unchanged `3d9c80c` produces **byte-identical findings** — same CVE,
+same four packages, same pinned digests, which are identical between main and this branch. This is
+a newly published CVE in upstream base images.
+
+**No control was weakened to get past it.** Under the frozen routing rule this is not a
+constitutional invariant violation, so it does not reopen C19; it is ordinary maintenance — govern
+the CVE with a recorded justification, or move the pinned base images — and it blocks `main`
+equally. A reviewer should see it rather than have it worked around.
+
+### Merge-ref relationship, stated exactly
+
+For `pull_request` events GitHub builds a **synthetic merge commit**, so no claim is made that the
+head SHA was checked out directly:
+
+| | |
+|---|---|
+| PR #21 head ref | the frozen candidate |
+| Synthetic merge commit | `5507047abc2cd4599939ae82aa3507a19b96cbc7` (for the previous candidate) |
+| Its parents | `3d9c80c7…` (main) **+** the candidate |
+| Run API `head_sha` | the candidate |
+
+The candidate is therefore tested **as a parent of a synthetic merge**, with `github.sha` being the
+merge commit. A reviewer verifying a PR-triggered run must resolve `refs/pull/21/merge` and confirm
+its second parent, not assume `github.sha` is the head.
+
+### Local runs must be serial
+
+An earlier local battery reported 10 hermetic failures, all `Test timed out in 60000ms`, with the
+suite taking 9241 s instead of ~130 s. The gate, the hermetic suite and the CI investigation were
+sharing one machine. Run serially, the same suite is **1094/1094 in 130.4 s**. Those failures were
+contention, not defects — recorded here so the discrepancy is not mistaken for flakiness.
+
 ## 10. Unexecuted external steps
 
-**GitHub Actions was in a `major_outage` throughout the CI window** (incident opened
-2026-08-26T15:11:58Z; confirmed still `major_outage` at the time of writing).
+GitHub Actions was in a `major_outage` during the first CI window (incident opened
+2026-08-26T15:11:58Z, resolved 2026-08-27T00:26:44Z). Runs from that window — `32985314704`
+(`startup_failure`, 0 jobs) and `32985092165` (both jobs `cancelled`, 0 steps) — carry **no
+information about this branch in either direction** and are disregarded.
 
-- `C19 lifecycle` (pull_request, run `32985314704`) — `startup_failure`, **0 jobs created**
-- `C19 lifecycle` (push, run `32985092165`) — both matrix jobs `cancelled` with **0 steps executed**
-- `ci` never triggered for PR #21
+Actions is now operational and the checks have run, with the results in §9a.
 
-Both jobs were cancelled before executing a single step, so **no conclusion about this branch can be
-drawn from them either way**. This is an infrastructure outage, not a result.
+**The following remain genuinely unexecuted and must not be treated as passing:**
 
-**Therefore the following remain genuinely unexecuted and must not be treated as passing:**
+1. The `C19 lifecycle` steps after the controls step — attack matrix, zero-owned-process,
+   zero-Docker-leftover, and the no-OIDC assertion — on **either** platform. They were skipped
+   behind the build defect and need a green re-run.
+2. PR-triggered `ci` **to completion** — it is currently blocked by `CVE-2026-14456`, which blocks
+   `main` equally and is not this branch's to fix.
+3. Any hosted evidence production, finalizer run or artifact download for this candidate.
+4. The publication dry run in its real workflow context.
+5. The first Rekor publication — deliberately not attempted, and gated on this review.
 
-1. Linux (`ubuntu-latest`) CI lifecycle and containment controls
-2. macOS (`macos-14`) CI lifecycle and containment controls
-3. PR-triggered `ci` on this branch
-4. Any hosted evidence production, finalizer run or artifact download for this candidate
-5. The publication dry run in its real workflow context
-6. The first Rekor publication — deliberately not attempted, and gated on this review
-
-All of these must be re-run once Actions recovers, and the review should not conclude until at least
-items 1–3 are green.
+The review should not conclude until item 1 is green on both platforms. Item 2 cannot go green
+until the CVE is governed or the base images move, which is a decision outside C19.
 
 ---
 
