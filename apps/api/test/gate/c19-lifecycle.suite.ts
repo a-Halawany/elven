@@ -484,6 +484,54 @@ process.exit(0);
     });
   });
 
+  describe('C19 — the residue check is correct on the SUCCESS path', () => {
+    it('reports zero, and SUCCEEDS, when nothing is stranded', async () => {
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      // The shell version of this check failed exactly here: grep and xargs exit non-zero when
+      // they match NOTHING, and under `set -o pipefail` a clean machine produced exit 123 on
+      // Linux and exit 1 on macOS. A check that fails when there is nothing to find is worse than
+      // no check, because it is indistinguishable from a real leak.
+      const none = wd.residualOwnedProcesses({
+        platform: 'linux', listProcPids: () => [1, 2], readEnviron: () => 'PATH=/usr/bin\0',
+      });
+      expect(none).toEqual([]);
+      const noneDarwin = wd.residualOwnedProcesses({
+        platform: 'darwin', readPsE: () => '  1 launchd PATH=/usr/bin\n  2 node FOO=1',
+      });
+      expect(noneDarwin).toEqual([]);
+    });
+
+    it('an EMPTY inherited chain is not a leak', async () => {
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      // A process can inherit the variable with a blank value. It owns nothing, and counting it
+      // would report a leak that does not exist.
+      expect(wd.residualOwnedProcesses({
+        platform: 'linux', listProcPids: () => [7], readEnviron: () => 'EYE_RUN_ID_CHAIN=\0',
+      })).toEqual([]);
+      expect(wd.residualOwnedProcesses({
+        platform: 'darwin', readPsE: () => '  7 node EYE_RUN_ID_CHAIN=',
+      })).toEqual([]);
+    });
+
+    it('NON-VACUITY: a real non-empty chain IS detected, on both platforms', async () => {
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      expect(wd.residualOwnedProcesses({
+        platform: 'linux', listProcPids: () => [9], readEnviron: () => 'EYE_RUN_ID_CHAIN=abc123\0',
+      })).toEqual([9]);
+      expect(wd.residualOwnedProcesses({
+        platform: 'darwin', readPsE: () => '  9 node EYE_RUN_ID_CHAIN=abc123,def456 X=1',
+      })).toEqual([9]);
+    });
+
+    it('the workflow delegates the residue check to source, not to a shell pipeline', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-lifecycle.yml'), 'utf8');
+      expect(wf).toMatch(/c19-anchor-cli\.mjs leftovers/);
+      // The fragile constructs that produced the false failure must not come back.
+      expect(wf).not.toMatch(/xargs -r grep/);
+      expect(wf).not.toMatch(/\/proc\/\*\/environ/);
+    });
+  });
+
   describe('C19 — the anchor proves provenance, not the claims inside it', () => {
     const authorityPath = join(REPO, 'scripts', 'gate', 'lib', 'c19-authority.mjs');
 

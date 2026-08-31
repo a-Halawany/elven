@@ -728,6 +728,38 @@ export function ownedPids(runId, {
 }
 
 /**
+ * Every process on this machine carrying a NON-EMPTY ownership chain, whoever owns it.
+ *
+ * Used by the residue check after a run: nothing should still be carrying a chain. Reading the
+ * chain rather than a single id is what makes an EMPTY value harmless — an inherited-but-blank
+ * `EYE_RUN_ID_CHAIN` owns nothing, and counting it would report a leak that is not there.
+ */
+export function residualOwnedProcesses({
+  platform = process.platform,
+  readPsE = () => spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout ?? '',
+  listProcPids = () => { try { return readdirSync('/proc').filter((f) => /^\d+$/.test(f)).map(Number); } catch { return []; } },
+  readEnviron = (pid) => { try { return readFileSync(`/proc/${pid}/environ`, 'utf8'); } catch { return ''; } },
+} = {}) {
+  const nonEmpty = (chain) => parseChain(chain).length > 0;
+  if (platform === 'linux') {
+    return listProcPids().filter((pid) => {
+      for (const entry of String(readEnviron(pid)).split('\0')) {
+        if (entry.startsWith(`${RUN_CHAIN_VAR}=`)) return nonEmpty(entry.slice(RUN_CHAIN_VAR.length + 1));
+      }
+      return false;
+    });
+  }
+  const out = [];
+  for (const line of String(readPsE()).split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (m === null) continue;
+    const c = new RegExp(`${RUN_CHAIN_VAR}=([^\\s]*)`).exec(m[2]);
+    if (c !== null && nonEmpty(c[1])) out.push(Number(m[1]));
+  }
+  return out;
+}
+
+/**
  * ── C19: DOCKER RESOURCES ARE NOT DESCENDANTS ──
  *
  * A container is a child of dockerd, not of this process, so no signal from here reaches it and no

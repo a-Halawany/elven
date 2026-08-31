@@ -33,6 +33,7 @@ import {
 import { C19_FROZEN, route } from './lib/c19-criteria.mjs';
 import { verifyAuthorityLedger, closedClaims, openLimits } from './lib/c19-authority.mjs';
 import { DOCKER_RUN_LABEL } from './lib/c18-contract.mjs';
+import { residualOwnedProcesses } from './c18-watchdog.mjs';
 import { withNetworkDenied } from './lib/c19-offline.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -96,8 +97,22 @@ async function selftest(offline) {
   say('C19 selftest: PASS');
 }
 
-/** No owned process and no owned docker resource may survive a completed run. */
+/**
+ * No owned process and no owned docker resource may survive a completed run.
+ *
+ * This lives here rather than in the workflow because the shell version was wrong in a way that
+ * only a hosted run revealed: `xargs`/`grep` exit non-zero when they match NOTHING, and under
+ * `set -o pipefail` that turned the SUCCESS case — zero surviving processes — into a step failure
+ * (exit 123 on Linux, exit 1 on macOS), without even printing a count. Logic that decides a gate
+ * belongs in source that controls can exercise.
+ */
 function leftovers() {
+  const survivors = residualOwnedProcesses().filter((p) => p !== process.pid);
+  say(`C19 leftovers: ${survivors.length} process(es) still carry a non-empty ownership chain`);
+  if (survivors.length > 0) {
+    for (const p of survivors) process.stderr.write(`  stranded pid: ${p}\n`);
+    die('a completed run left owned processes behind');
+  }
   const ids = spawnSync('docker', ['ps', '-aq', '--filter', `label=${DOCKER_RUN_LABEL}`],
     { encoding: 'utf8' }).stdout ?? '';
   const containers = ids.split('\n').map((s) => s.trim()).filter((s) => s !== '');

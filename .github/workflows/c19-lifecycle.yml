@@ -54,20 +54,9 @@ jobs:
       - name: Anchor attack matrix
         run: pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts test/gate/c19-anchor.ctl.ts
 
-      - name: No owned process survived
-        shell: bash
-        run: |
-          set -euo pipefail
-          # A NON-EMPTY chain is what ownership means; an empty one owns nothing by construction.
-          if [ "$(uname)" = "Linux" ]; then
-            n=$(grep -l . /proc/*/environ 2>/dev/null | xargs -r grep -alZ 'EYE_RUN_ID_CHAIN=[0-9a-f]' 2>/dev/null | tr -d '\0' | wc -l)
-          else
-            n=$(ps -A -E -ww -o pid=,command= 2>/dev/null | grep -oE 'EYE_RUN_ID_CHAIN=[0-9a-f][0-9a-f,]*' | wc -l)
-          fi
-          echo "processes carrying a non-empty ownership chain: $n"
-          [ "$n" -eq 0 ] || { echo "C19: owned processes survived the run" >&2; exit 1; }
-
-      - name: No owned docker resource survived
+      # Both residue checks in one command, in tested source. The shell version of the process
+      # check failed on the SUCCESS path: grep and xargs exit non-zero when they match nothing.
+      - name: No owned process or docker resource survived
         run: node scripts/gate/c19-anchor-cli.mjs leftovers
 
       - name: Prove this job holds no publication capability
