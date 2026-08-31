@@ -17,8 +17,8 @@ honest target.
 | Branch | `c19-external-anchoring` (pushed, unmerged) |
 | Pull request | [#21](https://github.com/a-Halawany/elven/pull/21) — draft, review only |
 | Working tree | clean |
-| Commits ahead of main | 35 |
-| Diff | 66 files (packet and cross-platform workflow included) |
+| Commits ahead of main | 39 (this packet included) |
+| Diff | 69 files, +25,166 / −92 |
 | Migrations touched | **0** — `0001`–`0021` unchanged |
 | Fast-forward to main possible | yes (base is exactly `origin/main`) |
 
@@ -95,9 +95,9 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 
 | Check | Result |
 |---|---|
-| C18+C19 gate (under the 900 s watchdog) | **PASS** — 387 parallel + 37 serial, 212.1 s, `contained=true` |
-| Hermetic control suite | **PASS** — 1094/1094, 130.4 s |
-| Anchor attack matrix | **PASS** — 65/65 |
+| C18+C19 gate (under the 900 s watchdog) | **PASS** — 396 parallel + 41 serial, 220.8 s, `contained=true` |
+| Hermetic control suite | **PASS** — 1094/1094, 132.3 s |
+| Anchor attack matrix | **PASS** — 74/74 |
 | Offline anchor selftest | **PASS** — 0 network attempts |
 | Typecheck / lint | **PASS** |
 | gitleaks (228 commits, 16.4 MB) | **no leaks found** |
@@ -198,63 +198,86 @@ retrievability from a public repository** until the November expiry, and deletio
 
 ---
 
-## 9a. What CI found, and what it did not
+## 9a. Independent review REJECTED the previous candidate — what was wrong
 
-Two failures appeared once Actions recovered. They have different causes and different owners.
+An independent review rejected `28512e8` for C19 closure. Every finding was reproduced here before
+anything was changed, and all of them were real. They are recorded in full because the pattern
+matters more than the individual bugs: in three separate places the **prose asserted behaviour the
+code did not have**, and controls were written against the prose.
 
-### A genuine defect in this branch — found by CI, fixed, proven
+### The verifier failed OPEN on identity
 
-`C19 lifecycle` failed on **both platforms** at the controls step: the serial suite's coverage
-runner imports `@eye/contracts` from its **built** output, and the workflow only ran
-`pnpm install`. Both platforms executed 36 controls and then failed with `ERR_MODULE_NOT_FOUND`
-for `packages/contracts/dist/index.js`.
+`verifyIdentity()` checked a field only when the caller supplied an expected value:
 
-The local battery had been passing only because a `dist/` from an earlier build was still on disk.
-That is stale state, not a correct workflow, and it is exactly the class of defect a hosted run
-exists to catch. Reproduced locally by deleting `dist/` — identical failure, then 37/37 after
-`pnpm build`. A `pnpm build` step is now part of the workflow.
+```js
+if (expected === undefined || expected === null) return;   // skipped the check
+```
 
-**What CI proved before failing:** the offline anchor selftest passed on **both** `ubuntu-latest`
-and `macos-14`. The remaining steps — attack matrix, zero-owned-process, zero-Docker-leftover, and
-the assertion that the job holds no OIDC token — were **skipped**, so they are not yet proven in a
-hosted run.
+The real CLI supplied no workflow digest, and the final workflow step supplied neither a source SHA
+nor a run URI. Reproduced: an identity carrying a **wrong source SHA, wrong workflow digest and
+wrong run invocation URI** verified with **zero findings**.
 
-### A repository-wide blocker that this branch did not introduce
+Policy v3 makes all 13 delivery-standing fields mandatory; a missing expectation is a refusal. It
+adds stable repository and owner ids, distinguishes the signer's `workflow_run` trigger from the
+upstream `push`, and includes `/attempts/N` in run invocation URIs as Fulcio actually records them.
 
-`ci` failed on `supply-chain` with four ungoverned HIGH findings for **`CVE-2026-14456`**
-(`libcrypto3` and `libssl3`) in the pinned postgres and redis images.
+### The transparency proof was not bound together
 
-Re-running main's own CI at unchanged `3d9c80c` produces **byte-identical findings** — same CVE,
-same four packages, same pinned digests, which are identical between main and this branch. This is
-a newly published CVE in upstream base images.
+Signature and log entry were checked **separately**, which proves something was signed and something
+was logged, never that they are the same thing. `canonicalizedBody` was never decoded, and the
+Merkle root came from the bundle itself — so a one-leaf proof whose "root" is the attacker's own
+leaf hash was **accepted**. A complete bypass.
 
-**No control was weakened to get past it.** Under the frozen routing rule this is not a
-constitutional invariant violation, so it does not reopen C19; it is ordinary maintenance — govern
-the CVE with a recorded justification, or move the pinned base images — and it blocks `main`
-equally. A reviewer should see it rather than have it worked around.
+Now: the log body is decoded and its digest, signature and certificate must be the ones under
+verification; the SET is checked against a log key valid **at the time**; and the root must come
+from an **authenticated signed checkpoint**. SCT presence and structure are checked, with signature
+verification explicitly delegated to cosign and listed in `DELEGATED_TO_COSIGN` — a hand-rolled
+look-alike would report success whether or not it was correct.
 
-### Merge-ref relationship, stated exactly
+### "Recovery" never contacted Rekor
 
-For `pull_request` events GitHub builds a **synthetic merge commit**, so no claim is made that the
-head SHA was checked out directly:
+It ran `cosign verify-blob --help` and checked for a local bundle file. The exact failure it claimed
+to handle — log accepted, runner died before persisting — therefore **signed again**. The controls
+searched source comments and string ordering, so they passed.
 
-| | |
-|---|---|
-| PR #21 head ref | the frozen candidate |
-| Synthetic merge commit | `5507047abc2cd4599939ae82aa3507a19b96cbc7` (for the previous candidate) |
-| Its parents | `3d9c80c7…` (main) **+** the candidate |
-| Run API `head_sha` | the candidate |
+`decideRecovery()` now queries the log and is driven by executed scenarios: no record → sign once;
+**accepted entry with lost bundle → reuse, zero signing**; ambiguous → refuse; unverifiable →
+refuse; log unreachable → refuse rather than blind-sign.
 
-The candidate is therefore tested **as a parent of a synthetic merge**, with `github.sha` being the
-merge commit. A reviewer verifying a PR-triggered run must resolve `refs/pull/21/merge` and confirm
-its second parent, not assume `github.sha` is the head.
+### The anchor workflow published and verified nothing
 
-### Local runs must be serial
+It never acquired an artifact and passed no `--artifact`/`--bundle`, so the step named *"verify the
+published bundle"* verified no bundle, and `verify` with no arguments **exited 0**. It now binds the
+source and finalizer runs, refuses a superseded main tip, acquires exactly one finalized artifact by
+immutable id and digest, builds the canonical payload, verifies offline and again from a fresh
+foreign checkout, and persists the bundle. Its verify job builds — omitting that would have repeated
+the defect already fixed in `c19-lifecycle.yml`.
 
-An earlier local battery reported 10 hermetic failures, all `Test timed out in 60000ms`, with the
-suite taking 9241 s instead of ~130 s. The gate, the hermetic suite and the CI investigation were
-sharing one machine. Run serially, the same suite is **1094/1094 in 130.4 s**. Those failures were
-contention, not defects — recorded here so the discrepancy is not mistaken for flakiness.
+### The frozen signed contract had been abandoned
+
+`c19-attest.mjs` was deleted mid-pass as "dead code" when signing pivoted to the raw ZIP. Signing an
+archive carries no purpose, no domain separation, no nonce, no validity window and no binding to the
+source run, finalizer run or tree. Restored: the signed object is a JCS-canonical, domain-separated
+payload binding **25 mandatory fields**.
+
+### Residue checks could report a false zero
+
+Only containers were queried while the handoff claimed three types, and a docker failure was treated
+as an empty inventory. Now all three are queried by exact label, and inability to determine ownership
+is a containment failure — **exit 125** — not an absence of residue.
+
+### Controls tested text, not behaviour
+
+The 62-family map proved test *names* existed. Recovery, SCT, checkpoint and body-binding controls
+are now behavioural, and the trust material's provenance is reproducible from the repository: the
+signed `timestamp` → `snapshot` → `targets` chain is stored with a transcript, and a control asserts
+`targets.json`'s declared digest still equals the trusted root in use.
+
+### One regression I introduced while correcting
+
+Editing `dockerInventory` deleted the async sweep functions and broke every signal differential.
+Caught by the suite, restored, re-verified 41/41. Recorded because a correction pass that silently
+breaks what it is not touching is exactly what a reviewer should expect to be told about.
 
 ## 10. Unexecuted external steps
 
@@ -267,17 +290,22 @@ Actions is now operational and the checks have run, with the results in §9a.
 
 **The following remain genuinely unexecuted and must not be treated as passing:**
 
-1. The `C19 lifecycle` steps after the controls step — attack matrix, zero-owned-process,
-   zero-Docker-leftover, and the no-OIDC assertion — on **either** platform. They were skipped
-   behind the build defect and need a green re-run.
-2. PR-triggered `ci` **to completion** — it is currently blocked by `CVE-2026-14456`, which blocks
-   `main` equally and is not this branch's to fix.
-3. Any hosted evidence production, finalizer run or artifact download for this candidate.
-4. The publication dry run in its real workflow context.
-5. The first Rekor publication — deliberately not attempted, and gated on this review.
+1. Hosted `C19 lifecycle` on both platforms **for this corrected candidate**. The previous candidate
+   passed all steps on both; this one has not yet run.
+2. The non-publishing end-to-end artifact plumbing — resolve, acquire, payload, dry run, offline
+   verify, foreign-checkout verify, persist — has never executed in a hosted run.
+3. PR-triggered `ci` to completion, blocked by `CVE-2026-14456`.
+4. Any hosted evidence production, finalizer run or artifact download for this candidate.
+5. The first Rekor publication — deliberately not attempted.
 
-The review should not conclude until item 1 is green on both platforms. Item 2 cannot go green
-until the CVE is governed or the base images move, which is a decision outside C19.
+### `CVE-2026-14456`, described accurately
+
+Scanner-reported **HIGH** for `libcrypto3`/`libssl3` in the pinned postgres and redis images.
+OpenSSL itself rates the underlying QUIC-server issue **Low**, and this gate does not run a QUIC
+server. It nonetheless blocks repository merge readiness, did not originate in C19, and hits `main`
+identically at unchanged `3d9c80c`. It must be resolved by a separate maintenance change — governing
+it with a recorded justification, or moving the base images — and **not** by weakening the
+supply-chain gate.
 
 ---
 
