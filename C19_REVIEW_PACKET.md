@@ -95,8 +95,8 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 
 | Check | Result |
 |---|---|
-| C18+C19 gate (under the 900 s watchdog) | **PASS** — 396 parallel + 41 serial, 220.8 s, `contained=true` |
-| Hermetic control suite | **PASS** — 1094/1094, 132.3 s |
+| C18+C19 gate (under the 900 s watchdog) | **PASS** — 396 parallel + 44 serial, 227.7 s, `contained=true` |
+| Hermetic control suite | **PASS** — 1094/1094, 131.8 s |
 | Anchor attack matrix | **PASS** — 74/74 |
 | Offline anchor selftest | **PASS** — 0 network attempts |
 | Typecheck / lint | **PASS** |
@@ -273,6 +273,19 @@ are now behavioural, and the trust material's provenance is reproducible from th
 signed `timestamp` → `snapshot` → `targets` chain is stored with a transcript, and a control asserts
 `targets.json`'s declared digest still equals the trusted root in use.
 
+### Docker on macOS: three states, not two
+
+The corrected fail-closed residue check then failed on `macos-14` — correctly, because those runners
+have no Docker daemon, so every query failed and ownership was `UNDETERMINED`. Refusing there
+conflated two different facts.
+
+Docker **absent** means nothing could have created a governed container, so residue is zero by
+construction; it is reported as `NOT APPLICABLE`, because calling it "verified zero" would claim a
+Docker parity that platform never had. Docker **installed but unqueryable** remains a containment
+failure at exit 125: being unable to ask is not the same as there being nothing there. Three
+controls pin the distinction, including that a partial query failure is still undetermined — two
+good answers do not vouch for a third.
+
 ### One regression I introduced while correcting
 
 Editing `dockerInventory` deleted the async sweep functions and broke every signal differential.
@@ -288,15 +301,24 @@ information about this branch in either direction** and are disregarded.
 
 Actions is now operational and the checks have run, with the results in §9a.
 
-**The following remain genuinely unexecuted and must not be treated as passing:**
+**Hosted run status is deliberately NOT asserted in this file.**
 
-1. Hosted `C19 lifecycle` on both platforms **for this corrected candidate**. The previous candidate
-   passed all steps on both; this one has not yet run.
-2. The non-publishing end-to-end artifact plumbing — resolve, acquire, payload, dry run, offline
-   verify, foreign-checkout verify, persist — has never executed in a hosted run.
-3. PR-triggered `ci` to completion, blocked by `CVE-2026-14456`.
-4. Any hosted evidence production, finalizer run or artifact download for this candidate.
-5. The first Rekor publication — deliberately not attempted.
+A packet that names its own candidate's run results goes stale the moment a correction produces a
+new SHA, and committing run identifiers into the branch invalidates the very SHA under review. The
+immutable run URLs, ids and conclusions are therefore delivered in the **handoff**, alongside the
+exact SHA they belong to, and this section states only what is structurally outstanding:
+
+1. **Hosted `C19 lifecycle` on both platforms** — must be green for the exact candidate under
+   review, on both the direct-head (push) and synthetic-merge (pull_request) forms.
+2. **The non-publishing end-to-end artifact plumbing** — resolve source and finalizer runs, acquire
+   exactly one finalized artifact by id and digest, build the canonical payload, dry run, verify
+   offline, verify from a fresh foreign checkout, persist the bundle. This lives in the `publish`
+   job of `c19-anchor.yml`, which **cannot run from this branch at all** — `workflow_run` workflows
+   register only from the default branch — so it has never executed anywhere and cannot until the
+   branch merges. That is a genuine gap in the evidence, not a passing result.
+3. **PR-triggered `ci` to completion** — blocked by `CVE-2026-14456` below.
+4. **Hosted evidence production, finalizer run and artifact download** for the candidate.
+5. **The first Rekor publication** — deliberately not attempted.
 
 ### `CVE-2026-14456`, described accurately
 
