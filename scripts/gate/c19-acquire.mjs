@@ -113,15 +113,28 @@ if (m[2].trim() !== innerName) die(`the sidecar names ${JSON.stringify(m[2].trim
 
 // ── RUN THE EXISTING C17 FINALIZATION VERIFIER, RATHER THAN RE-IMPLEMENTING IT ──
 const finalizer = join('scripts', 'gate', 'c17-cross-host-finalization.mjs');
-if (existsSync(finalizer)) {
-  const v = spawnSync('node', [finalizer, 'verify', '--zip', innerPath], { encoding: 'utf8' });
-  if (v.status !== 0) {
-    die(`the existing C17 finalization verifier rejected the inner evidence:\n${(v.stdout ?? '').slice(-800)}`);
-  }
-  process.stderr.write('C19 acquire: C17 finalization verification PASSED on the inner evidence\n');
-} else {
+if (!existsSync(finalizer)) {
   die(`the C17 finalization verifier is missing at ${finalizer}; acquisition cannot be verified`);
 }
+// `--root` is REQUIRED by that verifier, because it independently regenerates the source archive
+// and compares. The root must be the tree the evidence was PRODUCED from — verifying evidence
+// against a different checkout would fail for a reason that says nothing about the evidence.
+const sourceRoot = arg('--source-root') ?? process.cwd();
+if (!existsSync(join(sourceRoot, 'node_modules'))) {
+  die(`the source root ${sourceRoot} has no installed workspace; the C17 finalization verifier `
+    + 'regenerates the archive from it and cannot run against an uninstalled tree. Refusing rather '
+    + 'than skipping the verification, because a skipped check reads exactly like a passed one.');
+}
+const v = spawnSync('node', [finalizer, 'verify', '--zip', innerPath, '--root', sourceRoot],
+  { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+if (v.status !== 0) {
+  // BOTH streams. The first hosted failure reported an empty reason because only stdout was
+  // captured, and the verifier writes its findings to stderr.
+  const detail = `${(v.stdout ?? '').trim()}\n${(v.stderr ?? '').trim()}`.trim();
+  die(`the existing C17 finalization verifier rejected the inner evidence (root ${sourceRoot}):\n`
+    + `${detail.slice(-1200) || '(the verifier produced no output)'}`);
+}
+process.stderr.write('C19 acquire: C17 finalization verification PASSED on the inner evidence\n');
 
 for (const line of [
   `artifact_id=${art.id}`,
