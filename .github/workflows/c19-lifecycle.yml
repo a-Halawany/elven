@@ -146,6 +146,11 @@ jobs:
           WORKFLOW_SHA: ${{ github.sha }}
         # One command. Every step of the real publication path except the irreversible ones.
         run: |
+          set -euo pipefail
+          # `tee` opens its file when the shell builds the pipeline, BEFORE the pipeline runs and
+          # creates the directory. Without this the step exits on tee's error while the pipeline
+          # itself printed PASS — a failure that says nothing about the code under test.
+          mkdir -p /tmp/c19
           node scripts/gate/c19-deliver.mjs dry-run \
             --repo "${{ github.repository }}" \
             --sha "${{ steps.fixture.outputs.sha }}" \
