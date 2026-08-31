@@ -157,12 +157,39 @@ export function registerC19Pipeline(): void {
       expect(r.problems.join('\n')).toMatch(/no longer the tip of main/);
     });
 
-    it('the tip guard cannot be disabled by any argument in publish mode', () => {
+    it('EXECUTED: publish refuses a superseded commit, and no argument turns that off', () => {
+      // The real CLI, in the mode that can sign, against a commit that is certainly not main's
+      // tip. It must refuse at resolution — before OIDC, before cosign, before Rekor.
+      const out = mkdtempSync(join(tmpdir(), 'c19tip-'));
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'publish',
+        '--repo', 'a-Halawany/elven', '--sha', '0'.repeat(40), '--out', out,
+      ], { encoding: 'utf8' });
+      expect(r.status).not.toBe(0);
+      expect(`${r.stdout}${r.stderr}`).toMatch(/no longer the tip of main|resolution refused/);
+      // Nothing irreversible was reached.
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/would-sign|signed|offline boundary proved/);
+      // And there is no escape hatch to find.
+      expect(readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8'))
+        .not.toMatch(/--allow-superseded/);
+    }, 120_000);
+
+    it('the tip is re-checked immediately BEFORE the irreversible step, not only at resolution', async () => {
+      const p = await load('c19-pipeline.mjs');
+      // Resolution and signing are minutes apart: acquisition, C17 verification and payload
+      // construction all run against a live API in between, and main can move inside that window.
+      let calls = 0;
+      const gh = {
+        ...fakeGitHub({ runs: [ciRun(10, 1), finRun(30, 1)], attempts: { '10#1': ok, '30#1': ok } }),
+        branchTip: () => { calls += 1; return 'the-tip'; },
+      };
+      expect(p.resolve({ gh, sha: 'the-tip' }).problems).toEqual([]);
+      expect(calls).toBe(1);
       const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
-      // Structural, not a flag: only dry-run — which cannot sign — exercises history.
-      expect(cli).toMatch(/const requireCurrentTip = mode !== 'dry-run'/);
-      expect(cli).not.toMatch(/--allow-superseded/);
-      expect(cli).toMatch(/ENFORCED UNCONDITIONALLY in publish mode/);
+      const reCheck = cli.indexOf("gh.branchTip('main')");
+      expect(reCheck, 'publish must read the tip again itself').toBeGreaterThan(-1);
+      expect(reCheck).toBeLessThan(cli.indexOf('await recoverOrSign('));
+      expect(reCheck).toBeGreaterThan(cli.indexOf('validateBeforeIrreversible('));
     });
 
     it('PERMITS the current tip', async () => {
@@ -595,13 +622,110 @@ export function registerC19Pipeline(): void {
       })).toThrow(/requires .* and .* does not exist/);
     });
 
-    it('verify-offline re-executes the WHOLE verifier inside the OS boundary', () => {
-      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
-      // Verifying "offline" from an unconstrained process proves nothing about what that process,
-      // or the cosign it spawns, reaches for.
-      expect(cli).toMatch(/C19_INSIDE_SANDBOX/);
-      expect(cli).toMatch(/re-executing the whole verifier inside/);
+    /**
+     * A GENUINE package, assembled from real bytes, so the checks above are shown to be
+     * discriminating rather than merely strict. Every digest here is computed from the file that
+     * is actually written, and the payload is the canonical encoding of its own content.
+     */
+    const genuinePackage = async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = mkdtempSync(join(tmpdir(), 'c19good-'));
+      const wrapper = Buffer.from('PK\u0003\u0004 finalized wrapper bytes');
+      const inner = Buffer.from('PK\u0003\u0004 finalized inner evidence bytes');
+      const innerName = 'c17-cross-host-finalized-'.concat('a'.repeat(40), '.zip');
+      const hex = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+      writeFileSync(join(dir, 'finalized-wrapper.zip'), wrapper);
+      writeFileSync(join(dir, innerName), inner);
+      writeFileSync(join(dir, `${innerName}.sha256`), `${hex(inner)}  ${innerName}\n`);
+
+      const built = p.buildCanonicalPayload({
+        authed: {
+          sourceSha: 'a'.repeat(40), sourceRunId: '1', sourceRunAttempt: '1',
+          finalizerRunId: '2', finalizerRunAttempt: '1',
+        },
+        acquisition: {
+          wrapperDigest: hex(wrapper), innerDigest: hex(inner), innerName,
+          artifactId: '9', artifactName: 'c17-cross-host-finalized',
+        },
+        sourceTree: 'b'.repeat(40),
+        workflowRef: 'a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main',
+        workflowDigest: 'c'.repeat(40),
+        workflowYamlDigest: 'd'.repeat(64),
+        sourceEvent: 'push',
+        // Inside the window NOW, derived from the finalizer instant rather than the wall clock.
+        finalizerCompletedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      });
+      writeFileSync(join(dir, 'payload.json'), built.canonical);
+      for (const [src, dst] of [['c19-sigstore-trusted-root.json', 'trusted-root.json'],
+        ['c19-sigstore-tuf-root.json', 'tuf-root.json']] as const) {
+        writeFileSync(join(dir, dst), readFileSync(join(LIB, src)));
+      }
+      writeFileSync(join(dir, 'bundle.sigstore.json'), readFileSync(join(FIX, 'rekor-entry.json')));
+      writeFileSync(join(dir, 'metadata.json'), '{}');
+      writeFileSync(join(dir, 'VERIFY.md'), '# verify\n');
+      return { dir, innerName, p };
+    };
+
+    // Every finding class that does NOT depend on a Fulcio-issued certificate. The cryptographic
+    // half needs a certificate that cannot be fabricated and is covered by the identity controls.
+    const STRUCTURAL = /required file|unexpected file|hashes to|sidecar|validity window|expired|presented before|canonical encoding|domain-separate/;
+
+    it('NON-VACUITY: a genuine package raises NO structural finding', async () => {
+      const { dir, p } = await genuinePackage();
+      const a = await load('c19-anchor.mjs');
+      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
+      const structural = p.verifyDeliveryPackage({ dir, policy, trustedRoot })
+        .filter((x: string) => STRUCTURAL.test(x));
+      expect(structural, structural.join('\n')).toEqual([]);
     });
+
+    it('one flipped byte in the inner evidence is CAUGHT — the digests are recomputed, not read', async () => {
+      const { dir, innerName, p } = await genuinePackage();
+      const a = await load('c19-anchor.mjs');
+      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
+      const bytes = readFileSync(join(dir, innerName));
+      bytes[bytes.length - 1] ^= 0x01;
+      writeFileSync(join(dir, innerName), bytes);
+      expect(p.verifyDeliveryPackage({ dir, policy, trustedRoot }).join('\n'))
+        .toMatch(/the inner evidence hashes to .* but the signed payload binds/);
+    });
+
+    it('EXECUTED: with no OS boundary available, verify-offline REFUSES instead of verifying', async () => {
+      const { dir } = await genuinePackage();
+      const out = mkdtempSync(join(tmpdir(), 'c19vo-'));
+      // The only difference from a working host is that no denial mechanism is reachable. An
+      // unconstrained verifier that prints "offline PASS" proves nothing about what it reached for,
+      // so the absence of the boundary must be fatal, not silently tolerated.
+      const bare = mkdtempSync(join(tmpdir(), 'c19path-'));
+      for (const t of ['node', 'git']) {
+        const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
+        if (found) symlinkSync(found, join(bare, t));
+      }
+      const r = spawnSync(process.execPath,
+        [join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline', '--package', dir, '--out', out],
+        { encoding: 'utf8', env: { ...process.env, PATH: bare } });
+      expect(r.status).not.toBe(0);
+      expect(`${r.stdout}${r.stderr}`).toMatch(/Offline verification cannot be performed here/);
+      // And it must not have reached the verification it was asked for.
+      expect(`${r.stdout}${r.stderr}`).not.toMatch(/package verification, \d+ finding/);
+    }, 120_000);
+
+    it('EXECUTED: with a boundary available, the verifier runs INSIDE it', async () => {
+      const s = await load('c19-sandbox.mjs');
+      if (!s.proveNetworkDenial().ok) return; // the control above covers the no-mechanism host
+      const { dir } = await genuinePackage();
+      const out = mkdtempSync(join(tmpdir(), 'c19vo2-'));
+      const r = spawnSync(process.execPath,
+        [join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline', '--package', dir, '--out', out],
+        { encoding: 'utf8' });
+      const all = `${r.stdout}${r.stderr}`;
+      // The re-execution happened, and the package verification ran in the CHILD — so Node and
+      // every descendant it spawns, cosign included, were constrained.
+      expect(all).toMatch(/re-executing the whole verifier inside the \S+ boundary/);
+      expect(all).toMatch(/package verification, \d+ finding/);
+      // Structural findings must be absent even under the boundary: nothing here needs a network.
+      expect(all.split('\n').filter((l) => STRUCTURAL.test(l))).toEqual([]);
+    }, 180_000);
   });
 
   describe('C19 — the TUF chain is verified, not merely hashed', () => {

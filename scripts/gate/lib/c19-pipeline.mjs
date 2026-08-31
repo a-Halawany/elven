@@ -43,20 +43,27 @@ export const PIPELINE_MODES = Object.freeze(['plan', 'dry-run', 'publish', 'veri
  * Steps 1–4 — resolve the canonical publication identity, and refuse to be a duplicate.
  */
 export function resolve({ gh, sha, invocation, requireCurrentTip = true, branch = 'main' }) {
-  const source = resolveCanonicalSource({ gh, sha });
-  const finalizer = resolveCanonicalFinalizer({ gh, sha, sourceRunId: source.runId });
   const problems = [];
-  // An OLD successful run must not publish after main has moved on. Without this, re-triggering a
-  // months-old finalizer would anchor evidence that no longer describes the branch — the run was
-  // genuinely successful, which is exactly why the check has to be explicit.
+  /**
+   * An OLD successful run must not publish after main has moved on. Without this, re-triggering a
+   * months-old finalizer would anchor evidence that no longer describes the branch - the run was
+   * genuinely successful, which is exactly why the check has to be explicit.
+   *
+   * It is FIRST because it needs no run lookup and is decisive on its own. Resolving the source
+   * first meant a superseded commit whose runs had also aged out reported "no push run exists",
+   * which is a true statement about a different problem.
+   */
   if (requireCurrentTip) {
     const tip = gh.branchTip(branch);
     if (String(tip) !== String(sha)) {
       problems.push(`c19: ${sha} is no longer the tip of ${branch} (${tip}); this publication is `
         + 'superseded, and an old successful run must not anchor evidence for a branch that has '
         + 'moved on');
+      return { source: null, finalizer: null, problems };
     }
   }
+  const source = resolveCanonicalSource({ gh, sha });
+  const finalizer = resolveCanonicalFinalizer({ gh, sha, sourceRunId: source.runId });
   // A later rerun must resolve to the existing publication or be refused — never merely queued
   // behind it, because both would eventually run and the second would duplicate.
   if (invocation !== undefined) {

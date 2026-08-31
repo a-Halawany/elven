@@ -111,13 +111,17 @@ async function main() {
    * main's current tip would make the harness impossible rather than safe.
    *
    * The distinction is structural, not a flag a caller can pass: `publish` always enforces, and no
-   * argument can turn it off. Only `dry-run`, which cannot sign anything, exercises history.
+   * argument can turn it off. `plan` and `dry-run` cannot sign anything, so they exercise history.
+   *
+   * Resolution is not the last word. A branch can move between resolution and the irreversible step
+   * - the acquisition, verification and payload construction in between take minutes against the
+   * live API - so publish RE-CHECKS the tip immediately before signing, below.
    */
-  const requireCurrentTip = mode !== 'dry-run';
+  const requireCurrentTip = mode === 'publish';
   const { source, finalizer, problems: resolveProblems } = resolve({ gh, sha, invocation, requireCurrentTip });
   if (!requireCurrentTip) {
-    say('C19 deliver: dry run against a historical publication; the superseded-tip guard is not '
-      + 'applicable here and is ENFORCED UNCONDITIONALLY in publish mode');
+    say(`C19 deliver: ${mode} against a historical publication; the superseded-tip guard is not `
+      + 'applicable to a mode that cannot sign, and is ENFORCED UNCONDITIONALLY in publish mode');
   }
   if (resolveProblems.length > 0) { for (const p of resolveProblems) process.stderr.write(`  ${p}\n`); die('resolution refused this invocation'); }
   say(`C19 deliver: canonical source ${source.runId}#${source.runAttempt}, `
@@ -181,6 +185,19 @@ async function main() {
    * ZERO signing attempts.
    */
   if (mode === 'publish') {
+    /**
+     * The tip was current when we resolved. Everything since - listing runs, downloading and
+     * verifying the evidence, building the payload - took time against a live API, and main can
+     * move inside it. Anchoring a superseded commit is not undoable once Rekor accepts it, so the
+     * check is repeated here, against the last reversible moment rather than the first.
+     */
+    const tipNow = gh.branchTip('main');
+    if (tipNow !== sha) {
+      die(`c19: main advanced to ${tipNow} while this publication was being prepared; ${sha} is no `
+        + 'longer the tip and must not be anchored. Refusing before the irreversible step.');
+    }
+    say(`C19 deliver: main tip re-confirmed as ${sha.slice(0, 12)} immediately before signing`);
+
     const proof = proveNetworkDenial();
     if (!proof.ok) {
       die(`${proof.why}. Refusing to sign: a publication that cannot then be verified offline is `
