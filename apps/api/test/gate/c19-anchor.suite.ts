@@ -848,13 +848,20 @@ export function registerC19Anchor(): void {
     });
 
     it('NON-VACUITY: utf8 round-tripping genuinely corrupts binary content', () => {
-      // A ZIP local-file header plus bytes that are not valid utf8.
+      // A ZIP local-file header plus bytes that are not valid utf8. CONTENT inequality is the
+      // property that matters; length is not a reliable signal, because a byte replaced by U+FFFD
+      // can round-trip to the same length while being a different byte.
       const bin = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x80, 0x81, 0x00, 0xc3, 0x28]);
       const throughString = Buffer.from(bin.toString('utf8'), 'binary');
       expect(throughString.equals(bin),
         'if this ever holds, the corruption this control guards against has stopped existing')
         .toBe(false);
-      expect(throughString.length).not.toBe(bin.length);
+      // Over a realistic binary body the loss is also visible as LENGTH, which is how the real
+      // artifact shrank from 2,331,537 to 2,208,607 bytes.
+      const big = Buffer.alloc(4096);
+      for (let i = 0; i < big.length; i += 1) big[i] = (i * 7 + 0x80) & 0xff;
+      const bigThrough = Buffer.from(big.toString('utf8'), 'binary');
+      expect(bigThrough.length).not.toBe(big.length);
     });
 
     it('the wrapper digest is checked against the digest GitHub reports', () => {
