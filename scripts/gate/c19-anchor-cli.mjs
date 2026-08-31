@@ -122,15 +122,27 @@ function leftovers() {
     die('a completed run left owned processes behind');
   }
 
-  // ALL THREE resource types, by exact run label. Querying containers alone while claiming
-  // networks and volumes were covered is a false report, and an unavailable daemon must not be
-  // mistaken for an empty inventory.
+  // ── DOCKER PRESENT, ABSENT, OR BROKEN ARE THREE DIFFERENT ANSWERS ──
+  //
+  // A macOS runner has no Docker daemon at all. Nothing could have created a container there, so
+  // residue is zero BY CONSTRUCTION — but reporting that as "verified zero" would claim Docker
+  // parity this platform never had. A daemon that exists and cannot be queried is different again:
+  // ownership is UNDETERMINED and that is a containment failure, not an absence of residue.
+  const dockerPresent = spawnSync('docker', ['--version'], { encoding: 'utf8' }).status === 0;
+  if (!dockerPresent) {
+    say('C19 leftovers: docker is not installed on this host, so no governed container, network or '
+      + 'volume could have been created here');
+    say('C19 leftovers: PASS for processes; docker residue NOT APPLICABLE on this platform '
+      + '(this is not a claim of docker parity)');
+    return;
+  }
+
   const inv = dockerInventory(DOCKER_RUN_LABEL_ANY);
   const total = inv.containers.length + inv.networks.length + inv.volumes.length;
   say(`C19 leftovers: containers=${inv.containers.length} networks=${inv.networks.length} `
     + `volumes=${inv.volumes.length} (ownership ${inv.determined ? 'determined' : 'UNDETERMINED'})`);
   if (!inv.determined) {
-    process.stderr.write('  docker could not be queried for one or more resource types\n');
+    process.stderr.write('  docker is installed but one or more resource queries failed\n');
     process.stderr.write(`  exiting ${CONTAINMENT_FAILURE_EXIT}: inability to determine ownership is `
       + 'a containment failure, not an absence of residue\n');
     process.exit(CONTAINMENT_FAILURE_EXIT);

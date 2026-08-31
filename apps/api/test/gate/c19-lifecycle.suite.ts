@@ -532,6 +532,45 @@ process.exit(0);
     });
   });
 
+  describe('C19 — docker absent, present and broken are three different answers', () => {
+    const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
+    const run = (path: string) => spawnSync(process.execPath, [CLI, 'leftovers'],
+      { encoding: 'utf8', env: { PATH: path, HOME: process.env.HOME ?? '/tmp' } });
+
+    it('docker ABSENT: residue is not applicable, and parity is NOT claimed', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'c19-nodocker-'));
+      writeFileSync(join(dir, 'placeholder'), '');
+      const nodeDir = dirname(process.execPath);
+      // macOS runners have no docker daemon. Nothing could have created a container there, so
+      // residue is zero by construction — but reporting "verified zero" would claim a docker
+      // parity that platform never had.
+      const r = run(`${nodeDir}:${dir}`);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/NOT APPLICABLE on this platform/);
+      expect(r.stdout).toMatch(/not a claim of docker parity/);
+    });
+
+    it('docker PRESENT but broken: UNDETERMINED ownership is a containment failure', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'c19-baddocker-'));
+      // Answers --version so it is "installed", fails every real query.
+      writeFileSync(join(dir, 'docker'), '#!/bin/sh\ncase "$1" in --version) exit 0;; *) exit 3;; esac\n');
+      spawnSync('chmod', ['+x', join(dir, 'docker')]);
+      const r = run(`${dir}:${dirname(process.execPath)}`);
+      // Being unable to ask is not the same as there being nothing there.
+      expect(r.status).toBe(125);
+      expect(r.stderr).toMatch(/inability to determine ownership is a containment failure/);
+    });
+
+    it('the three cases are genuinely distinct, not one branch with two labels', async () => {
+      const wd = await import(/* @vite-ignore */ WATCHDOG);
+      expect(wd.dockerInventory('x', () => ({ ok: true, out: '' })).determined).toBe(true);
+      expect(wd.dockerInventory('x', () => ({ ok: false, out: '' })).determined).toBe(false);
+      // A partial failure is still undetermined: two good answers do not vouch for a third.
+      let n = 0;
+      expect(wd.dockerInventory('x', () => ({ ok: ++n !== 2, out: '' })).determined).toBe(false);
+    });
+  });
+
   describe('C19 — the anchor proves provenance, not the claims inside it', () => {
     const authorityPath = join(REPO, 'scripts', 'gate', 'lib', 'c19-authority.mjs');
 
