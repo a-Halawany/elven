@@ -1,0 +1,20 @@
+{
+  "mediaType": "application/vnd.dev.sigstore.trustedroot+json;version=0.1",
+  "certificateAuthorities": [],
+  "tlogs": [
+    {
+      "baseUrl": "https://rekor.fixture.local",
+      "hashAlgorithm": "SHA2_256",
+      "publicKey": {
+        "rawBytes": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAET1J2F9oHnAM3GC8kUDEfD1y7fygMJePyvaM4F1YgGs0zYpLKBQ3/rEGa6XU7cysrnZgUxkBcwMwHnyA96UwCgQ==",
+        "validFor": {
+          "start": "2020-01-01T00:00:00Z"
+        }
+      },
+      "logId": {
+        "keyId": "3Zrrjjinooe3VZCpYdunusLYIB8WmNOVW5HEsOb2Q4Y="
+      }
+    }
+  ],
+  "ctlogs": []
+}

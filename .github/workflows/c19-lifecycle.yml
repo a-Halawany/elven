@@ -84,7 +84,7 @@ jobs:
   # It runs the SAME source the publish job runs; the plumbing is not duplicated in YAML.
   delivery-chain-dry:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-          # Full history: the harness resolves a fixture commit and needs a worktree at it.
+          # Full history: the pipeline resolves a real commit and needs a worktree at it.
           fetch-depth: 0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
@@ -108,98 +108,79 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-            echo "::error::this harness must never hold an OIDC token"
-            exit 1
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::this harness must never hold an OIDC token"; exit 1
           fi
           echo "no OIDC token present: signing is impossible in this job"
 
-      - name: Resolve a fixture by ATTEMPT, not by the run's current conclusion
+      - name: Choose a real publication to exercise against
         id: fixture
         env:
           GH_TOKEN: ${{ github.token }}
-        # Shared source, not YAML logic: a GitHub re-run mutates a run in place, so a filter on the
-        # current conclusion cannot see a successful earlier attempt. The resolver walks attempts.
+        # The SAME resolver production uses. The harness does not get its own fixture logic — that
+        # is what allowed a green harness to prove something production never did.
         run: node scripts/gate/c19-fixture.mjs --repo "${{ github.repository }}" >> "$GITHUB_OUTPUT"
 
-      - name: Acquire and authenticate — the SAME code the publish job runs
-        if: steps.fixture.outputs.found == 'true'
-        id: acquire
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: A missing fixture FAILS this job
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/c19
-          # The fixture's evidence was produced from ITS OWN commit, not from this PR head. The
-          # C17 verifier REGENERATES the source archive from --root and compares, so that root must
-          # be the tree the evidence came from AND must have its workspace installed — regeneration
-          # imports the workspace's own modules.
+          # `found=false` must never produce a green check: an unexercised delivery chain is not a
+          # passing one, and a skipped substantive step reads exactly like a successful step.
+          if [ "${{ steps.fixture.outputs.found }}" != "true" ]; then
+            echo "::error::no usable publication fixture; the delivery chain is UNEXERCISED, and"
+            echo "::error::an unexercised chain must not report success"
+            exit 1
+          fi
+
+      - name: Prepare the source root the C17 verifier regenerates from
+        run: |
+          set -euo pipefail
           git worktree add --detach /tmp/fixture-src "${{ steps.fixture.outputs.sha }}"
           ( cd /tmp/fixture-src && pnpm install --frozen-lockfile && pnpm build )
-          node scripts/gate/c19-acquire.mjs \
+
+      - name: THE PIPELINE — resolve, acquire, authenticate, payload, validate, dry run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        # One command. Every step of the real publication path except the irreversible ones.
+        run: |
+          node scripts/gate/c19-deliver.mjs dry-run \
             --repo "${{ github.repository }}" \
-            --finalizer-run "${{ steps.fixture.outputs.finalizer_run }}" \
-            --source-run "${{ steps.fixture.outputs.source_run }}" \
-            --source-attempt "${{ steps.fixture.outputs.source_attempt }}" \
+            --sha "${{ steps.fixture.outputs.sha }}" \
             --source-root /tmp/fixture-src \
-            --out /tmp/c19 >> "$GITHUB_OUTPUT"
+            --out /tmp/c19 | tee /tmp/c19/dry.log
 
-      - name: Build the canonical payload — the SAME code the publish job runs
-        if: steps.fixture.outputs.found == 'true'
+      - name: Prove the payload is deterministic across invocations
         env:
-          SOURCE_SHA: ${{ steps.fixture.outputs.sha }}
-          SOURCE_RUN_ID: ${{ steps.fixture.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.fixture.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.fixture.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.fixture.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.fixture.outputs.finalizer_attempt }}
-          FINALIZER_COMPLETED_AT: ${{ steps.fixture.outputs.finalizer_completed_at }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.acquire.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.acquire.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.acquire.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.acquire.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.acquire.outputs.inner_digest }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        # A retry that cannot reproduce the payload cannot find its own prior Rekor entry, so
+        # determinism is what makes recovery possible at all.
         run: |
           set -euo pipefail
-          export SOURCE_TREE="$(git rev-parse "${SOURCE_SHA}^{tree}")"
-          export WORKFLOW_DIGEST="$(sha256sum .github/workflows/c19-anchor.yml | cut -d' ' -f1)"
-          node scripts/gate/c19-anchor-cli.mjs payload --out /tmp/c19/payload.json
-          # Determinism is the property recovery depends on: the same publication identity must
-          # produce byte-identical bytes, or a retry can never find its own prior entry.
-          node scripts/gate/c19-anchor-cli.mjs payload --out /tmp/c19/payload2.json
-          cmp /tmp/c19/payload.json /tmp/c19/payload2.json \
-            || { echo "::error::the payload is not deterministic across invocations"; exit 1; }
-          echo "payload is byte-identical across two invocations"
+          node scripts/gate/c19-deliver.mjs dry-run \
+            --repo "${{ github.repository }}" \
+            --sha "${{ steps.fixture.outputs.sha }}" \
+            --source-root /tmp/fixture-src --out /tmp/c19b >/dev/null
+          cmp /tmp/c19/payload.json /tmp/c19b/payload.json
+          echo "payload is byte-identical across two independent pipeline invocations"
 
-      - name: Publication DRY RUN — must reach no irreversible step
-        if: steps.fixture.outputs.found == 'true'
-        env:
-          SOURCE_SHA: ${{ steps.fixture.outputs.sha }}
-          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+      - name: Prove zero OIDC, zero signing, zero Rekor writes
+        shell: bash
         run: |
           set -euo pipefail
-          node scripts/gate/c19-anchor-cli.mjs publish --dry-run \
-            --artifact /tmp/c19/finalized.zip \
-            --payload  /tmp/c19/payload.json \
-            --bundle   /tmp/c19/payload.sigstore.json 2>&1 | tee /tmp/c19/dry.log
-          grep -q "DRY RUN" /tmp/c19/dry.log
-          # Nothing may have been signed or persisted.
-          [ ! -f /tmp/c19/payload.sigstore.json ] || { echo "::error::a dry run produced a bundle"; exit 1; }
-
-      - name: Prove zero signing and zero Rekor writes occurred
-        if: steps.fixture.outputs.found == 'true'
-        run: |
-          set -euo pipefail
-          # No bundle, no signature, and cosign was never installed in this job.
-          [ ! -f /tmp/c19/payload.sigstore.json ] || { echo "::error::a bundle exists"; exit 1; }
-          ! command -v cosign >/dev/null 2>&1 || { echo "::error::cosign is present in a non-publishing job"; exit 1; }
-          echo "zero signing attempts, zero Rekor writes, no bundle produced"
+          grep -q "zero OIDC requests, zero signing operations, zero Rekor writes" /tmp/c19/dry.log
+          test ! -f /tmp/c19/bundle.sigstore.json
+          command -v cosign >/dev/null 2>&1 && { echo "::error::cosign must not be installed here"; exit 1; } || true
+          echo "verified: no bundle produced, no signing tool present, no OIDC token held"
 
       - name: Persist the dry-run evidence for review
-        if: steps.fixture.outputs.found == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c19-delivery-chain-dry-run
+          name: c19-delivery-dry-run-${{ github.run_id }}
           path: |
             /tmp/c19/payload.json
             /tmp/c19/dry.log

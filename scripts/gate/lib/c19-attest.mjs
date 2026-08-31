@@ -91,8 +91,15 @@ export const REQUIRED_PAYLOAD_FIELDS = Object.freeze([
   'sourceRunId', 'sourceRunAttempt', 'sourceEvent',
   // the FINALIZER run that produced the delivered artifact
   'finalizerRunId', 'finalizerRunAttempt',
-  // which workflow configuration is authorised to sign this
-  'workflowRef', 'workflowDigest',
+  // which workflow configuration is authorised to sign this.
+  //
+  // `workflowDigest` is GitHub's workflow COMMIT (`workflow_sha`) — the value Fulcio records as
+  // Build Config Digest. It is NOT a hash of the YAML bytes; verifying a certificate against a
+  // YAML digest could never match, because Fulcio never puts one there.
+  //
+  // The YAML content digest is genuine provenance and is kept as its OWN field rather than being
+  // conflated with the certificate's meaning.
+  'workflowRef', 'workflowDigest', 'workflowYamlDigest',
   // what is being attested — both the wrapper and the finalized inner artifact
   'evidenceArtifactId', 'evidenceArtifactName', 'evidenceDigest',
   'finalizedInnerName', 'finalizedInnerDigest',

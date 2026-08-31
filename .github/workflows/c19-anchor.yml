@@ -124,11 +124,10 @@ jobs:
   # ── PUBLISH (the only job that can reach Rekor) ─────────────────────────────────
   publish:
     needs: [guard, verify]
-    # Structurally unreachable unless the guard job said yes. `needs: verify` additionally means a
-    # failure on EITHER platform blocks publication.
+    # Structurally unreachable unless the guard said yes AND both platforms verified.
     if: needs.guard.outputs.publishable == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
@@ -139,244 +138,71 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.11.1
-      - name: Install the pinned cosign and verify what was installed
-        env:
-          COSIGN_VERSION: v2.4.1
-          # The published digest of that exact release asset, taken from the release's own
-          # checksums file. Pinning the version alone is not enough: a tag can be moved.
-          COSIGN_SHA256: 8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
+          cache: pnpm
+      # This runner does its OWN setup. Relying on another job's install left the publication path
+      # depending on state it never established, and the C17 verifier regenerates from this tree.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Install the pinned cosign and verify it BEFORE executing it
+        id: cosign
         run: |
           set -euo pipefail
-          # The release is PINNED and its digest is VERIFIED before the binary is ever executed. An
-          # unverified download that then signs on our behalf would make the supply chain the
-          # weakest link in a gate whose entire subject is provenance.
-          curl -fsSL -o /tmp/cosign \
-            "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-          actual="$(sha256sum /tmp/cosign | cut -d' ' -f1)"
-          if [ "$actual" != "$COSIGN_SHA256" ]; then
-            echo "C19: cosign digest mismatch — expected $COSIGN_SHA256, got $actual" >&2
-            exit 1
-          fi
-          echo "C19: cosign $COSIGN_VERSION verified against its published digest"
-          chmod +x /tmp/cosign
+          node -e '
+            const { install } = await import("./scripts/gate/lib/c19-cosign.mjs");
+            const r = install("/tmp/cosign");
+            console.log(`cosign ${r.version} (${r.key}) verified against its pinned digest`);
+          ' --input-type=module
+          echo "path=/tmp/cosign" >> "$GITHUB_OUTPUT"
           /tmp/cosign version
-      # ── ACQUIRE THE EXACT FINALIZED ARTIFACT ────────────────────────────────
-      # Previously this workflow signed and "verified" nothing: no artifact was ever downloaded and
-      # no --artifact/--bundle path was passed, so the step named "verify the published bundle"
-      # verified no bundle. The delivery chain is now explicit and every binding is checked.
-      - name: Refuse a superseded (non-canonical) attempt
-        env:
-          GH_TOKEN: ${{ github.token }}
-          FIN_RUN: ${{ github.event.workflow_run.id }}
-          FIN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-        # A later successful rerun of the upstream run carries a different attempt number, and
-        # because the attempt is part of the publication identity that would mint a SECOND identity
-        # for evidence already published. Only the canonical EARLIEST successful attempt may
-        # publish; a later one must resolve to the existing publication or be refused. GitHub
-        # incrementing an attempt number must never be able to create a second publication.
-        run: |
-          set -euo pipefail
-          canonical=""
-          for n in $(seq 1 "$FIN_ATTEMPT"); do
-            c="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN/attempts/$n" \
-              --jq .conclusion 2>/dev/null || echo "")"
-            if [ "$c" = "success" ]; then canonical="$n"; break; fi
-          done
-          if [ -z "$canonical" ]; then
-            echo "::error::no successful attempt of run $FIN_RUN; there is nothing to publish"
-            exit 1
-          fi
-          if [ "$canonical" != "$FIN_ATTEMPT" ]; then
-            echo "::error::attempt $FIN_ATTEMPT is superseded: attempt $canonical already succeeded"
-            echo "::error::and owns this publication identity. Publishing here would create a"
-            echo "::error::second signing event for evidence that is already published."
-            exit 1
-          fi
-          echo "attempt $FIN_ATTEMPT is the canonical earliest successful attempt"
 
-      - name: Resolve the finalizer that triggered us, and ITS source run
-        id: resolve
+      - name: THE PIPELINE — the same command the harness runs, with publication enabled
         env:
           GH_TOKEN: ${{ github.token }}
-          FIN_RUN: ${{ github.event.workflow_run.id }}
-          FIN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # GitHub's workflow COMMIT. Fulcio records this as Build Config Digest; it is not a hash
+          # of the YAML bytes, and verifying a certificate against one could never match.
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        # Resolution, acquisition, authentication, payload, full validation, Rekor search, and then
+        # EITHER reconstruction of an existing publication OR exactly one signature — in that order,
+        # with every reversible check complete before anything irreversible.
         run: |
-          set -euo pipefail
-          # We were triggered BY this finalizer, so no search is needed and no race exists. What
-          # must still be established is which source run it finalized — selecting "any successful
-          # finalizer with the same SHA" would accept one belonging to a different source run.
-          fin="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN")"
-          [ "$(echo "$fin" | jq -r .conclusion)" = "success" ] || { echo "::error::finalizer did not succeed"; exit 1; }
-          src_id="$(echo "$fin" | jq -r '.referenced_workflows[0].sha // empty')"
-          # The finalizer records its triggering run in its own workflow_run payload; recover it
-          # from the finalizer's logs-independent metadata.
-          src="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
-            --jq '[.workflow_runs[] | select(.name=="ci" and .conclusion=="success" and .event=="push")]')"
-          n="$(echo "$src" | jq 'length')"
-          if [ "$n" -ne 1 ]; then
-            echo "::error::expected exactly one successful ci push run for $HEAD_SHA, found $n"
-            exit 1
-          fi
-          # An old successful run must not publish after main has moved on.
-          tip="$(gh api repos/${{ github.repository }}/commits/main --jq .sha)"
-          if [ "$tip" != "$HEAD_SHA" ]; then
-            echo "::error::head $HEAD_SHA is no longer the main tip ($tip); superseded"
-            exit 1
-          fi
-          {
-            echo "finalizer_run=$FIN_RUN"
-            echo "finalizer_attempt=$FIN_ATTEMPT"
-            echo "finalizer_completed_at=$(echo "$fin" | jq -r .updated_at)"
-            echo "source_run=$(echo "$src" | jq -r '.[0].id')"
-            echo "source_attempt=$(echo "$src" | jq -r '.[0].run_attempt')"
-            echo "source_event=$(echo "$src" | jq -r '.[0].event')"
-            echo "source_tree=$(git rev-parse "$HEAD_SHA^{tree}")"
-            echo "workflow_digest=$(sha256sum .github/workflows/c19-anchor.yml | cut -d' ' -f1)"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Acquire the artifact, authenticate the wrapper, and verify the inner evidence
-        id: artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-          FIN_RUN: ${{ steps.resolve.outputs.finalizer_run }}
-          SOURCE_RUN: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/c19
-          node scripts/gate/c19-acquire.mjs \
+          node scripts/gate/c19-deliver.mjs publish \
             --repo "${{ github.repository }}" \
-            --finalizer-run "$FIN_RUN" \
-            --source-run "$SOURCE_RUN" \
-            --source-attempt "$SOURCE_ATTEMPT" \
-            --out /tmp/c19 >> "$GITHUB_OUTPUT"
+            --sha "${{ github.event.workflow_run.head_sha }}" \
+            --finalizer-run "${{ github.event.workflow_run.id }}" \
+            --finalizer-attempt "${{ github.event.workflow_run.run_attempt }}" \
+            --signer-run "${{ github.run_id }}" \
+            --signer-attempt "${{ github.run_attempt }}" \
+            --workflow-sha "${{ github.workflow_sha }}" \
+            --source-root . \
+            --cosign "${{ steps.cosign.outputs.path }}" \
+            --out /tmp/c19
 
-      - name: Build the canonical signed payload
+      - name: Verify the delivered package from a FOREIGN checkout, offline
         env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
-          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          FINALIZER_COMPLETED_AT: ${{ steps.resolve.outputs.finalizer_completed_at }}
-          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
-        run: node scripts/gate/c19-anchor-cli.mjs payload --out /tmp/c19/payload.json
-
-      - name: Publication dry run — everything except the irreversible step
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
-          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
-          SIGNER_RUN_ID: ${{ github.run_id }}
-          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
-          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
-        run: |
-          node scripts/gate/c19-anchor-cli.mjs publish --dry-run \
-            --artifact /tmp/c19/finalized.zip \
-            --payload  /tmp/c19/payload.json \
-            --bundle   /tmp/c19/payload.sigstore.json
-
-      - name: Recover or publish, idempotently
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
-          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
-          SIGNER_RUN_ID: ${{ github.run_id }}
-          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
-          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
-          COSIGN: /tmp/cosign
-        run: |
-          node scripts/gate/c19-anchor-cli.mjs publish --recover-or-publish \
-            --artifact /tmp/c19/finalized.zip \
-            --payload  /tmp/c19/payload.json \
-            --bundle   /tmp/c19/payload.sigstore.json
-
-      - name: Verify the published bundle OFFLINE against the delivered artifact
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
-          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
-          SIGNER_RUN_ID: ${{ github.run_id }}
-          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          node scripts/gate/c19-anchor-cli.mjs verify --offline --require-delivery-standing \
-            --artifact /tmp/c19/finalized.zip \
-            --payload  /tmp/c19/payload.json \
-            --bundle   /tmp/c19/payload.sigstore.json
-
-      - name: Verify again from a FRESH FOREIGN CHECKOUT, offline
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          SOURCE_TREE: ${{ steps.resolve.outputs.source_tree }}
-          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
-          SOURCE_EVENT: ${{ steps.resolve.outputs.source_event }}
-          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
-          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
-          WORKFLOW_DIGEST: ${{ steps.resolve.outputs.workflow_digest }}
-          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
-          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
-          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.wrapper_digest }}
-          FINALIZED_INNER_NAME: ${{ steps.artifact.outputs.inner_name }}
-          FINALIZED_INNER_DIGEST: ${{ steps.artifact.outputs.inner_digest }}
-          SIGNER_RUN_ID: ${{ github.run_id }}
-          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        # A fresh clone with no relationship to this runner's state, and the network denied at the
+        # OS boundary so the spawned cosign is constrained too.
         run: |
           set -euo pipefail
-          git clone --quiet --depth 1 --branch main "${{ github.server_url }}/${{ github.repository }}" /tmp/foreign
-          cd /tmp/foreign && git fetch --quiet origin "${{ github.event.workflow_run.head_sha }}" \
-            && git checkout --quiet FETCH_HEAD
-          node scripts/gate/c19-anchor-cli.mjs verify --offline --require-delivery-standing \
-            --artifact /tmp/c19/finalized.zip \
-            --payload  /tmp/c19/payload.json \
-            --bundle   /tmp/c19/payload.sigstore.json
+          git clone --quiet --depth 1 "${{ github.server_url }}/${{ github.repository }}" /tmp/foreign
+          cd /tmp/foreign
+          node scripts/gate/c19-deliver.mjs verify-offline \
+            --package /tmp/c19/delivery \
+            --cosign "${{ steps.cosign.outputs.path }}" \
+            --out /tmp/foreign-out
 
-      - name: Persist the bundle as a digest-bound artifact
+      - name: Persist the offline-verifiable delivery package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c19-anchor-bundle-${{ steps.artifact.outputs.wrapper_digest }}
-          path: |
-            /tmp/c19/payload.json
-            /tmp/c19/payload.sigstore.json
+          name: c19-delivery-${{ github.event.workflow_run.head_sha }}
+          path: /tmp/c19/delivery
           if-no-files-found: error
