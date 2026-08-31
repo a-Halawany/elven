@@ -1,127 +1,87 @@
 #!/usr/bin/env node
 /**
- * C19 — RESOLVE A USABLE DELIVERY-CHAIN FIXTURE.
+ * C19 — CHOOSE A REAL PUBLICATION FOR THE NON-PUBLISHING HARNESS.
  *
- * The harness needs a real, already-completed publication to exercise against: a successful `ci`
- * push run, the `C17 finalize` run that finalized it, and the artifact that finalizer produced.
- *
- * ── WHY THIS READS ATTEMPTS, NOT THE RUN'S CURRENT CONCLUSION ──
- *
- * A GitHub re-run MUTATES the run in place. Attempt 1 may have succeeded and attempt 2 failed, and
- * the run then reports `failure` — the successful attempt still exists, but a `select(.conclusion
- * == "success")` filter can no longer see it.
- *
- * That is not hypothetical. Re-running main's CI to demonstrate an unrelated CVE turned a
- * `success` into a `failure` and made main's own tip unusable as a fixture, even though attempt 1
- * remained intact and retrievable. A resolver that reads only the current conclusion is therefore
- * fragile against ordinary maintenance, and worse, it silently reports "no fixture" when a
- * perfectly good one exists.
- *
- * So each candidate run is examined ATTEMPT BY ATTEMPT, and the earliest successful attempt is what
- * the fixture binds. History is what happened, not what the latest re-run says happened.
+ * This is a THIN CALLER of the shared GitHub and resolver layers. It previously carried its own
+ * transport, its own attempt walker, its own run selector and its own artifact selector — with no
+ * pagination and with API failures treated as absence. That is the exact duplication the redesign
+ * removed everywhere else, and leaving it here meant the harness could still resolve differently
+ * from production.
  */
-import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/** Importable by controls: the resolver body runs only when this file IS the program. */
+import { createGitHub } from './lib/c19-github.mjs';
+import { resolveCanonicalSource, resolveCanonicalFinalizer } from './lib/c19-resolve.mjs';
+
 const invokedDirectly = (() => {
   const a = process.argv[1];
   if (typeof a !== 'string' || a === '') return false;
   try { return realpathSync(a) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
 })();
 
-const die = (m) => { process.stderr.write(`C19 fixture: ${m}\n`); process.exit(1); };
-const arg = (f) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : undefined; };
-const repo = invokedDirectly ? (arg('--repo') ?? die('--repo is required')) : null;
-
-const gh = (path) => {
-  const r = spawnSync('gh', ['api', path], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
-  if (r.status !== 0) return null;
-  try { return JSON.parse(r.stdout ?? ''); } catch { return null; }
-};
-
 /**
- * ── THE CANONICAL ATTEMPT, AND WHY IT MUST BE THE EARLIEST ──
+ * A publication whose WHOLE chain is intact.
  *
- * `finalizerRunAttempt` is part of the publication identity, so a later successful rerun of C17
- * finalize would produce a DIFFERENT payload for the same evidence — and therefore a second signing
- * event for something already published. GitHub incrementing an attempt number must not be able to
- * create a second publication identity.
- *
- * The canonical attempt is therefore the EARLIEST successful one. It is stable: reruns can only add
- * later attempts, never earlier ones, so every retry resolves to the same identity and finds the
- * publication that already exists.
+ * "Intact" is more than a canonical successful attempt. The C17 finalization verifier, which
+ * acquisition runs, reads the source run's CURRENT state and refuses one that now reports failure —
+ * so a run whose attempt 1 succeeded and which was later re-run to failure has intact history and
+ * is still unusable downstream. Both questions are asked, because they are different questions.
  */
-export function successfulAttempt(run, fetchAttempt) {
-  const total = Number(run.run_attempt ?? 1);
-  for (let n = 1; n <= total; n += 1) {
-    const a = fetchAttempt(run.id, n);
-    if (a !== null && a.conclusion === 'success') return n;
+export function chooseFixture({ gh, limit = 40 }) {
+  const seen = [];
+  const mainRuns = gh.runsForBranch('main', limit);
+  const finalizers = mainRuns.filter((r) => r.name === 'C17 finalize');
+  for (const fin of finalizers) {
+    const sha = fin.head_sha;
+    if (seen.includes(sha)) continue;
+    seen.push(sha);
+    let source;
+    let finalizer;
+    try {
+      source = resolveCanonicalSource({ gh, sha });
+      finalizer = resolveCanonicalFinalizer({ gh, sha, sourceRunId: source.runId });
+    } catch { continue; }                       // this commit is not usable; try the next
+    // The C17 verifier reads current state, so the source run must currently be successful too.
+    const sourceRun = gh.runsForSha(sha).find((r) => String(r.id) === String(source.runId));
+    if (sourceRun?.conclusion !== 'success') continue;
+    const arts = gh.artifacts(finalizer.runId)
+      .filter((a) => a.expired === false
+        && String(a.name).startsWith(`c17-evidence-finalized-a${finalizer.runAttempt}-`));
+    if (arts.length !== 1) continue;
+    return { found: true, sha, source, finalizer, artifact: arts[0] };
   }
-  return null;
+  return { found: false };
 }
 
-if (!invokedDirectly) {
-  // Imported by a control: expose `successfulAttempt` and run nothing.
-} else {
-const runs = gh(`repos/${repo}/actions/runs?branch=main&per_page=100`);
-if (runs === null) die('the run listing could not be fetched');
-
-// Newest first, so the fixture tracks main rather than drifting to ancient history.
-const finalizers = (runs.workflow_runs ?? []).filter((r) => r.name === 'C17 finalize');
-for (const fin of finalizers) {
-  const finAttempt = successfulAttempt(fin, (id, n) => gh(`repos/${repo}/actions/runs/${id}/attempts/${n}`));
-  if (finAttempt === null) continue;
-
-  const sha = fin.head_sha;
-  const forSha = gh(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`);
-  if (forSha === null) continue;
-  const source = (forSha.workflow_runs ?? []).find((r) => r.name === 'ci' && r.event === 'push');
-  if (source === undefined) continue;
-  const srcAttempt = successfulAttempt(source, (id, n) => gh(`repos/${repo}/actions/runs/${id}/attempts/${n}`));
-  if (srcAttempt === null) continue;
-
-  /**
-   * The source run's CURRENT conclusion must also be success.
-   *
-   * This is a requirement of the whole delivery chain, not of this resolver: the C17 finalization
-   * verifier — which acquisition runs, and which this pass must not weaken — reads the source run's
-   * current state through the API and refuses a run that now reports failure.
-   *
-   * A run whose attempt 1 succeeded and which was later re-run to failure therefore has intact
-   * HISTORY but is not a usable delivery fixture, because a step downstream of here will refuse it.
-   * That is exactly the state run 32773918479 is in, and it is in that state because re-running
-   * main's CI to demonstrate an unrelated CVE mutated it. Selecting a different fixture does not
-   * repair that run and is not claimed to: it selects a publication whose whole chain is intact.
-   */
-  if (source.conclusion !== 'success') continue;
-
-  // The finalizer must have artifacts left to acquire, or it is not a usable fixture.
-  const arts = gh(`repos/${repo}/actions/runs/${fin.id}/artifacts`);
-  const usable = (arts?.artifacts ?? []).filter((a) => a.expired === false
-    && String(a.name).startsWith('c17-evidence-finalized-'));
-  if (usable.length !== 1) continue;
-
-  const finFull = gh(`repos/${repo}/actions/runs/${fin.id}/attempts/${finAttempt}`) ?? fin;
+if (invokedDirectly) {
+  const arg = (f) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : undefined; };
+  const repo = arg('--repo');
+  if (repo === undefined) { process.stderr.write('C19 fixture: --repo is required\n'); process.exit(1); }
+  const gh = createGitHub({ repo });
+  let r;
+  try { r = chooseFixture({ gh }); } catch (e) {
+    // An API failure is NOT "no fixture". Reporting it as absence would let the harness report a
+    // green check for a chain it never exercised.
+    process.stderr.write(`C19 fixture: resolution failed (${e.message})\n`);
+    process.exit(1);
+  }
+  if (!r.found) {
+    process.stdout.write('found=false\n');
+    process.stderr.write('C19 fixture: no main commit has an intact chain with an unexpired '
+      + 'artifact; the delivery chain is UNEXERCISED, not passing\n');
+    process.exit(0);
+  }
   for (const line of [
     'found=true',
-    `sha=${sha}`,
-    `finalizer_run=${fin.id}`,
-    `finalizer_attempt=${finAttempt}`,
-    `finalizer_completed_at=${finFull.updated_at ?? fin.updated_at}`,
-    `source_run=${source.id}`,
-    `source_attempt=${srcAttempt}`,
-    `source_event=${source.event}`,
+    `sha=${r.sha}`,
+    `source_run=${r.source.runId}`,
+    `source_attempt=${r.source.runAttempt}`,
+    `source_event=${r.source.event}`,
+    `finalizer_run=${r.finalizer.runId}`,
+    `finalizer_attempt=${r.finalizer.runAttempt}`,
+    `finalizer_completed_at=${r.finalizer.completedAt ?? ''}`,
   ]) process.stdout.write(`${line}\n`);
-  process.stderr.write(`C19 fixture: ${sha.slice(0, 8)} — ci run ${source.id} attempt ${srcAttempt}, `
-    + `finalizer ${fin.id} attempt ${finAttempt}\n`);
-  process.exit(0);
-}
-
-// No usable fixture is a REPORTED ABSENCE, never a pass. The harness must say the plumbing was
-// unexercised rather than green.
-process.stdout.write('found=false\n');
-process.stderr.write('C19 fixture: no main commit has both a successful ci attempt and a successful '
-  + 'finalizer attempt with an unexpired artifact; the delivery chain is UNEXERCISED, not passing\n');
+  process.stderr.write(`C19 fixture: ${r.sha.slice(0, 8)} — ci ${r.source.runId}#${r.source.runAttempt}, `
+    + `finalizer ${r.finalizer.runId}#${r.finalizer.runAttempt}\n`);
 }

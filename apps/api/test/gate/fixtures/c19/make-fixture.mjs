@@ -66,7 +66,10 @@ const entry = {
   },
 };
 
-writeFileSync(join(HERE, 'rekor-entry.json'), JSON.stringify({ 'uuid-fixture': entry }, null, 2));
+// A realistic Rekor uuid: 64 hex characters. The placeholder 'uuid-fixture' was not hex and was
+// therefore correctly rejected by the uuid validation, which is itself the point of that check.
+const uuid = createHash('sha256').update('c19-fixture-entry').digest('hex');
+writeFileSync(join(HERE, 'rekor-entry.json'), JSON.stringify({ [uuid]: entry }, null, 2));
 writeFileSync(join(HERE, 'payload.json'), payload);
 writeFileSync(join(HERE, 'trusted-root.json'), JSON.stringify({
   mediaType: 'application/vnd.dev.sigstore.trustedroot+json;version=0.1',

@@ -98,6 +98,13 @@ export function createGitHub({
       return res.bytes;
     },
 
+    /** Recent runs on a branch, newest first, across pages until `limit` is reached. */
+    runsForBranch(branch, limit = 100) {
+      const out = listAll(`repos/${repo}/actions/runs?branch=${branch}&per_page=100`,
+        (b) => b.workflow_runs ?? []);
+      return out.slice(0, limit);
+    },
+
     /** The current tip of a branch. */
     branchTip(branch) {
       const res = api(`repos/${repo}/commits/${branch}`);

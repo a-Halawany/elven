@@ -42,7 +42,7 @@ against its frozen predecessor. Five did:
 `scripts/gate/lib/c19-criteria.mjs` — **9 constitutional invariants · 18 acceptance criteria ·
 62 attack families**.
 
-**Routing rule.** A newly discovered attack class goes to **C20**. Only a demonstrated violation of
+**Routing rule.** A newly discovered attack class goes to the **post-Phase-0 backlog**. Only a demonstrated violation of
 a constitutional invariant — a property C19 *claims* and does not hold — reopens the frozen set.
 `route()` and `isConstitutional()` implement this, and controls prove both directions.
 

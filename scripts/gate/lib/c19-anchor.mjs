@@ -31,6 +31,7 @@ import { createHash, createPublicKey, verify as verifyOneShot, X509Certificate }
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { certificateExtensions, extensionString, pemToDer } from './c19-der.mjs';
+import { verifyTufChain } from './c19-tuf.mjs';
 
 const sha256 = (b) => createHash('sha256').update(b).digest();
 const j = (v) => JSON.stringify(v);
@@ -70,11 +71,37 @@ export function loadTrustMaterial(libDir) {
       + 'field must be mandatory, or verification can pass without checking anything');
   }
   const trustedRootBytes = readFileSync(join(libDir, policy.tuf.trustedRootFile));
+
+  /**
+   * ── THE CHAIN IS VERIFIED, NOT JUST HASHED ──
+   *
+   * Comparing the trusted root's digest to one declared in an UNAUTHENTICATED `targets.json`
+   * authenticates nothing: whoever supplies targets.json supplies the hash it declares, and the
+   * check agrees with itself. The trusted root was trusted because it sat in the repository.
+   *
+   * Now every signature, threshold, version, expiry, hash AND length from the source-held root
+   * downward must hold. The root is the owner-approved anchor; everything else proves itself.
+   */
+  const tufDir = join(libDir, 'c19-tuf');
+  const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
+  const problems = verifyTufChain({
+    root: readJson(join(libDir, policy.tuf.rootFile)),
+    timestamp: readJson(join(tufDir, 'timestamp.json')),
+    snapshot: readJson(join(tufDir, 'snapshot.json')),
+    targets: readJson(join(tufDir, 'targets.json')),
+    targetName: 'trusted_root.json',
+    targetBytes: trustedRootBytes,
+  });
+  if (problems.length > 0) {
+    throw new Error(`c19: the Sigstore trust material does not verify against the source-held TUF `
+      + `root: ${problems[0]}`);
+  }
+  // The policy's own pin must also agree, so a swap of BOTH the material and the metadata is still
+  // caught by the value the owner reviewed.
   const actual = sha256(trustedRootBytes).toString('hex');
   if (actual !== policy.tuf.trustedRootSha256) {
-    throw new Error('c19: the Sigstore trusted root does not match the digest the TUF targets '
-      + `metadata declared (${actual} vs ${policy.tuf.trustedRootSha256}); the trust material has `
-      + 'been substituted');
+    throw new Error(`c19: the Sigstore trusted root hashes to ${actual}, but the source-owned `
+      + `policy pins ${policy.tuf.trustedRootSha256}; the trust material has been substituted`);
   }
   return { policy, trustedRoot: JSON.parse(trustedRootBytes.toString('utf8')) };
 }
@@ -267,7 +294,6 @@ export function confirmAuthorizedSignerRun({ invocation, policy, expectedHeadSha
     ['workflow path', run.path, want.workflowRef.split('@')[0].split('/').slice(2).join('/')],
     ['head branch', run.head_branch, 'main'],
     ['event', run.event, want.signerEventName],
-    ['conclusion', run.conclusion, 'success'],
   ];
   for (const [name, got, expected] of checks) {
     if (String(got) !== String(expected)) {

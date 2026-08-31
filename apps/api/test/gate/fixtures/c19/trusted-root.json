@@ -6,13 +6,13 @@
       "baseUrl": "https://rekor.fixture.local",
       "hashAlgorithm": "SHA2_256",
       "publicKey": {
-        "rawBytes": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAET1J2F9oHnAM3GC8kUDEfD1y7fygMJePyvaM4F1YgGs0zYpLKBQ3/rEGa6XU7cysrnZgUxkBcwMwHnyA96UwCgQ==",
+        "rawBytes": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEC4PqyI+ILwWIJYQ7ZqhPKqB8VcMd4lZoF8xsNR4rd7aLtP//FUgSk3Fju94CXwKbD80NMhiKg4+W+HcfBd74Tg==",
         "validFor": {
           "start": "2020-01-01T00:00:00Z"
         }
       },
       "logId": {
-        "keyId": "3Zrrjjinooe3VZCpYdunusLYIB8WmNOVW5HEsOb2Q4Y="
+        "keyId": "CJmpDS5EgNxJZe2YO0ckhgBd5bbjbOCivxthVoXRbso="
       }
     }
   ],

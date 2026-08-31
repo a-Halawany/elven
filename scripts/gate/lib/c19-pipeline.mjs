@@ -18,9 +18,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createGitHub } from './c19-github.mjs';
 import {
@@ -69,7 +69,10 @@ export function resolve({ gh, sha, invocation, requireCurrentTip = true, branch 
 }
 
 /** Step 10 — the deterministic canonical payload, from AUTHENTICATED bindings only. */
-export function buildCanonicalPayload({ authed, acquisition, sourceTree, workflowRef, workflowDigest, workflowYamlDigest, sourceEvent }) {
+export function buildCanonicalPayload({
+  authed, acquisition, sourceTree, workflowRef, workflowDigest, workflowYamlDigest, sourceEvent,
+  finalizerCompletedAt,
+}) {
   const facts = {
     sourceSha: authed.sourceSha,
     sourceTree,
@@ -87,6 +90,8 @@ export function buildCanonicalPayload({ authed, acquisition, sourceTree, workflo
     evidenceDigest: acquisition.wrapperDigest,
     finalizedInnerName: acquisition.innerName,
     finalizedInnerDigest: acquisition.innerDigest,
+    // An AUTHENTICATED instant, identical on every retry, from which the validity window derives.
+    finalizerCompletedAt,
   };
   const identity = publicationIdentity(facts);
   const payload = buildPayload('run-anchor', {
@@ -95,15 +100,60 @@ export function buildCanonicalPayload({ authed, acquisition, sourceTree, workflo
     // rather than being conflated with the certificate's meaning.
     workflowYamlDigest,
     nonce: identity,
-    // Derived from the publication identity, never from the clock, or a retry could not reproduce it.
-    issuedAt: '1970-01-01T00:00:00.000Z',
-    notBefore: '1970-01-01T00:00:00.000Z',
-    expiresAt: '9999-12-31T23:59:59.999Z',
+    ...deterministicWindow(facts, identity),
     signerId: 'sigstore-fulcio',
     keyVersion: 'fulcio-keyless',
     algorithm: 'ES256',
   });
   return { payload, canonical: canonicalize(payload), identity };
+}
+
+/**
+ * A BOUNDED validity window that is still deterministic.
+ *
+ * 1970-to-9999 was not a validity window; it was the absence of one wearing the shape of a field.
+ * But a window from the wall clock would make each retry produce different bytes and break
+ * recovery, which is why it was hardcoded in the first place.
+ *
+ * The window is therefore derived from the FINALIZER RUN's completion instant — an authenticated
+ * property of the publication identity, identical on every retry — and bounded to a real span.
+ */
+export const WINDOW_BEFORE_MS = 60 * 60 * 1000;              // one hour of clock tolerance
+export const WINDOW_LIFETIME_MS = 10 * 365 * 24 * 3600 * 1000; // ten years of verifiability
+
+export function deterministicWindow(facts, identity) {
+  const anchor = Date.parse(facts.finalizerCompletedAt ?? '');
+  if (!Number.isFinite(anchor)) {
+    throw new Error('c19: the publication has no authenticated finalizer completion instant, so a '
+      + 'deterministic validity window cannot be derived; refusing to substitute the wall clock, '
+      + 'which would make every retry produce different bytes');
+  }
+  const iso = (ms) => new Date(ms).toISOString();
+  return {
+    issuedAt: iso(anchor),
+    notBefore: iso(anchor - WINDOW_BEFORE_MS),
+    expiresAt: iso(anchor + WINDOW_LIFETIME_MS),
+  };
+}
+
+/** The window must be real, bounded, and current at verification time. */
+export function validatePayloadWindow(payload, now = Date.now()) {
+  const problems = [];
+  const nbf = Date.parse(payload.notBefore);
+  const exp = Date.parse(payload.expiresAt);
+  const iat = Date.parse(payload.issuedAt);
+  if (!Number.isFinite(nbf) || !Number.isFinite(exp) || !Number.isFinite(iat)) {
+    return ['c19 payload: issuedAt, notBefore and expiresAt must all be instants'];
+  }
+  if (exp <= nbf) problems.push('c19 payload: expires no later than it becomes valid');
+  const span = exp - nbf;
+  if (span > WINDOW_LIFETIME_MS + WINDOW_BEFORE_MS + 1000) {
+    problems.push(`c19 payload: the validity window spans ${Math.round(span / 86400000)} days; an `
+      + 'unbounded window is not a validity window');
+  }
+  if (now < nbf) problems.push('c19 payload: presented before its notBefore');
+  if (now > exp) problems.push('c19 payload: has expired');
+  return problems;
 }
 
 /** Step 11 — every reversible check, before anything irreversible. */
@@ -150,12 +200,31 @@ export function validateBeforeIrreversible({ payload, canonicalBytes, acquisitio
 export async function recoverOrSign({
   canonicalBytes, payloadPath, bundlePath, policy, trustedRoot, gh, cosignPath,
   search, fetchEntry, mode, sign = defaultSign,
+  // Injected so a control can exercise the ORCHESTRATION of recovery — reuse, zero signing, the
+  // bundle written at the normal path — without needing a Fulcio-issued certificate it cannot
+  // fabricate. The cryptographic half is covered by the identity and transparency controls.
+  verifyBundleFn = verifyBundle,
 }) {
   const digest = sha256(canonicalBytes);
-  let uuids;
-  try { uuids = await search(digest); } catch (e) {
+  let raw;
+  try { raw = await search(digest); } catch (e) {
     return { action: 'refuse', why: `the transparency log could not be queried (${e.message}); `
       + 'signing without knowing whether a record exists would risk a duplicate' };
+  }
+  // A malformed response must NOT collapse into "no record" and then sign. That is the single
+  // worst failure mode available here: a transient shape change would mint a duplicate.
+  if (!Array.isArray(raw)) {
+    return { action: 'refuse', why: `the transparency log returned ${typeof raw}, not an array of `
+      + 'uuids; a malformed response is not evidence that no record exists' };
+  }
+  const uuids = [...new Set(raw.map((u) => String(u)))].filter((u) => /^[0-9a-f]{40,80}$/i.test(u));
+  if (uuids.length !== raw.length) {
+    const dropped = raw.length - uuids.length;
+    if (uuids.length === 0 && raw.length > 0) {
+      return { action: 'refuse', why: `the transparency log returned ${raw.length} entr(y|ies) but `
+        + 'none is a well-formed uuid; refusing rather than treating them as absent' };
+    }
+    process.stderr.write(`c19: ignored ${dropped} malformed or duplicate uuid(s) from the log\n`);
   }
   if (uuids.length > 1) {
     return { action: 'refuse', why: `${uuids.length} log records already exist for this publication` };
@@ -167,26 +236,36 @@ export async function recoverOrSign({
       return { action: 'refuse', why: `an existing record was found but could not be retrieved (${e.message})` };
     }
     let bundle;
-    try { bundle = rekorEntryToBundle(entry, { uuid: uuids[0] }); } catch (e) {
+    try { bundle = rekorEntryToBundle(entry); } catch (e) {
       return { action: 'refuse', why: `the existing record could not be reconstructed: ${e.message}` };
     }
+    // The identity verifier fails closed, so recovery must SUPPLY the expectations rather than
+    // leave them undefined — omitting them made every recovery refuse, which is why `reuse` was
+    // unreachable. They come from the canonical payload, which is itself the signed object and
+    // therefore the authoritative statement of what this publication is about.
+    const payload = JSON.parse(canonicalBytes.toString('utf8'));
     const problems = [
       ...bundleMatchesPayload(bundle, canonicalBytes),
-      ...verifyBundle({
+      ...verifyBundleFn({
         bundle, artifactBytes: canonicalBytes, artifactDigestHex: digest, policy, trustedRoot,
-        sourceSha: undefined, workflowDigest: undefined,
+        sourceSha: payload.sourceSha,
+        workflowDigest: payload.workflowDigest,
         recovery: true,
-        // The ORIGINAL invocation is authenticated through GitHub. Its conclusion is NOT required
-        // to be success: that is the very situation recovery exists for.
         fetchRun: (runId, attempt) => gh.runAttempt(runId, attempt),
       }),
     ];
     if (problems.length > 0) {
       return { action: 'refuse', why: `an existing record was found but does not verify: ${problems[0]}` };
     }
-    // Persist at the NORMAL bundle path, because every later step reads that path.
+    // Persist at the NORMAL bundle path, and keep recovery metadata OUT of the bundle: a
+    // `_recoveredFromUuid` field is not part of the Sigstore schema and strict cosign parsing
+    // rejects it, so the bundle would have failed the very verification it was reconstructed for.
     writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
-    return { action: 'reuse', bundle, signings: 0 };
+    writeFileSync(`${bundlePath}.recovery.json`, JSON.stringify({
+      recoveredFromUuid: uuids[0], recoveredAt: 'derived-from-publication-identity',
+      publicationDigest: digest,
+    }, null, 2));
+    return { action: 'reuse', bundle, signings: 0, uuid: uuids[0] };
   }
 
   if (mode === 'dry-run') {
@@ -244,20 +323,126 @@ export function verifyFinalBundle({
 }
 
 /** Step 15 — everything a foreign checkout needs after GitHub's artifacts expire. */
+export const DELIVERY_PACKAGE_FILES = Object.freeze([
+  'payload.json', 'bundle.sigstore.json', 'finalized-wrapper.zip',
+  'trusted-root.json', 'tuf-root.json', 'metadata.json', 'VERIFY.md',
+]);
+
+/**
+ * Step 15 — everything a foreign checkout needs after GitHub's artifacts expire.
+ *
+ * FAILS CLOSED. The previous version copied each file "if it exists", so an absent wrapper or
+ * bundle produced a package that was quietly incomplete and an offline verifier would then fail
+ * for a reason that says nothing about the evidence.
+ */
 export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePath, libDir, metadata }) {
   const dir = join(out, 'delivery');
   mkdirSync(dir, { recursive: true });
-  const copy = (from, name) => { if (existsSync(from)) writeFileSync(join(dir, name), readFileSync(from)); };
-  copy(acquisition.wrapperPath, 'finalized-wrapper.zip');
-  copy(acquisition.innerPath, acquisition.innerName);
-  copy(`${acquisition.innerPath}.sha256`, `${acquisition.innerName}.sha256`);
-  copy(payloadPath, 'payload.json');
-  copy(bundlePath, 'bundle.sigstore.json');
-  copy(join(libDir, 'c19-sigstore-trusted-root.json'), 'trusted-root.json');
-  copy(join(libDir, 'c19-sigstore-tuf-root.json'), 'tuf-root.json');
+  const require0 = (from, name) => {
+    if (!existsSync(from)) {
+      throw new Error(`c19: the delivery package requires ${name}, and ${from} does not exist; `
+        + 'refusing to persist an incomplete package that would fail verification for the wrong reason');
+    }
+    writeFileSync(join(dir, name), readFileSync(from));
+  };
+  require0(acquisition.wrapperPath, 'finalized-wrapper.zip');
+  require0(acquisition.innerPath, acquisition.innerName);
+  require0(`${dirname(acquisition.innerPath)}/${acquisition.innerName}.sha256`, `${acquisition.innerName}.sha256`);
+  require0(payloadPath, 'payload.json');
+  require0(bundlePath, 'bundle.sigstore.json');
+  require0(join(libDir, 'c19-sigstore-trusted-root.json'), 'trusted-root.json');
+  require0(join(libDir, 'c19-sigstore-tuf-root.json'), 'tuf-root.json');
   writeFileSync(join(dir, 'VERIFY.md'), verifyInstructions(metadata));
   writeFileSync(join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   return dir;
+}
+
+/**
+ * ── PACKAGE-LEVEL OFFLINE VERIFICATION ──
+ *
+ * The previous `verify-offline` asked for RECOVERY verification without GitHub and without the
+ * identity expectations the fail-closed verifier requires, so it could never pass. It also ignored
+ * the wrapper, the inner archive and the sidecar entirely — the three things the package exists to
+ * carry.
+ *
+ * This verifies the PACKAGE: exact inventory, recomputed digests against the canonical payload, the
+ * sidecar, the bundle against exact identity and independently held trust material. No GitHub call
+ * is made, and the whole thing runs under OS-level network denial.
+ */
+export function verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath, now = Date.now() }) {
+  const problems = [];
+  const p = (name) => join(dir, name);
+
+  // 1 — exact inventory. Missing, duplicate or unexpected mandatory files are all findings.
+  const present = new Set(readdirSync(dir));
+  const payloadRaw = existsSync(p('payload.json')) ? readFileSync(p('payload.json')) : null;
+  let payload = null;
+  if (payloadRaw !== null) { try { payload = JSON.parse(payloadRaw.toString('utf8')); } catch { /* reported below */ } }
+  const innerName = payload?.finalizedInnerName;
+  const expected = new Set([...DELIVERY_PACKAGE_FILES,
+    ...(typeof innerName === 'string' ? [innerName, `${innerName}.sha256`] : [])]);
+  for (const f of expected) {
+    if (!present.has(f)) problems.push(`c19 package: required file ${j(f)} is missing`);
+  }
+  for (const f of present) {
+    if (!expected.has(f)) problems.push(`c19 package: unexpected file ${j(f)}; the inventory is exact`);
+  }
+  if (payload === null) {
+    problems.push('c19 package: payload.json is missing or is not JSON');
+    return problems;
+  }
+
+  // 2 — recompute the digests the payload binds.
+  const digestOf = (name) => createHash('sha256').update(readFileSync(p(name))).digest('hex');
+  if (present.has('finalized-wrapper.zip')) {
+    const got = digestOf('finalized-wrapper.zip');
+    if (got !== payload.evidenceDigest) {
+      problems.push(`c19 package: the wrapper hashes to ${got} but the signed payload binds `
+        + `${j(payload.evidenceDigest)}`);
+    }
+  }
+  if (typeof innerName === 'string' && present.has(innerName)) {
+    const got = digestOf(innerName);
+    if (got !== payload.finalizedInnerDigest) {
+      problems.push(`c19 package: the inner evidence hashes to ${got} but the signed payload binds `
+        + `${j(payload.finalizedInnerDigest)}`);
+    }
+    // 3 — the sidecar must agree with both.
+    if (present.has(`${innerName}.sha256`)) {
+      const text = readFileSync(p(`${innerName}.sha256`), 'utf8').trim();
+      const m = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(text);
+      if (m === null) problems.push('c19 package: the sidecar is not a `<digest>  <name>` record');
+      else {
+        if (m[1] !== got) problems.push(`c19 package: the sidecar declares ${m[1]}, not ${got}`);
+        if (m[2].trim() !== innerName) problems.push(`c19 package: the sidecar names ${j(m[2].trim())}`);
+      }
+    }
+  }
+
+  // 4 — payload semantics, including a MEANINGFUL validity window.
+  problems.push(...validatePayloadWindow(payload, now));
+  if (payload.context !== domainContext(payload.purpose)) {
+    problems.push(`c19 package: context ${j(payload.context)} does not domain-separate ${j(payload.purpose)}`);
+  }
+  if (canonicalize(payload) !== payloadRaw.toString('utf8')) {
+    problems.push('c19 package: payload.json is not the canonical encoding of its own content');
+  }
+
+  // 5 — the bundle, against exact identity and the trust material HELD IN THE PACKAGE, which is
+  //     itself checked against the source-owned anchor by the caller.
+  if (present.has('bundle.sigstore.json')) {
+    const bundle = JSON.parse(readFileSync(p('bundle.sigstore.json'), 'utf8'));
+    problems.push(...verifyBundle({
+      bundle, artifactBytes: payloadRaw, artifactDigestHex: createHash('sha256').update(payloadRaw).digest('hex'),
+      policy, trustedRoot,
+      sourceSha: payload.sourceSha, workflowDigest: payload.workflowDigest,
+      recovery: true,
+      // No GitHub. Offline means offline: the certificate's own invocation is read and compared to
+      // the policy, and anything requiring a live API call is simply not part of this verification.
+      fetchRun: undefined,
+    }));
+  }
+  return problems;
 }
 
 const verifyInstructions = (m) => `# Verifying this delivery offline

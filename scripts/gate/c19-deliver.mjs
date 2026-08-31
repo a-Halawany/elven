@@ -21,10 +21,11 @@ import { fileURLToPath } from 'node:url';
 import { createGitHub } from './lib/c19-github.mjs';
 import {
   PIPELINE_MODES, resolve, buildCanonicalPayload, validateBeforeIrreversible,
-  recoverOrSign, verifyFinalBundle, persistDeliveryPackage,
+  recoverOrSign, verifyFinalBundle, persistDeliveryPackage, verifyDeliveryPackage,
 } from './lib/c19-pipeline.mjs';
 import { loadTrustMaterial } from './lib/c19-anchor.mjs';
 import { assetKey, install as installCosign, COSIGN_PIN } from './lib/c19-cosign.mjs';
+import { proveNetworkDenial, runWithoutNetwork } from './lib/c19-sandbox.mjs';
 import { acquire } from './lib/c19-acquire.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -51,7 +52,13 @@ const rekorSearch = async (digestHex) => {
 const rekorEntry = async (uuid) => {
   const r = await fetch(`https://rekor.sigstore.dev/api/v1/log/entries/${encodeURIComponent(uuid)}`);
   if (!r.ok) throw new Error(`rekor entry fetch returned HTTP ${r.status}`);
-  const [, entry] = Object.entries(await r.json())[0] ?? [];
+  const body = await r.json();
+  // The response is keyed by uuid. It must be the uuid we ASKED for: accepting whatever came back
+  // would let a redirect or a shape change substitute a different record entirely.
+  const [gotUuid, entry] = Object.entries(body)[0] ?? [];
+  if (gotUuid !== uuid) {
+    throw new Error(`rekor returned entry ${JSON.stringify(gotUuid)} for request ${JSON.stringify(uuid)}`);
+  }
   return entry ?? null;
 };
 
@@ -68,16 +75,24 @@ async function main() {
   // ── verify-offline needs no GitHub at all ──────────────────────────────────
   if (mode === 'verify-offline') {
     const dir = val('--package') ?? die('--package is required for verify-offline');
-    const cosignPath = val('--cosign') ?? die('--cosign is required');
-    const r = verifyFinalBundle({
-      bundlePath: join(dir, 'bundle.sigstore.json'),
-      payloadPath: join(dir, 'payload.json'),
-      trustedRootPath: join(dir, 'trusted-root.json'),
-      policy, trustedRoot, cosignPath, offline: true, recovery: true,
-    });
-    say(`C19 deliver: offline verification via ${r.cosignMechanism}, ${r.problems.length} finding(s)`);
-    for (const p of r.problems) process.stderr.write(`  ${p}\n`);
-    if (r.problems.length > 0) die('offline verification failed');
+    // The WHOLE verifier runs inside the OS boundary — this process re-executes itself under the
+    // sandbox, so Node and every descendant it spawns are constrained. Verifying "offline" from an
+    // unconstrained process proves nothing about what that process reaches for.
+    if (process.env.C19_INSIDE_SANDBOX !== '1') {
+      const proof = proveNetworkDenial();
+      if (!proof.ok) die(`${proof.why}. Offline verification cannot be performed here.`);
+      say(`C19 deliver: re-executing the whole verifier inside the ${proof.mechanism} boundary`);
+      const r = runWithoutNetwork([process.execPath, fileURLToPath(import.meta.url), ...argv], {
+        env: { ...process.env, C19_INSIDE_SANDBOX: '1' },
+      });
+      process.stdout.write(r.stdout);
+      process.stderr.write(r.stderr);
+      process.exit(r.status === null ? 1 : r.status);
+    }
+    const problems = verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath: val('--cosign') });
+    say(`C19 deliver: package verification, ${problems.length} finding(s)`);
+    for (const p of problems) process.stderr.write(`  ${p}\n`);
+    if (problems.length > 0) die('offline package verification failed');
     say('C19 deliver: verify-offline PASS');
     return;
   }
@@ -140,6 +155,7 @@ async function main() {
     workflowDigest: val('--workflow-sha') ?? process.env.WORKFLOW_SHA ?? acquisition.authed.sourceSha,
     workflowYamlDigest: existsSync(wfPath) ? sha256(readFileSync(wfPath)) : 'unavailable',
     sourceEvent: source.event,
+    finalizerCompletedAt: finalizer.completedAt,
   });
   const payloadPath = join(out, 'payload.json');
   writeFileSync(payloadPath, built.canonical);
@@ -152,6 +168,26 @@ async function main() {
   });
   if (vProblems.length > 0) { for (const p of vProblems) process.stderr.write(`  ${p}\n`); die('validation failed before any irreversible step'); }
   say('C19 deliver: all reversible validation passed');
+
+  /**
+   * ── PROVE THE OFFLINE BOUNDARY BEFORE ANYTHING IRREVERSIBLE ──
+   *
+   * The publish job runs on Ubuntu, where unprivileged `unshare` does not work. The pipeline used
+   * to sign FIRST and then call offline verification, which threw because no mechanism existed —
+   * publishing to Rekor and then deterministically failing before persistence. A boundary that is
+   * discovered to be missing after the irreversible step is not a boundary.
+   *
+   * So it is proved here, functionally, while everything is still reversible. No sandbox means
+   * ZERO signing attempts.
+   */
+  if (mode === 'publish') {
+    const proof = proveNetworkDenial();
+    if (!proof.ok) {
+      die(`${proof.why}. Refusing to sign: a publication that cannot then be verified offline is `
+        + 'worse than no publication.');
+    }
+    say(`C19 deliver: offline boundary proved functional via ${proof.mechanism}, before signing`);
+  }
 
   // ── 12–13 search, then reconstruct or sign exactly once ──────────────────
   const bundlePath = join(out, 'bundle.sigstore.json');

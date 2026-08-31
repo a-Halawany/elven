@@ -83,7 +83,9 @@ async function selftest(offline) {
 
     // 5 — the frozen criteria are present and the routing rule behaves.
     if (C19_FROZEN.attackFamilies.length === 0) problems.push('the frozen attack matrix is empty');
-    if (route('a-brand-new-attack-class').gate !== 'C20') problems.push('a new attack class does not route to C20');
+    if (route('a-brand-new-attack-class').gate !== 'post-phase-0-backlog') {
+      problems.push('a new attack class does not route to the non-blocking post-Phase-0 backlog');
+    }
     if (route({ invariant: 'exact-identity-binding' }).gate !== 'C19') {
       problems.push('a constitutional violation does not reopen C19');
     }

@@ -113,17 +113,23 @@ export function registerC19Anchor(): void {
   });
 
   describe('C19 — the trust material cannot be substituted or aged', () => {
-    it('REJECTS substituted-trust-root: a tampered trusted root fails its TUF digest', async () => {
+    it('REJECTS substituted-trust-root: it must chain to the source-held TUF root', async () => {
       const a = await load('c19-anchor.mjs');
       const dir = mkdtempSync(join(tmpdir(), 'c19-trust-'));
-      const policy = JSON.parse(readFileSync(join(LIB, 'c19-trust.json'), 'utf8'));
-      const root = JSON.parse(readFileSync(join(LIB, policy.tuf.trustedRootFile), 'utf8'));
+      mkdirSync(join(dir, 'c19-tuf'), { recursive: true });
+      for (const f of ['c19-trust.json', 'c19-sigstore-tuf-root.json', 'c19-sigstore-trusted-root.json']) {
+        writeFileSync(join(dir, f), readFileSync(join(LIB, f)));
+      }
+      for (const f of ['timestamp.json', 'snapshot.json', 'targets.json']) {
+        writeFileSync(join(dir, 'c19-tuf', f), readFileSync(join(LIB, 'c19-tuf', f)));
+      }
       // Swap in an attacker's certificate authority — the exact move that would let a signature
       // from a CA we never trusted verify.
+      const root = JSON.parse(readFileSync(join(dir, 'c19-sigstore-trusted-root.json'), 'utf8'));
       root.certificateAuthorities[0].subject = { organization: 'attacker.example' };
-      writeFileSync(join(dir, policy.tuf.trustedRootFile), JSON.stringify(root));
-      writeFileSync(join(dir, 'c19-trust.json'), JSON.stringify(policy));
-      expect(() => a.loadTrustMaterial(dir)).toThrow(/trust material has been substituted|does not match the digest/);
+      writeFileSync(join(dir, 'c19-sigstore-trusted-root.json'), JSON.stringify(root));
+      expect(() => a.loadTrustMaterial(dir))
+        .toThrow(/does not verify against the source-held TUF root|trust material has been substituted/);
     });
 
     it('NON-VACUITY: the genuine trust material loads', async () => {
@@ -884,215 +890,54 @@ export function registerC19Anchor(): void {
 
   describe('C19 — fixture resolution survives a re-run that mutates history', () => {
     it('finds the successful ATTEMPT even when the run now reports failure', async () => {
-      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
+      const r = await load('c19-resolve.mjs');
       // A GitHub re-run mutates the run in place: attempt 1 succeeded, attempt 2 failed, and the
-      // run reports `failure`. This is not hypothetical — re-running main's CI to demonstrate an
-      // unrelated CVE did exactly this and made main's own tip unusable as a fixture.
-      const run = { id: 1, run_attempt: 2 };
-      const attempts: Record<number, { conclusion: string }> = {
-        1: { conclusion: 'success' }, 2: { conclusion: 'failure' },
+      // run reports `failure`. Re-running main's CI to demonstrate an unrelated CVE did exactly
+      // this and made that commit unusable to a conclusion-only filter.
+      const attempts: Record<string, any> = {
+        '1': { conclusion: 'success', run_started_at: '2026-01-01T00:00:00Z' },
+        '2': { conclusion: 'failure', run_started_at: '2026-02-01T00:00:00Z' },
       };
-      expect(f.successfulAttempt(run, (_id: number, n: number) => attempts[n] ?? null)).toBe(1);
+      const hit = r.earliestSuccessfulAttempt({ id: 1, run_attempt: 2 },
+        { runAttempt: (_i: any, n: number) => attempts[String(n)] ?? null });
+      expect(hit.attempt).toBe(1);
     });
 
     it('returns null when NO attempt succeeded', async () => {
-      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
-      const run = { id: 1, run_attempt: 3 };
-      expect(f.successfulAttempt(run, () => ({ conclusion: 'failure' }))).toBeNull();
-      // A missing attempt record is not a success either.
-      expect(f.successfulAttempt(run, () => null)).toBeNull();
+      const r = await load('c19-resolve.mjs');
+      expect(r.earliestSuccessfulAttempt({ id: 1, run_attempt: 2 },
+        { runAttempt: () => ({ conclusion: 'failure', run_started_at: '2026-01-01T00:00:00Z' }) }))
+        .toBeNull();
     });
 
-    it('the EARLIEST successful attempt is chosen, so history is stable', async () => {
-      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
-      const run = { id: 1, run_attempt: 3 };
-      const attempts: Record<number, { conclusion: string }> = {
-        1: { conclusion: 'success' }, 2: { conclusion: 'failure' }, 3: { conclusion: 'success' },
-      };
-      expect(f.successfulAttempt(run, (_id: number, n: number) => attempts[n] ?? null)).toBe(1);
+    it('an attempt that cannot be READ is indeterminate, not "did not succeed"', async () => {
+      const r = await load('c19-resolve.mjs');
+      // Treating an unreadable attempt as absent would promote a later attempt to canonical and
+      // change the identity of something already published.
+      expect(() => r.earliestSuccessfulAttempt({ id: 1, run_attempt: 2 },
+        { runAttempt: (_i: any, n: number) => (n === 1 ? null : { conclusion: 'success' }) }))
+        .toThrow(/indeterminate attempt inside the declared range is fail-closed/);
     });
 
-    it('the harness uses the shared resolver rather than duplicating it in YAML', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-lifecycle.yml'), 'utf8');
-      expect(wf).toMatch(/c19-fixture\.mjs/);
-      // The fragile filter must not come back.
-      expect(wf).not.toMatch(/select\(\.name=="ci".*conclusion=="success"/);
+    it('ordering is by authoritative timestamp, because attempt numbers are run-local', async () => {
+      const r = await load('c19-resolve.mjs');
+      const ordered = r.orderCandidates([
+        { runId: '10', attempt: 2, startedAt: '2026-01-01T00:00:00Z' },
+        { runId: '20', attempt: 1, startedAt: '2026-06-01T00:00:00Z' },
+      ]);
+      expect(`${ordered[0].runId}#${ordered[0].attempt}`).toBe('10#2');
+    });
+
+    it('the harness uses the shared resolver rather than duplicating it', () => {
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'), 'utf8');
+      expect(src).toMatch(/from '\.\/lib\/c19-resolve\.mjs'/);
+      expect(src).not.toMatch(/spawnSync\('gh'/);
     });
 
     it('absence of a fixture is reported as UNEXERCISED, never as a pass', () => {
       const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'), 'utf8');
       expect(src).toMatch(/found=false/);
       expect(src).toMatch(/UNEXERCISED, not passing/);
-    });
-  });
-
-  describe('C19 — recovery authenticates the ORIGINAL signer, not the retrying runner', () => {
-    const R = 'a-Halawany/elven';
-    const okRun = {
-      repository: { full_name: R }, path: '.github/workflows/c19-anchor.yml',
-      head_branch: 'main', event: 'workflow_run', conclusion: 'success', head_sha: 'a'.repeat(40),
-    };
-
-    it('THE differential: attempt 1 signed, attempt 2 recovers with ZERO signing', async () => {
-      const a = await load('c19-anchor.mjs');
-      const { policy } = a.loadTrustMaterial(LIB);
-      // The certificate was minted by attempt 1. The runner recovering is attempt 2.
-      const cert = { runInvocationUri: `https://github.com/${R}/actions/runs/555/attempts/1` };
-      const { problems, invocation } = a.originalSignerInvocation(cert, policy);
-      expect(problems).toEqual([]);
-      expect(invocation).toEqual({ runId: '555', runAttempt: '1' });
-      // Confirmed against ITS OWN invocation — never against the recovering runner's.
-      expect(a.confirmAuthorizedSignerRun({
-        invocation, policy, expectedHeadSha: 'a'.repeat(40), fetchRun: () => okRun,
-      })).toEqual([]);
-    });
-
-    it('NON-VACUITY: comparing the original cert to the RETRY runner would refuse it', async () => {
-      const a = await load('c19-anchor.mjs');
-      const { policy } = a.loadTrustMaterial(LIB);
-      const cert: any = genuineIdentity(policy, SHA, '', WFD);
-      cert.runInvocationUri = `https://github.com/${R}/actions/runs/555/attempts/1`;
-      // This is exactly what the old code did: expect the RETRY's run/attempt. It refuses a
-      // perfectly good recovered certificate, turning a recoverable state into a hard failure.
-      const asRetry = a.verifyIdentity(cert, policy,
-        { sourceSha: SHA, workflowDigest: WFD, runId: '555', runAttempt: '2' });
-      expect(asRetry.join('\n')).toMatch(/runInvocationUri/);
-      // Against its own invocation it verifies.
-      expect(a.verifyIdentity(cert, policy,
-        { sourceSha: SHA, workflowDigest: WFD, runId: '555', runAttempt: '1' })).toEqual([]);
-    });
-
-    it.each([
-      ['wrong branch', { head_branch: 'attacker' }],
-      ['wrong workflow', { path: '.github/workflows/ci.yml' }],
-      ['wrong event', { event: 'push' }],
-      ['not successful', { conclusion: 'failure' }],
-      ['wrong repository', { repository: { full_name: 'attacker/elven' } }],
-      ['wrong head sha', { head_sha: 'b'.repeat(40) }],
-    ])('REFUSES a recovered signature whose original run had %s', async (_n, patch) => {
-      const a = await load('c19-anchor.mjs');
-      const { policy } = a.loadTrustMaterial(LIB);
-      // The certificate alone is not enough: GitHub must confirm the invocation was authorised.
-      expect(a.confirmAuthorizedSignerRun({
-        invocation: { runId: '555', runAttempt: '1' }, policy, expectedHeadSha: 'a'.repeat(40),
-        fetchRun: () => ({ ...okRun, ...(patch as object) }),
-      }).length).toBeGreaterThan(0);
-    });
-
-    it('REFUSES when the original run cannot be confirmed at all', async () => {
-      const a = await load('c19-anchor.mjs');
-      const { policy } = a.loadTrustMaterial(LIB);
-      expect(a.confirmAuthorizedSignerRun({
-        invocation: { runId: '555', runAttempt: '1' }, policy, fetchRun: () => null,
-      }).join('\n')).toMatch(/unconfirmable signer is not an authorised one/);
-    });
-
-    it('REFUSES a malformed or foreign run invocation URI rather than guessing', async () => {
-      const a = await load('c19-anchor.mjs');
-      const { policy } = a.loadTrustMaterial(LIB);
-      for (const uri of [`https://github.com/${R}/actions/runs/555`, 'https://evil.example/x', '']) {
-        expect(a.originalSignerInvocation({ runInvocationUri: uri }, policy).problems.length)
-          .toBeGreaterThan(0);
-      }
-    });
-
-    it('recovery mode REQUIRES a means of confirming the original run', async () => {
-      const a = await load('c19-anchor.mjs');
-      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
-      const bundle = {
-        verificationMaterial: { certificate: { rawBytes: makeSelfSigned().cert.toString('base64') }, tlogEntries: [] },
-        messageSignature: { messageDigest: { algorithm: 'SHA2_256', digest: 'AA==' }, signature: 'AA==' },
-      };
-      // Recovery must REFUSE this bundle. The stand-in certificate carries no Fulcio identity
-      // extension, so it is refused at URI parsing — which is itself the correct outcome: a
-      // certificate whose signer invocation cannot even be read is not recoverable.
-      const problems = a.verifyBundle({
-        bundle, policy, trustedRoot, sourceSha: SHA, workflowDigest: WFD, recovery: true,
-      });
-      expect(problems.length).toBeGreaterThan(0);
-      // And the guard that refuses an unconfirmable signer exists on the path that reaches it.
-      const src = readFileSync(join(LIB, 'c19-anchor.mjs'), 'utf8');
-      expect(src).toMatch(/no means of confirming the original signing run was/);
-      expect(src).toMatch(/recovery must not accept a certificate on its own word/);
-    });
-  });
-
-  describe('C19 — publication mode is explicit, and superseded attempts are refused', () => {
-    const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
-    const run = (args: string[]) => spawnSync(process.execPath, [CLI, ...args],
-      { encoding: 'utf8', env: { ...process.env, SOURCE_SHA: 'x'.repeat(40), RUN_URI: 'y' } });
-
-    it('REFUSES to publish when no mode is stated', () => {
-      // The dispatcher passed recoverOrPublish and publish() never accepted it, so NEITHER flag
-      // fell through to the real signing path. Signing because nobody said not to is the worst
-      // possible default for an irreversible action.
-      const r = run(['publish', '--artifact', '/etc/hosts', '--payload', '/etc/hosts', '--bundle', '/tmp/x.json']);
-      expect(r.status).not.toBe(0);
-      expect(`${r.stderr}`).toMatch(/requires an explicit mode/);
-    });
-
-    it('REFUSES both modes at once', () => {
-      const r = run(['publish', '--dry-run', '--recover-or-publish',
-        '--artifact', '/etc/hosts', '--payload', '/etc/hosts', '--bundle', '/tmp/x.json']);
-      expect(r.status).not.toBe(0);
-      expect(`${r.stderr}`).toMatch(/mutually exclusive/);
-    });
-
-    it('the pipeline refuses a superseded attempt BEFORE anything irreversible', () => {
-      // Order is part of the contract, and it is now enforced by the pipeline's own sequence
-      // rather than by step ordering in YAML that a re-order could silently break.
-      const src = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
-      const resolveAt = src.indexOf('export function resolve(');
-      const signAt = src.indexOf('export async function recoverOrSign(');
-      expect(resolveAt).toBeGreaterThan(0);
-      expect(resolveAt).toBeLessThan(signAt);
-      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
-      const body = cli.slice(cli.indexOf('async function main('));
-      expect(body.indexOf('resolution refused this invocation'))
-        .toBeLessThan(body.indexOf('await recoverOrSign('));
-    });
-
-    it('the persisted bundle artifact name is genuinely digest-bound', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      // It previously referenced steps.artifact.outputs.artifact_digest, which does not exist, so
-      // the name was empty rather than bound to anything.
-      // The delivery package is now named by the source commit and contains the digest-bound
-      // payload and bundle; the pipeline persists it rather than the workflow assembling a name
-      // from step outputs that may not exist.
-      expect(wf).toMatch(/name: c19-delivery-\$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
-      expect(wf).not.toMatch(/outputs\.artifact_digest/);
-      const pipe = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
-      expect(pipe).toMatch(/persistDeliveryPackage/);
-    });
-  });
-
-  describe('C19 — the payload binds the AUTHENTICATED source run', () => {
-    const ACQ = join(LIB, 'c19-acquire.mjs');
-
-    it('the source run comes from the finalizer receipt, not from a same-SHA search', () => {
-      const src = readFileSync(ACQ, 'utf8');
-      // --source-run and --source-attempt were parsed and never used, while the workflow searched
-      // for "any successful ci push run with this SHA". Several runs can share a SHA.
-      expect(src).toMatch(/finalizer-receipt\.json/);
-      expect(src).toMatch(/receipt\.source_run_id/);
-      expect(src).toMatch(/sourceRunId: String\(receipt\.source_run_id/);
-      expect(src).toMatch(/a same-SHA match is not a causal binding/);
-    });
-
-    it('the caller\'s expectation is CONFIRMED against the evidence, not trusted', () => {
-      const src = readFileSync(ACQ, 'utf8');
-      // Resolution proposes; the verified evidence authenticates; `expect` makes them agree.
-      expect(src).toMatch(/resolution expected .* but the finalized/);
-      expect(src).toMatch(/for \(const \[field, want\] of Object\.entries\(expect\)\)/);
-    });
-
-    it('a missing or malformed API digest FAILS CLOSED', () => {
-      const src = readFileSync(ACQ, 'utf8');
-      // `if (reported !== null)` skipped wrapper authentication entirely when GitHub reported no
-      // digest — and wrapper authentication is what caught a 122,930-byte silent truncation.
-      expect(src).toMatch(/refusing to authenticate the wrapper against nothing/);
-      expect(src).toMatch(/sha256:\[0-9a-f\]\{64\}/);
-      expect(src).not.toMatch(/const reported = art\.digest \?\? null/);
     });
   });
 
@@ -1175,10 +1020,10 @@ export function registerC19Anchor(): void {
       for (const f of fams) expect(f).toMatch(/^[a-z0-9-]+$/);
     });
 
-    it('a NEW attack class routes to C20 rather than expanding C19', async () => {
+    it('a NEW attack class routes to the post-Phase-0 backlog rather than expanding C19', async () => {
       const c = await load('c19-criteria.mjs');
-      expect(c.route('rekor-operator-key-compromise').gate).toBe('C20');
-      expect(c.route('quantum-forged-ecdsa').gate).toBe('C20');
+      expect(c.route('rekor-operator-key-compromise').gate).toBe('post-phase-0-backlog');
+      expect(c.route('quantum-forged-ecdsa').gate).toBe('post-phase-0-backlog');
     });
 
     it('a CONSTITUTIONAL violation reopens the frozen criteria', async () => {

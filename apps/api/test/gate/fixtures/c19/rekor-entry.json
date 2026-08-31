@@ -1,11 +1,11 @@
 {
-  "uuid-fixture": {
+  "e9e506a57bcb95b3d1f939d5d000e9c61eddc4edf1103179bfdbe686f7b81c1e": {
     "body": "eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiIyN2YzY2ZjNWEyNWViYThjNDhjM2JjNmE4MmRlNGE0NTVlZmUzNTk0ZjU4YjNkYmQ4MGRlOTVkMzIxNTRkMDRhIn19LCJzaWduYXR1cmUiOnsiY29udGVudCI6IlptRnJaUzF6YVdkdVlYUjFjbVU9IiwicHVibGljS2V5Ijp7ImNvbnRlbnQiOiJMUzB0TFMxQ1JVZEpUaUJEUlZKVVNVWkpRMEZVUlMwdExTMHRDazFKU1VKR1FVdEZSa2xZVkZWU1JVTkZVbFJKUmtsRFFWUkZDaTB0TFMwdFJVNUVJRU5GVWxSSlJrbERRVlJGTFMwdExTMD0ifX19fQ==",
-    "logID": "dd9aeb8e38a7a287b75590a961dba7bac2d8201f1698d3955b91c4b0e6f64386",
+    "logID": "0899a90d2e4480dc4965ed983b472486005de5b6e36ce0a2bf1b615685d16eca",
     "logIndex": 2,
     "integratedTime": 1735689600,
     "verification": {
-      "signedEntryTimestamp": "MEUCIFHu0hk2mzbcumzZQf+Ma94Gk8hv9ViYLE7tSuPJmhrYAiEA3okmUXAyKZgUXOIOBzxIOJjLEXoJN38NNsU0gXY8EeM=",
+      "signedEntryTimestamp": "MEYCIQDejBbdRqxTN2m2pqmRS7zuo+kzN+NqxPJJ4wklwQNHqAIhAOPBwu1FtPrtK4b7bgLP/gp9RDIrrsdLS0+WNmjS8UCu",
       "inclusionProof": {
         "logIndex": 2,
         "treeSize": 4,
@@ -14,7 +14,7 @@
           "d070dc5b8da9aea7dc0f5ad4c29d89965200059c9a0ceca3abd5da2492dcb71d",
           "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
         ],
-        "checkpoint": "rekor.fixture.local - 1234567890\n4\n63ZcnUCl9vOO2cwim78Cwc2sOmLZxS0J8CmHrbOTE1Q=\n\n— rekor.fixture.local AAAAADBEAiBcfuDEryPXlcbB70H3irIZna5azLqeDjx6XU7uRAPBLAIgDcVwedhGqmGM4w6Dwq35nyKyuX30JvyJ4vPhFJh3VBo=\n"
+        "checkpoint": "rekor.fixture.local - 1234567890\n4\n63ZcnUCl9vOO2cwim78Cwc2sOmLZxS0J8CmHrbOTE1Q=\n\n— rekor.fixture.local AAAAADBGAiEAlrHfUiLFSRWZDuJ3L+dKYqsWxc/NavzPKYlu4DPE26oCIQDXEFvtg6YQAuE8a37IOeIvc3jzxigjT2vkiePpp2GTXA==\n"
       }
     }
   }

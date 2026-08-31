@@ -42,7 +42,7 @@ export const BUNDLE_MEDIA_TYPE = 'application/vnd.dev.sigstore.bundle.v0.3+json'
  * with the field named, because a partially converted bundle that verifies is worse than one that
  * does not.
  */
-export function rekorEntryToBundle(entry, { uuid } = {}) {
+export function rekorEntryToBundle(entry) {
   const need = (v, name) => {
     if (v === undefined || v === null || v === '') {
       throw new Error(`c19-rekor: the entry has no ${name}; a bundle cannot be reconstructed from it`);
@@ -112,7 +112,9 @@ export function rekorEntryToBundle(entry, { uuid } = {}) {
       messageDigest: { algorithm: 'SHA2_256', digest: hexToB64(digestHex) },
       signature: sigB64,
     },
-    ...(uuid === undefined ? {} : { _recoveredFromUuid: uuid }),
+    // NOTHING outside the Sigstore schema. `_recoveredFromUuid` was added here and is rejected by
+    // strict cosign parsing — the reconstructed bundle would have failed the very verification it
+    // exists for. Recovery provenance is written beside the bundle, never inside it.
   };
 }
 

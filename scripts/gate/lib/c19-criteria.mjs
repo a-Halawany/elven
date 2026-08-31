@@ -8,7 +8,7 @@
  *
  * ── THE ROUTING RULE ──
  *
- * A newly discovered attack class is routed to C20. It does NOT reopen C19.
+ * A newly discovered attack class is routed to the post-Phase-0 backlog. It does NOT reopen C19.
  *
  * The single exception is a CONSTITUTIONAL INVARIANT violation — a defect showing that one of the
  * properties C19 claims is not actually held by the delivered system. That is not scope growth;
@@ -19,7 +19,7 @@
  * accepts a signature from the wrong workflow" is constitutional: C19 claims exact identity
  * binding, so the claim is false. "An attacker with a Rekor operator key could forge inclusion" is
  * a new class: C19 never claimed to defend against a compromised log operator, so defending
- * against it is C20's subject, not a correction to C19.
+ * against it is the post-Phase-0 backlog's subject, not a correction to C19.
  */
 
 /**
@@ -90,7 +90,7 @@ export const C19_INVARIANTS = Object.freeze([
 
 /**
  * The FROZEN ACCEPTANCE CRITERIA. C19 is complete when every one of these holds. Adding to this
- * list is scope growth; the routing rule sends it to C20 instead.
+ * list is scope growth; the routing rule sends it to the post-Phase-0 backlog instead.
  */
 export const C19_ACCEPTANCE = Object.freeze([
   'design-recorded-in-source',
@@ -151,7 +151,7 @@ export const C19_ATTACK_FAMILIES = Object.freeze([
 
 /**
  * Is this finding a constitutional violation — meaning a property C19 CLAIMS is not held — or a new
- * attack class that belongs to C20?
+ * attack class that belongs in the post-Phase-0 backlog?
  *
  * The question is deliberately not "is it serious" or "is it in the spirit of C19". Both of those
  * admit everything. The question is whether C19 asserted the property and was wrong.
@@ -163,7 +163,7 @@ export function isConstitutional(finding) {
 
 /**
  * Where does a newly discovered attack class go? Anything already in the frozen matrix is C19's to
- * finish. A violated invariant reopens the frozen set. Everything else is C20's.
+ * finish. A violated invariant reopens the frozen set. Everything else is the post-Phase-0 backlog's.
  */
 export function route(finding) {
   const family = typeof finding === 'string' ? finding : finding?.family;
@@ -173,7 +173,7 @@ export function route(finding) {
   if (C19_ATTACK_FAMILIES.includes(family)) {
     return { gate: 'C19', reason: 'already inside the frozen attack matrix' };
   }
-  return { gate: 'C20', reason: 'a new attack class; C19 is frozen and does not expand to absorb it' };
+  return { gate: 'post-phase-0-backlog', reason: 'a new attack class; C19 is frozen; this is recorded in the non-blocking post-Phase-0 backlog and must not delay Phase 0 closure' };
 }
 
 /**
@@ -194,7 +194,7 @@ export const C19_FAMILY_CONTROLS = Object.freeze({
   'wrong-source-sha': 'REJECTS %s',
   'wrong-workflow-digest': 'REJECTS %s',
   'regex-widened-identity': 'REJECTS regex-widened-identity: the policy itself must hold no patterns',
-  'substituted-trust-root': 'REJECTS substituted-trust-root: a tampered trusted root fails its TUF digest',
+  'substituted-trust-root': 'REJECTS substituted-trust-root: it must chain to the source-held TUF root',
   'stale-trust-root': 'REJECTS a policy that pins a rotating key as its offline root',
   'unknown-or-revoked-key': 'REJECTS wrong-log-identity',
   'unsupported-algorithm': 'REJECTS unsupported-algorithm',

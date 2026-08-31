@@ -38,9 +38,41 @@ export function earliestSuccessfulAttempt(run, gh) {
   }
   for (let n = 1; n <= total; n += 1) {
     const a = gh.runAttempt(run.id, n);          // raises on an unreadable attempt
-    if (a !== null && a.conclusion === 'success') return { attempt: n, run: a };
+    // A 404 for an attempt INSIDE the run's declared range is indeterminate, not absence. The run
+    // says the attempt exists; GitHub saying otherwise is a disagreement to fail on, because
+    // treating it as "did not succeed" would silently promote a later attempt to canonical.
+    if (a === null) {
+      throw new Error(`c19-resolve: run ${run.id} declares ${total} attempt(s) but attempt ${n} `
+        + 'could not be retrieved; an indeterminate attempt inside the declared range is fail-closed');
+    }
+    if (a.conclusion === 'success') {
+      return { attempt: n, run: a, startedAt: a.run_started_at ?? a.created_at ?? null };
+    }
   }
   return null;
+}
+
+/**
+ * ── ONE STABLE TOTAL ORDERING ──
+ *
+ * Attempt numbers are LOCAL to a run: run 20 attempt 1 and run 10 attempt 2 are not comparable by
+ * number, and sorting on the number alone let a later run's attempt 1 displace an already-canonical
+ * run 10 attempt 2. That would change the publication identity of something already published.
+ *
+ * The ordering is therefore by the attempt's authoritative START TIMESTAMP, with the run id and
+ * then the attempt number as deterministic tie-breaks. Missing timestamps are fail-closed: an
+ * ordering that cannot be computed must not be guessed.
+ */
+export function orderCandidates(found) {
+  for (const f of found) {
+    if (f.startedAt === null || f.startedAt === undefined || !Number.isFinite(Date.parse(f.startedAt))) {
+      throw new Error(`c19-resolve: run ${f.runId} attempt ${f.attempt} has no usable start `
+        + 'timestamp, so a stable total ordering cannot be computed; refusing to guess');
+    }
+  }
+  return [...found].sort((a, b) => (Date.parse(a.startedAt) - Date.parse(b.startedAt))
+    || (Number(a.runId) - Number(b.runId))
+    || (a.attempt - b.attempt));
 }
 
 /**
@@ -57,19 +89,22 @@ export function resolveCanonicalSource({ gh, sha, workflowName = 'ci' }) {
   const found = [];
   for (const run of candidates) {
     const hit = earliestSuccessfulAttempt(run, gh);
-    if (hit !== null) found.push({ runId: String(run.id), attempt: hit.attempt, run: hit.run });
+    if (hit !== null) {
+      found.push({ runId: String(run.id), attempt: hit.attempt, run: hit.run, startedAt: hit.startedAt });
+    }
   }
   if (found.length === 0) {
     throw new Error(`c19-resolve: no attempt of any ${workflowName} push run for ${sha} succeeded`);
   }
-  // Earliest attempt wins; run id breaks ties deterministically.
-  found.sort((a, b) => (a.attempt - b.attempt) || (Number(a.runId) - Number(b.runId)));
+  const ordered = orderCandidates(found);
+  const chosen = ordered[0];
   return {
-    runId: found[0].runId,
-    runAttempt: String(found[0].attempt),
+    runId: chosen.runId,
+    runAttempt: String(chosen.attempt),
     event: 'push',
     sha,
-    superseded: found.slice(1).map((f) => `${f.runId}#${f.attempt}`),
+    startedAt: chosen.startedAt,
+    superseded: ordered.slice(1).map((f) => `${f.runId}#${f.attempt}`),
   };
 }
 
@@ -101,7 +136,9 @@ export function resolveCanonicalFinalizer({ gh, sha, sourceRunId, workflowName =
   const found = [];
   for (const run of pool.sort((a, b) => Number(a.id) - Number(b.id))) {
     const hit = earliestSuccessfulAttempt(run, gh);
-    if (hit !== null) found.push({ runId: String(run.id), attempt: hit.attempt, run: hit.run });
+    if (hit !== null) {
+      found.push({ runId: String(run.id), attempt: hit.attempt, run: hit.run, startedAt: hit.startedAt });
+    }
   }
   if (found.length === 0) {
     throw new Error(`c19-resolve: no attempt of any ${workflowName} run for ${sha} succeeded`);
@@ -111,12 +148,14 @@ export function resolveCanonicalFinalizer({ gh, sha, sourceRunId, workflowName =
       + 'records which source run triggered it; the causal binding is ambiguous and is refused '
       + 'rather than guessed');
   }
-  found.sort((a, b) => (a.attempt - b.attempt) || (Number(a.runId) - Number(b.runId)));
+  const ordered = orderCandidates(found);
   return {
-    runId: found[0].runId,
-    runAttempt: String(found[0].attempt),
+    runId: ordered[0].runId,
+    runAttempt: String(ordered[0].attempt),
     causallyBound: !fellBack,
-    superseded: found.slice(1).map((f) => `${f.runId}#${f.attempt}`),
+    completedAt: ordered[0].run?.updated_at ?? null,
+    startedAt: ordered[0].startedAt,
+    superseded: ordered.slice(1).map((f) => `${f.runId}#${f.attempt}`),
   };
 }
 
