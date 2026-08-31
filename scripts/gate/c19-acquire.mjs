@@ -32,10 +32,26 @@ const sourceAttempt = arg('--source-attempt') ?? die('--source-attempt is requir
 const out = arg('--out') ?? die('--out is required');
 mkdirSync(out, { recursive: true });
 
+/** Text responses. Never used for binary: see `ghBinary`. */
 const gh = (args) => {
   const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
   if (r.status !== 0) die(`gh ${args[0]} failed: ${(r.stderr ?? '').slice(0, 200)}`);
   return r.stdout ?? '';
+};
+
+/**
+ * Binary responses, as BYTES.
+ *
+ * Decoding a ZIP through a utf8 string and re-encoding it silently destroys it: every invalid byte
+ * sequence becomes U+FFFD, and the file gets shorter. That is not a subtle corruption — the first
+ * hosted run of this script lost 122,930 bytes of a 2,331,537-byte artifact — but it is a silent
+ * one, and it would have been signed as if it were the evidence had the wrapper digest not been
+ * checked against the digest GitHub reports.
+ */
+const ghBinary = (args) => {
+  const r = spawnSync('gh', args, { maxBuffer: 512 * 1024 * 1024 });
+  if (r.status !== 0) die(`gh ${args[0]} failed: ${(r.stderr ?? '').toString().slice(0, 200)}`);
+  return r.stdout;
 };
 
 // ── EXACTLY ONE unexpired finalized artifact, or refuse ──
@@ -49,8 +65,7 @@ const [art] = arts;
 
 // ── AUTHENTICATE THE WRAPPER AGAINST GITHUB'S OWN REPORTED DIGEST ──
 const wrapperPath = join(out, 'finalized.zip');
-writeFileSync(wrapperPath, Buffer.from(gh(['api', `repos/${repo}/actions/artifacts/${art.id}/zip`,
-  '--cache', '0'], ), 'binary'));
+writeFileSync(wrapperPath, ghBinary(['api', `repos/${repo}/actions/artifacts/${art.id}/zip`]));
 const wrapperDigest = sha256(readFileSync(wrapperPath));
 // GitHub reports a digest for the artifact contents when available; when it does, it must match.
 const reported = art.digest ?? null;

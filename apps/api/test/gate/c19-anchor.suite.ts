@@ -832,6 +832,40 @@ export function registerC19Anchor(): void {
     });
   });
 
+  describe('C19 — binary acquisition must not be decoded through a string', () => {
+    const ACQ = join(REPO, 'scripts', 'gate', 'c19-acquire.mjs');
+
+    it('the artifact download reads BYTES, never a utf8 string', () => {
+      const src = readFileSync(ACQ, 'utf8');
+      // Decoding a ZIP through utf8 and re-encoding it silently destroys it: every invalid byte
+      // sequence becomes U+FFFD and the file shortens. The first hosted run lost 122,930 bytes of
+      // a 2,331,537-byte artifact this way.
+      expect(src).toMatch(/const ghBinary = /);
+      expect(src).toMatch(/writeFileSync\(wrapperPath, ghBinary\(/);
+      // The corrupting pattern must not return.
+      expect(src).not.toMatch(/Buffer\.from\(gh\(/);
+      expect(src).not.toMatch(/'binary'\)\)/);
+    });
+
+    it('NON-VACUITY: utf8 round-tripping genuinely corrupts binary content', () => {
+      // A ZIP local-file header plus bytes that are not valid utf8.
+      const bin = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x80, 0x81, 0x00, 0xc3, 0x28]);
+      const throughString = Buffer.from(bin.toString('utf8'), 'binary');
+      expect(throughString.equals(bin),
+        'if this ever holds, the corruption this control guards against has stopped existing')
+        .toBe(false);
+      expect(throughString.length).not.toBe(bin.length);
+    });
+
+    it('the wrapper digest is checked against the digest GitHub reports', () => {
+      const src = readFileSync(ACQ, 'utf8');
+      // This check is what caught the corruption. Without it the truncated ZIP would have been
+      // signed as if it were the evidence.
+      expect(src).toMatch(/the API reports/);
+      expect(src).toMatch(/art\.digest/);
+    });
+  });
+
   describe('C19 — the artifact cleanup ledger is honest', () => {
     const ledger = JSON.parse(readFileSync(join(LIB, 'c19-artifact-cleanup.json'), 'utf8'));
 
