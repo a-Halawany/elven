@@ -874,6 +874,50 @@ export function registerC19Anchor(): void {
     });
   });
 
+  describe('C19 — fixture resolution survives a re-run that mutates history', () => {
+    it('finds the successful ATTEMPT even when the run now reports failure', async () => {
+      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
+      // A GitHub re-run mutates the run in place: attempt 1 succeeded, attempt 2 failed, and the
+      // run reports `failure`. This is not hypothetical — re-running main's CI to demonstrate an
+      // unrelated CVE did exactly this and made main's own tip unusable as a fixture.
+      const run = { id: 1, run_attempt: 2 };
+      const attempts: Record<number, { conclusion: string }> = {
+        1: { conclusion: 'success' }, 2: { conclusion: 'failure' },
+      };
+      expect(f.successfulAttempt(run, (_id: number, n: number) => attempts[n] ?? null)).toBe(1);
+    });
+
+    it('returns null when NO attempt succeeded', async () => {
+      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
+      const run = { id: 1, run_attempt: 3 };
+      expect(f.successfulAttempt(run, () => ({ conclusion: 'failure' }))).toBeNull();
+      // A missing attempt record is not a success either.
+      expect(f.successfulAttempt(run, () => null)).toBeNull();
+    });
+
+    it('the EARLIEST successful attempt is chosen, so history is stable', async () => {
+      const f = await import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'));
+      const run = { id: 1, run_attempt: 3 };
+      const attempts: Record<number, { conclusion: string }> = {
+        1: { conclusion: 'success' }, 2: { conclusion: 'failure' }, 3: { conclusion: 'success' },
+      };
+      expect(f.successfulAttempt(run, (_id: number, n: number) => attempts[n] ?? null)).toBe(1);
+    });
+
+    it('the harness uses the shared resolver rather than duplicating it in YAML', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-lifecycle.yml'), 'utf8');
+      expect(wf).toMatch(/c19-fixture\.mjs/);
+      // The fragile filter must not come back.
+      expect(wf).not.toMatch(/select\(\.name=="ci".*conclusion=="success"/);
+    });
+
+    it('absence of a fixture is reported as UNEXERCISED, never as a pass', () => {
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'), 'utf8');
+      expect(src).toMatch(/found=false/);
+      expect(src).toMatch(/UNEXERCISED, not passing/);
+    });
+  });
+
   describe('C19 — the artifact cleanup ledger is honest', () => {
     const ledger = JSON.parse(readFileSync(join(LIB, 'c19-artifact-cleanup.json'), 'utf8'));
 

@@ -114,28 +114,13 @@ jobs:
           fi
           echo "no OIDC token present: signing is impossible in this job"
 
-      - name: Resolve a real, already-successful finalizer run on main
+      - name: Resolve a fixture by ATTEMPT, not by the run's current conclusion
         id: fixture
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          fin="$(gh api "repos/${{ github.repository }}/actions/runs?per_page=100" \
-            --jq '[.workflow_runs[] | select(.name=="C17 finalize" and .conclusion=="success" and .head_branch=="main")] | .[0]')"
-          [ "$fin" != "null" ] || { echo "::notice::no successful finalizer run available as a fixture"; echo "found=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          sha="$(echo "$fin" | jq -r .head_sha)"
-          src="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$sha&per_page=100" \
-            --jq '[.workflow_runs[] | select(.name=="ci" and .conclusion=="success" and .event=="push")] | .[0]')"
-          {
-            echo "found=true"
-            echo "finalizer_run=$(echo "$fin" | jq -r .id)"
-            echo "finalizer_attempt=$(echo "$fin" | jq -r .run_attempt)"
-            echo "finalizer_completed_at=$(echo "$fin" | jq -r .updated_at)"
-            echo "source_run=$(echo "$src" | jq -r '.id // "0"')"
-            echo "source_attempt=$(echo "$src" | jq -r '.run_attempt // "1"')"
-            echo "source_event=$(echo "$src" | jq -r '.event // "push"')"
-            echo "sha=$sha"
-          } >> "$GITHUB_OUTPUT"
+        # Shared source, not YAML logic: a GitHub re-run mutates a run in place, so a filter on the
+        # current conclusion cannot see a successful earlier attempt. The resolver walks attempts.
+        run: node scripts/gate/c19-fixture.mjs --repo "${{ github.repository }}" >> "$GITHUB_OUTPUT"
 
       - name: Acquire and authenticate — the SAME code the publish job runs
         if: steps.fixture.outputs.found == 'true'
