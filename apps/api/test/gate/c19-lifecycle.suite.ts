@@ -534,7 +534,12 @@ process.exit(0);
 
   describe('C19 — docker absent, present and broken are three different answers', () => {
     const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
-    const run = (path: string) => spawnSync(process.execPath, [CLI, 'leftovers'],
+    // `--docker-only`: these controls exercise the DOCKER state machine, and they run from inside
+    // a live watchdog-supervised gate where owned processes legitimately exist — the run itself.
+    // Asserting on global process residue here would test the harness, not the code, and did:
+    // it passed on macOS (where `ps -E` did not surface those processes) and failed on Linux
+    // (where /proc/<pid>/environ does).
+    const run = (path: string) => spawnSync(process.execPath, [CLI, 'leftovers', '--docker-only'],
       { encoding: 'utf8', env: { PATH: path, HOME: process.env.HOME ?? '/tmp' } });
 
     it('docker ABSENT: residue is not applicable, and parity is NOT claimed', () => {

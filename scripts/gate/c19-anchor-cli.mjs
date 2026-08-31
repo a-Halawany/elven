@@ -114,12 +114,18 @@ async function selftest(offline) {
  * (exit 123 on Linux, exit 1 on macOS), without even printing a count. Logic that decides a gate
  * belongs in source that controls can exercise.
  */
-function leftovers() {
+function leftovers({ dockerOnly = false } = {}) {
+  // `--docker-only` exists for controls that must exercise the DOCKER state machine from inside a
+  // live, watchdog-supervised run. In that context owned processes legitimately exist — they are
+  // the run itself — so asserting on global process residue there would test the harness rather
+  // than the code. The full command still checks both.
+  if (!dockerOnly) {
   const survivors = residualOwnedProcesses().filter((p) => p !== process.pid);
   say(`C19 leftovers: ${survivors.length} process(es) still carry a non-empty ownership chain`);
   if (survivors.length > 0) {
     for (const p of survivors) process.stderr.write(`  stranded pid: ${p}\n`);
     die('a completed run left owned processes behind');
+  }
   }
 
   // ── DOCKER PRESENT, ABSENT, OR BROKEN ARE THREE DIFFERENT ANSWERS ──
@@ -442,7 +448,7 @@ const cmd = argv[0];
 
 if (!invokedDirectly) { /* imported by a control: expose the functions, run nothing */ }
 else if (cmd === 'selftest') await selftest(has('--offline'));
-else if (cmd === 'leftovers') leftovers();
+else if (cmd === 'leftovers') leftovers({ dockerOnly: has('--docker-only') });
 else if (cmd === 'payload') buildPayloadFile(valueOf('--out') ?? die('payload requires --out'));
 else if (cmd === 'publish') {
   publish({
