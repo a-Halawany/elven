@@ -82,6 +82,21 @@ for (const fin of finalizers) {
   const srcAttempt = successfulAttempt(source, (id, n) => gh(`repos/${repo}/actions/runs/${id}/attempts/${n}`));
   if (srcAttempt === null) continue;
 
+  /**
+   * The source run's CURRENT conclusion must also be success.
+   *
+   * This is a requirement of the whole delivery chain, not of this resolver: the C17 finalization
+   * verifier — which acquisition runs, and which this pass must not weaken — reads the source run's
+   * current state through the API and refuses a run that now reports failure.
+   *
+   * A run whose attempt 1 succeeded and which was later re-run to failure therefore has intact
+   * HISTORY but is not a usable delivery fixture, because a step downstream of here will refuse it.
+   * That is exactly the state run 32773918479 is in, and it is in that state because re-running
+   * main's CI to demonstrate an unrelated CVE mutated it. Selecting a different fixture does not
+   * repair that run and is not claimed to: it selects a publication whose whole chain is intact.
+   */
+  if (source.conclusion !== 'success') continue;
+
   // The finalizer must have artifacts left to acquire, or it is not a usable fixture.
   const arts = gh(`repos/${repo}/actions/runs/${fin.id}/artifacts`);
   const usable = (arts?.artifacts ?? []).filter((a) => a.expired === false

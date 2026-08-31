@@ -147,6 +147,28 @@ export function registerC19Pipeline(): void {
     });
   });
 
+  describe('C19 — a fixture must satisfy the WHOLE chain, executed', () => {
+    it('a run with intact history but a currently-failing conclusion is not a usable fixture', () => {
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-fixture.mjs'), 'utf8');
+      // The C17 finalization verifier reads the source run's CURRENT state and refuses one that
+      // now reports failure. So a run whose attempt 1 succeeded and which was later re-run to
+      // failure has intact history and is still unusable downstream.
+      expect(src).toMatch(/source\.conclusion !== 'success'/);
+      expect(src).toMatch(/intact HISTORY but is not a usable delivery fixture/);
+      // And the resolver still reads ATTEMPTS for the canonical attempt, which is a separate
+      // question from whether the run is currently usable.
+      expect(src).toMatch(/successfulAttempt\(source/);
+    });
+
+    it('the two questions are genuinely different and both are asked', async () => {
+      const r = await load('c19-resolve.mjs');
+      // Canonical attempt: history. Usable fixture: current state. A resolver that conflated them
+      // would either miss a valid publication or select one the chain will refuse.
+      const gh = fakeGitHub({ runs: [ciRun(10, 2)], attempts: { '10#1': ok, '10#2': bad } });
+      expect(r.resolveCanonicalSource({ gh, sha: 'x' })).toMatchObject({ runAttempt: '1' });
+    });
+  });
+
   describe('C19 — pagination and artifact selection, executed', () => {
     it('follows Link headers rather than accepting a first page as the whole answer', async () => {
       const g = await load('c19-github.mjs');
