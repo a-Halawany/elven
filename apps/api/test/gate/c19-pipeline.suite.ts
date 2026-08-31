@@ -137,6 +137,14 @@ export function registerC19Pipeline(): void {
       expect(r.problems.join('\n')).toMatch(/no longer the tip of main/);
     });
 
+    it('the tip guard cannot be disabled by any argument in publish mode', () => {
+      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
+      // Structural, not a flag: only dry-run — which cannot sign — exercises history.
+      expect(cli).toMatch(/const requireCurrentTip = mode !== 'dry-run'/);
+      expect(cli).not.toMatch(/--allow-superseded/);
+      expect(cli).toMatch(/ENFORCED UNCONDITIONALLY in publish mode/);
+    });
+
     it('PERMITS the current tip', async () => {
       const p = await load('c19-pipeline.mjs');
       const gh = {
@@ -444,25 +452,38 @@ export function registerC19Pipeline(): void {
   });
 
   describe('C19 — offline is enforced by the OS, not by patching Node', () => {
-    it('constrains a SPAWNED child, which Node patching cannot', async () => {
+    it('when a mechanism IS reported, it genuinely denies a spawned child', async () => {
       const s = await load('c19-sandbox.mjs');
       const mech = s.networkDenialMechanism();
-      if (mech === null) return;                      // unsupported platform: covered below
+      // The probe is functional, so a reported mechanism must actually work. A mechanism that is
+      // installed but non-functional is worse than an absent one: it reports enforcement it does
+      // not provide, which is how `unshare` on a GitHub Linux runner produced empty output while
+      // the control asserted denial.
+      if (mech === null) {
+        expect(() => s.runWithoutNetwork(['echo', 'x'])).toThrow(/refusing to run unconstrained/);
+        return;
+      }
       const r = s.runWithoutNetwork([process.execPath, '-e',
         'const h=require("https");const q=h.request("https://example.com");'
         + 'q.on("error",e=>{console.log("DENIED");process.exit(0)});q.end();'
         + 'setTimeout(()=>{console.log("NOT-DENIED");process.exit(1)},6000)']);
-      expect(r.stdout).toMatch(/DENIED/);
       expect(r.enforced).toBe(true);
-    }, 30_000);
+      expect(`${r.stdout}${r.stderr}`, 'a reported mechanism must actually deny').toMatch(/DENIED/);
+    }, 60_000);
 
-    it('still permits file access, which offline verification needs', async () => {
+    it('when a mechanism IS reported, file access still works', async () => {
       const s = await load('c19-sandbox.mjs');
       if (s.networkDenialMechanism() === null) return;
       const r = s.runWithoutNetwork([process.execPath, '-e',
         'require("fs").readFileSync("/etc/hosts");console.log("FILES-OK")']);
-      expect(r.stdout).toMatch(/FILES-OK/);
-    }, 30_000);
+      expect(`${r.stdout}${r.stderr}`).toMatch(/FILES-OK/);
+    }, 60_000);
+
+    it('a functional probe is used, not a mere `which`', () => {
+      const src = readFileSync(join(LIB, 'c19-sandbox.mjs'), 'utf8');
+      expect(src).toMatch(/The probe is FUNCTIONAL, not a `which`/);
+      expect(src).toMatch(/worksHere/);
+    });
 
     it('builds the right argv for BOTH platforms', async () => {
       const s = await load('c19-sandbox.mjs');

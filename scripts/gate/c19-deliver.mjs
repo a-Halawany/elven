@@ -90,7 +90,20 @@ async function main() {
   const invocation = val('--finalizer-run') === undefined ? undefined : {
     finalizerRunId: val('--finalizer-run'), finalizerAttempt: val('--finalizer-attempt'),
   };
-  const { source, finalizer, problems: resolveProblems } = resolve({ gh, sha, invocation });
+  /**
+   * The superseded-tip guard applies to PUBLICATION, always. The dry-run harness deliberately
+   * exercises a HISTORICAL publication — a past commit with an intact chain — so requiring it to be
+   * main's current tip would make the harness impossible rather than safe.
+   *
+   * The distinction is structural, not a flag a caller can pass: `publish` always enforces, and no
+   * argument can turn it off. Only `dry-run`, which cannot sign anything, exercises history.
+   */
+  const requireCurrentTip = mode !== 'dry-run';
+  const { source, finalizer, problems: resolveProblems } = resolve({ gh, sha, invocation, requireCurrentTip });
+  if (!requireCurrentTip) {
+    say('C19 deliver: dry run against a historical publication; the superseded-tip guard is not '
+      + 'applicable here and is ENFORCED UNCONDITIONALLY in publish mode');
+  }
   if (resolveProblems.length > 0) { for (const p of resolveProblems) process.stderr.write(`  ${p}\n`); die('resolution refused this invocation'); }
   say(`C19 deliver: canonical source ${source.runId}#${source.runAttempt}, `
     + `finalizer ${finalizer.runId}#${finalizer.runAttempt}`

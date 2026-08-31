@@ -25,14 +25,25 @@ const SANDBOX_PROFILE = `(version 1)
 (deny network*)
 `;
 
-/** Which OS mechanism is available here, if any. */
-export function networkDenialMechanism(platform = process.platform, probe = which) {
-  if (platform === 'linux' && probe('unshare')) return 'unshare';
-  if (platform === 'darwin' && probe('sandbox-exec')) return 'sandbox-exec';
+/**
+ * Which OS mechanism is available here, if any.
+ *
+ * The probe is FUNCTIONAL, not a `which`. On GitHub's Linux runners `unshare` is installed and
+ * nevertheless fails to create a network namespace — the binary existing says nothing about
+ * whether the kernel will permit the call. A mechanism that is present but non-functional is worse
+ * than an absent one, because it reports enforcement it does not provide.
+ */
+export function networkDenialMechanism(platform = process.platform, probe = worksHere) {
+  if (platform === 'linux') return probe('unshare', ['--net', '-r', 'true']) ? 'unshare' : null;
+  if (platform === 'darwin') return probe('sandbox-exec', ['-p', '(version 1)(allow default)', 'true']) ? 'sandbox-exec' : null;
   return null;
 }
 
-const which = (cmd) => spawnSync('which', [cmd], { encoding: 'utf8' }).status === 0;
+/** Actually run the mechanism over a trivial command and see whether it succeeds. */
+const worksHere = (cmd, args) => {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 15_000 });
+  return r.error === undefined && r.status === 0;
+};
 
 /**
  * Build the argv that runs `command` with the network denied at the OS boundary.
@@ -41,7 +52,7 @@ const which = (cmd) => spawnSync('which', [cmd], { encoding: 'utf8' }).status ==
  * the mechanism to be present on the machine running the control.
  */
 export function denyNetworkArgv(command, {
-  platform = process.platform, profilePath, probe = which,
+  platform = process.platform, profilePath, probe = worksHere,
 } = {}) {
   const mech = networkDenialMechanism(platform, probe);
   if (mech === 'unshare') {
@@ -62,7 +73,7 @@ export function denyNetworkArgv(command, {
  * an unconstrained run reported as offline is exactly the false assurance this replaces.
  */
 export function runWithoutNetwork(command, {
-  cwd, env, platform = process.platform, probe = which,
+  cwd, env, platform = process.platform, probe = worksHere,
 } = {}) {
   const mech = networkDenialMechanism(platform, probe);
   if (mech === null) {
