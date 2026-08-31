@@ -856,12 +856,13 @@ export function registerC19Anchor(): void {
       expect(throughString.equals(bin),
         'if this ever holds, the corruption this control guards against has stopped existing')
         .toBe(false);
-      // Over a realistic binary body the loss is also visible as LENGTH, which is how the real
-      // artifact shrank from 2,331,537 to 2,208,607 bytes.
-      const big = Buffer.alloc(4096);
-      for (let i = 0; i < big.length; i += 1) big[i] = (i * 7 + 0x80) & 0xff;
-      const bigThrough = Buffer.from(big.toString('utf8'), 'binary');
-      expect(bigThrough.length).not.toBe(big.length);
+      // LENGTH loss comes from VALID multi-byte sequences: two bytes decode to one character and
+      // re-encode to one byte. That collapse is what shrank the real artifact from 2,331,537 to
+      // 2,208,607 bytes — invalid bytes alone map 1:1 to U+FFFD and preserve length, which is why
+      // an assertion built on the small sample above was wrong.
+      const multibyte = Buffer.concat(Array.from({ length: 512 }, () => Buffer.from([0xc3, 0xa9])));
+      const collapsed = Buffer.from(multibyte.toString('utf8'), 'binary');
+      expect(collapsed.length).toBeLessThan(multibyte.length);
     });
 
     it('the wrapper digest is checked against the digest GitHub reports', () => {
