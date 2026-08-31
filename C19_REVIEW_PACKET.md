@@ -198,58 +198,75 @@ retrievability from a public repository** until the November expiry, and deletio
 
 ---
 
-## 9a. Three independent reviews, and what each found
+## 9a. The delivery orchestration was redesigned, not patched again
 
-Each review rejected the candidate and each was right. The findings are recorded because the
-pattern across them matters more than any single defect.
+Three reviews rejected three candidates. Each finding was real, each was fixed, and the next review
+found the same shape somewhere else. The fourth review identified why: the structure itself was
+wrong. Resolution, acquisition, recovery and verification existed in **four** places — two workflow
+YAML files with their own `jq` filters, `c19-fixture.mjs`, and `c19-acquire.mjs` — and they
+disagreed. The harness resolved fixtures one way and production another, so a green harness proved
+something production never did.
 
-### Review 1 — the verifier did not verify
+### One pipeline
 
-Identity **failed open**: fields were checked only when the caller supplied an expected value, and
-the real CLI supplied none, so a wrong source SHA, wrong workflow digest and wrong run URI verified
-with **zero findings**. The transparency proof was not bound together — signature and log entry were
-checked separately, `canonicalizedBody` was never decoded, and a one-leaf proof with an
-attacker-chosen root was **accepted**. "Recovery" ran `cosign verify-blob --help` and checked for a
-local file; it never contacted Rekor. The frozen JCS payload contract had been deleted mid-pass as
-"dead code".
+| Module | Sole responsibility |
+|---|---|
+| `lib/c19-github.mjs` | every GitHub read, with Link-header pagination and fail-closed errors |
+| `lib/c19-resolve.mjs` | canonical earliest successful attempt, across all matching run ids |
+| `lib/c19-acquire.mjs` | attempt-scoped acquisition, wrapper/inner authentication, C17 verification |
+| `lib/c19-rekor.mjs` | Rekor entry ↔ Sigstore bundle conversion |
+| `lib/c19-cosign.mjs` | one pinned binary, used by signing and every verification |
+| `lib/c19-sandbox.mjs` | OS-level network denial |
+| `lib/c19-pipeline.mjs` | the fifteen steps, in order |
+| `c19-deliver.mjs` | the one command, in four modes |
 
-### Review 2 — the CLI the workflow calls was never exercised
+Workflow YAML now supplies triggers, permissions and inputs only. A control asserts neither
+workflow filters runs, walks attempts or downloads artifacts itself.
 
-The dispatcher dropped `--payload` for both commands, so the exact command lines in the workflow
-exited 1. The 74 controls passing proved only that helpers worked.
+### What the redesign corrected
 
-### Review 3 — the bindings were not causal
+**The publication runner was depending on another job's setup.** It now installs and builds for
+itself — the C17 verifier regenerates from that tree, so borrowed state is not enough.
 
-`--source-run` and `--source-attempt` were parsed and never used, while the workflow bound the
-payload to whatever successful `ci` run shared the SHA. Recovery compared a recovered certificate to
-the **retrying** runner's invocation, so it found the earlier record and refused it. `publish()`
-never accepted the mode flag the dispatcher passed, so **neither flag took the real signing path**.
-A missing API digest skipped wrapper authentication. The persisted bundle name referenced a
-nonexistent output.
+**`workflowDigest` was wrong in kind, not just in value.** Fulcio's Build Config Digest is GitHub's
+workflow *commit* (`workflow_sha`). A hash of the YAML bytes could never match a certificate,
+because Fulcio never puts one there. The YAML digest is preserved as its own signed field.
 
-### The common thread
+**Cosign v2.4.1 is vulnerable and was never invoked.** Now v3.1.3, pinned by digest, verified before
+execution, with the same resolved binary signing and verifying, and one explicitly named bundle
+format on both sides.
 
-In every case the prose described behaviour the code did not have, and controls were written against
-the prose. Text-presence assertions are now replaced by behavioural ones, and the family→control map
-requires each named control to exist verbatim.
+**Recovery was dead code relative to the real command.** Rekor entries and Sigstore bundles differ
+in field names *and* encodings — `body` vs `canonicalizedBody`, hex vs base64 log ids and proof
+hashes, checkpoint string vs `{envelope}`, PEM vs DER, hex vs base64 digests. Each is a place a
+plausible conversion silently produces something unverifiable. The conversion is implemented and
+tested field by field against a self-consistent fixture with a real ECDSA key, a real RFC 6962 tree,
+a real signed checkpoint and a real SET — so the whole reconstruction and verification path executes
+without publishing this project.
 
-### What the dry harness cost and returned
+Recovery also no longer requires the original run's conclusion to be `success`. That requirement
+would have refused every case recovery exists for: Rekor accepted the signature and the run then
+failed or was cancelled before persisting the bundle.
 
-`delivery-chain-dry` found five real defects across five hosted runs, every one in code that had
-passed local controls: a utf8 round-trip that silently lost **122,930 bytes** of a 2,331,537-byte
-artifact; the C17 verifier invoked without its required `--root`; stderr dropped so the first
-failure reported nothing; regeneration needing an installed workspace at the fixture commit; and a
-`jq '.id // "0"'` default emitting empty rather than failing.
+**Offline was enforced inside Node.** That proves nothing about a spawned `cosign`, which is the
+process whose offline behaviour matters most. It is now `unshare --net` on Linux and `sandbox-exec`
+with `(deny network*)` on macOS — both constrain descendants — and an unavailable mechanism refuses
+rather than running unconstrained and calling the result offline.
 
-None of these were reachable by local unit testing. That is the argument for the harness.
+**Attempt scoping had no API to use.** Measured, not assumed: `/runs/{id}/attempts/{n}/artifacts`
+returns 404, and the artifact object carries `workflow_run.id` but no `run_attempt`. Scoping
+therefore uses this repository's own artifact naming contract, which encodes the attempt — better
+than an API field, because it is source-owned.
 
-### A mistake of mine, recorded
+**Causal binding could not come from the run listing.** GitHub does not expose which run triggered a
+`workflow_run`. Resolution therefore *proposes* the identity and the finalizer receipt inside the
+C17-verified evidence *authenticates* it; acquisition refuses if they disagree.
 
-Re-running main's CI to demonstrate the CVE **mutated run `32773918479` in place** — attempt 1
-`success` became attempt 2 `failure`. Main's tip now reads `failure` in its default view. Attempt 1
-remains intact and retrievable, so nothing was lost, and fixture resolution was fixed to read
-attempts rather than substituting a different commit. But it was an outward-facing action on `main`
-taken without flagging it first, and it was avoidable.
+### Controls
+
+51 behavioural controls execute the real code paths with injected GitHub responses. None asserts on
+comments, test names or YAML text — that is precisely what let three rounds of defects survive a
+green suite.
 
 ## 10. Unexecuted external steps
 
