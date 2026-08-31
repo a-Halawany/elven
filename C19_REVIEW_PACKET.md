@@ -198,149 +198,58 @@ retrievability from a public repository** until the November expiry, and deletio
 
 ---
 
-## 9a. Independent review REJECTED the previous candidate — what was wrong
+## 9a. Three independent reviews, and what each found
 
-An independent review rejected `28512e8` for C19 closure. Every finding was reproduced here before
-anything was changed, and all of them were real. They are recorded in full because the pattern
-matters more than the individual bugs: in three separate places the **prose asserted behaviour the
-code did not have**, and controls were written against the prose.
+Each review rejected the candidate and each was right. The findings are recorded because the
+pattern across them matters more than any single defect.
 
-### The verifier failed OPEN on identity
+### Review 1 — the verifier did not verify
 
-`verifyIdentity()` checked a field only when the caller supplied an expected value:
+Identity **failed open**: fields were checked only when the caller supplied an expected value, and
+the real CLI supplied none, so a wrong source SHA, wrong workflow digest and wrong run URI verified
+with **zero findings**. The transparency proof was not bound together — signature and log entry were
+checked separately, `canonicalizedBody` was never decoded, and a one-leaf proof with an
+attacker-chosen root was **accepted**. "Recovery" ran `cosign verify-blob --help` and checked for a
+local file; it never contacted Rekor. The frozen JCS payload contract had been deleted mid-pass as
+"dead code".
 
-```js
-if (expected === undefined || expected === null) return;   // skipped the check
-```
+### Review 2 — the CLI the workflow calls was never exercised
 
-The real CLI supplied no workflow digest, and the final workflow step supplied neither a source SHA
-nor a run URI. Reproduced: an identity carrying a **wrong source SHA, wrong workflow digest and
-wrong run invocation URI** verified with **zero findings**.
+The dispatcher dropped `--payload` for both commands, so the exact command lines in the workflow
+exited 1. The 74 controls passing proved only that helpers worked.
 
-Policy v3 makes all 13 delivery-standing fields mandatory; a missing expectation is a refusal. It
-adds stable repository and owner ids, distinguishes the signer's `workflow_run` trigger from the
-upstream `push`, and includes `/attempts/N` in run invocation URIs as Fulcio actually records them.
+### Review 3 — the bindings were not causal
 
-### The transparency proof was not bound together
+`--source-run` and `--source-attempt` were parsed and never used, while the workflow bound the
+payload to whatever successful `ci` run shared the SHA. Recovery compared a recovered certificate to
+the **retrying** runner's invocation, so it found the earlier record and refused it. `publish()`
+never accepted the mode flag the dispatcher passed, so **neither flag took the real signing path**.
+A missing API digest skipped wrapper authentication. The persisted bundle name referenced a
+nonexistent output.
 
-Signature and log entry were checked **separately**, which proves something was signed and something
-was logged, never that they are the same thing. `canonicalizedBody` was never decoded, and the
-Merkle root came from the bundle itself — so a one-leaf proof whose "root" is the attacker's own
-leaf hash was **accepted**. A complete bypass.
+### The common thread
 
-Now: the log body is decoded and its digest, signature and certificate must be the ones under
-verification; the SET is checked against a log key valid **at the time**; and the root must come
-from an **authenticated signed checkpoint**. SCT presence and structure are checked, with signature
-verification explicitly delegated to cosign and listed in `DELEGATED_TO_COSIGN` — a hand-rolled
-look-alike would report success whether or not it was correct.
+In every case the prose described behaviour the code did not have, and controls were written against
+the prose. Text-presence assertions are now replaced by behavioural ones, and the family→control map
+requires each named control to exist verbatim.
 
-### "Recovery" never contacted Rekor
+### What the dry harness cost and returned
 
-It ran `cosign verify-blob --help` and checked for a local bundle file. The exact failure it claimed
-to handle — log accepted, runner died before persisting — therefore **signed again**. The controls
-searched source comments and string ordering, so they passed.
+`delivery-chain-dry` found five real defects across five hosted runs, every one in code that had
+passed local controls: a utf8 round-trip that silently lost **122,930 bytes** of a 2,331,537-byte
+artifact; the C17 verifier invoked without its required `--root`; stderr dropped so the first
+failure reported nothing; regeneration needing an installed workspace at the fixture commit; and a
+`jq '.id // "0"'` default emitting empty rather than failing.
 
-`decideRecovery()` now queries the log and is driven by executed scenarios: no record → sign once;
-**accepted entry with lost bundle → reuse, zero signing**; ambiguous → refuse; unverifiable →
-refuse; log unreachable → refuse rather than blind-sign.
+None of these were reachable by local unit testing. That is the argument for the harness.
 
-### The anchor workflow published and verified nothing
+### A mistake of mine, recorded
 
-It never acquired an artifact and passed no `--artifact`/`--bundle`, so the step named *"verify the
-published bundle"* verified no bundle, and `verify` with no arguments **exited 0**. It now binds the
-source and finalizer runs, refuses a superseded main tip, acquires exactly one finalized artifact by
-immutable id and digest, builds the canonical payload, verifies offline and again from a fresh
-foreign checkout, and persists the bundle. Its verify job builds — omitting that would have repeated
-the defect already fixed in `c19-lifecycle.yml`.
-
-### The frozen signed contract had been abandoned
-
-`c19-attest.mjs` was deleted mid-pass as "dead code" when signing pivoted to the raw ZIP. Signing an
-archive carries no purpose, no domain separation, no nonce, no validity window and no binding to the
-source run, finalizer run or tree. Restored: the signed object is a JCS-canonical, domain-separated
-payload binding **25 mandatory fields**.
-
-### Residue checks could report a false zero
-
-Only containers were queried while the handoff claimed three types, and a docker failure was treated
-as an empty inventory. Now all three are queried by exact label, and inability to determine ownership
-is a containment failure — **exit 125** — not an absence of residue.
-
-### Controls tested text, not behaviour
-
-The 62-family map proved test *names* existed. Recovery, SCT, checkpoint and body-binding controls
-are now behavioural, and the trust material's provenance is reproducible from the repository: the
-signed `timestamp` → `snapshot` → `targets` chain is stored with a transcript, and a control asserts
-`targets.json`'s declared digest still equals the trusted root in use.
-
-### Docker on macOS: three states, not two
-
-The corrected fail-closed residue check then failed on `macos-14` — correctly, because those runners
-have no Docker daemon, so every query failed and ownership was `UNDETERMINED`. Refusing there
-conflated two different facts.
-
-Docker **absent** means nothing could have created a governed container, so residue is zero by
-construction; it is reported as `NOT APPLICABLE`, because calling it "verified zero" would claim a
-Docker parity that platform never had. Docker **installed but unqueryable** remains a containment
-failure at exit 125: being unable to ask is not the same as there being nothing there. Three
-controls pin the distinction, including that a partial query failure is still undetermined — two
-good answers do not vouch for a third.
-
-### Second review round: the publication path was unusable
-
-A second independent review rejected the previous candidate. The findings were reproduced before
-anything was changed, and every one was real.
-
-**The dispatcher dropped `--payload`.** `publish` and `verify` both read `--artifact` and `--bundle`
-and never `--payload`, so the exact command lines in the workflow died with "--payload is required".
-`publish` was also called without `await`, so a rejection became an unhandled promise. The 74
-controls exercised the helper functions and passed while the caller was broken. Subprocess controls
-now invoke the workflow's literal argument vector, and four of them fail when the defect is
-reinstated.
-
-**The payload could not be recovered.** It embedded the signer's run id, a wall-clock `issuedAt` and
-a RANDOM nonce, so every retry produced different bytes and a different digest — the Rekor search
-could never find the entry a previous attempt had published. Idempotence was impossible by
-construction. The signed payload now depends only on the publication identity (source run, finalizer
-run, artifact), with the nonce DERIVED from those bindings; the signer's own run is bound by the
-Fulcio certificate, where it belongs. Two invocations two seconds apart are byte-identical.
-
-**Recovery wrote to the wrong path.** It produced `${bundlePath}.recovered.json` and returned, while
-every downstream step expected `bundlePath` — so recovery could never complete. It now reconstructs
-a real Sigstore bundle from the log entry, writes it where it is expected, and subjects it to the
-same verification a freshly signed bundle receives. `expectedIdentity: {}` is refused outright.
-
-**Delegation was a comment.** `DELEGATED_TO_COSIGN` named SCT verification, X.509 path validation
-and bundle schema validation, and nothing ever invoked cosign. `verify-blob` now runs with the exact
-certificate identity and issuer, offline against the pinned trusted root, and its absence fails
-delivery standing.
-
-**The finalizer was a race.** `C17 finalize` and this workflow were both triggered by `ci`
-completing, so the anchor could query before the finalizer had succeeded — and it then selected any
-successful finalizer with a matching SHA, without proving it belonged to the triggering run. The
-anchor is now triggered BY the finalizer, so waiting is structural.
-
-**The wrapper was signed instead of the evidence.** Acquisition hashed GitHub's download wrapper,
-never checked the API's reported digest, never looked inside, and never ran the existing C17
-finalization verifier. `c19-acquire.mjs` authenticates the wrapper, extracts exactly one inner
-evidence ZIP and its sidecar (refusing unsafe entries rather than sanitising them), checks the
-sidecar's name and digest bindings, runs the existing C17 verifier, and binds both wrapper and inner
-digests into the payload.
-
-**Most of the signed contract was ignored.** The verifier checked canonical form, evidence digest,
-source SHA and `expiresAt > notBefore`. Everything else was signed and never compared. All mandatory
-bindings are now checked against expectations established from GitHub's API, current validity is
-enforced, and the nonce must equal the publication identity its own bindings determine.
-
-**Expectations were not exported.** The workflow never set `WORKFLOW_DIGEST` for either verification
-step, so a mandatory check had no expectation to compare against. Every verification step now
-receives the full set, and a missing expectation is a refusal rather than a skip.
-
-### One regression I introduced while correcting
-
-Editing `dockerInventory` deleted the async sweep functions and broke every signal differential.
-Caught by the suite, restored, re-verified 41/41. Recorded because a correction pass that silently
-breaks what it is not touching is exactly what a reviewer should expect to be told about.
+Re-running main's CI to demonstrate the CVE **mutated run `32773918479` in place** — attempt 1
+`success` became attempt 2 `failure`. Main's tip now reads `failure` in its default view. Attempt 1
+remains intact and retrievable, so nothing was lost, and fixture resolution was fixed to read
+attempts rather than substituting a different commit. But it was an outward-facing action on `main`
+taken without flagging it first, and it was avoidable.
 
 ## 10. Unexecuted external steps
 
