@@ -122,6 +122,31 @@ export function registerC19Pipeline(): void {
     });
   });
 
+  describe('C19 — a superseded commit cannot publish, executed', () => {
+    it('REFUSES when the SHA is no longer the branch tip', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const gh = {
+        ...fakeGitHub({
+          runs: [ciRun(10, 1), finRun(30, 1)],
+          attempts: { '10#1': ok, '30#1': ok },
+        }),
+        branchTip: () => 'a-newer-commit',
+      };
+      const r = p.resolve({ gh, sha: 'the-old-commit' });
+      // The run was genuinely successful, which is exactly why this must be explicit.
+      expect(r.problems.join('\n')).toMatch(/no longer the tip of main/);
+    });
+
+    it('PERMITS the current tip', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const gh = {
+        ...fakeGitHub({ runs: [ciRun(10, 1), finRun(30, 1)], attempts: { '10#1': ok, '30#1': ok } }),
+        branchTip: () => 'the-tip',
+      };
+      expect(p.resolve({ gh, sha: 'the-tip' }).problems).toEqual([]);
+    });
+  });
+
   describe('C19 — pagination and artifact selection, executed', () => {
     it('follows Link headers rather than accepting a first page as the whole answer', async () => {
       const g = await load('c19-github.mjs');

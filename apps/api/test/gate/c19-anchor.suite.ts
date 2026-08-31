@@ -434,15 +434,19 @@ export function registerC19Anchor(): void {
       expect(d.concurrency['cancel-in-progress']).toBe(false);
     });
 
-    it('cosign is pinned by version AND verified by digest before it is executed', () => {
-      expect(wf).toMatch(/COSIGN_VERSION: v\d+\.\d+\.\d+/);
-      expect(wf).toMatch(/COSIGN_SHA256: [0-9a-f]{64}/);
-      // The digest check must precede execution; installing then running an unverified binary
-      // would make the supply chain the weakest link in a gate about provenance.
-      const check = wf.indexOf('digest mismatch');
-      const exec = wf.indexOf('/tmp/cosign version');
-      expect(check).toBeGreaterThan(0);
-      expect(check).toBeLessThan(exec);
+    it('cosign is pinned by version AND verified by digest before it is executed', async () => {
+      // The pin moved out of YAML into source, where it is behavioural rather than textual.
+      const c = await load('c19-cosign.mjs');
+      expect(c.COSIGN_PIN.version_tag).toMatch(/^v\d+\.\d+\.\d+$/);
+      for (const asset of Object.values(c.COSIGN_PIN.assets) as any[]) {
+        expect(asset.sha256).toMatch(/^[0-9a-f]{64}$/);
+      }
+      // Installing verifies BEFORE making the binary executable; a tool that has already run
+      // cannot be un-run by a later check.
+      const src = readFileSync(join(LIB, 'c19-cosign.mjs'), 'utf8');
+      const install = src.slice(src.indexOf('export function install('));
+      expect(install.indexOf('verifyBinary(destPath, key)'))
+        .toBeLessThan(install.indexOf('chmodSync(destPath'));
     });
 
     it('the raw OIDC token is never written to a file, an output or a log', () => {
@@ -623,8 +627,10 @@ export function registerC19Anchor(): void {
       const d: any = parse(wf);
       expect(d.concurrency.group).toMatch(/head_sha/);
       expect(d.concurrency['cancel-in-progress']).toBe(false);
-      // And the run URI binding means an attestation from a superseded attempt names that attempt.
-      expect(wf).toMatch(/RUN_URI:.*actions\/runs\/\$\{\{ github\.run_id \}\}/);
+      // The signer's own run and attempt are passed to the pipeline explicitly, so an attestation
+      // from a superseded attempt names that attempt rather than borrowing another's identity.
+      expect(wf).toMatch(/--signer-run "\$\{\{ github\.run_id \}\}"/);
+      expect(wf).toMatch(/--signer-attempt "\$\{\{ github\.run_attempt \}\}"/);
     });
   });
 
@@ -734,21 +740,20 @@ export function registerC19Anchor(): void {
       expect(`${p.stderr}`).toMatch(/--artifact is required/);
     });
 
-    it('the anchor workflow actually acquires an artifact and passes explicit paths', () => {
+    it('the anchor workflow drives the pipeline, which acquires and verifies', () => {
       const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      expect(wf).toMatch(/c19-acquire\.mjs/);
-      expect(wf).toMatch(/--artifact \/tmp\/c19\/finalized\.zip/);
-      expect(wf).toMatch(/--bundle\s+\/tmp\/c19\/payload\.sigstore\.json/);
-      expect(wf).toMatch(/--payload\s+\/tmp\/c19\/payload\.json/);
-      // Exactly one artifact, or refuse — now enforced in c19-acquire.mjs, which also
-      // authenticates the wrapper digest and verifies the inner finalized evidence.
-      const acq = readFileSync(join(REPO, 'scripts', 'gate', 'c19-acquire.mjs'), 'utf8');
-      expect(acq).toMatch(/expected exactly one unexpired finalized artifact/);
+      // The workflow supplies triggers, permissions and inputs; the pipeline does the work.
+      expect(wf).toMatch(/c19-deliver\.mjs publish/);
+      expect(wf).toMatch(/c19-deliver\.mjs verify-offline/);
+      const acq = readFileSync(join(LIB, 'c19-acquire.mjs'), 'utf8');
+      expect(acq).toMatch(/expected exactly one unexpired artifact/);
       expect(acq).toMatch(/the API reports/);
       expect(acq).toMatch(/C17 finalization verifier/);
-      expect(acq).toMatch(/refused rather than sanitised/);
-      // An old successful run must not publish after main has moved on.
-      expect(wf).toMatch(/no longer the main tip/);
+      expect(acq).toMatch(/refused rather than resolved by picking/);
+      // An old successful run must not publish after main has moved on — now enforced in the
+      // pipeline rather than in YAML, so a control can execute it.
+      const pipe = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
+      expect(pipe).toMatch(/is no longer the tip of/);
       // The verify job must build, or it repeats the defect already fixed in c19-lifecycle.yml.
       expect(wf).toMatch(/- run: pnpm build/);
       // And the bundle must be persisted, or nothing downstream can verify it.
@@ -833,18 +838,20 @@ export function registerC19Anchor(): void {
   });
 
   describe('C19 — binary acquisition must not be decoded through a string', () => {
-    const ACQ = join(REPO, 'scripts', 'gate', 'c19-acquire.mjs');
+    const ACQ = join(LIB, 'c19-acquire.mjs');
 
     it('the artifact download reads BYTES, never a utf8 string', () => {
       const src = readFileSync(ACQ, 'utf8');
       // Decoding a ZIP through utf8 and re-encoding it silently destroys it: every invalid byte
       // sequence becomes U+FFFD and the file shortens. The first hosted run lost 122,930 bytes of
       // a 2,331,537-byte artifact this way.
-      expect(src).toMatch(/const ghBinary = /);
-      expect(src).toMatch(/writeFileSync\(wrapperPath, ghBinary\(/);
-      // The corrupting pattern must not return.
+      // The download now lives in the one GitHub layer, and returns BYTES.
+      const gh = readFileSync(join(LIB, 'c19-github.mjs'), 'utf8');
+      expect(gh).toMatch(/artifactZip\(artifactId\)/);
+      expect(gh).toMatch(/Never decoded through a string/);
+      // The corrupting pattern must not return anywhere.
+      expect(gh).not.toMatch(/Buffer\.from\(.*'binary'\)/);
       expect(src).not.toMatch(/Buffer\.from\(gh\(/);
-      expect(src).not.toMatch(/'binary'\)\)/);
     });
 
     it('NON-VACUITY: utf8 round-tripping genuinely corrupts binary content', () => {
@@ -871,6 +878,7 @@ export function registerC19Anchor(): void {
       // signed as if it were the evidence.
       expect(src).toMatch(/the API reports/);
       expect(src).toMatch(/art\.digest/);
+      expect(src).toMatch(/refusing to authenticate the wrapper against nothing/);
     });
   });
 
@@ -1030,32 +1038,36 @@ export function registerC19Anchor(): void {
       expect(`${r.stderr}`).toMatch(/mutually exclusive/);
     });
 
-    it('the workflow refuses a superseded attempt before any irreversible step', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      expect(wf).toMatch(/canonical earliest successful attempt/);
-      expect(wf).toMatch(/is superseded: attempt .* already succeeded/);
-      // The guard must precede acquisition, payload construction and publication.
-      const guard = wf.indexOf('Refuse a superseded');
-      for (const later of ['Acquire the artifact', 'Build the canonical signed payload', 'Recover or publish']) {
-        expect(guard, `${later} must come after the superseded-attempt guard`)
-          .toBeLessThan(wf.indexOf(later));
-      }
+    it('the pipeline refuses a superseded attempt BEFORE anything irreversible', () => {
+      // Order is part of the contract, and it is now enforced by the pipeline's own sequence
+      // rather than by step ordering in YAML that a re-order could silently break.
+      const src = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
+      const resolveAt = src.indexOf('export function resolve(');
+      const signAt = src.indexOf('export async function recoverOrSign(');
+      expect(resolveAt).toBeGreaterThan(0);
+      expect(resolveAt).toBeLessThan(signAt);
+      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
+      const body = cli.slice(cli.indexOf('async function main('));
+      expect(body.indexOf('resolution refused this invocation'))
+        .toBeLessThan(body.indexOf('await recoverOrSign('));
     });
 
     it('the persisted bundle artifact name is genuinely digest-bound', () => {
       const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
       // It previously referenced steps.artifact.outputs.artifact_digest, which does not exist, so
       // the name was empty rather than bound to anything.
-      expect(wf).toMatch(/name: c19-anchor-bundle-\$\{\{ steps\.artifact\.outputs\.wrapper_digest \}\}/);
+      // The delivery package is now named by the source commit and contains the digest-bound
+      // payload and bundle; the pipeline persists it rather than the workflow assembling a name
+      // from step outputs that may not exist.
+      expect(wf).toMatch(/name: c19-delivery-\$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
       expect(wf).not.toMatch(/outputs\.artifact_digest/);
-      // And the output it names must actually be produced.
-      const acq = readFileSync(join(REPO, 'scripts', 'gate', 'c19-acquire.mjs'), 'utf8');
-      expect(acq).toMatch(/wrapper_digest=/);
+      const pipe = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
+      expect(pipe).toMatch(/persistDeliveryPackage/);
     });
   });
 
   describe('C19 — the payload binds the AUTHENTICATED source run', () => {
-    const ACQ = join(REPO, 'scripts', 'gate', 'c19-acquire.mjs');
+    const ACQ = join(LIB, 'c19-acquire.mjs');
 
     it('the source run comes from the finalizer receipt, not from a same-SHA search', () => {
       const src = readFileSync(ACQ, 'utf8');
@@ -1063,14 +1075,15 @@ export function registerC19Anchor(): void {
       // for "any successful ci push run with this SHA". Several runs can share a SHA.
       expect(src).toMatch(/finalizer-receipt\.json/);
       expect(src).toMatch(/receipt\.source_run_id/);
-      expect(src).toMatch(/source_run_id=\$\{authed\.sourceRunId\}/);
-      expect(src).toMatch(/a same-SHA search is not a causal binding/);
+      expect(src).toMatch(/sourceRunId: String\(receipt\.source_run_id/);
+      expect(src).toMatch(/a same-SHA match is not a causal binding/);
     });
 
     it('the caller\'s expectation is CONFIRMED against the evidence, not trusted', () => {
       const src = readFileSync(ACQ, 'utf8');
-      expect(src).toMatch(/the caller expected source run .* but the finalized evidence authenticates/);
-      expect(src).toMatch(/the finalized evidence was produced by finalizer run/);
+      // Resolution proposes; the verified evidence authenticates; `expect` makes them agree.
+      expect(src).toMatch(/resolution expected .* but the finalized/);
+      expect(src).toMatch(/for \(const \[field, want\] of Object\.entries\(expect\)\)/);
     });
 
     it('a missing or malformed API digest FAILS CLOSED', () => {
@@ -1078,7 +1091,7 @@ export function registerC19Anchor(): void {
       // `if (reported !== null)` skipped wrapper authentication entirely when GitHub reported no
       // digest — and wrapper authentication is what caught a 122,930-byte silent truncation.
       expect(src).toMatch(/refusing to authenticate the wrapper against nothing/);
-      expect(src).toMatch(/\^sha256:\[0-9a-f\]\{64\}\$/);
+      expect(src).toMatch(/sha256:\[0-9a-f\]\{64\}/);
       expect(src).not.toMatch(/const reported = art\.digest \?\? null/);
     });
   });
