@@ -918,6 +918,171 @@ export function registerC19Anchor(): void {
     });
   });
 
+  describe('C19 — recovery authenticates the ORIGINAL signer, not the retrying runner', () => {
+    const R = 'a-Halawany/elven';
+    const okRun = {
+      repository: { full_name: R }, path: '.github/workflows/c19-anchor.yml',
+      head_branch: 'main', event: 'workflow_run', conclusion: 'success', head_sha: 'a'.repeat(40),
+    };
+
+    it('THE differential: attempt 1 signed, attempt 2 recovers with ZERO signing', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      // The certificate was minted by attempt 1. The runner recovering is attempt 2.
+      const cert = { runInvocationUri: `https://github.com/${R}/actions/runs/555/attempts/1` };
+      const { problems, invocation } = a.originalSignerInvocation(cert, policy);
+      expect(problems).toEqual([]);
+      expect(invocation).toEqual({ runId: '555', runAttempt: '1' });
+      // Confirmed against ITS OWN invocation — never against the recovering runner's.
+      expect(a.confirmAuthorizedSignerRun({
+        invocation, policy, expectedHeadSha: 'a'.repeat(40), fetchRun: () => okRun,
+      })).toEqual([]);
+    });
+
+    it('NON-VACUITY: comparing the original cert to the RETRY runner would refuse it', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      const cert: any = genuineIdentity(policy, SHA, '', WFD);
+      cert.runInvocationUri = `https://github.com/${R}/actions/runs/555/attempts/1`;
+      // This is exactly what the old code did: expect the RETRY's run/attempt. It refuses a
+      // perfectly good recovered certificate, turning a recoverable state into a hard failure.
+      const asRetry = a.verifyIdentity(cert, policy,
+        { sourceSha: SHA, workflowDigest: WFD, runId: '555', runAttempt: '2' });
+      expect(asRetry.join('\n')).toMatch(/runInvocationUri/);
+      // Against its own invocation it verifies.
+      expect(a.verifyIdentity(cert, policy,
+        { sourceSha: SHA, workflowDigest: WFD, runId: '555', runAttempt: '1' })).toEqual([]);
+    });
+
+    it.each([
+      ['wrong branch', { head_branch: 'attacker' }],
+      ['wrong workflow', { path: '.github/workflows/ci.yml' }],
+      ['wrong event', { event: 'push' }],
+      ['not successful', { conclusion: 'failure' }],
+      ['wrong repository', { repository: { full_name: 'attacker/elven' } }],
+      ['wrong head sha', { head_sha: 'b'.repeat(40) }],
+    ])('REFUSES a recovered signature whose original run had %s', async (_n, patch) => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      // The certificate alone is not enough: GitHub must confirm the invocation was authorised.
+      expect(a.confirmAuthorizedSignerRun({
+        invocation: { runId: '555', runAttempt: '1' }, policy, expectedHeadSha: 'a'.repeat(40),
+        fetchRun: () => ({ ...okRun, ...(patch as object) }),
+      }).length).toBeGreaterThan(0);
+    });
+
+    it('REFUSES when the original run cannot be confirmed at all', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      expect(a.confirmAuthorizedSignerRun({
+        invocation: { runId: '555', runAttempt: '1' }, policy, fetchRun: () => null,
+      }).join('\n')).toMatch(/unconfirmable signer is not an authorised one/);
+    });
+
+    it('REFUSES a malformed or foreign run invocation URI rather than guessing', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy } = a.loadTrustMaterial(LIB);
+      for (const uri of [`https://github.com/${R}/actions/runs/555`, 'https://evil.example/x', '']) {
+        expect(a.originalSignerInvocation({ runInvocationUri: uri }, policy).problems.length)
+          .toBeGreaterThan(0);
+      }
+    });
+
+    it('recovery mode REQUIRES a means of confirming the original run', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
+      const bundle = {
+        verificationMaterial: { certificate: { rawBytes: makeSelfSigned().cert.toString('base64') }, tlogEntries: [] },
+        messageSignature: { messageDigest: { algorithm: 'SHA2_256', digest: 'AA==' }, signature: 'AA==' },
+      };
+      // Recovery must REFUSE this bundle. The stand-in certificate carries no Fulcio identity
+      // extension, so it is refused at URI parsing — which is itself the correct outcome: a
+      // certificate whose signer invocation cannot even be read is not recoverable.
+      const problems = a.verifyBundle({
+        bundle, policy, trustedRoot, sourceSha: SHA, workflowDigest: WFD, recovery: true,
+      });
+      expect(problems.length).toBeGreaterThan(0);
+      // And the guard that refuses an unconfirmable signer exists on the path that reaches it.
+      const src = readFileSync(join(LIB, 'c19-anchor.mjs'), 'utf8');
+      expect(src).toMatch(/no means of confirming the original signing run was/);
+      expect(src).toMatch(/recovery must not accept a certificate on its own word/);
+    });
+  });
+
+  describe('C19 — publication mode is explicit, and superseded attempts are refused', () => {
+    const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
+    const run = (args: string[]) => spawnSync(process.execPath, [CLI, ...args],
+      { encoding: 'utf8', env: { ...process.env, SOURCE_SHA: 'x'.repeat(40), RUN_URI: 'y' } });
+
+    it('REFUSES to publish when no mode is stated', () => {
+      // The dispatcher passed recoverOrPublish and publish() never accepted it, so NEITHER flag
+      // fell through to the real signing path. Signing because nobody said not to is the worst
+      // possible default for an irreversible action.
+      const r = run(['publish', '--artifact', '/etc/hosts', '--payload', '/etc/hosts', '--bundle', '/tmp/x.json']);
+      expect(r.status).not.toBe(0);
+      expect(`${r.stderr}`).toMatch(/requires an explicit mode/);
+    });
+
+    it('REFUSES both modes at once', () => {
+      const r = run(['publish', '--dry-run', '--recover-or-publish',
+        '--artifact', '/etc/hosts', '--payload', '/etc/hosts', '--bundle', '/tmp/x.json']);
+      expect(r.status).not.toBe(0);
+      expect(`${r.stderr}`).toMatch(/mutually exclusive/);
+    });
+
+    it('the workflow refuses a superseded attempt before any irreversible step', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      expect(wf).toMatch(/canonical earliest successful attempt/);
+      expect(wf).toMatch(/is superseded: attempt .* already succeeded/);
+      // The guard must precede acquisition, payload construction and publication.
+      const guard = wf.indexOf('Refuse a superseded');
+      for (const later of ['Acquire the artifact', 'Build the canonical signed payload', 'Recover or publish']) {
+        expect(guard, `${later} must come after the superseded-attempt guard`)
+          .toBeLessThan(wf.indexOf(later));
+      }
+    });
+
+    it('the persisted bundle artifact name is genuinely digest-bound', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      // It previously referenced steps.artifact.outputs.artifact_digest, which does not exist, so
+      // the name was empty rather than bound to anything.
+      expect(wf).toMatch(/name: c19-anchor-bundle-\$\{\{ steps\.artifact\.outputs\.wrapper_digest \}\}/);
+      expect(wf).not.toMatch(/outputs\.artifact_digest/);
+      // And the output it names must actually be produced.
+      const acq = readFileSync(join(REPO, 'scripts', 'gate', 'c19-acquire.mjs'), 'utf8');
+      expect(acq).toMatch(/wrapper_digest=/);
+    });
+  });
+
+  describe('C19 — the payload binds the AUTHENTICATED source run', () => {
+    const ACQ = join(REPO, 'scripts', 'gate', 'c19-acquire.mjs');
+
+    it('the source run comes from the finalizer receipt, not from a same-SHA search', () => {
+      const src = readFileSync(ACQ, 'utf8');
+      // --source-run and --source-attempt were parsed and never used, while the workflow searched
+      // for "any successful ci push run with this SHA". Several runs can share a SHA.
+      expect(src).toMatch(/finalizer-receipt\.json/);
+      expect(src).toMatch(/receipt\.source_run_id/);
+      expect(src).toMatch(/source_run_id=\$\{authed\.sourceRunId\}/);
+      expect(src).toMatch(/a same-SHA search is not a causal binding/);
+    });
+
+    it('the caller\'s expectation is CONFIRMED against the evidence, not trusted', () => {
+      const src = readFileSync(ACQ, 'utf8');
+      expect(src).toMatch(/the caller expected source run .* but the finalized evidence authenticates/);
+      expect(src).toMatch(/the finalized evidence was produced by finalizer run/);
+    });
+
+    it('a missing or malformed API digest FAILS CLOSED', () => {
+      const src = readFileSync(ACQ, 'utf8');
+      // `if (reported !== null)` skipped wrapper authentication entirely when GitHub reported no
+      // digest — and wrapper authentication is what caught a 122,930-byte silent truncation.
+      expect(src).toMatch(/refusing to authenticate the wrapper against nothing/);
+      expect(src).toMatch(/\^sha256:\[0-9a-f\]\{64\}\$/);
+      expect(src).not.toMatch(/const reported = art\.digest \?\? null/);
+    });
+  });
+
   describe('C19 — the artifact cleanup ledger is honest', () => {
     const ledger = JSON.parse(readFileSync(join(LIB, 'c19-artifact-cleanup.json'), 'utf8'));
 

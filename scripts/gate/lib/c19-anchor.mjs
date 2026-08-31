@@ -212,6 +212,76 @@ export function verifyIdentity(identity, policy, expectations = {}) {
   return problems;
 }
 
+/**
+ * ── A RECOVERED SIGNATURE WAS MADE BY A DIFFERENT RUN, AND THAT IS THE POINT ──
+ *
+ * Recovery exists because attempt N published and then lost its bundle. Attempt N+1 finds that
+ * record — and previously compared its certificate against attempt N+1's OWN run invocation URI,
+ * which cannot possibly match. Recovery therefore located the entry it needed and then refused it,
+ * which is worse than not recovering at all: it turns a recoverable state into a permanent failure,
+ * and the obvious "fix" under time pressure is to sign again.
+ *
+ * The coherent rule is that the two cases ask different questions:
+ *
+ *   FRESH     the certificate must name THIS run and THIS attempt — the one authorised to sign now.
+ *   RECOVERY  the certificate names the ORIGINAL run and attempt. That invocation must be
+ *             independently confirmed, through GitHub, to have been the authorised C19 workflow on
+ *             main for this exact publication — not compared to the runner doing the recovering.
+ */
+
+/** The signer's own run and attempt, read out of the certificate rather than assumed. */
+export function originalSignerInvocation(identity, policy) {
+  const uri = String(identity?.runInvocationUri ?? '');
+  const prefix = `https://github.com/${policy.identity.repository}/actions/runs/`;
+  if (!uri.startsWith(prefix)) {
+    return { problems: [`c19 recovery: the certificate's run invocation URI ${j(uri)} is not a run `
+      + `of ${j(policy.identity.repository)}`], invocation: null };
+  }
+  const m = /^(\d+)\/attempts\/(\d+)$/.exec(uri.slice(prefix.length));
+  if (m === null) {
+    return { problems: [`c19 recovery: the certificate's run invocation URI ${j(uri)} does not name `
+      + 'a run and attempt in the form Fulcio records'], invocation: null };
+  }
+  return { problems: [], invocation: { runId: m[1], runAttempt: m[2] } };
+}
+
+/**
+ * Independently confirm that the ORIGINAL signing invocation was the authorised C19 workflow on
+ * main, for this exact publication. The certificate says who signed; this asks GitHub whether that
+ * signer was allowed to.
+ *
+ * `fetchRun` is injected so a control can drive every branch without a network.
+ */
+export function confirmAuthorizedSignerRun({ invocation, policy, expectedHeadSha, fetchRun }) {
+  const problems = [];
+  const run = fetchRun(invocation.runId, invocation.runAttempt);
+  if (run === null || run === undefined) {
+    return [`c19 recovery: GitHub has no record of run ${invocation.runId} attempt `
+      + `${invocation.runAttempt}; an unconfirmable signer is not an authorised one`];
+  }
+  const want = policy.identity;
+  const checks = [
+    ['repository', run.repository?.full_name, want.repository],
+    // `owner/repo/.github/workflows/x.yml@ref` -> `.github/workflows/x.yml`. Splitting on '/' and
+    // taking the last element yields the REF's last segment, not the workflow file.
+    ['workflow path', run.path, want.workflowRef.split('@')[0].split('/').slice(2).join('/')],
+    ['head branch', run.head_branch, 'main'],
+    ['event', run.event, want.signerEventName],
+    ['conclusion', run.conclusion, 'success'],
+  ];
+  for (const [name, got, expected] of checks) {
+    if (String(got) !== String(expected)) {
+      problems.push(`c19 recovery: the original signing run's ${name} is ${j(got)}; an authorised `
+        + `C19 publication requires ${j(expected)}`);
+    }
+  }
+  if (expectedHeadSha !== undefined && String(run.head_sha) !== String(expectedHeadSha)) {
+    problems.push(`c19 recovery: the original signing run was for ${j(run.head_sha)}, not the `
+      + `publication's ${j(expectedHeadSha)}`);
+  }
+  return problems;
+}
+
 /** The leaf must chain to a PINNED Fulcio CA and have been valid at signing time. */
 export function verifyCertificateChain(leafDer, trustedRoot, at) {
   const problems = [];
@@ -557,6 +627,9 @@ export function verifySctPresence(leafDer, trustedRoot) {
 export function verifyBundle({
   bundle, artifactBytes, artifactDigestHex, policy, trustedRoot, sourceSha, runId, runAttempt,
   workflowDigest, now = Date.now(), requireDeliveryStanding = true, signerId = 'sigstore-fulcio',
+  // RECOVERY: the certificate was made by an earlier run, so its own invocation is the expectation
+  // and `fetchRun` independently confirms that invocation was authorised.
+  recovery = false, fetchRun,
 }) {
   const problems = [];
   const signer = policy?.signers?.[signerId];
@@ -593,7 +666,26 @@ export function verifyBundle({
     problems.push(`c19 identity: the certificate's extensions are unreadable (${e.message})`);
     return problems;
   }
-  problems.push(...verifyIdentity(identity, policy, { sourceSha, runId, runAttempt, workflowDigest }));
+  if (recovery) {
+    const { problems: uriProblems, invocation } = originalSignerInvocation(identity, policy);
+    problems.push(...uriProblems);
+    if (invocation !== null) {
+      // The certificate is checked against ITS OWN invocation, never the recovering runner's.
+      problems.push(...verifyIdentity(identity, policy, {
+        sourceSha, workflowDigest, runId: invocation.runId, runAttempt: invocation.runAttempt,
+      }));
+      if (typeof fetchRun !== 'function') {
+        problems.push('c19 recovery: no means of confirming the original signing run was '
+          + 'authorised; recovery must not accept a certificate on its own word');
+      } else {
+        problems.push(...confirmAuthorizedSignerRun({
+          invocation, policy, expectedHeadSha: sourceSha, fetchRun,
+        }));
+      }
+    }
+  } else {
+    problems.push(...verifyIdentity(identity, policy, { sourceSha, runId, runAttempt, workflowDigest }));
+  }
 
   const sigB64 = bundle.messageSignature?.signature;
   const digestB64 = bundle.messageSignature?.messageDigest?.digest;

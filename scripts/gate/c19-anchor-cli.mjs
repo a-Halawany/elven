@@ -289,7 +289,21 @@ export async function decideRecovery({ digestHex, expectedIdentity, search, fetc
  * without them, and a command that "succeeds" having published nothing is how a delivery chain
  * comes to be believed without existing.
  */
-async function publish({ dryRun, artifactPath, payloadPath, bundlePath }) {
+async function publish({ dryRun, recoverOrPublish, artifactPath, payloadPath, bundlePath }) {
+  /**
+   * EXACTLY ONE MODE, STATED EXPLICITLY.
+   *
+   * The dispatcher passed `recoverOrPublish` and `publish()` never accepted it, so invoking
+   * `publish` with NEITHER flag fell through to the real signing path. A command that signs
+   * because nobody said not to is the most dangerous possible default for an irreversible action.
+   */
+  if (dryRun && recoverOrPublish) {
+    die('--dry-run and --recover-or-publish are mutually exclusive; state exactly one mode');
+  }
+  if (!dryRun && !recoverOrPublish) {
+    die('publish requires an explicit mode: --dry-run or --recover-or-publish. Refusing to sign '
+      + 'merely because no mode was stated.');
+  }
   const need = { SOURCE_SHA: process.env.SOURCE_SHA, RUN_URI: process.env.RUN_URI };
   for (const [k, v] of Object.entries(need)) {
     if (v === undefined || v === '') die(`${k} is not set; a publication must name what it attests`);

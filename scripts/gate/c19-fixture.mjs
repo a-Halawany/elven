@@ -41,7 +41,18 @@ const gh = (path) => {
   try { return JSON.parse(r.stdout ?? ''); } catch { return null; }
 };
 
-/** The earliest attempt of `run` that concluded successfully, or null. */
+/**
+ * ── THE CANONICAL ATTEMPT, AND WHY IT MUST BE THE EARLIEST ──
+ *
+ * `finalizerRunAttempt` is part of the publication identity, so a later successful rerun of C17
+ * finalize would produce a DIFFERENT payload for the same evidence — and therefore a second signing
+ * event for something already published. GitHub incrementing an attempt number must not be able to
+ * create a second publication identity.
+ *
+ * The canonical attempt is therefore the EARLIEST successful one. It is stable: reruns can only add
+ * later attempts, never earlier ones, so every retry resolves to the same identity and finds the
+ * publication that already exists.
+ */
 export function successfulAttempt(run, fetchAttempt) {
   const total = Number(run.run_attempt ?? 1);
   for (let n = 1; n <= total; n += 1) {

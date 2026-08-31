@@ -167,6 +167,36 @@ jobs:
       # Previously this workflow signed and "verified" nothing: no artifact was ever downloaded and
       # no --artifact/--bundle path was passed, so the step named "verify the published bundle"
       # verified no bundle. The delivery chain is now explicit and every binding is checked.
+      - name: Refuse a superseded (non-canonical) attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIN_RUN: ${{ github.event.workflow_run.id }}
+          FIN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        # A later successful rerun of the upstream run carries a different attempt number, and
+        # because the attempt is part of the publication identity that would mint a SECOND identity
+        # for evidence already published. Only the canonical EARLIEST successful attempt may
+        # publish; a later one must resolve to the existing publication or be refused. GitHub
+        # incrementing an attempt number must never be able to create a second publication.
+        run: |
+          set -euo pipefail
+          canonical=""
+          for n in $(seq 1 "$FIN_ATTEMPT"); do
+            c="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN/attempts/$n" \
+              --jq .conclusion 2>/dev/null || echo "")"
+            if [ "$c" = "success" ]; then canonical="$n"; break; fi
+          done
+          if [ -z "$canonical" ]; then
+            echo "::error::no successful attempt of run $FIN_RUN; there is nothing to publish"
+            exit 1
+          fi
+          if [ "$canonical" != "$FIN_ATTEMPT" ]; then
+            echo "::error::attempt $FIN_ATTEMPT is superseded: attempt $canonical already succeeded"
+            echo "::error::and owns this publication identity. Publishing here would create a"
+            echo "::error::second signing event for evidence that is already published."
+            exit 1
+          fi
+          echo "attempt $FIN_ATTEMPT is the canonical earliest successful attempt"
+
       - name: Resolve the finalizer that triggered us, and ITS source run
         id: resolve
         env:
@@ -345,7 +375,7 @@ jobs:
       - name: Persist the bundle as a digest-bound artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: c19-anchor-bundle-${{ steps.artifact.outputs.artifact_digest }}
+          name: c19-anchor-bundle-${{ steps.artifact.outputs.wrapper_digest }}
           path: |
             /tmp/c19/payload.json
             /tmp/c19/payload.sigstore.json

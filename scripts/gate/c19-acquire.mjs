@@ -27,8 +27,9 @@ const arg = (f) => { const i = process.argv.indexOf(f); return i >= 0 ? process.
 
 const repo = arg('--repo') ?? die('--repo is required');
 const finalizerRun = arg('--finalizer-run') ?? die('--finalizer-run is required');
-const sourceRun = arg('--source-run') ?? die('--source-run is required');
-const sourceAttempt = arg('--source-attempt') ?? die('--source-attempt is required');
+// EXPECTATIONS, confirmed against the evidence below — not the source of truth.
+const sourceRun = arg('--source-run');
+const sourceAttempt = arg('--source-attempt');
 const out = arg('--out') ?? die('--out is required');
 mkdirSync(out, { recursive: true });
 
@@ -67,13 +68,17 @@ const [art] = arts;
 const wrapperPath = join(out, 'finalized.zip');
 writeFileSync(wrapperPath, ghBinary(['api', `repos/${repo}/actions/artifacts/${art.id}/zip`]));
 const wrapperDigest = sha256(readFileSync(wrapperPath));
-// GitHub reports a digest for the artifact contents when available; when it does, it must match.
-const reported = art.digest ?? null;
-if (reported !== null) {
-  const norm = String(reported).replace(/^sha256:/, '');
-  if (norm !== wrapperDigest) {
-    die(`the downloaded wrapper hashes to ${wrapperDigest} but the API reports ${norm}`);
-  }
+// FAIL CLOSED on the API digest. Treating an absent digest as "nothing to check" skipped wrapper
+// authentication entirely — and wrapper authentication is the check that caught a download which
+// had silently lost 122,930 bytes. An artifact GitHub will not vouch for is not acquirable here.
+const reported = art.digest;
+if (typeof reported !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(reported)) {
+  die(`the API reports no usable sha256 digest for artifact ${art.id} (got ${JSON.stringify(reported)}); `
+    + 'refusing to authenticate the wrapper against nothing');
+}
+const norm = reported.slice('sha256:'.length);
+if (norm !== wrapperDigest) {
+  die(`the downloaded wrapper hashes to ${wrapperDigest} but the API reports ${norm}`);
 }
 
 // ── SAFE EXTRACTION ──
@@ -136,12 +141,75 @@ if (v.status !== 0) {
 }
 process.stderr.write('C19 acquire: C17 finalization verification PASSED on the inner evidence\n');
 
+/**
+ * ── THE SOURCE RUN COMES FROM THE EVIDENCE, NOT FROM A SEARCH ──
+ *
+ * `--source-run` and `--source-attempt` were parsed and then never used, while the workflow found a
+ * source run by searching for "any successful ci push run with this SHA". A same-SHA search is not
+ * a causal binding: several runs can share a SHA, and the one the payload names could differ from
+ * the one actually authenticated inside the finalized evidence.
+ *
+ * The finalizer receipt inside that evidence already carries the authenticated `source_run_id`,
+ * `source_run_attempt` and `source_sha`, and C17 verification — which has just passed — cross-checks
+ * them against the API. Those are therefore the values the payload is built from, and the supplied
+ * arguments are treated as an EXPECTATION to be confirmed rather than as the source of truth.
+ */
+const innerDir = join(extractDir, 'inner');
+mkdirSync(innerDir, { recursive: true });
+// `-o` overwrite, `-qq` quiet; the inner archive has already been digest-bound and C17-verified.
+const ux = spawnSync('unzip', ['-qq', '-o', innerPath, '-d', innerDir], { encoding: 'utf8' });
+if (ux.status !== 0) die(`the finalized inner archive could not be extracted (exit ${ux.status})`);
+const receiptPath = join(innerDir, 'finalizer-receipt.json');
+if (!existsSync(receiptPath)) {
+  die('the finalized evidence carries no finalizer-receipt.json; the authenticated source run '
+    + 'cannot be established, and a same-SHA search is not a substitute for it');
+}
+let receipt;
+try { receipt = JSON.parse(readFileSync(receiptPath, 'utf8')); } catch (e) {
+  die(`the finalizer receipt is not readable JSON (${e.message})`);
+}
+const authed = {
+  sourceRunId: String(receipt.source_run_id ?? ''),
+  sourceRunAttempt: String(receipt.source_run_attempt ?? ''),
+  sourceSha: String(receipt.source_sha ?? ''),
+  finalizerRunId: String(receipt.run_id ?? ''),
+  finalizerRunAttempt: String(receipt.run_attempt ?? ''),
+  finalizerWorkflowRef: String(receipt.workflow_ref ?? ''),
+};
+for (const [k, v] of Object.entries(authed)) {
+  if (v === '') die(`the finalizer receipt omits ${k}; the authenticated binding is incomplete`);
+}
+
+// The finalizer this evidence claims must be the finalizer we actually acquired from. Anything
+// else means the artifact and the run that produced it have been decoupled.
+if (authed.finalizerRunId !== String(finalizerRun)) {
+  die(`the finalized evidence was produced by finalizer run ${authed.finalizerRunId}, but this `
+    + `acquisition targeted ${finalizerRun}`);
+}
+// And the caller's expectation must agree with what the evidence authenticates.
+if (sourceRun !== undefined && String(sourceRun) !== authed.sourceRunId) {
+  die(`the caller expected source run ${sourceRun} but the finalized evidence authenticates `
+    + `${authed.sourceRunId}; a same-SHA search is not a causal binding`);
+}
+if (sourceAttempt !== undefined && String(sourceAttempt) !== authed.sourceRunAttempt) {
+  die(`the caller expected source attempt ${sourceAttempt} but the evidence authenticates `
+    + `${authed.sourceRunAttempt}`);
+}
+process.stderr.write(`C19 acquire: authenticated source run ${authed.sourceRunId} attempt `
+  + `${authed.sourceRunAttempt} for ${authed.sourceSha.slice(0, 8)} (from the finalizer receipt)\n`);
+
 for (const line of [
   `artifact_id=${art.id}`,
   `artifact_name=${art.name}`,
   `wrapper_digest=${wrapperDigest}`,
   `inner_name=${innerName}`,
   `inner_digest=${innerDigest}`,
+  // The AUTHENTICATED bindings, taken from the finalized evidence itself rather than from a search.
+  `source_run_id=${authed.sourceRunId}`,
+  `source_run_attempt=${authed.sourceRunAttempt}`,
+  `source_sha=${authed.sourceSha}`,
+  `finalizer_run_id=${authed.finalizerRunId}`,
+  `finalizer_run_attempt=${authed.finalizerRunAttempt}`,
 ]) process.stdout.write(`${line}\n`);
 process.stderr.write(`C19 acquire: wrapper ${wrapperDigest.slice(0, 16)}… inner ${innerName} `
   + `${innerDigest.slice(0, 16)}…\n`);
