@@ -782,12 +782,28 @@ export const parseDockerIds = (text) => String(text ?? '').split('\n')
  * The resources this run owns, by label. Returned as a flat inventory so a control can compare a
  * before and an after without knowing docker's output shapes.
  */
-export function dockerInventory(resourceId, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
+export function dockerInventory(resourceId, run = (args) => {
+  const r = spawnSync('docker', args, { encoding: 'utf8' });
+  // A failed docker invocation must NOT look like an empty inventory. Treating "I could not ask"
+  // as "there is nothing there" is how a residue check reports success on a broken daemon.
+  return { ok: r.error === undefined && r.status === 0, out: r.stdout ?? '' };
+}) {
   const filter = `label=${DOCKER_RUN_LABEL}=${resourceId}`;
+  const q = (args) => {
+    const res = run(args);
+    // Back-compat: an injected runner may return a plain string.
+    if (typeof res === 'string') return { ok: true, ids: parseDockerIds(res) };
+    return { ok: res.ok === true, ids: parseDockerIds(res.out) };
+  };
+  const containers = q(['ps', '-aq', '--filter', filter]);
+  const networks = q(['network', 'ls', '-q', '--filter', filter]);
+  const volumes = q(['volume', 'ls', '-q', '--filter', filter]);
   return {
-    containers: parseDockerIds(run(['ps', '-aq', '--filter', filter])),
-    networks: parseDockerIds(run(['network', 'ls', '-q', '--filter', filter])),
-    volumes: parseDockerIds(run(['volume', 'ls', '-q', '--filter', filter])),
+    containers: containers.ids,
+    networks: networks.ids,
+    volumes: volumes.ids,
+    // Ownership is UNDETERMINED if any query failed. The caller must fail closed on this.
+    determined: containers.ok && networks.ok && volumes.ok,
   };
 }
 
@@ -802,25 +818,26 @@ export async function dockerInventoryAsync(resourceId, runAsync = spawnDockerAsy
     runAsync(['volume', 'ls', '-q', '--filter', filter]),
   ]);
   return {
-    containers: parseDockerIds(containers),
-    networks: parseDockerIds(networks),
-    volumes: parseDockerIds(volumes),
+    containers: parseDockerIds(containers.out ?? containers),
+    networks: parseDockerIds(networks.out ?? networks),
+    volumes: parseDockerIds(volumes.out ?? volumes),
+    // As in the synchronous form: a failed query is UNDETERMINED, never an empty inventory.
+    determined: [containers, networks, volumes].every((r) => (typeof r === 'string' ? true : r.ok === true)),
   };
 }
 
-/** One `docker` invocation, resolved with its stdout. A missing docker yields '' rather than
- *  throwing, so an environment without it simply reports an empty inventory. */
+/** One `docker` invocation, resolved with its stdout and whether it actually succeeded. */
 export function spawnDockerAsync(args) {
   return new Promise((resolve) => {
     let out = '';
     let done = false;
-    const finish = () => { if (!done) { done = true; resolve(out); } };
+    const finish = (ok) => { if (!done) { done = true; resolve({ ok, out }); } };
     try {
       const p = spawn('docker', args, { stdio: ['ignore', 'pipe', 'ignore'] });
       p.stdout.on('data', (b) => { out += b.toString(); });
-      p.on('error', finish);
-      p.on('close', finish);
-    } catch { finish(); }
+      p.on('error', () => finish(false));
+      p.on('close', (code) => finish(code === 0));
+    } catch { finish(false); }
   });
 }
 
@@ -828,12 +845,15 @@ export function spawnDockerAsync(args) {
 export async function sweepDockerResourcesAsync(resourceId, runAsync = spawnDockerAsync) {
   const before = await dockerInventoryAsync(resourceId, runAsync);
   await Promise.all([
-    before.containers.length > 0 ? runAsync(['rm', '-f', ...before.containers]) : Promise.resolve(''),
-    before.networks.length > 0 ? runAsync(['network', 'rm', ...before.networks]) : Promise.resolve(''),
-    before.volumes.length > 0 ? runAsync(['volume', 'rm', '-f', ...before.volumes]) : Promise.resolve(''),
+    before.containers.length > 0 ? runAsync(['rm', '-f', ...before.containers]) : Promise.resolve({ ok: true, out: '' }),
+    before.networks.length > 0 ? runAsync(['network', 'rm', ...before.networks]) : Promise.resolve({ ok: true, out: '' }),
+    before.volumes.length > 0 ? runAsync(['volume', 'rm', '-f', ...before.volumes]) : Promise.resolve({ ok: true, out: '' }),
   ]);
   const after = await dockerInventoryAsync(resourceId, runAsync);
-  return { before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after) };
+  return {
+    before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after),
+    determined: before.determined && after.determined,
+  };
 }
 
 /** Total resources in an inventory — the number a baseline comparison actually cares about. */

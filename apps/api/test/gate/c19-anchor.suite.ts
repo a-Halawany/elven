@@ -11,11 +11,12 @@
  * bundle proves the happy path and hides which check is load-bearing.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createHash, generateKeyPairSync, sign as nodeSign, X509Certificate } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..', '..');
@@ -25,22 +26,35 @@ const load = (m: string) => import(/* @vite-ignore */ join(LIB, m));
 const sha256hex = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
 /** The identity a genuine delivery signature would carry, per the source-owned policy. */
-function genuineIdentity(policy: any, sourceSha: string, runUri: string, workflowDigest: string) {
+function genuineIdentity(policy: any, sourceSha: string, _runUri: string, workflowDigest: string) {
   const i = policy.identity;
   return {
     subjectAlternativeName: i.subjectAlternativeName,
     issuer: i.issuer,
     sourceRepositoryUri: `https://github.com/${i.repository}`,
+    sourceRepositoryIdentifier: i.repositoryId,
+    sourceRepositoryOwnerUri: `https://github.com/${i.repositoryOwner}`,
+    sourceRepositoryOwnerIdentifier: i.repositoryOwnerId,
     sourceRepositoryDigest: sourceSha,
     sourceRepositoryRef: i.ref,
-    sourceRepositoryOwnerUri: `https://github.com/${i.repositoryOwner}`,
     buildConfigUri: `https://github.com/${i.workflowRef}`,
     buildConfigDigest: workflowDigest,
-    buildTrigger: i.eventName,
-    runInvocationUri: runUri,
+    // The SIGNER's trigger. The anchor workflow is workflow_run-triggered; the upstream push is
+    // bound separately, through the signed payload.
+    buildTrigger: i.signerEventName,
+    // Fulcio records the attempt in the run invocation URI.
+    runInvocationUri: `https://github.com/${i.repository}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}`,
     runnerEnvironment: i.runnerEnvironment,
   };
 }
+
+/** The full expectation set. Verification now REFUSES when any of these is absent. */
+const EXPECT = (sourceSha: string, workflowDigest: string) => ({
+  sourceSha, workflowDigest, runId: RUN_ID, runAttempt: RUN_ATTEMPT,
+});
+
+const RUN_ID = '123';
+const RUN_ATTEMPT = '1';
 
 export function registerC19Anchor(): void {
   const SHA = 'a'.repeat(40);
@@ -52,7 +66,7 @@ export function registerC19Anchor(): void {
       const a = await load('c19-anchor.mjs');
       const { policy } = a.loadTrustMaterial(LIB);
       expect(a.verifyIdentity(genuineIdentity(policy, SHA, RUN, WFD), policy,
-        { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })).toEqual([]);
+        EXPECT(SHA, WFD))).toEqual([]);
     });
 
     // One family per row. Each mutates a single field of an otherwise perfect identity.
@@ -74,7 +88,7 @@ export function registerC19Anchor(): void {
       const identity: any = genuineIdentity(policy, SHA, RUN, WFD);
       identity[field as string] = value;
       const problems = a.verifyIdentity(identity, policy,
-        { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD });
+        EXPECT(SHA, WFD));
       expect(problems.join('\n')).toMatch(expected as RegExp);
     });
 
@@ -93,7 +107,7 @@ export function registerC19Anchor(): void {
       const { policy } = a.loadTrustMaterial(LIB);
       const identity: any = genuineIdentity(policy, SHA, RUN, WFD);
       identity.sourceRepositoryRef = null;
-      expect(a.verifyIdentity(identity, policy, { sourceSha: SHA }).join('\n'))
+      expect(a.verifyIdentity(identity, policy, EXPECT(SHA, WFD)).join('\n'))
         .toMatch(/sourceRepositoryRef/);
     });
   });
@@ -115,7 +129,7 @@ export function registerC19Anchor(): void {
     it('NON-VACUITY: the genuine trust material loads', async () => {
       const a = await load('c19-anchor.mjs');
       const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
-      expect(policy.version).toBe(2);
+      expect(policy.version).toBe(3);
       expect(a.pinnedCaCertificates(trustedRoot).length).toBeGreaterThan(0);
       expect(a.pinnedRekorKeys(trustedRoot).size).toBeGreaterThan(0);
     });
@@ -252,8 +266,68 @@ export function registerC19Anchor(): void {
 
     it('REJECTS missing-inclusion-proof', async () => {
       const a = await load('c19-anchor.mjs');
-      expect(a.verifyInclusionProof({ canonicalizedBody: 'e30=' }).join('\n'))
+      const { trustedRoot } = a.loadTrustMaterial(LIB);
+      expect(a.verifyInclusionProof({ canonicalizedBody: 'e30=' }, trustedRoot).join('\n'))
         .toMatch(/no inclusion proof/);
+    });
+
+    it('REJECTS an unauthenticated checkpoint — a self-chosen root proves nothing', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { trustedRoot } = a.loadTrustMaterial(LIB);
+      // The complete bypass the review found: a one-leaf proof whose "root" is the attacker's own
+      // leaf hash reconstructs perfectly, and the previous verifier accepted it.
+      const body = Buffer.from('anything at all');
+      const leaf = a.leafHash(body);
+      expect(a.verifyInclusionProof({
+        canonicalizedBody: body.toString('base64'),
+        inclusionProof: { logIndex: 0, treeSize: 1, rootHash: leaf.toString('base64'), hashes: [] },
+      }, trustedRoot).join('\n')).toMatch(/no signed checkpoint|circular/);
+    });
+
+    it('BINDS the log record to the certificate, signature and digest', async () => {
+      const a = await load('c19-anchor.mjs');
+      const cert = makeSelfSigned().cert;
+      const pem = `-----BEGIN CERTIFICATE-----\n${cert.toString('base64')}\n-----END CERTIFICATE-----`;
+      const bodyFor = (digest: string, sig: string, certPem: string) => Buffer.from(JSON.stringify({
+        kind: 'hashedrekord',
+        spec: {
+          data: { hash: { algorithm: 'sha256', value: digest } },
+          signature: { content: sig, publicKey: { content: Buffer.from(certPem).toString('base64') } },
+        },
+      })).toString('base64');
+      const args = { leafDer: cert, signatureB64: 'SIG', artifactDigestHex: 'aa'.repeat(32) };
+
+      // Matching record: no findings.
+      expect(a.verifyRekorBodyBinding(
+        { canonicalizedBody: bodyFor('aa'.repeat(32), 'SIG', pem) }, args)).toEqual([]);
+      // Each single-field mismatch is caught, and named for what it is.
+      expect(a.verifyRekorBodyBinding(
+        { canonicalizedBody: bodyFor('bb'.repeat(32), 'SIG', pem) }, args).join('\n'))
+        .toMatch(/not about these bytes/);
+      expect(a.verifyRekorBodyBinding(
+        { canonicalizedBody: bodyFor('aa'.repeat(32), 'OTHER', pem) }, args).join('\n'))
+        .toMatch(/does not attest this signature/);
+      const otherPem = `-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----`;
+      expect(a.verifyRekorBodyBinding(
+        { canonicalizedBody: bodyFor('aa'.repeat(32), 'SIG', otherPem) }, args).join('\n'))
+        .toMatch(/different identity/);
+    });
+
+    it('REJECTS an SCT that is absent from the certificate', async () => {
+      const a = await load('c19-anchor.mjs');
+      const { trustedRoot } = a.loadTrustMaterial(LIB);
+      // The Sigstore ROOT carries no SCT — a real certificate that genuinely lacks one, rather
+      // than a Rekor entry removed and mislabelled as an SCT test.
+      expect(a.verifySctPresence(makeSelfSigned().cert, trustedRoot).join('\n'))
+        .toMatch(/no embedded SCT/);
+    });
+
+    it('states plainly which mandatory checks are delegated to cosign', async () => {
+      const a = await load('c19-anchor.mjs');
+      // A hand-rolled look-alike of SCT verification would be worse than delegation, because it
+      // would report success whether or not it was correct.
+      expect(a.DELEGATED_TO_COSIGN.length).toBeGreaterThan(0);
+      expect(a.DELEGATED_TO_COSIGN.join(' ')).toMatch(/SCT signature verification/);
     });
 
     it('accepts a GENUINE inclusion proof and rejects every forgery of it', async () => {
@@ -274,6 +348,7 @@ export function registerC19Anchor(): void {
       const bodies = Array.from({ length: 8 }, (_, i) => Buffer.from(`entry-${i}`));
       const leaves = bodies.map((b) => a.leafHash(b));
       const r = root(leaves);
+      const { trustedRoot } = a.loadTrustMaterial(LIB);
       const good = {
         canonicalizedBody: bodies[3]!.toString('base64'),
         inclusionProof: {
@@ -281,7 +356,9 @@ export function registerC19Anchor(): void {
           hashes: path(leaves, 3).map((h) => h.toString('base64')),
         },
       };
-      expect(a.verifyInclusionProof(good)).toEqual([]);
+      // Without an authenticated checkpoint even a GENUINE proof is refused, because the root it
+      // is compared against would be attacker-supplied.
+      expect(a.verifyInclusionProof(good, trustedRoot).join('\n')).toMatch(/no signed checkpoint/);
 
       const forgeries: Record<string, any> = {
         'wrong body': { ...good, canonicalizedBody: Buffer.from('forged').toString('base64') },
@@ -291,7 +368,7 @@ export function registerC19Anchor(): void {
         'index outside tree': { ...good, inclusionProof: { ...good.inclusionProof, logIndex: 8 } },
       };
       for (const [name, f] of Object.entries(forgeries)) {
-        expect(a.verifyInclusionProof(f).length, `${name} must be rejected`).toBeGreaterThan(0);
+        expect(a.verifyInclusionProof(f, trustedRoot).length, `${name} must be rejected`).toBeGreaterThan(0);
       }
     });
   });
@@ -412,7 +489,7 @@ export function registerC19Anchor(): void {
       const { result, attempts } = await o.withNetworkDenied(async () => {
         const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
         return a.verifyIdentity(genuineIdentity(policy, SHA, RUN, WFD), policy,
-          { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD });
+          EXPECT(SHA, WFD));
       });
       expect(result).toEqual([]);
       // Zero attempts is the load-bearing assertion: a verifier that reached out and fell back to
@@ -469,9 +546,9 @@ export function registerC19Anchor(): void {
       const id = genuineIdentity(policy, SHA, RUN, WFD);
       // The run URI carries both the run id and, through it, the attempt: a bundle from another
       // run of the same workflow is a different attestation and must not be reusable here.
-      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: `${RUN}/attempts/2`, workflowDigest: WFD })
+      expect(a.verifyIdentity(id, policy, { ...EXPECT(SHA, WFD), runAttempt: '99' })
         .join('\n')).toMatch(/runInvocationUri/);
-      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: 'https://github.com/a-Halawany/elven/actions/runs/999', workflowDigest: WFD })
+      expect(a.verifyIdentity(id, policy, { ...EXPECT(SHA, WFD), runId: '999' })
         .join('\n')).toMatch(/runInvocationUri/);
     });
 
@@ -482,7 +559,7 @@ export function registerC19Anchor(): void {
       // for the source run's, because buildConfigUri and runInvocationUri both differ.
       const id: any = genuineIdentity(policy, SHA, RUN, WFD);
       id.buildConfigUri = 'https://github.com/a-Halawany/elven/.github/workflows/c17-finalize.yml@refs/heads/main';
-      expect(a.verifyIdentity(id, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+      expect(a.verifyIdentity(id, policy, EXPECT(SHA, WFD))
         .join('\n')).toMatch(/buildConfigUri/);
     });
 
@@ -492,11 +569,12 @@ export function registerC19Anchor(): void {
       // An older attestation is bound to an older COMMIT. Presenting it for today's evidence fails
       // on the source digest, which is what makes rollback detectable rather than merely unlikely.
       const older: any = genuineIdentity(policy, 'f'.repeat(40), RUN, WFD);
-      expect(a.verifyIdentity(older, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+      expect(a.verifyIdentity(older, policy, EXPECT(SHA, WFD))
         .join('\n')).toMatch(/sourceRepositoryDigest/);
-      // The same reasoning covers a commitment reused from a previous run: it names the old run.
-      const reused: any = genuineIdentity(policy, SHA, 'https://github.com/a-Halawany/elven/actions/runs/1', WFD);
-      expect(a.verifyIdentity(reused, policy, { sourceSha: SHA, expectedRunUri: RUN, workflowDigest: WFD })
+      // A commitment reused from a PREVIOUS run names that run in its invocation URI.
+      const reused: any = genuineIdentity(policy, SHA, '', WFD);
+      reused.runInvocationUri = `https://github.com/${policy.identity.repository}/actions/runs/1/attempts/1`;
+      expect(a.verifyIdentity(reused, policy, EXPECT(SHA, WFD))
         .join('\n')).toMatch(/runInvocationUri/);
     });
 
@@ -577,46 +655,97 @@ export function registerC19Anchor(): void {
     });
   });
 
-  describe('C19 — publication recovery is idempotent', () => {
-    const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
+  describe('C19 — publication recovery is idempotent, tested by EXECUTION', () => {
+    // The previous controls searched source comments and string ordering. They passed while the
+    // implementation ran `cosign verify-blob --help` and checked for a local file — it never
+    // contacted Rekor at all. These drive the decision function itself.
+    const load2 = () => import(/* @vite-ignore */ join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'));
+    const ok = () => [];
 
-    it('an existing bundle is VERIFIED and reused, never signed again', () => {
-      // A second signing event for the same bytes is a second identity assertion, and it turns the
-      // transparency log into a record of our retries rather than of our releases.
-      const recover = cli.indexOf('a bundle already exists for this run');
-      const sign = cli.indexOf("'sign-blob'");
-      expect(recover).toBeGreaterThan(0);
-      expect(sign).toBeGreaterThan(0);
-      expect(recover, 'recovery must be attempted BEFORE signing').toBeLessThan(sign);
-      expect(cli).toMatch(/no new signing event/);
+    it('THE differential: entry accepted, bundle lost, retry performs ZERO signing', async () => {
+      const { decideRecovery } = await load2();
+      let signings = 0;
+      const d = await decideRecovery({
+        digestHex: 'aa', expectedIdentity: {},
+        search: async () => ['uuid-1'],                 // Rekor already has it
+        fetchEntry: async () => ({ logIndex: 7 }),      // and it retrieves
+        verifyEntry: ok,                                // and it verifies
+      });
+      if (d.action === 'sign') signings += 1;
+      expect(d.action).toBe('reuse');
+      expect(signings, 'a retry after lost bundle persistence must not sign again').toBe(0);
     });
 
-    it('REJECTS failure-after-rekor-acceptance-before-bundle-persistence', () => {
-      // The dangerous interruption: Rekor accepted the entry, the bundle never landed. Re-running
-      // must find the existing entry rather than creating a second one.
-      expect(cli).toMatch(/search Rekor for an existing entry over this exact digest/);
-      expect(cli).toMatch(/reuse that entry if found, and sign exactly once if not/);
+    it('NON-VACUITY: with no existing record it DOES decide to sign, exactly once', async () => {
+      const { decideRecovery } = await load2();
+      const d = await decideRecovery({
+        digestHex: 'aa', expectedIdentity: {},
+        search: async () => [], fetchEntry: async () => null, verifyEntry: ok,
+      });
+      expect(d.action).toBe('sign');
     });
 
-    it('a recovered bundle that does not verify is a FAILURE, not a silent reuse', () => {
-      expect(cli).toMatch(/the existing bundle does not verify/);
+    it('REFUSES on ambiguity rather than resolving it by guessing', async () => {
+      const { decideRecovery } = await load2();
+      const d = await decideRecovery({
+        digestHex: 'aa', expectedIdentity: {},
+        search: async () => ['a', 'b'], fetchEntry: async () => ({}), verifyEntry: ok,
+      });
+      expect(d.action).toBe('refuse');
+      expect(d.why).toMatch(/ambiguous/);
     });
 
-    it('a dry run reaches no irreversible step', () => {
-      expect(cli).toMatch(/DRY RUN — nothing was published/);
-      const dry = cli.indexOf('DRY RUN — nothing was published');
-      const sign = cli.indexOf("'sign-blob'");
-      expect(dry).toBeLessThan(sign);
+    it('REFUSES when an existing record does not verify', async () => {
+      const { decideRecovery } = await load2();
+      const d = await decideRecovery({
+        digestHex: 'aa', expectedIdentity: {},
+        search: async () => ['uuid-1'], fetchEntry: async () => ({}),
+        verifyEntry: () => ['the signed entry timestamp does not verify'],
+      });
+      expect(d.action).toBe('refuse');
+      expect(d.why).toMatch(/does not verify/);
     });
 
-    it('the raw OIDC token is never read, written or logged by the command', () => {
-      expect(cli).not.toMatch(/ACTIONS_ID_TOKEN_REQUEST_TOKEN/);
-      expect(cli).not.toMatch(/writeFileSync\([^)]*[Tt]oken/);
-      expect(cli).toMatch(/never written anywhere|never handled here/);
+    it('REFUSES when the log cannot be queried — never blind-signs', async () => {
+      const { decideRecovery } = await load2();
+      const d = await decideRecovery({
+        digestHex: 'aa', expectedIdentity: {},
+        search: async () => { throw new Error('network down'); },
+        fetchEntry: async () => ({}), verifyEntry: ok,
+      });
+      expect(d.action).toBe('refuse');
+      // Signing without knowing whether a record exists is exactly how a duplicate is created.
+      expect(d.why).toMatch(/could not be queried|risk a duplicate/);
     });
 
-    it('publication refuses to proceed without the commit it attests', () => {
-      expect(cli).toMatch(/SOURCE_SHA is not set/);
+    it('the CLI REFUSES to verify or publish with nothing to act on', () => {
+      const run = (args: string[]) => spawnSync(process.execPath,
+        [join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), ...args],
+        { encoding: 'utf8', env: { ...process.env, SOURCE_SHA: 'x', RUN_URI: 'y' } });
+      // The old behaviour: verify with no artifact fell back to a selftest and exited 0, so a
+      // workflow step named "verify the published bundle" verified no bundle.
+      const v = run(['verify', '--offline', '--require-delivery-standing']);
+      expect(v.status).not.toBe(0);
+      expect(`${v.stderr}`).toMatch(/requires --artifact, --payload and --bundle/);
+      const p = run(['publish', '--dry-run']);
+      expect(p.status).not.toBe(0);
+      expect(`${p.stderr}`).toMatch(/--artifact is required/);
+    });
+
+    it('the anchor workflow actually acquires an artifact and passes explicit paths', () => {
+      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
+      expect(wf).toMatch(/actions\/artifacts\/\$id\/zip/);
+      expect(wf).toMatch(/--artifact \/tmp\/c19\/finalized\.zip/);
+      expect(wf).toMatch(/--bundle\s+\/tmp\/c19\/payload\.sigstore\.json/);
+      expect(wf).toMatch(/--payload\s+\/tmp\/c19\/payload\.json/);
+      // Exactly one artifact, or refuse.
+      expect(wf).toMatch(/expected exactly one unexpired finalized artifact/);
+      // An old successful run must not publish after main has moved on.
+      expect(wf).toMatch(/no longer the main tip/);
+      // The verify job must build, or it repeats the defect already fixed in c19-lifecycle.yml.
+      expect(wf).toMatch(/- run: pnpm build/);
+      // And the bundle must be persisted, or nothing downstream can verify it.
+      expect(wf).toMatch(/upload-artifact/);
     });
   });
 
@@ -652,6 +781,42 @@ export function registerC19Anchor(): void {
     it('records the CORRECTION: previously suspected artifacts were retained, not deleted', () => {
       expect(ledger.findings.correction).toMatch(/RETAINED rather than deleted/);
       expect(ledger.retained.count).toBeGreaterThan(0);
+    });
+  });
+
+  describe('C19 — the trust material\'s provenance is reproducible from the repository', () => {
+    const TUF = join(LIB, 'c19-tuf');
+
+    it('the signed delegation chain is stored, not merely described', () => {
+      // Storing only the root and the result left the chain between them as prose. A reader could
+      // not check the stated provenance without redoing the walk and trusting the outcome.
+      for (const f of ['timestamp.json', 'snapshot.json', 'targets.json', 'BOOTSTRAP.md']) {
+        expect(existsSync(join(TUF, f)), `${f} must be stored for provenance to be checkable`).toBe(true);
+      }
+      expect(existsSync(join(LIB, 'c19-sigstore-tuf-root.json'))).toBe(true);
+    });
+
+    it('targets.json DECLARES the digest of the trusted root actually in use', async () => {
+      const targets = JSON.parse(readFileSync(join(TUF, 'targets.json'), 'utf8')).signed;
+      const declared = targets.targets['trusted_root.json'].hashes.sha256;
+      const actual = sha256hex(readFileSync(join(LIB, 'c19-sigstore-trusted-root.json')));
+      // This equality is the whole of the provenance claim: it makes the trusted root
+      // authenticated material rather than a file someone downloaded.
+      expect(actual).toBe(declared);
+    });
+
+    it('the policy pin matches the stored trusted root', () => {
+      const policy = JSON.parse(readFileSync(join(LIB, 'c19-trust.json'), 'utf8'));
+      const actual = sha256hex(readFileSync(join(LIB, policy.tuf.trustedRootFile)));
+      expect(actual).toBe(policy.tuf.trustedRootSha256);
+    });
+
+    it('the chain metadata links root -> timestamp -> snapshot -> targets', () => {
+      const ts = JSON.parse(readFileSync(join(TUF, 'timestamp.json'), 'utf8')).signed;
+      const snap = JSON.parse(readFileSync(join(TUF, 'snapshot.json'), 'utf8')).signed;
+      const targets = JSON.parse(readFileSync(join(TUF, 'targets.json'), 'utf8')).signed;
+      expect(ts.meta['snapshot.json'].version).toBe(snap.version);
+      expect(snap.meta['targets.json'].version).toBe(targets.version);
     });
   });
 

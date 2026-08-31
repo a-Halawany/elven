@@ -103,6 +103,10 @@ jobs:
           node-version: 24.11.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The serial controls import @eye/contracts from BUILT output. This repeats the exact defect
+      # already found and fixed in c19-lifecycle.yml; omitting it here would have failed the same
+      # way the moment this workflow first ran.
+      - run: pnpm build
       - name: C19 offline anchor verification (no network reliance)
         run: node scripts/gate/c19-anchor-cli.mjs selftest --offline
       - name: C19 lifecycle and containment controls
@@ -152,21 +156,131 @@ jobs:
           echo "C19: cosign $COSIGN_VERSION verified against its published digest"
           chmod +x /tmp/cosign
           /tmp/cosign version
+      # ── ACQUIRE THE EXACT FINALIZED ARTIFACT ────────────────────────────────
+      # Previously this workflow signed and "verified" nothing: no artifact was ever downloaded and
+      # no --artifact/--bundle path was passed, so the step named "verify the published bundle"
+      # verified no bundle. The delivery chain is now explicit and every binding is checked.
+      - name: Resolve the exact source and finalizer runs
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
+          SOURCE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # The source run must be the one that triggered us, and its head SHA must still be the
+          # current tip of main — an old successful run must not be able to publish after main
+          # has moved on.
+          tip="$(gh api repos/${{ github.repository }}/commits/main --jq .sha)"
+          if [ "$tip" != "$HEAD_SHA" ]; then
+            echo "::error::source run head $HEAD_SHA is no longer the main tip ($tip); superseded"
+            exit 1
+          fi
+          # Exactly one successful finalizer run for this SHA, or refuse.
+          fin="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name=="C17 finalize" and .conclusion=="success")]')"
+          n="$(echo "$fin" | jq 'length')"
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly one successful finalizer run for $HEAD_SHA, found $n"
+            exit 1
+          fi
+          echo "finalizer_run=$(echo "$fin" | jq -r '.[0].id')" >> "$GITHUB_OUTPUT"
+          echo "finalizer_attempt=$(echo "$fin" | jq -r '.[0].run_attempt')" >> "$GITHUB_OUTPUT"
+          echo "source_run=$SOURCE_RUN" >> "$GITHUB_OUTPUT"
+          echo "source_attempt=$SOURCE_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Acquire exactly one finalized artifact, by immutable id
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIN_RUN: ${{ steps.resolve.outputs.finalizer_run }}
+        run: |
+          set -euo pipefail
+          arts="$(gh api "repos/${{ github.repository }}/actions/runs/$FIN_RUN/artifacts" \
+            --jq '[.artifacts[] | select(.expired==false) | select(.name|startswith("c17-evidence-finalized-"))]')"
+          n="$(echo "$arts" | jq 'length')"
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly one unexpired finalized artifact, found $n (missing, multiple or stale)"
+            exit 1
+          fi
+          id="$(echo "$arts" | jq -r '.[0].id')"
+          name="$(echo "$arts" | jq -r '.[0].name')"
+          mkdir -p /tmp/c19
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > /tmp/c19/finalized.zip
+          digest="$(sha256sum /tmp/c19/finalized.zip | cut -d' ' -f1)"
+          echo "artifact_id=$id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "acquired artifact $id ($name) sha256=$digest"
+
+      - name: Build the canonical signed payload
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ steps.resolve.outputs.source_run }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.resolve.outputs.source_attempt }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          FINALIZER_RUN_ID: ${{ steps.resolve.outputs.finalizer_run }}
+          FINALIZER_RUN_ATTEMPT: ${{ steps.resolve.outputs.finalizer_attempt }}
+          SIGNER_RUN_ID: ${{ github.run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVIDENCE_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          EVIDENCE_ARTIFACT_NAME: ${{ steps.artifact.outputs.artifact_name }}
+          EVIDENCE_DIGEST: ${{ steps.artifact.outputs.artifact_digest }}
+        run: node scripts/gate/c19-anchor-cli.mjs payload --out /tmp/c19/payload.json
+
       - name: Publication dry run — everything except the irreversible step
         env:
-          # The OIDC token is requested by cosign at the moment of signing and is never written to
-          # a file, an output, an environment file or a log.
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/gate/c19-anchor-cli.mjs publish --dry-run
+          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: |
+          node scripts/gate/c19-anchor-cli.mjs publish --dry-run \
+            --artifact /tmp/c19/finalized.zip \
+            --payload  /tmp/c19/payload.json \
+            --bundle   /tmp/c19/payload.sigstore.json
+
       - name: Recover or publish, idempotently
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_URI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
           COSIGN: /tmp/cosign
-        # An entry Rekor already accepted must be FOUND and reused, never signed again: a second
-        # signing event for the same bytes is a second identity assertion, and it makes the log a
-        # record of our retries rather than of our releases.
-        run: node scripts/gate/c19-anchor-cli.mjs publish --recover-or-publish
-      - name: Verify the published bundle offline before trusting it
-        run: node scripts/gate/c19-anchor-cli.mjs verify --offline --require-delivery-standing
+        run: |
+          node scripts/gate/c19-anchor-cli.mjs publish --recover-or-publish \
+            --artifact /tmp/c19/finalized.zip \
+            --payload  /tmp/c19/payload.json \
+            --bundle   /tmp/c19/payload.sigstore.json
+
+      - name: Verify the published bundle OFFLINE against the delivered artifact
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SIGNER_RUN_ID: ${{ github.run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          node scripts/gate/c19-anchor-cli.mjs verify --offline --require-delivery-standing \
+            --artifact /tmp/c19/finalized.zip \
+            --payload  /tmp/c19/payload.json \
+            --bundle   /tmp/c19/payload.sigstore.json
+
+      - name: Verify again from a FRESH FOREIGN CHECKOUT, offline
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SIGNER_RUN_ID: ${{ github.run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch main "${{ github.server_url }}/${{ github.repository }}" /tmp/foreign
+          cd /tmp/foreign && git fetch --quiet origin "${{ github.event.workflow_run.head_sha }}" \
+            && git checkout --quiet FETCH_HEAD
+          node scripts/gate/c19-anchor-cli.mjs verify --offline --require-delivery-standing \
+            --artifact /tmp/c19/finalized.zip \
+            --payload  /tmp/c19/payload.json \
+            --bundle   /tmp/c19/payload.sigstore.json
+
+      - name: Persist the bundle as a digest-bound artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c19-anchor-bundle-${{ steps.artifact.outputs.artifact_digest }}
+          path: |
+            /tmp/c19/payload.json
+            /tmp/c19/payload.sigstore.json
+          if-no-files-found: error

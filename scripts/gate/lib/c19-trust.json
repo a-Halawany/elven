@@ -1,14 +1,13 @@
 {
   "schema": "eye/c19/trust-policy",
-  "version": 2,
+  "version": 3,
   "_comment": [
-    "C19 TRUST POLICY. Version 1 pinned GitHub's OIDC JWKS leaf keys as an offline root. That was",
-    "wrong twice over: those keys ROTATE, so offline verification would break on every rotation,",
-    "and a rotating leaf is not a trust anchor. Sigstore keyless does not need them at all — the",
-    "OIDC token is exchanged for a short-lived Fulcio certificate at signing time, and a verifier",
-    "proves the signer's identity from that certificate's own extensions against a Fulcio root.",
-    "The offline anchor is therefore independently bootstrapped Sigstore TUF material, held beside",
-    "this file and authenticated by the TUF chain rather than by having been downloaded."
+    "C19 TRUST POLICY v3. v1 pinned GitHub's rotating OIDC JWKS leaves as an offline root, which was",
+    "wrong twice over. v2 fixed the anchor but left the IDENTITY POLICY able to FAIL OPEN: fields were",
+    "only checked when the caller happened to supply an expected value, so an identity carrying a wrong",
+    "source SHA, a wrong workflow digest and a wrong run URI verified with zero findings when those",
+    "expectations were absent - which is exactly how the real CLI called it.",
+    "v3 makes every delivery-standing field MANDATORY. A missing expectation is a refusal, never a skip."
   ],
   "tuf": {
     "rootFile": "c19-sigstore-tuf-root.json",
@@ -16,14 +15,16 @@
     "trustedRootFile": "c19-sigstore-trusted-root.json",
     "trustedRootSha256": "6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66",
     "targetsVersion": 14,
-    "provenance": "https://tuf-repo-cdn.sigstore.dev — root v15, snapshot v165, targets v14; the",
+    "provenance": "https://tuf-repo-cdn.sigstore.dev \u2014 root v15, snapshot v165, targets v14; the",
     "provenanceNote": "trusted root's digest equals the one the signed targets metadata declares."
   },
-  "algorithms": ["ES256"],
+  "algorithms": [
+    "ES256"
+  ],
   "identity": {
     "_comment": [
       "EXACT values only. A regex identity policy is how a verifier ends up accepting a signature",
-      "from a workflow it did not mean to trust — `.*` in the wrong place accepts any branch, any",
+      "from a workflow it did not mean to trust \u2014 `.*` in the wrong place accepts any branch, any",
       "workflow, or any fork. Every field below has one exact value, so there is nothing to widen."
     ],
     "issuer": "https://token.actions.githubusercontent.com",
@@ -32,8 +33,11 @@
     "repositoryOwner": "a-Halawany",
     "ref": "refs/heads/main",
     "workflowRef": "a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main",
-    "eventName": "push",
-    "runnerEnvironment": "github-hosted"
+    "runnerEnvironment": "github-hosted",
+    "repositoryId": "1326601788",
+    "repositoryOwnerId": "84006518",
+    "signerEventName": "workflow_run",
+    "_signerEventComment": "the anchor workflow is workflow_run-triggered; the upstream ci run's own event is 'push' and is bound separately"
   },
   "signers": {
     "sigstore-fulcio": {
@@ -49,5 +53,24 @@
       "description": "NON-DELIVERY test seam only. Controlled by the evidence process, therefore NOT independent. Hosted delivery standing refuses it by construction."
     }
   },
-  "revoked": []
+  "revoked": [],
+  "requiredIdentityFields": [
+    "subjectAlternativeName",
+    "issuer",
+    "sourceRepositoryUri",
+    "sourceRepositoryIdentifier",
+    "sourceRepositoryOwnerUri",
+    "sourceRepositoryOwnerIdentifier",
+    "sourceRepositoryRef",
+    "sourceRepositoryDigest",
+    "buildConfigUri",
+    "buildConfigDigest",
+    "buildTrigger",
+    "runInvocationUri",
+    "runnerEnvironment"
+  ],
+  "_requiredComment": [
+    "Every field here MUST be present in the certificate AND matched against an expected value.",
+    "If the caller cannot supply an expectation, verification FAILS - it does not skip the check."
+  ]
 }
