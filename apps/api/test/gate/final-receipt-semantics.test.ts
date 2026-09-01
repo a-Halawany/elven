@@ -89,6 +89,30 @@ describe('C16-R3.4.3 receipt semantics', () => {
     replace(rel, `${JSON.stringify(doc, null, 2)}\n`);
   };
 
+  /**
+   * R3.4.3 rejects for the stated STRUCTURAL reason, and R3.4.2 rejects only on ARITHMETIC.
+   *
+   * For mutations that destroy an image's analysis, the false pass is no longer reproducible: both
+   * pinned images now carry governed dispositions (CVE-2026-14456, SCX-0006..0009), so emptying
+   * either one orphans records and R3.4.2's finding-reconciliation arithmetic notices. That is a
+   * genuine improvement, and pretending the old false pass still exists would be the wrong way to
+   * record it.
+   *
+   * What still needs proving is that R3.4.3's structural check is a DISTINCT one - that it is not
+   * merely arithmetic wearing a different message. So: R3.4.3 must give the structural reason, and
+   * R3.4.2 must NOT give it, whatever else it says.
+   */
+  const structuralCheckIsDistinct = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((x) => expected.test(x)),
+      `expected a problem matching ${expected}, got:\n${problems.join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen();
+    expect(stale.some((x) => expected.test(x)),
+      `R3.4.2 must NOT produce the structural finding; it reported:\n${stale.join('\n')}`).toBe(false);
+    expect(stale.length,
+      'R3.4.2 must still reject on arithmetic, or this mutation proves nothing').toBeGreaterThan(0);
+  };
+
   /** R3.4.3 rejects for the stated reason; R3.4.2 accepted the identical package. */
   const closesFalsePass = (expected: RegExp) => {
     const problems = check();
@@ -133,20 +157,27 @@ describe('C16-R3.4.3 receipt semantics', () => {
     closesFalsePass(/but the source contract derives exactly/);
   });
 
-  // These four use `trivy-image-1`, the image with NO tracked dispositions. Emptying an image
-  // that HAS them is already caught by R3.4.2's finding-reconciliation arithmetic; emptying one
-  // that has none costs nothing arithmetically, which is exactly why it passed.
+  /**
+   * These four use `trivy-image-1` (redis), which USED to carry no tracked dispositions - emptying
+   * it cost nothing arithmetically, which is exactly why R3.4.2 passed it.
+   *
+   * It now carries two (SCX-0008, SCX-0009 for CVE-2026-14456), so three of these mutations orphan
+   * records and R3.4.2 catches them on arithmetic. Those assert the structural check is DISTINCT
+   * rather than a reproduced false pass; the fourth leaves the findings intact and is unaffected.
+   */
   it('rejects an image report with Results: []', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results = []; });
-    closesFalsePass(/Results is EMPTY; the image was not analysed/);
+    structuralCheckIsDistinct(/Results is EMPTY; the image was not analysed/);
   });
 
   it('rejects an image report with Results: [{}]', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results = [{}]; });
-    closesFalsePass(/Results\[0\] is an EMPTY object/);
+    structuralCheckIsDistinct(/Results\[0\] is an EMPTY object/);
   });
 
   it('rejects an image whose os-pkgs result lists no packages', () => {
+    // The findings survive this one, so the arithmetic is unchanged and the false pass still
+    // reproduces exactly as it did.
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results[0].Packages = []; });
     closesFalsePass(/lists ZERO packages/);
   });
@@ -155,7 +186,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       d.Results[0].Target = `elsewhere@sha256:${'c'.repeat(64)} (alpine 3.24.1)`;
     });
-    closesFalsePass(/os-pkgs target is .*expected exactly/);
+    structuralCheckIsDistinct(/os-pkgs target is .*expected exactly/);
   });
 
   // ── §B — the scanner banner is the only proof of coverage ────────────────────

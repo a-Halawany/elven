@@ -182,9 +182,19 @@ export function buildPassingR34Evidence(
   mkdirSync(c16, { recursive: true });
   mkdirSync(cache, { recursive: true });
 
-  // R3.4.5: SCX-0004 is approved 2026-08-14, and a record approved in the future of the run
-  // date is correctly refused, so the fixture's run window must not predate it.
-  const runDate = '2026-08-15';
+  /**
+   * The fixture's run window must not predate the NEWEST tracked disposition.
+   *
+   * The final-manifest verifier re-validates the current tracked records against the evidence
+   * package's own run date, and a record approved in the future of that date is correctly refused.
+   * R3.4.5 moved this to 2026-08-15 when SCX-0004 was approved 2026-08-14; the CVE-2026-14456
+   * maintenance change adds SCX-0006..0009 approved 2026-09-01, so it moves again.
+   *
+   * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
+   * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
+   * verifying an evidence package against records it never saw.
+   */
+  const runDate = '2026-09-01';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;

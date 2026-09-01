@@ -1,6 +1,6 @@
 {
-  "recorded_from": "a real C15 run (production adapter) - replayed so the behavioural controls exercise real scanner output without a network. RE-RECORDED at C16-R3.4.4 from a clean-clone run of f8983f6f379d0db58e043a5afa1269cd1cd8175e: the trivy advisory database had advanced and the postgres image scan now reports two further HIGH Go stdlib findings, so the previous capture no longer matched the tracked dispositions. That run FAILED CLOSED on those findings before they were governed; only its RAW SCANNER STREAMS are replayed here, and the runner recomputes its own verdict from them.",
-  "source_sha": "f8983f6f379d0db58e043a5afa1269cd1cd8175e",
+  "recorded_from": "a real C15 run (production adapter) - replayed so the behavioural controls exercise real scanner output without a network. RE-RECORDED for the CVE-2026-14456 maintenance change: the trivy advisory database advanced again (DB updated 2026-09-01) and both the postgres and redis image scans now report libcrypto3 and libssl3 HIGH findings for that advisory, so the previous capture no longer matched the tracked dispositions and reported SCX-0006..0009 as unused. Only the two trivy-image RAW SCANNER STREAMS were replaced; every other stream is unchanged from the C16-R3.4.4 capture. The runner recomputes its own verdict from these streams.",
+  "source_sha": "e9f3bd7fab04ea7798e82bc54c96e030ca5b4856",
   "host_platform_key": "darwin-arm64",
   "scan_platform": "linux/amd64",
   "digest_pinned_images": [

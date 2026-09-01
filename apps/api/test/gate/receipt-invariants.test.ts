@@ -88,6 +88,29 @@ describe('C16-R3.4.4 receipt invariants', () => {
   };
 
   /** R3.4.4 rejects for the stated reason; R3.4.3 accepted the identical package. */
+  /**
+   * The mutation no longer reproduces a bypass, because it changes the finding arithmetic.
+   *
+   * Both pinned images now carry governed dispositions (CVE-2026-14456, SCX-0006..0009), so a
+   * mutation that adds, drops or re-targets findings on either image is caught by the earlier
+   * verifier's finding-reconciliation arithmetic. That is a genuine improvement; asserting the old
+   * bypass still exists would be the wrong way to record it.
+   *
+   * What still needs proving is that the newer STRUCTURAL check is a distinct one - not arithmetic
+   * wearing a different message. So the newer verifier must give the structural reason, the older
+   * must NOT give it, and the older must still reject.
+   */
+  const structuralCheckIsDistinct = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((x) => expected.test(x)),
+      `expected a problem matching ${expected}, got:\n${problems.slice(0, 12).join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen();
+    expect(stale.some((x) => expected.test(x)),
+      `the earlier verifier must NOT produce the structural finding; it reported:\n${stale.join('\n')}`).toBe(false);
+    expect(stale.length,
+      'the earlier verifier must still reject, or this mutation proves nothing').toBeGreaterThan(0);
+  };
+
   const closesFalsePass = (expected: RegExp) => {
     const problems = check();
     expect(problems.some((p) => expected.test(p)),
@@ -191,12 +214,12 @@ describe('C16-R3.4.4 receipt invariants', () => {
       const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
       r.Target = `${d.Metadata.Reference}-attacker (alpine 3.23.5)`;
     });
-    closesFalsePass(/os-pkgs target is .*expected exactly/);
+    structuralCheckIsDistinct(/os-pkgs target is .*expected exactly/);
   });
 
   it('rejects a duplicated JSON result', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results.push({ ...d.Results[0] }); });
-    closesFalsePass(/repeats the result identity/);
+    structuralCheckIsDistinct(/repeats the result identity/);
   });
 
   // ── §B7: findings ────────────────────────────────────────────────────────────
