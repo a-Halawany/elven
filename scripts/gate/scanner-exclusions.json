@@ -29,12 +29,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c"
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -78,12 +78,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c"
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -114,12 +114,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c"
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -152,12 +152,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-14",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c"
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -203,12 +203,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-15",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "430d13876bb8b56e8931f831dec00ed510acff38f19e8a14ee9a753c515c323c"
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -220,6 +220,182 @@
         }
       ],
       "reviewed_on": "2026-08-15"
+    },
+    {
+      "id": "SCX-0006",
+      "advisory_ids": [
+        "CVE-2026-14456"
+      ],
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "libcrypto3",
+      "package_purl": "pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.24.1",
+      "installed_version": "3.5.7-r0",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)",
+      "reason": "OpenSSL QUIC-server listener DoS (unbounded memory growth queueing incoming channels for unknown destination connection IDs). Fixed in 3.5.8-r0, which Alpine published on 2026-08-25, but NO official postgres:18-alpine or redis:8-alpine build has been rebuilt with it - re-resolved against live registry data on 2026-09-01 with a Trivy DB updated the same day: postgres:18-alpine sha256:d3e1620b... and redis:8-alpine sha256:becdda6c... both still carry 3.5.7-r0. The Debian variants are worse (postgres:18 has 109 and redis:8 has 53 HIGH/CRITICAL findings, including their own OpenSSL findings), so there is no patched official image to re-pin to. Scanner severity HIGH (CVSS 7.5 AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H, availability only); OpenSSL's own vendor rating is LOW.",
+      "compensating_controls": [
+        "Exploitation requires an OpenSSL QUIC server listener (a Listener SSL object processing QUIC Initial packets). PostgreSQL serves its wire protocol over TCP and Redis serves RESP over TCP; this repository configures no QUIC for either, so the vulnerable entry point is not exercised.",
+        "Redis runs without TLS at all in this profile (redis-server --requirepass, no TLS port).",
+        "Both services are loopback-only: docker-compose.yml publishes 127.0.0.1:5432:5432 and 127.0.0.1:6379:6379, so neither is reachable from off-host.",
+        "The advisory is availability-only; it carries no confidentiality or integrity impact.",
+        "scripts/gate/check-patched-images.mjs re-resolves the official tags and FAILS as soon as a patched digest exists, naming the digest to re-pin to; these records must then be deleted.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-09-01",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+        }
+      ],
+      "reviewed_on": "2026-09-01",
+      "mandatory_rereview_by": "2026-11-05"
+    },
+    {
+      "id": "SCX-0007",
+      "advisory_ids": [
+        "CVE-2026-14456"
+      ],
+      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "scan_platform": "linux/amd64",
+      "package_name": "libssl3",
+      "package_purl": "pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.24.1",
+      "installed_version": "3.5.7-r0",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)",
+      "reason": "OpenSSL QUIC-server listener DoS (unbounded memory growth queueing incoming channels for unknown destination connection IDs). Fixed in 3.5.8-r0, which Alpine published on 2026-08-25, but NO official postgres:18-alpine or redis:8-alpine build has been rebuilt with it - re-resolved against live registry data on 2026-09-01 with a Trivy DB updated the same day: postgres:18-alpine sha256:d3e1620b... and redis:8-alpine sha256:becdda6c... both still carry 3.5.7-r0. The Debian variants are worse (postgres:18 has 109 and redis:8 has 53 HIGH/CRITICAL findings, including their own OpenSSL findings), so there is no patched official image to re-pin to. Scanner severity HIGH (CVSS 7.5 AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H, availability only); OpenSSL's own vendor rating is LOW.",
+      "compensating_controls": [
+        "Exploitation requires an OpenSSL QUIC server listener (a Listener SSL object processing QUIC Initial packets). PostgreSQL serves its wire protocol over TCP and Redis serves RESP over TCP; this repository configures no QUIC for either, so the vulnerable entry point is not exercised.",
+        "Redis runs without TLS at all in this profile (redis-server --requirepass, no TLS port).",
+        "Both services are loopback-only: docker-compose.yml publishes 127.0.0.1:5432:5432 and 127.0.0.1:6379:6379, so neither is reachable from off-host.",
+        "The advisory is availability-only; it carries no confidentiality or integrity impact.",
+        "scripts/gate/check-patched-images.mjs re-resolves the official tags and FAILS as soon as a patched digest exists, naming the digest to re-pin to; these records must then be deleted.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-09-01",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+        }
+      ],
+      "reviewed_on": "2026-09-01",
+      "mandatory_rereview_by": "2026-11-05"
+    },
+    {
+      "id": "SCX-0008",
+      "advisory_ids": [
+        "CVE-2026-14456"
+      ],
+      "image": "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+      "scan_platform": "linux/amd64",
+      "package_name": "libcrypto3",
+      "package_purl": "pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.23.5",
+      "installed_version": "3.5.7-r0",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)",
+      "reason": "OpenSSL QUIC-server listener DoS (unbounded memory growth queueing incoming channels for unknown destination connection IDs). Fixed in 3.5.8-r0, which Alpine published on 2026-08-25, but NO official postgres:18-alpine or redis:8-alpine build has been rebuilt with it - re-resolved against live registry data on 2026-09-01 with a Trivy DB updated the same day: postgres:18-alpine sha256:d3e1620b... and redis:8-alpine sha256:becdda6c... both still carry 3.5.7-r0. The Debian variants are worse (postgres:18 has 109 and redis:8 has 53 HIGH/CRITICAL findings, including their own OpenSSL findings), so there is no patched official image to re-pin to. Scanner severity HIGH (CVSS 7.5 AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H, availability only); OpenSSL's own vendor rating is LOW.",
+      "compensating_controls": [
+        "Exploitation requires an OpenSSL QUIC server listener (a Listener SSL object processing QUIC Initial packets). PostgreSQL serves its wire protocol over TCP and Redis serves RESP over TCP; this repository configures no QUIC for either, so the vulnerable entry point is not exercised.",
+        "Redis runs without TLS at all in this profile (redis-server --requirepass, no TLS port).",
+        "Both services are loopback-only: docker-compose.yml publishes 127.0.0.1:5432:5432 and 127.0.0.1:6379:6379, so neither is reachable from off-host.",
+        "The advisory is availability-only; it carries no confidentiality or integrity impact.",
+        "scripts/gate/check-patched-images.mjs re-resolves the official tags and FAILS as soon as a patched digest exists, naming the digest to re-pin to; these records must then be deleted.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-09-01",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+        }
+      ],
+      "reviewed_on": "2026-09-01",
+      "mandatory_rereview_by": "2026-11-05"
+    },
+    {
+      "id": "SCX-0009",
+      "advisory_ids": [
+        "CVE-2026-14456"
+      ],
+      "image": "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+      "scan_platform": "linux/amd64",
+      "package_name": "libssl3",
+      "package_purl": "pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.23.5",
+      "installed_version": "3.5.7-r0",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)",
+      "reason": "OpenSSL QUIC-server listener DoS (unbounded memory growth queueing incoming channels for unknown destination connection IDs). Fixed in 3.5.8-r0, which Alpine published on 2026-08-25, but NO official postgres:18-alpine or redis:8-alpine build has been rebuilt with it - re-resolved against live registry data on 2026-09-01 with a Trivy DB updated the same day: postgres:18-alpine sha256:d3e1620b... and redis:8-alpine sha256:becdda6c... both still carry 3.5.7-r0. The Debian variants are worse (postgres:18 has 109 and redis:8 has 53 HIGH/CRITICAL findings, including their own OpenSSL findings), so there is no patched official image to re-pin to. Scanner severity HIGH (CVSS 7.5 AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H, availability only); OpenSSL's own vendor rating is LOW.",
+      "compensating_controls": [
+        "Exploitation requires an OpenSSL QUIC server listener (a Listener SSL object processing QUIC Initial packets). PostgreSQL serves its wire protocol over TCP and Redis serves RESP over TCP; this repository configures no QUIC for either, so the vulnerable entry point is not exercised.",
+        "Redis runs without TLS at all in this profile (redis-server --requirepass, no TLS port).",
+        "Both services are loopback-only: docker-compose.yml publishes 127.0.0.1:5432:5432 and 127.0.0.1:6379:6379, so neither is reachable from off-host.",
+        "The advisory is availability-only; it carries no confidentiality or integrity impact.",
+        "scripts/gate/check-patched-images.mjs re-resolves the official tags and FAILS as soon as a patched digest exists, naming the digest to re-pin to; these records must then be deleted.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
+      ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
+      "owner": "founding-engineer",
+      "approver": "gate-2.2-security-review",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-09-01",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "classification": "RISK_ACCEPTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+        }
+      ],
+      "reviewed_on": "2026-09-01",
+      "mandatory_rereview_by": "2026-11-05"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions."

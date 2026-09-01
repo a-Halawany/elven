@@ -47,7 +47,8 @@ govern a finding on any other platform.
 
 ## 3. Findings and their dispositions
 
-Twenty-three findings on the `linux/amd64` postgres child, governed by five records.
+Twenty-seven findings across the two `linux/amd64` children — twenty-five on postgres and two on
+redis — governed by nine records.
 
 ### SCX-0001 — c-ares (OS package)
 
@@ -294,9 +295,121 @@ re-scans monthly as a blocking gate. Reachability analysis is a static over-appr
 not cover reflection or dynamic dispatch, so the operational controls still apply. Expiry is
 **2026-11-05**, no later than the rest of the set.
 
-**Current reconciliation.** 23 findings: SCX-0001 (1) + SCX-0002 (14) + SCX-0003 (1) +
-SCX-0004 (1) + SCX-0005 (6) = 23, with 0 unmatched and 0 unused.
+**Current reconciliation.** 27 findings: SCX-0001 (1) + SCX-0002 (14) + SCX-0003 (1) +
+SCX-0004 (1) + SCX-0005 (6) + SCX-0006 (1) + SCX-0007 (1) + SCX-0008 (1) + SCX-0009 (1) = 27, with
+0 unmatched and 0 unused.
 
+
+### SCX-0006 — OpenSSL `libcrypto3` in postgres (QUIC listener DoS)
+
+| Field | Value |
+|---|---|
+| Advisory | `CVE-2026-14456` |
+| Severity (scanner) | HIGH |
+| Severity (vendor) | **Low** — OpenSSL's own severity rating for this advisory |
+| CVSS | 7.5 `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H` (Red Hat) — availability only |
+| Package | `libcrypto3` |
+| PURL | `pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.24.1` |
+| Installed version | `3.5.7-r0` |
+| Fixed version | `3.5.8-r0` |
+| Result target | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved | 2026-09-01 |
+| Expires | 2026-11-05 |
+
+### SCX-0007 — OpenSSL `libssl3` in postgres (QUIC listener DoS)
+
+| Field | Value |
+|---|---|
+| Advisory | `CVE-2026-14456` |
+| Severity (scanner) | HIGH |
+| Severity (vendor) | **Low** |
+| Package | `libssl3` |
+| PURL | `pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.24.1` |
+| Installed version | `3.5.7-r0` |
+| Fixed version | `3.5.8-r0` |
+| Result target | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved | 2026-09-01 |
+| Expires | 2026-11-05 |
+
+### SCX-0008 — OpenSSL `libcrypto3` in redis (QUIC listener DoS)
+
+| Field | Value |
+|---|---|
+| Advisory | `CVE-2026-14456` |
+| Severity (scanner) | HIGH |
+| Severity (vendor) | **Low** |
+| Package | `libcrypto3` |
+| PURL | `pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.23.5` |
+| Installed version | `3.5.7-r0` |
+| Fixed version | `3.5.8-r0` |
+| Result target | `redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved | 2026-09-01 |
+| Expires | 2026-11-05 |
+
+### SCX-0009 — OpenSSL `libssl3` in redis (QUIC listener DoS)
+
+| Field | Value |
+|---|---|
+| Advisory | `CVE-2026-14456` |
+| Severity (scanner) | HIGH |
+| Severity (vendor) | **Low** |
+| Package | `libssl3` |
+| PURL | `pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.23.5` |
+| Installed version | `3.5.7-r0` |
+| Fixed version | `3.5.8-r0` |
+| Result target | `redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved | 2026-09-01 |
+| Expires | 2026-11-05 |
+
+**Classification: `RISK_ACCEPTED`, for all four.**
+
+Not `NOT_AFFECTED`. The affected OpenSSL code is installed in both images. The absence of any QUIC
+server listener is a strong reachability limitation and is recorded below as the primary
+compensating control, but it is not proof that the vulnerable code is absent, and the disposition
+does not claim to be.
+
+**Reason.** The defect is unbounded memory growth in an OpenSSL **QUIC server listener**: when a
+`Listener` SSL object processes valid QUIC Initial packets for unknown destination connection IDs,
+it queues new incoming channels without any limit, so a peer that sends Initial packets faster than
+the application accepts connections can exhaust memory. Reaching it requires the application to
+create a QUIC Listener SSL object.
+
+`3.5.8-r0` carries the fix and Alpine published that package on 2026-08-25, but **no official
+`postgres:18-alpine` or `redis:8-alpine` image has been rebuilt with it.** Re-resolved against live
+registry data on 2026-09-01 with a Trivy database updated the same day:
+
+| Tag | Current official digest | OpenSSL |
+|---|---|---|
+| `postgres:18-alpine` | `sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2` | `3.5.7-r0` |
+| `redis:8-alpine` | `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576` | `3.5.7-r0` |
+
+Re-pinning to those digests would not clear the finding. The Debian-based variants are far worse —
+`postgres:18` carries 109 HIGH/CRITICAL findings and `redis:8` carries 53, both including their own
+OpenSSL findings — so they are not a remediation either. There is therefore no patched official
+image to re-pin to, which is why these are dispositions rather than an upgrade.
+
+**Compensating controls.**
+1. **Neither service runs a QUIC listener.** PostgreSQL serves its wire protocol over TCP and Redis
+   serves RESP over TCP; this repository contains no QUIC configuration for either. The vulnerable
+   entry point is not exercised.
+2. Redis in this profile runs without TLS at all — `docker-compose.yml` starts it with
+   `redis-server --requirepass` and no TLS port.
+3. Both services are bound to loopback only: `127.0.0.1:5432:5432` and `127.0.0.1:6379:6379`.
+4. The advisory is availability-only (`C:N/I:N/A:H`); OpenSSL's own vendor rating is **Low**.
+5. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate.
+
+**Automatic recheck.** `scripts/gate/check-patched-images.mjs` resolves the current official
+`postgres:18-alpine` and `redis:8-alpine` digests and scans them for this advisory. When a patched
+official digest appears it fails, naming the digest to re-pin to; these four records must then be
+deleted, because the gate rejects a record that matches nothing.
 
 ## 4. Prohibited exposure
 
@@ -313,7 +426,8 @@ blocking release gate.
 
 ## 5. Review obligations
 
-* Every record expires **2026-11-05** and is rejected by the gate from that date.
+* Every record expires **2026-11-05** and is rejected by the gate from that date. SCX-0006 to
+  SCX-0009 carry a mandatory re-review no later than that date.
 * ADR-P0-01 requires a monthly re-pin and re-scan; a re-pin that clears a finding must
   delete the corresponding record, because an unused record fails the gate as stale.
 * Owner and approver must remain distinct parties; a record cannot approve itself.

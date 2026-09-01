@@ -53,3 +53,8 @@ evidence/c17/
 # requires). It is a committed test fixture, not build output.
 !apps/api/test/gate/packages/contracts/dist/
 !apps/api/test/gate/packages/contracts/dist/index.js
+
+# The pinned cosign the C19 controls execute. It is a 133 MB BINARY, acquired by digest-verified
+# download from scripts/gate/lib/c19-cosign.json — never committed, and never trusted for merely
+# reporting the right version.
+.c19-tools/
