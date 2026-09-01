@@ -90,11 +90,29 @@ export function verifyRole({ metadata, keys, role, roleName }) {
 }
 
 /** Expiry and rollback are as load-bearing as the signatures. */
-export function verifyFreshness({ metadata, roleName, now, previousVersion }) {
+/**
+ * Freshness and rollback, which are two different questions asked at two different times.
+ *
+ * `requireUnexpired` belongs to UPDATING the source-owned trust snapshot: when we go to the
+ * Sigstore repository for new metadata, stale metadata must be refused, because a freeze attack
+ * looks exactly like a quiet repository.
+ *
+ * It does NOT belong to verifying a bundle that was signed years earlier. Sigstore's timestamp role
+ * expires within days by design; making archival verification depend on it would mean a package
+ * with a ten-year payload window stopped verifying six days after it was built, which is a
+ * contradiction in the contract rather than a security property.
+ *
+ * Rollback protection survives the split, and gets stronger: instead of "no previous version was
+ * supplied", historical verification requires each role to be at least the version recorded in the
+ * source-held policy - an anchor held independently of the package being verified.
+ */
+export function verifyFreshness({
+  metadata, roleName, now, previousVersion, requireUnexpired = true, minimumVersion,
+}) {
   const problems = [];
   const expires = Date.parse(metadata?.signed?.expires ?? '');
   if (!Number.isFinite(expires)) problems.push(`c19-tuf: ${roleName} has no parseable expiry`);
-  else if (now > expires) {
+  else if (requireUnexpired && now > expires) {
     problems.push(`c19-tuf: ${roleName} expired at ${metadata.signed.expires}; expired metadata is `
       + 'refused, because a freeze attack looks exactly like a quiet repository');
   }
@@ -105,6 +123,10 @@ export function verifyFreshness({ metadata, roleName, now, previousVersion }) {
     problems.push(`c19-tuf: ${roleName} version ${version} is older than the ${previousVersion} `
       + 'already seen; a rollback is refused');
   }
+  if (minimumVersion !== undefined && Number.isInteger(version) && version < Number(minimumVersion)) {
+    problems.push(`c19-tuf: ${roleName} is v${version}, older than the v${minimumVersion} pinned by `
+      + 'the source-held policy; a rollback to metadata that predates the reviewed anchor is refused');
+  }
   return problems;
 }
 
@@ -114,7 +136,16 @@ export function verifyFreshness({ metadata, roleName, now, previousVersion }) {
  * Returns findings. An empty array means every signature, threshold, version, expiry, hash and
  * length held — which is what "independently bootstrapped" has to mean if it means anything.
  */
-export function verifyTufChain({ root, timestamp, snapshot, targets, targetName, targetBytes, now = Date.now() }) {
+export function verifyTufChain({
+  root, timestamp, snapshot, targets, targetName, targetBytes, now = Date.now(),
+  // `update` verifies metadata we are about to ADOPT: it must be current. `historical` verifies
+  // metadata captured earlier, against pinned minimum versions instead of a wall clock.
+  purpose = 'update', minimumVersions = {},
+}) {
+  const requireUnexpired = purpose === 'update';
+  if (purpose !== 'update' && purpose !== 'historical') {
+    return [`c19-tuf: unknown verification purpose ${j(purpose)}`];
+  }
   const problems = [];
   const rootSigned = root?.signed;
   if (rootSigned?.roles === undefined) return ['c19-tuf: the source-held root is not a TUF root'];
@@ -123,19 +154,28 @@ export function verifyTufChain({ root, timestamp, snapshot, targets, targetName,
   problems.push(...verifyRole({
     metadata: root, keys: rootSigned.keys, role: rootSigned.roles.root, roleName: 'root',
   }));
-  problems.push(...verifyFreshness({ metadata: root, roleName: 'root', now }));
+  problems.push(...verifyFreshness({
+    metadata: root, roleName: 'root', now, requireUnexpired,
+    minimumVersion: minimumVersions.root,
+  }));
 
   // 2 — timestamp, signed by a key the ROOT delegates to.
   problems.push(...verifyRole({
     metadata: timestamp, keys: rootSigned.keys, role: rootSigned.roles.timestamp, roleName: 'timestamp',
   }));
-  problems.push(...verifyFreshness({ metadata: timestamp, roleName: 'timestamp', now }));
+  problems.push(...verifyFreshness({
+    metadata: timestamp, roleName: 'timestamp', now, requireUnexpired,
+    minimumVersion: minimumVersions.timestamp,
+  }));
 
   // 3 — snapshot, and it must be the version timestamp names, with the hash timestamp declares.
   problems.push(...verifyRole({
     metadata: snapshot, keys: rootSigned.keys, role: rootSigned.roles.snapshot, roleName: 'snapshot',
   }));
-  problems.push(...verifyFreshness({ metadata: snapshot, roleName: 'snapshot', now }));
+  problems.push(...verifyFreshness({
+    metadata: snapshot, roleName: 'snapshot', now, requireUnexpired,
+    minimumVersion: minimumVersions.snapshot,
+  }));
   const snapMeta = timestamp?.signed?.meta?.['snapshot.json'];
   if (snapMeta === undefined) problems.push('c19-tuf: timestamp does not name snapshot.json');
   else if (Number(snapMeta.version) !== Number(snapshot?.signed?.version)) {
@@ -147,7 +187,10 @@ export function verifyTufChain({ root, timestamp, snapshot, targets, targetName,
   problems.push(...verifyRole({
     metadata: targets, keys: rootSigned.keys, role: rootSigned.roles.targets, roleName: 'targets',
   }));
-  problems.push(...verifyFreshness({ metadata: targets, roleName: 'targets', now }));
+  problems.push(...verifyFreshness({
+    metadata: targets, roleName: 'targets', now, requireUnexpired,
+    minimumVersion: minimumVersions.targets,
+  }));
   const tgtMeta = snapshot?.signed?.meta?.['targets.json'];
   if (tgtMeta === undefined) problems.push('c19-tuf: snapshot does not name targets.json');
   else if (Number(tgtMeta.version) !== Number(targets?.signed?.version)) {

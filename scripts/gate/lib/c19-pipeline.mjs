@@ -27,10 +27,15 @@ import {
   resolveCanonicalSource, resolveCanonicalFinalizer, assertCanonicalInvocation,
 } from './c19-resolve.mjs';
 import { acquire } from './c19-acquire.mjs';
+import { verifyTufChain } from './c19-tuf.mjs';
 import { buildPayload, canonicalize, domainContext, publicationIdentity, REQUIRED_PAYLOAD_FIELDS } from './c19-attest.mjs';
-import { loadTrustMaterial, verifyBundle } from './c19-anchor.mjs';
+import {
+  loadTrustMaterial, verifyBundle, DELEGATED_TO_COSIGN, DECLARED_OFFLINE_LIMITS,
+} from './c19-anchor.mjs';
 import { rekorEntryToBundle, bundleMatchesPayload, BUNDLE_MEDIA_TYPE } from './c19-rekor.mjs';
-import { verifyBlobArgv, signBlobArgv, COSIGN_PIN } from './c19-cosign.mjs';
+import {
+  verifyBlobArgv, signBlobArgv, COSIGN_PIN, verifyBinary, assetKey,
+} from './c19-cosign.mjs';
 import { runWithoutNetwork } from './c19-sandbox.mjs';
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
@@ -207,9 +212,14 @@ export function validateBeforeIrreversible({ payload, canonicalBytes, acquisitio
 export async function recoverOrSign({
   canonicalBytes, payloadPath, bundlePath, policy, trustedRoot, gh, cosignPath,
   search, fetchEntry, mode, sign = defaultSign,
-  // Injected so a control can exercise the ORCHESTRATION of recovery — reuse, zero signing, the
-  // bundle written at the normal path — without needing a Fulcio-issued certificate it cannot
-  // fabricate. The cryptographic half is covered by the identity and transparency controls.
+  /**
+   * Called at the LAST reversible moment - after the log has been searched, with nothing between it
+   * and `sign-blob`. Returning a string refuses; returning nothing proceeds.
+   */
+  beforeSign,
+  // The REAL verifier by default. Controls exercise it with a source-owned Sigstore fixture rather
+  // than replacing it: substituting unconditional success proved only that the orchestration ran,
+  // never that what it produced verifies.
   verifyBundleFn = verifyBundle,
 }) {
   const digest = sha256(canonicalBytes);
@@ -279,6 +289,20 @@ export async function recoverOrSign({
     return { action: 'would-sign', signings: 0,
       why: 'the log has no record for these bytes; a real run would sign exactly once here' };
   }
+
+  /**
+   * ── THE LAST REVERSIBLE MOMENT ──
+   *
+   * This check used to sit further up, before the sandbox probes and before the Rekor search. Those
+   * take real time - a functional isolation probe spawns children and waits on timeouts, and the
+   * index query is a network round trip - and main can move inside them. "Immediately before
+   * signing" has to mean immediately: here, after the log has told us there is nothing to reuse and
+   * with nothing left between this line and `sign-blob`.
+   */
+  if (typeof beforeSign === 'function') {
+    const stop = beforeSign();
+    if (stop !== undefined && stop !== null) return { action: 'refuse', signings: 0, why: stop };
+  }
   sign({ cosignPath, bundlePath, payloadPath });
   if (!existsSync(bundlePath)) {
     return { action: 'refuse', why: 'signing reported success but no bundle was persisted' };
@@ -330,9 +354,18 @@ export function verifyFinalBundle({
 }
 
 /** Step 15 — everything a foreign checkout needs after GitHub's artifacts expire. */
+/**
+ * The exact inventory. `tuf/` carries the delegation metadata WITHOUT which the claim that the TUF
+ * root authenticates the trusted root cannot be checked at all - the package used to assert that
+ * relationship while shipping neither the timestamp, the snapshot nor the targets that establish
+ * it. `policy.json` travels too, because the identity expectations are what the bundle is verified
+ * against, and a verifier that had to supply its own would not be verifying this delivery.
+ */
 export const DELIVERY_PACKAGE_FILES = Object.freeze([
   'payload.json', 'bundle.sigstore.json', 'finalized-wrapper.zip',
-  'trusted-root.json', 'tuf-root.json', 'metadata.json', 'VERIFY.md',
+  'trusted-root.json', 'tuf-root.json',
+  'tuf/timestamp.json', 'tuf/snapshot.json', 'tuf/targets.json',
+  'policy.json', 'metadata.json', 'VERIFY.md',
 ]);
 
 /**
@@ -350,6 +383,7 @@ export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePa
       throw new Error(`c19: the delivery package requires ${name}, and ${from} does not exist; `
         + 'refusing to persist an incomplete package that would fail verification for the wrong reason');
     }
+    mkdirSync(dirname(join(dir, name)), { recursive: true });
     writeFileSync(join(dir, name), readFileSync(from));
   };
   require0(acquisition.wrapperPath, 'finalized-wrapper.zip');
@@ -359,6 +393,13 @@ export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePa
   require0(bundlePath, 'bundle.sigstore.json');
   require0(join(libDir, 'c19-sigstore-trusted-root.json'), 'trusted-root.json');
   require0(join(libDir, 'c19-sigstore-tuf-root.json'), 'tuf-root.json');
+  // The delegation metadata, without which "the TUF root authenticates the trusted root" is an
+  // assertion the package gives the verifier no way to check.
+  mkdirSync(join(dir, 'tuf'), { recursive: true });
+  for (const r of ['timestamp', 'snapshot', 'targets']) {
+    require0(join(libDir, 'c19-tuf', `${r}.json`), join('tuf', `${r}.json`));
+  }
+  require0(join(libDir, 'c19-trust.json'), 'policy.json');
   writeFileSync(join(dir, 'VERIFY.md'), verifyInstructions(metadata));
   writeFileSync(join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   return dir;
@@ -376,12 +417,14 @@ export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePa
  * sidecar, the bundle against exact identity and independently held trust material. No GitHub call
  * is made, and the whole thing runs under OS-level network denial.
  */
-export function verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath, now = Date.now() }) {
+export function verifyDeliveryPackage({
+  dir, policy, trustedRoot, cosignPath, anchor, now = Date.now(),
+}) {
   const problems = [];
   const p = (name) => join(dir, name);
 
   // 1 — exact inventory. Missing, duplicate or unexpected mandatory files are all findings.
-  const present = new Set(readdirSync(dir));
+  const present = new Set(listPackageFiles(dir));
   const payloadRaw = existsSync(p('payload.json')) ? readFileSync(p('payload.json')) : null;
   let payload = null;
   if (payloadRaw !== null) { try { payload = JSON.parse(payloadRaw.toString('utf8')); } catch { /* reported below */ } }
@@ -426,7 +469,18 @@ export function verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath, no
     }
   }
 
-  // 4 — payload semantics, including a MEANINGFUL validity window.
+  /**
+   * 4 — the payload contract, ENTIRELY.
+   *
+   * Checking the window and the context while leaving the rest unexamined meant a payload could
+   * omit any binding field and still verify offline: the fields are what the signature is ABOUT,
+   * so a missing one is not a cosmetic gap.
+   */
+  for (const f of REQUIRED_PAYLOAD_FIELDS) {
+    if (payload[f] === undefined || payload[f] === '') {
+      problems.push(`c19 package: the signed payload omits required field ${j(f)}`);
+    }
+  }
   problems.push(...validatePayloadWindow(payload, now));
   if (payload.context !== domainContext(payload.purpose)) {
     problems.push(`c19 package: context ${j(payload.context)} does not domain-separate ${j(payload.purpose)}`);
@@ -435,21 +489,139 @@ export function verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath, no
     problems.push('c19 package: payload.json is not the canonical encoding of its own content');
   }
 
-  // 5 — the bundle, against exact identity and the trust material HELD IN THE PACKAGE, which is
-  //     itself checked against the source-owned anchor by the caller.
+  /**
+   * 5 — THE PACKAGED TRUST MATERIAL, against an anchor held independently of the package.
+   *
+   * The package used to ship `trusted-root.json` and `tuf-root.json` and then verify against the
+   * verifier's own copies, so the shipped files were decoration: substituting them changed
+   * nothing, and the instructions still claimed the TUF root authenticated the trusted root while
+   * the delegation metadata that would establish it was not present at all.
+   *
+   * Now the packaged chain is verified on its own terms, and the result must equal the anchor the
+   * reviewer holds from the reviewed source SHA. Expiry is not required - see the freshness split
+   * in c19-tuf.mjs - but the pinned minimum versions are.
+   */
+  let packagedTrustedRoot = null;
+  const packagedPolicy = readJsonOrNull(p('policy.json'));
+  if (anchor === undefined) {
+    problems.push('c19 package: no independently held source anchor was supplied; verifying the '
+      + "package's trust material against the package's own trust material proves nothing");
+  } else if (present.has('trusted-root.json') && present.has('tuf-root.json')
+      && present.has('tuf/timestamp.json') && present.has('tuf/snapshot.json')
+      && present.has('tuf/targets.json')) {
+    const trustedRootBytes = readFileSync(p('trusted-root.json'));
+    problems.push(...verifyTufChain({
+      root: readJsonOrNull(p('tuf-root.json')),
+      timestamp: readJsonOrNull(p('tuf/timestamp.json')),
+      snapshot: readJsonOrNull(p('tuf/snapshot.json')),
+      targets: readJsonOrNull(p('tuf/targets.json')),
+      targetName: 'trusted_root.json', targetBytes: trustedRootBytes, now,
+      purpose: 'historical', minimumVersions: anchor.minimumVersions ?? {},
+    }).map((x) => `c19 package: ${x}`));
+    const trHex = createHash('sha256').update(trustedRootBytes).digest('hex');
+    if (trHex !== anchor.trustedRootSha256) {
+      problems.push(`c19 package: the packaged trusted root hashes to ${trHex}, but the source-held `
+        + `anchor pins ${j(anchor.trustedRootSha256)}`);
+    }
+    const rootHex = createHash('sha256').update(readFileSync(p('tuf-root.json'))).digest('hex');
+    if (anchor.tufRootSha256 !== undefined && rootHex !== anchor.tufRootSha256) {
+      problems.push(`c19 package: the packaged TUF root hashes to ${rootHex}, but the source-held `
+        + `anchor pins ${j(anchor.tufRootSha256)}`);
+    }
+    if (packagedPolicy === null) problems.push('c19 package: policy.json is missing or not JSON');
+    else if (anchor.policySha256 !== undefined) {
+      const polHex = createHash('sha256').update(readFileSync(p('policy.json'))).digest('hex');
+      if (polHex !== anchor.policySha256) {
+        problems.push(`c19 package: the packaged trust policy hashes to ${polHex}, but the `
+          + `source-held anchor pins ${j(anchor.policySha256)}`);
+      }
+    }
+    if (problems.length === 0 || trHex === anchor.trustedRootSha256) {
+      try { packagedTrustedRoot = JSON.parse(trustedRootBytes.toString('utf8')); } catch {
+        problems.push('c19 package: trusted-root.json is not JSON');
+      }
+    }
+  }
+
+  /**
+   * 6 — the bundle, against exact identity and the trust material FROM THE PACKAGE (now that it
+   *     has been proved equal to the anchor), with no live API of any kind.
+   */
+  const effectivePolicy = packagedPolicy ?? policy;
+  const effectiveRoot = packagedTrustedRoot ?? trustedRoot;
   if (present.has('bundle.sigstore.json')) {
-    const bundle = JSON.parse(readFileSync(p('bundle.sigstore.json'), 'utf8'));
-    problems.push(...verifyBundle({
-      bundle, artifactBytes: payloadRaw, artifactDigestHex: createHash('sha256').update(payloadRaw).digest('hex'),
-      policy, trustedRoot,
-      sourceSha: payload.sourceSha, workflowDigest: payload.workflowDigest,
-      recovery: true,
-      // No GitHub. Offline means offline: the certificate's own invocation is read and compared to
-      // the policy, and anything requiring a live API call is simply not part of this verification.
-      fetchRun: undefined,
-    }));
+    const bundle = readJsonOrNull(p('bundle.sigstore.json'));
+    if (bundle === null) problems.push('c19 package: bundle.sigstore.json is not JSON');
+    else {
+      problems.push(...verifyBundle({
+        bundle, artifactBytes: payloadRaw,
+        artifactDigestHex: createHash('sha256').update(payloadRaw).digest('hex'),
+        policy: effectivePolicy, trustedRoot: effectiveRoot,
+        sourceSha: payload.sourceSha, workflowDigest: payload.workflowDigest,
+        now,
+        // Offline identity: the certificate's own invocation is checked against the pinned policy
+        // and against this payload's bindings. No live run object is consulted, and none is
+        // pretended - see DECLARED_OFFLINE_LIMITS.
+        offlineIdentity: true, fetchRun: undefined,
+      }));
+    }
+  }
+
+  /**
+   * 7 — THE DELEGATED CHECKS, EXECUTED.
+   *
+   * `cosignPath` was accepted and never used, so the package verifier omitted every check the
+   * module explicitly delegates - SCT signature verification, full path building, canonical bundle
+   * schema validation - while listing them as delegated. A delegate that is never invoked is a gap
+   * with a label on it. Both verifiers must pass.
+   */
+  if (cosignPath === undefined) {
+    problems.push('c19 package: no cosign binary was supplied, so the delegated Sigstore checks '
+      + `(${DELEGATED_TO_COSIGN.length}) did not run; delivery standing requires BOTH verifiers`);
+  } else if (present.has('bundle.sigstore.json') && present.has('trusted-root.json')) {
+    const binary = verifyCosignBinary(cosignPath);
+    if (binary !== null) problems.push(`c19 package: ${binary}`);
+    else {
+      const argv = verifyBlobArgv({
+        cosignPath, bundlePath: p('bundle.sigstore.json'), payloadPath: p('payload.json'),
+        certificateIdentity: effectivePolicy?.identity?.subjectAlternativeName,
+        oidcIssuer: effectivePolicy?.identity?.issuer,
+        // The PACKAGED trusted root, proved equal to the anchor above.
+        trustedRootPath: p('trusted-root.json'), offline: true,
+      });
+      // Already inside the OS boundary: `verify-offline` re-executes the whole verifier there and
+      // proves its own isolation, so cosign is a descendant of a constrained process.
+      const r = spawnSync(argv[0], argv.slice(1), { encoding: 'utf8' });
+      if (r.status !== 0) {
+        problems.push(`c19 package: pinned cosign ${COSIGN_PIN.version_tag} rejected the bundle: `
+          + `${(r.stderr || r.stdout || '').trim().slice(-400)}`);
+      }
+    }
   }
   return problems;
+}
+
+/** Files in the package, including one level of `tuf/`, as package-relative names. */
+function listPackageFiles(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      for (const f of readdirSync(join(dir, e.name))) out.push(`${e.name}/${f}`);
+    } else out.push(e.name);
+  }
+  return out;
+}
+
+const readJsonOrNull = (path) => {
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+};
+
+/** The binary must be the pinned one, authenticated BEFORE any code from it runs. */
+function verifyCosignBinary(cosignPath) {
+  try {
+    verifyBinary(cosignPath, assetKey());
+    return null;
+  } catch (e) { return e.message; }
 }
 
 const verifyInstructions = (m) => `# Verifying this delivery offline
@@ -463,24 +635,52 @@ which matters because GitHub artifacts expire and this evidence should outlive t
 | \`bundle.sigstore.json\` | the Sigstore bundle (${BUNDLE_MEDIA_TYPE}) |
 | \`finalized-wrapper.zip\` | the artifact GitHub served |
 | \`${m.innerName ?? 'c17-cross-host-finalized-<sha>.zip'}\` | the finalized inner evidence |
-| \`trusted-root.json\` | independently bootstrapped Sigstore trust material |
-| \`tuf-root.json\` | the TUF root that authenticates it |
+| \`trusted-root.json\` | Sigstore trust material |
+| \`tuf-root.json\` | the TUF root |
+| \`tuf/*.json\` | timestamp, snapshot and targets — the delegation metadata that actually connects the two |
+| \`policy.json\` | the identity expectations the bundle is verified against |
+
+## The anchor is NOT in this directory, and must not be
+
+The TUF root here authenticates the trusted root here — and would equally authenticate a matched
+pair substituted for both. Verify this package against the source-owned anchor from the reviewed
+commit, never against the copies travelling with it:
+
+    git clone https://github.com/${m.repo ?? '<owner>/<repo>'} src
+    git -C src checkout ${m.sourceSha ?? '<REVIEWED SHA>'}   # the exact SHA, never a moving branch
 
 ## Verify
+
+    node src/scripts/gate/c19-deliver.mjs verify-offline \\
+      --package . --out /tmp/c19-verify --cosign <pinned ${COSIGN_PIN.version_tag} binary>
+
+That re-executes itself inside an OS network boundary and proves from inside that it cannot reach
+the network; checks the inventory; recomputes every digest against the signed payload; verifies
+this package's TUF chain against the source-held anchor; verifies the bundle; and runs pinned
+cosign. Both verifiers must pass.
+
+The equivalent single cosign command, if you would rather drive it yourself:
 
     cosign verify-blob --bundle bundle.sigstore.json \\
       --certificate-identity ${m.certificateIdentity ?? '<SAN>'} \\
       --certificate-oidc-issuer ${m.oidcIssuer ?? '<issuer>'} \\
       --trusted-root trusted-root.json --offline payload.json
 
-Then confirm \`payload.json\` binds the evidence you hold:
+## Freshness
 
-    sha256sum finalized-wrapper.zip     # must equal .evidenceDigest in payload.json
-    sha256sum ${m.innerName ?? '<inner>'}   # must equal .finalizedInnerDigest
+TUF metadata is verified by signature, threshold and the minimum versions the source-held policy
+pins — NOT by expiry. Sigstore's timestamp role expires within days by design and this payload
+declares a window measured in years, so requiring a current timestamp would mean the package
+stopped verifying days after it was built. Expiry IS enforced when the source-owned snapshot is
+refreshed from the Sigstore repository.
 
 ## What this proves, and what it does not
 
 It proves the workflow identity that signed, the exact bytes signed, log inclusion and a
 publication time window. It does **not** prove that claims inside the evidence are true — see
-\`c19-authority.mjs\` for the claim-to-authority ledger and the limits that remain open.
+\`c19-authority.mjs\` for the claim-to-authority ledger.
+
+Offline verification additionally cannot establish:
+
+${DECLARED_OFFLINE_LIMITS.map((l) => `- ${l}`).join('\n')}
 `;

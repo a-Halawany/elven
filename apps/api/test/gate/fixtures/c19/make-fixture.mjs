@@ -1,5 +1,12 @@
 /**
- * Build a self-consistent Rekor entry + Sigstore trust fixture with a LOCAL key.
+ * Build a self-consistent Rekor TRANSPARENCY fixture with a LOCAL key.
+ *
+ * SCOPE: this fixture exercises the transparency machinery - the Merkle tree, the signed
+ * checkpoint, the SET, and the Rekor-entry-to-Sigstore-bundle conversion - and its mutation
+ * matrix. Its certificate and artifact signature are PLACEHOLDERS, which is why it cannot be used
+ * to prove that a bundle verifies: that is `make-sigstore-fixture.mjs`, which generates a real CA,
+ * a real leaf with Fulcio extensions and an embedded SCT, and a real signature, and which pinned
+ * cosign accepts. Using this one for that purpose is what hid a broken signature check.
  *
  * Publishing this project to Rekor to obtain a real entry is exactly what must not happen before
  * review, so the fixture is generated: a real ECDSA key, a real RFC 6962 tree, a real signed

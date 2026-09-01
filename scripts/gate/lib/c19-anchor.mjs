@@ -59,7 +59,7 @@ export const FULCIO_OIDS = Object.freeze({
 });
 
 /** The source-owned, TUF-authenticated trust material and the exact identity policy. */
-export function loadTrustMaterial(libDir) {
+export function loadTrustMaterial(libDir, { purpose = 'historical' } = {}) {
   const policy = JSON.parse(readFileSync(join(libDir, 'c19-trust.json'), 'utf8'));
   if (policy.schema !== 'eye/c19/trust-policy' || policy.version !== 3) {
     throw new Error(`c19-trust.json is version ${policy.version}; this verifier reads version 3 and `
@@ -91,6 +91,16 @@ export function loadTrustMaterial(libDir) {
     targets: readJson(join(tufDir, 'targets.json')),
     targetName: 'trusted_root.json',
     targetBytes: trustedRootBytes,
+    /**
+     * HISTORICAL by default. Sigstore's timestamp role expires within days; requiring it to be
+     * current would mean this verifier stopped working six days after the snapshot was taken,
+     * while the payloads it verifies declare a ten-year window. Rollback is still refused, against
+     * the minimum versions the owner pinned in this policy rather than against a wall clock.
+     *
+     * `purpose: 'update'` is what refreshes the snapshot, and there expiry is mandatory.
+     */
+    purpose,
+    minimumVersions: policy.tuf.minimumVersions ?? {},
   });
   if (problems.length > 0) {
     throw new Error(`c19: the Sigstore trust material does not verify against the source-held TUF `
@@ -357,13 +367,27 @@ export function verifyArtifactSignature({ leafDer, signatureB64, artifactDigestH
     return [`c19 signature: no usable key in the leaf (${e.message})`];
   }
   const sig = Buffer.from(String(signatureB64), 'base64');
-  const digest = Buffer.from(String(artifactDigestHex), 'hex');
+  /**
+   * ── VERIFY OVER THE BYTES, WITH THE HASH NAMED ──
+   *
+   * This used to call `verify(null, digest, …)`, on the reasoning that Sigstore signs the digest so
+   * the digest is the message. Node does not read `null` that way for EC keys: it does not treat
+   * the data as a pre-computed hash, and the call returns false for every genuine ECDSA signature.
+   * The verifier would therefore have rejected every real Sigstore bundle.
+   *
+   * Nothing caught it because the only fixture carried a placeholder signature, so this line had
+   * never once been given a real one. It is measured now: the same signature that pinned cosign
+   * accepts must verify here.
+   */
+  if (artifactBytes === undefined) {
+    return ['c19 signature: the artifact bytes are required to verify the signature; verifying '
+      + 'from a digest alone is not something this can do, and must not be reported as a pass'];
+  }
   let ok = false;
   try {
-    // Sigstore signs the artifact digest, so the digest IS the message for this verification.
-    ok = verifyOneShot(null, digest, { key, dsaEncoding: 'der' }, sig);
+    ok = verifyOneShot('sha256', artifactBytes, { key, dsaEncoding: 'der' }, sig);
   } catch { ok = false; }
-  if (!ok) problems.push('c19 signature: does not verify over the attested artifact digest');
+  if (!ok) problems.push('c19 signature: does not verify over the attested artifact bytes');
   return problems;
 }
 
@@ -656,6 +680,20 @@ export function verifyBundle({
   // RECOVERY: the certificate was made by an earlier run, so its own invocation is the expectation
   // and `fetchRun` independently confirms that invocation was authorised.
   recovery = false, fetchRun,
+  /**
+   * OFFLINE IDENTITY. A foreign checkout verifying an archived package has no GitHub, by
+   * construction: the whole verifier runs inside an OS network boundary. Run-existence
+   * confirmation is therefore not available, and pretending otherwise produced the defect this
+   * replaces - `recovery: true` with no `fetchRun` always added "no means of confirming the
+   * original signing run was authorised", so verify-offline could never succeed.
+   *
+   * What survives offline is everything the certificate and the log can prove on their own: the
+   * chain to the pinned CA, EXACT identity fields, the certificate's claims matching the signed
+   * payload's claims, the signature over these bytes, and the log entry binding all three. What
+   * does not survive is confirmation that the run existed at GitHub. That is a real limit of
+   * offline verification, so it is DECLARED rather than skipped.
+   */
+  offlineIdentity = false,
 }) {
   const problems = [];
   const signer = policy?.signers?.[signerId];
@@ -692,7 +730,13 @@ export function verifyBundle({
     problems.push(`c19 identity: the certificate's extensions are unreadable (${e.message})`);
     return problems;
   }
-  if (recovery) {
+  if (offlineIdentity && typeof fetchRun === 'function') {
+    // The two modes answer different questions and must not be blended: an offline verification
+    // that quietly used a live API would be reporting a property it did not establish.
+    problems.push('c19: offline identity verification was given a live run-fetcher; offline means '
+      + 'offline, and mixing the two makes the result describe neither');
+  }
+  if (recovery || offlineIdentity) {
     const { problems: uriProblems, invocation } = originalSignerInvocation(identity, policy);
     problems.push(...uriProblems);
     if (invocation !== null) {
@@ -700,7 +744,11 @@ export function verifyBundle({
       problems.push(...verifyIdentity(identity, policy, {
         sourceSha, workflowDigest, runId: invocation.runId, runAttempt: invocation.runAttempt,
       }));
-      if (typeof fetchRun !== 'function') {
+      if (offlineIdentity) {
+        // Nothing further: the certificate's claims have been checked against the pinned policy
+        // and against the signed payload's own bindings, which is the whole of what is knowable
+        // without a network. `DECLARED_OFFLINE_LIMITS` records what that leaves out.
+      } else if (typeof fetchRun !== 'function') {
         problems.push('c19 recovery: no means of confirming the original signing run was '
           + 'authorised; recovery must not accept a certificate on its own word');
       } else {
@@ -749,6 +797,19 @@ export function verifyBundle({
  * look-alike of any of these would be worse than delegation, because it would report success
  * whether or not it was correct.
  */
+/**
+ * What OFFLINE verification cannot establish, stated so that a passing verify-offline is not read
+ * as more than it is. These are not skipped checks: they are checks that require a network, in a
+ * mode whose entire point is that it has none.
+ */
+export const DECLARED_OFFLINE_LIMITS = Object.freeze([
+  'that the signing run still exists at GitHub and was authorised (the certificate\'s own '
+    + 'invocation is checked against the pinned policy and against the signed payload, but no live '
+    + 'run object is consulted)',
+  'that the transparency log still contains this entry TODAY (the bundle carries its own '
+    + 'inclusion proof and signed checkpoint, which is what makes offline verification possible)',
+]);
+
 export const DELEGATED_TO_COSIGN = Object.freeze([
   // EXECUTED by `runCosignVerify` in c19-anchor-cli.mjs on every delivery-standing verification.
   // Listing a delegate without invoking one is a gap with a label on it, which is what this was.

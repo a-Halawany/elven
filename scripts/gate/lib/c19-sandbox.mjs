@@ -160,3 +160,39 @@ export function runWithoutNetwork(command, {
 
 /** The profile text, exported so a control can assert what is actually denied. */
 export const DARWIN_PROFILE = SANDBOX_PROFILE;
+
+/**
+ * Prove that THIS process - the one calling - genuinely cannot reach the network.
+ *
+ * `proveNetworkDenial` answers a different question: "can this host construct a boundary?" It
+ * spawns a child under the mechanism and watches that child fail. That is the right check for the
+ * PARENT, before it decides to re-execute.
+ *
+ * It is the wrong check for the child, and relying on a marker instead was worse: any caller could
+ * pass the marker and the verifier would skip straight to verifying, reporting that it had run
+ * inside a boundary that was never built. A flag is a claim. This is evidence: the current process
+ * attempts a connection and must be refused by the operating system.
+ *
+ * Synchronous by construction, because the answer must be known before anything else runs.
+ */
+export function proveThisProcessIsNetworkDenied({ timeoutMs = 8000 } = {}) {
+  const r = spawnSync(process.execPath, ['-e',
+    // A literal address, so a DNS failure cannot be mistaken for a network boundary: resolving
+    // nothing is a very different condition from being unable to send a packet.
+    'const net=require("net");'
+    + 'const s=net.connect({host:"1.1.1.1",port:443});'
+    + 's.on("error",(e)=>{console.log("DENIED:"+e.code);process.exit(0)});'
+    + 's.on("connect",()=>{console.log("REACHED");process.exit(1)});'
+    + `setTimeout(()=>{console.log("TIMEOUT");process.exit(1)},${timeoutMs})`,
+  ], { encoding: 'utf8', timeout: timeoutMs + 4000 });
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  if (/DENIED:/.test(out)) return { ok: true, evidence: out.trim().split('\n')[0] };
+  return {
+    ok: false,
+    evidence: out.trim().slice(0, 200) || 'no output',
+    why: 'this process can still reach the network, so it is NOT inside an OS network boundary. '
+      + 'The isolation marker is an internal argument set when the verifier re-executes itself; '
+      + 'supplying it by hand does not create isolation, and it is refused here rather than '
+      + 'producing an "offline" result obtained with the network available',
+  };
+}

@@ -9,7 +9,9 @@
  * against constructed responses rather than being approximated.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, symlinkSync } from 'node:fs';
+import {
+  readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, symlinkSync, rmSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -20,6 +22,69 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..', '..');
 const LIB = join(REPO, 'scripts', 'gate', 'lib');
 const FIX = join(HERE, 'fixtures', 'c19');
+const SIGFIX = join(FIX, 'sigstore');
+const INNER = JSON.parse(readFileSync(join(SIGFIX, 'facts.json'), 'utf8')).innerName as string;
+
+/** The anchor a reviewer holds from the source checkout — never taken from the package. */
+const fixtureAnchor = () => {
+  const pol = JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8'));
+  const h = (f: string) => createHash('sha256').update(readFileSync(join(SIGFIX, f))).digest('hex');
+  return {
+    trustedRootSha256: pol.tuf.trustedRootSha256,
+    tufRootSha256: h('tuf-root.json'),
+    policySha256: h('policy.json'),
+    minimumVersions: pol.tuf.minimumVersions,
+  };
+};
+
+/** A complete delivery package assembled from the source-owned Sigstore fixture. */
+async function buildFixturePackage(_p: any, out: string): Promise<string> {
+  const { rekorEntryToBundle } = await import(/* @vite-ignore */ join(LIB, 'c19-rekor.mjs'));
+  const dir = join(out, 'delivery');
+  mkdirSync(join(dir, 'tuf'), { recursive: true });
+  const copy = (from: string, to = from) => writeFileSync(join(dir, to), readFileSync(join(SIGFIX, from)));
+  for (const f of ['payload.json', 'finalized-wrapper.zip', 'trusted-root.json', 'tuf-root.json',
+    'policy.json', INNER, `${INNER}.sha256`]) copy(f);
+  for (const r of ['timestamp', 'snapshot', 'targets']) copy(`tuf/${r}.json`, `tuf/${r}.json`);
+  const entries = JSON.parse(readFileSync(join(SIGFIX, 'rekor-entry.json'), 'utf8'));
+  writeFileSync(join(dir, 'bundle.sigstore.json'),
+    JSON.stringify(rekorEntryToBundle(Object.values(entries)[0]), null, 2));
+  writeFileSync(join(dir, 'metadata.json'), '{}');
+  writeFileSync(join(dir, 'VERIFY.md'), '# verify\n');
+  return dir;
+}
+
+/**
+ * The pinned cosign, acquired once for the suite and authenticated by digest before it is ever
+ * executed. `C19_COSIGN` lets CI stage it earlier; otherwise it is fetched on first use into a
+ * gitignored cache, because a binary must never be committed and must never be trusted for
+ * reporting the right version.
+ */
+let _cosign: string | null = null;
+function cosignBinary(): string {
+  if (process.env.C19_COSIGN !== undefined) return process.env.C19_COSIGN;
+  if (_cosign !== null) return _cosign;
+  const dest = join(REPO, '.c19-tools', 'cosign');
+  if (!existsSync(dest)) {
+    mkdirSync(dirname(dest), { recursive: true });
+    const r = spawnSync(process.execPath, ['-e',
+      `import(${JSON.stringify(join(LIB, 'c19-cosign.mjs'))}).then((m) => m.install(${JSON.stringify(dest)}))`,
+    ], { encoding: 'utf8', timeout: 600_000 });
+    if (!existsSync(dest)) {
+      throw new Error(`the pinned cosign could not be acquired: ${(r.stderr || r.stdout || '').slice(-300)}`);
+    }
+  }
+  _cosign = dest;
+  return dest;
+}
+
+/** Flip one byte, so a refusal is attributable to exactly that byte. */
+function flip(path: string): void {
+  const b = readFileSync(path);
+  b[b.length - 1] ^= 0x01;
+  writeFileSync(path, b);
+}
+
 const load = (m: string) => import(/* @vite-ignore */ join(LIB, m));
 
 /** A GitHub layer built from constructed responses, exercising the real resolver. */
@@ -210,22 +275,59 @@ export function registerC19Pipeline(): void {
         .not.toMatch(/--allow-superseded/);
     }, 120_000);
 
-    it('the tip is re-checked immediately BEFORE the irreversible step, not only at resolution', async () => {
+    it('the tip is re-checked at the LAST reversible moment — after the search, before sign-blob', async () => {
       const p = await load('c19-pipeline.mjs');
-      // Resolution and signing are minutes apart: acquisition, C17 verification and payload
-      // construction all run against a live API in between, and main can move inside that window.
-      let calls = 0;
-      const gh = {
-        ...fakeGitHub({ runs: [ciRun(10, 1), finRun(30, 1)], attempts: { '10#1': ok, '30#1': ok } }),
-        branchTip: () => { calls += 1; return 'the-tip'; },
-      };
-      expect(p.resolve({ gh, sha: 'the-tip' }).problems).toEqual([]);
-      expect(calls).toBe(1);
+      /**
+       * The check used to run at resolution, and then before the sandbox probes and the Rekor
+       * query. Both take real time - the isolation probe spawns children and waits on timeouts,
+       * the index query is a network round trip - and main can move inside them. "Immediately
+       * before signing" has to mean immediately.
+       *
+       * The order is asserted by OBSERVING it: the recorder below writes an event per step, so
+       * the check's position among the real calls is what the control reads.
+       */
+      const order: string[] = [];
+      const out = mkdtempSync(join(tmpdir(), 'c19order-'));
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, '{"a":1}');
+      const outcome = await p.recoverOrSign({
+        canonicalBytes: Buffer.from('{"a":1}'), payloadPath,
+        bundlePath: join(out, 'bundle.sigstore.json'),
+        policy: {}, trustedRoot: {}, gh: {},
+        search: async () => { order.push('search'); return []; },
+        fetchEntry: async () => null,
+        mode: 'publish',
+        beforeSign: () => { order.push('tip-recheck'); return undefined; },
+        sign: () => { order.push('sign'); writeFileSync(join(out, 'bundle.sigstore.json'), '{}'); },
+      });
+      expect(outcome.action).toBe('signed');
+      expect(order).toEqual(['search', 'tip-recheck', 'sign']);
+    });
+
+    it('a tip that moved refuses AT that moment, and signs nothing', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19order2-'));
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, '{"a":1}');
+      let signings = 0;
+      const outcome = await p.recoverOrSign({
+        canonicalBytes: Buffer.from('{"a":1}'), payloadPath,
+        bundlePath: join(out, 'bundle.sigstore.json'),
+        policy: {}, trustedRoot: {}, gh: {},
+        search: async () => [], fetchEntry: async () => null, mode: 'publish',
+        beforeSign: () => 'c19: main advanced while this publication was being prepared',
+        sign: () => { signings += 1; },
+      });
+      expect(outcome.action).toBe('refuse');
+      expect(outcome.why).toMatch(/main advanced/);
+      expect(signings, 'a superseded tip must produce zero signing operations').toBe(0);
+    });
+
+    it('publish wires that hook to a REAL branch read, and no argument disables it', () => {
       const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
-      const reCheck = cli.indexOf("gh.branchTip('main')");
-      expect(reCheck, 'publish must read the tip again itself').toBeGreaterThan(-1);
-      expect(reCheck).toBeLessThan(cli.indexOf('await recoverOrSign('));
-      expect(reCheck).toBeGreaterThan(cli.indexOf('validateBeforeIrreversible('));
+      expect(cli).toMatch(/beforeSign: mode !== 'publish' \? undefined : \(\) => \{/);
+      expect(cli).toMatch(/gh\.branchTip\('main'\)/);
+      expect(cli).not.toMatch(/--allow-superseded/);
     });
 
     it('PERMITS the current tip', async () => {
@@ -511,52 +613,151 @@ export function registerC19Pipeline(): void {
   });
 
   describe('C19 — recovery SUCCEEDS, executed', () => {
-    const entries = JSON.parse(readFileSync(join(FIX, 'rekor-entry.json'), 'utf8'));
+    const SIG = join(FIX, 'sigstore');
+    const facts = JSON.parse(readFileSync(join(SIG, 'facts.json'), 'utf8'));
+    const entries = JSON.parse(readFileSync(join(SIG, 'rekor-entry.json'), 'utf8'));
     const uuid = Object.keys(entries)[0] as string;
     const entry = Object.values(entries)[0] as any;
-    const payload = readFileSync(join(FIX, 'payload.json'));
+    const payload = readFileSync(join(SIG, 'payload.json'));
+    const fixturePolicy = () => JSON.parse(readFileSync(join(SIG, 'policy.json'), 'utf8'));
+    const fixtureRoot = () => JSON.parse(readFileSync(join(SIG, 'trusted-root.json'), 'utf8'));
+    const cosign = cosignBinary;
 
-    it('THE positive differential: existing record reconstructed, outcome EXACTLY reuse, zero signing', async () => {
+    // The signing run, as GitHub would report it. GitHub is the one thing a local control cannot
+    // have; the VERIFIER is real, which is what the injected always-success stand-in was hiding.
+    const signerRun = () => ({
+      repository: { full_name: 'a-Halawany/elven' },
+      path: '.github/workflows/c19-anchor.yml', head_branch: 'main',
+      event: 'workflow_run', conclusion: 'cancelled', head_sha: facts.sourceSha,
+    });
+
+    it('THE positive differential: reconstructed by the REAL verifier, EXACTLY reuse, zero signing', async () => {
       const p = await load('c19-pipeline.mjs');
-      const a = await load('c19-anchor.mjs');
-      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
       const out = mkdtempSync(join(tmpdir(), 'c19reuse-'));
       const bundlePath = join(out, 'bundle.sigstore.json');
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, payload);
       let signings = 0;
 
       const outcome = await p.recoverOrSign({
-        canonicalBytes: payload, payloadPath: join(FIX, 'payload.json'), bundlePath,
-        policy, trustedRoot,
-        gh: { runAttempt: () => ({
-          repository: { full_name: 'a-Halawany/elven' },
-          path: '.github/workflows/c19-anchor.yml', head_branch: 'main',
-          event: 'workflow_run', conclusion: 'cancelled', head_sha: 'a'.repeat(40),
-        }) },
+        canonicalBytes: payload, payloadPath, bundlePath,
+        policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        gh: { runAttempt: () => signerRun() },
         search: async () => [uuid],
         fetchEntry: async () => entry,
         mode: 'publish',
         sign: () => { signings += 1; },
-        // The cryptographic half needs a Fulcio-issued certificate that cannot be fabricated; it is
-        // covered by the identity and transparency controls. This asserts the ORCHESTRATION that
-        // was broken: recovery could never return reuse at all.
-        verifyBundleFn: () => [],
+        // NO verifyBundleFn. The real verifier runs, against a source-owned Sigstore fixture whose
+        // certificate, SCT, signature, Merkle proof, checkpoint and SET are all genuine. Replacing
+        // it with unconditional success proved the orchestration ran and nothing about the result.
       });
 
-      // Exactly reuse. Not "reuse or refuse" — accepting refusal is what hid the defect.
-      expect(outcome.action).toBe('reuse');
+      expect(outcome.action, JSON.stringify(outcome.why)).toBe('reuse');
       expect(signings, 'recovery must perform exactly zero signing operations').toBe(0);
       expect(outcome.signings).toBe(0);
-      // The bundle must land at the NORMAL path, because every later step reads that path.
       expect(existsSync(bundlePath), 'the bundle must be written at the normal path').toBe(true);
       const written = JSON.parse(readFileSync(bundlePath, 'utf8'));
       expect(written.mediaType).toMatch(/sigstore\.bundle/);
-      // And nothing outside the Sigstore schema, which strict cosign parsing rejects.
+      // Nothing outside the Sigstore schema, which strict cosign parsing rejects.
       expect(Object.keys(written).some((k) => k.startsWith('_'))).toBe(false);
-      // Recovery provenance is kept BESIDE the bundle.
       expect(existsSync(`${bundlePath}.recovery.json`)).toBe(true);
       expect(JSON.parse(readFileSync(`${bundlePath}.recovery.json`, 'utf8')).recoveredFromUuid)
         .toBe(uuid);
-    });
+    }, 60_000);
+
+    it('the reconstructed bundle then passes the REPOSITORY verifier and PINNED COSIGN', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19final-'));
+      const bundlePath = join(out, 'bundle.sigstore.json');
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, payload);
+      await p.recoverOrSign({
+        canonicalBytes: payload, payloadPath, bundlePath,
+        policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        gh: { runAttempt: () => signerRun() },
+        search: async () => [uuid], fetchEntry: async () => entry,
+        mode: 'publish', sign: () => { throw new Error('must not sign'); },
+      });
+      const fin = p.verifyFinalBundle({
+        bundlePath, payloadPath, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        trustedRootPath: join(SIG, 'trusted-root.json'), cosignPath: cosign(),
+        sourceSha: facts.sourceSha, workflowDigest: facts.workflowDigest,
+        recovery: true, gh: { runAttempt: () => signerRun() }, offline: true,
+      });
+      expect(fin.problems, fin.problems.join('\n')).toEqual([]);
+      // Cosign ran, and it ran inside the OS boundary rather than in an unconstrained process.
+      expect(fin.cosignMechanism).toBeTruthy();
+      expect(fin.cosignMechanism).not.toBe('none');
+    }, 180_000);
+
+    it('and the package built from it verifies OFFLINE, with zero findings', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19pkgok-'));
+      const dir = await buildFixturePackage(p, out);
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: fixtureAnchor(), cosignPath: cosign(),
+      });
+      expect(problems, problems.join('\n')).toEqual([]);
+    }, 180_000);
+
+    /**
+     * The negative half of the same differential. Each mutation is one byte or one file away from
+     * the package that just passed, so a refusal here is attributable to that change and nothing
+     * else - which is what makes the pass above meaningful.
+     */
+    const MUTATIONS: Array<[string, (dir: string) => void, RegExp]> = [
+      ['the wrapper', (d) => flip(join(d, 'finalized-wrapper.zip')), /wrapper hashes to/],
+      ['the inner archive', (d) => flip(join(d, INNER)), /inner evidence hashes to/],
+      ['the sidecar', (d) => writeFileSync(join(d, `${INNER}.sha256`), `${'0'.repeat(64)}  ${INNER}\n`),
+        /sidecar declares/],
+      ['the payload', (d) => {
+        const j2 = JSON.parse(readFileSync(join(d, 'payload.json'), 'utf8'));
+        j2.sourceSha = 'f'.repeat(40);
+        writeFileSync(join(d, 'payload.json'), JSON.stringify(j2));
+      }, /canonical encoding|attests|does not verify|hashes to/],
+      ['the bundle', (d) => {
+        const b = JSON.parse(readFileSync(join(d, 'bundle.sigstore.json'), 'utf8'));
+        b.messageSignature.signature = Buffer.from('not-the-signature').toString('base64');
+        writeFileSync(join(d, 'bundle.sigstore.json'), JSON.stringify(b));
+      }, /does not verify|rejected the bundle/],
+      ['the trust material', (d) => {
+        const t = JSON.parse(readFileSync(join(d, 'trusted-root.json'), 'utf8'));
+        t.certificateAuthorities[0].subject = { organization: 'attacker.example' };
+        writeFileSync(join(d, 'trusted-root.json'), JSON.stringify(t));
+      }, /hashes to|does not verify|declares/],
+      ['a required inventory entry', (d) => rmSync(join(d, 'tuf', 'snapshot.json')),
+        /required file "tuf\/snapshot.json" is missing/],
+    ];
+    for (const [what, mutate, expected] of MUTATIONS) {
+      it(`REFUSES the package when ${what} is altered`, async () => {
+        const p = await load('c19-pipeline.mjs');
+        const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19mut-')));
+        mutate(dir);
+        const problems = p.verifyDeliveryPackage({
+          dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+          anchor: fixtureAnchor(), cosignPath: cosign(),
+        });
+        expect(problems.length, 'the mutation must be caught').toBeGreaterThan(0);
+        expect(problems.join('\n')).toMatch(expected);
+      }, 180_000);
+    }
+
+    it('the package still verifies AFTER the stored TUF timestamp has expired', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19exp-')));
+      const stamp = JSON.parse(readFileSync(join(dir, 'tuf', 'timestamp.json'), 'utf8'));
+      const expired = Date.parse(stamp.signed.expires) + 400 * 86_400_000;
+      // Sigstore's timestamp role expires within days; the payload declares ten years. Making the
+      // second depend on the first is a contradiction in the contract, not a security property.
+      expect(Date.parse(JSON.parse(readFileSync(join(dir, 'payload.json'), 'utf8')).expiresAt))
+        .toBeGreaterThan(expired);
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: fixtureAnchor(), cosignPath: cosign(), now: expired,
+      });
+      expect(problems, problems.join('\n')).toEqual([]);
+    }, 180_000);
 
     it('the original run\'s conclusion is NOT required to be success', async () => {
       const a = await load('c19-anchor.mjs');
@@ -640,7 +841,10 @@ export function registerC19Pipeline(): void {
       const a = await load('c19-anchor.mjs');
       const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
       const dir = mkdtempSync(join(tmpdir(), 'c19pkg2-'));
-      for (const f of p.DELIVERY_PACKAGE_FILES) writeFileSync(join(dir, f), '{}');
+      for (const f of p.DELIVERY_PACKAGE_FILES) {
+        mkdirSync(dirname(join(dir, f)), { recursive: true });
+        writeFileSync(join(dir, f), '{}');
+      }
       writeFileSync(join(dir, 'payload.json'), JSON.stringify({ purpose: 'run-anchor' }));
       writeFileSync(join(dir, 'SURPRISE.txt'), 'x');
       expect(p.verifyDeliveryPackage({ dir, policy, trustedRoot }).join('\n'))
@@ -659,116 +863,54 @@ export function registerC19Pipeline(): void {
     });
 
     /**
-     * A GENUINE package, assembled from real bytes, so the checks above are shown to be
-     * discriminating rather than merely strict. Every digest here is computed from the file that
-     * is actually written, and the payload is the canonical encoding of its own content.
+     * The two ends of the same claim, EXECUTED against the source-owned Sigstore fixture: a
+     * complete package whose certificate, SCT, signature, Merkle proof, checkpoint and SET are all
+     * genuine. The earlier version of these controls assembled a package by hand with a
+     * placeholder bundle, so it could only ever assert the absence of structural findings - the
+     * cryptographic half was unreachable, which is what let a broken signature check survive.
      */
-    const genuinePackage = async () => {
-      const p = await load('c19-pipeline.mjs');
-      const dir = mkdtempSync(join(tmpdir(), 'c19good-'));
-      const wrapper = Buffer.from('PK\u0003\u0004 finalized wrapper bytes');
-      const inner = Buffer.from('PK\u0003\u0004 finalized inner evidence bytes');
-      const innerName = 'c17-cross-host-finalized-'.concat('a'.repeat(40), '.zip');
-      const hex = (b: Buffer) => createHash('sha256').update(b).digest('hex');
-      writeFileSync(join(dir, 'finalized-wrapper.zip'), wrapper);
-      writeFileSync(join(dir, innerName), inner);
-      writeFileSync(join(dir, `${innerName}.sha256`), `${hex(inner)}  ${innerName}\n`);
-
-      const built = p.buildCanonicalPayload({
-        authed: {
-          sourceSha: 'a'.repeat(40), sourceRunId: '1', sourceRunAttempt: '1',
-          finalizerRunId: '2', finalizerRunAttempt: '1',
-        },
-        acquisition: {
-          wrapperDigest: hex(wrapper), innerDigest: hex(inner), innerName,
-          artifactId: '9', artifactName: 'c17-cross-host-finalized',
-        },
-        sourceTree: 'b'.repeat(40),
-        workflowRef: 'a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main',
-        workflowDigest: 'c'.repeat(40),
-        workflowYamlDigest: 'd'.repeat(64),
-        sourceEvent: 'push',
-        // Inside the window NOW, derived from the finalizer instant rather than the wall clock.
-        finalizerCompletedAt: new Date(Date.now() - 3_600_000).toISOString(),
-      });
-      writeFileSync(join(dir, 'payload.json'), built.canonical);
-      for (const [src, dst] of [['c19-sigstore-trusted-root.json', 'trusted-root.json'],
-        ['c19-sigstore-tuf-root.json', 'tuf-root.json']] as const) {
-        writeFileSync(join(dir, dst), readFileSync(join(LIB, src)));
-      }
-      writeFileSync(join(dir, 'bundle.sigstore.json'), readFileSync(join(FIX, 'rekor-entry.json')));
-      writeFileSync(join(dir, 'metadata.json'), '{}');
-      writeFileSync(join(dir, 'VERIFY.md'), '# verify\n');
-      return { dir, innerName, p };
-    };
-
-    // Every finding class that does NOT depend on a Fulcio-issued certificate. The cryptographic
-    // half needs a certificate that cannot be fabricated and is covered by the identity controls.
-    const STRUCTURAL = /required file|unexpected file|hashes to|sidecar|validity window|expired|presented before|canonical encoding|domain-separate/;
-
-    it('NON-VACUITY: a genuine package raises NO structural finding', async () => {
-      const { dir, p } = await genuinePackage();
-      const a = await load('c19-anchor.mjs');
-      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
-      const structural = p.verifyDeliveryPackage({ dir, policy, trustedRoot })
-        .filter((x: string) => STRUCTURAL.test(x));
-      expect(structural, structural.join('\n')).toEqual([]);
-    });
-
-    it('one flipped byte in the inner evidence is CAUGHT — the digests are recomputed, not read', async () => {
-      const { dir, innerName, p } = await genuinePackage();
-      const a = await load('c19-anchor.mjs');
-      const { policy, trustedRoot } = a.loadTrustMaterial(LIB);
-      const bytes = readFileSync(join(dir, innerName));
-      bytes[bytes.length - 1] ^= 0x01;
-      writeFileSync(join(dir, innerName), bytes);
-      expect(p.verifyDeliveryPackage({ dir, policy, trustedRoot }).join('\n'))
-        .toMatch(/the inner evidence hashes to .* but the signed payload binds/);
-    });
-
     it('EXECUTED: with no OS boundary available, verify-offline REFUSES instead of verifying', async () => {
-      const { dir } = await genuinePackage();
-      const out = mkdtempSync(join(tmpdir(), 'c19vo-'));
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19vo-')));
+      const out = mkdtempSync(join(tmpdir(), 'c19voout-'));
       // The only difference from a working host is that no denial mechanism is reachable. An
-      // unconstrained verifier that prints "offline PASS" proves nothing about what it reached for,
-      // so the absence of the boundary must be fatal, not silently tolerated.
+      // unconstrained verifier that prints "PASS" proves nothing about what it reached for.
       const bare = mkdtempSync(join(tmpdir(), 'c19path-'));
       for (const t of ['node', 'git']) {
         const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
         if (found) symlinkSync(found, join(bare, t));
       }
-      const r = spawnSync(process.execPath,
-        [join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline', '--package', dir, '--out', out],
-        { encoding: 'utf8', env: { ...process.env, PATH: bare } });
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline',
+        '--package', dir, '--out', out, '--anchor', SIGFIX, '--cosign', cosignBinary(),
+      ], { encoding: 'utf8', env: { ...process.env, PATH: bare } });
       expect(r.status).not.toBe(0);
       expect(`${r.stdout}${r.stderr}`).toMatch(/Offline verification cannot be performed here/);
-      // And it must not have reached the verification it was asked for.
       expect(`${r.stdout}${r.stderr}`).not.toMatch(/package verification, \d+ finding/);
-    }, 120_000);
-
-    it('EXECUTED: with a boundary available, the verifier runs INSIDE it', async () => {
-      const s = await load('c19-sandbox.mjs');
-      if (!s.proveNetworkDenial().ok) return; // the control above covers the no-mechanism host
-      const { dir } = await genuinePackage();
-      const out = mkdtempSync(join(tmpdir(), 'c19vo2-'));
-      const r = spawnSync(process.execPath,
-        [join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline', '--package', dir, '--out', out],
-        { encoding: 'utf8' });
-      const all = `${r.stdout}${r.stderr}`;
-      // The re-execution happened, and the package verification ran in the CHILD — so Node and
-      // every descendant it spawns, cosign included, were constrained.
-      expect(all).toMatch(/re-executing the whole verifier inside the \S+ boundary/);
-      /**
-       * EXACTLY ONE re-execution. The marker was an environment variable, and `sudo` - which the
-       * Linux mechanism needs - discards the environment of the command it runs, so the child took
-       * the outer branch and re-executed itself again. On CI that printed this line twice and never
-       * reached the verification at all, while still looking like it had gone offline.
-       */
-      expect(all.match(/re-executing the whole verifier/g)?.length).toBe(1);
-      expect(all).toMatch(/package verification, \d+ finding/);
-      // Structural findings must be absent even under the boundary: nothing here needs a network.
-      expect(all.split('\n').filter((l) => STRUCTURAL.test(l))).toEqual([]);
     }, 180_000);
+
+    it('EXECUTED: with a boundary available, the whole verifier runs INSIDE it and exits 0', async () => {
+      const s = await load('c19-sandbox.mjs');
+      if (!s.proveNetworkDenial().ok) return;   // the control above covers the no-mechanism host
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19vo2-')));
+      const out = mkdtempSync(join(tmpdir(), 'c19vo2out-'));
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'verify-offline',
+        '--package', dir, '--out', out, '--anchor', SIGFIX, '--cosign', cosignBinary(),
+      ], { encoding: 'utf8' });
+      const all = `${r.stdout}${r.stderr}`;
+      expect(r.status, all).toBe(0);
+      expect(all).toMatch(/re-executing the whole verifier inside the \S+ boundary/);
+      // EXACTLY one re-execution: the marker was an environment variable, and sudo discards the
+      // environment, so the child re-executed itself instead of verifying.
+      expect(all.match(/re-executing the whole verifier/g)?.length).toBe(1);
+      // The child proved its own isolation rather than trusting the marker that routed it there.
+      expect(all).toMatch(/isolation confirmed from inside/);
+      expect(all).toMatch(/package verification, 0 finding/);
+      expect(all).toMatch(/verify-offline PASS/);
+    }, 300_000);
+
   });
 
   describe('C19 — the TUF chain is verified, not merely hashed', () => {
@@ -914,10 +1056,56 @@ export function registerC19Pipeline(): void {
       expect(signings).toBe(0);
     });
 
-    it('the fetched entry must be the uuid that was requested', () => {
-      const cli = readFileSync(join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'utf8');
-      // Accepting whatever came back would let a redirect substitute a different record.
-      expect(cli).toMatch(/rekor returned entry .* for request/);
+    it('THE REAL TRANSPORT returns a malformed 2xx raw, instead of inventing emptiness', async () => {
+      const t = await load('c19-rekor-transport.mjs');
+      // This was `return Array.isArray(uuids) ? uuids : []`, inside the CLI where no control could
+      // reach it. A malformed success became "no record exists" before the pipeline could refuse
+      // it, and "no record exists" is precisely the answer that leads to signing.
+      const malformed = { error: 'internal' };
+      const got = await t.rekorSearch('a'.repeat(64), {
+        fetchFn: async () => ({ ok: true, status: 200, json: async () => malformed }),
+      });
+      expect(Array.isArray(got), 'a malformed body must not be converted to an array').toBe(false);
+      expect(got).toEqual(malformed);
+      // A 404 IS an answer, and the only shape of "nothing" the transport will produce.
+      expect(await t.rekorSearch('a'.repeat(64), { fetchFn: async () => ({ ok: false, status: 404 }) }))
+        .toEqual([]);
+      // An unreadable body is refused rather than returned.
+      await expect(t.rekorSearch('a'.repeat(64), {
+        fetchFn: async () => ({ ok: true, status: 200, json: async () => { throw new Error('bad json'); } }),
+      })).rejects.toThrow(/unreadable response is not evidence that no record exists/);
+    });
+
+    it('END TO END: a malformed transport response produces ZERO signing attempts', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const t = await load('c19-rekor-transport.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19mal-'));
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, '{"a":1}');
+      let signings = 0;
+      // The REAL transport function, given a malformed 2xx, feeding the REAL pipeline.
+      const outcome = await p.recoverOrSign({
+        canonicalBytes: Buffer.from('{"a":1}'), payloadPath,
+        bundlePath: join(out, 'bundle.sigstore.json'),
+        policy: {}, trustedRoot: {}, gh: {},
+        search: (d: string) => t.rekorSearch(d, {
+          fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ error: 'internal' }) }),
+        }),
+        fetchEntry: async () => null, mode: 'publish',
+        sign: () => { signings += 1; },
+      });
+      expect(outcome.action).toBe('refuse');
+      expect(outcome.why).toMatch(/not an array of uuids|malformed/);
+      expect(signings, 'a malformed response must never lead to signing').toBe(0);
+    });
+
+    it('the fetched entry must be the uuid that was requested', async () => {
+      const t = await load('c19-rekor-transport.mjs');
+      // The REAL transport, against a response that answers with a different record. Accepting
+      // whatever came back would let a redirect or a shape change substitute another entry.
+      await expect(t.rekorEntry('a'.repeat(64), {
+        fetchFn: async () => ({ ok: true, json: async () => ({ ['b'.repeat(64)]: { body: 'x' } }) }),
+      })).rejects.toThrow(/rekor returned entry .* for request/);
     });
   });
 

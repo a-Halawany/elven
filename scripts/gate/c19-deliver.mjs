@@ -25,8 +25,11 @@ import {
 } from './lib/c19-pipeline.mjs';
 import { loadTrustMaterial } from './lib/c19-anchor.mjs';
 import { assetKey, install as installCosign, COSIGN_PIN } from './lib/c19-cosign.mjs';
-import { proveNetworkDenial, runWithoutNetwork } from './lib/c19-sandbox.mjs';
+import {
+  proveNetworkDenial, runWithoutNetwork, proveThisProcessIsNetworkDenied,
+} from './lib/c19-sandbox.mjs';
 import { acquire } from './lib/c19-acquire.mjs';
+import { rekorSearch, rekorEntry } from './lib/c19-rekor-transport.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LIB = join(HERE, 'lib');
@@ -40,35 +43,55 @@ const INSIDE_SANDBOX = '--inside-sandbox';
 const has = (f) => argv.includes(f);
 const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 
-/** Rekor reads. Publication is online by nature; offline verification never calls these. */
-const rekorSearch = async (digestHex) => {
-  const r = await fetch('https://rekor.sigstore.dev/api/v1/index/retrieve', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ hash: `sha256:${digestHex}` }),
-  });
-  if (r.status === 404) return [];
-  if (!r.ok) throw new Error(`rekor index query returned HTTP ${r.status}`);
-  const uuids = await r.json();
-  return Array.isArray(uuids) ? uuids : [];
-};
-const rekorEntry = async (uuid) => {
-  const r = await fetch(`https://rekor.sigstore.dev/api/v1/log/entries/${encodeURIComponent(uuid)}`);
-  if (!r.ok) throw new Error(`rekor entry fetch returned HTTP ${r.status}`);
-  const body = await r.json();
-  // The response is keyed by uuid. It must be the uuid we ASKED for: accepting whatever came back
-  // would let a redirect or a shape change substitute a different record entirely.
-  const [gotUuid, entry] = Object.entries(body)[0] ?? [];
-  if (gotUuid !== uuid) {
-    throw new Error(`rekor returned entry ${JSON.stringify(gotUuid)} for request ${JSON.stringify(uuid)}`);
+/**
+ * Every flag this command knows. An unrecognised flag is refused rather than ignored: a silently
+ * dropped `--workflow-sha` produced a payload built from a default, and an INTERNAL marker
+ * supplied by hand produced a result labelled offline that was not.
+ */
+const KNOWN_FLAGS = Object.freeze([
+  '--out', '--package', '--repo', '--sha', '--finalizer-run', '--finalizer-attempt',
+  '--source-root', '--workflow-sha', '--cosign', '--signer-run', '--signer-attempt', '--anchor',
+]);
+
+/**
+ * Read a source-owned anchor from a directory. The production layout and the package layout name
+ * the same three things differently, so both are accepted - and a directory carrying neither is
+ * refused rather than yielding an anchor of undefineds that would compare equal to nothing.
+ */
+function loadAnchor(dir) {
+  const pick = (...names) => {
+    for (const n of names) { if (existsSync(join(dir, n))) return join(dir, n); }
+    return null;
+  };
+  const policyPath = pick('c19-trust.json', 'policy.json');
+  const rootPath = pick('c19-sigstore-tuf-root.json', 'tuf-root.json');
+  if (policyPath === null || rootPath === null) {
+    die(`${dir} is not a source-owned anchor: it holds neither the production trust policy and TUF `
+      + 'root nor the package-shaped policy.json and tuf-root.json');
   }
-  return entry ?? null;
-};
+  const anchorPolicy = JSON.parse(readFileSync(policyPath, 'utf8'));
+  return {
+    trustedRootSha256: anchorPolicy.tuf.trustedRootSha256,
+    tufRootSha256: sha256(readFileSync(rootPath)),
+    policySha256: sha256(readFileSync(policyPath)),
+    minimumVersions: anchorPolicy.tuf.minimumVersions ?? {},
+    policy: anchorPolicy,
+  };
+}
 
 async function main() {
   const mode = argv[0];
   if (!PIPELINE_MODES.includes(mode)) {
     process.stderr.write(`usage: c19-deliver.mjs <${PIPELINE_MODES.join('|')}> [flags]\n`);
     process.exit(2);
+  }
+  for (let i = 1; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (!a.startsWith('--')) continue;
+    if (KNOWN_FLAGS.includes(a)) { i += 1; continue; }
+    if (a === INSIDE_SANDBOX) continue;   // routing only; the isolation proof is below, not here
+    die(`unknown flag ${JSON.stringify(a)}. Flags are not ignored: one dropped silently is how a `
+      + 'default reaches a signed payload.');
   }
   const out = val('--out') ?? die('--out is required');
   mkdirSync(out, { recursive: true });
@@ -102,7 +125,49 @@ async function main() {
       process.stderr.write(r.stderr);
       process.exit(r.status === null ? 1 : r.status);
     }
-    const problems = verifyDeliveryPackage({ dir, policy, trustedRoot, cosignPath: val('--cosign') });
+
+    /**
+     * ── THE MARKER IS A CLAIM; THIS IS THE EVIDENCE ──
+     *
+     * Trusting the marker meant any caller could pass it and get a result labelled "offline" that
+     * was produced with the network fully available - the verification would run, print its
+     * findings, and never once be constrained. The marker only routes; it proves nothing.
+     *
+     * So the child establishes its own isolation from its own environment: it attempts a
+     * connection to a literal address and requires the operating system to refuse it.
+     */
+    const isolated = proveThisProcessIsNetworkDenied();
+    if (!isolated.ok) die(`${isolated.why} (observed: ${isolated.evidence})`);
+    say(`C19 deliver: isolation confirmed from inside — ${isolated.evidence}`);
+
+    /**
+     * ── THE ANCHOR IS HELD INDEPENDENTLY OF THE PACKAGE ──
+     *
+     * Verifying the package's trust material against the package's own trust material proves
+     * nothing, which is what shipping those files and then ignoring them amounted to. The anchor
+     * comes from a source-owned checkout - this repository by default, or `--anchor <dir>` for a
+     * source-owned fixture whose CA is deliberately not the real Fulcio.
+     *
+     * It is a DIRECTORY, never a file inside the package: if the two could be the same place the
+     * independence would be nominal.
+     */
+    const anchorDir = val('--anchor') ?? LIB;
+    if (realpathSync(anchorDir) === realpathSync(dir)) {
+      die('--anchor must not be the package being verified; an anchor taken from inside the '
+        + 'package authenticates the package against itself');
+    }
+    const anchor = loadAnchor(anchorDir);
+    const problems = verifyDeliveryPackage({
+      dir, policy: anchor.policy, trustedRoot, anchor,
+      // REQUIRED. A foreign checkout cannot download cosign - it has no network by construction -
+      // so the operator supplies the pinned binary and the verifier authenticates it by digest
+      // before executing it. Absent, verification refuses rather than silently omitting the
+      // delegated Sigstore checks, which is what "accepts cosignPath but never invokes cosign"
+      // amounted to.
+      cosignPath: val('--cosign') ?? die('--cosign is required for verify-offline: the delegated '
+        + `Sigstore checks are not optional. Supply the pinned ${COSIGN_PIN.version_tag} binary; `
+        + 'its digest is verified before it is executed.'),
+    });
     say(`C19 deliver: package verification, ${problems.length} finding(s)`);
     for (const p of problems) process.stderr.write(`  ${p}\n`);
     if (problems.length > 0) die('offline package verification failed');
@@ -213,19 +278,6 @@ async function main() {
    * ZERO signing attempts.
    */
   if (mode === 'publish') {
-    /**
-     * The tip was current when we resolved. Everything since - listing runs, downloading and
-     * verifying the evidence, building the payload - took time against a live API, and main can
-     * move inside it. Anchoring a superseded commit is not undoable once Rekor accepts it, so the
-     * check is repeated here, against the last reversible moment rather than the first.
-     */
-    const tipNow = gh.branchTip('main');
-    if (tipNow !== sha) {
-      die(`c19: main advanced to ${tipNow} while this publication was being prepared; ${sha} is no `
-        + 'longer the tip and must not be anchored. Refusing before the irreversible step.');
-    }
-    say(`C19 deliver: main tip re-confirmed as ${sha.slice(0, 12)} immediately before signing`);
-
     const proof = proveNetworkDenial();
     if (!proof.ok) {
       die(`${proof.why}. Refusing to sign: a publication that cannot then be verified offline is `
@@ -240,6 +292,21 @@ async function main() {
   const outcome = await recoverOrSign({
     canonicalBytes, payloadPath, bundlePath, policy, trustedRoot, gh, cosignPath,
     search: rekorSearch, fetchEntry: rekorEntry, mode,
+    /**
+     * The tip was current at resolution. Acquisition, C17 verification, payload construction, the
+     * isolation proof and the log query all happened since, every one of them against something
+     * live. Anchoring a superseded commit is not undoable once Rekor accepts it, so the answer is
+     * taken here - after the search, with nothing between this and the signature.
+     */
+    beforeSign: mode !== 'publish' ? undefined : () => {
+      const tipNow = gh.branchTip('main');
+      if (tipNow === sha) {
+        say(`C19 deliver: main tip re-confirmed as ${sha.slice(0, 12)} with nothing left before sign-blob`);
+        return undefined;
+      }
+      return `c19: main advanced to ${tipNow} while this publication was being prepared; ${sha} is `
+        + 'no longer the tip and must not be anchored. Refused at the last reversible moment.';
+    },
   });
   say(`C19 deliver: ${outcome.action}${outcome.why ? ` — ${outcome.why}` : ''}`);
   if (outcome.action === 'refuse') die(outcome.why);
