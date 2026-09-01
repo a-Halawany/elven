@@ -675,6 +675,9 @@ describe('C17.2-H — scanner amendments carry a real, chronological review date
     result_target: 'usr/bin/example',
     reason: 'Synthetic complete record used only to exercise amendment chronology.',
     compensating_controls: ['The fixture is not used to govern a real finding.'],
+    // Required of every RISK_ACCEPTED record: an acceptance without a stated scope is an
+    // acceptance without a limit. The synthetic record carries one for the same reason.
+    prohibited_use: ['this fixture governs no real finding and bounds no real deployment'],
     owner: 'gate-owner',
     approver: 'independent-reviewer',
     evidence: evidencePath,
