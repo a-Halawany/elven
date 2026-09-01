@@ -62,11 +62,8 @@ async function buildFixturePackage(_p: any, out: string): Promise<string> {
       wrapperPath: join(out, 'finalized-wrapper.zip'),
       innerPath: join(out, INNER), innerName: INNER,
     },
-    // DERIVED, exactly as production derives it.
-    metadata: _p.deriveDeliveryMetadata({
-      payload: JSON.parse(readFileSync(join(SIGFIX, 'payload.json'), 'utf8')),
-      policy: JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8')),
-    }),
+    // Persistence REDERIVES from the payload and the anchored policy; nothing is passed in.
+    policy: JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8')),
   });
 }
 
@@ -703,41 +700,46 @@ export function registerC19Pipeline(): void {
     });
 
 
-    const OMISSIONS = ['repo', 'sourceSha', 'innerName', 'certificateIdentity', 'oidcIssuer'];
-    for (const missing of OMISSIONS) {
-      it(`REFUSES to persist a production package missing ${missing}`, async () => {
-        const p = await load('c19-pipeline.mjs');
-        const out = mkdtempSync(join(tmpdir(), 'c19meta-'));
-        const md: Record<string, unknown> = { ...(await productionMetadata()) };
-        delete md[missing];
-        stageFixtureInputs(out);
-        expect(() => p.persistDeliveryPackage({
-          out, libDir: SIGFIX,
-          payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
-          acquisition: {
-            wrapperPath: join(out, 'finalized-wrapper.zip'),
-            innerPath: join(out, INNER), innerName: INNER,
-          },
-          metadata: md,
-        })).toThrow(new RegExp(`requires metadata\\.${missing}`));
+    /**
+     * Persistence rederives, so a caller can no longer omit a metadata field - the parameter is
+     * gone. What can still be absent is a field of the PAYLOAD or of the anchored policy, which is
+     * where the values actually come from, so that is what these exercise.
+     */
+    const persistFrom = async (payload: unknown, policy: unknown) => {
+      const p = await load('c19-pipeline.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19persist-'));
+      stageFixtureInputs(out);
+      writeFileSync(join(out, 'payload.json'), JSON.stringify(payload));
+      return () => p.persistDeliveryPackage({
+        out, libDir: SIGFIX,
+        payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+        acquisition: {
+          wrapperPath: join(out, 'finalized-wrapper.zip'),
+          innerPath: join(out, INNER), innerName: INNER,
+        },
+        policy,
+      });
+    };
+
+    for (const missing of ['sourceSha', 'finalizedInnerName']) {
+      it(`REFUSES to persist when the signed payload omits ${missing}`, async () => {
+        const payload = fixturePayload();
+        delete payload[missing];
+        expect(await persistFrom(payload, fixturePolicyDoc())).toThrow();
       });
     }
 
-    it('REFUSES a sourceSha that is not a full commit SHA', async () => {
-      const p = await load('c19-pipeline.mjs');
-      const base = await productionMetadata();
-      for (const bad of ['main', 'a8d34c4', `${'a'.repeat(39)}`, `${'a'.repeat(41)}`]) {
-        const out = mkdtempSync(join(tmpdir(), 'c19sha-'));
-        stageFixtureInputs(out);
-        expect(() => p.persistDeliveryPackage({
-          out, libDir: SIGFIX,
-          payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
-          acquisition: {
-            wrapperPath: join(out, 'finalized-wrapper.zip'),
-            innerPath: join(out, INNER), innerName: INNER,
-          },
-          metadata: { ...base, sourceSha: bad },
-        }), `${bad} must be refused`).toThrow(/not a full commit SHA/);
+    it('REFUSES to persist when the anchored policy names no repository', async () => {
+      const pol = fixturePolicyDoc();
+      delete pol.identity.repository;
+      expect(await persistFrom(fixturePayload(), pol)).toThrow(/names no repository/);
+    });
+
+    it('REFUSES a payload sourceSha that is not a full commit SHA', async () => {
+      for (const bad of ['main', 'a8d34c4', 'a'.repeat(39), 'a'.repeat(41)]) {
+        const payload = { ...fixturePayload(), sourceSha: bad };
+        expect(await persistFrom(payload, fixturePolicyDoc()), `${bad} must be refused`)
+          .toThrow(/not a full commit SHA/);
       }
     });
 
@@ -752,7 +754,7 @@ export function registerC19Pipeline(): void {
           wrapperPath: join(out, 'finalized-wrapper.zip'),
           innerPath: join(out, INNER), innerName: INNER,
         },
-        metadata: await productionMetadata(),
+        policy: fixturePolicyDoc(),
       });
       const md = readFileSync(join(dir, 'VERIFY.md'), 'utf8');
       // Not "a placeholder is unlikely" — none of them may appear at all.
@@ -769,6 +771,133 @@ export function registerC19Pipeline(): void {
       expect(md).toMatch(/checkout --detach [0-9a-f]{40}/);
       expect(md).toMatch(/rev-parse HEAD/);
       expect(md).not.toMatch(/clone --depth 1 \S+ src\n\s*node/);
+    });
+  });
+
+  describe('C19 — a wrong repository is refused BEFORE anything irreversible, executed', () => {
+    /**
+     * The comparison used to live inside the metadata builder, which runs at PERSISTENCE - step 15,
+     * after the Rekor search and after sign-blob. A wrong repository therefore bought one signing
+     * and one Rekor publication and THEN failed deterministically while writing the package: an
+     * irreversible act followed by a guaranteed failure.
+     *
+     * This runs the real CLI in the mode that can sign, with a `gh` that records every invocation.
+     * The refusal has to come before that stand-in is ever called, which is upstream of the
+     * transparency query and of signing.
+     */
+    it('the real CLI refuses with ZERO GitHub calls, zero signing and no package', () => {
+      const root = mkdtempSync(join(tmpdir(), 'c19ord-'));
+      const bin = join(root, 'bin');
+      const out = join(root, 'out');
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(out, { recursive: true });
+      const calls = join(root, 'gh-calls.log');
+      writeFileSync(calls, '');
+      writeFileSync(join(bin, 'gh'),
+        '#!/bin/sh\n'
+        + `echo "$@" >> ${JSON.stringify(calls)}\n`
+        + 'printf "HTTP/2 200\\r\\n\\r\\n"\n'
+        + `printf '{"sha":"${'a'.repeat(40)}"}'\n`, { mode: 0o755 });
+      for (const t of ['node', 'git', 'sh']) {
+        const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
+        if (found && !existsSync(join(bin, t))) symlinkSync(found, join(bin, t));
+      }
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'publish',
+        '--repo', 'attacker/example', '--sha', 'a'.repeat(40),
+        '--workflow-sha', 'b'.repeat(40), '--out', out,
+      ], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+
+      const all = `${r.stdout}${r.stderr}`;
+      expect(r.status, all).not.toBe(0);
+      expect(all).toMatch(/repository "attacker\/example", but the anchored trust policy names/);
+      // Zero GitHub calls, so zero Rekor searches and zero writes are reachable from here.
+      expect(readFileSync(calls, 'utf8')).toBe('');
+      // Nothing was signed and nothing was written.
+      expect(all).not.toMatch(/would-sign|offline boundary proved|delivery package at/);
+      expect(existsSync(join(out, 'bundle.sigstore.json'))).toBe(false);
+      expect(existsSync(join(out, 'delivery'))).toBe(false);
+    }, 120_000);
+
+    it('the frozen reversible gate states it too, so nothing signs for an unauthorised repository', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const payload = JSON.parse(readFileSync(join(SIGFIX, 'payload.json'), 'utf8'));
+      const policy = JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8'));
+      const args = {
+        payload, canonicalBytes: Buffer.from(readFileSync(join(SIGFIX, 'payload.json'))),
+        acquisition: { wrapperDigest: payload.evidenceDigest, innerDigest: payload.finalizedInnerDigest },
+        policy, expectSha: payload.sourceSha,
+      };
+      expect(p.validateBeforeIrreversible({ ...args, repo: 'attacker/example' }).join('\n'))
+        .toMatch(/nothing may be signed for a repository the policy does not authorise/);
+      expect(p.validateBeforeIrreversible({ ...args, repo: 'a-Halawany/elven' }))
+        .toEqual([]);
+      // A policy naming no repository is a refusal, not a skip.
+      expect(p.validateBeforeIrreversible({
+        ...args, policy: { ...policy, identity: { ...policy.identity, repository: undefined } },
+        repo: 'a-Halawany/elven',
+      }).join('\n')).toMatch(/names no repository/);
+    });
+
+    it('ORDERING, observed: nothing downstream of the check runs at all', () => {
+      const root = mkdtempSync(join(tmpdir(), 'c19ord2-'));
+      const bin = join(root, 'bin');
+      const out = join(root, 'out');
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(out, { recursive: true });
+      const calls = join(root, 'calls.log');
+      writeFileSync(calls, '');
+      // Both external tools record being called. Resolution, the Rekor query and signing all need
+      // one or the other, so an empty log is the observation that none of them was reached.
+      for (const tool of ['gh', 'cosign']) {
+        writeFileSync(join(bin, tool),
+          `#!/bin/sh\necho ${tool} >> ${JSON.stringify(calls)}\nexit 1\n`, { mode: 0o755 });
+      }
+      for (const t of ['node', 'git', 'sh']) {
+        const found = spawnSync('which', [t], { encoding: 'utf8' }).stdout.trim();
+        if (found && !existsSync(join(bin, t))) symlinkSync(found, join(bin, t));
+      }
+      const started = process.hrtime.bigint();
+      const r = spawnSync(process.execPath, [
+        join(REPO, 'scripts', 'gate', 'c19-deliver.mjs'), 'publish',
+        '--repo', 'attacker/example', '--sha', 'a'.repeat(40),
+        '--workflow-sha', 'b'.repeat(40), '--out', out,
+      ], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+      const all = `${r.stdout}${r.stderr}`;
+
+      expect(r.status, all).not.toBe(0);
+      expect(readFileSync(calls, 'utf8'), 'no external tool may be reached').toBe('');
+      // The isolation proof spawns children and waits on timeouts; reaching it is measurable.
+      expect(all).not.toMatch(/offline boundary proved|re-executing the whole verifier/);
+      expect(elapsedMs, 'the refusal must precede the isolation probe, which takes seconds')
+        .toBeLessThan(5_000);
+      expect(all).not.toMatch(/canonical source|wrapper |payload [0-9a-f]{16}|would-sign|delivery package at/);
+    }, 120_000);
+
+    it('persistence REDERIVES its metadata and accepts none from a caller', async () => {
+      const p = await load('c19-pipeline.mjs');
+      // A caller-supplied object could produce a package that is invalid the moment it is written,
+      // and it would be written AFTER the signature, where nothing can be taken back.
+      const src = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'c19-pipeline.mjs'), 'utf8');
+      expect(src).toMatch(/export function persistDeliveryPackage\(\{[^}]*policy[^}]*\}\)/s);
+      const out = mkdtempSync(join(tmpdir(), 'c19rederive-'));
+      stageFixtureInputs(out);
+      const dir = p.persistDeliveryPackage({
+        out, libDir: SIGFIX,
+        payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+        acquisition: {
+          wrapperPath: join(out, 'finalized-wrapper.zip'),
+          innerPath: join(out, INNER), innerName: INNER,
+        },
+        policy: JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8')),
+        // Anything a caller might try to inject is simply not a parameter any more.
+        metadata: { repo: 'attacker/example', sourceSha: 'f'.repeat(40) },
+      });
+      const written = JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8'));
+      expect(written.repo).toBe('a-Halawany/elven');
+      expect(written.sourceSha).toBe(
+        JSON.parse(readFileSync(join(SIGFIX, 'payload.json'), 'utf8')).sourceSha);
     });
   });
 
@@ -970,6 +1099,30 @@ export function registerC19Pipeline(): void {
       ['one byte of VERIFY.md is flipped',
         (d) => flip(join(d, 'VERIFY.md')),
         /VERIFY\.md does not match the instructions regenerated/],
+      /**
+       * `JSON.parse("null")` returns null, and the branch guarding every metadata check was
+       * `got !== null` — so these four bytes parsed, fell out of the branch, and skipped the exact
+       * schema, the reconstructed values and the canonical-byte comparison. It verified clean.
+       * Each of these is "valid JSON" and none is a metadata document.
+       */
+      ['the metadata is the JSON value null',
+        (d) => writeFileSync(join(d, 'metadata.json'), 'null\n'),
+        /metadata\.json is the JSON value null, not an object/],
+      ['the metadata is a JSON array',
+        (d) => writeFileSync(join(d, 'metadata.json'), '[]\n'),
+        /metadata\.json is a JSON array, not an object/],
+      ['the metadata is a JSON string',
+        (d) => writeFileSync(join(d, 'metadata.json'), '"nothing to see"\n'),
+        /metadata\.json is a JSON string, not an object/],
+      ['the metadata is a JSON number',
+        (d) => writeFileSync(join(d, 'metadata.json'), '0\n'),
+        /metadata\.json is a JSON number, not an object/],
+      ['the metadata is a JSON boolean',
+        (d) => writeFileSync(join(d, 'metadata.json'), 'false\n'),
+        /metadata\.json is a JSON boolean, not an object/],
+      ['the metadata is absent entirely',
+        (d) => rmSync(join(d, 'metadata.json')),
+        /metadata\.json is absent|required file "metadata\.json" is missing/],
     ];
     for (const [what, mutate, expected] of BOOTSTRAP) {
       it(`REFUSES the package when ${what}`, async () => {
@@ -1116,15 +1269,14 @@ export function registerC19Pipeline(): void {
       const p = await load('c19-pipeline.mjs');
       const out = mkdtempSync(join(tmpdir(), 'c19pp-'));
       // It previously copied each file "if it exists", producing a quietly incomplete package.
-      // Complete metadata, so this control still tests what it was written for: the FILE check.
-      // Metadata is validated first now, and an empty object would fail for the other reason.
+      // A real payload and policy, so this control still tests what it was written for: the FILE
+      // check. Metadata is derived first now, and a bad payload would fail for the other reason.
+      const payloadPath = join(mkdtempSync(join(tmpdir(), 'c19fc-')), 'payload.json');
+      writeFileSync(payloadPath, readFileSync(join(SIGFIX, 'payload.json')));
       expect(() => p.persistDeliveryPackage({
-        out, libDir: LIB, payloadPath: '/nonexistent', bundlePath: '/nonexistent',
+        out, libDir: LIB, payloadPath, bundlePath: '/nonexistent',
         acquisition: { wrapperPath: '/nonexistent', innerPath: '/nonexistent', innerName: 'x.zip' },
-        metadata: {
-          repo: 'a-Halawany/elven', sourceSha: 'a'.repeat(40), innerName: 'x.zip',
-          certificateIdentity: 'san', oidcIssuer: 'iss',
-        },
+        policy: JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8')),
       })).toThrow(/requires .* and .* does not exist/);
     });
 

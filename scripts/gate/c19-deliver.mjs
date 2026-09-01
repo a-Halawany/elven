@@ -22,7 +22,6 @@ import { createGitHub } from './lib/c19-github.mjs';
 import {
   PIPELINE_MODES, resolve, buildCanonicalPayload, validateBeforeIrreversible,
   recoverOrSign, verifyFinalBundle, persistDeliveryPackage, verifyDeliveryPackage,
-  buildDeliveryMetadata,
 } from './lib/c19-pipeline.mjs';
 import { loadTrustMaterial } from './lib/c19-anchor.mjs';
 import { assetKey, install as installCosign, COSIGN_PIN } from './lib/c19-cosign.mjs';
@@ -177,6 +176,28 @@ async function main() {
   }
 
   const repo = val('--repo') ?? die('--repo is required');
+
+  /**
+   * ── THE REPOSITORY IS CHECKED BEFORE ANYTHING HAPPENS ──
+   *
+   * This comparison used to live inside the metadata builder, which runs at PERSISTENCE - step 15,
+   * after the Rekor search and after sign-blob. A wrong repository therefore produced one signing
+   * and one Rekor publication and then failed deterministically while writing the package: an
+   * irreversible act followed by a guaranteed failure, which is the exact shape the frozen
+   * invariant forbids.
+   *
+   * It is a comparison of two values already in hand, so it belongs here - after the anchored
+   * policy is loaded, before the first GitHub call, before resolution, before the log is searched
+   * and before anything can be signed.
+   */
+  if (policy?.identity?.repository === undefined || policy.identity.repository === '') {
+    die('the anchored trust policy names no repository, so a publication cannot be bound to one');
+  }
+  if (String(repo) !== String(policy.identity.repository)) {
+    die(`this publication names repository ${JSON.stringify(repo)}, but the anchored trust policy `
+      + `names ${JSON.stringify(policy.identity.repository)}. Refused before any GitHub call, any `
+      + 'transparency-log query and any signing operation.');
+  }
   const sha = val('--sha') ?? die('--sha is required');
   const gh = createGitHub({ repo });
 
@@ -262,7 +283,7 @@ async function main() {
 
   // ── 11 EVERY reversible check, before anything irreversible ──────────────
   const vProblems = validateBeforeIrreversible({
-    payload: built.payload, canonicalBytes, acquisition, policy, expectSha: sha,
+    payload: built.payload, canonicalBytes, acquisition, policy, expectSha: sha, repo,
   });
   if (vProblems.length > 0) { for (const p of vProblems) process.stderr.write(`  ${p}\n`); die('validation failed before any irreversible step'); }
   say('C19 deliver: all reversible validation passed');
@@ -332,9 +353,9 @@ async function main() {
   // ── 15 persist the offline-verifiable package ────────────────────────────
   const dir = persistDeliveryPackage({
     out, acquisition, payloadPath, bundlePath, libDir: LIB,
-    // Derived from the signed payload and the trust policy; `repo` is CHECKED against the
-    // policy's repository rather than accepted.
-    metadata: buildDeliveryMetadata({ repo, policy, built }),
+    // No metadata is passed in. Persistence rederives it from the payload it is writing and the
+    // anchored policy, so nothing a caller holds can shape the package.
+    policy, expectIdentity: built.identity,
   });
   say(`C19 deliver: delivery package at ${dir}`);
   say(`C19 deliver: publish PASS (${outcome.signings ?? 0} signing operation(s))`);

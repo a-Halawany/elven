@@ -171,8 +171,23 @@ export function validatePayloadWindow(payload, now = Date.now()) {
 }
 
 /** Step 11 — every reversible check, before anything irreversible. */
-export function validateBeforeIrreversible({ payload, canonicalBytes, acquisition, policy, expectSha }) {
+export function validateBeforeIrreversible({
+  payload, canonicalBytes, acquisition, policy, expectSha, repo,
+}) {
   const problems = [];
+  /**
+   * Defence in depth for the repository binding. The CLI refuses a mismatch before its first
+   * GitHub call, which is where it belongs; this is the frozen gate that every reversible check
+   * must pass through, so the comparison is stated here too. It used to happen only at persistence
+   * - after sign-blob - so a wrong repository bought one Rekor publication and then failed.
+   */
+  if (policy?.identity?.repository === undefined || policy.identity.repository === '') {
+    problems.push('c19: the trust policy names no repository, so this publication cannot be bound to one');
+  } else if (repo !== undefined && String(repo) !== String(policy.identity.repository)) {
+    problems.push(`c19: this publication names repository ${j(repo)}, but the anchored trust policy `
+      + `names ${j(policy.identity.repository)}; nothing may be signed for a repository the policy `
+      + 'does not authorise');
+  }
   for (const f of REQUIRED_PAYLOAD_FIELDS) {
     if (payload[f] === undefined || payload[f] === '') problems.push(`c19: payload omits ${j(f)}`);
   }
@@ -447,7 +462,18 @@ export const DELIVERY_PACKAGE_FILES = Object.freeze([
  * bundle produced a package that was quietly incomplete and an offline verifier would then fail
  * for a reason that says nothing about the evidence.
  */
-export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePath, libDir, metadata }) {
+export function persistDeliveryPackage({
+  out, acquisition, payloadPath, bundlePath, libDir, policy, repo, expectIdentity,
+}) {
+  /**
+   * The metadata is REDERIVED here, from the payload this package is about to carry and the
+   * anchored policy - it is not accepted from a caller. A caller-supplied object could produce a
+   * package that is already invalid at the moment it is written, and it would be written AFTER the
+   * signature, where nothing can be taken back.
+   */
+  const metadata = buildDeliveryMetadata({
+    repo, policy, built: { payload: readJsonOrNull(payloadPath), identity: expectIdentity },
+  });
   /**
    * ── THE INSTRUCTIONS MUST BE EXECUTABLE, SO THE VALUES ARE REQUIRED ──
    *
@@ -672,27 +698,49 @@ export function verifyDeliveryPackage({
         + `payload and the anchored policy (${e.message})`);
     }
     if (expected !== null) {
+      /**
+       * ── THE PARSER BOUNDARY ──
+       *
+       * `JSON.parse("null")` returns `null`, and the branch that guarded these checks was
+       * `got !== null` - so a metadata.json containing the four bytes `null` parsed successfully,
+       * fell out of the branch, and skipped the exact-schema, reconstructed-value and canonical-byte
+       * checks entirely. It verified with zero findings.
+       *
+       * Every JSON value that is not a plain object is refused here, before anything reads a key
+       * from it. `null`, arrays, strings, numbers and booleans are all "valid JSON" and none of
+       * them is a metadata document.
+       */
       const rawMeta = present.has('metadata.json') ? readFileSync(p('metadata.json'), 'utf8') : null;
-      const got = rawMeta === null ? null : (() => {
-        try { return JSON.parse(rawMeta); } catch { return undefined; }
-      })();
-      if (got === undefined) problems.push('c19 package: metadata.json is not JSON');
-      else if (got !== null) {
-        for (const k of Object.keys(got)) {
-          if (!DELIVERY_METADATA_KEYS.includes(k)) {
-            problems.push(`c19 package: metadata.json carries unexpected key ${j(k)}; the schema is `
-              + 'exact, because a field nothing reconstructs is a field nothing constrains');
+      if (rawMeta === null) {
+        problems.push('c19 package: metadata.json is absent, so the instructions that select the '
+          + 'verifier and anchor cannot be checked');
+      } else {
+        let got;
+        let parsed = true;
+        try { got = JSON.parse(rawMeta); } catch { parsed = false; }
+        if (!parsed) {
+          problems.push('c19 package: metadata.json is not JSON');
+        } else if (got === null || typeof got !== 'object' || Array.isArray(got)) {
+          problems.push(`c19 package: metadata.json is ${describeJson(got)}, not an object; a value `
+            + 'that parses is not thereby a metadata document, and treating one as absent is how '
+            + 'every check below gets skipped');
+        } else {
+          for (const k of Object.keys(got)) {
+            if (!DELIVERY_METADATA_KEYS.includes(k)) {
+              problems.push(`c19 package: metadata.json carries unexpected key ${j(k)}; the schema `
+                + 'is exact, because a field nothing reconstructs is a field nothing constrains');
+            }
           }
-        }
-        for (const k of DELIVERY_METADATA_KEYS) {
-          if (String(got[k]) !== String(expected[k])) {
-            problems.push(`c19 package: metadata.json declares ${k}=${j(got[k])}, but the signed `
-              + `payload and the anchored policy give ${j(expected[k])}`);
+          for (const k of DELIVERY_METADATA_KEYS) {
+            if (String(got[k]) !== String(expected[k])) {
+              problems.push(`c19 package: metadata.json declares ${k}=${j(got[k])}, but the signed `
+                + `payload and the anchored policy give ${j(expected[k])}`);
+            }
           }
-        }
-        if (rawMeta !== canonicalDeliveryMetadata(expected) && problems.length === 0) {
-          problems.push('c19 package: metadata.json is not the canonical encoding of its own '
-            + 'reconstructed content');
+          if (rawMeta !== canonicalDeliveryMetadata(expected) && problems.length === 0) {
+            problems.push('c19 package: metadata.json is not the canonical encoding of its own '
+              + 'reconstructed content');
+          }
         }
       }
       const rawVerify = present.has('VERIFY.md') ? readFileSync(p('VERIFY.md'), 'utf8') : null;
@@ -772,6 +820,13 @@ function listPackageFiles(dir) {
   }
   return out;
 }
+
+/** Name what a non-object JSON value actually is, so the finding says which shape slipped past. */
+const describeJson = (v) => {
+  if (v === null) return 'the JSON value null';
+  if (Array.isArray(v)) return 'a JSON array';
+  return `a JSON ${typeof v}`;
+};
 
 const readJsonOrNull = (path) => {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
