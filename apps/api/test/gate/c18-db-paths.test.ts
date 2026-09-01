@@ -59,6 +59,11 @@ import { ingestArchive, verifySemantics } from '../../../../scripts/gate/c18-db-
 // eslint-disable-next-line import/no-relative-packages
 import { redactSecrets } from '../../../../scripts/gate/c18-watchdog.mjs';
 import {
+  descendantsOf as wdDescendantsOf, isSignallablePid as wdIsSignallablePid,
+  parseProcessTable as wdParseProcessTable, signalExitCode as wdSignalExitCode,
+  terminateTree as wdTerminateTree,
+} from '../../../../scripts/gate/c18-watchdog.mjs';
+import {
   opaqueColumns, registeredColumns, runCoverageValidators, runEraColumns, verifyPostUpgradeDelta,
 } from '../../../../scripts/gate/lib/c18-coverage-runner.mjs';
 import { WORLD_IDS, buildSeedWorld, worldSlots } from './c18-seed-world';
@@ -242,6 +247,8 @@ describe('C18.1.1 — exact isolation for postgres AND redis', () => {
   const creds = (p: string) => Object.fromEntries(SECRET_CLASSES.map((k: string) => [k, sha256(`${p}:${k}`)]));
   const mk = (tag: 'a' | 'b', over: Record<string, unknown> = {}) => ({
     path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+    // One run, one resource owner — both paths share it, as the C19 contract requires.
+    gate_resource_id: 'f'.repeat(32),
     container_id: `${tag}`.repeat(12), container_name: `c18-${tag}-0123abcd-pg`,
     redis_container_id: `${tag}f`.repeat(6), redis_container: `c18-${tag}-0123abcd-redis`,
     database: `eye_${tag}_0123abcd`, port: tag === 'a' ? 5001 : 5002, redis_port: tag === 'a' ? 6001 : 6002,
@@ -365,7 +372,10 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
     id: commandIdFor(seq, label), label, argv: ['docker', 'ps'], cwd: '.', env: {},
     timeout_ms: 120_000, exit: 0, signal: null,
     stdout_bytes: 3, stdout_sha256: sha256('ok\n'), stderr_bytes: 0, stderr_sha256: sha256(''),
-    exit_bytes: 2, exit_sha256: sha256('0\n'), ...over,
+    exit_bytes: 2, exit_sha256: sha256('0\n'),
+    // C19 — a command that received no stdin secret still declares the fields, so the record set
+    // stays CLOSED: an absent field and a zero-length handoff must not be the same thing.
+    stdin_bytes: 0, stdin_class: null, ...over,
   });
   it('a well-formed ledger passes typing; every forgery axis fails', () => {
     expect(verifyCommandRecords([record(1, 'one'), record(2, 'two')])).toEqual([]);
@@ -395,7 +405,8 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
   });
   it('the command graph fails closed on an empty or truncated ledger', () => {
     const receipt = (tag: 'a' | 'b') => ({
-      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin', container_id: 'c'.repeat(12),
+      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      gate_resource_id: 'f'.repeat(32), container_id: 'c'.repeat(12),
       container_name: `c18-${tag}-01234567-pg`, redis_container_id: 'd'.repeat(12),
       redis_container: `c18-${tag}-01234567-redis`, database: `eye_${tag}_01234567`,
       port: 5001, redis_port: 6001, postgres_image: 'p', redis_image: 'r', credential_digests: {},
@@ -555,6 +566,7 @@ describe('C18.1.3 — the query plan is source-owned and exact', () => {
   it('the graph rejects a substituted query even when its output is genuine', () => {
     const iso = (tag: 'a' | 'b') => ({
       path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      gate_resource_id: 'f'.repeat(32),
       container_id: 'c'.repeat(12), container_name: `c18-${tag}-01234567-pg`,
       redis_container_id: 'd'.repeat(12), redis_container: `c18-${tag}-01234567-redis`,
       database: `eye_${tag}_01234567`, port: 5001, redis_port: 6001,
@@ -2771,10 +2783,23 @@ describe('C18.1.12 — what this evidence cannot decide is declared, not implied
   });
   it('each declared limit says what is proved, what is not, and where the anchor must come from', () => {
     for (const l of OBSERVATIONAL_LIMITS) {
-      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires', 'ledger']) {
+      // C19 added the authority analysis. Requiring it of EVERY limit is what stops a future
+      // entry from being routed to an anchor without anyone saying who the independent authority
+      // is — or admitting that there isn't one.
+      for (const field of ['subject', 'undecidable', 'because', 'proved', 'residual', 'anchorRequires',
+        'ledger', 'authority', 'anchorAdds', 'stillUndecidable', 'anchorOutcome']) {
         expect(typeof (l as Record<string, unknown>)[field], `${l.id}.${field}`).toBe('string');
         expect(String((l as Record<string, unknown>)[field]).length).toBeGreaterThan(20);
       }
+    }
+  });
+  it('no limit describes a SIGNED claim as a PROVED one', () => {
+    // The one error C19 must not make. An anchor proves identity, integrity, publication and a
+    // time bound over BYTES; it does not make a database observation externally true. Every entry
+    // must therefore still name something it cannot decide.
+    for (const l of OBSERVATIONAL_LIMITS) {
+      expect(String(l.stillUndecidable).length, `${l.id}.stillUndecidable`).toBeGreaterThan(20);
+      expect(l.authority, `${l.id}.authority`).toMatch(/NONE EXISTS|PARTIAL/);
     }
   });
   it('the bootstrap limit is routed to C19 external anchoring', () => {
@@ -5171,5 +5196,142 @@ describe('C18 watchdog — the threat boundary is finite and stated', () => {
       expect([...SOURCE_OWNED_SECRET_NAMES]).toContain(name);
     }
     expect(MARKER_CARRY).toBeGreaterThan(64);
+  });
+});
+
+/**
+ * C19 — THE WATCHDOG'S TERMINATION CONTRACT.
+ *
+ * Reproduced against the frozen a8d34c4 watchdog: SIGINT, SIGTERM and SIGHUP each left the child
+ * AND a setsid grandchild alive indefinitely while the watchdog exited after 2.3 s with status 1.
+ * Two independent causes — escalation scheduled on an unref'd timer that the handler's own
+ * `process.exit()` outran, and termination that signalled only the child's process group, which
+ * any descendant leaves by calling setsid.
+ *
+ * The state machine is exercised through injected primitives, so the controls decide the
+ * behaviour deterministically — including a process that refuses to die — without spawning
+ * anything or depending on timing.
+ */
+describe('C19 — the watchdog terminates a descendant CENSUS, not a process group', () => {
+  it('parses a process table and skips malformed lines rather than throwing', () => {
+    const rows = wdParseProcessTable(' 100 1 100\n 200 100 100\nnot a row\n 300 200 300\n\n');
+    expect(rows).toEqual([
+      { pid: 100, ppid: 1, pgid: 100 },
+      { pid: 200, ppid: 100, pgid: 100 },
+      { pid: 300, ppid: 200, pgid: 300 },
+    ]);
+    // The termination path must never throw: giving up there leaks exactly what it prevents.
+    expect(() => wdParseProcessTable(undefined)).not.toThrow();
+    expect(wdParseProcessTable(undefined)).toEqual([]);
+  });
+
+  it('finds a GRANDCHILD that left the process group — the reproduced S2 leak', () => {
+    // pid 300 called setsid: its pgid is its own, so a group-only signal never reaches it. This is
+    // exactly the process that survived every signal against the frozen implementation.
+    const rows = [
+      { pid: 100, ppid: 1, pgid: 100 },     // the watchdog
+      { pid: 200, ppid: 100, pgid: 200 },   // the child, in its own group
+      { pid: 300, ppid: 200, pgid: 300 },   // the grandchild, in ITS own group
+      { pid: 400, ppid: 1, pgid: 999 },     // unrelated: must NOT be swept up
+    ];
+    const found = wdDescendantsOf(rows, 200);
+    expect([...found].sort((a, b) => a - b)).toEqual([200, 300]);
+    expect(found.has(400)).toBe(false);
+  });
+
+  it('finds a group member whose intermediate parent has already been reaped', () => {
+    // The union is what makes the census complete: the parent walk alone misses a reparented
+    // process, and the group alone misses a setsid escapee.
+    const rows = [
+      { pid: 200, ppid: 100, pgid: 200 },
+      { pid: 300, ppid: 1, pgid: 200 },     // reparented to init, still in the group
+    ];
+    expect([...wdDescendantsOf(rows, 200)].sort((a, b) => a - b)).toEqual([200, 300]);
+  });
+
+  it('refuses to signal pid 0, pid 1, negatives or itself', () => {
+    // kill(0, SIG) signals the CALLER'S ENTIRE PROCESS GROUP. On a CI runner that is the job, so a
+    // parse slip that produced 0 would turn cleanup into self-destruction.
+    expect(wdIsSignallablePid(0, 55)).toBe(false);
+    expect(wdIsSignallablePid(1, 55)).toBe(false);
+    expect(wdIsSignallablePid(-200, 55)).toBe(false);
+    expect(wdIsSignallablePid(55, 55)).toBe(false);
+    expect(wdIsSignallablePid(200, 55)).toBe(true);
+  });
+
+  it('reaps with SIGTERM alone when the tree is cooperative, and does NOT escalate', async () => {
+    const live = new Set([10, 11, 12]);
+    const sent: Array<[number, string]> = [];
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: (p: number) => live.has(p),
+      kill: (p: number, s: string) => { sent.push([p, s]); if (s === 'SIGTERM') live.delete(p); },
+      sleep: async () => {}, termGraceMs: 500, killGraceMs: 500, pollMs: 100,
+    });
+    expect(r).toEqual({ survivors: [], escalated: false });
+    expect(sent.every(([, s]) => s === 'SIGTERM')).toBe(true);
+  });
+
+  it('ESCALATES to SIGKILL when SIGTERM does not clear the tree — the reproduced S1 defect', async () => {
+    // Against the frozen implementation this escalation was scheduled on an unref'd 10 s timer
+    // while the handler exited after 2 s, so it never ran and the child simply survived.
+    const live = new Set([10, 11]);
+    const sent: Array<[number, string]> = [];
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: (p: number) => live.has(p),
+      kill: (p: number, s: string) => { sent.push([p, s]); if (s === 'SIGKILL') live.delete(p); },
+      sleep: async () => {}, termGraceMs: 300, killGraceMs: 300, pollMs: 100,
+    });
+    expect(r.escalated).toBe(true);
+    expect(r.survivors).toEqual([]);
+    expect(sent.filter(([, s]) => s === 'SIGKILL').map(([p]) => p).sort()).toEqual([10, 11]);
+  });
+
+  it('reports survivors HONESTLY when even SIGKILL does not clear them', async () => {
+    // An unkillable process (uninterruptible sleep) is a real state. Claiming containment there
+    // would be the one failure mode this whole contract exists to prevent.
+    const live = new Set([10]);
+    const r = await wdTerminateTree({
+      pids: live, selfPid: 9, alive: () => true, kill: () => {},
+      sleep: async () => {}, termGraceMs: 200, killGraceMs: 200, pollMs: 100,
+    });
+    expect(r.escalated).toBe(true);
+    expect(r.survivors).toEqual([10]);
+  });
+
+  it('never signals an unsignallable pid even when the census contains one', async () => {
+    const sent: number[] = [];
+    await wdTerminateTree({
+      pids: new Set([0, 1, 9, 200]), selfPid: 9, alive: () => false,
+      kill: (p: number) => { sent.push(p); }, sleep: async () => {},
+      termGraceMs: 100, killGraceMs: 100, pollMs: 100,
+    });
+    expect(sent).not.toContain(0);
+    expect(sent).not.toContain(1);
+    expect(sent).not.toContain(9);
+  });
+
+  it('encodes WHICH signal terminated the run in the exit status', () => {
+    // The frozen implementation exited 1 on every signal, indistinguishable from an ordinary child
+    // failure. A caller could not tell a cancelled run from a failed one.
+    expect(wdSignalExitCode('SIGHUP')).toBe(129);
+    expect(wdSignalExitCode('SIGINT')).toBe(130);
+    expect(wdSignalExitCode('SIGTERM')).toBe(143);
+  });
+
+  it('the frozen a8d34c4 watchdog had NO census machinery at all — non-vacuity', async () => {
+    // The differential's first leg: these exports do not exist in the frozen implementation, so
+    // the correction adds a mechanism rather than renaming one.
+    const frozen = await import('./fixtures/c18-legacy-a8d34c4/c18-watchdog.mjs');
+    for (const name of ['parseProcessTable', 'descendantsOf', 'terminateTree', 'signalExitCode']) {
+      expect((frozen as Record<string, unknown>)[name]).toBeUndefined();
+    }
+    // …while every credential-classification export it DID have is still present and unchanged,
+    // so the correction is additive and the C18 threat boundary is untouched.
+    const corrected = await import('../../../../scripts/gate/c18-watchdog.mjs');
+    for (const name of ['classifyEnvVariable', 'credentialPreflight', 'createRedactingStream',
+      'redactSecrets', 'scanArgvForSecrets', 'isCredentialName']) {
+      expect(typeof (corrected as Record<string, unknown>)[name]).toBe('function');
+      expect(typeof (frozen as Record<string, unknown>)[name]).toBe('function');
+    }
   });
 });

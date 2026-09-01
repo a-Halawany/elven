@@ -16,6 +16,10 @@ import {
   POSTURE_CATEGORIES, SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX,
   TABLE_UNIVERSE_HISTORICAL, TABLE_UNIVERSE_LATEST, checkPlaceholder, expectedInstanceEnv,
   attestArgv, inventoryArgv, placeholder,
+  REDIS_ENTRYPOINT,
+  CREDENTIAL_PLACEHOLDER_RE,
+  DOCKER_RUN_LABEL, PG_ENTRYPOINT, PG_SECRET_PATH,
+  REDIS_SECRET_PATH, SECRET_SINK, SECRET_TMPFS,
 } from './c18-contract.mjs';
 
 const schemasIn = () => SNAPSHOT_SCHEMAS.map((s) => `'${s}'`).join(',');
@@ -271,6 +275,21 @@ export function verifyCommandGraph({
       return null;
     }
     pos += 1;
+    // C19 — NO COMMAND MAY CARRY A CREDENTIAL IN ARGV, ANYWHERE.
+    //
+    // The producer redacts secret VALUES into class placeholders before recording, so a credential
+    // that travelled in argv is recorded as a placeholder in argv. That makes the property exactly
+    // decidable from the ledger: a placeholder in any argv position IS the disclosure, because the
+    // real value stood in that position in the live process list. Checking the recorded form rather
+    // than enumerating command shapes is what makes the rule general — it holds for every command
+    // in the ledger, including ones added later.
+    if (Array.isArray(c.argv)) {
+      c.argv.forEach((a, i) => {
+        if (CREDENTIAL_PLACEHOLDER_RE.test(String(a))) {
+          problems.push(`command '${c.label}' argv[${i}] carries a credential (${JSON.stringify(String(a))}); a credential must reach a child through the environment or stdin, never argv, where the host process list publishes it`);
+        }
+      });
+    }
     return c;
   };
   const mustSucceed = (c) => {
@@ -326,6 +345,75 @@ export function verifyCommandGraph({
     }
     return [];
   };
+  /**
+   * C19 — NO ARGV POSITION MAY CARRY A CREDENTIAL, ANYWHERE.
+   *
+   * The producer redacts secret values out of recorded argv, so a redaction placeholder in an argv
+   * position is PROOF that the real value stood there in the live process list. This is therefore
+   * the argv-disclosure detector, and it is general: it does not need to know which commands take
+   * credentials, only that none of them may take one this way.
+   */
+  const noCredentialArgv = (c) => {
+    if (c === null) return;
+    for (const [index, raw] of (Array.isArray(c.argv) ? c.argv : []).entries()) {
+      if (CREDENTIAL_PLACEHOLDER_RE.test(String(raw ?? ''))) {
+        problems.push(`command '${c.label}' argv[${index}] carries a redaction placeholder, which `
+          + 'means a credential occupied that position in the live process list');
+      }
+    }
+  };
+
+  /**
+   * A stdin handoff must have delivered something, and the ledger must say WHICH class it was.
+   * The value is gone from the record by design; the class binding is not, so a handoff carrying
+   * the wrong class or another path's material is still a finding.
+   */
+  const deliveredSecret = (c, letter, r, cls) => {
+    if (c === null) return;
+    if (!Number.isInteger(c.stdin_bytes) || c.stdin_bytes <= 0) {
+      problems.push(`command '${c.label}' is a secret handoff but records `
+        + `${JSON.stringify(c.stdin_bytes)} stdin bytes; the handoff did not happen`);
+    }
+    const want = placeholder(letter, cls);
+    if (c.stdin_class !== want) {
+      problems.push(`command '${c.label}' hands over ${JSON.stringify(c.stdin_class)}; this `
+        + `position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`);
+    }
+    for (const problem of checkPlaceholder(String(c.stdin_class ?? ''), letter, r,
+      `command '${c.label}' stdin class ${JSON.stringify(c.stdin_class)}`)) {
+      problems.push(problem);
+    }
+  };
+
+  /**
+   * C19 — A CREDENTIAL POSITION IS NOW AN ENVIRONMENT POSITION.
+   *
+   * The credential left argv because `docker … -e NAME=value` published it in the host process
+   * list. The BINDING did not weaken: `exactPh` required a position to carry the exact placeholder
+   * for one class on one path, and `credEnv` requires exactly that of the environment record —
+   * exactly these keys, no others, each holding the exact path-and-class placeholder.
+   */
+  const credEnv = (c, letter, r, spec) => {
+    if (c === null) return;
+    const got = c.env ?? {};
+    for (const [key, cls] of Object.entries(spec)) {
+      const where = `command '${c.label}' credential environment ${key} ${JSON.stringify(got[key])}`;
+      // The same two-stage judgement `exactPh` made in argv: first that the value is a well-formed
+      // placeholder naming THIS path and a class the receipt actually registers, then that it is
+      // the one class this position requires. Running checkPlaceholder first is what keeps the
+      // cross-path and unknown-class diagnostics exactly as specific as they were before C19.
+      const structural = checkPlaceholder(got[key], letter, r, where);
+      if (structural.length > 0) { problems.push(...structural); continue; }
+      const want = placeholder(letter, cls);
+      if (got[key] !== want) {
+        problems.push(`command '${c.label}' credential environment ${key} is ${JSON.stringify(got[key])}; this position requires the path-${letter} ${cls} class (${JSON.stringify(want)})`);
+      }
+    }
+    for (const k of Object.keys(got)) {
+      if (!(k in spec)) problems.push(`command '${c.label}' carries environment binding '${k}' the graph does not authorize`);
+    }
+  };
+
   /** Exact instance environment, with per-class placeholders — no prefix matching. */
   const connEnv = (c, letter, r, extra = {}) => {
     if (c === null) return;
@@ -340,37 +428,53 @@ export function verifyCommandGraph({
       if (!(k in want)) problems.push(`command '${c.label}' carries unauthorized environment key '${k}'`);
     }
   };
-  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), '-i',
+  const psqlArgv = (letter, r, sql) => ['docker', 'exec', '-e', 'PGPASSWORD', '-i',
     r.container_name, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', r.database, '-c', sql];
   const planned = (letter, r) => (step) => {
     const c = next(step.label);
-    mustSucceed(c); emptyEnv(c); matchArgv(c, psqlArgv(letter, r, step.sql));
+    mustSucceed(c); credEnv(c, letter, r, { PGPASSWORD: 'EYE_DB_PASSWORD' });
+    matchArgv(c, psqlArgv(letter, r, step.sql));
     return c;
   };
 
   const walkInstance = (letter, r) => {
     const pg = next(`${letter}-pg-run`);
     mustSucceed(pg); emptyEnv(pg);
-    matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name, '-e', 'POSTGRES_USER=eye', '-e',
-      exactPh(letter, r, 'EYE_DB_PASSWORD', 'POSTGRES_PASSWORD='), '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
-    if (pg !== null && Array.isArray(pg.argv) && pg.argv[8] !== `POSTGRES_PASSWORD=${placeholder(letter, 'EYE_DB_PASSWORD')}`) {
-      problems.push(`command '${pg.label}' container password is not the path-${letter} EYE_DB_PASSWORD class`);
-    }
+    matchArgv(pg, ['docker', 'run', '-d', '--name', r.container_name,
+      '--label', `${DOCKER_RUN_LABEL}=${r.gate_resource_id}`,
+      '--tmpfs', SECRET_TMPFS, '-e', 'POSTGRES_USER=eye',
+      '-e', `POSTGRES_PASSWORD_FILE=${PG_SECRET_PATH}`,
+      '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', images.postgres,
+      'sh', '-c', PG_ENTRYPOINT]);
+    noCredentialArgv(pg);
     const pgOut = stdoutOf(pg);
     if (pg !== null && pgOut !== null && pgOut.trim() !== r.container_id) {
       problems.push(`'${pg.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
+    // The secret arrives over STDIN. Its argv names only a path, its environment is empty, and the
+    // ledger records that a secret of some length was delivered — never the value.
+    const pgSecret = next(`${letter}-pg-secret`);
+    mustSucceed(pgSecret); emptyEnv(pgSecret);
+    matchArgv(pgSecret, ['docker', 'exec', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)]);
+    noCredentialArgv(pgSecret);
+    deliveredSecret(pgSecret, letter, r, 'EYE_DB_PASSWORD');
+
     const rd = next(`${letter}-redis-run`);
     mustSucceed(rd); emptyEnv(rd);
-    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container, '-p', '127.0.0.1:0:6379', images.redis,
-      'redis-server', '--requirepass', exactPh(letter, r, 'EYE_REDIS_PASSWORD')]);
-    if (rd !== null && Array.isArray(rd.argv) && rd.argv[rd.argv.length - 1] !== placeholder(letter, 'EYE_REDIS_PASSWORD')) {
-      problems.push(`command '${rd.label}' requirepass is not the path-${letter} EYE_REDIS_PASSWORD class`);
-    }
+    matchArgv(rd, ['docker', 'run', '-d', '--name', r.redis_container,
+      '--label', `${DOCKER_RUN_LABEL}=${r.gate_resource_id}`,
+      '--tmpfs', SECRET_TMPFS, '-p', '127.0.0.1:0:6379', images.redis,
+      'sh', '-c', REDIS_ENTRYPOINT]);
+    noCredentialArgv(rd);
     const rdOut = stdoutOf(rd);
     if (rd !== null && rdOut !== null && rdOut.trim() !== r.redis_container_id) {
       problems.push(`'${rd.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
+    const rdSecret = next(`${letter}-redis-secret`);
+    mustSucceed(rdSecret); emptyEnv(rdSecret);
+    matchArgv(rdSecret, ['docker', 'exec', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)]);
+    noCredentialArgv(rdSecret);
+    deliveredSecret(rdSecret, letter, r, 'EYE_REDIS_PASSWORD');
     for (const [inner, container, portField] of [['5432', r.container_name, 'port'], ['6379', r.redis_container, 'redis_port']]) {
       const pc = next(`${letter}-port-${inner}`);
       mustSucceed(pc); emptyEnv(pc);
@@ -392,8 +496,8 @@ export function verifyCommandGraph({
       if (w.exit === 0 && w.signal === null) {
         const conf = next(`${letter}-pg-confirm-${i}`);
         if (conf === null) break;
-        emptyEnv(conf);
-        matchArgv(conf, ['docker', 'exec', '-e', exactPh(letter, r, 'EYE_DB_PASSWORD', 'PGPASSWORD='), r.container_name,
+        credEnv(conf, letter, r, { PGPASSWORD: 'EYE_DB_PASSWORD' });
+        matchArgv(conf, ['docker', 'exec', '-e', 'PGPASSWORD', r.container_name,
           'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', r.database, '-c', READINESS_CONFIRM_SQL]);
         if (conf.exit === 0 && conf.signal === null && (stdoutOf(conf) ?? '').trim() === '1') confirmed = true;
       }

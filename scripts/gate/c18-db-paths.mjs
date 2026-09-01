@@ -99,12 +99,17 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { applyEnvironmentPolicy, undeclaredCredentials } from './lib/c19-isolation.mjs';
+import { isCredentialName } from './c18-watchdog.mjs';
+
 import {
   AUDIT_HASH_VERSION, C18_ARTIFACT_PREFIX, C18_GATE_STEP, HISTORICAL_LAST, LATEST_LAST,
-  MANIFEST_FIELDS, POSTURE_CATEGORIES, POSTURE_COMMAND_LABELS, SECRET_CLASSES, SEED_FLOOR,
+  DOCKER_RUN_LABEL, MANIFEST_FIELDS, gateResourceId, refuseCredentialArgv, PG_ENTRYPOINT, PG_SECRET_PATH, POSTURE_CATEGORIES,
+  POSTURE_COMMAND_LABELS, REDIS_ENTRYPOINT, REDIS_SECRET_PATH, SECRET_CLASSES, SECRET_SINK,
+  SECRET_TMPFS, SEED_FLOOR,
   SNAPSHOT_SCHEMAS, SNAPSHOT_SECRET_COLUMNS, SUITE_MATRIX, TABLE_UNIVERSE_HISTORICAL,
   TABLE_UNIVERSE_LATEST, authenticateProjections, c18ArtifactName, c18ArtifactPrefixForAttempt,
-  commandIdFor, compareSnapshots, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
+  commandIdFor, compareSnapshots, placeholder, comparePosture, crossCheckAuditTable, deriveIntentionalTransforms,
   deriveSeedSummary, orderedMigrations, parseResultReceipt, redactArgv, redactString, secretDigest,
   verifyAuditShapes, verifyChainRows, verifyCleanupReceipt, verifyCommandRecords,
   verifyCommandStreams, verifyIsolation, verifyLinkage, verifyManifestShape,
@@ -194,12 +199,33 @@ class Evidence {
   /** Run one command; record a CLOSED typed ledger entry — redacted argv, exact cwd, typed
    * redacted env binding, timeout/exit/signal, and byte length + SHA-256 for all three
    * redacted raw streams — plus the raw stream files themselves. */
-  run(label, argv, { env = {}, cwd = ROOT, timeoutMs = 120_000, allowFail = false } = {}) {
+  /**
+   * `input` carries a credential over the child's STDIN. It is deliberately NOT a recorded field:
+   * argv and env are recorded (redacted), and stdin is recorded only as a digest of its length
+   * class, because the whole point of the stdin channel is that the value has nowhere durable to
+   * live. Recording it — even redacted — would put it back into the ledger it was moved out of.
+   */
+  run(label, argv, { env = {}, cwd = ROOT, timeoutMs = 120_000, allowFail = false, input, inputClass } = {}) {
     this.seq += 1;
     const id = commandIdFor(this.seq, label);
+    // C19 PRE-SPAWN REFUSAL. The outer watchdog cannot inspect a grandchild's argv, so the
+    // producer refuses at the point of spawn: no known credential VALUE may appear in any argv
+    // position of any command this producer starts. This is a hard stop, not a redaction.
+    refuseCredentialArgv(label, argv, this.secrets);
+    // C19 DENY-BY-DEFAULT INHERITANCE. `{...process.env}` handed every child every secret the job
+    // was given, whether or not the command needed one. A child now receives the source-owned
+    // allowlist plus exactly what this command declared, so a compromised step can leak the one
+    // credential it was given rather than all of them.
+    const { env: childEnv } = applyEnvironmentPolicy(process.env, env);
+    const leaked = undeclaredCredentials(childEnv, env, isCredentialName);
+    if (leaked.length > 0) {
+      throw new Error(`command '${label}' would receive undeclared credential(s) `
+        + `${leaked.join(', ')}; a child must receive only what it declares`);
+    }
     const r = spawnSync(argv[0], argv.slice(1), {
-      cwd, env: { ...process.env, ...env }, encoding: 'utf8',
+      cwd, env: childEnv, encoding: 'utf8',
       timeout: timeoutMs, maxBuffer: 256 * 1024 * 1024,
+      ...(input === undefined ? {} : { input }),
     });
     const exit = r.status;
     const signal = r.signal ?? null;
@@ -215,6 +241,13 @@ class Evidence {
       cwd: relCwd === '' ? '.' : relCwd,
       env: Object.fromEntries(Object.entries(env).map(([k, v]) => [k, redactString(String(v), this.secrets)])),
       timeout_ms: timeoutMs, exit, signal,
+      // Presence and length only. A stdin-delivered secret must not be reconstructible from the
+      // ledger, and its length class is what a verifier needs to prove the handoff happened.
+      stdin_bytes: input === undefined ? 0 : Buffer.byteLength(String(input)),
+      // WHICH class was delivered, in the same path-and-class notation every other credential
+      // position uses. Moving the secret to stdin must not cost the ledger its class binding: a
+      // handoff of the wrong class, or of another path's material, stays detectable.
+      stdin_class: inputClass ?? null,
       stdout_bytes: stdoutRed.byteLength, stdout_sha256: sha256(stdoutRed),
       stderr_bytes: stderrRed.byteLength, stderr_sha256: sha256(stderrRed),
       exit_bytes: exitText.byteLength, exit_sha256: sha256(exitText),
@@ -236,28 +269,64 @@ class Evidence {
  * One isolated instance: fresh container, fresh credentials, fresh names for every run and
  * every path. Containers REGISTER FOR CLEANUP the moment `docker run` returns, before any
  * readiness probing, so partial provisioning still tears down.
+ *
+ * C19 — every resource additionally carries the gate run label FROM CREATION, so the supervising
+ * watchdog can remove it by exact query even if this producer never reaches its own teardown,
+ * which is precisely the case that used to strand containers on a signal or a crash.
  */
 function startInstance(ev, letter, images, cleanup) {
   const runId = randomBytes(4).toString('hex');
+  // The GATE RESOURCE identity, shared with the supervising watchdog so its sweep and this
+  // producer's teardown target exactly the same set. Minted here when the producer runs without a
+  // watchdog, so a resource is never created without an owner.
+  const resourceId = gateResourceId();
   const name = `c18-${letter}-${runId}`;
   const database = `eye_${letter}_${runId}`;
   const passwords = Object.fromEntries(SECRET_CLASSES.map((k) => [k, randomBytes(24).toString('hex')]));
   ev.addSecrets(letter, passwords);
   const inst = {
-    letter, name, database, passwords,
+    letter, name, database, passwords, resourceId,
     container: `${name}-pg`, redisContainer: `${name}-redis`,
     containerId: null, redisContainerId: null, port: null, redisPort: null,
   };
+  /**
+   * C19 — THE CREDENTIAL NEVER TOUCHES ARGV, THE CONTAINER CONFIG, OR ANY DISK.
+   *
+   * `-e NAME=value` published the password in the docker client's argv, where the host process
+   * list showed it to every user on the machine. Passing `-e NAME` instead keeps it out of argv,
+   * but docker still resolves the value and stores it in the container's own configuration, where
+   * `docker inspect` reports it for the container's whole lifetime.
+   *
+   * So the value is handed over out of band. The container starts with a tmpfs at /run/secrets and
+   * an entrypoint that waits for its secret to appear; the secret is then written over the STDIN of
+   * a `docker exec` whose argv mentions only a path. The value exists in this process's memory and
+   * in the container's tmpfs, and nowhere else — not in argv, not in Config.Env, not in Config.Cmd,
+   * not in docker logs, and not in the container's writable layer, because tmpfs content is never
+   * part of it.
+   *
+   * The run label is applied AT CREATION, never added afterwards: a resource that is only adopted
+   * after the fact is unowned for the window in between, which is exactly when a crash strands it.
+   */
   const pgRun = ev.run(`${letter}-pg-run`, ['docker', 'run', '-d', '--name', inst.container,
-    '-e', 'POSTGRES_USER=eye', '-e', `POSTGRES_PASSWORD=${passwords.EYE_DB_PASSWORD}`,
-    '-e', `POSTGRES_DB=${database}`, '-p', '127.0.0.1:0:5432', images.postgres]);
+    '--label', `${DOCKER_RUN_LABEL}=${resourceId}`,
+    '--tmpfs', SECRET_TMPFS, '-e', 'POSTGRES_USER=eye',
+    '-e', `POSTGRES_PASSWORD_FILE=${PG_SECRET_PATH}`,
+    '-e', `POSTGRES_DB=${database}`, '-p', '127.0.0.1:0:5432', images.postgres,
+    'sh', '-c', PG_ENTRYPOINT]);
   inst.containerId = pgRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.container);
+  ev.run(`${letter}-pg-secret`, ['docker', 'exec', '-i', inst.container, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)],
+    { input: passwords.EYE_DB_PASSWORD, inputClass: placeholder(letter, 'EYE_DB_PASSWORD') });
+
   const redisRun = ev.run(`${letter}-redis-run`, ['docker', 'run', '-d', '--name', inst.redisContainer,
-    '-p', '127.0.0.1:0:6379', images.redis,
-    'redis-server', '--requirepass', passwords.EYE_REDIS_PASSWORD]);
+    '--label', `${DOCKER_RUN_LABEL}=${resourceId}`,
+    '--tmpfs', SECRET_TMPFS, '-p', '127.0.0.1:0:6379', images.redis,
+    'sh', '-c', REDIS_ENTRYPOINT]);
   inst.redisContainerId = redisRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.redisContainer);
+  ev.run(`${letter}-redis-secret`, ['docker', 'exec', '-i', inst.redisContainer, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)],
+    { input: `requirepass ${passwords.EYE_REDIS_PASSWORD}\n`,
+      inputClass: placeholder(letter, 'EYE_REDIS_PASSWORD') });
   const portOf = (container, inner) => {
     const r = ev.run(`${letter}-port-${inner}`, ['docker', 'port', container, String(inner)]);
     const m = /:(\d+)\s*$/m.exec(r.stdout.trim());
@@ -275,9 +344,9 @@ function startInstance(ev, letter, images, cleanup) {
       { allowFail: true, timeoutMs: 10_000 });
     if (probe.exit === 0) {
       const confirm = ev.run(`${letter}-pg-confirm-${i}`,
-        ['docker', 'exec', '-e', `PGPASSWORD=${passwords.EYE_DB_PASSWORD}`, inst.container,
+        ['docker', 'exec', '-e', 'PGPASSWORD', inst.container,
           'psql', '-h', '127.0.0.1', '-X', '-At', '-U', 'eye', '-d', database, '-c', 'select 1'],
-        { allowFail: true, timeoutMs: 10_000 });
+        { allowFail: true, timeoutMs: 10_000, env: { PGPASSWORD: passwords.EYE_DB_PASSWORD } });
       ready = confirm.exit === 0 && confirm.stdout.trim() === '1';
     }
     if (!ready) spawnSync('sleep', ['1']);
@@ -292,9 +361,9 @@ function startInstance(ev, letter, images, cleanup) {
     ...extra,
   });
   inst.psql = (sql, { label = 'psql' } = {}) => ev.run(`${letter}-${label}`,
-    ['docker', 'exec', '-e', `PGPASSWORD=${passwords.EYE_DB_PASSWORD}`, '-i', inst.container,
+    ['docker', 'exec', '-e', 'PGPASSWORD', '-i', inst.container,
       'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-U', 'eye', '-d', database, '-c', sql],
-    { timeoutMs: 300_000 });
+    { timeoutMs: 300_000, env: { PGPASSWORD: passwords.EYE_DB_PASSWORD } });
   inst.json = (sql, label = 'json') => {
     const text = inst.psql(sql, { label }).rawStdout.trim();
     return text === '' ? null : JSON.parse(text);
@@ -864,7 +933,8 @@ async function runCommand(args) {
 
     phase = 'isolation';
     const receiptFor = (inst, path) => ({
-      path, container_id: inst.containerId, container_name: inst.container,
+      path, gate_resource_id: inst.resourceId,
+      container_id: inst.containerId, container_name: inst.container,
       redis_container_id: inst.redisContainerId, redis_container: inst.redisContainer,
       database: inst.database, port: inst.port, redis_port: inst.redisPort,
       postgres_image: images.postgres, redis_image: images.redis,

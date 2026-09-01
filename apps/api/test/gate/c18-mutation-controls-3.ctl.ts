@@ -30,6 +30,7 @@ import {
   register06,
   register23,
   register10,
+  register31,
 } from './c18-mutation-controls.suite';
 
 register22();
@@ -40,3 +41,4 @@ register06();
 register23();
 register10();
 register30();
+register31();

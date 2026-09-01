@@ -40,8 +40,9 @@
  * Usage: node scripts/gate/c18-watchdog.mjs <seconds> <command> [args...]
  * Exit:  the child's code · 2 usage · 3 preflight refusal · 124 deadline exceeded · 126 spawn error.
  */
+import { randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -482,6 +483,396 @@ export function isMainModule(argv1, moduleUrl) {
   return resolve(argv1) === resolve(self);
 }
 
+/**
+ * ── C19: THE LIFECYCLE, CORRECTED AGAINST A REPRODUCED SURVIVAL DEFECT ──
+ *
+ * The a8d34c4 lifecycle leaked processes on every external signal. Reproduced, not inferred:
+ * running a child that ignores SIGTERM and forks a grandchild into its own session, then sending
+ * SIGINT, SIGTERM or SIGHUP to the watchdog, left BOTH alive indefinitely (observed past t+14s),
+ * while the watchdog exited after 2.3 s with status 1.
+ *
+ * Two independent causes, each fixed here:
+ *
+ *   S1  ESCALATION WAS UNREACHABLE ON THE SIGNAL PATH. `terminateGroup` sent SIGTERM and scheduled
+ *       SIGKILL 10 s later on an `.unref()`'d timer, but the signal handler called `finish()` after
+ *       2 s and `finish()` calls `process.exit()`. The process was gone long before the escalation
+ *       could run, so a child that ignores SIGTERM simply survived. The deadline path did NOT have
+ *       this bug — there the loop stayed alive and the child was killed at deadline+10 s — which is
+ *       why the defect hid: the timeout case, the one everybody tested, worked.
+ *
+ *   S2  ONLY THE PROCESS GROUP WAS SIGNALLED. `process.kill(-child.pid, …)` reaches the child's
+ *       process group and nothing else, so any descendant that calls `setsid(2)` leaves the group
+ *       and is never signalled at all. This affected BOTH paths: at the deadline the child died and
+ *       its grandchild survived, and the watchdog's own `ps -g` diagnostic printed only the child,
+ *       which is exactly why the leak was invisible in the logs.
+ *
+ * The correction terminates a CENSUS, not a group: every pid ever observed as a descendant or a
+ * group member is recorded while the command runs, and termination signals that whole set with a
+ * bounded, verified reap. Escalation is awaited rather than scheduled, so it cannot be outrun.
+ *
+ * ── THE BOUNDARY, STATED HONESTLY ──
+ *
+ *   • SIGKILL delivered to the WATCHDOG ITSELF remains unhandleable by any program. It is the
+ *     explicit residual case, not an oversight.
+ *   • A process that forks, calls setsid and reparents to init ENTIRELY BETWEEN two census samples
+ *     is never observed and therefore never signalled. The sample interval bounds this window; it
+ *     does not close it.
+ *   • A process owned by another daemon — a container under dockerd — is not a descendant of this
+ *     process at all and is not reachable by any signal from here. Cleaning those up belongs to
+ *     whoever created them.
+ */
+
+/** Signal numbers for the handled signals, so an exit status can encode which one arrived. */
+export const SIGNAL_NUMBERS = Object.freeze({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
+
+/** POSIX shell convention: a process terminated by signal N reports 128+N. */
+export const signalExitCode = (sig) => 128 + (SIGNAL_NUMBERS[sig] ?? 0);
+
+export const TERM_GRACE_MS = 5_000;
+export const KILL_GRACE_MS = 5_000;
+export const CENSUS_INTERVAL_MS = 500;
+/**
+ * Containment failure has its OWN exit code. A run whose command succeeded but which left a
+ * process or a container behind has not done what a bounded runner exists to do, and reporting
+ * that as success is precisely the silent survival this pass is closing.
+ */
+export const CONTAINMENT_FAILURE_EXIT = 125;
+
+/**
+ * Parse `ps -eo pid=,ppid=,pgid=` output. Malformed lines are skipped rather than throwing: this
+ * runs on the termination path, where giving up would leak exactly what it exists to prevent.
+ */
+export function parseProcessTable(text) {
+  const rows = [];
+  for (const line of String(text ?? '').split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);
+    if (m !== null) rows.push({ pid: Number(m[1]), ppid: Number(m[2]), pgid: Number(m[3]) });
+  }
+  return rows;
+}
+
+/**
+ * Every pid reachable from `rootPid` as a transitive child, UNION every pid in `rootPid`'s process
+ * group. The union is the point: the group catches what the parent walk misses when an intermediate
+ * process has already been reaped, and the parent walk catches what the group misses when a
+ * descendant called setsid. Neither alone is sufficient — S2 is precisely the group-only case.
+ */
+export function descendantsOf(rows, rootPid) {
+  const byParent = new Map();
+  for (const r of rows) {
+    if (!byParent.has(r.ppid)) byParent.set(r.ppid, []);
+    byParent.get(r.ppid).push(r.pid);
+  }
+  const found = new Set();
+  const queue = [rootPid];
+  while (queue.length > 0) {
+    const pid = queue.pop();
+    for (const kid of byParent.get(pid) ?? []) {
+      if (!found.has(kid)) { found.add(kid); queue.push(kid); }
+    }
+  }
+  for (const r of rows) if (r.pgid === rootPid) found.add(r.pid);
+  found.add(rootPid);
+  return found;
+}
+
+/**
+ * A pid this process may signal. Refusing 0 and negatives is not defensive noise: `kill(0, SIG)`
+ * signals the CALLER'S ENTIRE PROCESS GROUP, which on a CI runner is the job. A parse slip that
+ * produced 0 would turn cleanup into self-destruction.
+ */
+export const isSignallablePid = (pid, selfPid) => Number.isInteger(pid) && pid > 1 && pid !== selfPid;
+
+/**
+ * Terminate a set of pids with a BOUNDED, VERIFIED reap: SIGTERM, poll until the set is empty or
+ * the grace expires, SIGKILL the survivors, poll again, then report whatever is still alive.
+ *
+ * Every primitive is injected so a control can drive the whole state machine deterministically —
+ * including the case where a process refuses to die — without spawning anything.
+ */
+export async function terminateTree({
+  pids, selfPid, kill, alive, sleep, termGraceMs = TERM_GRACE_MS, killGraceMs = KILL_GRACE_MS,
+  pollMs = 100,
+}) {
+  const targets = [...pids].filter((p) => isSignallablePid(p, selfPid));
+  const stillAlive = () => targets.filter((p) => alive(p));
+  const sweep = async (signal, graceMs) => {
+    for (const pid of stillAlive()) { try { kill(pid, signal); } catch { /* already gone */ } }
+    const deadline = graceMs;
+    let waited = 0;
+    while (waited < deadline) {
+      if (stillAlive().length === 0) return true;
+      await sleep(pollMs);
+      waited += pollMs;
+    }
+    return stillAlive().length === 0;
+  };
+  const termed = await sweep('SIGTERM', termGraceMs);
+  if (termed) return { survivors: [], escalated: false };
+  await sweep('SIGKILL', killGraceMs);
+  return { survivors: stillAlive(), escalated: true };
+}
+
+
+/**
+ * ── C19: OWNERSHIP TRACKING THAT SURVIVES setsid AND REPARENTING ──
+ *
+ * A pid census closes the group-only leak, but it is still a census: a process that forks, calls
+ * setsid and reparents to init ENTIRELY BETWEEN two samples is never observed, and so is never
+ * signalled. Recording that as an observational limit would be settling for the weaker mechanism
+ * when a stronger one is available on both target systems.
+ *
+ * The stronger mechanism is OWNERSHIP rather than observation. The watchdog mints a random run
+ * token and puts it in the child's environment. Every descendant inherits that environment across
+ * fork, setsid, reparenting and exec — inheritance is not something a sample can miss, because it
+ * is a property of the process rather than of when we looked. At termination the watchdog sweeps
+ * every process whose environment carries the token, whatever its parent or session is by then.
+ *
+ * Both systems expose this without privileges, for processes of the same user:
+ *   • Linux — /proc/<pid>/environ
+ *   • macOS — `ps -Eww`, which appends the environment to the command column
+ *
+ * The census and the ownership sweep are UNIONED, because they fail in different directions: the
+ * census catches a process that scrubbed its environment but was observed while it lived, and the
+ * ownership sweep catches one that was never observed at all.
+ *
+ * THE REMAINING BOUNDARY, stated so it can be judged rather than assumed: a process that both
+ * scrubs the token from its own environment AND is never present at any census sample escapes
+ * both mechanisms. That requires deliberate evasion by the child — the watchdog runs a command
+ * this repository owns, so it is a real limit but not a reachable one for the gate's own workload.
+ * It is reported, with evidence, rather than silently accepted.
+ */
+
+/**
+ * ── THREE DISTINCT IDENTITIES, BECAUSE THEY ANSWER DIFFERENT QUESTIONS ──
+ *
+ * Collapsing these into one identifier is what made a nested watchdog kill its own parent: sharing
+ * one marker meant "processes I may terminate" and "resources this gate run created" were the same
+ * set, and an inner supervisor inherited authority over the entire outer run.
+ *
+ *   EYE_RUN_ID            this watchdog's OWN id. Minted fresh, never inherited.
+ *   EYE_RUN_ID_CHAIN      the ordered ids of every watchdog from the outermost to this one.
+ *   EYE_GATE_RESOURCE_ID  the OUTERMOST run's id, stable for the whole gate run, used to label
+ *                         docker resources so cleanup targets exact resources this run created.
+ *
+ * OWNERSHIP IS CHAIN CONTAINMENT, and that single rule gets both nested directions right:
+ *
+ *   • an OUTER watchdog owns a descendant of a nested watchdog, because that descendant's chain
+ *     still contains the outer id — so a grandchild that setsid'd and reparented under a nested
+ *     supervisor is still contained by the outer one;
+ *   • an INNER watchdog does NOT own its parent, the outer test runner, its workers or its
+ *     siblings, because their chains do not contain the inner id.
+ *
+ * The names matter too. A name containing TOKEN, SECRET, PASS or KEY would be classified as a
+ * CREDENTIAL by the Stage 1 registry, and its value would then be redacted out of the very
+ * diagnostics that report containment and out of the docker label the sweep queries on. These are
+ * public identifiers, so they are named as public identifiers.
+ */
+export const RUN_ID_VAR = 'EYE_RUN_ID';
+export const RUN_CHAIN_VAR = 'EYE_RUN_ID_CHAIN';
+export const GATE_RESOURCE_VAR = 'EYE_GATE_RESOURCE_ID';
+export const DOCKER_RUN_LABEL = 'eye.gate.run';
+
+/** Split a chain value into ids. Tolerant of blanks so a malformed chain cannot throw on the
+ *  termination path, where giving up would leak exactly what it exists to prevent. */
+export const parseChain = (value) => String(value ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+
+/** Does this environment's chain make the process owned by the watchdog whose id is `runId`? */
+export const chainOwns = (chainValue, runId) => typeof runId === 'string' && runId !== ''
+  && parseChain(chainValue).includes(runId);
+
+/**
+ * Parse `ps -A -E -ww -o pid=,command=` output, returning pids whose environment chain contains
+ * `runId`. The chain is read out of the flattened environment text, so a process is matched by
+ * what it INHERITED rather than by who its parent happens to be now.
+ */
+export function parseMarkedPs(text, runId) {
+  const pids = [];
+  if (typeof runId !== 'string' || runId === '') return pids;
+  for (const line of String(text ?? '').split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (m === null) continue;
+    const chain = new RegExp(`${RUN_CHAIN_VAR}=([^\\s]*)`).exec(m[2]);
+    if (chain !== null && chainOwns(chain[1], runId)) pids.push(Number(m[1]));
+  }
+  return pids;
+}
+
+/** Does this `/proc/<pid>/environ` blob (NUL-separated) place the process in `runId`'s chain? */
+export function environHasToken(blob, runId) {
+  for (const entry of String(blob ?? '').split('\0')) {
+    if (entry.startsWith(`${RUN_CHAIN_VAR}=`)) {
+      return chainOwns(entry.slice(RUN_CHAIN_VAR.length + 1), runId);
+    }
+  }
+  return false;
+}
+
+/**
+ * Every pid owned by this run, by ENVIRONMENT rather than by ancestry. Injected readers keep the
+ * whole thing testable; the defaults are the two real system interfaces.
+ */
+export function ownedPids(runId, {
+  platform = process.platform,
+  // `-A` is load-bearing: without it macOS `ps` lists only the CURRENT SESSION, which is exactly
+  // what a process that called setsid has left. Omitting it made the ownership sweep blind to the
+  // one class of process it exists to catch.
+  readPsE = () => spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout ?? '',
+  listProcPids = () => { try { return readdirSync('/proc').filter((f) => /^\d+$/.test(f)).map(Number); } catch { return []; } },
+  readEnviron = (pid) => { try { return readFileSync(`/proc/${pid}/environ`, 'utf8'); } catch { return ''; } },
+} = {}) {
+  if (platform === 'linux') {
+    return listProcPids().filter((pid) => environHasToken(readEnviron(pid), runId));
+  }
+  return parseMarkedPs(readPsE(), runId);
+}
+
+/**
+ * Every process on this machine carrying a NON-EMPTY ownership chain, whoever owns it.
+ *
+ * Used by the residue check after a run: nothing should still be carrying a chain. Reading the
+ * chain rather than a single id is what makes an EMPTY value harmless — an inherited-but-blank
+ * `EYE_RUN_ID_CHAIN` owns nothing, and counting it would report a leak that is not there.
+ */
+export function residualOwnedProcesses({
+  platform = process.platform,
+  readPsE = () => spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout ?? '',
+  listProcPids = () => { try { return readdirSync('/proc').filter((f) => /^\d+$/.test(f)).map(Number); } catch { return []; } },
+  readEnviron = (pid) => { try { return readFileSync(`/proc/${pid}/environ`, 'utf8'); } catch { return ''; } },
+} = {}) {
+  const nonEmpty = (chain) => parseChain(chain).length > 0;
+  if (platform === 'linux') {
+    return listProcPids().filter((pid) => {
+      for (const entry of String(readEnviron(pid)).split('\0')) {
+        if (entry.startsWith(`${RUN_CHAIN_VAR}=`)) return nonEmpty(entry.slice(RUN_CHAIN_VAR.length + 1));
+      }
+      return false;
+    });
+  }
+  const out = [];
+  for (const line of String(readPsE()).split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (m === null) continue;
+    const c = new RegExp(`${RUN_CHAIN_VAR}=([^\\s]*)`).exec(m[2]);
+    if (c !== null && nonEmpty(c[1])) out.push(Number(m[1]));
+  }
+  return out;
+}
+
+/**
+ * ── C19: DOCKER RESOURCES ARE NOT DESCENDANTS ──
+ *
+ * A container is a child of dockerd, not of this process, so no signal from here reaches it and no
+ * process census can prove it stopped. The gate creates containers on every run, and a run that
+ * ends on a signal, a deadline or a crash previously left them behind — the producer's own cleanup
+ * only runs when the producer reaches its end.
+ *
+ * Every resource this run creates is therefore LABELLED with the run token, which makes cleanup a
+ * query rather than a bookkeeping exercise: whatever carries the label belongs to this run, however
+ * it was created and whether or not the producer got far enough to record it. The sweep runs on
+ * every exit path, and the inventory is re-read afterwards so the report states whether the
+ * baseline was actually restored rather than assuming the remove commands worked.
+ */
+
+/** Split `docker ... -q` output into ids, tolerating blank lines and warnings on stderr. */
+export const parseDockerIds = (text) => String(text ?? '').split('\n')
+  .map((l) => l.trim()).filter((l) => /^[0-9a-f]{6,}$/i.test(l));
+
+/**
+ * The resources this run owns, by label. Returned as a flat inventory so a control can compare a
+ * before and an after without knowing docker's output shapes.
+ */
+export function dockerInventory(resourceId, run = (args) => {
+  const r = spawnSync('docker', args, { encoding: 'utf8' });
+  // A failed docker invocation must NOT look like an empty inventory. Treating "I could not ask"
+  // as "there is nothing there" is how a residue check reports success on a broken daemon.
+  return { ok: r.error === undefined && r.status === 0, out: r.stdout ?? '' };
+}) {
+  const filter = `label=${DOCKER_RUN_LABEL}=${resourceId}`;
+  const q = (args) => {
+    const res = run(args);
+    // Back-compat: an injected runner may return a plain string.
+    if (typeof res === 'string') return { ok: true, ids: parseDockerIds(res) };
+    return { ok: res.ok === true, ids: parseDockerIds(res.out) };
+  };
+  const containers = q(['ps', '-aq', '--filter', filter]);
+  const networks = q(['network', 'ls', '-q', '--filter', filter]);
+  const volumes = q(['volume', 'ls', '-q', '--filter', filter]);
+  return {
+    containers: containers.ids,
+    networks: networks.ids,
+    volumes: volumes.ids,
+    // Ownership is UNDETERMINED if any query failed. The caller must fail closed on this.
+    determined: containers.ok && networks.ok && volumes.ok,
+  };
+}
+
+/** The three queries are independent, so they are issued CONCURRENTLY: run serially they cost
+ *  roughly half a second on every single watchdog invocation, which a control suite that spawns
+ *  the watchdog dozens of times pays in full. */
+export async function dockerInventoryAsync(resourceId, runAsync = spawnDockerAsync) {
+  const filter = `label=${DOCKER_RUN_LABEL}=${resourceId}`;
+  const [containers, networks, volumes] = await Promise.all([
+    runAsync(['ps', '-aq', '--filter', filter]),
+    runAsync(['network', 'ls', '-q', '--filter', filter]),
+    runAsync(['volume', 'ls', '-q', '--filter', filter]),
+  ]);
+  return {
+    containers: parseDockerIds(containers.out ?? containers),
+    networks: parseDockerIds(networks.out ?? networks),
+    volumes: parseDockerIds(volumes.out ?? volumes),
+    // As in the synchronous form: a failed query is UNDETERMINED, never an empty inventory.
+    determined: [containers, networks, volumes].every((r) => (typeof r === 'string' ? true : r.ok === true)),
+  };
+}
+
+/** One `docker` invocation, resolved with its stdout and whether it actually succeeded. */
+export function spawnDockerAsync(args) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve({ ok, out }); } };
+    try {
+      const p = spawn('docker', args, { stdio: ['ignore', 'pipe', 'ignore'] });
+      p.stdout.on('data', (b) => { out += b.toString(); });
+      p.on('error', () => finish(false));
+      p.on('close', (code) => finish(code === 0));
+    } catch { finish(false); }
+  });
+}
+
+/** The async counterpart of `sweepDockerResources`, used on the real shutdown path. */
+export async function sweepDockerResourcesAsync(resourceId, runAsync = spawnDockerAsync) {
+  const before = await dockerInventoryAsync(resourceId, runAsync);
+  await Promise.all([
+    before.containers.length > 0 ? runAsync(['rm', '-f', ...before.containers]) : Promise.resolve({ ok: true, out: '' }),
+    before.networks.length > 0 ? runAsync(['network', 'rm', ...before.networks]) : Promise.resolve({ ok: true, out: '' }),
+    before.volumes.length > 0 ? runAsync(['volume', 'rm', '-f', ...before.volumes]) : Promise.resolve({ ok: true, out: '' }),
+  ]);
+  const after = await dockerInventoryAsync(resourceId, runAsync);
+  return {
+    before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after),
+    determined: before.determined && after.determined,
+  };
+}
+
+/** Total resources in an inventory — the number a baseline comparison actually cares about. */
+export const inventorySize = (inv) => (inv.containers.length + inv.networks.length + inv.volumes.length);
+
+/**
+ * Remove every labelled resource, then RE-READ the inventory and report what remains. Returning
+ * the residue rather than a boolean is deliberate: a cleanup that silently failed and a cleanup
+ * that succeeded must not look the same to the caller.
+ */
+export function sweepDockerResources(resourceId, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }).stdout ?? '') {
+  const before = dockerInventory(resourceId, run);
+  if (before.containers.length > 0) run(['rm', '-f', ...before.containers]);
+  if (before.networks.length > 0) run(['network', 'rm', ...before.networks]);
+  if (before.volumes.length > 0) run(['volume', 'rm', '-f', ...before.volumes]);
+  const after = dockerInventory(resourceId, run);
+  return { before, after, removed: inventorySize(before) - inventorySize(after), residue: inventorySize(after) };
+}
+
 if (isMainModule(process.argv[1], import.meta.url)) {
   const [, , rawDeadline, ...command] = process.argv;
   const deadline = Number(rawDeadline);
@@ -489,6 +880,16 @@ if (isMainModule(process.argv[1], import.meta.url)) {
     console.error('usage: c18-watchdog.mjs <seconds> <command> [args...]');
     process.exit(2);
   }
+
+  /**
+   * Handlers are installed BEFORE the preflight and before the spawn. Installing them after the
+   * spawn left a window in which the default disposition terminated the watchdog and orphaned a
+   * child that already existed. The only window that remains is this module's own load, during
+   * which no child exists — so there is nothing that could be orphaned in it.
+   */
+  let pendingSignal = null;
+  let onSignal = (sig) => { pendingSignal = sig; };
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => onSignal(sig));
 
   // ── STAGE 1, to completion, before anything is spawned ──────────────────────
   const preflight = credentialPreflight(process.env, command);
@@ -501,21 +902,120 @@ if (isMainModule(process.argv[1], import.meta.url)) {
 
   // ── STAGE 3 ─────────────────────────────────────────────────────────────────
   const started = Date.now();
-  const child = spawn(command[0], command.slice(1), {
-    stdio: ['inherit', 'pipe', 'pipe'], detached: true,
-  });
-
+  // This watchdog's own identity: always fresh, never inherited.
+  const runId = randomBytes(16).toString('hex');
+  // The chain this watchdog sits in, outermost first. A nested watchdog EXTENDS its parent's
+  // chain rather than replacing it, which is what lets the outer supervisor still contain a
+  // descendant that a nested supervisor started and that then setsid'd away.
+  const parentChain = parseChain(process.env[RUN_CHAIN_VAR]);
+  const chain = [...parentChain, runId];
+  // Docker resources are labelled with the OUTERMOST run's id, so one gate run has one resource
+  // identity however deeply its work nests. Only the watchdog that owns that identity sweeps.
+  const resourceId = process.env[GATE_RESOURCE_VAR] ?? runId;
+  const isRootSupervisor = resourceId === runId;
   let finished = false;
   let timedOut = false;
   let timer = null;
+  let censusTimer = null;
+  let child = null;
+  /** How the child itself ended, so the report can say whether it had to be hard-killed. */
+  let childSignal = null;
 
-  /** Terminate the child's whole process group, then hard-kill whatever survives. */
-  const terminateGroup = () => {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
-    setTimeout(() => {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-    }, 10_000).unref();
+  /**
+   * The running census. A pid seen at any sample is remembered even if it later reparents to init,
+   * which is what makes a double-forked descendant reachable at termination time.
+   */
+  const census = new Set();
+  const readTable = () => {
+    const r = spawnSync('ps', ['-eo', 'pid=,ppid=,pgid='], { encoding: 'utf8' });
+    return parseProcessTable(r.stdout ?? '');
   };
+  const sampleCensus = () => {
+    if (child === null || child.pid === undefined) return;
+    // ANCESTRY — catches a process that scrubbed its chain but was alive when we looked.
+    try { for (const pid of descendantsOf(readTable(), child.pid)) census.add(pid); } catch { /* best effort */ }
+    // OWNERSHIP — catches a process that setsid'd and reparented and was never seen as a
+    // descendant at all. Inheritance cannot be missed by a sample the way ancestry can.
+    try { for (const pid of ownedPids(runId)) census.add(pid); } catch { /* best effort */ }
+  };
+
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * The single termination path. Signals are handled by AWAITING this, never by scheduling it, so
+   * the escalation to SIGKILL cannot be outrun by our own exit — which is defect S1 exactly.
+   */
+  let shuttingDown = false;
+  const shutdown = async (reason, exitCode) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    finished = true;
+    if (timer !== null) clearTimeout(timer);
+    if (censusTimer !== null) clearInterval(censusTimer);
+    sampleCensus();
+    const { survivors, escalated } = await terminateTree({
+      pids: census, selfPid: process.pid, kill: (p, s) => process.kill(p, s), alive, sleep,
+    });
+    if (escalated) say(`c18-watchdog: ${reason} — SIGTERM did not clear the tree; escalated to SIGKILL`);
+    if (survivors.length > 0) {
+      say(`c18-watchdog: ${survivors.length} process(es) survived SIGKILL and are NOT contained`);
+    }
+    // A final ownership sweep AFTER termination: a process that appeared only during shutdown is
+    // still this run's to clean up.
+    const late = ownedPids(runId).filter((p) => isSignallablePid(p, process.pid));
+    if (late.length > 0) {
+      say(`c18-watchdog: ${late.length} late-appearing owned process(es); terminating`);
+      await terminateTree({
+        pids: new Set(late), selfPid: process.pid, kill: (pp, sg) => process.kill(pp, sg), alive, sleep,
+      });
+    }
+    // Containers belong to dockerd, so no signal from here reaches them. They are removed by the
+    // label this run stamped on them, and the inventory is re-read to prove the baseline returned.
+    // Probed lazily, at shutdown, exactly once. A `docker version` handshake at STARTUP cost half
+    // a second on every invocation, which a control suite that spawns the watchdog dozens of times
+    // pays in full for no benefit. An absent docker simply yields an empty inventory.
+    // Only the ROOT supervisor sweeps docker. A nested watchdog removing resources labelled with
+    // the shared gate identity would destroy its parent's containers mid-run — the resource-side
+    // form of the same mistake that let a nested watchdog kill the outer process tree.
+    let dockerResidue = 0;
+    if (isRootSupervisor) {
+      const swept = await sweepDockerResourcesAsync(resourceId);
+      if (swept.removed > 0) say(`c18-watchdog: removed ${swept.removed} docker resource(s) labelled ${DOCKER_RUN_LABEL}=${resourceId}`);
+      dockerResidue = swept.residue;
+      if (dockerResidue > 0) {
+        say(`c18-watchdog: ${dockerResidue} docker resource(s) survived cleanup and are NOT contained`);
+      }
+    }
+    const stragglers = ownedPids(runId).filter((p) => isSignallablePid(p, process.pid));
+    const contained = survivors.length === 0 && stragglers.length === 0 && dockerResidue === 0;
+    out.flush();
+    err.flush();
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+    say(`c18-watchdog: finished in ${elapsed}s (${reason}, exit=${exitCode}, `
+      + `signal=${childSignal ?? 'none'}, contained=${contained})`);
+    // Fail closed. A command that succeeded while leaving something running did not succeed at
+    // being bounded, and the caller has to be able to tell.
+    process.exit(contained ? exitCode : (exitCode === 0 ? CONTAINMENT_FAILURE_EXIT : exitCode));
+  };
+
+  onSignal = (sig) => {
+    if (finished) return;
+    if (child === null) { pendingSignal = sig; return; }
+    say(`c18-watchdog: received ${sig} — terminating the whole descendant tree`);
+    void shutdown(`terminated by ${sig}`, signalExitCode(sig));
+  };
+
+  child = spawn(command[0], command.slice(1), {
+    stdio: ['inherit', 'pipe', 'pipe'], detached: true,
+    // Every descendant inherits this, across fork, setsid, reparenting and exec.
+    env: {
+      ...process.env,
+      [RUN_ID_VAR]: runId,
+      [RUN_CHAIN_VAR]: chain.join(','),
+      [GATE_RESOURCE_VAR]: resourceId,
+    },
+  });
 
   // A spawn failure must never reach Node's default error serialisation: that object carries
   // `spawnargs`, and printing it would put the whole command line — credentials included — on
@@ -553,47 +1053,51 @@ if (isMainModule(process.argv[1], import.meta.url)) {
   // A non-secret activation marker, so a hosted log can prove the gate really ran UNDER the
   // watchdog rather than beside it.
   say(`c18-watchdog: ACTIVE deadline=${deadline}s (whole-command bound enforced)`);
+  say(`c18-watchdog: run ${runId} chain=${chain.join('>')} `
+    + `resource=${resourceId}${isRootSupervisor ? ' (root supervisor, sweeps docker)' : ' (nested)'}`);
+
+  sampleCensus();
+  censusTimer = setInterval(sampleCensus, CENSUS_INTERVAL_MS);
+  censusTimer.unref();
 
   timer = setTimeout(() => {
     timedOut = true;
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    say(`c18-watchdog: DEADLINE EXCEEDED after ${elapsed}s — surviving process tree:`);
-    const tree = spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-g', String(child.pid)], { encoding: 'utf8' });
+    say(`c18-watchdog: DEADLINE EXCEEDED after ${deadline}s — surviving process tree:`);
+    sampleCensus();
+    const survivors = [...census].filter((p) => alive(p));
+    // The frozen implementation printed `ps -g <pid>`, which by construction could not show the
+    // setsid descendants that were the actual leak. The census can, so the diagnostic now names
+    // every tracked process rather than one process group.
+    // One comma-separated -p list: repeated -p flags are not portable, and an EMPTY list would
+    // make `ps` print every process on the machine.
+    const tree = survivors.length === 0 ? { stdout: '  PID  PPID  PGID ELAPSED COMMAND\n' }
+      : spawnSync('ps', ['-o', 'pid,ppid,pgid,etime,command', '-p', survivors.join(',')],
+        { encoding: 'utf8' });
     say(tree.stdout ?? tree.stderr ?? '(process tree unavailable)');
-    terminateGroup();
+    say(`c18-watchdog: ${survivors.length} live process(es) in the tracked tree`);
+    void shutdown('deadline exceeded', 124);
   }, deadline * 1000);
 
-  const finish = (code, signal) => {
-    if (finished) return;
-    finished = true;
-    if (timer !== null) clearTimeout(timer);
-    out.flush();
-    err.flush();
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    say(`c18-watchdog: finished in ${elapsed}s (code=${code} signal=${signal})`);
-    if (timedOut) process.exit(124);
-    process.exit(code === null ? 1 : code);
-  };
-
-  /**
-   * A signal delivered to the WATCHDOG must not orphan the child's process group. SIGKILL sent to
-   * this process is unhandleable by any program — stated plainly rather than papered over.
-   */
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(sig, () => {
-      if (finished) return;
-      say(`c18-watchdog: received ${sig} — terminating the child process group`);
-      terminateGroup();
-      setTimeout(() => finish(null, sig), 2_000).unref();
-    });
-  }
-
   const DRAIN_MS = 5_000;
-  child.on('close', (code, signal) => finish(code, signal));
+  const onChildGone = (code) => {
+    if (finished || shuttingDown) return;
+    // Even a clean exit gets a cleanup sweep: a bounded runner that returns 0 while leaving a
+    // descendant running has not bounded anything.
+    void shutdown(timedOut ? 'deadline exceeded' : 'finished',
+      timedOut ? 124 : (code === null ? 1 : code));
+  };
+  child.on('close', (code, signal) => { childSignal = signal ?? childSignal; onChildGone(code); });
   child.on('exit', (code, signal) => {
+    childSignal = signal ?? childSignal;
     setTimeout(() => {
       if (!finished) say('c18-watchdog: child exited but its output pipes are still held; draining stopped');
-      finish(code, signal);
+      onChildGone(code);
     }, DRAIN_MS).unref();
   });
+
+  // A signal that beat the spawn is honoured now that there is something to terminate.
+  if (pendingSignal !== null) {
+    say(`c18-watchdog: received ${pendingSignal} before the child was ready — terminating`);
+    void shutdown(`terminated by ${pendingSignal}`, signalExitCode(pendingSignal));
+  }
 }

@@ -1,0 +1,22 @@
+{
+  "signed": {
+    "_type": "targets",
+    "spec_version": "1.0.0",
+    "version": 1,
+    "expires": "2027-01-01T00:00:00Z",
+    "targets": {
+      "trusted_root.json": {
+        "length": 2062,
+        "hashes": {
+          "sha256": "086f1825d12eb583891632d5dac9e1461303bdd7c7a23bc08ba60c4807f46ea7"
+        }
+      }
+    }
+  },
+  "signatures": [
+    {
+      "keyid": "fb1bfcad9e584931ec7c0dd239ad8640862ef10f22c6370399f65c84f1809a4f",
+      "sig": "3046022100eb1959c00707a898ba67e38523d43331bd9fc29c15b11983af2d6ae5ff567dc90221009eb6b9bf8decce570455183c58f8ac63df9e91a2d4d03a76beaadba49712aeb4"
+    }
+  ]
+}

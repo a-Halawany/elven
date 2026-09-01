@@ -1,0 +1,295 @@
+# C19 — CROSS-PLATFORM LIFECYCLE AND CONTAINMENT PROOF.
+#
+# The containment contract claims the SAME properties on Linux and macOS, so it has to be measured
+# on both. `ci` runs on ubuntu only, which means a macOS regression in signal handling, ownership
+# tracking or bounded reap would not be caught until the finalizer — long after the decision that
+# depended on it.
+#
+# ── THIS WORKFLOW CANNOT PUBLISH ANYTHING ──
+#
+# There is no `id-token: write` here, at any level. Without that token no signing identity can be
+# minted, so publication is not merely gated in this workflow, it is impossible. That is deliberate:
+# the workflow that runs on every pull request should not be one edit away from being able to sign.
+name: C19 lifecycle
+on:
+  pull_request:
+  push:
+    branches: [main, 'c19-**']
+
+# Read-only, everywhere. No id-token, no contents:write, no packages, no attestations.
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The serial suite's coverage runner imports @eye/contracts from its BUILT output, so an
+      # install alone leaves it resolving a dist/ that does not exist yet. Caught by CI on both
+      # platforms, where 36 controls passed and the runner then failed on ERR_MODULE_NOT_FOUND.
+      - run: pnpm build
+
+      - name: Anchor selftest with the network denied
+        run: node scripts/gate/c19-anchor-cli.mjs selftest --offline
+
+      - name: Lifecycle and containment controls (signals, races, nesting, reap, cleanup)
+        run: pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
+
+      - name: Anchor attack matrix
+        run: pnpm --filter @eye/api exec vitest run --config vitest.c18.config.ts test/gate/c19-anchor.ctl.ts
+
+      # Both residue checks in one command, in tested source. The shell version of the process
+      # check failed on the SUCCESS path: grep and xargs exit non-zero when they match nothing.
+      - name: No owned process or docker resource survived
+        run: node scripts/gate/c19-anchor-cli.mjs leftovers
+
+      - name: Prove this job holds no publication capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          # If an id-token were ever granted here, this fails loudly rather than silently gaining
+          # the ability to sign.
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "C19: this workflow must never hold an OIDC token" >&2
+            exit 1
+          fi
+          echo "C19: no OIDC token present — publication is structurally impossible here"
+
+  # ── THE REVERSIBLE HALF OF THE DELIVERY CHAIN, EXERCISED SAFELY ──
+  #
+  # Default-branch registration is required only for the workflow_run TRIGGER, not for the plumbing
+  # itself. Everything up to the irreversible step — resolve, acquire, authenticate the wrapper,
+  # verify the inner evidence, build the canonical payload, dry run, verify offline — is reversible
+  # and can be proven here, against a real finalizer run that already succeeded on main.
+  #
+  # This job holds NO id-token at any level, so no OIDC token can be minted and no signature can be
+  # produced. It asserts that at runtime rather than relying on the absence being noticed.
+  #
+  # It runs the SAME source the publish job runs; the plumbing is not duplicated in YAML.
+  delivery-chain-dry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # Full history: the pipeline resolves a real commit and needs a worktree at it.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Refuse to continue if this job can sign anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::this harness must never hold an OIDC token"; exit 1
+          fi
+          echo "no OIDC token present: signing is impossible in this job"
+
+      - name: Choose a real publication to exercise against
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The SAME resolver production uses. The harness does not get its own fixture logic — that
+        # is what allowed a green harness to prove something production never did.
+        run: node scripts/gate/c19-fixture.mjs --repo "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+
+      - name: A missing fixture FAILS this job
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `found=false` must never produce a green check: an unexercised delivery chain is not a
+          # passing one, and a skipped substantive step reads exactly like a successful step.
+          if [ "${{ steps.fixture.outputs.found }}" != "true" ]; then
+            echo "::error::no usable publication fixture; the delivery chain is UNEXERCISED, and"
+            echo "::error::an unexercised chain must not report success"
+            exit 1
+          fi
+
+      - name: Prepare the source root the C17 verifier regenerates from
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/fixture-src "${{ steps.fixture.outputs.sha }}"
+          ( cd /tmp/fixture-src && pnpm install --frozen-lockfile && pnpm build )
+
+      - name: THE PIPELINE — resolve, acquire, authenticate, payload, validate, dry run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        # One command. Every step of the real publication path except the irreversible ones.
+        run: |
+          set -euo pipefail
+          # `tee` opens its file when the shell builds the pipeline, BEFORE the pipeline runs and
+          # creates the directory. Without this the step exits on tee's error while the pipeline
+          # itself printed PASS — a failure that says nothing about the code under test.
+          mkdir -p /tmp/c19
+          node scripts/gate/c19-deliver.mjs dry-run \
+            --repo "${{ github.repository }}" \
+            --sha "${{ steps.fixture.outputs.sha }}" \
+            --source-root /tmp/fixture-src \
+            --out /tmp/c19 | tee /tmp/c19/dry.log
+
+      - name: Prove the payload is deterministic across invocations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        # A retry that cannot reproduce the payload cannot find its own prior Rekor entry, so
+        # determinism is what makes recovery possible at all.
+        run: |
+          set -euo pipefail
+          node scripts/gate/c19-deliver.mjs dry-run \
+            --repo "${{ github.repository }}" \
+            --sha "${{ steps.fixture.outputs.sha }}" \
+            --source-root /tmp/fixture-src --out /tmp/c19b >/dev/null
+          cmp /tmp/c19/payload.json /tmp/c19b/payload.json
+          echo "payload is byte-identical across two independent pipeline invocations"
+
+      - name: Prove zero OIDC, zero signing, zero Rekor writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "zero OIDC requests, zero signing operations, zero Rekor writes" /tmp/c19/dry.log
+          test ! -f /tmp/c19/bundle.sigstore.json
+          command -v cosign >/dev/null 2>&1 && { echo "::error::cosign must not be installed here"; exit 1; } || true
+          echo "verified: no bundle produced, no signing tool present, no OIDC token held"
+
+      - name: Persist the dry-run evidence for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c19-delivery-dry-run-${{ github.run_id }}
+          path: |
+            /tmp/c19/payload.json
+            /tmp/c19/dry.log
+          if-no-files-found: error
+
+  # ── The foreign checkout is pinned to the publication SHA ───────────────────
+  #
+  # NONPUBLISHING. This leg exercises the assertion that guards an IRREVERSIBLE step: after a real
+  # publication, the package is verified from a fresh checkout, and that checkout used to be
+  # `git clone --depth 1 <repo>` - whatever main happened to be at that moment. If main advanced
+  # after signing, verification would run against a different verifier, policy and anchor than the
+  # publication was made under, and the failure would arrive after the Rekor write.
+  #
+  # The script under test is the one the anchor workflow runs, unmodified.
+  foreign-checkout-pinning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - name: PINS the exact publication SHA
+        shell: bash
+        env:
+          # The real head commit, named explicitly. `git rev-parse HEAD` would be the synthetic
+          # merge commit on a pull_request event - a commit that exists nowhere but the runner, so
+          # the evidence would be about an object no reviewer can look up.
+          PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          SHA="$PUBLICATION_SHA"
+          git cat-file -e "$SHA^{commit}" || { echo "::error::$SHA is not a commit here"; exit 1; }
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$SHA" /tmp/pinned
+          test "$(git -C /tmp/pinned rev-parse HEAD)" = "$SHA"
+          # Detached, because a branch is a moving reference by another name.
+          if git -C /tmp/pinned symbolic-ref -q HEAD; then
+            echo "::error::the foreign checkout is on a branch, not detached"; exit 1
+          fi
+          echo "pinned at $SHA, detached"
+
+      - name: REFUSES when the checkout is ADVANCED past the publication SHA
+        shell: bash
+        env:
+          PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # A moving clone follows the default branch, so the substitution has to move THAT.
+          git -C "$GITHUB_WORKSPACE" checkout --quiet -B main "$PUBLICATION_SHA"
+          # Advance the remote exactly as main advancing after signing would.
+          git -C "$GITHUB_WORKSPACE" config user.email c19@example.invalid
+          git -C "$GITHUB_WORKSPACE" config user.name c19
+          git -C "$GITHUB_WORKSPACE" commit --quiet --allow-empty -m "main advances after signing"
+          ADVANCED="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          test "$ADVANCED" != "$PUBLICATION_SHA"
+
+          # The old behaviour: whatever the default branch is NOW. It silently yields the advanced
+          # commit, which is the defect - so this asserts the divergence is real and observable.
+          rm -rf /tmp/moving
+          git clone --quiet --depth 1 "$GITHUB_WORKSPACE" /tmp/moving
+          MOVING="$(git -C /tmp/moving rev-parse HEAD)"
+          if [ "$MOVING" = "$PUBLICATION_SHA" ]; then
+            echo "::error::the substitution did not take effect; this leg would prove nothing"; exit 1
+          fi
+          echo "a moving clone resolves to $MOVING, NOT the publication's $PUBLICATION_SHA"
+
+          # The pinned script still lands on the publication SHA, not the advanced tip.
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$PUBLICATION_SHA" /tmp/pinned2
+          test "$(git -C /tmp/pinned2 rev-parse HEAD)" = "$PUBLICATION_SHA"
+          echo "pinned checkout is unaffected by main advancing"
+
+      - name: REFUSES a substituted or moving reference, BEFORE any verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          for BAD in main HEAD "$(git rev-parse --short HEAD)" 0000000000000000000000000000000000000000; do
+            rm -rf /tmp/bad
+            if bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$BAD" /tmp/bad; then
+              echo "::error::'$BAD' was accepted; a reference that is not one exact commit must not"
+              echo "::error::decide which source verifies a publication"
+              exit 1
+            fi
+            # And nothing usable may be left behind: a partial checkout would let the caller
+            # proceed against source nobody reviewed.
+            if [ -f /tmp/bad/scripts/gate/c19-deliver.mjs ]; then
+              echo "::error::'$BAD' left a usable checkout behind"; exit 1
+            fi
+            echo "refused: $BAD"
+          done
+
+      - name: The SHA assertion runs BEFORE package verification, not after
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Ordering, observed: the script must fail before a caller could read anything from the
+          # directory. If it exits nonzero and leaves nothing, no verification can have begun.
+          rm -rf /tmp/order
+          set +e
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" main /tmp/order > /tmp/order.log 2>&1
+          STATUS=$?
+          set -e
+          test "$STATUS" -ne 0
+          grep -q "not a full 40-character commit SHA" /tmp/order.log
+          test ! -d /tmp/order/scripts
+          echo "the assertion refused before anything could be verified"

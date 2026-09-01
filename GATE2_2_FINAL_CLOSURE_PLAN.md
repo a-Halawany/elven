@@ -3722,3 +3722,319 @@ bound, which is now real rather than claimed.
 `04442ed` is recorded as **authentic, leak-free, database-verifier-valid and provenance-valid**. Its
 evidence is not contaminated and is not withdrawn. It is superseded only for the watchdog,
 gate-integration and differential-accounting defects above.
+
+# GATE C19 — EXTERNAL ANCHORING AND LEAST-PRIVILEGE CHILD ISOLATION (design; not yet implemented)
+
+C18 closed at `a8d34c4d1dc91d1f205fac6044332907da210d46`. It left four declared limitations, each
+recorded in source rather than as an open question. C19 owns them. This section is the source-owned
+design, written before implementation, and it ends at the one decision that is genuinely the
+owner's: which external authority this repository will depend on.
+
+## C19.0 What C18 actually established, and why it is not enough
+
+C18's verifier recomputes every claim from the delivered bytes. That is exactly its strength and
+exactly its ceiling: **the evidence producer is its own sole authority**. Everything the archive
+asserts about itself is checked for internal consistency, and an attacker who rebinds every
+attacker-controlled binding consistently produces an archive that is internally perfect.
+
+C18 already has one external check — hosted standing fetches the artifact from GitHub's
+authenticated API and compares digests — but that authenticates the artifact's *existence in a run*,
+not a signature over a canonical statement. Nothing in the archive is signed by anyone other than
+the process that produced it.
+
+C19's job is to introduce a trust root the evidence process does not control, and to bind the
+specific facts C18 cannot prove to statements that root makes.
+
+## C19.1 Trust and threat model
+
+**Assets.** The claim that a specific evidence archive was produced by a specific source tree, in a
+specific hosted run, against specific database instances, at a bounded time — and that the
+credentials used were not disclosed.
+
+**Adversary.** Someone with full write access to the repository's working tree and to the evidence
+producer, able to rebind every hash, receipt and manifest consistently; able to replay any artifact
+this repository has ever published; able to run the producer as often as they like. Explicitly
+**not** assumed: control of GitHub's OIDC signing key, or of the runner's kernel.
+
+**What an external anchor must therefore resist.** Substitution (a valid attestation for a
+different payload), replay (an older valid attestation), cross-binding (an attestation from another
+run, SHA, path or instance), rollback (an attestation predating the source change it is supposed to
+cover), and self-assertion (the producer signing its own claims and calling it independent).
+
+**What no anchor can fix.** A malicious child that transforms a secret before printing it. That is
+an isolation problem, which is why C19.5 exists — the answer is to deny the child the credential,
+not to detect its transformation.
+
+## C19.2 Architecture: one adapter, one provider-neutral signed contract
+
+    producer ──► canonical payload (JCS) ──► digest
+                                              │
+                              ┌───────────────┴───────────────┐
+                              │        SIGNER ADAPTER          │   ← provider-specific, thin
+                              │  github-oidc │ sigstore │ tsa  │
+                              │        │  local-dev (test)     │
+                              └───────────────┬───────────────┘
+                                              ▼
+                              attestation envelope (versioned, schema'd)
+                                              │
+    verifier ◄── canonical bytes ◄────────────┘  ← provider-NEUTRAL verification
+
+The signed contract is provider-neutral: an envelope carrying a canonical payload, a signature, a
+signer identity and a key version. Provider specifics live only in acquisition. A verifier that can
+check one adapter's envelope checks them all, and adding a provider never changes the contract.
+
+**Non-negotiable:** a local development signer may exist **only** as an explicitly non-delivery test
+seam. It is registered with `deliveryCapable: false`, and hosted delivery standing refuses it. A
+signer controlled by the evidence process is not independent, and calling it independent would be
+the single worst thing this gate could do.
+
+## C19.3 Canonical payload and envelope
+
+**Canonicalization.** JCS (RFC 8785) — already used by the audit chain, already proven, already
+under control. Signatures are verified over the canonical bytes, never over a reparsed projection
+of attacker-controlled JSON.
+
+**Domain separation.** Every signature context is prefixed `eye/c19/<purpose>/v1`, so a signature
+made for one purpose can never be replayed as another.
+
+**The canonical payload binds, at minimum:**
+
+| Field | Why |
+|---|---|
+| `schema`, `version` | closed, versioned; unknown versions are rejected, not ignored |
+| `purpose` | domain separation |
+| `sourceSha`, `sourceTree` | the exact commit and tree |
+| `runId`, `runAttempt`, `workflowRef` | the exact hosted run |
+| `pathLabel` (`a` / `b`), `instanceId` | which database instance |
+| `transactionId`, `correlationId` | the exact transaction, where applicable |
+| `evidenceDigest` | the archive the statement is about |
+| `nonce` | a fresh per-run challenge, replay cache keyed on it |
+| `issuedAt`, `notBefore`, `expiresAt` | freshness with explicit uncertainty |
+| `signerId`, `keyVersion`, `algorithm` | allowlisted; unknown algorithm is a rejection |
+
+**Envelope.** `{ schema, payload (canonical string), payloadDigest, signature, signerId, keyVersion,
+algorithm, acquiredAt }` — with the digest recomputed by the verifier from the payload, never
+trusted from the envelope.
+
+## C19.4 The four inherited items, and what each anchor can honestly prove
+
+### 1. Bootstrap marking instant
+
+**Proposed anchor:** a GitHub-signed statement obtained *inside the same hosted run*, whose payload
+digest binds the run, the source SHA and the evidence digest, and whose `iat` is GitHub's clock.
+
+**What this proves:** the run — and therefore the bootstrap transaction inside it — occurred within
+an interval bounded below and above by statements a party other than the producer signed.
+
+**What it does NOT prove, and will be recorded as still undecidable:** the exact instant
+`identity.bootstrap_mark_one_time` read `clock_timestamp()`. No external party observes that read.
+The anchor tightens the interval from "somewhere in this archive's own account of itself" to
+"inside a GitHub-signed run window", which is a real strengthening and is not exactness. **The
+ledger entry stays, with its `proved` field upgraded and its `undecidable` field unchanged.**
+Claiming exact time here would be manufacturing certainty.
+
+### 2. Backend-assigned identifiers
+
+**Proposed mechanism:** the identifiers are read *inside the same transaction that performs the
+governed work* and committed to a database-side row whose content is then covered by the audit
+chain — and the run that produced it is covered by the external anchor. The chain of custody is:
+identifier → same-transaction commitment → hash-chained audit row → archive digest → signed payload.
+
+**What this resists:** substituting another valid identifier (the commitment is inside the audited
+chain), copying from another transaction or instance (the commitment binds `instanceId`,
+`pathLabel`, `transactionId`), replaying an older attestation (the nonce and `evidenceDigest`),
+and producer self-assertion (the signature is not the producer's).
+
+**Honest limit:** the database is not itself a signer. What is authenticated is that *this run's*
+audited chain recorded those identifiers and that an external party attested to this run and this
+archive. A database that lied to its own client cannot be caught by this, and that is stated. If
+implementation shows a specific field cannot be bound this way, it is classified rather than
+claimed — that decision belongs to implementation evidence, not to this design.
+
+### 3. Per-instance generated secrets
+
+**Proposed mechanism:** a domain-separated commitment, never the value.
+
+    commitment = HMAC-SHA256( key = perRunChallenge,
+                              msg = "eye/c19/secret-commitment/v1"
+                                  ‖ secretClass ‖ instanceId ‖ pathLabel
+                                  ‖ sourceSha ‖ runId ‖ runAttempt ‖ generationEventId )
+
+The per-run challenge makes the commitment fresh, so a commitment cannot be reused across runs;
+the domain separation and class binding make a commitment for one secret class unusable for
+another. The raw secret never leaves the database side of the boundary and never enters evidence,
+argv, logs, errors, artifacts or process listings.
+
+**Detects:** reuse, cross-instance substitution, staleness, wrong class, wrong path, wrong source
+SHA, wrong signer, wrong key version and altered commitments.
+
+**Honest limit:** this binds the secret to an instance without revealing it. It does not prove the
+secret was generated with good entropy — no external party observes the generation. Stated.
+
+### 4. Least-privilege child isolation
+
+A source-owned execution contract, enforced before the child exists, declaring **per command**:
+the exact environment allowlist (deny-by-default inheritance), the credentials that command
+actually needs, the working directory, the temporary directory, filesystem and network policy, and
+resource, time and output limits.
+
+**OS honesty — this is where over-claiming is easiest and worst.**
+
+| | Linux (`ubuntu-latest`, where the gate runs) | macOS (`macos-14` finalizer, local dev) |
+|---|---|---|
+| Env allowlist, argv ban, cwd, temp isolation, process group, limits, cleanup | enforced | enforced |
+| Filesystem confinement | namespaces where available | `sandbox-exec` only; weaker and deprecated |
+| Network denial | namespace-based where available | not claimed |
+
+`bwrap`, `unshare`, `nsjail` and `firejail` are **absent on the local macOS host** (verified);
+`sandbox-exec` is present. The gate's evidence production runs on Linux. The design therefore
+**fails closed for the evidence-producing gate** if the declared policy cannot be enforced, and on
+any host where only the reduced boundary is available the reduced boundary is *stated and
+enforced*, never silently substituted. No Linux guarantee is claimed on macOS.
+
+## C19.5 Replay, substitution, rollback, expiry, revocation, rotation
+
+* **Replay** — per-run nonce plus `evidenceDigest`; a replay cache rejects a repeated nonce.
+* **Substitution** — the payload digest is recomputed from the canonical payload; the signature is
+  checked over those bytes.
+* **Rollback** — `sourceSha` and `sourceTree` must equal the verifying checkout's; an attestation
+  predating a source change cannot cover it.
+* **Expiry** — `notBefore`/`expiresAt` are checked against the verification instant, with the
+  uncertainty stated rather than assumed away.
+* **Revocation** — a source-owned revocation list keyed by `signerId` + `keyVersion` + optional
+  `jti`; a revoked key fails closed.
+* **Rotation** — the signer registry is versioned and holds multiple keys per signer; rotation adds
+  a key version and, where needed, revokes the old one. A documented procedure, exercised by a
+  control that verifies an envelope across a rotation boundary.
+
+## C19.6 Offline foreign-checkout verification
+
+The verifier fetches nothing. Public keys are pinned in the source-owned signer registry, so a
+fresh foreign clone at the exact evidence SHA verifies every signature offline. Online
+`--require-hosted` continues to prove hosted standing on top, exactly as C18 does today.
+
+## C19.7 Acceptance criteria
+
+C19 may be called closed only when: every anchor has an independent signer whose key is pinned and
+whose signature is verified over canonical bytes; every binding in C19.3 is checked; the mutation
+matrix in the mandate is permanent, non-vacuous and registered; the child-isolation contract is
+enforced and authenticated without recording credential values; the OS boundary is stated and
+matches what is enforced; offline foreign-checkout verification passes; the full delivery chain is
+green; and every limitation that remains genuinely undecidable is in the ledger with the strongest
+property actually proved.
+
+**Signatures existing is not closure.** Independent trust, complete binding, replay resistance,
+offline verification, least-privilege isolation, permanent controls and the full delivery chain
+are.
+
+## C19.8 The decision this design stops at
+
+Implementation is blocked on one choice that is the owner's, not the implementer's: **which
+external authority this repository will depend on.** The options, their security differences and
+their costs are presented separately. Nothing is provisioned, purchased or enabled until that
+choice is made.
+
+## C19.9 A reproduced item-4 defect in the C18 producer
+
+The isolation audit found a real disclosure inside the C18 producer, and it is reproduced rather
+than asserted.
+
+`scripts/gate/lib/c18-query-plan.mjs` builds every PostgreSQL invocation as
+
+    docker exec -e PGPASSWORD=<value> <container> psql …
+
+and the provisioning step passes `-e POSTGRES_PASSWORD=<value>` the same way. The recorded evidence
+is clean — the ledger stores `PGPASSWORD=<REDACTED:a:EYE_DB_PASSWORD>` — but the **live** `docker`
+client process carries the real value in its argv, where the host process list shows it to every
+user on the machine for the lifetime of the call.
+
+**Reproduction (synthetic canary, no real credential):** starting a container and running
+`docker exec -e "PGPASSWORD=$CANARY" …`, then reading `ps -eo command`, shows the canary. This is
+exactly the C19 item-4 rule "credentials through environment or stdin only; no credential-bearing
+argv", broken by the evidence producer itself.
+
+**The fix is minimal and verified available:** `docker` accepts `-e VAR` **without** `=value`, in
+which case it passes the value through from the docker client's own environment and the value never
+enters argv. Verified: `docker run --rm -e HOME alpine:3 sh -c 'echo $HOME'` prints the host value.
+
+**Why this is a permitted C18 change.** A new, non-vacuous control reproduces a specific defect, so
+the C18 boundary rule is satisfied. The change is a compatibility change to the recorded argv shape
+— the position becomes `PGPASSWORD` rather than `PGPASSWORD=<REDACTED:…>` — so the query-plan
+contract and every control that pins a credential POSITION to its CLASS must be carried across
+intact: the class binding moves from the argv placeholder to the typed redacted environment record
+the ledger already captures. No existing C18 control may be dropped; each must be preserved with
+its intent unchanged.
+
+## C19.10 Corrections to the record
+
+Four statements made earlier in this gate were wrong or overstated. They are corrected here rather
+than quietly amended, because the record is part of the deliverable.
+
+### The Redis exposure was Docker metadata, not runtime argv
+
+The original form passed `redis-server --requirepass <value>`, and this document previously said
+the value was therefore "visible to anything that can read that container's process table". That is
+**not true**. Redis rewrites its own process title at startup, so the value does not persist in
+`/proc/<pid>/cmdline`; sampling sixty times at 100 ms intervals never observed it. An earlier
+reading that claimed otherwise was an artifact of the probe itself — `grep -c` exits non-zero on
+zero matches, so a `|| echo 0` fallback appended a second `0` and the check misread its own output.
+
+The **durable** exposure was Docker metadata: `docker inspect` returns `Config.Cmd`, containing the
+password, for as long as the container exists. The interim `-e NAME` pass-through form moved it to
+`Config.Env`, which is no better. Only the tmpfs-plus-stdin handoff removes it from metadata
+altogether.
+
+### Historical evidence archives remain authentic
+
+The C18 ledger always recorded the redacted placeholder, never the value, so no archive produced
+under the old form ever carried a credential *because of that form*. Those archives are authentic
+and are not contaminated by this correction. That is a separate question from the one in §C19.11,
+where two specific artifacts were found to carry unredacted values for a different reason.
+
+### The offline trust root was pinned to a rotating key
+
+The first trust registry pinned GitHub's OIDC JWKS leaf keys as the offline anchor. Those keys
+rotate, so offline verification would have broken on the next rotation, and a rotating leaf is not
+a trust anchor in the first place. Sigstore keyless does not need them at all: the OIDC token is
+exchanged for a short-lived Fulcio certificate at signing time, and a verifier establishes identity
+from that certificate's own extensions. The anchor is now independently bootstrapped Sigstore TUF
+material, and a permanent control keeps the old mistake from returning.
+
+### What the anchor proves, stated once and precisely
+
+GitHub OIDC with Fulcio and Rekor proves **workflow identity**, the **exact bytes signed**, **log
+inclusion**, and a **publication time window**. It does **not** prove that any claim inside those
+bytes is true.
+
+In particular it does not establish internal database timestamps, backend-assigned identifiers,
+Docker runtime resource identities, generated randomness or secrets, or the producer's own clock.
+Each of those remains an **open observational limit** in `c19-authority.mjs`, recording the
+strongest property actually proved and exactly what would be required to close it. A limit closes
+by finding an authority for the claim, never by improving the packaging around it —
+`verifyAuthorityLedger` refuses to mark a claim closed without an independent authority, so this is
+enforced rather than promised.
+
+## C19.11 The historical artifact cleanup
+
+All 28 artifacts attached to the runs of `d5061b8` and `8a23526` were scanned, with full extraction
+including nested evidence archives. No secret value was printed, quoted, hashed or preserved at any
+point; every finding is a count and a variable name.
+
+**Two artifacts were contaminated**, both `c18-db-paths-evidence-a1` from `d5061b8`
+(ids `9329319708` and `9329549705`), each carrying 332 unredacted `PGPASSWORD` /
+`POSTGRES_PASSWORD` assignments. Both were deleted, and the GitHub API now returns 404 for their
+metadata and download endpoints and no longer lists them on their runs.
+
+**The fifteen `8a23526` artifacts were previously suspected and are clean.** They were retained.
+Deleting evidence that carries no leaked material would destroy provenance for no security benefit,
+and the cleanup ledger records the correction rather than the original suspicion.
+
+**Nothing was rotated, and no rotation is claimed.** The exposed values are per-run PostgreSQL
+container passwords generated by `randomBytes(24)` and used by nothing else. The recorded argv binds
+every container port to `127.0.0.1` with an ephemeral host port — four loopback bindings, zero
+`0.0.0.0` — so the databases were never reachable from outside the runner, and both runs executed on
+GitHub-hosted runners, which are single-use machines destroyed when the job ends. The environment
+those credentials authenticated to no longer exists, so there is nothing to rotate; asserting a
+rotation would describe an action nobody took. The residual risk was that the artifacts were
+**publicly retrievable** from a public repository until their November expiry, and that is what the
+deletion closed.

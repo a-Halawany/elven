@@ -1,0 +1,1115 @@
+{
+  "historical": {
+    "tables": {
+      "audit.audit_chain_heads": {
+        "columns": [
+          "partition_id",
+          "next_seq",
+          "head_hash",
+          "frozen",
+          "updated_at"
+        ],
+        "pk": [
+          "partition_id"
+        ]
+      },
+      "audit.audit_events": {
+        "columns": [
+          "partition_id",
+          "audit_seq",
+          "event_jcs",
+          "event",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event_type",
+          "outcome",
+          "actor",
+          "action",
+          "result_code",
+          "correlation_id",
+          "occurred_at",
+          "previous_hash",
+          "row_hash",
+          "hash_alg_version",
+          "created_at"
+        ],
+        "pk": [
+          "partition_id",
+          "audit_seq"
+        ]
+      },
+      "audit.audit_seals": {
+        "columns": [
+          "id",
+          "partition_id",
+          "range_start_seq",
+          "range_end_seq",
+          "head_hash",
+          "sealer",
+          "sealed_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "audit.availability_incidents": {
+        "columns": [
+          "id",
+          "detected_at",
+          "kind",
+          "partition_hint",
+          "correlation_id",
+          "details",
+          "reconciled_at",
+          "reconciled_by",
+          "journal_ref"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "audit.intake_suppression": {
+        "columns": [
+          "bucket",
+          "suppressed",
+          "window_start",
+          "admitted",
+          "updated_at"
+        ],
+        "pk": [
+          "bucket"
+        ]
+      },
+      "audit.integrity_incidents": {
+        "columns": [
+          "id",
+          "partition_id",
+          "range_start_seq",
+          "range_end_seq",
+          "details",
+          "detected_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "config.runtime_profile": {
+        "columns": [
+          "id",
+          "profile",
+          "set_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "ctx.context_secret": {
+        "columns": [
+          "id",
+          "secret"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "ctx.issued": {
+        "columns": [
+          "nonce",
+          "session_id",
+          "issued_at",
+          "expires_at",
+          "consumed_at",
+          "op_class",
+          "bound_action"
+        ],
+        "pk": [
+          "nonce"
+        ]
+      },
+      "identity.bootstrap_claim": {
+        "columns": [
+          "id",
+          "claimed_at",
+          "principal_id"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.break_glass_grants": {
+        "columns": [
+          "id",
+          "principal_id",
+          "reason",
+          "granted_by",
+          "granted_at",
+          "expires_at",
+          "used_at",
+          "revoked_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.credentials": {
+        "columns": [
+          "id",
+          "principal_id",
+          "type",
+          "secret_hash",
+          "status",
+          "created_at",
+          "rotated_at",
+          "expires_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.principals": {
+        "columns": [
+          "id",
+          "kind",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "display_name",
+          "status",
+          "created_at",
+          "login_name",
+          "revocation_epoch"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.refresh_tokens": {
+        "columns": [
+          "id",
+          "family_id",
+          "session_id",
+          "token_hash",
+          "generation",
+          "issued_at",
+          "invalidated_at",
+          "replaced_by",
+          "reuse_seen_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.role_bindings": {
+        "columns": [
+          "id",
+          "principal_id",
+          "role_code",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "created_at",
+          "revoked_at",
+          "granted_by_principal",
+          "granted_by_scope"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.roles": {
+        "columns": [
+          "code",
+          "scope",
+          "description"
+        ],
+        "pk": [
+          "code"
+        ]
+      },
+      "identity.sessions": {
+        "columns": [
+          "id",
+          "principal_id",
+          "assurance",
+          "status",
+          "refresh_token_hash",
+          "issued_at",
+          "expires_at",
+          "revoked_at",
+          "prev_refresh_token_hash",
+          "context_key_hash",
+          "bound_epoch",
+          "family_id"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "objects.canonical_field_registry": {
+        "columns": [
+          "field_name",
+          "authoritative",
+          "note"
+        ],
+        "pk": [
+          "field_name"
+        ]
+      },
+      "objects.canonical_objects": {
+        "columns": [
+          "object_id",
+          "object_type",
+          "tenant_id",
+          "domain_id",
+          "scope",
+          "object_version",
+          "lifecycle_state",
+          "owning_component",
+          "accountable_owner",
+          "source_object_ids",
+          "event_time",
+          "observation_time",
+          "valid_from",
+          "valid_to",
+          "recorded_at",
+          "time_precision",
+          "source_clock_quality",
+          "truth_state",
+          "synthetic_state",
+          "confidence",
+          "uncertainty",
+          "evidence_refs",
+          "provenance_ref",
+          "method_ref",
+          "contradiction_refs",
+          "corroboration_refs",
+          "human_refs",
+          "classification",
+          "purpose_scope",
+          "rights_profile",
+          "residency_profile",
+          "retention_profile",
+          "access_policy_ref",
+          "quality_profile",
+          "quality_state",
+          "freshness_state",
+          "schema_ref",
+          "ontology_ref",
+          "correction_of",
+          "supersedes",
+          "withdrawal_reason",
+          "audit_correlation_id",
+          "content_ref",
+          "payload",
+          "content_digest"
+        ],
+        "pk": [
+          "object_id",
+          "object_version"
+        ]
+      },
+      "objects.object_outbox": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event_type",
+          "payload",
+          "correlation_id",
+          "causation_id",
+          "status",
+          "created_at",
+          "published_at",
+          "lease_id",
+          "leased_until",
+          "attempts"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "objects.schema_registry": {
+        "columns": [
+          "object_type",
+          "schema_version",
+          "json_schema",
+          "compatibility",
+          "created_at"
+        ],
+        "pk": [
+          "object_type",
+          "schema_version"
+        ]
+      },
+      "policy.policy_bundles": {
+        "columns": [
+          "version",
+          "digest",
+          "description",
+          "status",
+          "created_at"
+        ],
+        "pk": [
+          "version"
+        ]
+      },
+      "policy.policy_decisions": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "decision",
+          "obligations",
+          "principal_id",
+          "delegation_id",
+          "action",
+          "object_type",
+          "object_id",
+          "purpose_id",
+          "consequence_class",
+          "environment",
+          "input_digest",
+          "bundle_version",
+          "exception_ref",
+          "expires_at",
+          "revocation_state",
+          "reason",
+          "correlation_id",
+          "created_at",
+          "evidence_only"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.domains": {
+        "columns": [
+          "id",
+          "tenant_id",
+          "name",
+          "status",
+          "residency_profile",
+          "retention_profile",
+          "created_at",
+          "activated_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.lifecycle_events": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event",
+          "actor",
+          "occurred_at",
+          "details"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.tenants": {
+        "columns": [
+          "id",
+          "name",
+          "status",
+          "residency_profile",
+          "retention_profile",
+          "created_at",
+          "activated_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      }
+    },
+    "fks": [
+      {
+        "constraint": "identity.break_glass_grants.break_glass_grants_principal_id_fkey",
+        "from": "identity.break_glass_grants",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.credentials.credentials_principal_id_fkey",
+        "from": "identity.credentials",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.principals.principals_domain_fk",
+        "from": "identity.principals",
+        "to": "tenancy.domains",
+        "definition": "FOREIGN KEY (tenant_id, domain_id) REFERENCES tenancy.domains(tenant_id, id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.principals.principals_tenant_fk",
+        "from": "identity.principals",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_domain_fk",
+        "from": "identity.role_bindings",
+        "to": "tenancy.domains",
+        "definition": "FOREIGN KEY (tenant_id, domain_id) REFERENCES tenancy.domains(tenant_id, id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_principal_id_fkey",
+        "from": "identity.role_bindings",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_role_code_fkey",
+        "from": "identity.role_bindings",
+        "to": "identity.roles",
+        "definition": "FOREIGN KEY (role_code) REFERENCES identity.roles(code)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_role_scope_fk",
+        "from": "identity.role_bindings",
+        "to": "identity.roles",
+        "definition": "FOREIGN KEY (role_code, scope) REFERENCES identity.roles(code, scope)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_tenant_fk",
+        "from": "identity.role_bindings",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.sessions.sessions_principal_id_fkey",
+        "from": "identity.sessions",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "policy.policy_decisions.policy_decisions_bundle_version_fkey",
+        "from": "policy.policy_decisions",
+        "to": "policy.policy_bundles",
+        "definition": "FOREIGN KEY (bundle_version) REFERENCES policy.policy_bundles(version)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "tenancy.domains.domains_tenant_id_fkey",
+        "from": "tenancy.domains",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      }
+    ]
+  },
+  "latest": {
+    "tables": {
+      "audit.audit_chain_heads": {
+        "columns": [
+          "partition_id",
+          "next_seq",
+          "head_hash",
+          "frozen",
+          "updated_at"
+        ],
+        "pk": [
+          "partition_id"
+        ]
+      },
+      "audit.audit_events": {
+        "columns": [
+          "partition_id",
+          "audit_seq",
+          "event_jcs",
+          "event",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event_type",
+          "outcome",
+          "actor",
+          "action",
+          "result_code",
+          "correlation_id",
+          "occurred_at",
+          "previous_hash",
+          "row_hash",
+          "hash_alg_version",
+          "created_at"
+        ],
+        "pk": [
+          "partition_id",
+          "audit_seq"
+        ]
+      },
+      "audit.audit_seals": {
+        "columns": [
+          "id",
+          "partition_id",
+          "range_start_seq",
+          "range_end_seq",
+          "head_hash",
+          "sealer",
+          "sealed_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "audit.availability_incidents": {
+        "columns": [
+          "id",
+          "detected_at",
+          "kind",
+          "partition_hint",
+          "correlation_id",
+          "details",
+          "reconciled_at",
+          "reconciled_by",
+          "journal_ref"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "audit.intake_suppression": {
+        "columns": [
+          "bucket",
+          "suppressed",
+          "window_start",
+          "admitted",
+          "updated_at"
+        ],
+        "pk": [
+          "bucket"
+        ]
+      },
+      "audit.integrity_incidents": {
+        "columns": [
+          "id",
+          "partition_id",
+          "range_start_seq",
+          "range_end_seq",
+          "details",
+          "detected_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "config.runtime_profile": {
+        "columns": [
+          "id",
+          "profile",
+          "set_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "ctx.context_secret": {
+        "columns": [
+          "id",
+          "secret"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "ctx.issued": {
+        "columns": [
+          "nonce",
+          "session_id",
+          "issued_at",
+          "expires_at",
+          "consumed_at",
+          "op_class",
+          "bound_action"
+        ],
+        "pk": [
+          "nonce"
+        ]
+      },
+      "ctx.operation": {
+        "columns": [
+          "operation_id",
+          "decision_id",
+          "txid",
+          "backend_pid",
+          "runtime_role",
+          "principal_id",
+          "session_id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "action",
+          "target",
+          "correlation_id",
+          "causation_id",
+          "purpose",
+          "consequence",
+          "bundle_version",
+          "capability_class",
+          "expected_outcome",
+          "obligations_required",
+          "obligations_executed",
+          "opened_at",
+          "finalized"
+        ],
+        "pk": [
+          "operation_id"
+        ]
+      },
+      "ctx.operation_effect": {
+        "columns": [
+          "id",
+          "operation_id",
+          "effect_kind",
+          "effect_ref",
+          "recorded_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.bootstrap_claim": {
+        "columns": [
+          "id",
+          "claimed_at",
+          "principal_id",
+          "nonce",
+          "consumed",
+          "consumed_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.break_glass_grants": {
+        "columns": [
+          "id",
+          "principal_id",
+          "reason",
+          "granted_by",
+          "granted_at",
+          "expires_at",
+          "used_at",
+          "revoked_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.credentials": {
+        "columns": [
+          "id",
+          "principal_id",
+          "type",
+          "secret_hash",
+          "status",
+          "created_at",
+          "rotated_at",
+          "expires_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.principals": {
+        "columns": [
+          "id",
+          "kind",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "display_name",
+          "status",
+          "created_at",
+          "login_name",
+          "revocation_epoch"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.refresh_tokens": {
+        "columns": [
+          "id",
+          "family_id",
+          "session_id",
+          "token_hash",
+          "generation",
+          "issued_at",
+          "invalidated_at",
+          "replaced_by",
+          "reuse_seen_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.role_bindings": {
+        "columns": [
+          "id",
+          "principal_id",
+          "role_code",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "created_at",
+          "revoked_at",
+          "granted_by_principal",
+          "granted_by_scope"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "identity.roles": {
+        "columns": [
+          "code",
+          "scope",
+          "description"
+        ],
+        "pk": [
+          "code"
+        ]
+      },
+      "identity.sessions": {
+        "columns": [
+          "id",
+          "principal_id",
+          "assurance",
+          "status",
+          "refresh_token_hash",
+          "issued_at",
+          "expires_at",
+          "revoked_at",
+          "prev_refresh_token_hash",
+          "context_key_hash",
+          "bound_epoch",
+          "family_id"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "objects.canonical_field_registry": {
+        "columns": [
+          "field_name",
+          "authoritative",
+          "note"
+        ],
+        "pk": [
+          "field_name"
+        ]
+      },
+      "objects.canonical_objects": {
+        "columns": [
+          "object_id",
+          "object_type",
+          "tenant_id",
+          "domain_id",
+          "scope",
+          "object_version",
+          "lifecycle_state",
+          "owning_component",
+          "accountable_owner",
+          "source_object_ids",
+          "event_time",
+          "observation_time",
+          "valid_from",
+          "valid_to",
+          "recorded_at",
+          "time_precision",
+          "source_clock_quality",
+          "truth_state",
+          "synthetic_state",
+          "confidence",
+          "uncertainty",
+          "evidence_refs",
+          "provenance_ref",
+          "method_ref",
+          "contradiction_refs",
+          "corroboration_refs",
+          "human_refs",
+          "classification",
+          "purpose_scope",
+          "rights_profile",
+          "residency_profile",
+          "retention_profile",
+          "access_policy_ref",
+          "quality_profile",
+          "quality_state",
+          "freshness_state",
+          "schema_ref",
+          "ontology_ref",
+          "correction_of",
+          "supersedes",
+          "withdrawal_reason",
+          "audit_correlation_id",
+          "content_ref",
+          "payload",
+          "content_digest"
+        ],
+        "pk": [
+          "object_id",
+          "object_version"
+        ]
+      },
+      "objects.object_outbox": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event_type",
+          "payload",
+          "correlation_id",
+          "causation_id",
+          "status",
+          "created_at",
+          "published_at",
+          "lease_id",
+          "leased_until",
+          "attempts"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "objects.schema_registry": {
+        "columns": [
+          "object_type",
+          "schema_version",
+          "json_schema",
+          "compatibility",
+          "created_at"
+        ],
+        "pk": [
+          "object_type",
+          "schema_version"
+        ]
+      },
+      "policy.policy_bundles": {
+        "columns": [
+          "version",
+          "digest",
+          "description",
+          "status",
+          "created_at"
+        ],
+        "pk": [
+          "version"
+        ]
+      },
+      "policy.policy_decisions": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "decision",
+          "obligations",
+          "principal_id",
+          "delegation_id",
+          "action",
+          "object_type",
+          "object_id",
+          "purpose_id",
+          "consequence_class",
+          "environment",
+          "input_digest",
+          "bundle_version",
+          "exception_ref",
+          "expires_at",
+          "revocation_state",
+          "reason",
+          "correlation_id",
+          "created_at",
+          "evidence_only"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.domains": {
+        "columns": [
+          "id",
+          "tenant_id",
+          "name",
+          "status",
+          "residency_profile",
+          "retention_profile",
+          "created_at",
+          "activated_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.lifecycle_events": {
+        "columns": [
+          "id",
+          "scope",
+          "tenant_id",
+          "domain_id",
+          "event",
+          "actor",
+          "occurred_at",
+          "details"
+        ],
+        "pk": [
+          "id"
+        ]
+      },
+      "tenancy.tenants": {
+        "columns": [
+          "id",
+          "name",
+          "status",
+          "residency_profile",
+          "retention_profile",
+          "created_at",
+          "activated_at"
+        ],
+        "pk": [
+          "id"
+        ]
+      }
+    },
+    "fks": [
+      {
+        "constraint": "ctx.operation_effect.operation_effect_operation_id_fkey",
+        "from": "ctx.operation_effect",
+        "to": "ctx.operation",
+        "definition": "FOREIGN KEY (operation_id) REFERENCES ctx.operation(operation_id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.break_glass_grants.break_glass_grants_principal_id_fkey",
+        "from": "identity.break_glass_grants",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.credentials.credentials_principal_id_fkey",
+        "from": "identity.credentials",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.principals.principals_domain_fk",
+        "from": "identity.principals",
+        "to": "tenancy.domains",
+        "definition": "FOREIGN KEY (tenant_id, domain_id) REFERENCES tenancy.domains(tenant_id, id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.principals.principals_tenant_fk",
+        "from": "identity.principals",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_domain_fk",
+        "from": "identity.role_bindings",
+        "to": "tenancy.domains",
+        "definition": "FOREIGN KEY (tenant_id, domain_id) REFERENCES tenancy.domains(tenant_id, id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_principal_id_fkey",
+        "from": "identity.role_bindings",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_role_code_fkey",
+        "from": "identity.role_bindings",
+        "to": "identity.roles",
+        "definition": "FOREIGN KEY (role_code) REFERENCES identity.roles(code)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_role_scope_fk",
+        "from": "identity.role_bindings",
+        "to": "identity.roles",
+        "definition": "FOREIGN KEY (role_code, scope) REFERENCES identity.roles(code, scope)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.role_bindings.role_bindings_tenant_fk",
+        "from": "identity.role_bindings",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "identity.sessions.sessions_principal_id_fkey",
+        "from": "identity.sessions",
+        "to": "identity.principals",
+        "definition": "FOREIGN KEY (principal_id) REFERENCES identity.principals(id)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "policy.policy_decisions.policy_decisions_bundle_version_fkey",
+        "from": "policy.policy_decisions",
+        "to": "policy.policy_bundles",
+        "definition": "FOREIGN KEY (bundle_version) REFERENCES policy.policy_bundles(version)",
+        "validated": true,
+        "deferrable": false
+      },
+      {
+        "constraint": "tenancy.domains.domains_tenant_id_fkey",
+        "from": "tenancy.domains",
+        "to": "tenancy.tenants",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenancy.tenants(id)",
+        "validated": true,
+        "deferrable": false
+      }
+    ]
+  }
+}

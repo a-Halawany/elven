@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['test/gate/c18-mutation-controls-serial.ctl.ts'],
+    include: ['test/gate/c18-mutation-controls-serial.ctl.ts', 'test/gate/c19-lifecycle.ctl.ts'],
     fileParallelism: false,
     testTimeout: 120_000,
     hookTimeout: 120_000,

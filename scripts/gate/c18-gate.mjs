@@ -22,10 +22,11 @@
  * ends the gate immediately with that stage's exit code.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { install as installCosign, COSIGN_PIN } from './lib/c19-cosign.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -81,16 +82,30 @@ export function runC18Gate(argv) {
   run(C18_GATE_STAGES[1],
     ['node', join('scripts', 'gate', 'c18-db-paths.mjs'), 'verify', '--zip', archive, '--root', ROOT]);
 
+  /**
+   * Stage the pinned cosign BEFORE the suites.
+   *
+   * The C19 package controls execute it, and acquiring a 140 MB binary inside a test is a download
+   * racing an assertion timeout - it failed for that reason and nothing else. It is acquired once
+   * here, digest-verified before any code from it runs, and passed to the suites by path.
+   */
+  const cosignPath = join(ROOT, '.c19-tools', 'cosign');
+  if (!existsSync(cosignPath)) {
+    mkdirSync(dirname(cosignPath), { recursive: true });
+    installCosign(cosignPath);
+  }
+  process.stderr.write(`c18-gate: pinned cosign ${COSIGN_PIN.version_tag} staged at ${cosignPath}\n`);
+
   // 3 — the parallel mutation/differential shards
   run(C18_GATE_STAGES[2],
     ['pnpm', '--filter', '@eye/api', 'exec', 'vitest', 'run', '--config', 'vitest.c18.config.ts'],
-    { C18_ARCHIVE: archive });
+    { C18_ARCHIVE: archive, C19_COSIGN: cosignPath });
 
   // 4 — the serial lifecycle controls, isolated from the parallel shards because one of them
   //     deliberately dirties the checkout.
   run(C18_GATE_STAGES[3],
     ['pnpm', '--filter', '@eye/api', 'exec', 'vitest', 'run', '--config', 'vitest.c18-serial.config.ts'],
-    { C18_ARCHIVE: archive });
+    { C18_ARCHIVE: archive, C19_COSIGN: cosignPath });
 
   process.stderr.write(`c18-gate: all ${C18_GATE_STAGES.length} stages passed\n`);
   return { archive, outDir };

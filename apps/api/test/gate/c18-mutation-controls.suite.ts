@@ -10,8 +10,8 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import {
-  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync,
-  writeFileSync,
+  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync,
+  symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
@@ -38,6 +38,8 @@ import { verifyEvidence as legacy83d } from './fixtures/c18-legacy-83d158c/c18-d
 import { verifyEvidence as legacy7be } from './fixtures/c18-legacy-7be02b8/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy8362 } from './fixtures/c18-legacy-8362cba/c18-db-paths.mjs';
+// eslint-disable-next-line import/no-relative-packages
+import { verifyEvidence as legacyA8d } from './fixtures/c18-legacy-a8d34c4/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyDcc } from './fixtures/c18-legacy-dccfcf2/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
@@ -176,7 +178,139 @@ function coverageFor(dir: string, key: string, build: (a: any, b: any) => unknow
  * source-owned value; 53a4eec's did not carry the last field, and several kinds and notes differ.
  * Regenerating with the FROZEN module reproduces exactly what that producer emitted.
  */
+/**
+ * C19 — TRANSLATE THE ARCHIVE BACK TO THE PRE-C19 CREDENTIAL SHAPE.
+ *
+ * C19 moved every credential out of argv and into the child's environment, because
+ * `docker … -e NAME=value` published the real password in the host process list. That is an ERA
+ * change to the evidence format: every frozen predecessor's contract REQUIRED the credential to
+ * stand in argv, so none of them can judge a C19 archive at all.
+ *
+ * Each differential therefore shows its predecessor a FAITHFUL DOWNGRADE — exactly the bytes that
+ * producer would have emitted — so it keeps measuring the semantic change it was written for
+ * rather than tripping over a format version. This is the same device the earlier era downgrades
+ * use, applied at the root of every chain because every chain now crosses this boundary.
+ */
+/**
+ * C19 — set a CREDENTIAL POSITION regardless of which era's archive this is.
+ *
+ * These controls assert an INTENT that outlives the mechanism: a credential position carrying the
+ * wrong class, or another path's material, must be rejected. C19 moved that position out of argv
+ * and into the environment, and each differential applies the same mutator to two archives — the
+ * pre-C19 downgrade the frozen verifier judges, and the C19 archive the corrected one judges. One
+ * mutator therefore has to address the position in whichever era it is looking at.
+ */
+function setCredentialPosition(c: any, key: string, value: string) {
+  // C19 — a provisioning credential no longer occupies argv or env at all; it is handed over on
+  // stdin, and the ledger records WHICH class was handed over. That class field is the position.
+  if (c.stdin_class !== undefined && c.stdin_class !== null) { c.stdin_class = value; return; }
+  if ((c.env ?? {})[key] !== undefined) { c.env[key] = value; return; }
+  const argv = c.argv as string[];
+  if (key === 'REDIS_PASSWORD') { argv[argv.length - 1] = value; return; }
+  const i = argv.findIndex((a) => String(a).startsWith(`${key}=`));
+  argv[i] = `${key}=${value}`;
+}
+
+function downgradeC19(dir: string) {
+
+  // 2 — translate the ledger back, and RENUMBER, because the pre-C19 producer emitted two fewer
+  //     commands per instance. Command ids embed their sequence and name their raw receipt files,
+  //     so a faithful downgrade has to move those files too.
+  const raw = join(dir, 'raw');
+  const renames: Array<[string, string]> = [];
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    const kept: any[] = [];
+    for (const c of cmds) {
+      const label = String(c.label ?? '');
+      const argv = (c.argv ?? []) as string[];
+      // The stdin handoff did not exist before C19; its command disappears entirely.
+      if (/-(pg|redis)-secret$/.test(label)) continue;
+      delete c.stdin_bytes;
+      delete c.stdin_class;
+
+      const letter = label.slice(0, 1);
+      if (/-pg-run$/.test(label)) {
+        // `--label X --tmpfs Y … POSTGRES_PASSWORD_FILE=… <image> sh -c <entrypoint>` becomes
+        // `… POSTGRES_PASSWORD=<placeholder> … <image>`.
+        const out = argv.filter((a, i) => {
+          const prev = argv[i - 1];
+          return a !== '--label' && a !== '--tmpfs' && prev !== '--label' && prev !== '--tmpfs';
+        });
+        const fi = out.findIndex((a) => String(a).startsWith('POSTGRES_PASSWORD_FILE='));
+        out[fi] = `POSTGRES_PASSWORD=<REDACTED:${letter}:EYE_DB_PASSWORD>`;
+        c.argv = out.slice(0, out.length - 3);            // drop `sh -c <entrypoint>`
+      } else if (/-redis-run$/.test(label)) {
+        const out = argv.filter((a, i) => {
+          const prev = argv[i - 1];
+          return a !== '--label' && a !== '--tmpfs' && prev !== '--label' && prev !== '--tmpfs';
+        });
+        out.splice(out.length - 3, 3, 'redis-server', '--requirepass',
+          `<REDACTED:${letter}:EYE_REDIS_PASSWORD>`);
+        c.argv = out;
+      } else if ((c.env ?? {}).PGPASSWORD !== undefined) {
+        argv[argv.indexOf('PGPASSWORD')] = `PGPASSWORD=${c.env.PGPASSWORD}`;
+        c.env = {};
+        c.argv = argv;
+      }
+      kept.push(c);
+    }
+    kept.forEach((c, i) => {
+      const seq = String(i + 1).padStart(3, '0');
+      const oldId = String(c.id);
+      const newId = `${seq}-${String(c.label).replace(/[^a-z0-9-]+/gi, '_').slice(0, 60)}`;
+      if (oldId !== newId) renames.push([oldId, newId]);
+      c.id = newId;
+    });
+    cmds.length = 0;
+    cmds.push(...kept);
+  });
+
+  // Renumbering changes ids that the manifest NAMES in many places — suite receipts, cleanup
+  // removals, migration executions and their attestation and inventory bindings. Enumerating those
+  // sites would mean rediscovering each one every time the manifest grows a field, so the remap is
+  // applied STRUCTURALLY: any string that is exactly an old id becomes the new id, and any raw
+  // receipt path built from an old id is rewritten to match the file that now exists.
+  const remap = new Map(renames);
+  const remapDeep = (node: any): any => {
+    if (typeof node === 'string') {
+      const direct = remap.get(node);
+      if (direct !== undefined) return direct;
+      const m = /^raw\/(.+?)\.(stdout|stderr|exit)\.txt$/.exec(node);
+      const mapped = m === null ? undefined : remap.get(m[1]);
+      return mapped === undefined ? node : `raw/${mapped}.${m![2]}.txt`;
+    }
+    if (Array.isArray(node)) return node.map(remapDeep);
+    if (node !== null && typeof node === 'object') {
+      for (const k of Object.keys(node)) node[k] = remapDeep(node[k]);
+    }
+    return node;
+  };
+  editJson(dir, 'c18-manifest.json', (doc: any) => {
+    for (const r of Object.values(doc.receipts ?? {}) as any[]) delete r.gate_resource_id;
+    remapDeep(doc);
+  });
+
+  // Two phases, so a rename can never land on a name another record still holds.
+  for (const [oldId, newId] of renames) {
+    for (const ext of ['stdout.txt', 'stderr.txt', 'exit.txt']) {
+      const from = join(raw, `${oldId}.${ext}`);
+      if (existsSync(from)) renameSync(from, join(raw, `tmp-${newId}.${ext}`));
+    }
+  }
+  for (const [, newId] of renames) {
+    for (const ext of ['stdout.txt', 'stderr.txt', 'exit.txt']) {
+      const from = join(raw, `tmp-${newId}.${ext}`);
+      if (existsSync(from)) renameSync(from, join(raw, `${newId}.${ext}`));
+    }
+  }
+  // Receipts belonging to the removed handoff commands have no place in a pre-C19 archive.
+  for (const f of readdirSync(raw)) {
+    if (/-(pg|redis)-secret\.(stdout|stderr|exit)\.txt$/.test(f)) unlinkSync(join(raw, f));
+  }
+}
+
 function downgradeTo53a4eec(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '53a4eec', (preseed, before) => legacy53aCoverage({ preseed, before })));
 }
@@ -188,16 +322,19 @@ function downgradeTo53a4eec(dir: string) {
  * for rather than a contract version number.
  */
 function downgradeToA424505(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, 'a424505', (preseed, before) => legacyA42Coverage({ preseed, before })));
 }
 
 function downgradeTo77489f5(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '77489f5', (preseed, before) => legacy774Coverage({ preseed, before })));
 }
 
 function downgradeToBfc8695(dir: string) {
+  downgradeC19(dir);
   editJson(dir, 'commands.json', (cmds: any[]) => {
     for (let i = cmds.length - 1; i >= 0; i -= 1) {
       if (!String(cmds[i].label).startsWith('a-a-preseed-')) continue;
@@ -1319,10 +1456,14 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
   }, /env EYE_DB_PASSWORD is .*attacker:WRONG_CLASS/],
   ['6: wrong Redis secret class', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
-      const c = cmds.find((x) => x.label === 'a-redis-run');
-      c.argv[c.argv.length - 1] = '<REDACTED:a:EYE_DB_PASSWORD>';
+      // The credential position is the stdin handoff in the C19 era and the `docker run` argv in
+      // the downgraded one; the control's intent — a redis position carrying the DATABASE class
+      // must be rejected — is the same in both.
+      setCredentialPosition(cmds.find((x) => x.label === 'a-redis-secret')
+        ?? cmds.find((x) => x.label === 'a-redis-run'), 'REDIS_PASSWORD',
+        '<REDACTED:a:EYE_DB_PASSWORD>');
     });
-  }, /requirepass is not the path-a EYE_REDIS_PASSWORD class/],
+  }, /path-a EYE_REDIS_PASSWORD class/],
   ['7: Path-A command carrying a Path-B placeholder', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
       cmds.find((x) => x.label === 'a-suite-integration').env.EYE_DB_APP_PASSWORD = '<REDACTED:b:EYE_DB_APP_PASSWORD>';
@@ -1335,9 +1476,10 @@ const SHARED_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
       c.env.EYE_DB_IDENTITY_PASSWORD = '<REDACTED:a:EYE_DB_COMMIT_PASSWORD>';
     });
   }, /env EYE_DB_COMMIT_PASSWORD is/],
-  ['7c: wrong-path PGPASSWORD in argv', (d) => {
+  ['7c: a wrong-path PGPASSWORD in the credential position', (d) => {
     editJson(d, 'commands.json', (cmds: any[]) => {
-      cmds.find((x) => x.label === 'a-a-before-ledger').argv[3] = 'PGPASSWORD=<REDACTED:b:EYE_DB_PASSWORD>';
+      setCredentialPosition(cmds.find((x) => x.label === 'a-a-before-ledger'), 'PGPASSWORD',
+        '<REDACTED:b:EYE_DB_PASSWORD>');
     });
   }, /carries path 'b' credential material in a path-'a' command/],
   ['8: forged session familyId', (d) => {
@@ -1523,7 +1665,7 @@ const C1814_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     editJson(d, 'commands.json', (cmds: any[]) => {
       for (const c of cmds) {
         if (c.label === 'a-a-before-ledger' || c.label === 'a-pg-confirm-0') {
-          c.argv[3] = '<REDACTED:a:EYE_DB_APP_PASSWORD>'.replace(/^/, 'PGPASSWORD=');
+          setCredentialPosition(c, 'PGPASSWORD', '<REDACTED:a:EYE_DB_APP_PASSWORD>');
         }
       }
     });
@@ -1664,17 +1806,18 @@ describe('C18.1.4 — adjacent-field rejections on the genuine archive', () => {
   beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
 
   it.each([
-    ['a POSTGRES_PASSWORD carrying another valid class', (d: string) => {
+    ['a postgres handoff carrying another valid class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        cmds.find((c) => c.label === 'a-pg-run').argv[8] = 'POSTGRES_PASSWORD=<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>';
+        setCredentialPosition(cmds.find((c) => c.label === 'a-pg-secret') ?? cmds.find((c) => c.label === 'a-pg-run'),
+          'POSTGRES_PASSWORD', '<REDACTED:a:EYE_DB_SYSTEM_PASSWORD>');
       });
     }, /this position requires the path-a EYE_DB_PASSWORD class/],
-    ['a --requirepass carrying the database class', (d: string) => {
+    ['a redis handoff carrying the database class', (d: string) => {
       editJson(d, 'commands.json', (cmds: any[]) => {
-        const c = cmds.find((x) => x.label === 'b-redis-run');
-        c.argv[c.argv.length - 1] = '<REDACTED:b:EYE_DB_PASSWORD>';
+        setCredentialPosition(cmds.find((x) => x.label === 'b-redis-secret') ?? cmds.find((x) => x.label === 'b-redis-run'),
+          'REDIS_PASSWORD', '<REDACTED:b:EYE_DB_PASSWORD>');
       });
-    }, /this position requires the path-b EYE_REDIS_PASSWORD class/],
+    }, /path-b EYE_REDIS_PASSWORD class/],
     ['an attestation that hashed a foreign migration file', (d: string) => {
       const cmds = JSON.parse(readFileSync(join(d, 'commands.json'), 'utf8'));
       const attest = cmds.find((c: any) => c.label === 'b-migrate-latest-attest');
@@ -3132,6 +3275,7 @@ describe('C18.1.11 — one finding never suppresses an independent check', () =>
  * differential measuring the SEMANTIC change rather than a contract version number.
  */
 function downgradeTo2c3cab3(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '2c3cab3', (preseed, before) => legacy2c3Coverage({ preseed, before })));
 }
@@ -3414,6 +3558,7 @@ describe('C18.1 — producer refusals that must disturb the real checkout (seria
  * that producer emitted, keeping the differential on the semantic change.
  */
 function downgradeTo220b26c(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '220b26c', (preseed, before) => legacy220Coverage({ preseed, before })));
 }
@@ -3595,6 +3740,7 @@ function everySnapshotBothPaths(d: string, table: string, apply: (rows: any[], t
 
 /** C18.1.14's coverage notes differ again, so the frozen leg regenerates its own report. */
 function downgradeTo53fb889(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '53fb889', (preseed, before) => legacy53fCoverage({ preseed, before })));
 }
@@ -3696,6 +3842,7 @@ describe('C18.1.14 — DIFFERENTIAL: the frozen 53fb889 verifier ACCEPTED what C
 
 /** C18.1.14-final leaves the coverage report unchanged, but the frozen leg regenerates its own. */
 function downgradeTo7959ec9(dir: string) {
+  downgradeC19(dir);
   writeFileSync(join(dir, 'seed-coverage.json'),
     coverageFor(dir, '7959ec9', (preseed, before) => legacy795Coverage({ preseed, before })));
 }
@@ -3772,5 +3919,205 @@ describe('C18.1.14-final — DIFFERENTIAL: the frozen 7959ec9 verifier ACCEPTED 
     expect(r.ok).toBe(false);
     expect(r.problems.join('\n')).toMatch(/ctx\.context_secret|preserv/i);
   });
+});
+}
+
+export function register31() {
+describe('C19 — CREDENTIALS MUST NEVER ENTER ARGV', () => {
+  beforeAll(() => { expect(ARCHIVE).not.toBe(''); });
+
+  /**
+   * The defect this closes was reproduced, not inferred: `docker exec -e PGPASSWORD=<value>` and
+   * `redis-server --requirepass <value>` published the real password in the HOST process list for
+   * the lifetime of every call, where any user on the machine could read it. The recorded evidence
+   * was clean the whole time — it stores a class placeholder — so nothing in C18 could see it.
+   *
+   * The ledger nonetheless decides the property exactly. The producer redacts secret VALUES into
+   * placeholders before recording, so a credential that travelled in argv is recorded AS a
+   * placeholder in argv. A placeholder in an argv position therefore IS the disclosure.
+   */
+
+  it('DIFFERENTIAL: the frozen a8d34c4 verifier REQUIRED the insecure argv shape', async () => {
+    // The strongest available statement that this is a real change rather than a cosmetic one:
+    // the frozen verifier refuses the corrected evidence, because its contract MANDATED that the
+    // password stand in argv. Both directions are proved — frozen demands it, corrected forbids it.
+    const r = await legacyA8d({ zipPath: ARCHIVE, root: REPO });
+    expect(r.ok).toBe(false);
+    // Its contract cannot describe an archive whose credentials never enter argv: the ledger
+    // record set it demands has no field for a stdin handoff, and its command graph requires the
+    // password to stand in a `docker run` argument. Either objection is the same refusal.
+    expect(r.problems.join('\n')).toMatch(/closed record set|PGPASSWORD=|POSTGRES_PASSWORD=|requirepass/);
+  });
+
+  it('the corrected verifier ACCEPTS the same archive the frozen one refused', async () => {
+    // Leg 3 of the differential: the correction is not merely stricter, it is CORRECT — pristine
+    // evidence produced by the corrected producer passes.
+    const r = await verifyEvidence({ zipPath: ARCHIVE, root: REPO });
+    expect(r.problems.join('\n')).not.toMatch(/must never enter argv/);
+  });
+
+  it.each([
+    ['a psql credential restored to argv, exactly as a8d34c4 recorded it', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => /^a-.*$/.test(x.label) && (x.argv ?? []).includes('PGPASSWORD'));
+        const i = c.argv.indexOf('PGPASSWORD');
+        c.argv[i] = `PGPASSWORD=${c.env['PGPASSWORD']}`;
+        c.env = {};
+      });
+    }],
+    ['the postgres container password restored to argv', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-pg-run');
+        const i = c.argv.findIndex((a: string) => String(a).startsWith('POSTGRES_PASSWORD_FILE='));
+        c.argv[i] = 'POSTGRES_PASSWORD=<REDACTED:a:EYE_DB_PASSWORD>';
+      });
+    }],
+    ['the redis password restored to the command line', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-redis-run');
+        c.argv.push('--requirepass', '<REDACTED:a:EYE_REDIS_PASSWORD>');
+      });
+    }],
+  ] as ReadonlyArray<[string, Mutator]>)('REJECTS %s', async (_label, mutate) => {
+    await expectReject(mutate, /must never enter argv|argv/);
+  });
+
+  it.each([
+    ['a credential environment position holding the WRONG class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['PGPASSWORD'] = '<REDACTED:a:EYE_DB_APP_PASSWORD>';
+      });
+    }, /requires the path-a EYE_DB_PASSWORD class/],
+    ['a credential environment position holding another PATH\'s class', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label.startsWith('a-') && (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['PGPASSWORD'] = '<REDACTED:b:EYE_DB_PASSWORD>';
+      });
+    }, /carries path 'b' credential material in a path-'a' command/],
+    ['an environment binding the graph never authorized', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env['EYE_DB_APP_PASSWORD'] = '<REDACTED:a:EYE_DB_APP_PASSWORD>';
+      });
+    }, /does not authorize/],
+    ['the credential environment binding removed entirely', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => (x.env ?? {})['PGPASSWORD'] !== undefined);
+        c.env = {};
+      });
+    }, /is not an exact <REDACTED:path:CLASS> placeholder/],
+    ['the redis entrypoint rewritten to something the source does not own', (d: string) => {
+      editJson(d, 'commands.json', (cmds: any[]) => {
+        const c = cmds.find((x: any) => x.label === 'a-redis-run');
+        c.argv[c.argv.length - 1] = 'exec redis-server --requirepass "$OTHER"';
+      });
+    }, /argv\[\d+\]/],
+  ] as ReadonlyArray<[string, Mutator, RegExp]>)('REJECTS %s', async (_label, mutate, pattern) => {
+    await expectReject(mutate, pattern);
+  });
+});
+}
+
+export function register32() {
+/**
+ * C19 — THE SIGNAL DIFFERENTIAL, END TO END, WITH REAL PROCESSES.
+ *
+ * The unit controls decide the state machine; this decides the PROGRAM. A child that ignores
+ * SIGTERM forks a grandchild into its own session, and the watchdog is signalled. Against the
+ * frozen a8d34c4 implementation both survived every signal; against the corrected one neither
+ * survives any of them, and the exit status says which signal arrived.
+ *
+ * The three signals run CONCURRENTLY — they are independent process trees — so the whole family
+ * costs one grace period rather than three.
+ */
+describe('C19 — DIFFERENTIAL: external signals leaked processes before, and do not now', () => {
+  const FROZEN = join(REPO, 'apps/api/test/gate/fixtures/c18-legacy-a8d34c4/c18-watchdog.mjs');
+  const CORRECTED = join(REPO, 'scripts', 'gate', 'c18-watchdog.mjs');
+  const SIGNALS = [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]] as ReadonlyArray<[string, number]>;
+
+  let stubborn = '';
+  beforeAll(() => {
+    stubborn = join(mkdtempSync(join(tmpdir(), 'c19-sig-')), 'stubborn.mjs');
+    writeFileSync(stubborn, [
+      "import { spawn } from 'node:child_process';",
+      "process.on('SIGTERM', () => {}); process.on('SIGINT', () => {}); process.on('SIGHUP', () => {});",
+      "const gc = spawn(process.execPath, ['-e', 'process.on(\"SIGTERM\",()=>{});setInterval(()=>{},1000)'],",
+      "  { detached: true, stdio: 'ignore' });",
+      'gc.unref();',
+      'console.log(`CPID:${process.pid} GPID:${gc.pid}`);',
+      'setInterval(() => {}, 1000);',
+    ].join('\n'));
+  });
+
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+  /** Run one watchdog, signal it, and report what was still alive when it exited. */
+  const runAndSignal = (watchdog: string, signal: string, settleMs: number) =>
+    new Promise<{ code: number | null; child: boolean; grandchild: boolean }>((resolve) => {
+      const wd = spawn('node', [watchdog, '300', 'node', stubborn], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let seen = '';
+      let signalled = false;
+      let pids: [number, number] = [0, 0];
+      wd.stdout.on('data', (b: Buffer) => {
+        seen += b.toString();
+        const m = /CPID:(\d+) GPID:(\d+)/.exec(seen);
+        if (m !== null && !signalled) {
+          signalled = true;
+          pids = [Number(m[1]), Number(m[2])];
+          process.kill(wd.pid as number, signal as NodeJS.Signals);
+        }
+      });
+      wd.on('close', (code) => {
+        // Settle past the corrected implementation's SIGTERM grace before judging survival.
+        setTimeout(() => {
+          const r = { code, child: alive(pids[0]), grandchild: alive(pids[1]) };
+          for (const p of pids) { try { if (p > 1) process.kill(p, 'SIGKILL'); } catch { /* gone */ } }
+          resolve(r);
+        }, settleMs);
+      });
+    });
+
+  it('the FROZEN a8d34c4 watchdog leaves BOTH the child and the grandchild alive', async () => {
+    const results = await Promise.all(SIGNALS.map(([sig]) => runAndSignal(FROZEN, sig, 3_000)));
+    for (const [i, r] of results.entries()) {
+      const sig = SIGNALS[i]?.[0];
+      expect(`${sig} child=${r.child} grandchild=${r.grandchild}`)
+        .toBe(`${sig} child=true grandchild=true`);
+      // …and it exits 1, indistinguishable from an ordinary child failure.
+      expect(r.code).toBe(1);
+    }
+  }, 120_000);
+
+  it('the CORRECTED watchdog contains both, and encodes the signal in the exit status', async () => {
+    const results = await Promise.all(SIGNALS.map(([sig]) => runAndSignal(CORRECTED, sig, 1_000)));
+    for (const [i, r] of results.entries()) {
+      const [sig, code] = SIGNALS[i] as [string, number];
+      expect(`${sig} child=${r.child} grandchild=${r.grandchild}`)
+        .toBe(`${sig} child=false grandchild=false`);
+      expect(`${sig} exit=${r.code}`).toBe(`${sig} exit=${code}`);
+    }
+  }, 120_000);
+
+  it('an ordinary run is unaffected: exit codes still pass through and stdout is intact', () => {
+    const ok = spawnSync('node', [CORRECTED, '30', 'node', '-e', 'console.log("payload")'], { encoding: 'utf8' });
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toContain('payload');
+    const failed = spawnSync('node', [CORRECTED, '30', 'node', '-e', 'process.exit(7)'], { encoding: 'utf8' });
+    expect(failed.status).toBe(7);
+    // A deadline still reports 124, and a spawn failure still reports 126.
+    expect(spawnSync('node', [CORRECTED, '1', 'node', '-e', 'setTimeout(()=>{},9000)'], { encoding: 'utf8' }).status).toBe(124);
+    expect(spawnSync('node', [CORRECTED, '30', 'c19-no-such-command'], { encoding: 'utf8' }).status).toBe(126);
+  }, 120_000);
+
+  it('the termination report never discloses a credential', () => {
+    // Everything the corrected shutdown path prints goes through the same sanitiser as the rest.
+    const canary = `c19Synthetic${'Canary'}Value0123456789`;
+    const r = spawnSync('node', [CORRECTED, '2', 'node', '-e',
+      'console.log(process.env.EYE_DB_PASSWORD); setTimeout(()=>{},9000)'],
+    { encoding: 'utf8', env: { ...process.env, EYE_DB_PASSWORD: canary } });
+    expect(r.status).toBe(124);
+    expect(`${r.stdout}${r.stderr}`).not.toContain(canary);
+  }, 120_000);
 });
 }

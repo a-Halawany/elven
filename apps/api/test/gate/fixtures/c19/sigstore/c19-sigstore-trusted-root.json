@@ -1,0 +1,55 @@
+{
+  "mediaType": "application/vnd.dev.sigstore.trustedroot+json;version=0.1",
+  "certificateAuthorities": [
+    {
+      "subject": {
+        "organization": "eye-c19-fixture",
+        "commonName": "c19 fixture CA"
+      },
+      "uri": "https://fulcio.fixture.local",
+      "certChain": {
+        "certificates": [
+          {
+            "rawBytes": "MIIBlzCCAT2gAwIBAgIBATAKBggqhkjOPQQDAjAzMRcwFQYDVQQDEw5jMTkgZml4dHVyZSBDQTEYMBYGA1UEChMPZXllLWMxOS1maXh0dXJlMB4XDTI2MDgyNDIwMzAwMFoXDTI2MDgyNDIwNDAwMFowMzEXMBUGA1UEAxMOYzE5IGZpeHR1cmUgQ0ExGDAWBgNVBAoTD2V5ZS1jMTktZml4dHVyZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABNPPj21MpgduExRKwmLIml2z4OZYmXFOyCXM2yS9SQFUKPI2tFc5msFry7nD4/eyn4MhR5GtrL5Q97WgWiu8eS2jQjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBQm8tmRWoli95cze2UuIvmemueZRTAKBggqhkjOPQQDAgNIADBFAiBkwpiEEo++ETL2VLHR1PbbEXNqkFVjH3wTt/upl9sydwIhAKr324b32g5v7QYjXMX0TR/7NCujrBy7t0/bA6kVugtl"
+          }
+        ]
+      },
+      "validFor": {
+        "start": "2026-08-24T20:30:00.000Z"
+      }
+    }
+  ],
+  "ctlogs": [
+    {
+      "baseUrl": "https://ctfe.fixture.local",
+      "hashAlgorithm": "SHA2_256",
+      "publicKey": {
+        "rawBytes": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5HsaE3M18OtPEcaixau1JKZNQmtjVBlzqPZC/1RbFivZKZKpug0XmpMwXNXnDhLCYXycJZVw5JbexcCxVxs+9A==",
+        "keyDetails": "PKIX_ECDSA_P256_SHA_256",
+        "validFor": {
+          "start": "2026-08-24T20:30:00.000Z"
+        }
+      },
+      "logId": {
+        "keyId": "QhhS7WYqLzzse03SFZ5I69LGjt7ZRErQH0rAZTnoq4Y="
+      }
+    }
+  ],
+  "tlogs": [
+    {
+      "baseUrl": "https://rekor.fixture.local",
+      "hashAlgorithm": "SHA2_256",
+      "publicKey": {
+        "rawBytes": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2IeUN4TTdsQsk+0sCv3ccUgkgkJq/WM1y+WAGEfxYY+h6/XcM2SpvQtwIwN6jRIwK1CRnfRqdh/Pbu2ACrtFJQ==",
+        "keyDetails": "PKIX_ECDSA_P256_SHA_256",
+        "validFor": {
+          "start": "2026-08-24T20:30:00.000Z"
+        }
+      },
+      "logId": {
+        "keyId": "9HRqwqTksE7zMBsUiZO59ws+DSVykAwVv9RSN4qPh/4="
+      }
+    }
+  ],
+  "timestampAuthorities": []
+}

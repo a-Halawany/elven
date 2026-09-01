@@ -1,0 +1,221 @@
+# C19 — EXTERNAL ANCHORING.
+#
+# This workflow is the ONLY place a Rekor publication can originate, and the guards that make that
+# true are structural rather than procedural.
+#
+# ── WHY `workflow_run` AND NOT `push` ──
+#
+# A `push` trigger would run this workflow on every branch, and the publication step would then be
+# gated by an `if:` alone. That is one edit away from firing. `workflow_run` after `ci` means the
+# workflow cannot start at all unless a completed `ci` run exists, and the conditions below then
+# require that run to have succeeded, on main, from a push, in this exact repository. A pull
+# request, a fork, a manual dispatch and a branch run each fail a DIFFERENT one of those, so no
+# single mistake reaches publication.
+#
+# ── PERMISSIONS ──
+#
+# The workflow default is read-only. `id-token: write` is granted to the publish job ALONE, because
+# that token is the credential that mints a signing identity: any other job holding it could sign
+# as this workflow. There is no `contents: write` anywhere, and nothing here creates a release or a
+# tag.
+name: C19 anchor
+on:
+  workflow_run:
+    # ── TRIGGERED BY THE FINALIZER, NOT BY ci ──
+    #
+    # `C17 finalize` and this workflow were both triggered by `ci` completing, so they RACED: this
+    # one could query for a finalizer run before that finalizer had succeeded, or at all. Depending
+    # on the finalizer means waiting for it by construction rather than hoping it got there first.
+    workflows: ['C17 finalize']
+    types: [completed]
+
+# Read-only by default. Publication capability is granted per job, never here.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # One publication per source commit. A re-run that overlaps its predecessor would otherwise race
+  # to sign the same bytes twice; `cancel-in-progress: false` lets the first finish rather than
+  # leaving a half-published attempt behind.
+  group: c19-anchor-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  # ── GATE ────────────────────────────────────────────────────────────────────────
+  # Every condition for publication is evaluated HERE, in one place, and exported as a single
+  # boolean. Splitting them across steps is how one of them quietly stops being checked.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publishable: ${{ steps.decide.outputs.publishable }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Decide whether this run may publish
+        id: decide
+        env:
+          EV: ${{ github.event.workflow_run.event }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+          SRC_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          IS_FORK: ${{ github.event.workflow_run.head_repository.fork }}
+        run: |
+          set -euo pipefail
+          reason=""
+          # Each condition is named, so a refusal says WHICH one failed rather than just "no".
+          # The first failure is kept: a later check overwriting it would report the wrong cause.
+          note() { [ -n "$reason" ] || reason="$1"; }
+          # The finalizer is itself workflow_run-triggered by ci; its own upstream event is what
+          # must have been a push.
+          [ "$EV" = "workflow_run" ]           || note "finalizer event was '$EV', not workflow_run"
+          [ "$CONCLUSION" = "success" ]        || note "upstream run concluded '$CONCLUSION'"
+          [ "$BRANCH" = "main" ]               || note "upstream branch was '$BRANCH', not main"
+          [ "$REPO" = "a-Halawany/elven" ]     || note "repository is '$REPO'"
+          [ "$SRC_REPO" = "a-Halawany/elven" ] || note "source repository is '$SRC_REPO'"
+          [ "$IS_FORK" != "true" ]             || note "the upstream run came from a fork"
+          if [ -n "$reason" ]; then
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "C19: publication refused — $reason"
+          else
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+            echo "reason=all publication conditions hold" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── VERIFY (no publication capability whatsoever) ───────────────────────────────
+  # Runs on both platforms. It holds NO id-token, so even a compromised step here cannot sign.
+  verify:
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The serial controls import @eye/contracts from BUILT output. This repeats the exact defect
+      # already found and fixed in c19-lifecycle.yml; omitting it here would have failed the same
+      # way the moment this workflow first ran.
+      - run: pnpm build
+      - name: C19 offline anchor verification (no network reliance)
+        run: node scripts/gate/c19-anchor-cli.mjs selftest --offline
+      - name: C19 lifecycle and containment controls
+        run: pnpm --filter @eye/api exec vitest run --config vitest.c18-serial.config.ts
+      - name: Prove no owned process or docker resource survived
+        run: node scripts/gate/c19-anchor-cli.mjs leftovers
+
+  # ── PUBLISH (the only job that can reach Rekor) ─────────────────────────────────
+  publish:
+    needs: [guard, verify]
+    # Structurally unreachable unless the guard said yes AND both platforms verified.
+    if: needs.guard.outputs.publishable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      # The signing capability, granted to this job and nowhere else.
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.11.1
+          cache: pnpm
+      # This runner does its OWN setup. Relying on another job's install left the publication path
+      # depending on state it never established, and the C17 verifier regenerates from this tree.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Install the pinned cosign and verify it BEFORE executing it
+        id: cosign
+        run: |
+          set -euo pipefail
+          node -e '
+            const { install } = await import("./scripts/gate/lib/c19-cosign.mjs");
+            const r = install("/tmp/cosign");
+            console.log(`cosign ${r.version} (${r.key}) verified against its pinned digest`);
+          ' --input-type=module
+          echo "path=/tmp/cosign" >> "$GITHUB_OUTPUT"
+          /tmp/cosign version
+
+      - name: THE PIPELINE — the same command the harness runs, with publication enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # GitHub's workflow COMMIT. Fulcio records this as Build Config Digest; it is not a hash
+          # of the YAML bytes, and verifying a certificate against one could never match.
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        # Resolution, acquisition, authentication, payload, full validation, Rekor search, and then
+        # EITHER reconstruction of an existing publication OR exactly one signature — in that order,
+        # with every reversible check complete before anything irreversible.
+        run: |
+          node scripts/gate/c19-deliver.mjs publish \
+            --repo "${{ github.repository }}" \
+            --sha "${{ github.event.workflow_run.head_sha }}" \
+            --finalizer-run "${{ github.event.workflow_run.id }}" \
+            --finalizer-attempt "${{ github.event.workflow_run.run_attempt }}" \
+            --signer-run "${{ github.run_id }}" \
+            --signer-attempt "${{ github.run_attempt }}" \
+            --workflow-sha "${{ github.workflow_sha }}" \
+            --source-root . \
+            --cosign "${{ steps.cosign.outputs.path }}" \
+            --out /tmp/c19
+
+      - name: Verify the delivered package from a FOREIGN checkout, offline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The commit this publication is ABOUT. Everything below is pinned to it.
+          PUBLICATION_SHA: ${{ github.event.workflow_run.head_sha }}
+        # A fresh checkout with no relationship to this runner's state, and the network denied at
+        # the OS boundary so the spawned cosign is constrained too.
+        #
+        # It used to be `git clone --depth 1 <repo>`, which resolves to whatever main is AT THAT
+        # MOMENT. Main can advance between signing and this step, and then the package would be
+        # verified with a different verifier, a different policy and a different anchor than the
+        # ones this publication was made under - after the irreversible Rekor write, so a failure
+        # here would be unrecoverable and would not even be about the evidence.
+        run: |
+          set -euo pipefail
+          # The SAME script the hosted substitution leg exercises, so the assertion that protects
+          # this irreversible path is one that is actually tested.
+          bash scripts/gate/c19-foreign-checkout.sh \
+            "${{ github.server_url }}/${{ github.repository }}" "$PUBLICATION_SHA" /tmp/foreign
+          cd /tmp/foreign
+
+          node scripts/gate/c19-deliver.mjs verify-offline \
+            --package /tmp/c19/delivery \
+            --anchor /tmp/foreign/scripts/gate/lib \
+            --cosign "${{ steps.cosign.outputs.path }}" \
+            --out /tmp/foreign-out
+
+      - name: Persist the offline-verifiable delivery package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: c19-delivery-${{ github.event.workflow_run.head_sha }}
+          path: /tmp/c19/delivery
+          if-no-files-found: error

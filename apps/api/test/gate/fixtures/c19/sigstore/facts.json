@@ -1,0 +1,24 @@
+{
+  "uuid": "30b7a0503831a03826815425dbc2152a21fe2f9f2dae545514affc3c39f1c59c",
+  "identity": {
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subjectAlternativeName": "https://github.com/a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main",
+    "repository": "a-Halawany/elven",
+    "repositoryOwner": "a-Halawany",
+    "ref": "refs/heads/main",
+    "workflowRef": "a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main",
+    "runnerEnvironment": "github-hosted",
+    "repositoryId": "1326601788",
+    "repositoryOwnerId": "84006518",
+    "signerEventName": "workflow_run"
+  },
+  "sourceSha": "a8d34c4d1dc91d1f205fac6044332907da210d46",
+  "workflowDigest": "b7c1f0e2a9d34c5e6f708192a3b4c5d6e7f80912",
+  "innerName": "c17-cross-host-finalized-a8d34c4d1dc91d1f205fac6044332907da210d46.zip",
+  "payloadDigest": "693dcf4a87aea43cea5a0c89755256e59151219928f80f3ff2144c3668ac7315",
+  "signerRunId": "33445566778",
+  "signerRunAttempt": "1",
+  "integratedTime": 1787603460,
+  "notBefore": "2026-08-24T20:30:00.000Z",
+  "notAfter": "2026-08-24T20:40:00.000Z"
+}

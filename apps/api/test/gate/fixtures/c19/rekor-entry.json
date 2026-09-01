@@ -1,0 +1,21 @@
+{
+  "e9e506a57bcb95b3d1f939d5d000e9c61eddc4edf1103179bfdbe686f7b81c1e": {
+    "body": "eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiIyN2YzY2ZjNWEyNWViYThjNDhjM2JjNmE4MmRlNGE0NTVlZmUzNTk0ZjU4YjNkYmQ4MGRlOTVkMzIxNTRkMDRhIn19LCJzaWduYXR1cmUiOnsiY29udGVudCI6IlptRnJaUzF6YVdkdVlYUjFjbVU9IiwicHVibGljS2V5Ijp7ImNvbnRlbnQiOiJMUzB0TFMxQ1JVZEpUaUJEUlZKVVNVWkpRMEZVUlMwdExTMHRDazFKU1VKR1FVdEZSa2xZVkZWU1JVTkZVbFJKUmtsRFFWUkZDaTB0TFMwdFJVNUVJRU5GVWxSSlJrbERRVlJGTFMwdExTMD0ifX19fQ==",
+    "logID": "0899a90d2e4480dc4965ed983b472486005de5b6e36ce0a2bf1b615685d16eca",
+    "logIndex": 2,
+    "integratedTime": 1735689600,
+    "verification": {
+      "signedEntryTimestamp": "MEYCIQDejBbdRqxTN2m2pqmRS7zuo+kzN+NqxPJJ4wklwQNHqAIhAOPBwu1FtPrtK4b7bgLP/gp9RDIrrsdLS0+WNmjS8UCu",
+      "inclusionProof": {
+        "logIndex": 2,
+        "treeSize": 4,
+        "rootHash": "eb765c9d40a5f6f38ed9cc229bbf02c1cdac3a62d9c52d09f02987adb3931354",
+        "hashes": [
+          "d070dc5b8da9aea7dc0f5ad4c29d89965200059c9a0ceca3abd5da2492dcb71d",
+          "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
+        ],
+        "checkpoint": "rekor.fixture.local - 1234567890\n4\n63ZcnUCl9vOO2cwim78Cwc2sOmLZxS0J8CmHrbOTE1Q=\n\n— rekor.fixture.local AAAAADBGAiEAlrHfUiLFSRWZDuJ3L+dKYqsWxc/NavzPKYlu4DPE26oCIQDXEFvtg6YQAuE8a37IOeIvc3jzxigjT2vkiePpp2GTXA==\n"
+      }
+    }
+  }
+}
