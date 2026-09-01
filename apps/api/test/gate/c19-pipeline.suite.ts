@@ -37,21 +37,33 @@ const fixtureAnchor = () => {
   };
 };
 
-/** A complete delivery package assembled from the source-owned Sigstore fixture. */
-async function buildFixturePackage(_p: any, out: string): Promise<string> {
+/**
+ * A complete delivery package, built by the PIPELINE'S OWN persist step from the source-owned
+ * Sigstore fixture. Assembling one by hand and then verifying what we assembled would test the
+ * assembly; this tests the step that ships.
+ */
+async function buildFixturePackage(p: any, out: string): Promise<string> {
   const { rekorEntryToBundle } = await import(/* @vite-ignore */ join(LIB, 'c19-rekor.mjs'));
-  const dir = join(out, 'delivery');
-  mkdirSync(join(dir, 'tuf'), { recursive: true });
-  const copy = (from: string, to = from) => writeFileSync(join(dir, to), readFileSync(join(SIGFIX, from)));
-  for (const f of ['payload.json', 'finalized-wrapper.zip', 'trusted-root.json', 'tuf-root.json',
-    'policy.json', INNER, `${INNER}.sha256`]) copy(f);
-  for (const r of ['timestamp', 'snapshot', 'targets']) copy(`tuf/${r}.json`, `tuf/${r}.json`);
+  const facts = JSON.parse(readFileSync(join(SIGFIX, 'facts.json'), 'utf8'));
   const entries = JSON.parse(readFileSync(join(SIGFIX, 'rekor-entry.json'), 'utf8'));
-  writeFileSync(join(dir, 'bundle.sigstore.json'),
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, 'bundle.sigstore.json'),
     JSON.stringify(rekorEntryToBundle(Object.values(entries)[0]), null, 2));
-  writeFileSync(join(dir, 'metadata.json'), '{}');
-  writeFileSync(join(dir, 'VERIFY.md'), '# verify\n');
-  return dir;
+  for (const f of ['payload.json', 'finalized-wrapper.zip', INNER, `${INNER}.sha256`]) {
+    writeFileSync(join(out, f), readFileSync(join(SIGFIX, f)));
+  }
+  return p.persistDeliveryPackage({
+    out, libDir: SIGFIX,
+    payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+    acquisition: {
+      wrapperPath: join(out, 'finalized-wrapper.zip'),
+      innerPath: join(out, INNER), innerName: INNER,
+    },
+    metadata: {
+      innerName: INNER, repo: 'a-Halawany/elven', sourceSha: facts.sourceSha,
+      certificateIdentity: facts.identity.subjectAlternativeName, oidcIssuer: facts.identity.issuer,
+    },
+  });
 }
 
 /**

@@ -96,7 +96,11 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 | Check | Result |
 |---|---|
 | C18+C19 gate (under the 900 s watchdog) | **PASS** — all 4 stages, 510 + 44 controls, 238.8 s, `contained=true` |
-| Anchor + pipeline control suites | **PASS** — 188 controls (105 anchor, 83 pipeline) |
+| Anchor + pipeline control suites | **PASS** — 199 controls |
+| Genuine package `verify-offline` | **exit 0** — isolation confirmed from inside, pinned cosign executed in-boundary, 0 findings |
+| Real reconstructed bundle | **exactly `reuse`**, zero signing, real verifier and pinned cosign |
+| Package after the stored TUF timestamp's expiry | **still verifies** |
+| Seven single-change mutations | each **refused** (wrapper, inner, sidecar, payload, bundle, trust material, inventory) |
 | Offline anchor selftest | **PASS** — 0 network attempts |
 | OS network-denial boundary, this host | **PASS** — functionally proved via `sandbox-exec` |
 | Typecheck | **PASS** — all workspaces |
@@ -241,6 +245,56 @@ DRY RUN — zero OIDC requests, zero signing operations, zero Rekor writes
 
 The payload digest is a function of the workflow commit passed in, so it differs between a local
 reproduction and a hosted run — as it must, since that commit is part of what is being attested.
+
+### The fifth review round: five demonstrated blockers, corrected
+
+**verify-offline could not succeed.** It called the verifier with `recovery: true` and no
+`fetchRun`, so the verifier always added *"no means of confirming the original signing run was
+authorised"* — a correct refusal for online recovery, reached in a mode that has no network by
+construction. It also accepted a cosign path it never invoked, so every check the module explicitly
+delegates was omitted while still being listed as delegated. Offline identity is now its own mode
+(the certificate's own invocation against the pinned policy and the signed payload's bindings, with
+a live run-fetcher refused rather than tolerated), what offline cannot establish is listed in
+`DECLARED_OFFLINE_LIMITS`, and the package verifier executes the pinned cosign — digest-verified
+before execution — with both verifiers required to pass.
+
+**The positive recovery control bypassed the verifier**, injecting `verifyBundleFn: () => []`. There
+is now a source-owned Sigstore fixture generated from scratch: a fixture CA; a leaf carrying the
+exact Fulcio OID extensions and an embedded SCT signed over the RFC 6962 precertificate
+reconstruction; a real ECDSA signature over a payload built by the pipeline's own
+`buildCanonicalPayload`; a real Merkle tree, note-format checkpoint and SET; a verifiable TUF chain;
+and a trusted root pinning the three fixture keys. **Pinned cosign v3.1.3 verifies it.**
+
+Giving the verifier its first real signature immediately found a defect in the verifier itself:
+`verifyArtifactSignature` called `verify(null, digest, …)`, which Node does not read as a prehashed
+digest for EC keys and which returns **false for every genuine ECDSA signature**. It would have
+rejected every real Sigstore bundle. Nothing caught it because the only fixture carried a
+placeholder signature — the precise cost of a control that replaces the verifier it is testing.
+
+**OS isolation trusted a caller-supplied flag.** Anyone could pass `--inside-sandbox` and the
+verifier skipped to verifying, reporting a boundary that was never built. The marker now only
+routes: the child proves its own isolation by attempting a connection to a literal address and
+requiring the OS to refuse it. Unknown flags are refused rather than ignored.
+
+**Malformed Rekor responses became "no entry."** `Array.isArray(uuids) ? uuids : []` lived inside
+the CLI where no control could reach it, converting a malformed success into the one answer that
+leads to signing. The transport is now its own module, returns the response raw or throws, and is
+exercised at that boundary end to end for zero signing attempts.
+
+**The offline trust contract contradicted itself.** The committed TUF timestamp expires
+2026-09-06 and verification used the wall clock, so an archival package with a ten-year payload
+window would have stopped verifying six days after it was built. Update freshness and historical
+verification are now separate purposes: adopting new metadata requires it to be current; verifying
+an archived bundle checks signatures, thresholds and the minimum versions the source-held policy
+pins. The package carries `tuf/timestamp.json`, `tuf/snapshot.json`, `tuf/targets.json` and
+`policy.json` — without which *"the TUF root authenticates the trusted root"* was an assertion the
+verifier had no way to check — and that material is verified against an anchor held independently,
+from the reviewed source SHA. `--anchor` may not be the package directory. The instructions check
+out the exact SHA rather than mutable main, and every required canonical payload field is enforced.
+
+**Ordering.** The second tip check ran before the sandbox probes and the Rekor query; both take real
+time and main can move inside them. It now runs inside the sign branch, after the search, with
+nothing between it and `sign-blob` — asserted by observing the call order, not by reading source.
 
 ### What the redesign corrected
 

@@ -1,5 +1,5 @@
 {
-  "uuid": "a3e704de8a3573519dc8dfd5c192ca94006c524dc7205786d378491cb3f280ca",
+  "uuid": "a0d64a48028171b7adefa78c473f302cda9d17f71cba27db3c6881599dd825ad",
   "identity": {
     "issuer": "https://token.actions.githubusercontent.com",
     "subjectAlternativeName": "https://github.com/a-Halawany/elven/.github/workflows/c19-anchor.yml@refs/heads/main",

@@ -375,4 +375,17 @@ writeFileSync(join(OUT, 'facts.json'), `${JSON.stringify({
   signerRunId: SIGNER_RUN_ID, signerRunAttempt: SIGNER_RUN_ATTEMPT,
   integratedTime: INTEGRATED_TIME, notBefore: NOT_BEFORE.toISOString(), notAfter: NOT_AFTER.toISOString(),
 }, null, 2)}\n`);
+/**
+ * The same material under the PRODUCTION names, so `persistDeliveryPackage` can use this directory
+ * as its `libDir` unchanged. The point is to exercise the real persist step rather than assembling
+ * a package by hand and then verifying the thing we assembled.
+ */
+mkdirSync(join(OUT, 'c19-tuf'), { recursive: true });
+writeFileSync(join(OUT, 'c19-sigstore-trusted-root.json'), trustedRootBytes);
+writeFileSync(join(OUT, 'c19-sigstore-tuf-root.json'), `${JSON.stringify(tufRoot, null, 2)}\n`);
+for (const [n, v] of [['timestamp', tufTimestamp], ['snapshot', tufSnapshot], ['targets', tufTargets]]) {
+  writeFileSync(join(OUT, 'c19-tuf', `${n}.json`), `${JSON.stringify(v, null, 2)}\n`);
+}
+writeFileSync(join(OUT, 'c19-trust.json'), readFileSync(join(OUT, 'policy.json')));
+
 process.stdout.write(`c19 sigstore fixture written to ${OUT}\n  uuid ${uuid}\n`);
