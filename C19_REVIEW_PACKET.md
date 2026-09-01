@@ -96,7 +96,9 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 | Check | Result |
 |---|---|
 | C18+C19 gate (under the 900 s watchdog) | **PASS** — all 4 stages, 510 + 44 controls, 238.8 s, `contained=true` |
-| Anchor + pipeline control suites | **PASS** — 199 controls |
+| Anchor + pipeline control suites | **PASS** — 213 controls |
+| Persisted production instructions | exact repo and 40-hex SHA, **0 placeholders**; each of the 5 fields refused when omitted |
+| Foreign checkout | pinned and detached at the publication SHA; moving/abbreviated/absent references refused, nothing left behind |
 | Genuine package `verify-offline` | **exit 0** — isolation confirmed from inside, pinned cosign executed in-boundary, 0 findings |
 | Real reconstructed bundle | **exactly `reuse`**, zero signing, real verifier and pinned cosign |
 | Package after the stored TUF timestamp's expiry | **still verifies** |
@@ -291,6 +293,36 @@ pins. The package carries `tuf/timestamp.json`, `tuf/snapshot.json`, `tuf/target
 verifier had no way to check — and that material is verified against an anchor held independently,
 from the reviewed source SHA. `--anchor` may not be the package directory. The instructions check
 out the exact SHA rather than mutable main, and every required canonical payload field is enforced.
+
+**Production plumbing, corrected after the fifth round.** Two defects lived only on the production
+path, and the fixture concealed both rather than catching them.
+
+`verifyInstructions` fell back to `<owner>/<repo>` and `<REVIEWED SHA>` when metadata omitted them,
+and the publish call site omitted both — so a control that supplied them by hand rendered a perfect
+document while a real package would have shipped instructions telling its reader to clone a
+placeholder. The metadata is now built in one place, `buildDeliveryMetadata`, which the publish path
+calls and the controls exercise; the five rendering fields are required, the fallbacks are gone, and
+the SHA must be a full 40-character commit taken from `acquisition.authed.sourceSha` — what the
+C17-verified evidence proves, not what the caller asked for.
+
+The post-publication foreign checkout was `git clone --depth 1 <repo>`, which resolves to whatever
+the default branch is at that moment. Had main advanced after signing, the package would have been
+verified with a different verifier, policy and anchor than the publication was made under — after
+the irreversible Rekor write, so the failure would have been unrecoverable and not even about the
+evidence. `scripts/gate/c19-foreign-checkout.sh` now fetches the commit itself, checks it out
+detached, and asserts `git rev-parse HEAD` equals the publication SHA immediately before
+verification; a moving, abbreviated or absent reference is refused and nothing usable is left
+behind. The anchor is passed explicitly as that checkout. The anchor workflow and a nonpublishing
+hosted leg run the same script, and that leg advances the default branch exactly as main advancing
+after signing would:
+
+```
+c19-foreign-checkout: /tmp/pinned pinned at 9f710631… , detached
+a moving clone resolves to c5bc9579…, NOT the publication's 9f710631…
+pinned checkout is unaffected by main advancing
+refused: main | HEAD | c5bc957 | 0000…0000
+the assertion refused before anything could be verified
+```
 
 **Ordering.** The second tip check ran before the sandbox probes and the Rekor query; both take real
 time and main can move inside them. It now runs inside the sign branch, after the search, with
