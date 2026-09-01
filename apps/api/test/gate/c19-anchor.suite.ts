@@ -732,115 +732,108 @@ export function registerC19Anchor(): void {
       expect(d.why).toMatch(/could not be queried|risk a duplicate/);
     });
 
-    it('the CLI REFUSES to verify or publish with nothing to act on', () => {
-      const run = (args: string[]) => spawnSync(process.execPath,
-        [join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), ...args],
-        { encoding: 'utf8', env: { ...process.env, SOURCE_SHA: 'x', RUN_URI: 'y' } });
-      // The old behaviour: verify with no artifact fell back to a selftest and exited 0, so a
-      // workflow step named "verify the published bundle" verified no bundle.
-      const v = run(['verify', '--offline', '--require-delivery-standing']);
-      expect(v.status).not.toBe(0);
-      expect(`${v.stderr}`).toMatch(/requires --artifact, --payload and --bundle/);
-      const p = run(['publish', '--dry-run']);
-      expect(p.status).not.toBe(0);
-      expect(`${p.stderr}`).toMatch(/--artifact is required/);
+    /**
+     * ── THE LEGACY DELIVERY COMMANDS ARE RETIRED ──
+     *
+     * `payload`, `publish` and `verify` each spawned cosign straight from $COSIGN or PATH with
+     * nothing authenticating it. A wrong-digest executable that touched a marker and exited 0 was
+     * executed and printed `cosign verify-blob: PASS` — the same defect the package verifier had,
+     * reachable from a second entry point the first fix never touched.
+     *
+     * They are gone rather than guarded, because two commands that can sign is one more than the
+     * design wants. These controls hold that: refused by name, and no cosign spawned by anything
+     * that remains.
+     */
+    const CLI_PATH = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
+    const runCli = (args: string[], env: Record<string, string> = {}) => spawnSync(
+      process.execPath, [CLI_PATH, ...args],
+      { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 120_000 });
+
+    for (const cmd of ['payload', 'publish', 'verify']) {
+      it(`the retired '${cmd}' command is refused by name and spawns nothing`, () => {
+        const lair = mkdtempSync(join(tmpdir(), `c19retired-${cmd}-`));
+        const marker = join(lair, 'EXECUTED');
+        const evil = join(lair, 'cosign');
+        writeFileSync(evil, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 0\n`, { mode: 0o755 });
+        const r = runCli([cmd, '--dry-run', '--offline', '--require-delivery-standing'],
+          { COSIGN: evil, PATH: `${lair}:${process.env.PATH}` });
+        expect(r.status, `${r.stdout}${r.stderr}`).not.toBe(0);
+        expect(`${r.stdout}${r.stderr}`).toMatch(new RegExp(`'${cmd}' is retired`));
+        // It must point at where the capability went, not merely say "unknown command".
+        expect(`${r.stdout}${r.stderr}`).toMatch(/c19-deliver\.mjs/);
+        expect(existsSync(marker), 'a retired command must spawn nothing').toBe(false);
+      }, 120_000);
+    }
+
+    it('the surviving commands run, and neither spawns cosign', () => {
+      const lair = mkdtempSync(join(tmpdir(), 'c19surv-'));
+      const marker = join(lair, 'EXECUTED');
+      const evil = join(lair, 'cosign');
+      writeFileSync(evil, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 0\n`, { mode: 0o755 });
+      const env = { COSIGN: evil, PATH: `${lair}:${process.env.PATH}` };
+      expect(runCli(['selftest', '--offline'], env).status).toBe(0);
+      expect(runCli(['leftovers'], env).status).toBe(0);
+      expect(existsSync(marker), 'selftest and leftovers must not spawn cosign').toBe(false);
+    }, 180_000);
+
+    it('no cosign is spawned anywhere in the legacy CLI', () => {
+      const src = readFileSync(CLI_PATH, 'utf8');
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      // The env override was the way an unauthenticated binary got in.
+      expect(code).not.toMatch(/process\.env\.COSIGN/);
+      expect(code).not.toMatch(/spawnSync\(\s*cosign/);
     });
 
-    it('the anchor workflow drives the pipeline, which acquires and verifies', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      // The workflow supplies triggers, permissions and inputs; the pipeline does the work.
-      expect(wf).toMatch(/c19-deliver\.mjs publish/);
-      expect(wf).toMatch(/c19-deliver\.mjs verify-offline/);
-      const acq = readFileSync(join(LIB, 'c19-acquire.mjs'), 'utf8');
-      expect(acq).toMatch(/expected exactly one unexpired artifact/);
-      expect(acq).toMatch(/the API reports/);
-      expect(acq).toMatch(/C17 finalization verifier/);
-      expect(acq).toMatch(/refused rather than resolved by picking/);
-      // An old successful run must not publish after main has moved on — now enforced in the
-      // pipeline rather than in YAML, so a control can execute it.
-      const pipe = readFileSync(join(LIB, 'c19-pipeline.mjs'), 'utf8');
-      expect(pipe).toMatch(/is no longer the tip of/);
-      // The verify job must build, or it repeats the defect already fixed in c19-lifecycle.yml.
-      expect(wf).toMatch(/- run: pnpm build/);
-      // And the bundle must be persisted, or nothing downstream can verify it.
-      expect(wf).toMatch(/upload-artifact/);
-    });
+    it('the usage line no longer advertises the retired commands', () => {
+      const r = runCli(['nonsense']);
+      expect(`${r.stdout}${r.stderr}`).toMatch(/usage: c19-anchor-cli\.mjs <selftest\|leftovers>/);
+    }, 60_000);
   });
 
-  describe('C19 — the REAL dispatcher, invoked as the workflow invokes it', () => {
-    // Every control below spawns the CLI as a subprocess with the exact argument vector the
-    // workflow uses. The previous 74 controls exercised the helper functions and all passed while
-    // the dispatcher silently dropped --payload, so `publish` and `verify` were both unusable from
-    // the workflow. Testing the callee while the caller is broken proves nothing about the system.
-    const CLI = join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs');
+  describe('C19 — the workflows invoke only the surviving commands', () => {
+    /**
+     * These controls used to drive `publish` and `verify` with the workflow's exact argv, because
+     * the dispatcher had once silently dropped `--payload` and testing the callee while the caller
+     * was broken proved nothing.
+     *
+     * Both commands are retired, so the property worth holding has moved: no workflow may invoke a
+     * command that no longer exists, and delivery must go through the one pipeline that
+     * authenticates its binary.
+     */
+    const WORKFLOWS = ['c19-anchor.yml', 'c19-lifecycle.yml'];
+    const wf = (n: string) => readFileSync(join(REPO, '.github', 'workflows', n), 'utf8');
 
-    /** The literal argv the workflow passes, so drift between YAML and controls is impossible. */
-    const workflowArgs = (cmd: 'publish' | 'verify', extra: string[]) => [
-      cmd, ...extra,
-      '--artifact', '/tmp/c19-ctl/finalized.zip',
-      '--payload', '/tmp/c19-ctl/payload.json',
-      '--bundle', '/tmp/c19-ctl/payload.sigstore.json',
-    ];
+    for (const name of WORKFLOWS) {
+      it(`${name} invokes the legacy CLI only for selftest and leftovers`, () => {
+        const text = wf(name);
+        const calls = [...text.matchAll(/c19-anchor-cli\.mjs\s+([a-z-]+)/g)].map((m) => m[1]);
+        expect(calls.length, 'the workflow should still use the legacy CLI for its two commands')
+          .toBeGreaterThan(0);
+        for (const c of calls) expect(['selftest', 'leftovers']).toContain(c);
+      });
+    }
 
-    let dir = '';
-    beforeAll(() => {
-      dir = '/tmp/c19-ctl';
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, 'finalized.zip'), 'not-a-real-zip');
-      writeFileSync(join(dir, 'payload.json'), '{}');
-      writeFileSync(join(dir, 'payload.sigstore.json'), '{}');
-    });
-
-    const run = (args: string[], env: Record<string, string> = {}) => spawnSync(
-      process.execPath, [CLI, ...args],
-      { encoding: 'utf8', env: { ...process.env, ...env } },
-    );
-
-    it('publish ACCEPTS the workflow\'s exact argument vector', () => {
-      const r = run(workflowArgs('publish', ['--dry-run']), { SOURCE_SHA: 'a'.repeat(40), RUN_URI: 'https://x' });
-      // The bug: the dispatcher read --artifact and --bundle but never --payload, so this exact
-      // command line died with "--payload is required".
-      expect(`${r.stdout}${r.stderr}`).not.toMatch(/--payload is required/);
-      expect(`${r.stdout}`).toMatch(/payload  sha256/);
-    });
-
-    it('verify ACCEPTS the workflow\'s exact argument vector', () => {
-      const r = run(workflowArgs('verify', ['--offline', '--require-delivery-standing']),
-        { SOURCE_SHA: 'a'.repeat(40) });
-      expect(`${r.stdout}${r.stderr}`).not.toMatch(/requires --artifact, --payload and --bundle/);
-    });
-
-    it('publish is AWAITED: a rejected publication cannot exit 0', () => {
-      // Without `await`, a rejection became an unhandled promise and the process could report
-      // success while publication had failed.
-      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
-      expect(src).toMatch(/await publish\(\{/);
-    });
-
-    it('every path flag the workflow passes is read by the dispatcher', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      const src = readFileSync(join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), 'utf8');
-      // Any flag the YAML passes must appear in a valueOf()/has() call, or it is silently dropped.
-      const flags = new Set([...wf.matchAll(/(--[a-z-]+)\s/g)].map((m) => m[1]));
-      for (const f of flags) {
-        if (!['--artifact', '--payload', '--bundle', '--out', '--offline', '--dry-run',
-          '--recover-or-publish', '--require-delivery-standing', '--docker-only'].includes(f)) continue;
-        expect(src.includes(`'${f}'`), `the dispatcher never reads ${f}, which the workflow passes`)
-          .toBe(true);
+    it('delivery goes through c19-deliver.mjs, which authenticates the binary', () => {
+      const anchor = wf('c19-anchor.yml');
+      expect(anchor).toMatch(/c19-deliver\.mjs publish/);
+      expect(anchor).toMatch(/c19-deliver\.mjs verify-offline/);
+      // And the retired names appear nowhere as invocations.
+      for (const name of WORKFLOWS) {
+        expect(wf(name)).not.toMatch(/c19-anchor-cli\.mjs\s+(payload|publish|verify)\b/);
       }
     });
 
-    it('each command line the workflow runs is at least DISPATCHABLE', () => {
-      const wf = readFileSync(join(REPO, '.github', 'workflows', 'c19-anchor.yml'), 'utf8');
-      const invocations = [...wf.matchAll(/c19-anchor-cli\.mjs\s+([a-z-]+)/g)].map((m) => m[1]);
-      expect(invocations.length).toBeGreaterThan(0);
-      for (const cmd of new Set(invocations)) {
-        const r = run([cmd, '--help-probe-unknown-flag']);
-        // Exit 2 is "unknown command". Anything the workflow invokes must be a known command.
-        expect(r.status, `the workflow invokes '${cmd}', which the dispatcher does not know`)
-          .not.toBe(2);
+    it('each command line the workflows run is at least DISPATCHABLE', () => {
+      for (const name of WORKFLOWS) {
+        for (const m of wf(name).matchAll(/c19-anchor-cli\.mjs\s+([a-z-]+)/g)) {
+          const r = spawnSync(process.execPath,
+            [join(REPO, 'scripts', 'gate', 'c19-anchor-cli.mjs'), m[1], '--offline'],
+            { encoding: 'utf8', timeout: 180_000 });
+          // Exit 2 is the "unknown command" code; a workflow must never earn it.
+          expect(r.status, `${name}: ${m[1]} -> ${r.stderr}`).not.toBe(2);
+        }
       }
-    });
+    }, 300_000);
   });
 
   describe('C19 — binary acquisition must not be decoded through a string', () => {

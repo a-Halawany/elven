@@ -35,15 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Assert this job holds no writable token
+      - name: Assert the EXACT permission map — contents: read, nothing else
         shell: bash
         run: |
           set -euo pipefail
-          # A scheduled job that could sign or push would be a standing capability nobody watches.
-          if grep -qE '^\s*(id-token|packages|attestations):\s*write' .github/workflows/c15-patched-image-recheck.yml; then
-            echo "::error::this workflow must not grant a writable token"; exit 1
-          fi
-          echo "read-only: no id-token, no packages, no attestations"
+          # Parsed, not grepped. The previous check looked for `id-token: write`, which is one key
+          # out of many: contents, packages, attestations, issues and the rest are all writable, and
+          # `permissions: write-all` grants every one of them in five words a grep would not match.
+          node scripts/gate/assert-readonly-workflow.mjs .github/workflows/c15-patched-image-recheck.yml
 
       - name: Install the pinned scanners
         run: bash scripts/gate/install-scanners.sh trivy

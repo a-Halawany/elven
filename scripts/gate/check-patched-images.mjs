@@ -18,7 +18,7 @@
  * Usage: check-patched-images.mjs [--trivy <path>] [--cache <dir>]
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RECHECK_SPEC, assessReport } from './lib/c19-patched-images.mjs';
@@ -28,6 +28,9 @@ const argv = process.argv.slice(2);
 const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 const trivy = val('--trivy') ?? 'trivy';
 const cache = val('--cache') ?? mkdtempSync(join(tmpdir(), 'c15-recheck-'));
+// The scan writes its report here. A caller-supplied --cache that does not exist yet would make
+// the scan fail for a reason that has nothing to do with the images.
+mkdirSync(cache, { recursive: true });
 const say = (s) => process.stdout.write(`${s}\n`);
 
 /** The digest a tag currently resolves to, read from the live registry. */

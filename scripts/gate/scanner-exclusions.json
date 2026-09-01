@@ -24,17 +24,22 @@
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; external or customer-data use is prohibited.",
         "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
       ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -73,17 +78,22 @@
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
         "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
       ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -109,17 +119,22 @@
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
         "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate."
       ],
+      "prohibited_use": [
+        "external, shared or internet-reachable deployment",
+        "production or customer data",
+        "any Phase 1 or later profile without fresh review"
+      ],
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -152,12 +167,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-14",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -203,12 +218,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-15",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -254,12 +269,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -297,12 +312,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -340,12 +355,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -383,12 +398,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
+      "evidence_sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
+          "sha256": "75eb2868b7d7d52d7c09a58fc497cb8f6f8ae05bf293d48746dcb3f905b281dc"
         }
       ],
       "reviewed_on": "2026-09-01"
