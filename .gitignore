@@ -54,7 +54,12 @@ evidence/c17/
 !apps/api/test/gate/packages/contracts/dist/
 !apps/api/test/gate/packages/contracts/dist/index.js
 
-# The pinned cosign the C19 controls execute. It is a 133 MB BINARY, acquired by digest-verified
-# download from scripts/gate/lib/c19-cosign.json — never committed, and never trusted for merely
-# reporting the right version.
+# ...but the C19 Sigstore fixture's archives ARE source: they are test inputs the controls hash and
+# mutate, not evidence produced by running the gate. Without them a fresh checkout cannot build the
+# package the offline verifier is proved against — which is how CI found this and a local run with
+# the files already present could not.
+!apps/api/test/gate/fixtures/c19/sigstore/*.zip
+
+# The pinned cosign the C19 controls execute. It is a BINARY, acquired by digest-verified download
+# from scripts/gate/lib/c19-cosign.json — never committed, and never trusted by version string.
 .c19-tools/
