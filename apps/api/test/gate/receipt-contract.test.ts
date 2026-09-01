@@ -77,6 +77,29 @@ describe('C16-R3.4.5 receipt contract', () => {
     replace(rel, `${JSON.stringify(doc, null, 2)}\n`);
   };
 
+  /**
+   * The mutation no longer reproduces a bypass, because it changes the finding arithmetic.
+   *
+   * Both pinned images now carry governed dispositions (CVE-2026-14456, SCX-0006..0009), so a
+   * mutation that adds, drops or re-targets findings on either image is caught by the earlier
+   * verifier's finding-reconciliation arithmetic. That is a genuine improvement; asserting the old
+   * bypass still exists would be the wrong way to record it.
+   *
+   * What still needs proving is that the newer STRUCTURAL check is a distinct one - not arithmetic
+   * wearing a different message. So the newer verifier must give the structural reason, the older
+   * must NOT give it, and the older must still reject.
+   */
+  const structuralCheckIsDistinct = (expected: RegExp) => {
+    const problems = check();
+    expect(problems.some((x) => expected.test(x)),
+      `expected a problem matching ${expected}, got:\n${problems.slice(0, 12).join('\n') || '(none)'}`).toBe(true);
+    const stale = frozen();
+    expect(stale.some((x) => expected.test(x)),
+      `the earlier verifier must NOT produce the structural finding; it reported:\n${stale.join('\n')}`).toBe(false);
+    expect(stale.length,
+      'the earlier verifier must still reject, or this mutation proves nothing').toBeGreaterThan(0);
+  };
+
   const closesFalsePass = (expected: RegExp) => {
     const problems = check();
     expect(problems.some((p) => expected.test(p)),
@@ -179,7 +202,7 @@ describe('C16-R3.4.5 receipt contract', () => {
       const genuine = d.Results.find((x: any) => x.Class === 'os-pkgs');
       d.Results.push({ ...genuine, Target: 'somewhere-else@sha256:0000 (alpine 3.23.5)' });
     });
-    closesFalsePass(/has 2 'os-pkgs' result\(s\)/);
+    structuralCheckIsDistinct(/has 2 'os-pkgs' result\(s\)/);
   });
 
   // ── §6: the audit document is a closed shape ─────────────────────────────────
