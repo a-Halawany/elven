@@ -22,6 +22,7 @@ import { createGitHub } from './lib/c19-github.mjs';
 import {
   PIPELINE_MODES, resolve, buildCanonicalPayload, validateBeforeIrreversible,
   recoverOrSign, verifyFinalBundle, persistDeliveryPackage, verifyDeliveryPackage,
+  buildDeliveryMetadata,
 } from './lib/c19-pipeline.mjs';
 import { loadTrustMaterial } from './lib/c19-anchor.mjs';
 import { assetKey, install as installCosign, COSIGN_PIN } from './lib/c19-cosign.mjs';
@@ -331,13 +332,7 @@ async function main() {
   // ── 15 persist the offline-verifiable package ────────────────────────────
   const dir = persistDeliveryPackage({
     out, acquisition, payloadPath, bundlePath, libDir: LIB,
-    metadata: {
-      innerName: acquisition.innerName,
-      certificateIdentity: policy.identity.subjectAlternativeName,
-      oidcIssuer: policy.identity.issuer,
-      publicationIdentity: built.identity,
-      signings: outcome.signings ?? 0,
-    },
+    metadata: buildDeliveryMetadata({ repo, acquisition, policy, built, outcome }),
   });
   say(`C19 deliver: delivery package at ${dir}`);
   say(`C19 deliver: publish PASS (${outcome.signings ?? 0} signing operation(s))`);

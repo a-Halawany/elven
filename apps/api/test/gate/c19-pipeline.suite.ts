@@ -90,6 +90,15 @@ function cosignBinary(): string {
   return dest;
 }
 
+/** The four files persistDeliveryPackage copies from, staged where it expects them. */
+function stageFixtureInputs(out: string): void {
+  mkdirSync(out, { recursive: true });
+  for (const f of ['payload.json', 'finalized-wrapper.zip', INNER, `${INNER}.sha256`]) {
+    writeFileSync(join(out, f), readFileSync(join(SIGFIX, f)));
+  }
+  writeFileSync(join(out, 'bundle.sigstore.json'), '{}');
+}
+
 /** Flip one byte, so a refusal is attributable to exactly that byte. */
 function flip(path: string): void {
   const b = readFileSync(path);
@@ -624,6 +633,157 @@ export function registerC19Pipeline(): void {
     });
   });
 
+  describe('C19 — the PRODUCTION persistence path, executed', () => {
+    const facts = () => JSON.parse(readFileSync(join(SIGFIX, 'facts.json'), 'utf8'));
+
+    /**
+     * The metadata exactly as the publish path builds it — same function, not a copy. The defect
+     * was that the production call site assembled this inline and omitted `repo` and `sourceSha`,
+     * while a control that supplied them by hand rendered a perfect document and reported success.
+     */
+    const productionMetadata = async (over: Record<string, unknown> = {}) => {
+      const p = await load('c19-pipeline.mjs');
+      const f = facts();
+      return p.buildDeliveryMetadata({
+        repo: 'a-Halawany/elven',
+        acquisition: { authed: { sourceSha: f.sourceSha }, innerName: INNER },
+        policy: { identity: { subjectAlternativeName: f.identity.subjectAlternativeName,
+          issuer: f.identity.issuer } },
+        built: { identity: 'a'.repeat(64) },
+        outcome: { signings: 1 },
+        ...over,
+      });
+    };
+
+    it('the production builder supplies the repository and the AUTHENTICATED source SHA', async () => {
+      const m = await productionMetadata();
+      expect(m.repo).toBe('a-Halawany/elven');
+      expect(m.sourceSha).toBe(facts().sourceSha);
+      expect(m.sourceSha).toMatch(/^[0-9a-f]{40}$/);
+      for (const f of (await load('c19-pipeline.mjs')).PACKAGE_METADATA_FIELDS) {
+        expect(m[f], `production metadata must carry ${f}`).toBeTruthy();
+      }
+    });
+
+    it('the SHA comes from the AUTHENTICATED evidence, not from what the caller asked for', async () => {
+      const p = await load('c19-pipeline.mjs');
+      // The caller's `--sha` is a request; the acquisition's `authed.sourceSha` is what the
+      // C17-verified evidence proves. A foreign verifier checks out this value, so it must be the
+      // proven one.
+      const m = p.buildDeliveryMetadata({
+        repo: 'a-Halawany/elven',
+        acquisition: { authed: { sourceSha: 'b'.repeat(40) }, innerName: INNER },
+        policy: { identity: { subjectAlternativeName: 's', issuer: 'i' } },
+      });
+      expect(m.sourceSha).toBe('b'.repeat(40));
+    });
+
+    const OMISSIONS = ['repo', 'sourceSha', 'innerName', 'certificateIdentity', 'oidcIssuer'];
+    for (const missing of OMISSIONS) {
+      it(`REFUSES to persist a production package missing ${missing}`, async () => {
+        const p = await load('c19-pipeline.mjs');
+        const out = mkdtempSync(join(tmpdir(), 'c19meta-'));
+        const md: Record<string, unknown> = await productionMetadata();
+        delete md[missing];
+        stageFixtureInputs(out);
+        expect(() => p.persistDeliveryPackage({
+          out, libDir: SIGFIX,
+          payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+          acquisition: {
+            wrapperPath: join(out, 'finalized-wrapper.zip'),
+            innerPath: join(out, INNER), innerName: INNER,
+          },
+          metadata: md,
+        })).toThrow(new RegExp(`requires metadata\\.${missing}`));
+      });
+    }
+
+    it('REFUSES a sourceSha that is not a full commit SHA', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const base = await productionMetadata();
+      for (const bad of ['main', 'a8d34c4', `${'a'.repeat(39)}`, `${'a'.repeat(41)}`]) {
+        const out = mkdtempSync(join(tmpdir(), 'c19sha-'));
+        stageFixtureInputs(out);
+        expect(() => p.persistDeliveryPackage({
+          out, libDir: SIGFIX,
+          payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+          acquisition: {
+            wrapperPath: join(out, 'finalized-wrapper.zip'),
+            innerPath: join(out, INNER), innerName: INNER,
+          },
+          metadata: { ...base, sourceSha: bad },
+        }), `${bad} must be refused`).toThrow(/not a full commit SHA/);
+      }
+    });
+
+    it('the PERSISTED instructions carry exact values and NO placeholders', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const out = mkdtempSync(join(tmpdir(), 'c19md-'));
+      stageFixtureInputs(out);
+      const dir = p.persistDeliveryPackage({
+        out, libDir: SIGFIX,
+        payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
+        acquisition: {
+          wrapperPath: join(out, 'finalized-wrapper.zip'),
+          innerPath: join(out, INNER), innerName: INNER,
+        },
+        metadata: await productionMetadata(),
+      });
+      const md = readFileSync(join(dir, 'VERIFY.md'), 'utf8');
+      // Not "a placeholder is unlikely" — none of them may appear at all.
+      for (const ph of ['<owner>/<repo>', '<REVIEWED SHA>', '<SAN>', '<issuer>', '<sha>', '<inner>']) {
+        expect(md, `VERIFY.md must not render ${ph}`).not.toContain(ph);
+      }
+      const f = facts();
+      expect(md).toContain('a-Halawany/elven');
+      expect(md).toContain(f.sourceSha);
+      expect(md).toContain(f.identity.subjectAlternativeName);
+      expect(md).toContain(f.identity.issuer);
+      expect(md).toContain(INNER);
+      // And the instruction is a detached checkout of that exact commit, asserted before use.
+      expect(md).toMatch(/checkout --detach [0-9a-f]{40}/);
+      expect(md).toMatch(/rev-parse HEAD/);
+      expect(md).not.toMatch(/clone --depth 1 \S+ src\n\s*node/);
+    });
+  });
+
+  describe('C19 — the foreign checkout is pinned to the publication SHA, executed', () => {
+    const SCRIPT = join(REPO, 'scripts', 'gate', 'c19-foreign-checkout.sh');
+    const run = (sha: string, dir: string) => spawnSync('bash', [SCRIPT, REPO, sha, dir],
+      { encoding: 'utf8', timeout: 120_000 });
+
+    it('pins the checkout at EXACTLY the requested commit', () => {
+      const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+      const dir = join(mkdtempSync(join(tmpdir(), 'c19fc-')), 'foreign');
+      const r = run(head, dir);
+      expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+      expect(spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).stdout.trim())
+        .toBe(head);
+      // Detached: a branch here would be a moving reference by another name.
+      expect(spawnSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).status)
+        .not.toBe(0);
+    }, 180_000);
+
+    it('REFUSES a moving or abbreviated reference, which is what --depth 1 <repo> resolved to', () => {
+      for (const bad of ['main', 'HEAD', 'a8d34c4']) {
+        const dir = join(mkdtempSync(join(tmpdir(), 'c19fcbad-')), 'foreign');
+        const r = run(bad, dir);
+        expect(r.status, `${bad} must be refused`).not.toBe(0);
+        expect(`${r.stdout}${r.stderr}`).toMatch(/not a full 40-character commit SHA/);
+        expect(existsSync(join(dir, 'scripts')), 'nothing may be checked out').toBe(false);
+      }
+    }, 180_000);
+
+    it('REFUSES a well-formed SHA the remote does not have, rather than falling back', () => {
+      const dir = join(mkdtempSync(join(tmpdir(), 'c19fcmiss-')), 'foreign');
+      const r = run('0'.repeat(40), dir);
+      expect(r.status).not.toBe(0);
+      // The failure must NOT leave a usable default-branch checkout behind, which is exactly the
+      // silent substitution the old clone produced.
+      expect(existsSync(join(dir, 'scripts', 'gate', 'c19-deliver.mjs'))).toBe(false);
+    }, 180_000);
+  });
+
   describe('C19 — recovery SUCCEEDS, executed', () => {
     const SIG = join(FIX, 'sigstore');
     const facts = JSON.parse(readFileSync(join(SIG, 'facts.json'), 'utf8'));
@@ -867,10 +1027,15 @@ export function registerC19Pipeline(): void {
       const p = await load('c19-pipeline.mjs');
       const out = mkdtempSync(join(tmpdir(), 'c19pp-'));
       // It previously copied each file "if it exists", producing a quietly incomplete package.
+      // Complete metadata, so this control still tests what it was written for: the FILE check.
+      // Metadata is validated first now, and an empty object would fail for the other reason.
       expect(() => p.persistDeliveryPackage({
         out, libDir: LIB, payloadPath: '/nonexistent', bundlePath: '/nonexistent',
         acquisition: { wrapperPath: '/nonexistent', innerPath: '/nonexistent', innerName: 'x.zip' },
-        metadata: {},
+        metadata: {
+          repo: 'a-Halawany/elven', sourceSha: 'a'.repeat(40), innerName: 'x.zip',
+          certificateIdentity: 'san', oidcIssuer: 'iss',
+        },
       })).toThrow(/requires .* and .* does not exist/);
     });
 

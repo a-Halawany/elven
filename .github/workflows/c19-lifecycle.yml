@@ -190,3 +190,97 @@ jobs:
             /tmp/c19/payload.json
             /tmp/c19/dry.log
           if-no-files-found: error
+
+  # ── The foreign checkout is pinned to the publication SHA ───────────────────
+  #
+  # NONPUBLISHING. This leg exercises the assertion that guards an IRREVERSIBLE step: after a real
+  # publication, the package is verified from a fresh checkout, and that checkout used to be
+  # `git clone --depth 1 <repo>` - whatever main happened to be at that moment. If main advanced
+  # after signing, verification would run against a different verifier, policy and anchor than the
+  # publication was made under, and the failure would arrive after the Rekor write.
+  #
+  # The script under test is the one the anchor workflow runs, unmodified.
+  foreign-checkout-pinning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - name: PINS the exact publication SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$SHA" /tmp/pinned
+          test "$(git -C /tmp/pinned rev-parse HEAD)" = "$SHA"
+          # Detached, because a branch is a moving reference by another name.
+          if git -C /tmp/pinned symbolic-ref -q HEAD; then
+            echo "::error::the foreign checkout is on a branch, not detached"; exit 1
+          fi
+          echo "pinned at $SHA, detached"
+
+      - name: REFUSES when the checkout is ADVANCED past the publication SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLICATION_SHA="$(git rev-parse HEAD)"
+          # Advance the remote exactly as main advancing after signing would.
+          git -C "$GITHUB_WORKSPACE" config user.email c19@example.invalid
+          git -C "$GITHUB_WORKSPACE" config user.name c19
+          git -C "$GITHUB_WORKSPACE" commit --quiet --allow-empty -m "main advances after signing"
+          ADVANCED="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          test "$ADVANCED" != "$PUBLICATION_SHA"
+
+          # The old behaviour: whatever the default branch is NOW. It silently yields the advanced
+          # commit, which is the defect - so this asserts the divergence is real and observable.
+          rm -rf /tmp/moving
+          git clone --quiet --depth 1 "$GITHUB_WORKSPACE" /tmp/moving
+          MOVING="$(git -C /tmp/moving rev-parse HEAD)"
+          if [ "$MOVING" = "$PUBLICATION_SHA" ]; then
+            echo "::error::the substitution did not take effect; this leg would prove nothing"; exit 1
+          fi
+          echo "a moving clone resolves to $MOVING, NOT the publication's $PUBLICATION_SHA"
+
+          # The pinned script still lands on the publication SHA, not the advanced tip.
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$PUBLICATION_SHA" /tmp/pinned2
+          test "$(git -C /tmp/pinned2 rev-parse HEAD)" = "$PUBLICATION_SHA"
+          echo "pinned checkout is unaffected by main advancing"
+
+      - name: REFUSES a substituted or moving reference, BEFORE any verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          for BAD in main HEAD "$(git rev-parse --short HEAD)" 0000000000000000000000000000000000000000; do
+            rm -rf /tmp/bad
+            if bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$BAD" /tmp/bad; then
+              echo "::error::'$BAD' was accepted; a reference that is not one exact commit must not"
+              echo "::error::decide which source verifies a publication"
+              exit 1
+            fi
+            # And nothing usable may be left behind: a partial checkout would let the caller
+            # proceed against source nobody reviewed.
+            if [ -f /tmp/bad/scripts/gate/c19-deliver.mjs ]; then
+              echo "::error::'$BAD' left a usable checkout behind"; exit 1
+            fi
+            echo "refused: $BAD"
+          done
+
+      - name: The SHA assertion runs BEFORE package verification, not after
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Ordering, observed: the script must fail before a caller could read anything from the
+          # directory. If it exits nonzero and leaves nothing, no verification can have begun.
+          rm -rf /tmp/order
+          set +e
+          bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" main /tmp/order > /tmp/order.log 2>&1
+          STATUS=$?
+          set -e
+          test "$STATUS" -ne 0
+          grep -q "not a full 40-character commit SHA" /tmp/order.log
+          test ! -d /tmp/order/scripts
+          echo "the assertion refused before anything could be verified"

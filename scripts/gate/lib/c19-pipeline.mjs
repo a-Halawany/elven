@@ -361,6 +361,30 @@ export function verifyFinalBundle({
  * it. `policy.json` travels too, because the identity expectations are what the bundle is verified
  * against, and a verifier that had to supply its own would not be verifying this delivery.
  */
+/**
+ * The production metadata, built in ONE place so a control can exercise the same construction the
+ * publish path uses. Assembling it inline at the call site is what let production omit `repo` and
+ * `sourceSha` while a control that supplied them by hand reported a perfect document.
+ */
+export function buildDeliveryMetadata({ repo, acquisition, policy, built, outcome }) {
+  return {
+    repo,
+    // The AUTHENTICATED source SHA - what the verified evidence proves, not what a caller asked
+    // for. A foreign verifier detach-checks-out exactly this value.
+    sourceSha: acquisition?.authed?.sourceSha,
+    innerName: acquisition?.innerName,
+    certificateIdentity: policy?.identity?.subjectAlternativeName,
+    oidcIssuer: policy?.identity?.issuer,
+    publicationIdentity: built?.identity,
+    signings: outcome?.signings ?? 0,
+  };
+}
+
+/** Metadata a persisted package cannot be written without. Each one renders into VERIFY.md. */
+export const PACKAGE_METADATA_FIELDS = Object.freeze([
+  'repo', 'sourceSha', 'innerName', 'certificateIdentity', 'oidcIssuer',
+]);
+
 export const DELIVERY_PACKAGE_FILES = Object.freeze([
   'payload.json', 'bundle.sigstore.json', 'finalized-wrapper.zip',
   'trusted-root.json', 'tuf-root.json',
@@ -376,6 +400,30 @@ export const DELIVERY_PACKAGE_FILES = Object.freeze([
  * for a reason that says nothing about the evidence.
  */
 export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePath, libDir, metadata }) {
+  /**
+   * ── THE INSTRUCTIONS MUST BE EXECUTABLE, SO THE VALUES ARE REQUIRED ──
+   *
+   * `verifyInstructions` used to fall back to `<owner>/<repo>` and `<REVIEWED SHA>` when metadata
+   * omitted them. A control that supplied both rendered a perfect document, while the production
+   * caller - which supplied neither - shipped a package telling its reader to clone a placeholder.
+   * The fixture did not merely fail to catch that; it concealed it.
+   *
+   * A persisted package is a production artifact, so these are refused when absent rather than
+   * defaulted. The SHA in particular must be the AUTHENTICATED one: it is what a foreign checkout
+   * is told to check out, and a wrong value sends the verifier to different source bytes.
+   */
+  for (const f of PACKAGE_METADATA_FIELDS) {
+    if (metadata?.[f] === undefined || metadata[f] === '') {
+      throw new Error(`c19: the delivery package requires metadata.${f}; a persisted package whose `
+        + 'verification instructions carry placeholders is not offline-verifiable by the person '
+        + 'holding it, and refusing here is the only place that can be noticed');
+    }
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(metadata.sourceSha))) {
+    throw new Error(`c19: metadata.sourceSha ${j(metadata.sourceSha)} is not a full commit SHA; the `
+      + 'instructions detach-checkout this exact value, so an abbreviation or a branch name would '
+      + 'send a foreign verifier to bytes nobody reviewed');
+  }
   const dir = join(out, 'delivery');
   mkdirSync(dir, { recursive: true });
   const require0 = (from, name) => {
@@ -634,7 +682,7 @@ which matters because GitHub artifacts expire and this evidence should outlive t
 | \`payload.json\` | the canonical signed bytes |
 | \`bundle.sigstore.json\` | the Sigstore bundle (${BUNDLE_MEDIA_TYPE}) |
 | \`finalized-wrapper.zip\` | the artifact GitHub served |
-| \`${m.innerName ?? 'c17-cross-host-finalized-<sha>.zip'}\` | the finalized inner evidence |
+| \`${m.innerName}\` | the finalized inner evidence |
 | \`trusted-root.json\` | Sigstore trust material |
 | \`tuf-root.json\` | the TUF root |
 | \`tuf/*.json\` | timestamp, snapshot and targets — the delegation metadata that actually connects the two |
@@ -646,13 +694,16 @@ The TUF root here authenticates the trusted root here — and would equally auth
 pair substituted for both. Verify this package against the source-owned anchor from the reviewed
 commit, never against the copies travelling with it:
 
-    git clone https://github.com/${m.repo ?? '<owner>/<repo>'} src
-    git -C src checkout ${m.sourceSha ?? '<REVIEWED SHA>'}   # the exact SHA, never a moving branch
+    git clone https://github.com/${m.repo} src
+    git -C src fetch --depth 1 origin ${m.sourceSha}
+    git -C src -c advice.detachedHead=false checkout --detach ${m.sourceSha}
+    test "$(git -C src rev-parse HEAD)" = "${m.sourceSha}"   # never a moving branch
 
 ## Verify
 
     node src/scripts/gate/c19-deliver.mjs verify-offline \\
-      --package . --out /tmp/c19-verify --cosign <pinned ${COSIGN_PIN.version_tag} binary>
+      --package . --anchor src/scripts/gate/lib \\
+      --out /tmp/c19-verify --cosign <pinned ${COSIGN_PIN.version_tag} binary>
 
 That re-executes itself inside an OS network boundary and proves from inside that it cannot reach
 the network; checks the inventory; recomputes every digest against the signed payload; verifies
@@ -662,8 +713,8 @@ cosign. Both verifiers must pass.
 The equivalent single cosign command, if you would rather drive it yourself:
 
     cosign verify-blob --bundle bundle.sigstore.json \\
-      --certificate-identity ${m.certificateIdentity ?? '<SAN>'} \\
-      --certificate-oidc-issuer ${m.oidcIssuer ?? '<issuer>'} \\
+      --certificate-identity ${m.certificateIdentity} \\
+      --certificate-oidc-issuer ${m.oidcIssuer} \\
       --trusted-root trusted-root.json --offline payload.json
 
 ## Freshness
