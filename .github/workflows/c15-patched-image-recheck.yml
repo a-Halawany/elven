@@ -1,0 +1,58 @@
+# ── Is the accepted risk still justified? ─────────────────────────────────────
+#
+# SCX-0006..0009 accept residual risk for CVE-2026-14456 for exactly one reason: no official
+# postgres:18-alpine or redis:8-alpine build carries the fixed OpenSSL (3.5.8-r0), even though
+# Alpine published that package on 2026-08-25.
+#
+# That reason can stop being true on any day, without anything in this repository changing. CI
+# catches it on the next push; this catches it on a quiet week when there is no push. It FAILS when
+# a patched image appears, because a disposition that has become unnecessary should interrupt
+# someone rather than wait to be noticed.
+#
+# READ-ONLY. No id-token, no contents:write, no packages, no attestations. It resolves public image
+# digests and scans them; it cannot change this repository or sign anything.
+name: C15 patched-image recheck
+
+on:
+  schedule:
+    # 07:20 UTC daily. Off the hour, because the hour is when everyone else's cron runs.
+    - cron: '20 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c15-patched-image-recheck
+  cancel-in-progress: false
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: "Assert the EXACT permission map — contents: read, nothing else"
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Parsed, not grepped. The previous check looked for `id-token: write`, which is one key
+          # out of many: contents, packages, attestations, issues and the rest are all writable, and
+          # `permissions: write-all` grants every one of them in five words a grep would not match.
+          node scripts/gate/assert-readonly-workflow.mjs .github/workflows/c15-patched-image-recheck.yml
+
+      - name: Install the pinned scanners
+        run: bash scripts/gate/install-scanners.sh trivy
+
+      - name: Recheck the official images
+        run: node scripts/gate/check-patched-images.mjs
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Either a PATCHED official image now exists — re-pin the digests and DELETE"
+          echo "::notice::SCX-0006..0009, which the gate will otherwise reject as unused — or the"
+          echo "::notice::check could not be completed, which is not evidence that the acceptance holds."

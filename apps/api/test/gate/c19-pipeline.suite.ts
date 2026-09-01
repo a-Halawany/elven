@@ -1157,6 +1157,100 @@ export function registerC19Pipeline(): void {
       expect(problems.join('\n')).toMatch(/carries no trust policy/);
     }, 300_000);
 
+    /**
+     * ── THE BINARY IS AUTHENTICATED BEFORE IT IS EXECUTED ──
+     *
+     * `verifyBinary` RETURNS its findings and never throws. A wrapper that returned null unless it
+     * threw therefore discarded the digest check entirely and spawned whatever sat at the path: an
+     * executable that merely exits 0 produced a package verification with ZERO findings — no
+     * authentication, and delivery standing granted on one verifier instead of the required two.
+     *
+     * These run against the genuine package, not the helper, because the helper was never the thing
+     * that was broken.
+     */
+    it('the REAL pinned cosign passes, and the package verifies', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19bin-ok-')));
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: fixtureAnchor(), cosignPath: cosign(),
+      });
+      expect(problems, problems.join('\n')).toEqual([]);
+    }, 300_000);
+
+    it('a WRONG-DIGEST executable that exits 0 is refused, and is never run', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19bin-evil-')));
+      const lair = mkdtempSync(join(tmpdir(), 'c19evil-'));
+      const marker = join(lair, 'EXECUTED');
+      const evil = join(lair, 'cosign');
+      // Exits 0 and leaves a trace. Under the defect this produced a clean verification.
+      writeFileSync(evil, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 0\n`, { mode: 0o755 });
+
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: fixtureAnchor(), cosignPath: evil,
+      });
+      expect(problems.length, 'an unauthenticated binary must be refused').toBeGreaterThan(0);
+      expect(problems.join('\n')).toMatch(/hashes to [0-9a-f]{64}, but .* is pinned at [0-9a-f]{64}/);
+      expect(problems.join('\n')).toMatch(/refusing to execute an unverified signing tool/);
+      // The decisive assertion: it was never spawned.
+      expect(existsSync(marker), 'the unverified executable must never run').toBe(false);
+    }, 300_000);
+
+    it('a MISSING binary is refused with a precise finding and zero execution', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19bin-missing-')));
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: fixtureAnchor(), cosignPath: join(tmpdir(), 'c19-absent-cosign-xyz'),
+      });
+      // It must name the missing tool, not blame the bundle.
+      expect(problems.join('\n')).toMatch(/does not exist/);
+      expect(problems.join('\n')).not.toMatch(/rejected the bundle/);
+    }, 300_000);
+
+    it('an UNSUPPORTED or unpinned platform asset is refused', async () => {
+      const c = await load('c19-cosign.mjs');
+      const arch = Object.getOwnPropertyDescriptor(process, 'arch')!;
+      try {
+        Object.defineProperty(process, 'arch', { value: 'riscv64', configurable: true });
+        const problems = c.authenticateCosign(cosign());
+        expect(problems.join('\n')).toMatch(/no asset is pinned for .*riscv64/);
+        expect(problems.join('\n')).toMatch(/refusing to execute an unverifiable signing tool/);
+      } finally {
+        Object.defineProperty(process, 'arch', arch);
+      }
+    });
+
+    it('an EMPTY or absent path is refused rather than spawned', async () => {
+      const c = await load('c19-cosign.mjs');
+      for (const bad of ['', undefined, null]) {
+        expect(c.authenticateCosign(bad).join('\n'), `${JSON.stringify(bad)} must be refused`)
+          .toMatch(/no cosign path was supplied/);
+      }
+    });
+
+    it('the SIGNING path authenticates too, and refuses before minting a signature', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const lair = mkdtempSync(join(tmpdir(), 'c19sign-'));
+      const marker = join(lair, 'SIGNED');
+      const evil = join(lair, 'cosign');
+      writeFileSync(evil, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 0\n`, { mode: 0o755 });
+      const out = mkdtempSync(join(tmpdir(), 'c19signout-'));
+      const payloadPath = join(out, 'payload.json');
+      writeFileSync(payloadPath, '{"a":1}');
+      // recoverOrSign's default signer spawns cosign sign-blob. This is the one site that MINTS a
+      // signature, so an unauthenticated binary here would be irreversible.
+      await expect(p.recoverOrSign({
+        canonicalBytes: Buffer.from('{"a":1}'), payloadPath,
+        bundlePath: join(out, 'bundle.sigstore.json'),
+        policy: {}, trustedRoot: {}, gh: {}, cosignPath: evil,
+        search: async () => [], fetchEntry: async () => null, mode: 'publish',
+      })).rejects.toThrow(/refusing to execute an unverified signing tool/);
+      expect(existsSync(marker), 'sign-blob must never run with an unverified binary').toBe(false);
+    }, 120_000);
+
     it('the package still verifies AFTER the stored TUF timestamp has expired', async () => {
       const p = await load('c19-pipeline.mjs');
       const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19exp-')));

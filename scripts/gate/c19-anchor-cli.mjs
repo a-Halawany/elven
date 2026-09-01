@@ -285,266 +285,21 @@ export async function decideRecovery({ digestHex, expectedIdentity, search, fetc
   }
   return { action: 'reuse', entry };
 }
-
 /**
- * PUBLICATION. Requires an artifact, a payload and a bundle path — there is nothing to publish
- * without them, and a command that "succeeds" having published nothing is how a delivery chain
- * comes to be believed without existing.
- */
-async function publish({ dryRun, recoverOrPublish, artifactPath, payloadPath, bundlePath }) {
-  /**
-   * EXACTLY ONE MODE, STATED EXPLICITLY.
-   *
-   * The dispatcher passed `recoverOrPublish` and `publish()` never accepted it, so invoking
-   * `publish` with NEITHER flag fell through to the real signing path. A command that signs
-   * because nobody said not to is the most dangerous possible default for an irreversible action.
-   */
-  if (dryRun && recoverOrPublish) {
-    die('--dry-run and --recover-or-publish are mutually exclusive; state exactly one mode');
-  }
-  if (!dryRun && !recoverOrPublish) {
-    die('publish requires an explicit mode: --dry-run or --recover-or-publish. Refusing to sign '
-      + 'merely because no mode was stated.');
-  }
-  const need = { SOURCE_SHA: process.env.SOURCE_SHA, RUN_URI: process.env.RUN_URI };
-  for (const [k, v] of Object.entries(need)) {
-    if (v === undefined || v === '') die(`${k} is not set; a publication must name what it attests`);
-  }
-  if (artifactPath === undefined) die('--artifact is required; there is nothing to publish without it');
-  if (payloadPath === undefined) die('--payload is required; the signed object is the canonical payload');
-  if (bundlePath === undefined) die('--bundle is required; the bundle must be persisted to be verifiable');
-  if (!existsSync(artifactPath)) die(`the artifact ${artifactPath} does not exist`);
-  if (!existsSync(payloadPath)) die(`the payload ${payloadPath} does not exist`);
-
-  const payloadBytes = readFileSync(payloadPath);
-  const payloadDigest = sha256hex(payloadBytes);
-  const artifactDigest = sha256hex(readFileSync(artifactPath));
-  say(`C19 publish: artifact ${artifactPath}`);
-  say(`  artifact sha256 ${artifactDigest}`);
-  say(`  payload  sha256 ${payloadDigest}  (the signed object)`);
-
-  const cosign = process.env.COSIGN ?? 'cosign';
-  const { policy, trustedRoot } = loadTrustMaterial(LIB);
-
-  // ── RECOVERY FIRST, ALWAYS ──
-  const decision = await decideRecovery({
-    digestHex: payloadDigest,
-    // The identity this publication requires. Recovery verifies against it; an empty object is
-    // refused by decideRecovery precisely so this can never quietly become a no-op again.
-    expectedIdentity: {
-      sourceSha: process.env.SOURCE_SHA,
-      signerRunId: process.env.SIGNER_RUN_ID,
-      workflowDigest: process.env.WORKFLOW_DIGEST,
-    },
-    search: (d) => searchRekorByDigest(d),
-    fetchEntry: (u) => fetchRekorEntry(u),
-    verifyEntry: (entry) => verifyRekorSet(entry, trustedRoot),
-  });
-  say(`  recovery decision: ${decision.action}${decision.why ? ` — ${decision.why}` : ''}`);
-
-  if (decision.action === 'refuse') die(decision.why);
-  if (decision.action === 'reuse') {
-    // ── RECONSTRUCT THE ACTUAL BUNDLE AT THE REQUESTED PATH ──
-    //
-    // The previous version wrote `${bundlePath}.recovered.json` and returned. Every downstream step
-    // — offline verification, foreign-checkout verification, persistence — expects `bundlePath`, so
-    // recovery could never actually complete. It reported success and left nothing usable.
-    const bundle = rekorEntryToBundle(decision.entry);
-    if (bundle === null) {
-      die('an existing record was found but a Sigstore bundle could not be reconstructed from it; '
-        + 'failing closed rather than signing a second time');
-    }
-    writeFileSync(bundlePath, JSON.stringify(bundle));
-    // The reconstructed bundle must satisfy the SAME verification the freshly signed one does.
-    const problems = verifyBundle({
-      bundle, artifactBytes: payloadBytes, artifactDigestHex: payloadDigest,
-      policy, trustedRoot,
-      sourceSha: process.env.SOURCE_SHA,
-      runId: process.env.SIGNER_RUN_ID,
-      runAttempt: process.env.SIGNER_RUN_ATTEMPT,
-      workflowDigest: process.env.WORKFLOW_DIGEST,
-      requireDeliveryStanding: true,
-    });
-    if (problems.length > 0) {
-      for (const p of problems) process.stderr.write(`  ${p}\n`);
-      die('the recovered bundle does not verify; refusing to reuse it and refusing to sign again');
-    }
-    say('C19 publish: an existing Rekor record already attests these exact bytes; reconstructed and '
-      + `verified the bundle at ${bundlePath}, performing ZERO signing operations`);
-    return;
-  }
-  if (dryRun) {
-    say('C19 publish: DRY RUN — the log has no record for these bytes, and a real run would sign '
-      + 'exactly once here. Nothing was signed and nothing was published.');
-    return;
-  }
-
-  const r = spawnSync(cosign, ['sign-blob', '--yes', '--bundle', bundlePath, payloadPath],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  if (r.status !== 0) die(`cosign sign-blob failed (exit ${r.status})`);
-  if (!existsSync(bundlePath)) die('cosign reported success but no bundle was persisted');
-  say(`C19 publish: signed once and recorded in Rekor; bundle at ${bundlePath}`);
-}
-
-/**
- * VERIFICATION. Refuses to "succeed" without something to verify — the previous version fell back
- * to a trust-material selftest and exited 0, so a workflow step named "verify the published bundle"
- * verified no bundle at all.
- */
-async function verify({ offline, requireDeliveryStanding, artifactPath, payloadPath, bundlePath }) {
-  if (artifactPath === undefined || bundlePath === undefined || payloadPath === undefined) {
-    die('verify requires --artifact, --payload and --bundle; a verification with nothing to verify '
-      + 'must fail rather than report success');
-  }
-  for (const [flag, path] of [['--artifact', artifactPath], ['--payload', payloadPath], ['--bundle', bundlePath]]) {
-    if (!existsSync(path)) die(`${flag} ${path} does not exist`);
-  }
-  const run = async () => {
-    const { policy, trustedRoot } = loadTrustMaterial(LIB);
-    const bundle = JSON.parse(readFileSync(bundlePath, 'utf8'));
-    const payloadBytes = readFileSync(payloadPath);
-    const artifactBytes = readFileSync(artifactPath);
-    const problems = [];
-
-    // 1 — the payload is canonical, well-formed, and binds the artifact we were handed.
-    // The whole signed contract, against expectations established from GitHub's API rather than
-    // from the document being judged.
-    problems.push(...verifyPayloadDocument(payloadBytes, expectationsFromEnv()));
-    // And the delivered wrapper must be the one the payload names.
-    const wrapperDigest = sha256hex(artifactBytes);
-    if (process.env.EVIDENCE_DIGEST !== undefined && wrapperDigest !== process.env.EVIDENCE_DIGEST) {
-      problems.push(`c19 payload: the delivered artifact hashes to ${wrapperDigest} but the run `
-        + `established ${process.env.EVIDENCE_DIGEST}`);
-    }
-    // 2 — the signature, certificate, identity and log record all agree, over the PAYLOAD bytes.
-    problems.push(...verifyBundle({
-      bundle, artifactBytes: payloadBytes, artifactDigestHex: sha256hex(payloadBytes),
-      policy, trustedRoot,
-      sourceSha: process.env.SOURCE_SHA,
-      runId: process.env.SIGNER_RUN_ID,
-      runAttempt: process.env.SIGNER_RUN_ATTEMPT,
-      workflowDigest: process.env.WORKFLOW_DIGEST,
-      requireDeliveryStanding,
-    }));
-    // 3 — the delegated Sigstore checks, EXECUTED rather than listed.
-    if (requireDeliveryStanding) {
-      problems.push(...runCosignVerify({ payloadPath, bundlePath, offline }));
-    }
-    return problems;
-  };
-  const { result: problems, attempts } = offline
-    ? await withNetworkDenied(run)
-    : { result: await run(), attempts: [] };
-  say(`C19 verify ${offline ? '(OFFLINE — network denied)' : '(ONLINE)'}: `
-    + `${problems.length} finding(s), ${attempts.length} network attempt(s)`);
-  for (const p of problems) process.stderr.write(`  ${p}\n`);
-  if (problems.length > 0) die('verification failed');
-  say('C19 verify: PASS');
-}
-
-/**
- * Build the canonical payload that will actually be signed.
+ * ── THE LEGACY DELIVERY COMMANDS ARE RETIRED ──
  *
- * The signed object is this document, NOT the evidence ZIP. Signing the archive alone would carry
- * no purpose, no domain separation, no nonce, no validity window and no binding to the source run,
- * the finalizer run or the tree the evidence came from — all of which the frozen design requires.
- */
-function buildPayloadFile(outPath) {
-  const need = [
-    'SOURCE_SHA', 'SOURCE_TREE', 'SOURCE_RUN_ID', 'SOURCE_RUN_ATTEMPT', 'SOURCE_EVENT',
-    'FINALIZER_RUN_ID', 'FINALIZER_RUN_ATTEMPT', 'FINALIZER_COMPLETED_AT',
-    'EVIDENCE_ARTIFACT_ID', 'EVIDENCE_ARTIFACT_NAME', 'EVIDENCE_DIGEST',
-    'FINALIZED_INNER_NAME', 'FINALIZED_INNER_DIGEST', 'WORKFLOW_DIGEST',
-  ];
-  const env = {};
-  for (const k of need) {
-    const v = process.env[k];
-    if (v === undefined || v === '') die(`${k} is not set; every binding in the payload is mandatory`);
-    env[k] = v;
-  }
-  const { policy } = loadTrustMaterial(LIB);
-
-  // The validity window is anchored to the FINALIZER's completion time, which is an external,
-  // stable fact about this publication — not to `Date.now()`, which would differ on every retry
-  // and change the payload digest, making the prior entry unfindable.
-  const anchor = Date.parse(env.FINALIZER_COMPLETED_AT);
-  if (!Number.isFinite(anchor)) die('FINALIZER_COMPLETED_AT is not an instant');
-  const iso = (ms) => new Date(ms).toISOString();
-
-  const facts = {
-    sourceSha: env.SOURCE_SHA,
-    sourceTree: env.SOURCE_TREE,
-    sourceRunId: env.SOURCE_RUN_ID,
-    sourceRunAttempt: env.SOURCE_RUN_ATTEMPT,
-    sourceEvent: env.SOURCE_EVENT,
-    finalizerRunId: env.FINALIZER_RUN_ID,
-    finalizerRunAttempt: env.FINALIZER_RUN_ATTEMPT,
-    workflowRef: policy.identity.workflowRef,
-    workflowDigest: env.WORKFLOW_DIGEST,
-    evidenceArtifactId: env.EVIDENCE_ARTIFACT_ID,
-    evidenceArtifactName: env.EVIDENCE_ARTIFACT_NAME,
-    evidenceDigest: env.EVIDENCE_DIGEST,
-    finalizedInnerName: env.FINALIZED_INNER_NAME,
-    finalizedInnerDigest: env.FINALIZED_INNER_DIGEST,
-  };
-  // Derived, not drawn. A random nonce made every retry a different publication.
-  const identity = publicationIdentity(facts);
-
-  const payload = buildPayload('run-anchor', {
-    ...facts,
-    nonce: identity,
-    issuedAt: iso(anchor),
-    notBefore: iso(anchor - 60_000),
-    expiresAt: iso(anchor + 365 * 24 * 3600 * 1000),
-    signerId: 'sigstore-fulcio',
-    keyVersion: 'fulcio-keyless',
-    algorithm: policy.algorithms[0],
-  });
-  const canonical = canonicalize(payload);
-  writeFileSync(outPath, canonical);
-  say(`C19 payload: ${outPath}`);
-  say(`  publication identity ${identity}`);
-  say(`  sha256 ${sha256hex(Buffer.from(canonical, 'utf8'))}  (the signed object; stable across retries)`);
-  say(`  binds finalized inner ${env.FINALIZED_INNER_DIGEST} inside wrapper ${env.EVIDENCE_DIGEST}`);
-}
-
-/**
- * ── THE DELEGATED CHECKS, ACTUALLY EXECUTED ──
+ * `payload`, `publish` and `verify` used to live here, and each of them spawned cosign straight
+ * from $COSIGN or PATH with nothing authenticating it. A wrong-digest executable that touched a
+ * marker and exited 0 was executed and printed `cosign verify-blob: PASS` - the same class of
+ * defect the package verifier had, reachable from a second entry point that the fix to the first
+ * one never touched.
  *
- * `DELEGATED_TO_COSIGN` listed SCT signature verification, full X.509 path validation and canonical
- * bundle validation — and nothing ever invoked cosign. A comment naming a delegate is not
- * delegation; it is a gap with a label on it.
- *
- * This runs the pinned verifier against the bundle with the EXACT certificate identity and issuer,
- * offline against the source-owned trusted root. Its verdict is required for delivery standing:
- * the repository-specific checks in `c19-anchor.mjs` and this stand alongside each other, and
- * neither substitutes for the other.
+ * They are gone rather than guarded. `c19-deliver.mjs` is the sole delivery pipeline: it
+ * authenticates the binary at every execution site, and two commands that can sign is one more
+ * than the design has ever wanted. What remains here is `selftest` and `leftovers`, neither of
+ * which spawns cosign at all.
  */
-function runCosignVerify({ payloadPath, bundlePath, offline }) {
-  const cosign = process.env.COSIGN ?? 'cosign';
-  const { policy } = loadTrustMaterial(LIB);
-  const probe = spawnSync(cosign, ['version'], { encoding: 'utf8' });
-  if (probe.error !== undefined || probe.status !== 0) {
-    return [`c19 cosign: the pinned verifier is not available (${probe.error?.code ?? `exit ${probe.status}`}); `
-      + 'delivery standing requires the delegated Sigstore checks to actually run'];
-  }
-  const args = [
-    'verify-blob',
-    '--bundle', bundlePath,
-    '--certificate-identity', policy.identity.subjectAlternativeName,
-    '--certificate-oidc-issuer', policy.identity.issuer,
-    '--trusted-root', join(LIB, policy.tuf.trustedRootFile),
-  ];
-  if (offline) args.push('--offline');
-  args.push(payloadPath);
-  const r = spawnSync(cosign, args, { encoding: 'utf8' });
-  if (r.status !== 0) {
-    return [`c19 cosign: verify-blob rejected the bundle (exit ${r.status}): `
-      + `${((r.stderr ?? '') + (r.stdout ?? '')).trim().slice(0, 300)}`];
-  }
-  say('  cosign verify-blob: PASS (exact identity and issuer, offline against the pinned root)');
-  return [];
-}
+
 
 /**
  * ── THE WHOLE SIGNED CONTRACT, CHECKED AGAINST INDEPENDENT EXPECTATIONS ──
@@ -694,26 +449,18 @@ const cmd = argv[0];
 if (!invokedDirectly) { /* imported by a control: expose the functions, run nothing */ }
 else if (cmd === 'selftest') await selftest(has('--offline'));
 else if (cmd === 'leftovers') leftovers({ dockerOnly: has('--docker-only') });
-else if (cmd === 'payload') buildPayloadFile(valueOf('--out') ?? die('payload requires --out'));
-else if (cmd === 'publish') {
-  // `await`ed. Without it a rejection became an unhandled promise and the process could exit 0
-  // while publication had failed.
-  await publish({
-    dryRun: has('--dry-run'),
-    recoverOrPublish: has('--recover-or-publish'),
-    artifactPath: valueOf('--artifact'),
-    payloadPath: valueOf('--payload'),
-    bundlePath: valueOf('--bundle'),
-  });
-} else if (cmd === 'verify') {
-  await verify({
-    offline: has('--offline') || !has('--online'),
-    requireDeliveryStanding: has('--require-delivery-standing'),
-    artifactPath: valueOf('--artifact'),
-    payloadPath: valueOf('--payload'),
-    bundlePath: valueOf('--bundle'),
-  });
+/**
+ * `payload`, `publish` and `verify` are RETIRED, and are refused by name rather than falling through
+ * to the usage line - a caller with them in a script should be told they are gone and where the
+ * capability went, not told that "payload" is not a command.
+ */
+else if (cmd === 'payload' || cmd === 'publish' || cmd === 'verify') {
+  process.stderr.write(`C19: '${cmd}' is retired. It spawned cosign with nothing authenticating it, `
+    + 'and delivery now has exactly one pipeline. Use scripts/gate/c19-deliver.mjs '
+    + '<plan|dry-run|publish|verify-offline>, which authenticates the pinned binary before every '
+    + 'execution.\n');
+  process.exit(2);
 } else {
-  process.stderr.write('usage: c19-anchor-cli.mjs <selftest|leftovers|payload|publish|verify> [flags]\n');
+  process.stderr.write('usage: c19-anchor-cli.mjs <selftest|leftovers> [flags]\n');
   process.exit(2);
 }

@@ -24,7 +24,7 @@ it, and the gate recomputes the digest from these bytes on every run.
 | Scanned child manifest | `sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b` |
 | Index integrity check | SHA-256 of the raw returned index manifest is verified to equal the digest in the configured reference **before** any child digest is trusted |
 | Upstream tag (informational) | `postgres:18-alpine` |
-| Second pinned image | `redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241` → `linux/amd64` child `sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a` — **clean at HIGH/CRITICAL, no dispositions** |
+| Second pinned image | `redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241` → `linux/amd64` child `sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a` — **2 HIGH findings, governed by SCX-0008 and SCX-0009** |
 
 The `linux/amd64` child is the one that matters: CI runs on `ubuntu-latest` and the C16
 target descriptor resolves `linux/x64/glibc`. A scanner given no `--platform` follows the
@@ -175,7 +175,9 @@ backdated into this record.**
 
 The image reference is digest-pinned and its bytes have not changed. The trivy advisory database
 has: a scan of the identical child manifest reports **23** findings where it reported 18 on
-2026-08-14, and the gate failed closed on the difference rather than absorbing it.
+2026-08-14, and the gate failed closed on the difference rather than absorbing it. (That count is
+the postgres image as of this amendment; CVE-2026-14456 later added two more, and §3's
+reconciliation table carries the current figures.)
 
 `CVE-2026-46600` is **no longer reported** for this image. It was governed here and became a STALE
 record — an approval covering nothing — which the gate rejects. It is removed. That is a
@@ -237,10 +239,23 @@ can call; it does not prove unreachability under reflection or dynamic dispatch.
 reflects the Go vulnerability database as of the run date. This record therefore expires with
 the rest of the set on **2026-11-05** and is not extended by its stronger basis.
 
-**Current reconciliation.** The postgres image scan reports **23** findings, governed as:
-SCX-0001 (1, `c-ares`) + SCX-0002 (14, `stdlib` risk-accepted) + SCX-0003 (1, `stdlib`
-CRITICAL) + SCX-0004 (1, `stdlib` NOT_AFFECTED) + SCX-0005 (6, `stdlib` NOT_AFFECTED, approved
-2026-08-15) = 23, with 0 unmatched and 0 unused.
+**Current reconciliation.** The postgres image scan reports **25** findings and the redis image
+reports **2**, for 27 in total, governed as:
+
+| Record | Image | Findings |
+|---|---|---|
+| SCX-0001 | postgres | 1 — `c-ares` |
+| SCX-0002 | postgres | 14 — `stdlib`, risk-accepted |
+| SCX-0003 | postgres | 1 — `stdlib`, CRITICAL |
+| SCX-0004 | postgres | 1 — `stdlib`, NOT_AFFECTED |
+| SCX-0005 | postgres | 6 — `stdlib`, NOT_AFFECTED, approved 2026-08-15 |
+| SCX-0006 | postgres | 1 — `libcrypto3`, CVE-2026-14456 |
+| SCX-0007 | postgres | 1 — `libssl3`, CVE-2026-14456 |
+| SCX-0008 | redis | 1 — `libcrypto3`, CVE-2026-14456 |
+| SCX-0009 | redis | 1 — `libssl3`, CVE-2026-14456 |
+
+25 + 2 = 27, with 0 unmatched and 0 unused. Redis is no longer clean: it acquired two findings
+when CVE-2026-14456 was published, and the summary above says so.
 
 
 
@@ -426,8 +441,11 @@ blocking release gate.
 
 ## 5. Review obligations
 
-* Every record expires **2026-11-05** and is rejected by the gate from that date. SCX-0006 to
-  SCX-0009 carry a mandatory re-review no later than that date.
+* Every record expires **2026-11-05** and is rejected by the gate **on** that date — the comparison
+  is `expires_on <= runDate`, so the record is not in force during its stated expiry day. That
+  expiry IS the mandatory re-review deadline for SCX-0006 to SCX-0009; a separate
+  `mandatory_rereview_by` field was removed because it duplicated `expires_on` and nothing
+  validated it, which made it look like a second control while being none.
 * ADR-P0-01 requires a monthly re-pin and re-scan; a re-pin that clears a finding must
   delete the corresponding record, because an unused record fails the gate as stale.
 * Owner and approver must remain distinct parties; a record cannot approve itself.
