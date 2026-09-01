@@ -332,7 +332,9 @@ async function main() {
   // ── 15 persist the offline-verifiable package ────────────────────────────
   const dir = persistDeliveryPackage({
     out, acquisition, payloadPath, bundlePath, libDir: LIB,
-    metadata: buildDeliveryMetadata({ repo, acquisition, policy, built, outcome }),
+    // Derived from the signed payload and the trust policy; `repo` is CHECKED against the
+    // policy's repository rather than accepted.
+    metadata: buildDeliveryMetadata({ repo, policy, built }),
   });
   say(`C19 deliver: delivery package at ${dir}`);
   say(`C19 deliver: publish PASS (${outcome.signings ?? 0} signing operation(s))`);

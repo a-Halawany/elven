@@ -28,7 +28,9 @@ import {
 } from './c19-resolve.mjs';
 import { acquire } from './c19-acquire.mjs';
 import { verifyTufChain } from './c19-tuf.mjs';
-import { buildPayload, canonicalize, domainContext, publicationIdentity, REQUIRED_PAYLOAD_FIELDS } from './c19-attest.mjs';
+import {
+  buildPayload, canonicalize, domainContext, publicationIdentity, REQUIRED_PAYLOAD_FIELDS,
+} from './c19-attest.mjs';
 import {
   loadTrustMaterial, verifyBundle, DELEGATED_TO_COSIGN, DECLARED_OFFLINE_LIMITS,
 } from './c19-anchor.mjs';
@@ -362,22 +364,68 @@ export function verifyFinalBundle({
  * against, and a verifier that had to supply its own would not be verifying this delivery.
  */
 /**
- * The production metadata, built in ONE place so a control can exercise the same construction the
- * publish path uses. Assembling it inline at the call site is what let production omit `repo` and
- * `sourceSha` while a control that supplied them by hand reported a perfect document.
+ * ── THE METADATA IS DERIVED, NOT SUPPLIED ──
+ *
+ * Every field is a function of two things a verifier already has independently: the SIGNED payload,
+ * and the trust policy carried by the source-owned anchor. Nothing here is taken on a caller's
+ * word, because `metadata.json` and `VERIFY.md` are what tell a foreign verifier which repository
+ * to clone and which commit to check out - the bootstrap that selects the supposedly independent
+ * verifier and anchor. A field an attacker can choose is a field that redirects that bootstrap.
+ *
+ * `repo` used to be whatever the caller passed, checked only for being nonempty, so
+ * `attacker/example` was accepted and rendered into the instructions. It now comes from the
+ * anchored policy; a caller may pass it, but only to be checked against that value.
+ *
+ * `signings` is gone. It is an observation about the run that produced the package, reconstructible
+ * from nothing, and presenting it beside authenticated facts invited it to be read as one.
  */
-export function buildDeliveryMetadata({ repo, acquisition, policy, built, outcome }) {
+export function deriveDeliveryMetadata({ payload, policy, repo }) {
+  const identity = policy?.identity;
+  if (identity?.repository === undefined || identity.repository === '') {
+    throw new Error('c19: the anchored trust policy names no repository, so the delivery '
+      + 'instructions cannot be derived; refusing rather than accepting a caller-supplied one');
+  }
+  if (repo !== undefined && String(repo) !== String(identity.repository)) {
+    throw new Error(`c19: the delivery package was asked to name repository ${j(repo)}, but the `
+      + `independently anchored policy names ${j(identity.repository)}. The instructions select the `
+      + 'source a foreign verifier trusts, so they follow the anchor, never the caller');
+  }
   return {
-    repo,
-    // The AUTHENTICATED source SHA - what the verified evidence proves, not what a caller asked
-    // for. A foreign verifier detach-checks-out exactly this value.
-    sourceSha: acquisition?.authed?.sourceSha,
-    innerName: acquisition?.innerName,
-    certificateIdentity: policy?.identity?.subjectAlternativeName,
-    oidcIssuer: policy?.identity?.issuer,
-    publicationIdentity: built?.identity,
-    signings: outcome?.signings ?? 0,
+    schema: DELIVERY_METADATA_SCHEMA,
+    repo: String(identity.repository),
+    // From the SIGNED payload. A foreign verifier detach-checks-out exactly this commit.
+    sourceSha: String(payload?.sourceSha ?? ''),
+    innerName: String(payload?.finalizedInnerName ?? ''),
+    certificateIdentity: String(identity.subjectAlternativeName ?? ''),
+    oidcIssuer: String(identity.issuer ?? ''),
+    // RECOMPUTED from the signed payload rather than carried over from the run that built it.
+    publicationIdentity: publicationIdentity(payload ?? {}),
   };
+}
+
+/** Kept as the production entry point; it derives, and the caller's `repo` is only checked. */
+export function buildDeliveryMetadata({ repo, policy, built }) {
+  const md = deriveDeliveryMetadata({ payload: built?.payload, policy, repo });
+  if (built?.identity !== undefined && md.publicationIdentity !== built.identity) {
+    throw new Error(`c19: the publication identity recomputed from the signed payload is `
+      + `${md.publicationIdentity}, but this run computed ${built.identity}; the package must not `
+      + 'record an identity its own signed bytes do not produce');
+  }
+  return md;
+}
+
+export const DELIVERY_METADATA_SCHEMA = 'eye/c19/delivery-metadata/v1';
+/** Exactly these keys, in this order. An extra key is a finding, not a curiosity. */
+export const DELIVERY_METADATA_KEYS = Object.freeze([
+  'schema', 'repo', 'sourceSha', 'innerName', 'certificateIdentity', 'oidcIssuer',
+  'publicationIdentity',
+]);
+
+/** One encoding, so "regenerate and compare" is a comparison of bytes and not of opinions. */
+export function canonicalDeliveryMetadata(metadata) {
+  const ordered = {};
+  for (const k of DELIVERY_METADATA_KEYS) ordered[k] = metadata[k];
+  return `${JSON.stringify(ordered, null, 2)}\n`;
 }
 
 /** Metadata a persisted package cannot be written without. Each one renders into VERIFY.md. */
@@ -448,8 +496,14 @@ export function persistDeliveryPackage({ out, acquisition, payloadPath, bundlePa
     require0(join(libDir, 'c19-tuf', `${r}.json`), join('tuf', `${r}.json`));
   }
   require0(join(libDir, 'c19-trust.json'), 'policy.json');
+  /**
+   * Written from the DERIVED metadata, in a fixed key order, so a verifier holding the signed
+   * payload and the anchored policy can regenerate these two files byte for byte. They were
+   * exact-inventory filenames whose contents nothing ever read - so replacing them with an
+   * attacker's repository and instructions produced zero findings.
+   */
+  writeFileSync(join(dir, 'metadata.json'), canonicalDeliveryMetadata(metadata));
   writeFileSync(join(dir, 'VERIFY.md'), verifyInstructions(metadata));
-  writeFileSync(join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   return dir;
 }
 
@@ -592,6 +646,65 @@ export function verifyDeliveryPackage({
   }
 
   /**
+   * ── 5b — THE BOOTSTRAP FILES, REGENERATED AND COMPARED ──
+   *
+   * `metadata.json` and `VERIFY.md` are what tell a foreign verifier which repository to clone and
+   * which commit to check out. They were required to be PRESENT and never once read, so replacing
+   * them with an attacker's repository and instructions produced zero findings - the package would
+   * have redirected the very bootstrap that selects the independent verifier and anchor.
+   *
+   * They are not signed, and they do not need to be: every value in them is a function of the
+   * signed payload and the anchored policy, both of which this verifier already holds. So they are
+   * regenerated from those two and compared byte for byte. Anything an attacker changes stops
+   * matching what the signed bytes and the anchor produce.
+   */
+  if (anchor !== undefined && anchor.policy === undefined) {
+    // Fail closed. Silently skipping this because the anchor happened not to carry a policy is how
+    // the check would stop running without anyone noticing.
+    problems.push('c19 package: the source anchor carries no trust policy, so metadata.json and '
+      + 'VERIFY.md cannot be regenerated and compared; they would go unchecked');
+  } else if (anchor?.policy !== undefined) {
+    let expected = null;
+    try {
+      expected = deriveDeliveryMetadata({ payload, policy: anchor.policy });
+    } catch (e) {
+      problems.push(`c19 package: the delivery metadata could not be derived from the signed `
+        + `payload and the anchored policy (${e.message})`);
+    }
+    if (expected !== null) {
+      const rawMeta = present.has('metadata.json') ? readFileSync(p('metadata.json'), 'utf8') : null;
+      const got = rawMeta === null ? null : (() => {
+        try { return JSON.parse(rawMeta); } catch { return undefined; }
+      })();
+      if (got === undefined) problems.push('c19 package: metadata.json is not JSON');
+      else if (got !== null) {
+        for (const k of Object.keys(got)) {
+          if (!DELIVERY_METADATA_KEYS.includes(k)) {
+            problems.push(`c19 package: metadata.json carries unexpected key ${j(k)}; the schema is `
+              + 'exact, because a field nothing reconstructs is a field nothing constrains');
+          }
+        }
+        for (const k of DELIVERY_METADATA_KEYS) {
+          if (String(got[k]) !== String(expected[k])) {
+            problems.push(`c19 package: metadata.json declares ${k}=${j(got[k])}, but the signed `
+              + `payload and the anchored policy give ${j(expected[k])}`);
+          }
+        }
+        if (rawMeta !== canonicalDeliveryMetadata(expected) && problems.length === 0) {
+          problems.push('c19 package: metadata.json is not the canonical encoding of its own '
+            + 'reconstructed content');
+        }
+      }
+      const rawVerify = present.has('VERIFY.md') ? readFileSync(p('VERIFY.md'), 'utf8') : null;
+      if (rawVerify !== null && rawVerify !== verifyInstructions(expected)) {
+        problems.push('c19 package: VERIFY.md does not match the instructions regenerated from the '
+          + 'signed payload and the anchored policy; the file that tells a verifier which source '
+          + 'to trust must not be attacker-chosen');
+      }
+    }
+  }
+
+  /**
    * 6 — the bundle, against exact identity and the trust material FROM THE PACKAGE (now that it
    *     has been proved equal to the anchor), with no live API of any kind.
    */
@@ -674,8 +787,13 @@ function verifyCosignBinary(cosignPath) {
 
 const verifyInstructions = (m) => `# Verifying this delivery offline
 
-Everything needed is in this directory. No GitHub artifact, network call or checkout is required —
-which matters because GitHub artifacts expire and this evidence should outlive them.
+Every ARTIFACT needed is in this directory: no GitHub artifact and no network call, which matters
+because GitHub artifacts expire and this evidence should outlive them.
+
+A checkout IS required, and deliberately so. The files here cannot authenticate themselves — the
+TUF root in this directory would happily authenticate a trusted root substituted alongside it, and
+the instructions you are reading are not the trust root either. The anchor comes from the reviewed
+commit, obtained independently through the review handoff, and is pinned below.
 
 | File | What it is |
 |---|---|

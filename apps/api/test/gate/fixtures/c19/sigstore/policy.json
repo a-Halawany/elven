@@ -12,7 +12,7 @@
   "tuf": {
     "rootFile": "tuf-root.json",
     "trustedRootFile": "trusted-root.json",
-    "trustedRootSha256": "736cbf298e93aca1803195fa15ed91553071a916e466901c721d5a71e8f157e1",
+    "trustedRootSha256": "086f1825d12eb583891632d5dac9e1461303bdd7c7a23bc08ba60c4807f46ea7",
     "minimumVersions": {
       "root": 1,
       "timestamp": 1,

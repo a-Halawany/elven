@@ -6,57 +6,57 @@
     "expires": "2027-01-01T00:00:00Z",
     "consistent_snapshot": true,
     "keys": {
-      "78b9c1fc50893aa3b53db84cada1474079b49e92f92315783b88d2e7bf311169": {
+      "a3682223aea1664af7c40945c9c3168299653746865724c4d7b2381778a53de7": {
         "keytype": "ecdsa",
         "scheme": "ecdsa-sha2-nistp256",
         "keyval": {
-          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYg66vCaBWJ7nNVvDaXd+6why0j/h\n7io73LZ9vGEaowy3VBvDT+5U38dWh9lnE1RVp4itdPvjHns43SDTBo/uwQ==\n-----END PUBLIC KEY-----\n"
+          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdo4RVNs1iMngD+kmYv1mOugnnCFJ\nZxnYhAo0hnnP2F27bJgPSFFY/EzLOvmOiPOuB8Ihmshc2mlEUFq1sh8lPA==\n-----END PUBLIC KEY-----\n"
         }
       },
-      "f8221dc6bd9ed28a91aeb170994039bbc3ada4ea845c319a48924d248f652261": {
+      "bcbd4cb97912608c57a08779bf4e4732c530ef953f5a6c83416e875eed3c1e7c": {
         "keytype": "ecdsa",
         "scheme": "ecdsa-sha2-nistp256",
         "keyval": {
-          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5d0Iw6p02pNP6O9edapFOi/Tnf17\n772GQ/bllNkjsyxInpFjLBwYRGL2cwgireP2yCZR+NoMO2p6Up1Vh2O0uA==\n-----END PUBLIC KEY-----\n"
+          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEiOyL84RR33O5x1HoJrCPQm5QanL6\naplixjLYwO7+W05Ya8a8Xqf9FRpkxBy8cgWw1uOIFA6mvZ72Ui6ZH6rIvg==\n-----END PUBLIC KEY-----\n"
         }
       },
-      "d57c7eb427fbda0fe26d07b34b5f476df5582a8f11d2b3a4dd1ec039a35c4bdb": {
+      "a9468f61da10f8f749fc45b26370ff62675965b48b68ef044de5ba80ce5bc009": {
         "keytype": "ecdsa",
         "scheme": "ecdsa-sha2-nistp256",
         "keyval": {
-          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOXpttyC6nJ8w6cH0u4MapSZFQVjN\nsJLtsGzgbPUFdic6HWa0F64zyac6q8RXP8Cor3D1QA1tlWQ2C5n6mkZmxA==\n-----END PUBLIC KEY-----\n"
+          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvzfoGmZiNUgx7q3jUj2E6R2c/ERa\nGgq27R2EfT5LcF0Uqc6EVd1yKx5dfZBih2887eRmxtvOjVHrnsbOw7E2Yg==\n-----END PUBLIC KEY-----\n"
         }
       },
-      "ca366210954a898969ec255b9b22277cbef94a8f53d8ee7d651387674178f0c8": {
+      "fb1bfcad9e584931ec7c0dd239ad8640862ef10f22c6370399f65c84f1809a4f": {
         "keytype": "ecdsa",
         "scheme": "ecdsa-sha2-nistp256",
         "keyval": {
-          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElsaxwoxVcFfCR8bFe+6SdmvNCbK2\nNdeJHIzXVAvedgXXDQF3m+8RpNWVclYtfU0r1wjXODZpHjm3YIzUHZRi3g==\n-----END PUBLIC KEY-----\n"
+          "public": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHIVF3vqADWO8pvxoYPi5Okz31IYy\nibiHjiTNHIVByDNgTMgpBo39oiElc6cSWzs17honG1fES2ymG6jFREH5/w==\n-----END PUBLIC KEY-----\n"
         }
       }
     },
     "roles": {
       "root": {
         "keyids": [
-          "78b9c1fc50893aa3b53db84cada1474079b49e92f92315783b88d2e7bf311169"
+          "a3682223aea1664af7c40945c9c3168299653746865724c4d7b2381778a53de7"
         ],
         "threshold": 1
       },
       "timestamp": {
         "keyids": [
-          "f8221dc6bd9ed28a91aeb170994039bbc3ada4ea845c319a48924d248f652261"
+          "bcbd4cb97912608c57a08779bf4e4732c530ef953f5a6c83416e875eed3c1e7c"
         ],
         "threshold": 1
       },
       "snapshot": {
         "keyids": [
-          "d57c7eb427fbda0fe26d07b34b5f476df5582a8f11d2b3a4dd1ec039a35c4bdb"
+          "a9468f61da10f8f749fc45b26370ff62675965b48b68ef044de5ba80ce5bc009"
         ],
         "threshold": 1
       },
       "targets": {
         "keyids": [
-          "ca366210954a898969ec255b9b22277cbef94a8f53d8ee7d651387674178f0c8"
+          "fb1bfcad9e584931ec7c0dd239ad8640862ef10f22c6370399f65c84f1809a4f"
         ],
         "threshold": 1
       }
@@ -64,8 +64,8 @@
   },
   "signatures": [
     {
-      "keyid": "78b9c1fc50893aa3b53db84cada1474079b49e92f92315783b88d2e7bf311169",
-      "sig": "304402205337c1baabf4d9aa26c1a9ed4bbd15887d1d51513523be26506f56a91d1ff36502205fc5b07ddb66eae976be0ba7e1f770633963ae9647cdb5450061b2574a3d571d"
+      "keyid": "a3682223aea1664af7c40945c9c3168299653746865724c4d7b2381778a53de7",
+      "sig": "30460221009767dcba07a4eec966381c4b6a89515ee0c685a085b9664ad27668e631b86d220221008275916345ae4e2fb3e6a3fff080a3cf433e59eed16b2e736a3b3ce79506796d"
     }
   ]
 }

@@ -34,6 +34,9 @@ const fixtureAnchor = () => {
     tufRootSha256: h('tuf-root.json'),
     policySha256: h('policy.json'),
     minimumVersions: pol.tuf.minimumVersions,
+    // The POLICY itself, because metadata.json and VERIFY.md are regenerated from it. Omitting it
+    // would leave those two files unchecked while everything still reported green.
+    policy: pol,
   };
 };
 
@@ -42,7 +45,7 @@ const fixtureAnchor = () => {
  * Sigstore fixture. Assembling one by hand and then verifying what we assembled would test the
  * assembly; this tests the step that ships.
  */
-async function buildFixturePackage(p: any, out: string): Promise<string> {
+async function buildFixturePackage(_p: any, out: string): Promise<string> {
   const { rekorEntryToBundle } = await import(/* @vite-ignore */ join(LIB, 'c19-rekor.mjs'));
   const facts = JSON.parse(readFileSync(join(SIGFIX, 'facts.json'), 'utf8'));
   const entries = JSON.parse(readFileSync(join(SIGFIX, 'rekor-entry.json'), 'utf8'));
@@ -52,17 +55,18 @@ async function buildFixturePackage(p: any, out: string): Promise<string> {
   for (const f of ['payload.json', 'finalized-wrapper.zip', INNER, `${INNER}.sha256`]) {
     writeFileSync(join(out, f), readFileSync(join(SIGFIX, f)));
   }
-  return p.persistDeliveryPackage({
+  return _p.persistDeliveryPackage({
     out, libDir: SIGFIX,
     payloadPath: join(out, 'payload.json'), bundlePath: join(out, 'bundle.sigstore.json'),
     acquisition: {
       wrapperPath: join(out, 'finalized-wrapper.zip'),
       innerPath: join(out, INNER), innerName: INNER,
     },
-    metadata: {
-      innerName: INNER, repo: 'a-Halawany/elven', sourceSha: facts.sourceSha,
-      certificateIdentity: facts.identity.subjectAlternativeName, oidcIssuer: facts.identity.issuer,
-    },
+    // DERIVED, exactly as production derives it.
+    metadata: _p.deriveDeliveryMetadata({
+      payload: JSON.parse(readFileSync(join(SIGFIX, 'payload.json'), 'utf8')),
+      policy: JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8')),
+    }),
   });
 }
 
@@ -97,6 +101,13 @@ function stageFixtureInputs(out: string): void {
     writeFileSync(join(out, f), readFileSync(join(SIGFIX, f)));
   }
   writeFileSync(join(out, 'bundle.sigstore.json'), '{}');
+}
+
+/** Rewrite metadata.json through a mutation, keeping it valid JSON. */
+function editMeta(dir: string, fn: (m: Record<string, unknown>) => void): void {
+  const m = JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8'));
+  fn(m);
+  writeFileSync(join(dir, 'metadata.json'), `${JSON.stringify(m, null, 2)}\n`);
 }
 
 /** Flip one byte, so a refusal is attributable to exactly that byte. */
@@ -637,53 +648,67 @@ export function registerC19Pipeline(): void {
     const facts = () => JSON.parse(readFileSync(join(SIGFIX, 'facts.json'), 'utf8'));
 
     /**
-     * The metadata exactly as the publish path builds it — same function, not a copy. The defect
-     * was that the production call site assembled this inline and omitted `repo` and `sourceSha`,
-     * while a control that supplied them by hand rendered a perfect document and reported success.
+    /**
+     * The metadata exactly as the publish path builds it — same function, not a copy. Every field
+     * is DERIVED from the signed payload and the independently anchored policy, because these two
+     * files are the bootstrap telling a foreign verifier which repository to clone and which commit
+     * to check out. A field a caller can choose is a field that redirects that bootstrap.
      */
-    const productionMetadata = async (over: Record<string, unknown> = {}) => {
+    const fixturePolicyDoc = () => JSON.parse(readFileSync(join(SIGFIX, 'policy.json'), 'utf8'));
+    const fixturePayload = () => JSON.parse(readFileSync(join(SIGFIX, 'payload.json'), 'utf8'));
+    const productionMetadata = async (repo?: string) => {
       const p = await load('c19-pipeline.mjs');
-      const f = facts();
-      return p.buildDeliveryMetadata({
-        repo: 'a-Halawany/elven',
-        acquisition: { authed: { sourceSha: f.sourceSha }, innerName: INNER },
-        policy: { identity: { subjectAlternativeName: f.identity.subjectAlternativeName,
-          issuer: f.identity.issuer } },
-        built: { identity: 'a'.repeat(64) },
-        outcome: { signings: 1 },
-        ...over,
-      });
+      return p.deriveDeliveryMetadata({ payload: fixturePayload(), policy: fixturePolicyDoc(), repo });
     };
 
-    it('the production builder supplies the repository and the AUTHENTICATED source SHA', async () => {
-      const m = await productionMetadata();
-      expect(m.repo).toBe('a-Halawany/elven');
-      expect(m.sourceSha).toBe(facts().sourceSha);
-      expect(m.sourceSha).toMatch(/^[0-9a-f]{40}$/);
-      for (const f of (await load('c19-pipeline.mjs')).PACKAGE_METADATA_FIELDS) {
-        expect(m[f], `production metadata must carry ${f}`).toBeTruthy();
-      }
+    it('REFUSES a repository the anchored policy does not name', async () => {
+      const p = await load('c19-pipeline.mjs');
+      // Reproduced: the caller's repo was accepted if merely nonempty, so `attacker/example` was
+      // rendered into the instructions that select the source a foreign verifier trusts.
+      expect(() => p.deriveDeliveryMetadata({
+        payload: fixturePayload(), policy: fixturePolicyDoc(), repo: 'attacker/example',
+      })).toThrow(/independently anchored policy names/);
     });
 
-    it('the SHA comes from the AUTHENTICATED evidence, not from what the caller asked for', async () => {
-      const p = await load('c19-pipeline.mjs');
-      // The caller's `--sha` is a request; the acquisition's `authed.sourceSha` is what the
-      // C17-verified evidence proves. A foreign verifier checks out this value, so it must be the
-      // proven one.
-      const m = p.buildDeliveryMetadata({
-        repo: 'a-Halawany/elven',
-        acquisition: { authed: { sourceSha: 'b'.repeat(40) }, innerName: INNER },
-        policy: { identity: { subjectAlternativeName: 's', issuer: 'i' } },
-      });
-      expect(m.sourceSha).toBe('b'.repeat(40));
+    it('DERIVES the repository from the anchor, so omitting it changes nothing', async () => {
+      const withNone = await productionMetadata();
+      const withRight = await productionMetadata('a-Halawany/elven');
+      expect(withNone.repo).toBe('a-Halawany/elven');
+      expect(withNone).toEqual(withRight);
     });
+
+    it('every field is a function of the signed payload and the anchored policy', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const attest = await load('c19-attest.mjs');
+      const m = await productionMetadata();
+      const payload = fixturePayload();
+      const pol = fixturePolicyDoc();
+      expect(Object.keys(m)).toEqual([...p.DELIVERY_METADATA_KEYS]);
+      expect(m.sourceSha).toBe(payload.sourceSha);
+      expect(m.innerName).toBe(payload.finalizedInnerName);
+      expect(m.certificateIdentity).toBe(pol.identity.subjectAlternativeName);
+      expect(m.oidcIssuer).toBe(pol.identity.issuer);
+      // Recomputed from the signed bytes, not carried over from the run that built the package.
+      expect(m.publicationIdentity).toBe(attest.publicationIdentity(payload));
+      // And nothing unreconstructible rides along as though it were authenticated.
+      expect(m).not.toHaveProperty('signings');
+    });
+
+    it('REFUSES a publication identity this run did not itself compute', async () => {
+      const p = await load('c19-pipeline.mjs');
+      expect(() => p.buildDeliveryMetadata({
+        repo: 'a-Halawany/elven', policy: fixturePolicyDoc(),
+        built: { payload: fixturePayload(), identity: '0'.repeat(64) },
+      })).toThrow(/must not record an identity its own signed bytes do not produce/);
+    });
+
 
     const OMISSIONS = ['repo', 'sourceSha', 'innerName', 'certificateIdentity', 'oidcIssuer'];
     for (const missing of OMISSIONS) {
       it(`REFUSES to persist a production package missing ${missing}`, async () => {
         const p = await load('c19-pipeline.mjs');
         const out = mkdtempSync(join(tmpdir(), 'c19meta-'));
-        const md: Record<string, unknown> = await productionMetadata();
+        const md: Record<string, unknown> = { ...(await productionMetadata()) };
         delete md[missing];
         stageFixtureInputs(out);
         expect(() => p.persistDeliveryPackage({
@@ -914,6 +939,70 @@ export function registerC19Pipeline(): void {
         expect(problems.join('\n')).toMatch(expected);
       }, 180_000);
     }
+
+    /**
+     * ── THE BOOTSTRAP FILES ──
+     *
+     * `metadata.json` and `VERIFY.md` were exact-inventory filenames whose CONTENTS nothing read.
+     * Replacing them with an attacker's repository and instructions produced zero findings, so a
+     * package could redirect the very bootstrap that selects the independent verifier and anchor.
+     * They are not signed and do not need to be: every value in them is a function of the signed
+     * payload and the anchored policy, so they are regenerated from those and compared.
+     */
+    const BOOTSTRAP: Array<[string, (dir: string) => void, RegExp]> = [
+      ['the metadata names an attacker repository',
+        (d) => editMeta(d, (m) => { m.repo = 'attacker/example'; }),
+        /metadata\.json declares repo="attacker\/example"/],
+      ['the metadata names a different source SHA',
+        (d) => editMeta(d, (m) => { m.sourceSha = 'f'.repeat(40); }),
+        /metadata\.json declares sourceSha=/],
+      ['the metadata carries an unexpected key',
+        (d) => editMeta(d, (m) => { m.signings = 0; }),
+        /unexpected key "signings"/],
+      ['the metadata restates a publication identity the payload does not produce',
+        (d) => editMeta(d, (m) => { m.publicationIdentity = '0'.repeat(64); }),
+        /metadata\.json declares publicationIdentity=/],
+      ['VERIFY.md selects an attacker source and anchor',
+        (d) => writeFileSync(join(d, 'VERIFY.md'),
+          '# Verify\n\n    git clone https://github.com/attacker/example src\n'
+          + '    --anchor src/scripts/gate/lib\n'),
+        /VERIFY\.md does not match the instructions regenerated/],
+      ['one byte of VERIFY.md is flipped',
+        (d) => flip(join(d, 'VERIFY.md')),
+        /VERIFY\.md does not match the instructions regenerated/],
+    ];
+    for (const [what, mutate, expected] of BOOTSTRAP) {
+      it(`REFUSES the package when ${what}`, async () => {
+        const p = await load('c19-pipeline.mjs');
+        const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19boot-')));
+        // Baseline first, in the SAME package, so the refusal is attributable to this change only.
+        const before = p.verifyDeliveryPackage({
+          dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+          anchor: fixtureAnchor(), cosignPath: cosign(),
+        });
+        expect(before, `baseline must be clean: ${before.join('\n')}`).toEqual([]);
+        mutate(dir);
+        const after = p.verifyDeliveryPackage({
+          dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+          anchor: fixtureAnchor(), cosignPath: cosign(),
+        });
+        expect(after.length, 'the mutation must be caught').toBeGreaterThan(0);
+        expect(after.join('\n')).toMatch(expected);
+      }, 300_000);
+    }
+
+    it('an anchor with no policy leaves the bootstrap files unchecked, so it is REFUSED', async () => {
+      const p = await load('c19-pipeline.mjs');
+      const dir = await buildFixturePackage(p, mkdtempSync(join(tmpdir(), 'c19nopol-')));
+      const { policy: _dropped, ...withoutPolicy } = fixtureAnchor() as Record<string, unknown>;
+      const problems = p.verifyDeliveryPackage({
+        dir, policy: fixturePolicy(), trustedRoot: fixtureRoot(),
+        anchor: withoutPolicy, cosignPath: cosign(),
+      });
+      // Skipping the check because the anchor happened not to carry a policy is how it would stop
+      // running without anyone noticing.
+      expect(problems.join('\n')).toMatch(/carries no trust policy/);
+    }, 300_000);
 
     it('the package still verifies AFTER the stored TUF timestamp has expired', async () => {
       const p = await load('c19-pipeline.mjs');

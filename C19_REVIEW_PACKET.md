@@ -99,6 +99,7 @@ tampered trusted root fails its digest, and another keeps the rotating-key mista
 | Anchor + pipeline control suites | **PASS** — 213 controls |
 | Persisted production instructions | exact repo and 40-hex SHA, **0 placeholders**; each of the 5 fields refused when omitted |
 | Foreign checkout | pinned and detached at the publication SHA; moving/abbreviated/absent references refused, nothing left behind |
+| Bootstrap files | `metadata.json` and `VERIFY.md` regenerated from the signed payload and the anchored policy and compared byte for byte; 6 single-change differentials refuse, genuine baseline stays at 0 |
 | Genuine package `verify-offline` | **exit 0** — isolation confirmed from inside, pinned cosign executed in-boundary, 0 findings |
 | Real reconstructed bundle | **exactly `reuse`**, zero signing, real verifier and pinned cosign |
 | Package after the stored TUF timestamp's expiry | **still verifies** |
@@ -185,7 +186,7 @@ retrievability from a public repository** until the November expiry, and deletio
 | Guard | push · success · `main` · exact repository · exact source repository · not a fork |
 | Publish gating | `needs: [guard, verify]`, `if: needs.guard.outputs.publishable == 'true'` |
 | Concurrency | keyed on source commit, `cancel-in-progress: false` |
-| Cosign | pinned `v2.4.1`, digest `8b24b946…89249b` **verified before execution** |
+| Cosign | pinned **`v3.1.3`**, per-platform digests in `c19-cosign.json` (linux-amd64 `4629c757b761…`) **verified before execution** |
 | OIDC token | requested in-process by cosign; never written to a file, output, env file or log |
 | Lifecycle workflow | holds **no** `id-token` at any level, and asserts its absence at runtime |
 
@@ -293,6 +294,25 @@ pins. The package carries `tuf/timestamp.json`, `tuf/snapshot.json`, `tuf/target
 verifier had no way to check — and that material is verified against an anchor held independently,
 from the reviewed source SHA. `--anchor` may not be the package directory. The instructions check
 out the exact SHA rather than mutable main, and every required canonical payload field is enforced.
+
+**The package's own instructions are not the trust root.** `metadata.json` and `VERIFY.md` were
+exact-inventory filenames whose *contents* nothing ever read, so replacing them with an attacker's
+repository and instructions produced zero findings — a package could redirect the very bootstrap
+that selects the supposedly independent verifier and anchor. And `buildDeliveryMetadata` accepted
+the caller's `repo` unchanged, checked only for being nonempty, so `attacker/example` was rendered.
+
+Both files are now DERIVED, never supplied: the repository comes from the independently anchored
+policy (a caller may pass one, but only to be checked against it), the source SHA and inner name
+from the signed payload, the certificate identity and issuer from the anchored policy, and the
+publication identity is recomputed from the signed payload rather than carried over from the run
+that built the package. `signings` is gone — it is an observation reconstructible from nothing, and
+presenting it beside authenticated facts invited it to be read as one. During verification both
+files are regenerated from the signed payload and the anchored policy and compared byte for byte,
+with an exact key schema; an anchor carrying no policy is a finding rather than a silent skip.
+
+**The approved repository and SHA are obtained independently, through the review handoff.** The
+package's instructions are a convenience for executing that, not the source of it: the TUF root
+inside a package would equally authenticate a trusted root substituted alongside it.
 
 **Production plumbing, corrected after the fifth round.** Two defects lived only on the production
 path, and the fixture concealed both rather than catching them.
