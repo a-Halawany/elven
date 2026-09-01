@@ -29,12 +29,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -78,12 +78,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -114,12 +114,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-05",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-08-14"
@@ -152,12 +152,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-14",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -203,12 +203,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-08-15",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -254,12 +254,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -297,12 +297,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -340,12 +340,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-09-01"
@@ -383,12 +383,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-01",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64",
+      "evidence_sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
+          "sha256": "88bf12608a4c618c19fae90421302015ed67be80d30ad905620331aece65e76e"
         }
       ],
       "reviewed_on": "2026-09-01"
