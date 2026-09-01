@@ -212,9 +212,15 @@ jobs:
 
       - name: PINS the exact publication SHA
         shell: bash
+        env:
+          # The real head commit, named explicitly. `git rev-parse HEAD` would be the synthetic
+          # merge commit on a pull_request event - a commit that exists nowhere but the runner, so
+          # the evidence would be about an object no reviewer can look up.
+          PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          SHA="$(git rev-parse HEAD)"
+          SHA="$PUBLICATION_SHA"
+          git cat-file -e "$SHA^{commit}" || { echo "::error::$SHA is not a commit here"; exit 1; }
           bash scripts/gate/c19-foreign-checkout.sh "$GITHUB_WORKSPACE" "$SHA" /tmp/pinned
           test "$(git -C /tmp/pinned rev-parse HEAD)" = "$SHA"
           # Detached, because a branch is a moving reference by another name.
@@ -225,9 +231,12 @@ jobs:
 
       - name: REFUSES when the checkout is ADVANCED past the publication SHA
         shell: bash
+        env:
+          PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          PUBLICATION_SHA="$(git rev-parse HEAD)"
+          # A moving clone follows the default branch, so the substitution has to move THAT.
+          git -C "$GITHUB_WORKSPACE" checkout --quiet -B main "$PUBLICATION_SHA"
           # Advance the remote exactly as main advancing after signing would.
           git -C "$GITHUB_WORKSPACE" config user.email c19@example.invalid
           git -C "$GITHUB_WORKSPACE" config user.name c19
