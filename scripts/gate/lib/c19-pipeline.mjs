@@ -36,7 +36,7 @@ import {
 } from './c19-anchor.mjs';
 import { rekorEntryToBundle, bundleMatchesPayload, BUNDLE_MEDIA_TYPE } from './c19-rekor.mjs';
 import {
-  verifyBlobArgv, signBlobArgv, COSIGN_PIN, verifyBinary, assetKey,
+  verifyBlobArgv, signBlobArgv, COSIGN_PIN, authenticateCosign,
 } from './c19-cosign.mjs';
 import { runWithoutNetwork } from './c19-sandbox.mjs';
 
@@ -328,6 +328,10 @@ export async function recoverOrSign({
 }
 
 const defaultSign = ({ cosignPath, bundlePath, payloadPath }) => {
+  // The strictest site of the three: this one MINTS a signature. An unauthenticated binary here
+  // would sign with a tool nobody checked, and the result would be irreversible.
+  const binaryProblems = authenticateCosign(cosignPath);
+  if (binaryProblems.length > 0) throw new Error(binaryProblems[0]);
   const argv = signBlobArgv({ cosignPath, bundlePath, payloadPath });
   const r = spawnSync(argv[0], argv.slice(1), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (r.status !== 0) throw new Error(`c19: cosign sign-blob failed (exit ${r.status})`);
@@ -350,6 +354,13 @@ export function verifyFinalBundle({
     recovery, fetchRun: gh === undefined ? undefined : ((r, a) => gh.runAttempt(r, a)),
   }));
 
+  // The same guard, before the same tool. A verification performed by an unauthenticated binary
+  // establishes nothing about the bundle, however cleanly it exits.
+  const binaryProblems = authenticateCosign(cosignPath);
+  if (binaryProblems.length > 0) {
+    problems.push(...binaryProblems);
+    return { problems, cosignMechanism: 'not-executed' };
+  }
   const argv = verifyBlobArgv({
     cosignPath, bundlePath, payloadPath,
     certificateIdentity: policy.identity.subjectAlternativeName,
@@ -788,9 +799,18 @@ export function verifyDeliveryPackage({
     problems.push('c19 package: no cosign binary was supplied, so the delegated Sigstore checks '
       + `(${DELEGATED_TO_COSIGN.length}) did not run; delivery standing requires BOTH verifiers`);
   } else if (present.has('bundle.sigstore.json') && present.has('trusted-root.json')) {
-    const binary = verifyCosignBinary(cosignPath);
-    if (binary !== null) problems.push(`c19 package: ${binary}`);
-    else {
+    /**
+     * EVERY finding is propagated, and nothing is spawned when there is one.
+     *
+     * This previously called a wrapper that returned null unless `verifyBinary` threw - and
+     * `verifyBinary` returns its findings rather than throwing, so the digest check was discarded
+     * and the path was executed whatever it held. An executable that merely exits 0 produced zero
+     * findings: no authentication, and delivery standing on one verifier instead of two.
+     */
+    const binaryProblems = authenticateCosign(cosignPath);
+    if (binaryProblems.length > 0) {
+      for (const b of binaryProblems) problems.push(`c19 package: ${b}`);
+    } else {
       const argv = verifyBlobArgv({
         cosignPath, bundlePath: p('bundle.sigstore.json'), payloadPath: p('payload.json'),
         certificateIdentity: effectivePolicy?.identity?.subjectAlternativeName,
@@ -832,13 +852,6 @@ const readJsonOrNull = (path) => {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 };
 
-/** The binary must be the pinned one, authenticated BEFORE any code from it runs. */
-function verifyCosignBinary(cosignPath) {
-  try {
-    verifyBinary(cosignPath, assetKey());
-    return null;
-  } catch (e) { return e.message; }
-}
 
 const verifyInstructions = (m) => `# Verifying this delivery offline
 

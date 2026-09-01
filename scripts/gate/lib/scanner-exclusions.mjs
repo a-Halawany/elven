@@ -71,6 +71,7 @@ export const FIELD_TYPES = Object.freeze({
   result_target: 'string',
   reason: 'string',
   compensating_controls: 'string[]',
+  prohibited_use: 'string[]',
   owner: 'string',
   approver: 'string',
   evidence: 'string',
@@ -379,8 +380,27 @@ export function validateRecords(doc, { runDate, root, isTracked, readEvidence })
       if (r.approved_on > runDate) {
         problems.push(`${where}: approved_on ${r.approved_on} is in the future relative to ${runDate}`);
       }
-      if (r.expires_on < runDate) {
-        problems.push(`${where}: EXPIRED — expires_on ${r.expires_on} is before the run date ${runDate}`);
+      /**
+       * `<=`, not `<`. The evidence document says "every record expires 2026-11-05 and is rejected
+       * by the gate from that date", and `<` rejected it only from the 6th - the record stayed in
+       * force through the whole of its stated expiry day. Aligning the code with the sentence that
+       * governs it costs a day of suppression and removes a contradiction.
+       */
+      /**
+       * `prohibited_use` states where the acceptance does NOT apply. It is validated structurally
+       * because an unvalidated field that looks like a control is worse than no field: it reads as
+       * a boundary while being ignorable text.
+       */
+      if (r.prohibited_use !== undefined) {
+        if (!Array.isArray(r.prohibited_use) || r.prohibited_use.length === 0) {
+          problems.push(`${where}: prohibited_use must be a nonempty array of scope strings`);
+        } else if (r.prohibited_use.some((x) => typeof x !== 'string' || x.trim() === '')) {
+          problems.push(`${where}: every prohibited_use entry must be a nonempty string`);
+        }
+      }
+      if (r.expires_on <= runDate) {
+        problems.push(`${where}: EXPIRED — expires_on ${r.expires_on} is not after the run date `
+          + `${runDate}; a record is rejected ON its stated expiry date, not the day after`);
       }
     }
 

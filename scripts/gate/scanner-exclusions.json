@@ -262,8 +262,7 @@
           "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
-      "reviewed_on": "2026-09-01",
-      "mandatory_rereview_by": "2026-11-05"
+      "reviewed_on": "2026-09-01"
     },
     {
       "id": "SCX-0007",
@@ -306,8 +305,7 @@
           "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
-      "reviewed_on": "2026-09-01",
-      "mandatory_rereview_by": "2026-11-05"
+      "reviewed_on": "2026-09-01"
     },
     {
       "id": "SCX-0008",
@@ -350,8 +348,7 @@
           "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
-      "reviewed_on": "2026-09-01",
-      "mandatory_rereview_by": "2026-11-05"
+      "reviewed_on": "2026-09-01"
     },
     {
       "id": "SCX-0009",
@@ -394,8 +391,7 @@
           "sha256": "2f6b8a8d79504ae75892480d6c3e46f50b9f7972d8985cc692284a27ea79ec64"
         }
       ],
-      "reviewed_on": "2026-09-01",
-      "mandatory_rereview_by": "2026-11-05"
+      "reviewed_on": "2026-09-01"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions."

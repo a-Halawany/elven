@@ -426,8 +426,11 @@ blocking release gate.
 
 ## 5. Review obligations
 
-* Every record expires **2026-11-05** and is rejected by the gate from that date. SCX-0006 to
-  SCX-0009 carry a mandatory re-review no later than that date.
+* Every record expires **2026-11-05** and is rejected by the gate **on** that date — the comparison
+  is `expires_on <= runDate`, so the record is not in force during its stated expiry day. That
+  expiry IS the mandatory re-review deadline for SCX-0006 to SCX-0009; a separate
+  `mandatory_rereview_by` field was removed because it duplicated `expires_on` and nothing
+  validated it, which made it look like a second control while being none.
 * ADR-P0-01 requires a monthly re-pin and re-scan; a re-pin that clears a finding must
   delete the corresponding record, because an unused record fails the gate as stale.
 * Owner and approver must remain distinct parties; a record cannot approve itself.

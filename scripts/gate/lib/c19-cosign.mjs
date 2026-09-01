@@ -37,6 +37,35 @@ export const downloadUrl = (key) => `https://github.com/sigstore/cosign/releases
  *
  * Checking after running it would be theatre: the binary has already done whatever it does.
  */
+/**
+ * ── THE ONE GUARD EVERY EXECUTION SITE MUST PASS ──
+ *
+ * `verifyBinary` RETURNS its findings; it does not throw. A caller that wrapped it in try/catch and
+ * returned null unless it threw therefore discarded the digest check entirely, and spawned whatever
+ * sat at the given path. An executable that merely exits 0 then produced a clean verification: no
+ * digest authentication, and delivery standing granted on one verifier instead of two.
+ *
+ * This returns findings for the same reason - the package verifier reports findings, it does not
+ * throw - and every site that is about to spawn cosign calls it and refuses on a nonempty result.
+ * An unsupported or unpinned platform is a finding too, not a silently skipped check.
+ */
+export function authenticateCosign(cosignPath) {
+  if (typeof cosignPath !== 'string' || cosignPath === '') {
+    return ['c19-cosign: no cosign path was supplied, so the pinned binary cannot be authenticated '
+      + 'and must not be executed'];
+  }
+  const key = assetKey();
+  if (key === null) {
+    return [`c19-cosign: no asset is pinned for ${process.platform}/${process.arch}, so no binary `
+      + 'here can be authenticated against the pin; refusing to execute an unverifiable signing tool'];
+  }
+  try {
+    return verifyBinary(cosignPath, key);
+  } catch (e) {
+    return [`c19-cosign: ${cosignPath} could not be read for authentication (${e.message})`];
+  }
+}
+
 export function verifyBinary(path, key) {
   const expected = COSIGN_PIN.assets[key]?.sha256;
   if (expected === undefined) return [`c19-cosign: nothing is pinned for ${key}`];

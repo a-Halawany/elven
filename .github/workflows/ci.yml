@@ -305,6 +305,17 @@ jobs:
             --trivy-cache "$C15_CACHE" \
             --final \
             --expected-sha "$GITHUB_SHA"
+      # BLOCKING. SCX-0006..0009 accept residual risk for CVE-2026-14456 solely because no official
+      # image carries the fixed OpenSSL. An acceptance must not outlive its own justification because
+      # nobody re-checked, so the check runs here, in the required job, on every run - and it FAILS
+      # when a patched image appears, because the good news is what has to interrupt someone.
+      - name: C15 patched-image recheck (blocking; fails when the acceptance expires in fact)
+        run: |
+          set -euo pipefail
+          node scripts/gate/check-patched-images.mjs \
+            --trivy "$C15_OUT/.staged-scanners/trivy" \
+            --cache "$C15_CACHE"
+
       - name: C16 target-resolved closure gate (tracked runner, FINAL, blocking)
         run: |
           set -euo pipefail
