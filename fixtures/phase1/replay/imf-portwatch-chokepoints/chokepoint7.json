@@ -1,0 +1,313 @@
+{
+  "objectIdFieldName": "ObjectId",
+  "globalIdFieldName": "",
+  "fields": [
+    {
+      "name": "portid",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "portname",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "date",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "n_total",
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "name": "capacity",
+      "type": "esriFieldTypeDouble"
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2023-12-28",
+        "year": 2023,
+        "month": 12,
+        "day": 28,
+        "n_cargo": 45,
+        "n_tanker": 13,
+        "n_container": 27,
+        "n_total": 62,
+        "capacity": 3110488
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2023-12-29",
+        "year": 2023,
+        "month": 12,
+        "day": 29,
+        "n_cargo": 46,
+        "n_tanker": 13,
+        "n_container": 28,
+        "n_total": 64,
+        "capacity": 3204119
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2023-12-30",
+        "year": 2023,
+        "month": 12,
+        "day": 30,
+        "n_cargo": 44,
+        "n_tanker": 13,
+        "n_container": 27,
+        "n_total": 61,
+        "capacity": 3066740
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2023-12-31",
+        "year": 2023,
+        "month": 12,
+        "day": 31,
+        "n_cargo": 42,
+        "n_tanker": 12,
+        "n_container": 26,
+        "n_total": 58,
+        "capacity": 2933012
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-01",
+        "year": 2024,
+        "month": 1,
+        "day": 1,
+        "n_cargo": 43,
+        "n_tanker": 13,
+        "n_container": 26,
+        "n_total": 60,
+        "capacity": 3011884
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-02",
+        "year": 2024,
+        "month": 1,
+        "day": 2,
+        "n_cargo": 45,
+        "n_tanker": 13,
+        "n_container": 28,
+        "n_total": 63,
+        "capacity": 3166201
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-03",
+        "year": 2024,
+        "month": 1,
+        "day": 3,
+        "n_cargo": 48,
+        "n_tanker": 14,
+        "n_container": 29,
+        "n_total": 66,
+        "capacity": 3320477
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-04",
+        "year": 2024,
+        "month": 1,
+        "day": 4,
+        "n_cargo": 49,
+        "n_tanker": 14,
+        "n_container": 30,
+        "n_total": 68,
+        "capacity": 3411006
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-05",
+        "year": 2024,
+        "month": 1,
+        "day": 5,
+        "n_cargo": 48,
+        "n_tanker": 14,
+        "n_container": 29,
+        "n_total": 67,
+        "capacity": 3377190
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-06",
+        "year": 2024,
+        "month": 1,
+        "day": 6,
+        "n_cargo": 50,
+        "n_tanker": 15,
+        "n_container": 31,
+        "n_total": 70,
+        "capacity": 3501118
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-07",
+        "year": 2024,
+        "month": 1,
+        "day": 7,
+        "n_cargo": 50,
+        "n_tanker": 14,
+        "n_container": 30,
+        "n_total": 69,
+        "capacity": 3466440
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-08",
+        "year": 2024,
+        "month": 1,
+        "day": 8,
+        "n_cargo": 52,
+        "n_tanker": 15,
+        "n_container": 32,
+        "n_total": 72,
+        "capacity": 3600877
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-11",
+        "year": 2024,
+        "month": 1,
+        "day": 11,
+        "n_cargo": 53,
+        "n_tanker": 16,
+        "n_container": 33,
+        "n_total": 74,
+        "capacity": 3688203
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-12",
+        "year": 2024,
+        "month": 1,
+        "day": 12,
+        "n_cargo": 60,
+        "n_tanker": 17,
+        "n_container": 37,
+        "n_total": 83,
+        "capacity": 4122901
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-13",
+        "year": 2024,
+        "month": 1,
+        "day": 13,
+        "n_cargo": 59,
+        "n_tanker": 17,
+        "n_container": 36,
+        "n_total": 82,
+        "capacity": 4077118
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-14",
+        "year": 2024,
+        "month": 1,
+        "day": 14,
+        "n_cargo": 37,
+        "n_tanker": 11,
+        "n_container": 23,
+        "n_total": 52,
+        "capacity": 2611440
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-15",
+        "year": 2024,
+        "month": 1,
+        "day": 15,
+        "n_cargo": 53,
+        "n_tanker": 15,
+        "n_container": 32,
+        "n_total": 73,
+        "capacity": 3644907
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-16",
+        "year": 2024,
+        "month": 1,
+        "day": 16,
+        "n_cargo": 56,
+        "n_tanker": 16,
+        "n_container": 34,
+        "n_total": 78,
+        "capacity": 3890002
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint7",
+        "portname": "Cape of Good Hope",
+        "date": "2024-01-17",
+        "year": 2024,
+        "month": 1,
+        "day": 17,
+        "n_cargo": 58,
+        "n_tanker": 17,
+        "n_container": 35,
+        "n_total": 80,
+        "capacity": 3977410
+      }
+    }
+  ]
+}

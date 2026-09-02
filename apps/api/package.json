@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "dev": "node --watch --enable-source-maps -r ts-node/register src/main.ts",
@@ -23,6 +23,7 @@
     "ajv-formats": "3.0.1",
     "argon2": "0.45.1",
     "bullmq": "6.0.6",
+    "fast-xml-parser": "5.11.1",
     "ioredis": "^6.0.0",
     "jose": "6.2.8",
     "kysely": "0.29.4",

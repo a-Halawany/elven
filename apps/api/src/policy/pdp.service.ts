@@ -99,6 +99,154 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
   },
+  /*
+   * ── Phase 1: observation (L1) ────────────────────────────────────────────
+   *
+   * Ordered before the generic `objects.` rules because these actions have their
+   * own separation-of-duties shape, and a first-match bundle must see the
+   * specific rule first.
+   *
+   * TWO SEPARATIONS ARE EXPRESSED HERE, and neither is only a policy rule:
+   *   * REGISTER vs. APPROVE. A domain_analyst may register a source contract; a
+   *     collection_manager approves it. The rule that the REGISTRAR MAY NOT BE
+   *     THE APPROVER lives in the database port (observation.approve_source),
+   *     because a policy bundle cannot see who registered what.
+   *   * COLLECT vs. REVIEW. An agent principal may run collection and admit or
+   *     quarantine items; it may NOT release a quarantined item or apply a
+   *     correction. Those need a human collection_manager.
+   */
+  {
+    // Read of any observation state: operators, managers and auditors.
+    actionPrefix: 'observation.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
+    // AUD are durable before any byte moves, and it is not folded into the
+    // general observation read.
+    actionPrefix: 'observation.evidence.retrieve',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    // Approval, lifecycle transitions, rights confirmation, quarantine review,
+    // correction application, agent revocation: the MANAGER surface.
+    actionPrefix: 'observation.source.approve',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.source.transition',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.source.rights',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.quarantine.review',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.correction.apply',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.agent.revoke',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // Registration, agent registration and correction intake: the OPERATOR
+    // surface. A registrar cannot approve what they registered.
+    actionPrefix: 'observation.source.register',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.agent.register',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'observation.correction.receive',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      // A collection agent may RECEIVE a publisher correction it detected; it may
+      // never APPLY one (see observation.correction.apply above).
+      { role: 'collection_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
+    // coverage measurement and sweeper reconciliation. Held by the agent role and
+    // by an operator triggering a collection by hand.
+    actionPrefix: 'observation.',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'collection_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    // Phase 1 ships no human-gate runtime either: consequential decision support
+    // (C3+) cannot be authorized, so it fails closed exactly as `objects.` does.
+    maxConsequence: 'C2',
+  },
   {
     actionPrefix: 'objects.read',
     requiredAnyRole: [

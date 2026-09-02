@@ -1,0 +1,29 @@
+{
+  "set": "ecb-eurusd",
+  "source_key": "ecb-eurusd",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=jsondata&startPeriod=2023-12-01&endPeriod=2024-01-31",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "eurusd.json",
+      "sha256": "e8ab11742ebbd4957e1a81dcc83f4c72b7d4617afe45b1d57c08b874888074a5",
+      "byte_length": 2233,
+      "acquisition_mode": "replay"
+    }
+  ]
+}

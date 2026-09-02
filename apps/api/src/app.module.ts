@@ -8,6 +8,7 @@ import { PolicyModule } from './policy/policy.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { ObjectsModule } from './objects/objects.module.js';
 import { PipelineModule } from './pipeline/pipeline.module.js';
+import { ObservationModule } from './observation/observation.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PipelineModule } from './pipeline/pipeline.module.js';
     AuditModule,
     ObjectsModule,
     PipelineModule,
+    ObservationModule,
   ],
 })
 export class AppModule {}

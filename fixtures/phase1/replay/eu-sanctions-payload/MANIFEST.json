@@ -1,0 +1,42 @@
+{
+  "set": "eu-sanctions-payload",
+  "source_key": "eu-sanctions-payload",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "sanctions-v1.csv",
+      "sha256": "bbd63b8a7c718aed257cfac3d54612c5257ed484dc674909fa905bd44b2eef44",
+      "byte_length": 275,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw&version=2",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "sanctions-v2.csv",
+      "sha256": "aa31d2d7c7f61cc47a442f3683308e51bd547461d1eacc2b940585c8c6a6b121",
+      "byte_length": 282,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-05: three rows differ from v1, driving supersession and CorrectionReceived"
+    }
+  ]
+}

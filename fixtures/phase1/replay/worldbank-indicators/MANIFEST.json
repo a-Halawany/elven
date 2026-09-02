@@ -1,0 +1,41 @@
+{
+  "set": "worldbank-indicators",
+  "source_key": "worldbank-indicators",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://api.worldbank.org/v2/country/DE/indicator/NE.IMP.GNFS.ZS?format=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "de-imports.json",
+      "sha256": "05d3b60ec73e50935ae4b2f50864c26515483fc576361ca0b3e1f7c961f8e33a",
+      "byte_length": 574,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://api.worldbank.org/v2/country/CN/indicator/TX.VAL.MRCH.CD.WT?format=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "cn-exports.json",
+      "sha256": "1b2bd329dd415c756a398f0af2ae238353d391325fa40a9e3c9b13659a72e67f",
+      "byte_length": 610,
+      "acquisition_mode": "replay"
+    }
+  ]
+}

@@ -43,6 +43,30 @@ const schema = z.object({
   'eye.policy.bundle_version': z.string().default('bundle-v1'),
   'eye.audit.seal_every_n_events': z.coerce.number().int().min(10).default(1000),
   'eye.telemetry.redact_fields': z.string().default('password,token,secret,authorization,credential'),
+  // ── Phase 1: evidence vault (PHASE1_PLAN §9, EXC-P1-002 local profile) ──
+  // TWO SEPARATE ROOTS. The service refuses to start if they are equal or nested.
+  'eye.vault.quarantine_root': z.string().default('.eye-local/vault/quarantine'),
+  'eye.vault.evidence_root': z.string().default('.eye-local/vault/evidence'),
+  'eye.vault.max_blob_bytes': z.coerce.number().int().min(1024).default(64 * 1024 * 1024),
+  // ── Phase 1: connector hardening (§8.1) ──
+  'eye.connector.max_redirects': z.coerce.number().int().min(0).max(3).default(3),
+  'eye.connector.request_timeout_ms': z.coerce.number().int().min(100).max(120000).default(20000),
+  'eye.connector.max_response_bytes': z.coerce.number().int().min(1024).default(32 * 1024 * 1024),
+  'eye.connector.max_decompressed_bytes': z.coerce.number().int().min(1024).default(64 * 1024 * 1024),
+  'eye.connector.global_concurrency': z.coerce.number().int().min(1).default(4),
+  'eye.connector.per_source_concurrency': z.coerce.number().int().min(1).default(2),
+  // Replay responder root — the frozen fixture set the deterministic demonstration
+  // serves through the SHIPPING connector code (REPLAY_DATA_MANIFEST §4).
+  'eye.connector.replay_root': z.string().default('fixtures/phase1/replay'),
+  // ── Phase 1: scheduling (§12; the 60-second floor is also a DB constraint) ──
+  'eye.scheduler.min_interval_seconds': z.coerce.number().int().min(60).default(60),
+  'eye.scheduler.enabled': z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === 'true' || v === '1')
+    .default(false),
+  // ── Phase 1: quarantine case time-to-live before the sweeper expires it ──
+  'eye.quarantine.ttl_seconds': z.coerce.number().int().min(60).default(7 * 24 * 3600),
+  'eye.sweeper.run_timeout_seconds': z.coerce.number().int().min(60).default(3600),
 });
 
 export type EyeConfig = z.infer<typeof schema>;
@@ -79,6 +103,20 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_POLICY_BUNDLE_VERSION: 'eye.policy.bundle_version',
   EYE_AUDIT_SEAL_EVERY_N: 'eye.audit.seal_every_n_events',
   EYE_TELEMETRY_REDACT: 'eye.telemetry.redact_fields',
+  EYE_VAULT_QUARANTINE_ROOT: 'eye.vault.quarantine_root',
+  EYE_VAULT_EVIDENCE_ROOT: 'eye.vault.evidence_root',
+  EYE_VAULT_MAX_BLOB_BYTES: 'eye.vault.max_blob_bytes',
+  EYE_CONNECTOR_MAX_REDIRECTS: 'eye.connector.max_redirects',
+  EYE_CONNECTOR_TIMEOUT_MS: 'eye.connector.request_timeout_ms',
+  EYE_CONNECTOR_MAX_RESPONSE_BYTES: 'eye.connector.max_response_bytes',
+  EYE_CONNECTOR_MAX_DECOMPRESSED_BYTES: 'eye.connector.max_decompressed_bytes',
+  EYE_CONNECTOR_GLOBAL_CONCURRENCY: 'eye.connector.global_concurrency',
+  EYE_CONNECTOR_PER_SOURCE_CONCURRENCY: 'eye.connector.per_source_concurrency',
+  EYE_CONNECTOR_REPLAY_ROOT: 'eye.connector.replay_root',
+  EYE_SCHEDULER_MIN_INTERVAL: 'eye.scheduler.min_interval_seconds',
+  EYE_SCHEDULER_ENABLED: 'eye.scheduler.enabled',
+  EYE_QUARANTINE_TTL_SECONDS: 'eye.quarantine.ttl_seconds',
+  EYE_SWEEPER_RUN_TIMEOUT_SECONDS: 'eye.sweeper.run_timeout_seconds',
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): EyeConfig {

@@ -1,0 +1,55 @@
+{
+  "set": "imf-portwatch-chokepoints",
+  "source_key": "imf-portwatch-chokepoints",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint4%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint4.json",
+      "sha256": "4a56d12eb5c32cf19aedf53332b308b12083917c35f60d6c773bd83b693f8bba",
+      "byte_length": 7492,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-04: the 2024-01-13 row omits `n_total`, exercising schema drift against a zero-tolerance contract"
+    },
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint1%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint1.json",
+      "sha256": "7fdc2f2afce34035e4a9e069da0b41563e56475acf8be9f32a28dd26b966b327",
+      "byte_length": 7308,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint7%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint7.json",
+      "sha256": "02d8713c17e1e77963b239209b1424a874ae8c5d29e830271f6baee2b7caeabd",
+      "byte_length": 6794,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-08: 2024-01-09 and 2024-01-10 are absent, so completeness must report insufficient_evidence"
+    }
+  ]
+}

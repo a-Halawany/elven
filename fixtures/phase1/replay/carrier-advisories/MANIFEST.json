@@ -1,0 +1,67 @@
+{
+  "set": "carrier-advisories",
+  "source_key": "carrier-advisories",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "upload://advisories/rotterdam-berth-2024-01-13.pdf",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/pdf"
+      },
+      "file": "rotterdam-berth-2024-01-13.pdf",
+      "sha256": "19510bd14e91ac4d73ccdfc5820e6adfccbdbbcd8ad0d1ea71f98b723fa5913c",
+      "byte_length": 374,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "upload://advisories/carrier-reroute-notice-2024-01-14.pdf",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/pdf"
+      },
+      "file": "carrier-reroute-notice-2024-01-14.pdf",
+      "sha256": "42debcce561054d549db014b728ba6ded98ce350726beeb5c06ec4efc4cc93de",
+      "byte_length": 476,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-03: an embedded-file marker sets active_content_risk; the PDF is stored opaque and never parsed or rendered"
+    },
+    {
+      "url": "upload://advisories/port-congestion-2024-01-15.pdf",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/pdf"
+      },
+      "file": "port-congestion-2024-01-15.pdf",
+      "sha256": "bf7138fe909177b0515dfc90585a16ca1105ab8729ec67f3870cfeda039d89aa",
+      "byte_length": 361,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "upload://advisories/withdrawn-capacity-notice-2024-01-16.pdf",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/pdf"
+      },
+      "file": "withdrawn-capacity-notice-2024-01-16.pdf",
+      "sha256": "9661100bf32bd640345e8aacfba86ac264aa364eac903f430138a55ea112f3ea",
+      "byte_length": 388,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-09: the advisory the operator later withdraws, exercising withdrawal handling"
+    }
+  ]
+}

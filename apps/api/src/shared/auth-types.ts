@@ -21,6 +21,11 @@ export interface AuthenticatedPrincipal {
   homeScope: Scope;
   homeTenantId: string | null;
   homeDomainId: string | null;
-  assurance: 'password' | 'break_glass' | 'bootstrap_rotation' | 'system';
+  /**
+   * How the principal was authenticated. `agent_grant` is a collection agent
+   * acting under its registered grant (PHASE1_PLAN §11): it presents no password,
+   * and recording it as one would misstate the audit trail.
+   */
+  assurance: 'password' | 'break_glass' | 'bootstrap_rotation' | 'system' | 'agent_grant';
   bindings: RoleBinding[];
 }

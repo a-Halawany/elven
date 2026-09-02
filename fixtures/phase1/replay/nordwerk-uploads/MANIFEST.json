@@ -1,0 +1,68 @@
+{
+  "set": "nordwerk-uploads",
+  "source_key": "nordwerk-internal",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "upload://nordwerk/inventory-2024Q1.csv",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "inventory-2024Q1.csv",
+      "sha256": "b705ff8799300387e495a307ca487b8e082ac1a3ff984a949e85ae6b0a106211",
+      "byte_length": 338,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-01: a leading `=` formula-risk cell, classified and recorded but never evaluated"
+    },
+    {
+      "url": "upload://nordwerk/shipments-2024Q1.csv",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "shipments-2024Q1.csv",
+      "sha256": "3ea236ccaa3e18fef42985f57efca2adca577c97796e13c8ebf16800e6f44350",
+      "byte_length": 456,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "upload://nordwerk/bom-2024Q1.docx",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      "file": "bom-2024Q1.docx",
+      "sha256": "7ac2fe820fc2dd5dd3b5b3695aae15f6c8e0fd298e5d20b81a99194f8d100f49",
+      "byte_length": 169,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-02: an archive entry escaping the extraction root, rejected before any expansion"
+    },
+    {
+      "url": "upload://nordwerk/inventory-2024Q1-mislabelled.csv",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "inventory-2024Q1-mislabelled.csv",
+      "sha256": "21548769cd0581dfcf852da3ed8c79fff8e006431e2880270946ce1d787be31e",
+      "byte_length": 155,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-07: declared .csv, sniffed as ZIP — declared-versus-sniffed disagreement that changes handling"
+    }
+  ]
+}

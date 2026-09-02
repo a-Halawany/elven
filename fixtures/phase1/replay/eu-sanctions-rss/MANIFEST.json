@@ -1,0 +1,57 @@
+{
+  "set": "eu-sanctions-rss",
+  "source_key": "eu-sanctions-rss",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "context_band": {
+    "start": "2023-12-01T00:00:00Z",
+    "end": "2024-01-31T00:00:00Z"
+  },
+  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://webgate.ec.europa.eu/fsd/fsf/public/rss",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/rss+xml; charset=utf-8",
+        "last-modified": "Sun, 14 Jan 2024 08:05:53 GMT"
+      },
+      "file": "feed-pre.xml",
+      "sha256": "4db9633d912dee8550e45a0a885cadc882cc8eaa0576869907a9088dd148d81d",
+      "byte_length": 857,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://webgate.ec.europa.eu/fsd/fsf/public/rss?state=post",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/rss+xml; charset=utf-8",
+        "last-modified": "Sun, 14 Jan 2024 08:05:53 GMT"
+      },
+      "file": "feed-post.xml",
+      "sha256": "21342ac8364ac5d94b3846624717e044e264e199fd25dbcb13dfcb4205b91173",
+      "byte_length": 857,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://webgate.ec.europa.eu/fsd/fsf/public/rss?state=corrected",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/rss+xml; charset=utf-8",
+        "last-modified": "Sun, 14 Jan 2024 08:05:53 GMT"
+      },
+      "file": "feed-corrected.xml",
+      "sha256": "fc56f3c5bdc1e05eac6cedaf6ff5cb4d091d2965d6a249f4ee88d20b066fbc83",
+      "byte_length": 857,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-06: guid `fsf-csv-1.1` reappears with a NEW pubDate — a correction, not a replay"
+    }
+  ]
+}

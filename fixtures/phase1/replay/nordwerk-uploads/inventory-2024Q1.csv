@@ -1,0 +1,6 @@
+synthetic,record_id,component_id,on_hand,safety_stock,weekly_consumption,cover_weeks
+true,SYN-INV-001,SYN-PART-MAG,63400,40000,9200,6.9
+true,SYN-INV-002,SYN-PART-PWR,21800,15000,1800,12.1
+true,SYN-INV-003,SYN-PART-BRG,88000,30000,6100,14.4
+true,SYN-INV-004,SYN-PART-HSG,14500,8000,4200,3.5
+true,SYN-INV-005,SYN-PART-MAG,=SUM(D2:D5),0,0,0
