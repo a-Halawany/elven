@@ -2,6 +2,13 @@
 
 **Status: NOT MERGED · NOT SIGNED · NOT PUBLISHED.** Nothing in this branch has reached Rekor.
 
+> **SUPERSEDED — this line was true when written and is false now.** PR #21 merged at
+> 2026-09-01T16:41:53Z with `reviews=0`, and three Rekor publications have since occurred
+> (log indices 2678296492, 2681035221, 2684653822). The original wording is kept because it is the
+> historical record of what this packet claimed at the time. Current status, the reconciled
+> chronology and the process exception are in
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md).
+
 This packet was assembled by the same agent that wrote the change. It is **not** an independent
 review and must not be read as one; it exists so that an independent review has a complete and
 honest target.

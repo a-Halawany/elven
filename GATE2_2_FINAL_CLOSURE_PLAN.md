@@ -3927,6 +3927,13 @@ property actually proved.
 offline verification, least-privilege isolation, permanent controls and the full delivery chain
 are.
 
+> **STILL GOVERNING, AND NOT YET SATISFIED BY AN INDEPENDENT PARTY.** These criteria are claimed
+> complete by the implementer; three publications exist and their evidence is enumerated in
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §3–§4. The
+> independence this section demands is exactly what remains outstanding: every merge in this
+> repository carries `reviews=0`, and the first C19 publication reached the public log before any
+> review existed. C19 must not be described as closed on the strength of the signatures alone.
+
 ## C19.8 The decision this design stops at
 
 Implementation is blocked on one choice that is the owner's, not the implementer's: **which

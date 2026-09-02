@@ -6,6 +6,12 @@
 >
 > **Branch** `phase1-build-packet`, cut from main at **`e35996483a6b827603e04cac4d52101d27ca5269`**
 > — the commit at which Phase 0 closed.
+>
+> **CORRECTED.** `e3599648` is the commit at which the C19 implementation was completed and
+> published. It is **not** a commit at which Phase 0 was independently accepted: no pull request in
+> this repository has been reviewed by a second party. See
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §2 and §6. Approval or
+> merging of this packet is Phase 1 scope approval and is **not** Phase 0 acceptance.
 
 ---
 
