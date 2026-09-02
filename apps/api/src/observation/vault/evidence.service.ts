@@ -46,19 +46,37 @@ export interface RetrievalResult {
 export class EvidenceService {
   constructor(private readonly vault: VaultService) {}
 
+  /**
+   * The evidence browser lists the CURRENT version of each object.
+   *
+   * Every version is retained and reachable — through the detail view's version
+   * history and through a known-at query — but a list that returned v1 and v2 as
+   * two rows would show one corrected object as two pieces of evidence, and an
+   * operator acting on that list would act on both.
+   */
   async list(cap: ObservationReads, sourceId: string | null, limit: number): Promise<EvidenceSummary[]> {
     let q = cap
       .readCanonicalObjects()
       .selectAll()
       .where('object_type' as never, '=', 'EVD' as never)
       .orderBy('recorded_at' as never, 'desc')
-      .limit(Math.min(limit, 500));
+      .limit(Math.min(limit, 500) * 4);
     if (sourceId !== null) {
       // Provenance carries the source, so filtering by source needs no join and
       // no denormalised column that could drift from the object.
       q = q.where('provenance_ref' as never, 'like', `SRC:${sourceId}@%` as never);
     }
-    return (await q.execute()) as EvidenceSummary[];
+    const rows = (await q.execute()) as EvidenceSummary[];
+    const current = new Map<string, EvidenceSummary>();
+    for (const r of rows) {
+      const prev = current.get(r.object_id);
+      if (prev === undefined || Number(r.object_version) > Number(prev.object_version)) {
+        current.set(r.object_id, r);
+      }
+    }
+    return [...current.values()]
+      .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
+      .slice(0, Math.min(limit, 500));
   }
 
   /**

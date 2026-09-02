@@ -523,64 +523,113 @@ export class CollectionOrchestrator {
       return { correction: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
     }
 
-    const out = await this.pipeline.write<CorrectionApplyResult, AcquisitionWrites>(
-      a.envelope, a.principal, route, ObservationCapability.acquisition,
-      async (cap, scope) => {
-        // The submitter's claim is VERIFIED against what this domain holds for
-        // this source. A correction naming objects it has no relationship to is
-        // the spoofed-correction case, and those ids are reported as rejected
-        // rather than quietly ignored.
-        const { resolved, rejected } = await this.corrections.resolveAffected(
-          cap, caseRow.source_id, a.affectedEvdIds);
+    /*
+     * THE AFFECTED SET IS RESOLVED BEFORE THE CAPABILITY IS MINTED.
+     *
+     * Gate-2.2 C6 requires an operation to name the objects it will write in
+     * advance, and a correction writes a new version of each object it
+     * supersedes. So the submitter's claim is verified first, in its own governed
+     * read, and the write operation then declares exactly the objects that
+     * survived that verification. An id invented inside the handler could not
+     * have been declared, and the database refuses it — which is what makes the
+     * spoofed-correction defence structural rather than a check someone could
+     * forget to write.
+     */
+    const read = {
+      principal: a.principal, tenantId: a.tenantId, domainId: a.domainId,
+      correlationId: a.envelope.correlation_id, purposeId: a.envelope.purpose_id ?? 'observation',
+    };
+    const verification = await this.readGoverned(read, 'observation.read.corrections', 'COR', a.caseId,
+      async (cap) => this.corrections.resolveAffected(cap, caseRow.source_id, a.affectedEvdIds));
 
-        if (resolved.length === 0) {
+    if (verification.resolved.length === 0) {
+      const out = await this.pipeline.write<CorrectionApplyResult, AcquisitionWrites>(
+        a.envelope, a.principal, route, ObservationCapability.acquisition,
+        async (cap, scope) => {
           const r = await this.corrections.reject(
             cap, scope, a.envelope.correlation_id, a.caseId,
-            `no claimed object could be resolved to evidence of this source: ${rejected.map((x) => x.reason).join('; ')}`);
+            `no claimed object could be resolved to evidence of this source: ${verification.rejected.map((x) => x.reason).join('; ')}`);
           return {
-            result: { ...r, rejectedClaims: rejected },
+            result: { ...r, rejectedClaims: verification.rejected },
             targetType: 'COR', targetId: a.caseId, targetVersion: '1', outboxEvent: null,
           };
-        }
+        });
+      return { correction: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+    }
 
-        const priorRows = (await cap
-          .readCanonicalObjects()
-          .selectAll()
-          .where('object_id' as never, 'in', resolved.map((r) => r.object_id) as never)
-          .execute()) as Array<Record<string, unknown>>;
-        const latest = new Map<string, Record<string, unknown>>();
-        for (const row of priorRows) {
-          const id = String(row['object_id']);
-          const prev = latest.get(id);
-          if (prev === undefined || Number(row['object_version']) > Number(prev['object_version'])) {
-            latest.set(id, row);
+    // A bounded declared set per operation (the capability permits 32). A
+    // correction spanning more objects is applied as several governed
+    // operations, each declaring its own set, rather than by widening the bound.
+    const BATCH = 32;
+    const batches: Array<typeof verification.resolved> = [];
+    for (let i = 0; i < verification.resolved.length; i += BATCH) {
+      batches.push(verification.resolved.slice(i, i + BATCH));
+    }
+
+    const superseded: Array<{ object_id: string; from: number; to: number }> = [];
+    let lastReceipt = { policyDecisionId: '', auditSeq: 0 };
+    for (let b = 0; b < batches.length; b += 1) {
+      const batch = batches[b] as typeof verification.resolved;
+      const isLast = b === batches.length - 1;
+      const out = await this.pipeline.write<CorrectionApplyResult, AcquisitionWrites>(
+        { ...a.envelope, message_id: newId() },
+        a.principal,
+        { ...route, writableTargets: batch.map((x) => x.object_id) },
+        ObservationCapability.acquisition,
+        async (cap, scope) => {
+          const priorRows = (await cap
+            .readCanonicalObjects()
+            .selectAll()
+            .where('object_id' as never, 'in', batch.map((r) => r.object_id) as never)
+            .execute()) as Array<Record<string, unknown>>;
+          const latest = new Map<string, Record<string, unknown>>();
+          for (const row of priorRows) {
+            const id = String(row['object_id']);
+            const prev = latest.get(id);
+            if (prev === undefined || Number(row['object_version']) > Number(prev['object_version'])) {
+              latest.set(id, row);
+            }
           }
-        }
-
-        const r = await this.corrections.apply(
-          cap, scope, `principal:${a.principal.principalId}`, a.envelope.correlation_id,
-          a.caseId, caseRow.kind as 'correction' | 'withdrawal' | 'supersession',
-          a.reason.length > 0 ? a.reason : caseRow.reason,
-          resolved, [...latest.values()], a.envelope.purpose_id ?? 'observation');
-
-        return {
-          result: {
-            ...r, rejectedClaims: rejected,
-            // §10.2 in the RESPONSE as well as the record: we state what we
-            // resolved and, in words, what we did not.
-            propagationScope: { resolved: r.superseded, unresolved: UNRESOLVED_PROPAGATION },
-          },
-          targetType: 'COR', targetId: a.caseId, targetVersion: '1',
-          outboxEvent: {
-            eventType: 'CorrectionReceived',
-            payload: {
-              case_id: a.caseId, source_id: caseRow.source_id, kind: caseRow.kind,
-              propagation_scope: { resolved: r.superseded, unresolved: UNRESOLVED_PROPAGATION },
+          const r = await this.corrections.apply(
+            cap, scope, `principal:${a.principal.principalId}`, a.envelope.correlation_id,
+            a.caseId, caseRow.kind as 'correction' | 'withdrawal' | 'supersession',
+            a.reason.length > 0 ? a.reason : caseRow.reason,
+            batch, [...latest.values()], a.envelope.purpose_id ?? 'observation',
+            // The case is closed once, on the LAST batch: closing it halfway
+            // through would claim an application that had not finished. The
+            // closing batch records every supersession the whole apply produced,
+            // including the earlier batches'.
+            isLast, superseded);
+          return {
+            result: {
+              ...r, rejectedClaims: verification.rejected,
+              propagationScope: { resolved: r.superseded, unresolved: UNRESOLVED_PROPAGATION },
             },
-          },
-        };
-      });
-    return { correction: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+            targetType: 'COR', targetId: a.caseId, targetVersion: '1',
+            outboxEvent: isLast ? {
+              eventType: 'CorrectionReceived',
+              payload: {
+                case_id: a.caseId, source_id: caseRow.source_id, kind: caseRow.kind,
+                propagation_scope: {
+                  resolved: [...superseded, ...r.superseded],
+                  unresolved: UNRESOLVED_PROPAGATION,
+                },
+              },
+            } : null,
+          };
+        });
+      superseded.push(...(out.result.superseded ?? []));
+      lastReceipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+    }
+
+    return {
+      correction: {
+        caseId: a.caseId, state: 'applied' as const,
+        superseded, rejectedClaims: verification.rejected,
+        propagationScope: { resolved: superseded, unresolved: UNRESOLVED_PROPAGATION },
+      },
+      receipt: lastReceipt,
+    };
   }
 
   // ───────────────────────── coverage ─────────────────────────

@@ -86,7 +86,13 @@ export class CorrectionsService {
   ): Promise<{ resolved: AffectedObject[]; rejected: Array<{ object_id: string; reason: string }> }> {
     const resolved: AffectedObject[] = [];
     const rejected: Array<{ object_id: string; reason: string }> = [];
+    // A claim naming the same object twice is ONE claim. Left undeduplicated it
+    // would try to supersede the same version twice in one operation, which the
+    // canonical store correctly refuses — after the operation had already begun.
+    const seen = new Set<string>();
     for (const id of claimedEvdIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
       const rows = (await cap
         .readCanonicalObjects()
         .selectAll()
@@ -136,6 +142,15 @@ export class CorrectionsService {
     affected: AffectedObject[],
     priorRows: Array<Record<string, unknown>>,
     purposeId: string,
+    /**
+     * Whether this call completes the case. A correction affecting more objects
+     * than one capability may declare is applied as several governed operations;
+     * the case is closed on the last of them, so it never claims an application
+     * that has not finished.
+     */
+    closesCase = true,
+    /** Supersessions already produced by earlier batches of the same apply. */
+    alreadySuperseded: Array<{ object_id: string; from: number; to: number }> = [],
   ): Promise<{ caseId: string; state: 'applied'; superseded: Array<{ object_id: string; from: number; to: number }> }> {
     const superseded: Array<{ object_id: string; from: number; to: number }> = [];
 
@@ -218,13 +233,15 @@ export class CorrectionsService {
       superseded.push({ object_id: a.object_id, from: a.object_version, to: nextVersion });
     }
 
-    await cap.closeCorrectionCase({
-      caseId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
-      outcome: 'applied',
-      affectedResolved: superseded,
-      failureReason: null,
-      eventId: newId(), correlationId,
-    });
+    if (closesCase) {
+      await cap.closeCorrectionCase({
+        caseId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
+        outcome: 'applied',
+        affectedResolved: [...alreadySuperseded, ...superseded],
+        failureReason: null,
+        eventId: newId(), correlationId,
+      });
+    }
 
     return { caseId, state: 'applied', superseded };
   }

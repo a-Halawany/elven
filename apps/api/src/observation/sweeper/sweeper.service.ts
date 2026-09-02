@@ -25,7 +25,7 @@ import type { Db } from '../../shared/db.js';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
-import { ObservationCapability } from '../observation.capabilities.js';
+import { ObservationCapability, type ObservationReads } from '../observation.capabilities.js';
 import { VaultService } from '../vault/vault.service.js';
 import * as fault from '../fault-injection.js';
 
@@ -50,6 +50,38 @@ export class SweeperService {
     private readonly vault: VaultService,
   ) {}
 
+  /**
+   * Every read here is a CONSEQUENTIAL READ under the sweeping principal's
+   * authority. Reading through the ordinary application pool returns nothing —
+   * row-level security has no tenant to compare against outside a governed
+   * context — and a sweeper that saw no manifests would classify every blob in
+   * the volume as an orphan, which is precisely the wrong answer to be confident
+   * about.
+   */
+  private async read<T>(
+    principal: AuthenticatedPrincipal, tenantId: string, domainId: string,
+    correlationId: string, purposeId: string, objectType: string,
+    fn: (cap: ObservationReads) => Promise<T>,
+  ): Promise<T> {
+    const envelope: Envelope = {
+      message_id: newId(), scope: 'DOMAIN', tenant_id: tenantId, domain_id: domainId,
+      principal_id: `principal:${principal.principalId}`, purpose_id: purposeId,
+      action: 'observation.read.sweeper', side_effect_class: 'none', consequence_class: 'C1',
+      object_type: objectType, object_id: null, schema_version: 'v1',
+      issued_at: new Date().toISOString(), clock_quality: 'trusted',
+      correlation_id: correlationId, trace_id: `sweep-${correlationId.slice(0, 8)}`,
+      payload_digest: EMPTY_PAYLOAD_DIGEST,
+    };
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      {
+        scope: 'DOMAIN', tenantId, domainId,
+        action: 'observation.read.sweeper', objectType, objectId: null,
+      },
+      ObservationCapability.read, async (cap) => fn(cap));
+    return out.result;
+  }
+
   async sweep(
     principal: AuthenticatedPrincipal,
     tenantId: string,
@@ -63,13 +95,13 @@ export class SweeperService {
     };
 
     // ── 1. Quarantine cases past their TTL without a terminal state ──────────
-    const staleCases = (await this.db
-      .selectFrom('observation.quarantine_current' as never)
-      .selectAll()
-      .where('state' as never, '=', 'open' as never)
-      .where('expires_at' as never, '<', new Date() as never)
-      .limit(200)
-      .execute()) as Array<{ case_id: string }>;
+    const staleCases = await this.read(principal, tenantId, domainId, correlationId, purposeId, 'QAR',
+      async (cap) => (await cap
+        .readQuarantine().selectAll()
+        .where('state' as never, '=', 'open' as never)
+        .where('expires_at' as never, '<', new Date() as never)
+        .limit(200)
+        .execute()) as Array<{ case_id: string }>);
 
     for (const c of staleCases) {
       fault.at('f36.sweeper_between_classify_and_act');
@@ -93,17 +125,17 @@ export class SweeperService {
 
     // ── 2. Runs started but never terminated, past the run timeout ───────────
     const cutoff = new Date(Date.now() - this.cfg['eye.sweeper.run_timeout_seconds'] * 1000);
-    const stuckRuns = (await this.db
-      .selectFrom('observation.collection_runs_current' as never)
-      .selectAll()
-      .where('state' as never, '=', 'started' as never)
-      .where('last_event_at' as never, '<', cutoff as never)
-      .limit(200)
-      .execute()) as Array<{
+    const stuckRuns = await this.read(principal, tenantId, domainId, correlationId, purposeId, 'RUN',
+      async (cap) => (await cap
+        .readRuns().selectAll()
+        .where('state' as never, '=', 'started' as never)
+        .where('last_event_at' as never, '<', cutoff as never)
+        .limit(200)
+        .execute()) as Array<{
         run_id: string; source_id: string; contract_version: number;
         agent_principal_id: string; agent_version: string; code_digest: string;
         connector: string; connector_version: string; acquisition_mode: string;
-      }>;
+      }>);
 
     for (const r of stuckRuns) {
       try {
@@ -129,19 +161,19 @@ export class SweeperService {
     // ── 3. Quarantine blobs whose case closed as admitted but whose tombstone
     //       never completed. The tombstone is idempotent, so re-running it is
     //       always safe and always finishes the job (F26/F27). ────────────────
-    const admittedCases = (await this.db
-      .selectFrom('observation.quarantine_current' as never)
-      .selectAll()
-      .where('state' as never, '=', 'admitted' as never)
-      .limit(200)
-      .execute()) as Array<{ case_id: string; manifest_id: string | null }>;
+    const admittedCases = await this.read(principal, tenantId, domainId, correlationId, purposeId, 'QAR',
+      async (cap) => (await cap
+        .readQuarantine().selectAll()
+        .where('state' as never, '=', 'admitted' as never)
+        .limit(200)
+        .execute()) as Array<{ case_id: string; manifest_id: string | null }>);
     for (const c of admittedCases) {
       if (c.manifest_id === null) continue;
-      const m = (await this.db
-        .selectFrom('observation.blob_manifests' as never)
-        .selectAll()
-        .where('manifest_id' as never, '=', c.manifest_id as never)
-        .executeTakeFirst()) as { locator: string; vault: string } | undefined;
+      const m = await this.read(principal, tenantId, domainId, correlationId, purposeId, 'EVD',
+        async (cap) => (await cap
+          .readManifests().selectAll()
+          .where('manifest_id' as never, '=', c.manifest_id as never)
+          .executeTakeFirst()) as { locator: string; vault: string } | undefined);
       if (m === undefined || m.vault !== 'quarantine') continue;
       if (!(await this.vault.exists('quarantine', { tenantId, domainId }, m.locator))) continue;
       try {
@@ -165,7 +197,8 @@ export class SweeperService {
     // through the manifest), and they are QUARANTINED FOR INVESTIGATION rather
     // than deleted: bytes that reached the evidence volume without a record are
     // exactly the thing a reviewer will want to see.
-    report.orphanCandidates = await this.reconcileOrphanCandidates(tenantId, domainId, report);
+    report.orphanCandidates = await this.reconcileOrphanCandidates(
+      principal, tenantId, domainId, correlationId, purposeId, report);
 
     return report;
   }
@@ -176,7 +209,8 @@ export class SweeperService {
    * database does not know about, so a database-first sweep could never find one.
    */
   private async reconcileOrphanCandidates(
-    tenantId: string, domainId: string, report: SweepReport,
+    principal: AuthenticatedPrincipal, tenantId: string, domainId: string,
+    correlationId: string, purposeId: string, report: SweepReport,
   ): Promise<number> {
     const dir = join(this.vault.rootFor('evidence'), tenantId, domainId);
     let names: string[];
@@ -186,13 +220,12 @@ export class SweeperService {
       return 0; // nothing stored for this domain yet
     }
     const known = new Set(
-      ((await this.db
-        .selectFrom('observation.blob_manifests' as never)
-        .select('locator' as never)
-        .where('vault' as never, '=', 'evidence' as never)
-        .where('tenant_id' as never, '=', tenantId as never)
-        .where('domain_id' as never, '=', domainId as never)
-        .execute()) as Array<{ locator: string }>).map((r) => r.locator),
+      (await this.read(principal, tenantId, domainId, correlationId, purposeId, 'EVD',
+        async (cap) => (await cap
+          .readManifests().select('locator' as never)
+          .where('vault' as never, '=', 'evidence' as never)
+          .limit(20000)
+          .execute()) as Array<{ locator: string }>)).map((r) => r.locator),
     );
 
     let orphans = 0;
@@ -209,13 +242,17 @@ export class SweeperService {
         continue;
       }
       orphans += 1;
-      // Recorded, NOT removed. The report carries it to the operator; the bytes
-      // stay where they are for investigation.
-      report.poisonItems.push({
-        kind: 'orphan_candidate',
-        ref: locator,
-        reason: 'evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, unreachable through every retrieval path.',
-      });
+      // Recorded, NOT removed: the bytes stay where they are for investigation.
+      // A BOUNDED SAMPLE is carried in the report — a list that repeats one
+      // sentence two hundred times tells an operator less than a count and five
+      // examples, not more.
+      if (orphans <= 5) {
+        report.poisonItems.push({
+          kind: 'orphan_candidate',
+          ref: locator,
+          reason: 'evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, unreachable through every retrieval path.',
+        });
+      }
     }
     return orphans;
   }

@@ -1282,7 +1282,8 @@ CREATE OR REPLACE FUNCTION observation.record_manifest(
 ) RETURNS void
 SECURITY DEFINER SET search_path = observation, ctx, public, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM observation.assert_authority(ARRAY['observation.item.admit', 'observation.item.quarantine']);
+  PERFORM observation.assert_authority(ARRAY[
+    'observation.item.admit', 'observation.item.quarantine', 'observation.quarantine.review']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
   -- The locator's OWN scope segments must be this scope. The vault port checks
   -- the same thing on the filesystem side, independently.
@@ -2196,8 +2197,11 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
   v_targets := string_to_array(v_bound, ',');
-  IF array_length(v_targets, 1) > 8 THEN
-    RAISE EXCEPTION 'target binding denied: a capability may declare at most 8 objects' USING ERRCODE = '42501';
+  -- A bounded set, not an open one. A correction legitimately supersedes several
+  -- objects in one governed operation; anything larger is performed as several
+  -- operations, each declaring its own set, rather than by widening this.
+  IF array_length(v_targets, 1) > 32 THEN
+    RAISE EXCEPTION 'target binding denied: a capability may declare at most 32 objects' USING ERRCODE = '42501';
   END IF;
   -- Every declared entry must be a UUID. A set containing anything else is
   -- refused outright rather than being partially honoured.

@@ -369,8 +369,250 @@ for (const s of registered) {
   }
 }
 
-/* 10. summary */
-console.log('\n10. overview');
+/* 10. evidence custody and a safe download */
+console.log('\n10. evidence custody');
+const evidenceList = await call(obs('/evidence/list'),
+  asOperator(dvorak, 'observation.read.evidence', 'EVD'), { limit: 500 }, dvorak.token);
+let corridorEvd = null;
+if (evidenceList.ok) {
+  // The 14 January chokepoint row: the trough of the corridor collapse, and the
+  // object the storyboard opens.
+  for (const e of evidenceList.body.evidence ?? []) {
+    const detail = await call(obs(`/evidence/${e.object_id}/get`),
+      asOperator(dvorak, 'observation.read.evidence', 'EVD', e.object_id), {}, dvorak.token);
+    if (!detail.ok) continue;
+    const obsPayload = detail.body.observation?.payload;
+    if (obsPayload?.item_key?.includes('features:2024-01-14') && obsPayload?.source_key === 'imf-portwatch-chokepoints') {
+      // Three chokepoints publish 14 January. The storyboard opens BAB EL-MANDEB
+      // — chokepoint4 — so the bytes are read to find it, exactly as an operator
+      // would open the row and look at it.
+      const dl = await call(obs(`/evidence/${e.object_id}/download`),
+        asOperator(dvorak, 'observation.evidence.retrieve', 'EVD', e.object_id), {}, dvorak.token);
+      if (!dl.ok) continue;
+      const body = Buffer.from(dl.body.download.base64, 'base64').toString('utf8');
+      if (!body.includes('chokepoint4')) continue;
+      corridorEvd = { id: e.object_id, detail: detail.body };
+      break;
+    }
+  }
+}
+if (corridorEvd !== null) {
+  const d = corridorEvd.detail;
+  console.log(`  ✓ EVD ${corridorEvd.id.slice(0, 8)}… — the 2024-01-14 chokepoint row`);
+  console.log(`      custody entries: ${d.custody.length}`);
+  console.log(`      four times: event ${fmt(d.fourTimes.event)} · observation ${fmt(d.fourTimes.observation)} · record ${fmt(d.fourTimes.record)}`);
+  const a = d.evidence.payload.authenticity;
+  console.log(`      authenticity: transport ${a.transport_endpoint} · bytes ${a.byte_integrity} · origin ${a.source_origin} · CONTENT ${a.content_authenticity}`);
+  const dl = await call(obs(`/evidence/${corridorEvd.id}/download`),
+    asOperator(dvorak, 'observation.evidence.retrieve', 'EVD', corridorEvd.id), {}, dvorak.token);
+  if (dl.ok) {
+    const bytes = Buffer.from(dl.body.download.base64, 'base64');
+    console.log(`      download: ${dl.body.download.byteLength} B · ${dl.body.download.contentDisposition} · integrity ${dl.body.download.integrity}`);
+    console.log(`      bytes: ${bytes.toString('utf8').replace(/\s+/g, ' ').slice(0, 90)}…`);
+  } else {
+    failures += 1;
+    console.error(`  ✗ download refused: ${dl.status} ${dl.body?.message ?? ''}`);
+  }
+} else {
+  console.log('  · the 2024-01-14 corridor row was not located in the evidence list');
+}
+
+/* 11. quarantine review — release requires a reason and a second operator */
+console.log('\n11. quarantine review');
+const qList = await call(obs('/quarantine/list'),
+  asOperator(dvorak, 'observation.read.quarantine', 'QAR'), { state: 'open' }, dvorak.token);
+const cases = qList.ok ? qList.body.cases ?? [] : [];
+for (const c of cases) {
+  console.log(`  · ${c.item_key.slice(0, 60)} — ${c.reason_class}: ${String(c.reason).slice(0, 90)}`);
+}
+const traversal = cases.find((c) => c.reason_class === 'path_traversal');
+if (traversal !== undefined) {
+  // A release without a reason must be refused, and an agent must not be able to
+  // release its own quarantine.
+  const noReason = await call(obs(`/quarantine/${traversal.case_id}/review`),
+    asOperator(dvorak, 'observation.quarantine.review', 'QAR', traversal.case_id),
+    { decision: 'discard', reason: 'no' }, dvorak.token);
+  console.log(noReason.ok
+    ? '  ✗ a review without an adequate reason was accepted'
+    : `  ✓ review without an adequate reason refused (${noReason.status})`);
+  if (noReason.ok) failures += 1;
+
+  const byRegistrar = await call(obs(`/quarantine/${traversal.case_id}/review`),
+    asOperator(hoffmann, 'observation.quarantine.review', 'QAR', traversal.case_id),
+    { decision: 'discard', reason: 'attempting review without the collection_manager role' }, hoffmann.token);
+  console.log(byRegistrar.ok
+    ? '  ✗ an operator without collection_manager was able to review a quarantine case'
+    : `  ✓ review refused to an operator without collection_manager (${byRegistrar.status})`);
+  if (byRegistrar.ok) failures += 1;
+
+  const discarded = note('discard the path-traversal archive', await call(
+    obs(`/quarantine/${traversal.case_id}/review`),
+    asOperator(dvorak, 'observation.quarantine.review', 'QAR', traversal.case_id),
+    {
+      decision: 'discard',
+      reason: 'archive entry escapes the extraction root; the bytes are retained under their quarantine manifest for review',
+    }, dvorak.token));
+  void discarded;
+}
+const drift = cases.find((c) => c.reason_class === 'schema_drift');
+if (drift !== undefined) {
+  note('release the schema-drift row after review', await call(
+    obs(`/quarantine/${drift.case_id}/review`),
+    asOperator(dvorak, 'observation.quarantine.review', 'QAR', drift.case_id),
+    {
+      decision: 'release',
+      reason: 'the publisher confirmed the row is genuine and that n_total was omitted upstream; admitting it with the gap recorded',
+    }, dvorak.token));
+}
+
+/* 12. the world corrects itself */
+console.log('\n12. correction and withdrawal');
+const payloadSource = registered.find((s) => s.contract.source_key === 'eu-sanctions-payload');
+if (payloadSource !== undefined) {
+  const evidence = await call(obs('/evidence/list'),
+    asOperator(dvorak, 'observation.read.evidence', 'EVD'),
+    { sourceId: payloadSource.sourceId, limit: 50 }, dvorak.token);
+  const affected = (evidence.ok ? evidence.body.evidence ?? [] : []).map((e) => e.object_id);
+
+  const opened = must('publisher republication received', await call(obs('/corrections/submit'),
+    asOperator(hoffmann, 'observation.correction.receive', 'COR'),
+    {
+      sourceId: payloadSource.sourceId, kind: 'correction', channel: 'rss-republication',
+      publisherRef: 'fsf-csv-1.1 @ Sun, 14 Jan 2024 08:05:53 GMT',
+      reason: 'the publisher republished the consolidated list; three rows differ from the version we hold',
+      affectedEvdIds: affected,
+    }, hoffmann.token));
+
+  if (opened !== null) {
+    // A SPOOFED correction: an object id that is not evidence of this source.
+    const spoof = await call(obs(`/corrections/${opened.correction.caseId}/apply`),
+      asOperator(dvorak, 'observation.correction.apply', 'COR', opened.correction.caseId),
+      { decision: 'apply', affectedEvdIds: [randomUUID()], reason: 'spoofed claim' }, dvorak.token);
+    const rejected = spoof.ok && spoof.body.correction?.state === 'rejected';
+    console.log(rejected
+      ? '  ✓ a correction naming evidence of no known source was rejected'
+      : '  ✗ a spoofed correction claim was not rejected');
+    if (!rejected) failures += 1;
+
+    // The instant BEFORE the correction lands. A known-at query at this moment
+    // must still reproduce exactly what an operator saw then.
+    const beforeCorrection = new Date().toISOString();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const reopened = must('correction case reopened for the genuine claim', await call(obs('/corrections/submit'),
+      asOperator(hoffmann, 'observation.correction.receive', 'COR'),
+      {
+        sourceId: payloadSource.sourceId, kind: 'correction', channel: 'rss-republication',
+        publisherRef: 'fsf-csv-1.1 @ Sun, 14 Jan 2024 08:05:53 GMT',
+        reason: 'the publisher republished the consolidated list; three rows differ from the version we hold',
+        affectedEvdIds: affected,
+      }, hoffmann.token));
+
+    if (reopened !== null) {
+      const applied = must('correction applied', await call(
+        obs(`/corrections/${reopened.correction.caseId}/apply`),
+        asOperator(dvorak, 'observation.correction.apply', 'COR', reopened.correction.caseId),
+        { decision: 'apply', affectedEvdIds: affected, reason: 'publisher republication verified against the feed' },
+        dvorak.token));
+      if (applied !== null) {
+        const c = applied.correction;
+        console.log(`      superseded: ${(c.superseded ?? []).map((x) => `${x.object_id.slice(0, 8)}… v${x.from}→v${x.to}`).join(', ')}`);
+        console.log(`      propagation resolved:  ${(c.propagationScope?.resolved ?? []).length} object(s)`);
+        console.log(`      propagation unresolved: ${c.propagationScope?.unresolved}`);
+
+        // KNOWN-AT: the pre-correction state is still reproducible.
+        const target = (c.superseded ?? [])[0];
+        if (target !== undefined) {
+          const before = await call(obs(`/evidence/${target.object_id}/get`),
+            asOperator(dvorak, 'observation.read.evidence', 'EVD', target.object_id),
+            { knownAt: beforeCorrection }, dvorak.token);
+          const now = await call(obs(`/evidence/${target.object_id}/get`),
+            asOperator(dvorak, 'observation.read.evidence', 'EVD', target.object_id), {}, dvorak.token);
+          const beforeV = before.ok ? Number(before.body.evidence.object_version) : null;
+          const nowV = now.ok ? Number(now.body.evidence.object_version) : null;
+          console.log(`      known-at reproduces v${beforeV}; current is v${nowV} — nothing was overwritten`);
+          if (beforeV === null || nowV === null || beforeV >= nowV) {
+            failures += 1;
+            console.error('  ✗ the pre-correction state was not reproducible');
+          }
+        }
+      }
+    }
+  }
+}
+
+// The withdrawal beat: DEF-09, the advisory the publisher later withdraws.
+const advisorySource = registered.find((s) => s.contract.source_key === 'carrier-advisories');
+if (advisorySource !== undefined) {
+  const evidence = await call(obs('/evidence/list'),
+    asOperator(dvorak, 'observation.read.evidence', 'EVD'),
+    { sourceId: advisorySource.sourceId, limit: 50 }, dvorak.token);
+  const withdrawn = (evidence.ok ? evidence.body.evidence ?? [] : [])
+    .filter((e) => String(e.payload?.locator ?? '').length > 0)
+    .slice(0, 1)
+    .map((e) => e.object_id);
+  if (withdrawn.length > 0) {
+    const opened = must('withdrawal received', await call(obs('/corrections/submit'),
+      asOperator(hoffmann, 'observation.correction.receive', 'COR'),
+      {
+        sourceId: advisorySource.sourceId, kind: 'withdrawal', channel: 'operator',
+        publisherRef: 'withdrawn-capacity-notice-2024-01-16.pdf',
+        reason: 'the publisher withdrew this capacity notice',
+        affectedEvdIds: withdrawn,
+      }, hoffmann.token));
+    if (opened !== null) {
+      const applied = must('withdrawal applied', await call(
+        obs(`/corrections/${opened.correction.caseId}/apply`),
+        asOperator(dvorak, 'observation.correction.apply', 'COR', opened.correction.caseId),
+        { decision: 'apply', affectedEvdIds: withdrawn, reason: 'publisher withdrawal confirmed' },
+        dvorak.token));
+      if (applied !== null) {
+        const target = withdrawn[0];
+        const dl = await call(obs(`/evidence/${target}/download`),
+          asOperator(dvorak, 'observation.evidence.retrieve', 'EVD', target), {}, dvorak.token);
+        console.log(dl.ok
+          ? '  ✗ withdrawn evidence still served its bytes'
+          : `  ✓ withdrawn evidence no longer serves its bytes (${dl.status}); the record and its history remain`);
+        if (dl.ok) failures += 1;
+      }
+    }
+  }
+}
+
+/* 13. projections rebuild from the event log */
+console.log('\n13. projection rebuild (A11)');
+const rebuilt = await call(obs('/projections/verify'),
+  asOperator(dvorak, 'observation.read.projections', 'SRC'), {}, dvorak.token);
+if (rebuilt.ok) {
+  for (const r of rebuilt.body.projections ?? []) {
+    const drift = Number(r.mismatched_rows);
+    console.log(`  ${drift === 0 ? '✓' : '✗'} ${r.projection}: live ${r.live_rows} · rebuilt ${r.rebuilt_rows} · mismatched ${r.mismatched_rows}`);
+    if (drift !== 0) failures += 1;
+  }
+}
+
+/* 14. deterministic health replay */
+console.log('\n14. deterministic health replay (A6)');
+for (const s of registered.filter((x) => x.state === 'active').slice(0, 3)) {
+  const r = await call(obs(`/sources/${s.sourceId}/health/replay`),
+    asOperator(dvorak, 'observation.read.health', 'SRC', s.sourceId), {}, dvorak.token);
+  if (r.ok) {
+    console.log(`  ${r.body.deterministic ? '✓' : '✗'} ${s.contract.source_key}: ${r.body.timeline.length} transition(s), deterministic=${r.body.deterministic}`);
+    if (!r.body.deterministic) failures += 1;
+  }
+}
+
+/* 15. orphan reconciliation */
+console.log('\n15. sweeper');
+const sweep = await call(obs('/sweep'), asOperator(dvorak, 'observation.sweeper.reconcile', 'RUN'), {}, dvorak.token);
+if (sweep.ok) {
+  const r = sweep.body.sweep;
+  console.log(`  ✓ expired ${r.expiredCases} · failed runs ${r.failedRuns} · orphan candidates ${r.orphanCandidates} · tombstones completed ${r.pendingTombstones}`);
+  for (const p of r.poisonItems ?? []) console.log(`      · ${p.kind} ${String(p.ref).slice(0, 40)}: ${p.reason.slice(0, 90)}`);
+}
+
+/* 16. summary */
+console.log('\n16. overview');
 const overview = await call(obs('/overview'), asOperator(dvorak, 'observation.read.overview', 'SRC'), {}, dvorak.token);
 if (overview.ok) {
   const c = overview.body.counts;
@@ -378,6 +620,10 @@ if (overview.ok) {
   console.log(`  evidence objects ${c.evidenceObjects} · open quarantine ${c.openQuarantineCases} · open corrections ${c.openCorrections}`);
   const rr = overview.body.replayRatio;
   console.log(`  replay share: ${rr.byObject ?? '—'}% by object · ${rr.byBytes ?? '—'}% by bytes`);
+}
+
+function fmt(v) {
+  return v == null ? 'none recorded' : String(v).replace('T', ' ').replace('.000Z', 'Z');
 }
 
 console.log('\n=== seed complete ===');
