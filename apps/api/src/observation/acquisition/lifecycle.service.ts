@@ -889,6 +889,9 @@ export class AcquisitionLifecycle {
     return {
       sourceId: contract.source_id,
       sourceKey: contract.source_key,
+      replaySet: String(
+        (contract.contract as { security_and_operations?: { replay_set?: string } })
+          .security_and_operations?.replay_set ?? contract.source_key),
       contractVersion: contract.contract_version,
       acquisitionMode: contract.acquisition_mode,
       authorityClass: contract.authority_class,

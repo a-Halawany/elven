@@ -52,7 +52,7 @@ export class RssConnector implements Connector {
 
     if (binding.acquisitionMode === 'replay') {
       const replay = new ReplayResponder(ctx.replayRoot);
-      const got = await replay.fetch(binding.sourceKey, endpoint);
+      const got = await replay.fetch(binding.replaySet, endpoint);
       if (got === null) {
         return { items: [], checkpoint: ctx.checkpoint ?? {}, bytesTransferred: 0, requestsMade: 1 };
       }

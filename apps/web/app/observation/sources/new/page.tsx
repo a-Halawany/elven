@@ -64,6 +64,11 @@ export default function RegisterSourcePage() {
   const [universeVersion, setUniverseVersion] = useState('v1');
   const [denominator, setDenominator] = useState('');
   const [correctionChannel, setCorrectionChannel] = useState('');
+  const [replaySet, setReplaySet] = useState('');
+  // Contract-declared transport framing (§2, §10.1).
+  const [itemPath, setItemPath] = useState('');
+  const [itemKeyField, setItemKeyField] = useState('');
+  const [itemTimeField, setItemTimeField] = useState('');
 
   const list = (s: string) => s.split(',').map((x) => x.trim()).filter((x) => x !== '');
 
@@ -116,6 +121,15 @@ export default function RegisterSourcePage() {
         required_fields: list(requiredFields),
         drift_tolerance: driftTolerance,
         max_bytes: 8388608,
+        // Framing is all-or-nothing: a path without a key field would produce
+        // items nothing can address.
+        ...(itemPath !== '' && itemKeyField !== ''
+          ? {
+              item_path: itemPath,
+              item_key_field: itemKeyField,
+              ...(itemTimeField !== '' ? { item_time_field: itemTimeField } : {}),
+            }
+          : {}),
       },
       freshness_expectation: { threshold_seconds: freshnessSeconds, expected_interval: expectedInterval },
       coverage_expectations: {
@@ -126,6 +140,9 @@ export default function RegisterSourcePage() {
         not_applicable_reason: null,
       },
       correction_channel: correctionChannel,
+      // Declared for a replay contract so the fixture set it reads from is
+      // visible in the contract rather than inferred from the key.
+      ...(acquisitionMode === 'replay' && replaySet !== '' ? { replay_set: replaySet } : {}),
     },
     lifecycle: {
       contract_version: 1,
@@ -235,6 +252,16 @@ export default function RegisterSourcePage() {
             <Field label="Denominator derivation" value={denominator} onChange={setDenominator} wide
               hint="How the expected count for a window is derived. A coverage percentage without this is a number nobody can check." />
             <Field label="Correction channel" value={correctionChannel} onChange={setCorrectionChannel} wide />
+            <Field label="Item path" value={itemPath} onChange={setItemPath}
+              hint="For an array payload, the path to the array. Each element then becomes a child evidence object that is an exact byte range of the preserved parent. Leave blank to admit the payload whole." />
+            <Field label="Item key field" value={itemKeyField} onChange={setItemKeyField}
+              hint="Which field ADDRESSES an element. This says nothing about what the field means." />
+            <Field label="Item time field" value={itemTimeField} onChange={setItemTimeField}
+              hint="Which field carries the publisher's own time for an element. Without it, coverage cannot place items on a timeline and reports completeness as unknown." />
+            {acquisitionMode === 'replay' && (
+              <Field label="Replay set" value={replaySet} onChange={setReplaySet} wide
+                hint="The frozen fixture set this contract reads from. Defaults to the source key when left blank." />
+            )}
           </div>
         )}
 

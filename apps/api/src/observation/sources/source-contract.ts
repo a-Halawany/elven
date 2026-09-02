@@ -103,6 +103,15 @@ export interface SourceContractV1 {
       not_applicable_reason?: string | null;
     };
     correction_channel: string;
+    /**
+     * The frozen replay set this contract reads from when
+     * `acquisition_mode: 'replay'`. Defaults to the source key.
+     *
+     * It is DECLARED rather than inferred so the coupling between a contract and
+     * a fixture set is visible in the contract itself — an implicit convention
+     * is a coupling nobody reviews.
+     */
+    replay_set?: string;
   };
   lifecycle: {
     contract_version: number;

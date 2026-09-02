@@ -108,6 +108,9 @@ export const SOURCE_CONTRACTS = [
         not_applicable_reason: null,
       },
       correction_channel: 'publisher re-publication of the series; no dedicated corrections feed',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'imf-portwatch-chokepoints',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -166,6 +169,9 @@ export const SOURCE_CONTRACTS = [
         not_applicable_reason: null,
       },
       correction_channel: 'the RSS feed itself: a republished guid with a new pubDate is the publisher’s correction signal',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'eu-sanctions-rss',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -226,6 +232,9 @@ export const SOURCE_CONTRACTS = [
         not_applicable_reason: null,
       },
       correction_channel: 'republication of the payload under a new version, announced on the RSS feed',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'eu-sanctions-payload',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -285,6 +294,9 @@ export const SOURCE_CONTRACTS = [
         not_applicable_reason: null,
       },
       correction_channel: 'republication of the series; no dedicated corrections feed',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'ecb-eurusd',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -347,6 +359,9 @@ export const SOURCE_CONTRACTS = [
           'the publisher operates no corrections channel; revisions are issued as new annual releases, so correction lag has no meaning for this source',
       },
       correction_channel: 'none — revisions are issued as new annual releases',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'worldbank-indicators',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -408,6 +423,9 @@ export const SOURCE_CONTRACTS = [
           'the source indexes an open corpus of unknown extent, so no denominator exists and a coverage percentage would be invented',
       },
       correction_channel: 'none — outlets correct their own articles outside this index',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'gdelt-discovery',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -474,6 +492,9 @@ export const SOURCE_CONTRACTS = [
           'the data arrives by manual export, so publication-to-admission latency measures operator scheduling rather than the source, and no corrections channel exists',
       },
       correction_channel: 'a corrected export supplied by the operator',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'un-comtrade-upload',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -539,6 +560,9 @@ export const SOURCE_CONTRACTS = [
           'the records are synthetic internal data supplied by an operator: there is no publisher to lag behind, no corrections channel, and no external origin to authenticate',
       },
       correction_channel: 'a corrected upload supplied by the operator',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'nordwerk-uploads',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -602,6 +626,9 @@ export const SOURCE_CONTRACTS = [
           'advisories are published on event, so the set of advisories that should exist in a window is not knowable and any denominator would be invented',
       },
       correction_channel: 'the publisher issues a withdrawal or a superseding advisory',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'carrier-advisories',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
@@ -661,6 +688,9 @@ export const SOURCE_CONTRACTS = [
         not_applicable_reason: null,
       },
       correction_channel: 'publisher re-publication of the series',
+      // The frozen set this contract reads from, declared rather than inferred
+      // from the source key: an implicit convention is a coupling nobody reviews.
+      replay_set: 'imf-portwatch-ports',
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },

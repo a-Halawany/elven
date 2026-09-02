@@ -65,7 +65,13 @@ export default function EvidencePage() {
                 return (
                   <tr key={String(e['object_id'])}>
                     <td data-label="Evidence">
-                      <Link href={`/observation/evidence/${String(e['object_id'])}`} style={{ color: 'var(--eye-color-accent-default)' }}>
+                      <Link
+                        href={`/observation/evidence/${String(e['object_id'])}`}
+                        // A truncated identifier reads as nothing on its own, so
+                        // the link carries the full name it stands for.
+                        aria-label={`Evidence object ${String(e['object_id'])}`}
+                        style={{ color: 'var(--eye-color-accent-default)' }}
+                      >
                         <Mono>{String(e['object_id']).slice(0, 8)}…</Mono>
                       </Link>
                       <div style={{ ...badgeRowStyle, marginBlockStart: 'var(--eye-space-4)' }}>

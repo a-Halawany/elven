@@ -54,7 +54,7 @@ export class RestConnector implements Connector {
 
       if (replay !== null) {
         // The SAME connector, the SAME framing, recorded bytes instead of the wire.
-        const got = await replay.fetch(binding.sourceKey, endpoint);
+        const got = await replay.fetch(binding.replaySet, endpoint);
         if (got === null) continue;
         ctx.budget.spendBytes(got.body.byteLength);
         bytesTransferred += got.body.byteLength;

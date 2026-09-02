@@ -28,6 +28,8 @@ export interface RunBudgets {
 export interface SourceBinding {
   sourceId: string;
   sourceKey: string;
+  /** The frozen replay set to read from; the contract's declaration, or its key. */
+  replaySet: string;
   contractVersion: number;
   acquisitionMode: 'replay' | 'live';
   authorityClass: 'authoritative' | 'observational';
