@@ -37,6 +37,20 @@ export interface RouteInfo {
   consequenceClass?: ConsequenceClass;
   /** Which authoritative writer executes this route (never broader). */
   authority?: 'commit' | 'identity';
+  /**
+   * Gate-2.2 C6, extended for Phase 1: the COMPLETE set of canonical objects this
+   * operation is permitted to write, declared BEFORE the capability is minted.
+   *
+   * Most routes write one object and leave this unset, so `objectId` is the bound
+   * target exactly as before. An observation admission writes an OBS and its EVD
+   * in ONE transaction (PHASE1_PLAN §5 8e), so it declares both here — and the
+   * set travels inside the SIGNED context payload, which means a handler can
+   * neither widen it nor forge it. Anything outside the declared set is refused
+   * by ctx.assert_bound_target.
+   *
+   * The POLICY and AUDIT target stays `objectId` — one uuid, unchanged.
+   */
+  writableTargets?: string[];
 }
 
 export interface PipelineOutcome<T> {
@@ -344,10 +358,16 @@ export class PipelineService {
     policyResult: PolicyResult,
   ): Promise<void> {
     try {
+      // The capability's declared writable set. A route that names none is bound
+      // to its single target, byte-for-byte as before.
+      const boundTarget =
+        route.writableTargets !== undefined && route.writableTargets.length > 0
+          ? route.writableTargets.join(',')
+          : route.objectId;
       await sql`select ctx.issue_commit(
         ${principal.sessionId}::uuid, ${principal.contextKey}, ${ctx.scope},
         ${ctx.tenantId}::uuid, ${ctx.domainId}::uuid, ${envelope.purpose_id ?? null},
-        ${route.action}, ${route.objectId}, ${envelope.correlation_id}::uuid,
+        ${route.action}, ${boundTarget}, ${envelope.correlation_id}::uuid,
         ${policyDecisionId}::uuid, ${policyResult.bundleVersion},
         ${route.consequenceClass ?? envelope.consequence_class}, 60
       )`.execute(tx);

@@ -26,7 +26,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
 import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { EYE_CONFIG } from '../../config/config.module.js';
 import type { EyeConfig } from '../../config/config.js';
 import * as fault from '../fault-injection.js';
@@ -261,9 +261,17 @@ export class VaultService {
   }
 }
 
+/**
+ * True when `child` is `parent` or lies inside it. Used both to reject a
+ * quarantine/evidence root that contains the other and to reject a resolved blob
+ * path that escapes its root.
+ */
 function contains(parent: string, child: string): boolean {
   const rel = relative(parent, child);
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !resolve(rel).startsWith(sep));
+  if (rel === '') return true;
+  // An absolute relative path means the two share no common root at all; a `..`
+  // first segment means the child climbs out of the parent.
+  return !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`);
 }
 
 /** fsync the directory so the RENAME itself is durable, not only the file. */

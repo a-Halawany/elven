@@ -7,11 +7,11 @@
     "start": "2024-01-12T00:00:00Z",
     "end": "2024-01-15T00:00:00Z"
   },
-  "context_band": {
-    "start": "2023-12-01T00:00:00Z",
-    "end": "2024-01-31T00:00:00Z"
+  "covered_band": {
+    "start": "2023-12-28T00:00:00Z",
+    "end": "2024-01-18T00:00:00Z"
   },
-  "note": "Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
   "entries": [
     {
       "url": "upload://advisories/rotterdam-berth-2024-01-13.pdf",

@@ -74,6 +74,22 @@ export interface SourceContractV1 {
       required_fields: string[];
       drift_tolerance: number;
       max_bytes?: number;
+      /**
+       * TRANSPORT FRAMING, declared by the contract (§2, §10.1).
+       *
+       * When a payload is an array of records, `item_path` names it and the
+       * connector emits one child evidence object per element, each an exact byte
+       * range of the preserved parent. `item_key_field` and `item_time_field`
+       * name which field ADDRESSES an element and which carries the publisher's
+       * own time for it.
+       *
+       * This is addressing, not interpretation: nothing here says what a field
+       * MEANS. Without it the response is admitted whole, which is the right
+       * answer for an opaque payload.
+       */
+      item_path?: string;
+      item_key_field?: string;
+      item_time_field?: string;
     };
     freshness_expectation: {
       threshold_seconds: number;
@@ -234,6 +250,14 @@ export function validateSourceContract(input: unknown): ValidationResult {
       if (!Array.isArray(es.media_types) || es.media_types.length === 0) push('expected_schema.media_types is required');
       if (!Array.isArray(es.required_fields)) push('expected_schema.required_fields is required (an empty list is a valid declaration)');
       if (typeof es.drift_tolerance !== 'number' || es.drift_tolerance < 0) push('expected_schema.drift_tolerance is required');
+      // Framing is all-or-nothing: an item path without a key field would produce
+      // items nothing can address, and a key field without a path names nothing.
+      if (es.item_path !== undefined && typeof es.item_key_field !== 'string') {
+        push('expected_schema.item_key_field is required when expected_schema.item_path declares framing');
+      }
+      if (es.item_key_field !== undefined && typeof es.item_path !== 'string') {
+        push('expected_schema.item_path is required when expected_schema.item_key_field is declared');
+      }
     }
 
     const fe = so.freshness_expectation;

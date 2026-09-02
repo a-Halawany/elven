@@ -266,6 +266,7 @@ export class ObservationController {
       correlationId: envelope.correlation_id,
       purposeId: envelope.purpose_id ?? 'observation',
       triggeredBy: `principal:${principal.principalId}`,
+      triggerPrincipal: principal,
     });
     return { run: outcome };
   }

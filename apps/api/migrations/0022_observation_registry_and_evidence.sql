@@ -183,9 +183,22 @@ CREATE TABLE observation.source_contracts_current (
     approver_principal_id IS NULL OR approver_principal_id <> registrar_principal_id),
   CONSTRAINT src_approved_has_approver CHECK (
     lifecycle_state IN ('draft') OR approver_principal_id IS NOT NULL),
-  -- D2 as a DATABASE constraint: unconfirmed rights cannot reach 'active'.
+  /*
+   * D2 as a DATABASE constraint: UNCONFIRMED RIGHTS CANNOT REACH `active` FOR
+   * LIVE ACQUISITION.
+   *
+   * The distinction is the one the packet's own rationale draws — "costs nothing
+   * because replay is unaffected". Polling a publisher, and redistributing what
+   * comes back, exercises that publisher's reuse terms; reading a frozen local
+   * fixture set does not. So a contract whose reuse notice we could not verify
+   * may be activated for REPLAY and may never be activated for LIVE, and the
+   * unconfirmed state stays visible on the source either way.
+   *
+   * A live version of such a source is a NEW contract version, which must confirm
+   * its rights to activate — a replay activation cannot be quietly upgraded.
+   */
   CONSTRAINT src_active_requires_rights CHECK (
-    lifecycle_state <> 'active' OR rights_state = 'confirmed'),
+    lifecycle_state <> 'active' OR rights_state = 'confirmed' OR acquisition_mode = 'replay'),
   CONSTRAINT src_effective_order CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to > effective_from)
 );
 -- Exactly one version of a source may be active at a time (§7 supersession).
@@ -216,9 +229,16 @@ CREATE TABLE observation.agents (
   CONSTRAINT agent_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id)),
   CONSTRAINT agent_revoked_has_time CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))
 );
--- A new VERSION is a new principal (§11): the pair is unique per domain.
+/*
+ * A new VERSION is a new principal (§11), and the grant is scoped PER SOURCE
+ * CONTRACT — so the identity of an agent registration is the source together
+ * with the connector, its version and its code digest. Two sources polled by the
+ * same connector version are two registrations, each with its own principal,
+ * owner and budgets, which is what lets one be revoked without touching the
+ * other.
+ */
 CREATE UNIQUE INDEX agent_instance_unique
-  ON observation.agents (tenant_id, domain_id, connector, agent_version, code_digest);
+  ON observation.agents (tenant_id, domain_id, source_id, connector, agent_version, code_digest);
 CREATE INDEX agent_principal_lookup ON observation.agents (principal_id);
 
 CREATE TABLE observation.agent_events (
@@ -886,9 +906,15 @@ BEGIN
       v_row.lifecycle_state, p_target USING ERRCODE = '23514';
   END IF;
   IF p_target = 'active' THEN
-    IF v_row.rights_state <> 'confirmed' THEN
-      RAISE EXCEPTION 'activation rejected: rights are %, and a contract may not be activated on unconfirmed rights',
+    -- Unconfirmed rights block LIVE acquisition only; frozen replay exercises no
+    -- publisher's reuse terms. The unconfirmed state remains on the source and is
+    -- surfaced as an attention item regardless of which mode it runs in.
+    IF v_row.rights_state <> 'confirmed' AND v_row.acquisition_mode = 'live' THEN
+      RAISE EXCEPTION 'activation rejected: rights are % and this contract acquires LIVE; a live contract may not be activated on unconfirmed rights',
         v_row.rights_state USING ERRCODE = '23514';
+    END IF;
+    IF v_row.rights_state = 'withdrawn' THEN
+      RAISE EXCEPTION 'activation rejected: rights have been withdrawn' USING ERRCODE = '23514';
     END IF;
     IF v_row.approver_principal_id IS NULL THEN
       RAISE EXCEPTION 'activation rejected: contract has no approver' USING ERRCODE = '23514';
@@ -995,8 +1021,12 @@ BEGIN
     RAISE EXCEPTION 'contract revalidation failed: contract is %, not active', v_row.lifecycle_state
       USING ERRCODE = '23514';
   END IF;
-  IF v_row.rights_state <> 'confirmed' THEN
-    RAISE EXCEPTION 'contract revalidation failed: rights are %', v_row.rights_state USING ERRCODE = '23514';
+  -- The same rule at admission: a LIVE contract needs confirmed rights; a replay
+  -- contract needs rights that have not been WITHDRAWN.
+  IF v_row.rights_state = 'withdrawn'
+     OR (v_row.rights_state <> 'confirmed' AND v_row.acquisition_mode = 'live') THEN
+    RAISE EXCEPTION 'contract revalidation failed: rights are % for a % contract',
+      v_row.rights_state, v_row.acquisition_mode USING ERRCODE = '23514';
   END IF;
   IF v_row.effective_to IS NOT NULL AND v_row.effective_to <= clock_timestamp() THEN
     RAISE EXCEPTION 'contract revalidation failed: effective period has passed' USING ERRCODE = '23514';
@@ -1454,7 +1484,8 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM observation.source_contracts_current c
        WHERE c.source_id = p_source_id AND c.tenant_id = p_tenant AND c.domain_id = p_domain
-         AND c.contract ->  'coverage_expectations' -> 'not_applicable_dimensions' ? p_dimension
+         AND c.contract -> 'security_and_operations' -> 'coverage_expectations'
+                        -> 'not_applicable_dimensions' ? p_dimension
     ) THEN
       RAISE EXCEPTION 'measurement rejected: dimension % is recorded not_applicable but the source contract does not approve that exemption',
         p_dimension USING ERRCODE = '23514';
@@ -2113,3 +2144,194 @@ GRANT EXECUTE ON FUNCTION identity.agent_session_open(uuid,uuid,uuid,uuid,text,t
 -- Deliberately NO grant on observation.agents to eye_identity. The definer above
 -- reads it as its superuser owner; a direct grant would be an unused authority,
 -- and 0021 is the record of what unused authority costs.
+
+-- ============================================================
+-- 24. Canonical admission for the Phase 1 object types.
+-- ============================================================
+/*
+ * TWO GOVERNED FORWARD RE-EMITS. Both are needed because Phase 1 admits canonical
+ * objects from actions Phase 0 never had, and PHASE1_PLAN §5 8e requires the OBS
+ * and the EVD to share ONE transaction (F23a asserts exactly that: a crash
+ * between them must leave neither).
+ *
+ * ── (a) ctx.assert_bound_target: ONE TARGET BECOMES A DECLARED SET ───────────
+ *
+ * Gate-2.2 C6's property is that THE OBJECT WRITTEN MUST BE THE ONE THE
+ * CAPABILITY DECLARED BEFORE IT WAS MINTED. That property is preserved here and
+ * is not being relaxed: the difference is only that a capability may declare a
+ * SET of object ids rather than exactly one, because an admission legitimately
+ * produces an OBS and an EVD together and cannot be split without breaking the
+ * atomicity the plan requires.
+ *
+ * What keeps it honest:
+ *   * The set is fixed AT MINT TIME, inside the signed context payload. It cannot
+ *     be widened afterwards by a handler, and it cannot be forged, because the
+ *     payload carries the issuer's signature.
+ *   * The set is BOUNDED (8 entries) and every entry must be a UUID, so "a
+ *     declared set" cannot degrade into "any target".
+ *   * A single-target capability behaves EXACTLY as before: membership of a
+ *     one-element set is equality.
+ * Identity, verifier and recovery ports compare eye_bound_target() directly and
+ * are untouched — they stay exact-equality, which is right for them.
+ *
+ * ── (b) objects.admit_version: the Phase 1 canonical-write actions ───────────
+ *
+ * Phase 0 allowed `objects.create` and `objects.correct`. Phase 1 adds four
+ * observation actions that admit canonical objects, and — unlike the Phase 0
+ * pair, which may admit ANY object type — each is restricted to the object types
+ * it is actually entitled to write. For those four actions this is NARROWER than
+ * the rule it extends, not wider.
+ */
+CREATE OR REPLACE FUNCTION ctx.assert_bound_target(p_target text)
+RETURNS void SECURITY DEFINER SET search_path = ctx, public, pg_catalog, pg_temp AS $$
+DECLARE v_bound text := public.eye_bound_target(); v_targets text[];
+BEGIN
+  IF v_bound IS NULL OR v_bound = '' THEN
+    RAISE EXCEPTION 'target binding denied: capability is bound to target <none>, not %', p_target
+      USING ERRCODE = '42501';
+  END IF;
+  IF v_bound = p_target THEN RETURN; END IF;      -- the single-target case, unchanged
+  IF position(',' IN v_bound) = 0 THEN
+    RAISE EXCEPTION 'target binding denied: capability is bound to target %, not %', v_bound, p_target
+      USING ERRCODE = '42501';
+  END IF;
+  v_targets := string_to_array(v_bound, ',');
+  IF array_length(v_targets, 1) > 8 THEN
+    RAISE EXCEPTION 'target binding denied: a capability may declare at most 8 objects' USING ERRCODE = '42501';
+  END IF;
+  -- Every declared entry must be a UUID. A set containing anything else is
+  -- refused outright rather than being partially honoured.
+  IF EXISTS (
+    SELECT 1 FROM unnest(v_targets) AS t
+     WHERE t !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  ) THEN
+    RAISE EXCEPTION 'target binding denied: declared target set contains a non-identifier' USING ERRCODE = '42501';
+  END IF;
+  IF NOT (p_target = ANY (v_targets)) THEN
+    RAISE EXCEPTION 'target binding denied: % is not among the capability''s declared objects', p_target
+      USING ERRCODE = '42501';
+  END IF;
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION ctx.assert_bound_target(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ctx.assert_bound_target(text) TO eye_commit, eye_identity;
+
+/*
+ * Which object types each canonical-write action may admit. The Phase 0 actions
+ * keep their existing latitude (NULL = any registered type); every Phase 1 action
+ * is pinned to the types it exists to write.
+ */
+CREATE TABLE observation.canonical_write_actions (
+  action       text PRIMARY KEY,
+  object_types text[],                 -- NULL = any type (the Phase 0 behaviour)
+  rationale    text NOT NULL
+);
+INSERT INTO observation.canonical_write_actions (action, object_types, rationale) VALUES
+  ('objects.create',  NULL, 'Phase 0 canonical creation — unchanged'),
+  ('objects.correct', NULL, 'Phase 0 canonical correction — unchanged'),
+  ('observation.source.register', ARRAY['SRC'],
+   'Source registration admits the immutable SRC contract object and nothing else'),
+  ('observation.item.admit', ARRAY['OBS','EVD'],
+   'Admission writes the observation and its evidence in ONE transaction (PHASE1_PLAN §5 8e, F23a)'),
+  ('observation.quarantine.review', ARRAY['OBS','EVD'],
+   'Releasing a quarantined item admits it through the same path an acquisition uses'),
+  ('observation.correction.apply', ARRAY['OBS','EVD'],
+   'A correction or withdrawal admits a NEW version of the affected object; nothing is overwritten');
+REVOKE ALL ON observation.canonical_write_actions FROM PUBLIC;
+GRANT SELECT ON observation.canonical_write_actions TO eye_commit;
+
+/*
+ * Governed re-emit of objects.admit_version. The body is the 0019 body with ONE
+ * change: the hard-coded two-action list becomes a lookup against the table
+ * above, which additionally pins the permitted object types per action.
+ */
+CREATE OR REPLACE FUNCTION objects.admit_version(
+  p_header jsonb, p_payload jsonb, p_digest text
+) RETURNS TABLE (object_id uuid, object_version bigint, content_digest text)
+SECURITY DEFINER SET search_path = objects, observation, canon, ctx, public, pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_missing text; v_extra text; v_recomputed text;
+  v_scope text := p_header->>'scope';
+  v_tenant uuid := NULLIF(p_header->>'tenant_id','')::uuid;
+  v_domain uuid := NULLIF(p_header->>'domain_id','')::uuid;
+  v_action text := public.eye_bound_action();
+  v_types text[];
+  v_known boolean;
+BEGIN
+  IF public.eye_ctx_mode() <> 'authority' THEN
+    RAISE EXCEPTION 'admission rejected: authority mode required (context is %)',
+      public.eye_ctx_mode() USING ERRCODE = '42501';
+  END IF;
+  SELECT true, w.object_types INTO v_known, v_types
+    FROM observation.canonical_write_actions w WHERE w.action = v_action;
+  IF v_known IS NOT TRUE THEN
+    RAISE EXCEPTION 'admission rejected: context is bound to action %, not a canonical write',
+      coalesce(v_action,'<none>') USING ERRCODE = '42501';
+  END IF;
+  IF v_types IS NOT NULL AND NOT ((p_header->>'object_type') = ANY (v_types)) THEN
+    RAISE EXCEPTION 'admission rejected: action % may not admit a % object',
+      v_action, p_header->>'object_type' USING ERRCODE = '42501';
+  END IF;
+  PERFORM ctx.assert_live_authority();
+  PERFORM objects.assert_header_binding(p_header);
+
+  SELECT string_agg(field_name, ', ') INTO v_missing
+    FROM objects.canonical_field_registry r WHERE NOT (p_header ? r.field_name);
+  IF v_missing IS NOT NULL THEN
+    RAISE EXCEPTION 'admission rejected: header missing required field(s): %', v_missing
+      USING ERRCODE = '22023';
+  END IF;
+  SELECT string_agg(k, ', ') INTO v_extra
+    FROM jsonb_object_keys(p_header) AS k
+   WHERE NOT EXISTS (SELECT 1 FROM objects.canonical_field_registry r WHERE r.field_name = k);
+  IF v_extra IS NOT NULL THEN
+    RAISE EXCEPTION 'admission rejected: header carries unregistered field(s): %', v_extra
+      USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM objects.assert_header_semantics(p_header);
+
+  v_recomputed := canon.sha256_hex(canon.jcs(jsonb_build_object('header', p_header, 'payload', p_payload)));
+  IF p_digest IS DISTINCT FROM v_recomputed THEN
+    RAISE EXCEPTION 'admission rejected: content digest does not bind the header and payload'
+      USING ERRCODE = '42501';
+  END IF;
+  IF NOT ((public.eye_scope() = 'PLATFORM' AND v_scope = 'PLATFORM' AND v_tenant IS NULL)
+          OR public.eye_row_writable(v_scope, v_tenant, v_domain)) THEN
+    RAISE EXCEPTION 'admission rejected: context not authorized for the object scope'
+      USING ERRCODE = '42501';
+  END IF;
+
+  INSERT INTO objects.canonical_objects (
+    object_id, object_type, tenant_id, domain_id, scope, object_version, lifecycle_state,
+    owning_component, accountable_owner, source_object_ids, event_time, observation_time,
+    valid_from, valid_to, recorded_at, time_precision, source_clock_quality, truth_state,
+    synthetic_state, confidence, uncertainty, evidence_refs, provenance_ref, method_ref,
+    contradiction_refs, corroboration_refs, human_refs, classification, purpose_scope,
+    rights_profile, residency_profile, retention_profile, access_policy_ref, quality_profile,
+    quality_state, freshness_state, schema_ref, ontology_ref, correction_of, supersedes,
+    withdrawal_reason, audit_correlation_id, content_ref, payload, content_digest
+  ) VALUES (
+    (p_header->>'object_id')::uuid, p_header->>'object_type', v_tenant, v_domain, v_scope,
+    (p_header->>'object_version')::bigint, p_header->>'lifecycle_state',
+    p_header->>'owning_component', p_header->>'accountable_owner',
+    coalesce(p_header->'source_object_ids','[]'::jsonb),
+    NULLIF(p_header->>'event_time','')::timestamptz, NULLIF(p_header->>'observation_time','')::timestamptz,
+    NULLIF(p_header->>'valid_from','')::timestamptz, NULLIF(p_header->>'valid_to','')::timestamptz,
+    (p_header->>'recorded_at')::timestamptz, p_header->>'time_precision',
+    p_header->>'source_clock_quality', p_header->>'truth_state',
+    (p_header->>'synthetic_state')::boolean, p_header->'confidence', p_header->'uncertainty',
+    coalesce(p_header->'evidence_refs','[]'::jsonb), p_header->>'provenance_ref', p_header->>'method_ref',
+    coalesce(p_header->'contradiction_refs','[]'::jsonb), coalesce(p_header->'corroboration_refs','[]'::jsonb),
+    coalesce(p_header->'human_refs','[]'::jsonb), p_header->>'classification', p_header->>'purpose_scope',
+    p_header->>'rights_profile', p_header->>'residency_profile', p_header->>'retention_profile',
+    p_header->>'access_policy_ref', p_header->>'quality_profile', p_header->'quality_state',
+    p_header->'freshness_state', p_header->>'schema_ref', p_header->>'ontology_ref',
+    p_header->>'correction_of', p_header->>'supersedes', p_header->>'withdrawal_reason',
+    (p_header->>'audit_correlation_id')::uuid, p_header->>'content_ref',
+    p_payload, v_recomputed
+  );
+  RETURN QUERY SELECT (p_header->>'object_id')::uuid, (p_header->>'object_version')::bigint, v_recomputed;
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION objects.admit_version(jsonb, jsonb, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION objects.admit_version(jsonb, jsonb, text) TO eye_commit;

@@ -92,12 +92,19 @@ export class QuarantineService {
     caseRow: QuarantineCaseRow, reason: string, purposeId: string,
     candidate: { locator: string; contentDigest: string; byteLength: number },
     contract: { classification_ceiling: string; residency: string; acquisition_mode: string; authority_class: string; source_key: string; data_origin: string; contract: Record<string, unknown> },
+    /**
+     * The object ids the ROUTE declared before the capability was minted. They
+     * are passed in rather than generated here on purpose: an id invented inside
+     * the handler could not have been in the capability's declared set, and the
+     * database would — correctly — refuse to admit it.
+     */
+    ids: { obsObjectId: string; evdObjectId: string },
   ): Promise<{ caseId: string; evdObjectId: string }> {
     const tenantId = ctx.tenantId as string;
     const domainId = ctx.domainId as string;
     const manifestId = newId();
-    const obsObjectId = newId();
-    const evdObjectId = newId();
+    const obsObjectId = ids.obsObjectId;
+    const evdObjectId = ids.evdObjectId;
     const now = new Date().toISOString();
 
     await cap.recordManifest({

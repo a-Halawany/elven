@@ -117,8 +117,14 @@ export class AcquisitionLifecycle {
     };
   }
 
-  private route(action: string, tenantId: string, domainId: string, objectType: string, objectId: string | null): RouteInfo {
-    return { scope: 'DOMAIN', tenantId, domainId, action, objectType, objectId };
+  private route(
+    action: string, tenantId: string, domainId: string, objectType: string, objectId: string | null,
+    writableTargets?: string[],
+  ): RouteInfo {
+    return {
+      scope: 'DOMAIN', tenantId, domainId, action, objectType, objectId,
+      ...(writableTargets !== undefined ? { writableTargets } : {}),
+    };
   }
 
   /**
@@ -137,7 +143,7 @@ export class AcquisitionLifecycle {
     // evaluation happen inside the pipeline call below, which is step 1's real
     // execution; the injection points sit on its sub-boundaries.
     fault.at('f02.after_agent_auth');
-    const contract = await this.loadContract(req.sourceId, req.contractVersion);
+    const contract = await this.loadContract(req, null, null, req.contractVersion);
     if (contract === null) {
       return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: 'no such source contract version' };
     }
@@ -200,7 +206,7 @@ export class AcquisitionLifecycle {
 
     try {
       // ── step 3: revalidate the exact contract version immediately before egress ──
-      const stillActive = await this.loadContract(req.sourceId, req.contractVersion);
+      const stillActive = await this.loadContract(req, tenantId, domainId, req.contractVersion);
       if (stillActive === null || stillActive.lifecycle_state !== 'active') {
         // F08: abort BEFORE egress. No external I/O is performed at all.
         await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.cancel', 'run.cancelled', {
@@ -214,7 +220,7 @@ export class AcquisitionLifecycle {
       // ── step 4: bounded external acquisition, OUTSIDE any transaction ───────
       const binding = this.bindingFor(contract);
       const meter = new BudgetMeter(binding.budgets);
-      const checkpoint = await this.loadCheckpoint(req.sourceId);
+      const checkpoint = await this.loadCheckpoint(req, tenantId, domainId);
       const output = await req.connector.acquire({
         binding, checkpoint, budget: meter,
         replayRoot: this.cfg['eye.connector.replay_root'],
@@ -328,7 +334,12 @@ export class AcquisitionLifecycle {
     });
     let drift: { ok: true } | { ok: false; missing: string[]; reason: string } = { ok: true };
     if (verdict.ok && binding.expectedSchema.requiredFields.length > 0) {
-      drift = await this.checkDeclaredSchema(item, binding);
+      // A framed CHILD is checked against the element-relative field list; an
+      // unframed payload is checked as a whole. The parent of a framed response
+      // is not re-checked: its rows are checked individually, and failing the
+      // parent for one bad row would quarantine the evidence of the good ones.
+      const isFramedParent = binding.expectedSchema.itemPath !== undefined && item.fragment == null;
+      if (!isFramedParent) drift = await this.checkDeclaredSchema(item, binding);
     }
 
     if (!verdict.ok || !drift.ok) {
@@ -368,7 +379,10 @@ export class AcquisitionLifecycle {
     const committed = await this.pipeline.write<AdmissionResult, AcquisitionWrites>(
       this.envelope(req, 'observation.item.admit', 'EVD', evdObjectId, tenantId, domainId),
       req.principal,
-      this.route('observation.item.admit', tenantId, domainId, 'EVD', evdObjectId),
+      // The two objects this admission writes, declared UP FRONT. Both ids were
+      // generated before the capability is minted, so the capability names
+      // exactly what it will produce and nothing else is writable under it.
+      this.route('observation.item.admit', tenantId, domainId, 'EVD', evdObjectId, [obsObjectId, evdObjectId]),
       ObservationCapability.acquisition,
       async (cap) => {
         fault.at('f20.after_tx_open_before_lock');
@@ -806,25 +820,57 @@ export class AcquisitionLifecycle {
     );
   }
 
-  private async loadContract(sourceId: string, contractVersion: number): Promise<ContractRow | null> {
-    // Read through the RLS-governed application pool. This is the pre-egress
-    // CHECK; the authoritative decision is the locked re-read at 8d.
-    const rows = await this.db
-      .selectFrom('observation.source_contracts_current' as never)
-      .selectAll()
-      .where('source_id' as never, '=', sourceId as never)
-      .where('contract_version' as never, '=', contractVersion as never)
-      .execute();
-    return (rows[0] as ContractRow | undefined) ?? null;
+  /**
+   * Read the contract under the RUN's own authority.
+   *
+   * This is a CONSEQUENTIAL READ, not a convenience lookup: it goes through the
+   * pipeline, so the policy decision and the audit event that permitted the agent
+   * to see this contract are durable before the row is returned. That is also
+   * what makes the §5 step 3 pre-egress revalidation visible in the audit trail
+   * rather than being an unrecorded internal check.
+   *
+   * Reading through the ordinary application pool would return nothing here, and
+   * correctly so: row-level security has no tenant to compare against outside a
+   * governed context.
+   */
+  private async loadContract(
+    req: RunRequest, tenantId: string | null, domainId: string | null, contractVersion: number,
+  ): Promise<ContractRow | null> {
+    // Before scope is known (the first load), fall back to the agent's own home
+    // scope — an agent principal is always domain-bound.
+    const t = tenantId ?? req.principal.homeTenantId;
+    const d = domainId ?? req.principal.homeDomainId;
+    if (t === null || d === null) return null;
+    const out = await this.pipeline.consequentialRead(
+      this.envelope(req, 'observation.read.sources', 'SRC', req.sourceId, t, d),
+      req.principal,
+      this.route('observation.read.sources', t, d, 'SRC', req.sourceId),
+      ObservationCapability.read,
+      async (cap) => (await cap
+        .readSourceContracts()
+        .selectAll()
+        .where('source_id' as never, '=', req.sourceId as never)
+        .where('contract_version' as never, '=', contractVersion as never)
+        .executeTakeFirst()) as ContractRow | undefined,
+    );
+    return out.result ?? null;
   }
 
-  private async loadCheckpoint(sourceId: string): Promise<Record<string, unknown> | null> {
-    const rows = await this.db
-      .selectFrom('observation.connector_checkpoints' as never)
-      .select('checkpoint' as never)
-      .where('source_id' as never, '=', sourceId as never)
-      .execute();
-    return ((rows[0] as { checkpoint?: Record<string, unknown> } | undefined)?.checkpoint) ?? null;
+  private async loadCheckpoint(
+    req: RunRequest, tenantId: string, domainId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const out = await this.pipeline.consequentialRead(
+      this.envelope(req, 'observation.read.runs', 'RUN', null, tenantId, domainId),
+      req.principal,
+      this.route('observation.read.runs', tenantId, domainId, 'RUN', null),
+      ObservationCapability.read,
+      async (cap) => (await cap
+        .readCheckpoints()
+        .select('checkpoint' as never)
+        .where('source_id' as never, '=', req.sourceId as never)
+        .executeTakeFirst()) as { checkpoint?: Record<string, unknown> } | undefined,
+    );
+    return out.result?.checkpoint ?? null;
   }
 
   private bindingFor(contract: ContractRow): SourceBinding {
@@ -832,10 +878,14 @@ export class AcquisitionLifecycle {
       identity: { endpoints: string[] };
       security_and_operations: {
         budgets: Record<string, number>;
-        expected_schema: { media_types: string[]; required_fields: string[]; drift_tolerance: number; max_bytes?: number };
+        expected_schema: {
+          media_types: string[]; required_fields: string[]; drift_tolerance: number;
+          max_bytes?: number; item_path?: string; item_key_field?: string; item_time_field?: string;
+        };
       };
     };
     const b = c.security_and_operations.budgets;
+    const es = c.security_and_operations.expected_schema;
     return {
       sourceId: contract.source_id,
       sourceKey: contract.source_key,
@@ -844,11 +894,13 @@ export class AcquisitionLifecycle {
       authorityClass: contract.authority_class,
       endpoints: c.identity.endpoints,
       expectedSchema: {
-        mediaTypes: c.security_and_operations.expected_schema.media_types,
-        requiredFields: c.security_and_operations.expected_schema.required_fields,
-        driftTolerance: c.security_and_operations.expected_schema.drift_tolerance,
-        ...(c.security_and_operations.expected_schema.max_bytes !== undefined
-          ? { maxBytes: c.security_and_operations.expected_schema.max_bytes } : {}),
+        mediaTypes: es.media_types,
+        requiredFields: es.required_fields,
+        driftTolerance: es.drift_tolerance,
+        ...(es.max_bytes !== undefined ? { maxBytes: es.max_bytes } : {}),
+        ...(es.item_path !== undefined ? { itemPath: es.item_path } : {}),
+        ...(es.item_key_field !== undefined ? { itemKeyField: es.item_key_field } : {}),
+        ...(es.item_time_field !== undefined ? { itemTimeField: es.item_time_field } : {}),
       },
       budgets: {
         maxRequestsPerRun: b['max_requests_per_run'] as number,
@@ -887,7 +939,17 @@ export class AcquisitionLifecycle {
       // passed would be as wrong as pretending it failed.
       return { ok: true };
     }
-    return checkSchemaDrift(parsed, binding.expectedSchema);
+    // When framing is declared, `required_fields` are paths INSIDE an element, so
+    // the declared prefix is stripped before the check.
+    const prefix = binding.expectedSchema.itemPath !== undefined
+      ? `${binding.expectedSchema.itemPath}.[].` : null;
+    const fields = prefix === null
+      ? binding.expectedSchema.requiredFields
+      : binding.expectedSchema.requiredFields
+          .filter((f) => f.startsWith(prefix))
+          .map((f) => f.slice(prefix.length));
+    if (fields.length === 0) return { ok: true };
+    return checkSchemaDrift(parsed, { ...binding.expectedSchema, requiredFields: fields });
   }
 }
 

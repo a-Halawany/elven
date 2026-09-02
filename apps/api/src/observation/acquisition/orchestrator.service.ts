@@ -27,14 +27,14 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { PrincipalsService } from '../../identity/principals.service.js';
 import { PrincipalsCapability } from '../../shared/capabilities.js';
-import { ObservationCapability, type AcquisitionWrites, type ObservationReads } from '../observation.capabilities.js';
+import { ObservationCapability, type AcquisitionWrites, type ObservationReads, type RegistryWrites } from '../observation.capabilities.js';
 import { AcquisitionLifecycle, type RunOutcome } from './lifecycle.service.js';
 import { AgentSessionService } from '../agents/agent-session.service.js';
 import { AgentsService, agentDisplayName, agentLoginName } from '../agents/agents.service.js';
 import { SchedulerService, queueNameFor, schedulerIdFor, type CollectionJobPayload } from '../scheduling/scheduler.service.js';
 import { QuarantineService } from '../quarantine/quarantine.service.js';
 import { CorrectionsService, UNRESOLVED_PROPAGATION } from '../corrections/corrections.service.js';
-import { CoverageService } from '../coverage/coverage.service.js';
+import { CoverageService, decisionUseConstraint } from '../coverage/coverage.service.js';
 import { CoverageFactsService } from '../coverage/facts.service.js';
 import { RestConnector } from '../connectors/rest.connector.js';
 import { RssConnector } from '../connectors/rss.connector.js';
@@ -115,9 +115,20 @@ export class CollectionOrchestrator {
   async collectNow(a: {
     tenantId: string; domainId: string; sourceId: string; contractVersion: number;
     correlationId: string; purposeId: string; triggeredBy: string;
+    /**
+     * The principal that TRIGGERED the run. Its authority is what the pre-flight
+     * reads run under; the RUN ITSELF then acts as the agent, because the
+     * evidence has to say which agent instance produced it, not who pressed the
+     * button. The trigger is recorded separately.
+     */
+    triggerPrincipal: AuthenticatedPrincipal;
     files?: UploadedFile[];
   }): Promise<RunOutcome & { triggeredBy: string }> {
-    const contract = await this.contract(a.sourceId, a.contractVersion);
+    const read = {
+      principal: a.triggerPrincipal, tenantId: a.tenantId, domainId: a.domainId,
+      correlationId: a.correlationId, purposeId: a.purposeId,
+    };
+    const contract = await this.contract(read, a.sourceId, a.contractVersion);
     if (contract === null) {
       return {
         runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
@@ -125,7 +136,7 @@ export class CollectionOrchestrator {
       };
     }
     const connector = this.connectorFor(contract.connector_kind, a.files ?? []);
-    const agent = await this.agentRowFor(a.sourceId, connector);
+    const agent = await this.agentRowFor(read, a.sourceId, connector);
     if (agent === null) {
       return {
         runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
@@ -134,29 +145,74 @@ export class CollectionOrchestrator {
       };
     }
 
-    // The run acts as the AGENT. Its session is minted from the registry at this
-    // moment, so a revocation that landed while this request was in flight stops it.
-    const principal = await this.agentSessions.openRunSession({
-      agentId: agent.agent_id, tenantId: a.tenantId, domainId: a.domainId,
-      agentVersion: agent.agent_version, codeDigest: agent.code_digest,
-      correlationId: a.correlationId,
-    });
-
-    const outcome = await this.lifecycle.run({
-      sourceId: a.sourceId, contractVersion: a.contractVersion,
+    // The run acts as the AGENT, not as the operator who triggered it: the
+    // evidence has to say which agent instance and which code digest produced it.
+    // The trigger is recorded alongside, so both facts survive.
+    const outcome = await this.runAsAgent({
+      tenantId: a.tenantId, domainId: a.domainId, sourceId: a.sourceId,
+      contractVersion: a.contractVersion,
       agentId: agent.agent_id, agentVersion: agent.agent_version,
-      connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
+      codeDigest: agent.code_digest, connectorKind: contract.connector_kind,
+      correlationId: a.correlationId, purposeId: a.purposeId, files: a.files ?? [],
     });
     return { ...outcome, triggeredBy: a.triggeredBy };
   }
 
-  /** The queue handler. Identical path to `collectNow`, driven by a scheduler tick. */
-  async handleScheduledJob(payload: CollectionJobPayload): Promise<void> {
-    await this.collectNow({
+  /**
+   * The queue handler. A scheduled job carries NO AUTHORITY — only scoped opaque
+   * identifiers and the exact contract version it was scheduled against. The
+   * agent's session is minted here from the REGISTRY, and
+   * identity.agent_session_open re-verifies the agent is still active, still this
+   * version and still this code digest in this domain. So a job whose payload was
+   * tampered with, or whose agent was revoked while it sat in the queue, is
+   * refused at execution rather than at enqueue.
+   */
+  async handleScheduledJob(payload: CollectionJobPayload): Promise<RunOutcome> {
+    return this.runAsAgent({
       tenantId: payload.tenantId, domainId: payload.domainId,
       sourceId: payload.sourceId, contractVersion: payload.contractVersion,
+      agentId: payload.agentId, agentVersion: payload.agentVersion,
+      codeDigest: payload.codeDigest, connectorKind: payload.connector,
       correlationId: payload.correlationId, purposeId: 'observation',
-      triggeredBy: `scheduler:${payload.agentId}`,
+      files: [],
+    });
+  }
+
+  /**
+   * Run as the agent. The agent session is minted first, and every read the run
+   * performs — the contract, the checkpoint, the pre-egress revalidation — runs
+   * under the AGENT's authority, not the operator's. That is what makes the audit
+   * trail say which agent instance saw what.
+   */
+  private async runAsAgent(a: {
+    tenantId: string; domainId: string; sourceId: string; contractVersion: number;
+    agentId: string; agentVersion: string; codeDigest: string; connectorKind: string;
+    correlationId: string; purposeId: string; files: UploadedFile[];
+  }): Promise<RunOutcome> {
+    const connector = this.connectorFor(a.connectorKind, a.files);
+    if (connector.codeDigest !== a.codeDigest || connector.version !== a.agentVersion) {
+      return {
+        runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
+        reason: 'the registered agent instance does not match the connector this process would run',
+      };
+    }
+    let principal: AuthenticatedPrincipal;
+    try {
+      principal = await this.agentSessions.openRunSession({
+        agentId: a.agentId, tenantId: a.tenantId, domainId: a.domainId,
+        agentVersion: a.agentVersion, codeDigest: a.codeDigest,
+        correlationId: a.correlationId,
+      });
+    } catch (e) {
+      return {
+        runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
+        reason: e instanceof Error ? e.message : 'agent grant refused',
+      };
+    }
+    return this.lifecycle.run({
+      sourceId: a.sourceId, contractVersion: a.contractVersion,
+      agentId: a.agentId, agentVersion: a.agentVersion,
+      connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
     });
   }
 
@@ -173,7 +229,12 @@ export class CollectionOrchestrator {
     tenantId: string; domainId: string; sourceId: string; connector: string;
     ownerPrincipalId: string;
   }): Promise<{ agent: { agentId: string; principalId: string }; receipt: { policyDecisionId: string; auditSeq: number } }> {
-    const contract = await this.contractLatest(a.sourceId);
+    const contract = await this.contractLatest(
+      {
+        principal: a.principal, tenantId: a.tenantId, domainId: a.domainId,
+        correlationId: a.envelope.correlation_id, purposeId: a.envelope.purpose_id ?? 'observation',
+      },
+      a.sourceId);
     if (contract === null) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'no authorized source contract matches'), 404);
@@ -241,18 +302,20 @@ export class CollectionOrchestrator {
     return { agent: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
-  private async agentRowFor(sourceId: string, connector: Connector): Promise<{
-    agent_id: string; agent_version: string; code_digest: string; principal_id: string;
-  } | null> {
-    const row = (await this.db
-      .selectFrom('observation.agents' as never)
-      .selectAll()
-      .where('source_id' as never, '=', sourceId as never)
-      .where('connector' as never, '=', connector.name as never)
-      .where('agent_version' as never, '=', connector.version as never)
-      .where('code_digest' as never, '=', connector.codeDigest as never)
-      .where('status' as never, '=', 'active' as never)
-      .executeTakeFirst()) as { agent_id: string; agent_version: string; code_digest: string; principal_id: string } | undefined;
+  private async agentRowFor(
+    a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; purposeId: string },
+    sourceId: string, connector: Connector,
+  ): Promise<{ agent_id: string; agent_version: string; code_digest: string; principal_id: string } | null> {
+    const row = await this.readGoverned(a, 'observation.read.agents', 'AGT', null, async (cap) =>
+      (await cap
+        .readAgents()
+        .selectAll()
+        .where('source_id' as never, '=', sourceId as never)
+        .where('connector' as never, '=', connector.name as never)
+        .where('agent_version' as never, '=', connector.version as never)
+        .where('code_digest' as never, '=', connector.codeDigest as never)
+        .where('status' as never, '=', 'active' as never)
+        .executeTakeFirst()) as { agent_id: string; agent_version: string; code_digest: string; principal_id: string } | undefined);
     return row ?? null;
   }
 
@@ -264,11 +327,7 @@ export class CollectionOrchestrator {
    * or scheduled-but-suspended.
    */
   async syncSchedule(
-    cap: { upsertSchedulerEntry: (a: {
-      sourceId: string; tenantId: string; domainId: string; contractVersion: number;
-      schedulerId: string; queueName: string; cadenceSeconds: number; jitterSeconds: number;
-      status: 'scheduled' | 'removed';
-    }) => Promise<void> },
+    cap: RegistryWrites,
     scope: { tenantId: string | null; domainId: string | null },
     sourceId: string,
     contractVersion: number,
@@ -276,16 +335,40 @@ export class CollectionOrchestrator {
   ): Promise<void> {
     const tenantId = scope.tenantId as string;
     const domainId = scope.domainId as string;
-    const contract = await this.contract(sourceId, contractVersion);
-    if (contract === null) return;
+    // Inside the transition's own transaction a context already exists, so this
+    // reads through the capability the handler was given rather than opening a
+    // second governed read for a row the operation is already holding.
+    const contract = (await cap
+      .readSourceContracts()
+      .selectAll()
+      .where('source_id' as never, '=', sourceId as never)
+      .where('contract_version' as never, '=', contractVersion as never)
+      .executeTakeFirst()) as ContractRow | undefined;
+    if (contract === undefined) return;
     // An upload source is never polled: it has no endpoints and no cadence.
     if (contract.connector_kind === 'upload') return;
 
     const cadence = contract.cadence_seconds ?? this.cfg['eye.scheduler.min_interval_seconds'];
     if (target === 'active') {
+      // The agent the schedule will run as, resolved NOW so the payload names a
+      // real instance. Everything in it is re-verified at execution by
+      // identity.agent_session_open and observation.authorize_agent_run, so the
+      // payload is a hint the worker must prove, never a grant it may present.
+      const agent = (await cap
+        .readAgents()
+        .selectAll()
+        .where('source_id' as never, '=', sourceId as never)
+        .where('status' as never, '=', 'active' as never)
+        .executeTakeFirst()) as { agent_id: string; agent_version: string; code_digest: string } | undefined;
+      if (agent === undefined) {
+        // No agent, no schedule. A scheduled source with nothing authorized to
+        // collect it would produce a queue of jobs that can only ever fail.
+        return;
+      }
       const payload: CollectionJobPayload = {
         tenantId, domainId, sourceId, contractVersion,
-        agentId: 'resolved-at-execution', agentVersion: 'resolved-at-execution',
+        agentId: agent.agent_id, agentVersion: agent.agent_version,
+        codeDigest: agent.code_digest,
         connector: contract.connector_kind,
         correlationId: newId(),
         // Budgets travel with the job for observability; the AUTHORITATIVE budgets
@@ -317,17 +400,21 @@ export class CollectionOrchestrator {
     tenantId: string; domainId: string; caseId: string;
     decision: 'release' | 'discard'; reason: string;
   }): Promise<Record<string, unknown>> {
-    const caseRow = (await this.db
-      .selectFrom('observation.quarantine_current' as never)
-      .selectAll()
-      .where('case_id' as never, '=', a.caseId as never)
-      .executeTakeFirst()) as Record<string, unknown> | undefined;
+    const read = {
+      principal: a.principal, tenantId: a.tenantId, domainId: a.domainId,
+      correlationId: a.envelope.correlation_id, purposeId: a.envelope.purpose_id ?? 'observation',
+    };
+    const caseRow = await this.readGoverned(read, 'observation.read.quarantine', 'QAR', a.caseId, async (cap) =>
+      (await cap
+        .readQuarantine().selectAll()
+        .where('case_id' as never, '=', a.caseId as never)
+        .executeTakeFirst()) as Record<string, unknown> | undefined);
     if (caseRow === undefined) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'no authorized quarantine case matches'), 404);
     }
     const contract = await this.contract(
-      String(caseRow['source_id']), Number(caseRow['contract_version']));
+      read, String(caseRow['source_id']), Number(caseRow['contract_version']));
     if (contract === null) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'no authorized source contract matches'), 404);
@@ -350,11 +437,11 @@ export class CollectionOrchestrator {
 
     // A RELEASE takes the same shape as an admission: the candidate bytes are
     // created and digest-verified OUTSIDE the transaction that records them.
-    const manifest = (await this.db
-      .selectFrom('observation.blob_manifests' as never)
-      .selectAll()
-      .where('manifest_id' as never, '=', caseRow['manifest_id'] as never)
-      .executeTakeFirst()) as { locator: string } | undefined;
+    const manifest = await this.readGoverned(read, 'observation.read.evidence', 'EVD', null, async (cap) =>
+      (await cap
+        .readManifests().selectAll()
+        .where('manifest_id' as never, '=', caseRow['manifest_id'] as never)
+        .executeTakeFirst()) as { locator: string } | undefined);
     if (manifest === undefined) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'the quarantined bytes are no longer retrievable'), 409);
@@ -363,8 +450,14 @@ export class CollectionOrchestrator {
       { scope: 'DOMAIN', tenantId: a.tenantId, domainId: a.domainId },
       { ...caseRow, locator: manifest.locator } as never);
 
+    // A release admits an OBS and its EVD in one transaction, exactly as an
+    // acquisition does, so it declares the same shape of writable set.
+    const releaseObsId = newId();
+    const releaseEvdId = newId();
     const out = await this.pipeline.write(
-      a.envelope, a.principal, route, ObservationCapability.acquisition,
+      a.envelope, a.principal,
+      { ...route, objectId: releaseEvdId, writableTargets: [releaseObsId, releaseEvdId] },
+      ObservationCapability.acquisition,
       async (cap, scope) => {
         const r = await this.quarantine.release(
           cap, scope, `principal:${a.principal.principalId}`, a.envelope.correlation_id,
@@ -378,7 +471,8 @@ export class CollectionOrchestrator {
             source_key: contract.source_key,
             data_origin: contract.data_origin,
             contract: contract.contract,
-          });
+          },
+          { obsObjectId: releaseObsId, evdObjectId: releaseEvdId });
         return {
           result: r, targetType: 'EVD', targetId: r.evdObjectId, targetVersion: '1',
           outboxEvent: {
@@ -400,11 +494,16 @@ export class CollectionOrchestrator {
     tenantId: string; domainId: string; caseId: string;
     decision: 'apply' | 'reject'; affectedEvdIds: string[]; reason: string;
   }): Promise<Record<string, unknown>> {
-    const caseRow = (await this.db
-      .selectFrom('observation.correction_current' as never)
-      .selectAll()
-      .where('case_id' as never, '=', a.caseId as never)
-      .executeTakeFirst()) as { source_id: string; kind: string; reason: string } | undefined;
+    const caseRow = await this.readGoverned(
+      {
+        principal: a.principal, tenantId: a.tenantId, domainId: a.domainId,
+        correlationId: a.envelope.correlation_id, purposeId: a.envelope.purpose_id ?? 'observation',
+      },
+      'observation.read.corrections', 'COR', a.caseId, async (cap) =>
+        (await cap
+          .readCorrections().selectAll()
+          .where('case_id' as never, '=', a.caseId as never)
+          .executeTakeFirst()) as { source_id: string; kind: string; reason: string } | undefined);
     if (caseRow === undefined) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'no authorized correction case matches'), 404);
@@ -491,7 +590,12 @@ export class CollectionOrchestrator {
     tenantId: string; domainId: string; sourceId: string;
     windowStart: string | null; windowEnd: string | null; evaluatedAt: string | null;
   }): Promise<Record<string, unknown>> {
-    const contract = await this.contractLatest(a.sourceId);
+    const contract = await this.contractLatest(
+      {
+        principal: a.principal, tenantId: a.tenantId, domainId: a.domainId,
+        correlationId: a.envelope.correlation_id, purposeId: a.envelope.purpose_id ?? 'observation',
+      },
+      a.sourceId);
     if (contract === null) {
       throw new HttpException(
         errorBody('EYE_STA_001', a.envelope.correlation_id, 'no authorized source contract matches'), 404);
@@ -524,7 +628,9 @@ export class CollectionOrchestrator {
       },
       ObservationCapability.acquisition,
       async (cap, scope) => {
-        const facts = await this.facts.gather(cap, a.sourceId, windowStart, windowEnd, bucketSeconds);
+        const facts = await this.facts.gather(
+          cap, a.sourceId, windowStart, windowEnd, bucketSeconds,
+          ce?.coverage_expectations?.expected_items_per_window ?? null);
         const input = {
           sourceId: a.sourceId,
           evaluatedAt, windowStart, windowEnd,
@@ -538,17 +644,26 @@ export class CollectionOrchestrator {
         };
         const dims = this.coverage.compute(input, facts);
         const health = this.coverage.deriveHealth(dims, facts, input);
+        // §6: the unknowns that cannot be resolved in this phase set a standing
+        // constraint on anything using this source's evidence. It is recorded on
+        // the transition, so a reader a year later sees it without having to
+        // reconstruct which dimensions were unknown at the time.
+        const constraint = decisionUseConstraint(dims);
         const prior = await this.coverage.currentHealth(cap, a.sourceId);
         await this.coverage.record(
           cap, scope, a.envelope.correlation_id, input, dims, health, prior, facts.evidenceRefs);
         return {
-          result: { evaluatedAt, window: { start: windowStart, end: windowEnd }, dimensions: dims, health, prior },
+          result: {
+            evaluatedAt, window: { start: windowStart, end: windowEnd },
+            dimensions: dims, health, prior, decisionUseConstraint: constraint,
+          },
           targetType: 'SRC', targetId: a.sourceId, targetVersion: String(contract.contract_version),
           outboxEvent: prior === health.state ? null : {
             eventType: 'SourceHealthChanged',
             payload: {
               source_id: a.sourceId, prior_state: prior, new_state: health.state,
               evaluated_at: evaluatedAt, reason: health.reason, lag_class: health.lagClass,
+              decision_use_constraint: constraint,
               calc_version: 'coverage-calc@1.1.0',
               coverage_universe_version: input.universeVersion,
               evidence_refs: facts.evidenceRefs.slice(0, 20),
@@ -661,24 +776,61 @@ export class CollectionOrchestrator {
 
   // ───────────────────────── internals ─────────────────────────
 
-  private async contract(sourceId: string, contractVersion: number): Promise<ContractRow | null> {
-    const row = (await this.db
-      .selectFrom('observation.source_contracts_current' as never)
-      .selectAll()
-      .where('source_id' as never, '=', sourceId as never)
-      .where('contract_version' as never, '=', contractVersion as never)
-      .executeTakeFirst()) as ContractRow | undefined;
+  /**
+   * Every pre-flight lookup is a CONSEQUENTIAL READ under the caller's own
+   * authority. Reading through the ordinary application pool would return
+   * nothing — row-level security has no tenant to compare against outside a
+   * governed context — and the read is genuinely consequential anyway: deciding
+   * what to collect, and whose agent may collect it, is a decision the audit
+   * trail should carry.
+   */
+  private async readGoverned<T>(
+    a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; purposeId: string },
+    action: string, objectType: string, objectId: string | null,
+    fn: (cap: ObservationReads) => Promise<T>,
+  ): Promise<T> {
+    const envelope: Envelope = {
+      message_id: newId(), scope: 'DOMAIN', tenant_id: a.tenantId, domain_id: a.domainId,
+      principal_id: `principal:${a.principal.principalId}`, purpose_id: a.purposeId,
+      action, side_effect_class: 'none', consequence_class: 'C1',
+      object_type: objectType, object_id: objectId, schema_version: 'v1',
+      issued_at: new Date().toISOString(), clock_quality: 'trusted',
+      correlation_id: a.correlationId, trace_id: `obs-${a.correlationId.slice(0, 8)}`,
+      payload_digest: EMPTY_PAYLOAD_DIGEST,
+    };
+    const out = await this.pipeline.consequentialRead(
+      envelope, a.principal,
+      { scope: 'DOMAIN', tenantId: a.tenantId, domainId: a.domainId, action, objectType, objectId },
+      ObservationCapability.read, async (cap) => fn(cap));
+    return out.result;
+  }
+
+  private async contract(
+    a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; purposeId: string },
+    sourceId: string, contractVersion: number,
+  ): Promise<ContractRow | null> {
+    const row = await this.readGoverned(a, 'observation.read.sources', 'SRC', sourceId, async (cap) =>
+      (await cap
+        .readSourceContracts()
+        .selectAll()
+        .where('source_id' as never, '=', sourceId as never)
+        .where('contract_version' as never, '=', contractVersion as never)
+        .executeTakeFirst()) as ContractRow | undefined);
     return row ?? null;
   }
 
-  private async contractLatest(sourceId: string): Promise<ContractRow | null> {
-    const row = (await this.db
-      .selectFrom('observation.source_contracts_current' as never)
-      .selectAll()
-      .where('source_id' as never, '=', sourceId as never)
-      .orderBy('contract_version' as never, 'desc')
-      .limit(1)
-      .executeTakeFirst()) as ContractRow | undefined;
+  private async contractLatest(
+    a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; purposeId: string },
+    sourceId: string,
+  ): Promise<ContractRow | null> {
+    const row = await this.readGoverned(a, 'observation.read.sources', 'SRC', sourceId, async (cap) =>
+      (await cap
+        .readSourceContracts()
+        .selectAll()
+        .where('source_id' as never, '=', sourceId as never)
+        .orderBy('contract_version' as never, 'desc')
+        .limit(1)
+        .executeTakeFirst()) as ContractRow | undefined);
     return row ?? null;
   }
 }

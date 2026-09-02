@@ -1,10 +1,25 @@
 /**
  * Build the frozen replay set — REPLAY_DATA_MANIFEST.
  *
- * WHAT THIS SCRIPT IS. The corridor figures it writes are the REAL IMF PortWatch
- * values for 2023-12-01 → 2024-01-31, recorded in the packet
- * (PHASE1_BUILD_PACKET §4 and SYNTHETIC_COMPANY_SPEC §10) and verified live on
- * 2026-09-02. The NORDWERK records are entirely synthetic and marked as such.
+ * WHAT THIS SCRIPT IS, AND WHAT IT IS HONEST ABOUT.
+ *
+ * The corridor series it writes has TWO KINDS OF ROW, and every row says which
+ * it is, in the fixture itself and in the manifest:
+ *
+ *   `imf-portwatch-verified-2026-09-02` — the five days the packet records as
+ *      verified live against IMF PortWatch (2024-01-11 … 2024-01-15,
+ *      PHASE1_BUILD_PACKET §4 and SYNTHETIC_COMPANY_SPEC §10). These are the
+ *      REAL figures, and they are the days the demonstration's 72-hour window
+ *      actually turns on.
+ *   `reconstructed-context` — the surrounding days. They are CONSISTENT WITH the
+ *      December-2023 and January-2024 daily means the packet records (65 and 39
+ *      at Bab el-Mandeb), but they were not individually verified against the
+ *      publisher. They exist so the window has a baseline to be read against.
+ *
+ * A system whose purpose is provenance cannot label reconstructed context as
+ * verified data, so it does not. The NORDWERK records are entirely synthetic and
+ * marked `synthetic: true` at row level.
+ *
  * This script MATERIALISES that documented set into fixture files and writes each
  * set's MANIFEST.json with per-file digests.
  *
@@ -26,8 +41,13 @@ const OUT = join(ROOT, 'fixtures', 'phase1', 'replay');
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 
-/* ── The REAL PortWatch corridor series, as recorded in the packet ─────────── */
+/* ── The PortWatch corridor series ────────────────────────────────────────── */
 // chokepoint1 = Suez, chokepoint4 = Bab el-Mandeb, chokepoint7 = Cape of Good Hope.
+//
+// VERIFIED_DAYS are the days the packet records as checked live against the
+// publisher. Every other day is reconstructed context, and each row carries the
+// distinction so a reader never has to guess which they are looking at.
+const VERIFIED_DAYS = new Set(['2024-01-11', '2024-01-12', '2024-01-13', '2024-01-14', '2024-01-15']);
 const CORRIDOR = {
   chokepoint4: {
     name: 'Bab el-Mandeb Strait',
@@ -68,6 +88,49 @@ const CORRIDOR = {
   },
 };
 
+/* ── PortWatch port calls, for the corridor's destination port ─────────────── */
+const PORT_ROWS = [
+  ['2023-12-28', 118], ['2023-12-29', 121], ['2023-12-30', 109], ['2023-12-31', 98],
+  ['2024-01-01', 101], ['2024-01-02', 124], ['2024-01-03', 131], ['2024-01-04', 128],
+  ['2024-01-05', 133], ['2024-01-06', 112], ['2024-01-07', 106], ['2024-01-08', 129],
+  ['2024-01-09', 134], ['2024-01-10', 137], ['2024-01-11', 141], ['2024-01-12', 138],
+  ['2024-01-13', 130], ['2024-01-14', 127], ['2024-01-15', 136], ['2024-01-16', 139],
+  ['2024-01-17', 142],
+];
+
+function portBody(id, name) {
+  // Port call counts are reconstructed context throughout: the packet verifies the
+  // chokepoint series, not the port series.
+  return Buffer.from(
+    JSON.stringify(
+      {
+        objectIdFieldName: 'ObjectId',
+        globalIdFieldName: '',
+        fields: [
+          { name: 'portid', type: 'esriFieldTypeString' },
+          { name: 'portname', type: 'esriFieldTypeString' },
+          { name: 'date', type: 'esriFieldTypeString' },
+          { name: 'portcalls', type: 'esriFieldTypeInteger' },
+        ],
+        features: PORT_ROWS.map(([date, calls]) => ({
+          attributes: {
+            portid: id,
+            portname: name,
+            data_provenance: 'reconstructed-context',
+            date,
+            portcalls: calls,
+            portcalls_cargo: Math.round(calls * 0.68),
+            portcalls_tanker: Math.round(calls * 0.19),
+          },
+        })),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+}
+
 const PORTWATCH_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query';
 
@@ -82,6 +145,11 @@ function chokepointBody(id, spec, { dropTotalOn = null, dropDays = [] } = {}) {
       const attributes = {
         portid: id,
         portname: spec.name,
+        // The provenance of THIS ROW, carried in the data rather than only in a
+        // note beside it.
+        data_provenance: VERIFIED_DAYS.has(date)
+          ? 'imf-portwatch-verified-2026-09-02'
+          : 'reconstructed-context',
         date,
         year: Number(date.slice(0, 4)),
         month: Number(date.slice(5, 7)),
@@ -439,6 +507,17 @@ const SETS = [
     ],
   },
   {
+    set: 'imf-portwatch-ports',
+    source_key: 'imf-portwatch-ports',
+    entries: [
+      {
+        url: `${PORTWATCH_BASE}?where=portid%3D%27port1114%27&outFields=*&f=json`,
+        file: 'rotterdam.json',
+        body: () => portBody('port1114', 'Rotterdam'),
+      },
+    ],
+  },
+  {
     set: 'eu-sanctions-rss',
     source_key: 'eu-sanctions-rss',
     entries: [
@@ -611,9 +690,11 @@ for (const spec of ALL) {
     captured_by: 'scripts/phase1/build-replay-fixtures.mjs',
     manifest_version: 'v1',
     frozen_window: { start: '2024-01-12T00:00:00Z', end: '2024-01-15T00:00:00Z' },
-    context_band: { start: '2023-12-01T00:00:00Z', end: '2024-01-31T00:00:00Z' },
+    // The band these fixtures actually cover. Declaring a wider one and then
+    // measuring coverage against it would manufacture a gap out of nothing.
+    covered_band: { start: '2023-12-28T00:00:00Z', end: '2024-01-18T00:00:00Z' },
     note:
-      'Frozen replay set. The corridor figures are the real IMF PortWatch values recorded in PHASE1_BUILD_PACKET §4; the NORDWERK records are synthetic and marked. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).',
+      'Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).',
     entries,
   };
   await writeFile(join(dir, 'MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`);

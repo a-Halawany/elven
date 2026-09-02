@@ -31,6 +31,8 @@ export interface CollectionJobPayload {
   contractVersion: number;
   agentId: string;
   agentVersion: string;
+  /** Re-verified against the registry at execution; a drifted digest is refused. */
+  codeDigest: string;
   connector: string;
   correlationId: string;
   budgets: Record<string, number>;

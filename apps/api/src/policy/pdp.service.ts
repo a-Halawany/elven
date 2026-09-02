@@ -116,7 +116,11 @@ const BUNDLE_V1: Rule[] = [
    *     correction. Those need a human collection_manager.
    */
   {
-    // Read of any observation state: operators, managers and auditors.
+    // Read of observation state: operators, managers, auditors — and the
+    // COLLECTION AGENT, which must read the contract it is collecting under, its
+    // own checkpoint and its own runs. It is deliberately absent from
+    // `observation.evidence.retrieve` below: an agent writes evidence, and has no
+    // business reading the original bytes back out.
     actionPrefix: 'observation.read',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },
@@ -125,6 +129,7 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'collection_agent', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,

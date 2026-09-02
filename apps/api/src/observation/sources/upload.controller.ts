@@ -100,6 +100,7 @@ export class UploadController {
       correlationId: envelope.correlation_id,
       purposeId: envelope.purpose_id ?? 'observation',
       triggeredBy: `principal:${principal.principalId}`,
+      triggerPrincipal: principal,
       files: decoded,
     });
     return { run: outcome };

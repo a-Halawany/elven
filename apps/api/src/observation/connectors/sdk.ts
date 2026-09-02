@@ -37,6 +37,10 @@ export interface SourceBinding {
     requiredFields: string[];
     driftTolerance: number;
     maxBytes?: number;
+    /** Contract-declared transport framing. See SourceContractV1 for the rule. */
+    itemPath?: string;
+    itemKeyField?: string;
+    itemTimeField?: string;
   };
   budgets: RunBudgets;
   egress: EgressPolicy;

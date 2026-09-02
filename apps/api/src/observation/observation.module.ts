@@ -8,6 +8,7 @@
  * admission.
  */
 import { Module, type OnModuleInit } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { ObservationController } from './observation.controller.js';
@@ -25,6 +26,7 @@ import { SchedulerService } from './scheduling/scheduler.service.js';
 import { SweeperService } from './sweeper/sweeper.service.js';
 import { AcquisitionLifecycle } from './acquisition/lifecycle.service.js';
 import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
+import { ObservationExceptionFilter } from './observation.filter.js';
 
 @Module({
   imports: [PipelineModule, IdentityModule],
@@ -43,6 +45,10 @@ import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
     SweeperService,
     AcquisitionLifecycle,
     CollectionOrchestrator,
+    // Registered AFTER the Phase 0 filter so it is consulted first for these
+    // routes; a refusal a governed port raised deliberately answers as the rule
+    // it is, and everything else falls through unchanged.
+    { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [VaultService, CollectionOrchestrator, SchedulerService],
 })
