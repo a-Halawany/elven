@@ -1,7 +1,13 @@
 node_modules/
 dist/
 .next/
-coverage/
+# Coverage OUTPUT only. This was `coverage/`, which matches at any depth and so
+# silently swallowed apps/api/src/observation/coverage/ — two Phase 1 source files
+# that were never committed, and a branch that could not build from a fresh
+# checkout. Anchored to the places a coverage reporter actually writes.
+/coverage/
+/apps/*/coverage/
+/packages/*/coverage/
 *.tsbuildinfo
 .env
 .env.*
