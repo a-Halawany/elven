@@ -790,6 +790,16 @@ async function main(parsed) {
       match: 'context_key_hash',
       reason: 'SQL COLUMN NAME in SELECT lists, not a credential; the stored value is a SHA-256 hash of a context key',
       condition: 'AND (file must be a migration AND match must be that identifier)',
+    }, {
+      scope: 'GATE2_2_FINAL_CLOSURE_PLAN.md @ 6d702d28252ee749b23c862f264fede060fed5df',
+      match: 'replacement/reuse/invalidation',
+      reason: 'ENGLISH PROSE naming three nullable columns, not a credential; the working tree was reworded, so this covers one historical commit only',
+      condition: 'AND (commit AND file AND match)',
+    }, {
+      scope: 'repository-wide, one exact literal',
+      match: 'token=dG9rZW4tMjAxNw',
+      reason: 'PUBLISHED URL PARAMETER of the anonymous EU Financial Sanctions Files open-data endpoint, printed in the EU Open Data Portal metadata and the public RSS feed; it authenticates nobody and decodes to the ASCII string "token-2017". PHASE1_PLAN §8.1 URL-query redaction strips it from logs, events and audit metadata regardless of this exclusion',
+      condition: 'match must be that exact literal; every other token= value and every other rule stay in scope',
     }],
   };
   const ungoverned = exclusionProofs.filter((p) => p.governed === false);
