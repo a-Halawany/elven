@@ -1,6 +1,28 @@
 # Gate-2.2 C19 — consolidated review packet
 
+> # ⚠️ HISTORICAL DOCUMENT — PRE-MERGE SNAPSHOT OF PR #21
+>
+> **This entire packet is a snapshot of the `c19-external-anchoring` branch as it stood before
+> PR #21 was merged. It is not current status, in whole or in part.** Every status claim, SHA,
+> count, "pending"/"not yet"/"deliberately not attempted" statement and open question in it should
+> be read as *what was true at that moment*, not as a description of the repository today.
+>
+> What changed after this snapshot was written: PR #21 merged at 2026-09-01T16:41:53Z as
+> `82e90858`; the C19 implementation was then corrected in PR #25 as `e3599648`; and **three**
+> Rekor publications now exist (log indices 2678296492, 2681035221, 2684653822). §11's "the first
+> Rekor publication — deliberately not attempted" is the clearest example of a line that has since
+> been overtaken by events.
+>
+> The document below is preserved **with its original wording intact** — nothing in it has been
+> reworded, removed or backdated — but it is **not unedited**: this banner was inserted at the top,
+> and a one-line pointer follows the status sentence. Those two annotations are the only additions.
+> It is kept because it is the historical record of what was claimed before merge, and because
+> deleting it would remove evidence about the process rather than correct it. For current status,
+> the reconciled chronology, the evidence classes and the process exception, see
+> **[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**.
+
 **Status: NOT MERGED · NOT SIGNED · NOT PUBLISHED.** Nothing in this branch has reached Rekor.
+*(As above: true when written, false now.)*
 
 This packet was assembled by the same agent that wrote the change. It is **not** an independent
 review and must not be read as one; it exists so that an independent review has a complete and
