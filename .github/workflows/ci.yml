@@ -133,6 +133,20 @@ jobs:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
         run: pnpm --filter @eye/api test:int
+      # Migration 0022's own upgrade proof. C18 below is FROZEN at 0021 and cannot
+      # speak about a migration that did not exist when it was frozen, so 0022 gets
+      # a bounded compatibility check of its own: a 0021 database carrying real
+      # Phase 0 data and authorities, 0022 applied to it, every pre-existing row
+      # proven to survive, the additions proven to be exactly the declared ones,
+      # Phase 0 authority behaviour re-proven, the resulting schema compared with a
+      # virgin 0001-0022 database, and the Phase 1 suites run against the UPGRADED
+      # data. It uses the tracked migration runner and the suites that already
+      # exist — it is not another gate and defines no new criteria.
+      - name: Migration 0022 upgrade compatibility (tracked runner, blocking)
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
+        run: node scripts/phase1/verify-0022-upgrade.mjs
       # C18 — BLOCKING dual-path database history proof. The tracked runner provisions two
       # fully isolated postgres+redis instances with per-run names, ports and credentials
       # (never the compose stack, never shared between paths), applies 0001-0012, seeds only
