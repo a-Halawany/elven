@@ -34,13 +34,15 @@ Then, with the API on `:3401` and the shell on `:3000`:
 node scripts/phase1/seed-demo.mjs
 ```
 
-The seed is idempotent and has **no back door** — every step is a request an operator could make, so a green run is itself evidence that the operator journey works. Its final state:
+The seed has **no back door** — every step is a request an operator could make, so a green run is itself evidence that the operator journey works. From a cold environment (`docker compose down -v`, then `./scripts/demo.sh`, then the seed) it ends at:
 
 ```
 sources 10 · active 10 · draft 0 · unconfirmed rights 3
 evidence objects 105 · open quarantine 1 · open corrections 0
 replay share: 100% by object · 100% by bytes
 ```
+
+Registration is idempotent — a second run reuses the tenant, domain, principals and contracts it finds — but **collection is not, by design**: the attempt key is scoped to the run, so re-collecting unchanged bytes at a later time is a *new observation*, not a replay, and the evidence counts grow accordingly. Only an exact replay of the same attempt within a run no-ops, and that no-op is audited rather than silent. The vault deliberately does not content-address its blobs: a digest→locator index is exactly the existence oracle §9's opaque locators exist to prevent, so identical bytes collected twice are stored twice.
 
 Sign in as **m.dvorak** (collection manager) or **a.hoffmann** (observation operator) and walk the journey the way the storyboard scripts it: register a source → have a *second* operator approve and activate it → collect → inspect the evidence, its custody chain and its four times → see the drifted row sitting in quarantine and release it with a reason → evaluate coverage and read the gap it refuses to round away → correct a row and watch the prior version stay retrievable → run a known-at query that reproduces what was known before the correction.
 
