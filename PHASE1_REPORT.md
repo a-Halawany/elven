@@ -1,6 +1,6 @@
 # THE EYE — Phase 1 Report: L1 World Observation Layer
 
-> Status: **IMPLEMENTED — awaiting owner review.** Built from `main` after the documentation-only Build Packet merged (PR #26), on branch `phase1-implementation`.
+> Status: **IMPLEMENTED — awaiting owner review.** Built from `main` after the documentation-only Build Packet merged (PR #26), on branch `phase1-implementation`, and rebased onto `main` after **Phase 0 closed at [`phase0-v1.0.0`](https://github.com/a-Halawany/elven/releases/tag/phase0-v1.0.0)** (target `a792cd9a`).
 > Plan: [PHASE1_PLAN.md](PHASE1_PLAN.md) (Revision 5) · Packet: [PHASE1_BUILD_PACKET.md](PHASE1_BUILD_PACKET.md) · Scope register: [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md) · Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) · Log: [PROGRESS.md](PROGRESS.md)
 
 Phase 1 makes the platform **observe the world and be able to prove what it observed**: where a fact came from, who authorised its collection, what bytes actually arrived, what has not been observed at all, and what the platform does *not* know. It does not interpret anything — extraction, entities, prediction and decisions are Phases 2–6, and this phase deliberately refuses to imply them.
@@ -55,11 +55,17 @@ Sign in as **m.dvorak** (collection manager) or **a.hoffmann** (observation oper
 | `packages/contracts` (canonicalization, envelope, header registry, audit digests) | 203/203 |
 | `packages/tokens` | 3/3 |
 | API hermetic (unit + gate + supply-chain runner behaviour) | 2034/2034 |
-| **API integration** (Phase 0 isolation/adversarial/audit + **Phase 1 A1–A3, A5–A11**) | **470/470** |
+| **API integration** — `test:int:all` (Phase 0 isolation/adversarial/audit + **Phase 1 A1–A3, A5–A11**) | **470/470** |
+| Integration, Phase 0 / C18-era manifest — `test:int` | 297/297 |
+| **Migration 0022 upgrade compatibility** (`scripts/phase1/verify-0022-upgrade.mjs`) | **PASS** |
 | Phase 0 acceptance (15 criteria + §7.2 request paths) | 58/58 |
 | **Browser (Playwright)** — Phase 0 ten + **Phase 1 A12 sixteen** | **26/26** |
 
 The Phase 1 integration additions are three files: the acceptance matrix (46 tests), fault injection (43 tests, F01–F46 plus the structural no-I/O-in-transaction assertion) and hostile input (84 tests). The integration baseline entering this phase was 297.
+
+**Why the suite has two entry points.** C18's dual-path history gate is frozen at migration **0021** — its ceiling, catalog, table universe, criteria and its frozen `7be02b8` differential verifier all describe that world, and the verifier pins the suite command's argv itself. The Phase 1 suites need migration 0022 and cannot pass against an 0021 database by construction. So `test:int` remains the Phase 0 / C18-era manifest under the argv C18 owns, and `test:int:all` runs everything. **No file C18 owns is modified by this branch.**
+
+**Migration 0022 therefore carries its own upgrade proof**, on the tracked migration runner and the suites that already exist — not a new gate and not a new framework: a 0021 database is given representative Phase 0 data and authorities by running the Phase 0 suite against it through the real ports (297/297); 0022 is applied; every one of the 1020 pre-existing rows across 29 tables is proven to survive unchanged, with additions proven to be exactly the declared ones (`identity.roles` +2, `objects.schema_registry` +3, `public.schema_migrations` +1) and anything else in either direction failing; Phase 0 authority behaviour is re-proven (297/297); the upgraded schema digest — columns, constraints, indexes, routines, policies, RLS flags, grants — is compared with a virgin 0001–0022 database and matches exactly; and the Phase 1 suites run against the **upgraded** data, 173/173.
 
 Browser-verified live against the seeded demonstration: sign-in, overview, source registration and approval by a second operator, collection, evidence detail with custody, a quarantine release with its receipt, and the full coverage panel.
 
@@ -117,8 +123,11 @@ Found by the suites and by driving the product, and fixed in place — the plan'
 23. `/v1/me` was routed to commit authority instead of identity.
 24. The registration form could not express framing (item path, key, time). Found only after tightening a loose browser assertion that had been passing on a run which admitted **zero** items — the test, not the product, was the first defect there.
 
+**Packaging**
+25. **`.gitignore`'s bare `coverage/` silently swallowed source.** The pattern matches at any depth, so `apps/api/src/observation/coverage/` — the §6 coverage model itself — was never committed. Local runs passed because the files exist on disk; the branch could not build from a fresh checkout, and CI failed with `TS2307: Cannot find module '../coverage/coverage.service.js'`. The rule is now anchored to where a reporter actually writes (`/coverage/`, `/apps/*/coverage/`, `/packages/*/coverage/`), and the tree was swept for anything else being hidden — only `.c19-tools/` and `.claude/settings.local.json`, both deliberate. This is the clearest reminder in the phase that a green local run is not evidence about what is in the commit.
+
 **Gate**
-25. `gitleaks` flagged the packet's own published FSF `token=` URL parameter. Allowlisted narrowly for that one literal, recorded in `governed_exclusions`, and shipped as a separate PR (#27) so the packet stayed documentation-only.
+26. `gitleaks` flagged the packet's own published FSF `token=` URL parameter. Allowlisted narrowly for that one literal, recorded in `governed_exclusions`, and shipped as a separate PR (#27) so the packet stayed documentation-only.
 
 Test-side corrections (the test was wrong and the product right) are recorded in the suites themselves, each with the reason stated at the assertion.
 
@@ -130,6 +139,7 @@ Test-side corrections (the test was wrong and the product right) are recorded in
 | `fast-xml-parser@5.10.1` | `5.11.1` | 5.10.1 no longer resolves; the pin is exact and `PARSER_VERSION` is recorded in every RSS method ref. |
 | C6 single writable target | Declared bounded target **set** (≤32, all-UUID, signed) | §5 step 8e must write OBS and EVD in one transaction. The single-target case is unchanged; the set is a strict, bounded extension rather than a relaxation. |
 | A8 in the acceptance suite | Added during closing review | The suite's header claimed A8 while no A8 block existed; six tests were added to cover correction, withdrawal, supersession, preservation, spoofing and propagation failure. |
+| One integration entry point | Two (`test:int`, `test:int:all`) | C18 is frozen at 0021 and its frozen verifier pins the suite argv, so the Phase 0-era manifest keeps that name and the full run gets its own. C18 itself is untouched. |
 
 ## 7. Carried risks and honest limits
 
