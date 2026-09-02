@@ -27,6 +27,11 @@ import { AgentSessionService, AgentGrantRefused } from '../../src/observation/ag
 import { VaultService, VaultIntegrityError } from '../../src/observation/vault/vault.service.js';
 import { CoverageService, decisionUseConstraint } from '../../src/observation/coverage/coverage.service.js';
 import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
+import { CollectionOrchestrator } from '../../src/observation/acquisition/orchestrator.service.js';
+import { CorrectionsService, UNRESOLVED_PROPAGATION } from '../../src/observation/corrections/corrections.service.js';
+import { ObservationCapability, type AcquisitionWrites } from '../../src/observation/observation.capabilities.js';
+import { PipelineService } from '../../src/pipeline/pipeline.service.js';
+import type { Envelope } from '@eye/contracts';
 import { seedPhase1Domain, type Phase1Fixture } from './phase1-helpers.js';
 
 let app: INestApplicationContext;
@@ -34,6 +39,9 @@ let lifecycle: AcquisitionLifecycle;
 let agentSessions: AgentSessionService;
 let vault: VaultService;
 let coverage: CoverageService;
+let orchestrator: CollectionOrchestrator;
+let corrections: CorrectionsService;
+let pipeline: PipelineService;
 let appDb: Db;
 let commitDb: Db;
 let su: Db;
@@ -51,6 +59,9 @@ beforeAll(async () => {
   agentSessions = app.get(AgentSessionService);
   vault = app.get(VaultService);
   coverage = app.get(CoverageService);
+  orchestrator = app.get(CollectionOrchestrator);
+  corrections = app.get(CorrectionsService);
+  pipeline = app.get(PipelineService);
   await vault.ensureRoots();
   appDb = app.get(APP_DB);
   commitDb = app.get(COMMIT_DB);
@@ -69,6 +80,28 @@ afterAll(async () => {
   await app?.close();
   rmSync(VAULT_DIR, { recursive: true, force: true });
 });
+
+/** The envelope the API would have built for this operator action. */
+function envelopeFor(action: string, objectType: string, objectId: string | null): Envelope {
+  return {
+    message_id: uuidv7(),
+    scope: 'DOMAIN',
+    tenant_id: fx.tenantId,
+    domain_id: fx.domainId,
+    principal_id: `principal:${fx.managerId}`,
+    purpose_id: 'observation',
+    action,
+    side_effect_class: 'reversible',
+    consequence_class: 'C2',
+    object_type: objectType,
+    object_id: objectId,
+    schema_version: 'v1',
+    issued_at: new Date().toISOString(),
+    clock_quality: 'trusted',
+    correlation_id: uuidv7(),
+    trace_id: 'accept-a8',
+  } as unknown as Envelope;
+}
 
 async function collect(target: Phase1Fixture = fx) {
   const connector = new RestConnector();
@@ -327,7 +360,7 @@ describe('A3 — four-time conformance and known-at queries over OBS/EVD', () =>
        where object_id = ${evd?.object_id}::uuid
        order by object_version desc limit 1`.execute(su)).rows[0];
 
-    expect(Number(asOf?.object_version), 'the known-at query saw the correction').toBe(1);
+    expect(Number(asOf?.object_version), 'the known-at query saw the later correction').toBe(1);
     expect(Number(current?.object_version), 'the correction did not create a new version').toBe(2);
   });
 });
@@ -630,6 +663,185 @@ describe('A7 — vault: missing and corrupt reads fail closed and disclose nothi
     // The retrieval path is exercised through the API in A12; here we assert the
     // event TYPE exists in the vocabulary and that nothing writes it by accident.
     expect(before).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/* ───────────────────────── A8: corrections and withdrawal ───────────────────────── */
+
+describe('A8 — correction, withdrawal, supersession and what a correction did NOT resolve', () => {
+  /** Open a case exactly as the correction intake endpoint does. */
+  async function openCase(kind: 'correction' | 'withdrawal' | 'supersession', reason: string) {
+    const out = await pipeline.write<{ caseId: string }, AcquisitionWrites>(
+      envelopeFor('observation.correction.receive', 'COR', null),
+      await fx.managerPrincipal(),
+      {
+        scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'observation.correction.receive', objectType: 'COR', objectId: null,
+      },
+      ObservationCapability.acquisition,
+      async (cap, scope) => {
+        const r = await corrections.open(cap, scope, uuidv7(), {
+          sourceId: fx.sourceId, kind, channel: 'operator', publisherRef: null,
+          reason, affectedEvdIds: [],
+        });
+        return { result: r, targetType: 'COR', targetId: r.caseId, targetVersion: '1', outboxEvent: null };
+      });
+    return out.result.caseId;
+  }
+
+  async function currentEvd(offset = 0): Promise<{ object_id: string; object_version: number }> {
+    const row = (await sql<{ object_id: string; object_version: string }>`
+      select object_id, max(object_version) object_version
+        from objects.canonical_objects
+       where object_type = 'EVD' and provenance_ref like ${`SRC:${fx.sourceId}@%`}
+       group by object_id order by object_id offset ${offset} limit 1`.execute(su)).rows[0];
+    expect(row, 'no evidence object was available to correct').toBeDefined();
+    return { object_id: String(row?.object_id), object_version: Number(row?.object_version) };
+  }
+
+  it('a correction SUPERSEDES without overwriting, and the prior version stays retrievable', async () => {
+    const target = await currentEvd(1);
+    const caseId = await openCase('correction', 'the publisher restated this row');
+    const out = await orchestrator.applyCorrection({
+      envelope: envelopeFor('observation.correction.apply', 'COR', caseId),
+      principal: await fx.managerPrincipal(),
+      tenantId: fx.tenantId, domainId: fx.domainId, caseId,
+      decision: 'apply', affectedEvdIds: [target.object_id],
+      reason: 'the publisher restated this row',
+    });
+    const correction = out['correction'] as {
+      superseded: Array<{ object_id: string; from: number; to: number }>;
+      propagationScope: { unresolved: string };
+    };
+    expect(correction.superseded).toHaveLength(1);
+    expect(correction.superseded[0]?.from).toBe(target.object_version);
+    expect(correction.superseded[0]?.to).toBe(target.object_version + 1);
+
+    const versions = (await sql<{ object_version: string; lifecycle_state: string; correction_of: string | null }>`
+      select object_version, lifecycle_state, correction_of from objects.canonical_objects
+       where object_id = ${target.object_id}::uuid order by object_version`.execute(su)).rows;
+    // NOTHING WAS OVERWRITTEN: the prior version is still there, unchanged.
+    expect(versions.length).toBe(target.object_version + 1);
+    expect(versions[0]?.lifecycle_state, 'the prior version was mutated').not.toBe('corrected');
+    const latest = versions[versions.length - 1];
+    expect(latest?.lifecycle_state).toBe('corrected');
+    expect(latest?.correction_of).toBe(`${target.object_id}@${target.object_version}`);
+  });
+
+  it('the case states, in words, what it did not resolve', async () => {
+    const target = await currentEvd(2);
+    const caseId = await openCase('correction', 'restated again');
+    const out = await orchestrator.applyCorrection({
+      envelope: envelopeFor('observation.correction.apply', 'COR', caseId),
+      principal: await fx.managerPrincipal(),
+      tenantId: fx.tenantId, domainId: fx.domainId, caseId,
+      decision: 'apply', affectedEvdIds: [target.object_id], reason: 'restated again',
+    });
+    const correction = out['correction'] as { propagationScope: { unresolved: string } };
+    // Phase 1 has no dependency graph. It says so rather than implying propagation.
+    expect(correction.propagationScope.unresolved).toBe(UNRESOLVED_PROPAGATION);
+    // And it SURVIVES into the stored case, not merely into the response.
+    const stored = (await sql<{ propagation_unresolved: string; state: string }>`
+      select propagation_unresolved, state from observation.correction_current
+       where case_id = ${caseId}::uuid`.execute(su)).rows[0];
+    expect(stored?.propagation_unresolved).toBe(UNRESOLVED_PROPAGATION);
+    expect(stored?.state).toBe('applied');
+  });
+
+  it('a WITHDRAWAL says so in the truth state, not only in the lifecycle', async () => {
+    const target = await currentEvd(3);
+    const caseId = await openCase('withdrawal', 'the publisher withdrew this row');
+    await orchestrator.applyCorrection({
+      envelope: envelopeFor('observation.correction.apply', 'COR', caseId),
+      principal: await fx.managerPrincipal(),
+      tenantId: fx.tenantId, domainId: fx.domainId, caseId,
+      decision: 'apply', affectedEvdIds: [target.object_id],
+      reason: 'the publisher withdrew this row',
+    });
+    const latest = (await sql<{ lifecycle_state: string; truth_state: string; withdrawal_reason: string }>`
+      select lifecycle_state, truth_state, withdrawal_reason from objects.canonical_objects
+       where object_id = ${target.object_id}::uuid order by object_version desc limit 1`.execute(su)).rows[0];
+    expect(latest?.lifecycle_state).toBe('withdrawn');
+    // A reader taking truth_state at face value must not read a withdrawn row as observed.
+    expect(latest?.truth_state).toBe('withdrawn');
+    expect(latest?.withdrawal_reason).toBe('the publisher withdrew this row');
+  });
+
+  it('a SPOOFED correction — claiming another domain’s evidence — resolves nothing and is rejected', async () => {
+    // Real evidence, but in the OTHER tenant's domain — collected there through
+    // the same governed path, so the spoofed claim names something that exists.
+    await collect(other);
+    const foreign = (await sql<{ object_id: string }>`
+      select object_id from objects.canonical_objects
+       where object_type = 'EVD' and provenance_ref like ${`SRC:${other.sourceId}@%`} limit 1`.execute(su)).rows[0];
+    expect(foreign, 'the other domain admitted no evidence to spoof with').toBeDefined();
+
+    const caseId = await openCase('correction', 'a claim over evidence this case has no relationship to');
+    const out = await orchestrator.applyCorrection({
+      envelope: envelopeFor('observation.correction.apply', 'COR', caseId),
+      principal: await fx.managerPrincipal(),
+      tenantId: fx.tenantId, domainId: fx.domainId, caseId,
+      decision: 'apply',
+      affectedEvdIds: [String(foreign?.object_id), uuidv7()],
+      reason: 'a claim over evidence this case has no relationship to',
+    });
+    const correction = out['correction'] as {
+      state: string; rejectedClaims: Array<{ object_id: string; reason: string }>;
+    };
+    expect(correction.state, 'a spoofed claim was applied').toBe('rejected');
+    expect(correction.rejectedClaims).toHaveLength(2);
+    // The refusal must not become an existence oracle: an object in another
+    // domain and an object that never existed are refused in the SAME words.
+    const reasons = new Set(correction.rejectedClaims.map((c) => c.reason));
+    expect(reasons.size, 'the rejection distinguished a foreign object from a nonexistent one').toBe(1);
+
+    // And nothing was written to the foreign object.
+    const versions = (await sql<{ n: string }>`
+      select count(*)::text n from objects.canonical_objects
+       where object_id = ${String(foreign?.object_id)}::uuid`.execute(su)).rows[0];
+    expect(Number(versions?.n)).toBe(1);
+  });
+
+  it('a PROPAGATION FAILURE is recorded as failed, with the partial set it managed', async () => {
+    const caseId = await openCase('correction', 'a case whose application broke partway');
+    await pipeline.write<void, AcquisitionWrites>(
+      envelopeFor('observation.correction.apply', 'COR', caseId),
+      await fx.managerPrincipal(),
+      {
+        scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'observation.correction.apply', objectType: 'COR', objectId: caseId,
+      },
+      ObservationCapability.acquisition,
+      async (cap, scope) => {
+        await corrections.fail(cap, scope, uuidv7(), caseId, 'the vault was unavailable partway through', []);
+        return { result: undefined, targetType: 'COR', targetId: caseId, targetVersion: '1', outboxEvent: null };
+      });
+    const stored = (await sql<{ state: string; failure_reason: string }>`
+      select state, failure_reason from observation.correction_current
+       where case_id = ${caseId}::uuid`.execute(su)).rows[0];
+    // Swallowed failures are the dishonest alternative.
+    expect(stored?.state).toBe('failed');
+    expect(stored?.failure_reason).toBe('the vault was unavailable partway through');
+  });
+
+  it('a known-at query still reproduces the state before the correction', async () => {
+    const target = await currentEvd(4);
+    const before = new Date().toISOString();
+    await new Promise((r) => setTimeout(r, 20));
+    const caseId = await openCase('correction', 'restated once more');
+    await orchestrator.applyCorrection({
+      envelope: envelopeFor('observation.correction.apply', 'COR', caseId),
+      principal: await fx.managerPrincipal(),
+      tenantId: fx.tenantId, domainId: fx.domainId, caseId,
+      decision: 'apply', affectedEvdIds: [target.object_id], reason: 'restated once more',
+    });
+    const asOf = (await sql<{ object_version: string; lifecycle_state: string }>`
+      select object_version, lifecycle_state from objects.canonical_objects
+       where object_id = ${target.object_id}::uuid and recorded_at <= ${before}::timestamptz
+       order by object_version desc limit 1`.execute(su)).rows[0];
+    // No hindsight: the knowledge state of that instant, not today's.
+    expect(Number(asOf?.object_version)).toBe(target.object_version);
+    expect(asOf?.lifecycle_state).not.toBe('corrected');
   });
 });
 

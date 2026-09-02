@@ -1226,3 +1226,42 @@ gitleaks scans clean; credentials reached every authenticated command through th
 * The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
   the drawn values of per-instance secrets — remain **C19 external-anchoring concerns**.
 * **C19 is the next gate and has not been implemented.**
+
+---
+
+## PHASE 1 — L1 World Observation Layer, implemented (`phase1-implementation`)
+
+Built from `main` after the documentation-only Build Packet merged, against the approval of
+`bb8e300` and the recommendations it carried: replay-only acquisition, PortWatch and ECB reuse
+terms left **UNVERIFIED**, a 72-hour decision clock, €0 spent, no account, key, subscription or
+confidential data, and the locked *72-Hour Corridor Decision* demonstration.
+
+**Delivered** in seven milestone commits: migration `0022` (the observation registry, evidence
+custody, quarantine, coverage/health and corrections, all under RLS behind capability-asserting
+ports); the evidence vault; the three cohort-1 connectors with §8 network and content hardening;
+agents, scheduling, coverage and health; quarantine review, corrections, withdrawal and the orphan
+sweeper; the WS-02 Observation Operations interface; and the acceptance extension.
+
+**Measured.** Contracts **203**; tokens **3**; API hermetic **2,034**; integration **470** (from a
+297 baseline — the Phase 1 additions are 46 acceptance, 43 fault-injection F01–F46, 84 hostile
+input); Phase 0 acceptance **58**; browser **26** (Phase 0's ten plus Phase 1's sixteen). The
+seeded demonstration ends at 10 active sources, 105 evidence objects, one open quarantine case,
+and a replay share of 100 % by object and by bytes.
+
+**Twenty-five product defects were found and fixed during implementation**, listed with their
+reasons in [PHASE1_REPORT.md](PHASE1_REPORT.md) §5. The substantive ones were about honesty rather
+than crashes: coverage bucketed by record time instead of the publisher's own time (which hid the
+planted gap behind a healthy-looking average), health that could read healthy while completeness
+was unknown, freshness contaminated by framing parents, and fixtures that presented reconstructed
+days as verified figures. Two design tensions were resolved explicitly rather than papered over: a
+bounded declared **target set** reconciles Gate-2.2 C6 with §5 step 8e's OBS+EVD atomicity, and
+unconfirmed rights now block live acquisition only, not replay.
+
+**Closing state.** EXC-P1-001 (heuristic-only quarantine scanning) and EXC-P1-002 (local-volume
+evidence vault) move from `proposed` to `open` per PHASE1_PLAN §14. The connector coverage register
+is unchanged by implementation and says so: one source class substantially covered, four partially,
+fifteen not implemented, and **C-013 architectural extensibility designed for but not demonstrated**.
+
+**Operational note.** The C14 inertness suite compares the whole governed state before and after,
+so it requires an otherwise-idle database; a locally running API fails it legitimately, because its
+outbox publisher issues a capability on every poll tick. The suite now says so in its own header.

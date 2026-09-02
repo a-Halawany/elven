@@ -126,7 +126,9 @@ jobs:
         run: |
           pnpm db:migrate
           pnpm --filter @eye/api test:accept
-      - name: Integration tests (isolation, privileges, audit concurrency, refresh)
+      # Includes the Phase 1 suites: A4 fault injection (F01–F46), A10 hostile
+      # input, and the A1/A2/A3/A5/A6/A7/A9/A11 acceptance matrix.
+      - name: Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
@@ -227,7 +229,9 @@ jobs:
         run: pnpm db:migrate
       - name: Install Chrome (stable channel)
         run: pnpm exec playwright install chrome
-      - name: Phase 0 browser regression gate (10 scenarios, blocking)
+      # Both browser suites run in one invocation: the Phase 0 ten stay a standing
+      # regression gate, and the Phase 1 sixteen are the A12 acceptance journey.
+      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen, blocking)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
