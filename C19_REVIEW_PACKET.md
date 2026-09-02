@@ -13,10 +13,12 @@
 > Rekor publication — deliberately not attempted" is the clearest example of a line that has since
 > been overtaken by events.
 >
-> The document is preserved unedited below because it is the historical record of what was claimed
-> before merge, and because deleting it would remove evidence about the process rather than
-> correct it. For current status, the reconciled chronology, the evidence classes and the process
-> exception, see
+> The document below is preserved **with its original wording intact** — nothing in it has been
+> reworded, removed or backdated — but it is **not unedited**: this banner was inserted at the top,
+> and a one-line pointer follows the status sentence. Those two annotations are the only additions.
+> It is kept because it is the historical record of what was claimed before merge, and because
+> deleting it would remove evidence about the process rather than correct it. For current status,
+> the reconciled chronology, the evidence classes and the process exception, see
 > **[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**.
 
 **Status: NOT MERGED · NOT SIGNED · NOT PUBLISHED.** Nothing in this branch has reached Rekor.

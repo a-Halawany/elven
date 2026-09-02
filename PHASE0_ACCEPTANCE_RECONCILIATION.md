@@ -19,10 +19,13 @@ retracted. This document reconciles them against the actual GitHub history and t
 transparency-log evidence, and states the process exceptions plainly instead of smoothing them
 over.
 
-**A note on what "evidence" means here, because the distinction is load-bearing.** Only two classes
-of record in this document are append-only and content-addressed: **Git objects** (commits, trees,
-blobs, addressed by their own content) and **Rekor entries** (append-only, inclusion-proved,
-independently re-derivable). Everything sourced from GitHub Actions — run ids, per-job conclusions,
+**A note on what "evidence" means here, because the distinction is load-bearing.** Two classes of
+record in this document carry a durability property, and they are *different* properties. **Git
+objects** (commits, trees, blobs) are **content-addressed and identity-immutable**: an object cannot
+change without becoming a different object. That is not the same as append-only — a branch can be
+force-pushed and an object can become unreachable and be garbage-collected; what cannot happen is
+the *same* SHA denoting different content. **Rekor entries** are the **append-only** record:
+inclusion-proved, ordered, and not removable. Everything sourced from GitHub Actions — run ids, per-job conclusions,
 step logs, artifact ids and artifact ZIP digests — is **externally hosted operational evidence**: it
 is authoritative for what the run reported, but it is hosted by a third party, subject to retention
 and expiry, and re-runnable, so a later attempt can change what the run's *latest* state reports.
@@ -40,11 +43,18 @@ Every time is UTC and comes from the GitHub API or from the transparency log, no
 narrative. `reviews=0` is GitHub's own count of **submitted** pull-request reviews.
 
 **Observation window.** Every GitHub Actions value in this document was read between
-2026-09-02T12:00Z and **2026-09-02T16:33Z**, and run references carry the attempt number observed
-then. A run can be re-run afterwards; its latest attempt may then differ from what is recorded
-here. The Rekor entries and the Git objects do not have that property.
+2026-09-02T12:00Z and **2026-09-02T16:33Z**, and every run reference carries the attempt number
+observed then. A run can be re-run afterwards; its latest attempt may then differ from what is
+recorded here.
 
-| When | What | Reference (operational evidence unless marked append-only) |
+**Three publications existed during that window, and that is a statement about the window, not a
+permanent count.** The anchor workflow publishes on every successful push to `main`, so a later
+merge to `main` — including the merge of this reconciliation — will produce a fourth entry, and
+further merges will produce more. That does not falsify anything recorded here: each entry signs
+its own commit, the three enumerated in §3 remain exactly as described, and a subsequent entry is
+simply a subsequent entry.
+
+| When | What | Reference (operational evidence unless marked otherwise) |
 |---|---|---|
 | 2026-09-01T16:32:36Z | `ci` and `C19 lifecycle` pass on PR #21's head `b6ac2467` | runs 33532406962#1, 33532406929#1 |
 | **2026-09-01T16:41:53Z** | **PR #21 merged by `a-Halawany` with `reviews=0`** → merge commit `82e90858` | PR [#21](https://github.com/a-Halawany/elven/pull/21) |
@@ -53,7 +63,7 @@ here. The Rekor entries and the Git objects do not have that property.
 | 2026-09-01T16:50:00Z | `C19 anchor` — `publish` job ran and **signed once** | run 33534158991 **attempt 1** (the run's latest observed attempt is 2 — see §4.2) |
 | **2026-09-01T16:52:49Z** | **First irreversible Rekor publication** | Rekor logIndex `2678296492` (append-only) |
 | 2026-09-01T21:47:17Z | PR #25 merged, `reviews=0` → `e3599648` (the corrected C19 implementation) | PR [#25](https://github.com/a-Halawany/elven/pull/25) |
-| 2026-09-01T21:54:55Z | `C19 anchor` attempt 1 signed; **attempt 2 re-ran and reused** the existing entry with `0 signing operation(s)` | run 33563602548 |
+| 2026-09-01T21:54:55Z | `C19 anchor` attempt 1 signed; **attempt 2 re-ran and reused** the existing entry with `0 signing operation(s)` | run 33563602548 **attempts 1 and 2** |
 | 2026-09-01T21:57:24Z | Second Rekor publication | Rekor logIndex `2681035221` (append-only) |
 | 2026-09-01T21:58:13Z | `C15 patched-image recheck` (manual dispatch) — success | run 33563880127#1 |
 | 2026-09-02T09:19:41Z | PR #27 merged, `reviews=0` → `1440a09b` (gitleaks allowlist for a published URL parameter) | PR [#27](https://github.com/a-Halawany/elven/pull/27) |
@@ -102,7 +112,7 @@ implementation.
 | SHA | Date | What |
 |---|---|---|
 | `bb8e300e32f22c1a5005db89a52b3cee2bac86c6` | 2026-09-02T07:25:06Z | Phase 1 Build Packet — documentation only |
-| `f44e03ac7a9b15d83b8c3ce762edb0fe4986712b` | 2026-09-02T09:10:29Z | **Maintenance implementation / configuration change — NOT documentation-only.** Adds one narrowly scoped gitleaks allowlist entry (`.gitleaks.toml`, +28) and records it in the gate's `governed_exclusions` manifest (`scripts/gate/supply-chain.mjs`, +10). **It did not change the C19 signing or verification implementation**: it touches neither `scripts/gate/c19-*.mjs`, nor `scripts/gate/lib/c19-*`, nor any workflow. |
+| `f44e03ac7a9b15d83b8c3ce762edb0fe4986712b` | 2026-09-02T09:10:29Z | **Maintenance implementation / configuration change — NOT documentation-only.** Adds one narrowly scoped gitleaks allowlist entry (`.gitleaks.toml`, +28) and adds **two** records to the gate's `governed_exclusions` manifest (`scripts/gate/supply-chain.mjs`, +10): the new `token=` literal exclusion, and a pre-existing `GATE2_2_FINAL_CLOSURE_PLAN.md @ 6d702d28` match exclusion that had never been listed there. **It did not change the C19 signing or verification implementation**: it touches neither `scripts/gate/c19-*.mjs`, nor `scripts/gate/lib/c19-*`, nor any workflow. |
 | `1440a09b175eb80fab2e2f6a694d09ac2f853157` | 2026-09-02T09:19:41Z | Merge of PR #27 |
 | `c11c05ddc6b446750c20f539c3a78271c6a0a2df` | 2026-09-02T09:19:56Z | Merge of main into the packet branch |
 | `a792cd9a33ad8e16e12fc16037541d56a7506417` | 2026-09-02T09:27:17Z | Merge of PR #26 — the baseline |
@@ -230,14 +240,14 @@ Pinned cosign is **v3.1.3**; the tracked digests are `linux-amd64`
 
 | Leg | Platform | Run | Result |
 |---|---|---|---|
-| **Direct head** — `ci` on `push` to main | ubuntu-latest | 33614198879 | success (`build-test`, `browser-regression`, `supply-chain`) |
-| **Synthetic merge** — `ci` on `pull_request` (GitHub's merge ref for PR #26) | ubuntu-latest | 33613527101 | success (all three jobs) |
-| **C19 lifecycle** — direct head | ubuntu-latest **and** macos-14 | 33614198999 | success on both, plus `delivery-chain-dry` and `foreign-checkout-pinning` |
-| **C19 lifecycle** — synthetic merge | ubuntu-latest and macos-14 | 33613527100 | success |
-| **Finalizer** | ubuntu-latest | 33614897613 | success |
-| **Anchor `verify`** (holds no signing capability) | ubuntu-latest **and** macos-14 | 33614981989 | success on both |
-| **Publication** | ubuntu-latest | 33614981989 attempt 1 | signed once; `publish PASS (1 signing operation(s))` |
-| **Offline verification from a foreign checkout** | ubuntu-latest | 33614981989 | `isolation confirmed from inside — DENIED:ENETUNREACH`; `package verification, 0 finding(s)`; `verify-offline PASS` |
+| **Direct head** — `ci` on `push` to main | ubuntu-latest | 33614198879#1 | success (`build-test`, `browser-regression`, `supply-chain`) |
+| **Synthetic merge** — `ci` on `pull_request` (GitHub's merge ref for PR #26) | ubuntu-latest | 33613527101#1 | success (all three jobs) |
+| **C19 lifecycle** — direct head | ubuntu-latest **and** macos-14 | 33614198999#1 | success on both, plus `delivery-chain-dry` and `foreign-checkout-pinning` |
+| **C19 lifecycle** — synthetic merge | ubuntu-latest and macos-14 | 33613527100#1 | success |
+| **Finalizer** | ubuntu-latest | 33614897613#1 | success |
+| **Anchor `verify`** (holds no signing capability) | ubuntu-latest **and** macos-14 | 33614981989#1 | success on both |
+| **Publication** | ubuntu-latest | 33614981989#1 | signed once; `publish PASS (1 signing operation(s))` |
+| **Offline verification from a foreign checkout** | ubuntu-latest | 33614981989#1 | `isolation confirmed from inside — DENIED:ENETUNREACH`; `package verification, 0 finding(s)`; `verify-offline PASS` |
 
 The `verify` job runs on **both** ubuntu-latest and macos-14 and holds no `id-token`, so the
 two-platform evidence is genuinely separate from the single-platform publication.
@@ -255,10 +265,19 @@ Each attempt-2 found the existing entry and reconstructed from it rather than si
 recovery path running against a real prior publication, not a fixture. Both offline verifications
 passed identically. The certificates for the two signatures name `.../attempts/1` accordingly.
 
-Run 33614221773 exercised the **refusal** path: an anchor run whose upstream commit was no longer
+Run 33614221773#1 exercised the **refusal** path: an anchor run whose upstream commit was no longer
 the tip of main stopped at resolution and never signed.
 
-### 4.3 Independently reproduced during this reconciliation (macOS, this machine)
+### 4.3 Alternate-tool recomputation by the implementer (macOS, this machine)
+
+**This is not independent verification, and it is deliberately no longer described as one.** It was
+performed by the same agent that wrote the code and this document, on that agent's own machine, and
+it re-derives the package's internal consistency using different tools from the ones that produced
+it. What it establishes is **package consistency**: that the bytes, digests, signature, certificate
+chain and inclusion proof inside each delivery agree with one another and with the public log. What
+it does **not** establish is personnel independence, and it is **not** an independently bootstrapped
+trust-root verification — the Sigstore trust material it checks against is the material shipped in
+the package and pinned in this repository, not a root obtained through a separate channel.
 
 All three delivery packages were downloaded from GitHub and re-checked **without cosign and
 without the project's own verifier**, using only OpenSSL and Node's `crypto`. Fourteen checks per
@@ -286,10 +305,10 @@ which returned matching UUID, log index and integrated time for each:
 curl -s "https://rekor.sigstore.dev/api/v1/log/entries?logIndex=2684653822"
 ```
 
-**What this reproduction does not establish:** it does not run the project's own verifier or cosign
-(no pinned binary is present on this machine), so it is an independent recomputation of the
-cryptography, not a re-execution of the shipped verification path. It also does not re-run any
-hosted job.
+**Further limits.** It does not run the project's own verifier or cosign (no pinned binary is
+present on this machine), so it is a recomputation of the cryptography, not a re-execution of the
+shipped verification path. It re-runs no hosted job. And per the review that produced this
+correction, **it is not to be re-run**: it stands as recorded.
 
 ---
 
@@ -332,7 +351,7 @@ scans them for this advisory; when a patched official digest appears it **fails*
 digest to re-pin to, and these four records must then be deleted, because the gate rejects a record
 that matches nothing.
 
-**Scheduled recheck evidence — most recent, run 33628366761 (schedule, 2026-09-02T12:09:16Z, at the
+**Scheduled recheck evidence — most recent, run 33628366761#1 (schedule, 2026-09-02T12:09:16Z, at the
 baseline):**
 
 ```
@@ -343,7 +362,7 @@ redis:8-alpine    -> sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4
 c15-recheck: no patched official image yet; SCX-0006..0009 remain justified
 ```
 
-The manual dispatch at 2026-09-01T21:58:13Z (run 33563880127) reported the same.
+The manual dispatch at 2026-09-01T21:58:13Z (run 33563880127#1) reported the same.
 
 **Expiry / review boundary.** All four expire **2026-11-05** and are rejected by the gate **on**
 that date (`expires_on <= runDate`), so they are not in force during their stated expiry day. That
@@ -382,9 +401,9 @@ This is recorded so that it cannot be quietly re-described later.
 4. **PR #28 remains unmerged and is now frozen pending acceptance.** It is OPEN, `reviews=0`, head
    `a94ca703`, and is not modified, merged or closed by this branch.
 5. **Acceptance or merging of the Phase 1 Build Packet is not independent Phase 0 acceptance.**
-   PR #26 was merged with `reviews=0`. The owner's approval message for the Build Packet approved
-   *Phase 1 scope and implementation*; it neither reviewed nor accepted the Phase 0 / C19 closure
-   evidence, and this record does not treat it as having done so.
+   PR #26 was merged with no submitted GitHub review. The owner's approval message for the Build
+   Packet approved *Phase 1 scope and implementation*; it neither reviewed nor accepted the
+   Phase 0 / C19 closure evidence, and this record does not treat it as having done so.
 6. **Merged pull requests through #27 have zero submitted GitHub reviews. PR #28 is open,
    unmerged, and also has zero submitted reviews.** Single-operator merging is the standing
    condition of this repository, not an exception made once. "Zero submitted reviews" is a
@@ -399,10 +418,14 @@ Provided for the reviewer to accept, amend or reject. Nothing below has been cre
 published, and this branch grants itself no `contents: write`.
 
 **This pull request's own status remains `READY FOR POST-MERGE INDEPENDENT ACCEPTANCE REVIEW — NOT
-FORMALLY CLOSED`.** The tag below is the **post-acceptance** artifact: it is created only after
-that acceptance is given, and it is therefore the final tag rather than a release candidate. There
-is no contradiction between the two — one describes this document today, the other describes the
+FORMALLY CLOSED` until it is merged.** The tag below is the **post-acceptance** artifact, created
+only after acceptance is given, and its release carries the *closed* status. There is no
+contradiction between the two — one describes this pull request today, the other describes the
 repository after the decision this document is asking for.
+
+**The tag target predates this document.** `a792cd9a` does not contain
+`PHASE0_ACCEPTANCE_RECONCILIATION.md`, and the release text below must not claim otherwise: the
+acceptance record is this pull request and the commit that merges it, both linked from the release.
 
 **Proposed tag target:** `a792cd9a33ad8e16e12fc16037541d56a7506417`
 **Proposed tag name:** `phase0-v1.0.0` (final; not a release candidate)
@@ -420,15 +443,20 @@ canonical objects, capability-bound ports, the C1-C19 correction series and the 
 external-anchoring delivery chain — as INDEPENDENTLY ACCEPTED AFTER THE FACT.
 
 The process exception is part of the record and is not erased by that acceptance. Phase 0 was
-NOT reviewed before its original merge or before its first publication. PR #21 was merged on
-2026-09-01T16:41:53Z with no submitted GitHub review and no formal independent acceptance, and
-the resulting Rekor entry (log index 2678296492) was integrated eleven minutes later and is
-permanent. Acceptance was given afterwards, against the reconciled record, not before the fact.
+NOT reviewed before its original merge or before its first publication: no submitted GitHub
+review and no formal Phase 0 acceptance existed before either. PR #21 was merged on
+2026-09-01T16:41:53Z, and the resulting Rekor entry (log index 2678296492) was integrated
+eleven minutes later and is permanent. Acceptance was given afterwards, against the reconciled
+record, not before the fact.
 
-Full reconciliation, including the chronology, the three publications, the CVE-2026-14456
-disposition and process exception PEX-P0-001:
-  PHASE0_ACCEPTANCE_RECONCILIATION.md at this tag
+WHERE THE ACCEPTANCE RECORD LIVES. This tag targets a792cd9a, which PREDATES the reconciliation
+document — that file does not exist at this commit and this release does not claim it does. The
+acceptance record is the reconciliation pull request and the commit that merges it into main:
   https://github.com/a-Halawany/elven/pull/29
+  merge commit: <filled in at release time with the SHA that merged PR #29>
+PHASE0_ACCEPTANCE_RECONCILIATION.md is present from that merge commit onward, not at this tag.
+
+Status: PHASE 0 FORMALLY CLOSED — INDEPENDENTLY ACCEPTED AFTER THE FACT
 
 External anchoring for this commit:
   artifact   c19-delivery-a792cd9a33ad8e16e12fc16037541d56a7506417
@@ -466,10 +494,12 @@ different later — as runs 33534158991 and 33563602548 already demonstrate. Eve
 this document therefore carries its **attempt number**, and all of them were read between
 2026-09-02T12:00Z and 2026-09-02T16:33Z.
 
-**Append-only, content-addressed — Git.** Commits, trees and blobs, including every SHA in §2.
-Addressed by their own content; they cannot change without changing their identity.
+**Content-addressed and identity-immutable — Git.** Commits, trees and blobs, including every SHA
+in §2. Addressed by their own content, so a SHA cannot come to denote different content. This is
+*not* an append-only property: history can be rewritten and unreferenced objects can be collected.
+Only the identity binding is guaranteed.
 
-**Append-only, inclusion-proved — Rekor.** The three entries, their UUIDs, log indices, integrated
+**Append-only and inclusion-proved — Rekor.** This is the only append-only record here. The three entries, their UUIDs, log indices, integrated
 times and inclusion proofs. Each bundle carries its own signed checkpoint, so the entry verifies
 without consulting the log at all. The Fulcio certificates and their SAN, issuer and build-config
 extensions travel inside those bundles and are equally self-contained.
@@ -480,12 +510,14 @@ Where this document states a fact, the class it belongs to is the class named he
 §6 (PEX-P0-001) in full: zero-review merges, publication before acceptance, Phase 1 beginning
 before this reconciliation, and the Build Packet approval not being Phase 0 acceptance.
 
-### 8.4 Claims independently reproduced during this reconciliation
-Only these, and only by the means described in §4.3: the 42 cryptographic checks across the three
-delivery packages, and the public-log confirmation of all three entries. This reproduction was
-performed on macOS by direct recomputation, deliberately not using the project's own verifier. It
-is machine-checkable and does not depend on trusting this repository's narrative — but it was still
-run by the same agent, and a reviewer should re-run it rather than take it on trust.
+### 8.4 Alternate-tool recomputation by the implementer
+Only this, and only by the means described in §4.3: the 42 cryptographic checks across the three
+delivery packages, and the public-log confirmation of all three entries. It proves **package
+consistency** and is machine-checkable rather than narrative. It is **not** personnel-independent
+acceptance, and **not** an independently bootstrapped trust-root verification, because the trust
+material and the anchor both come from this repository and the packages themselves. A reviewer
+who wants independence must run it from their own checkout, with trust material they obtained
+themselves.
 
 ### 8.5 Findings that still require an independent reviewer
 1. Whether the C19.7 acceptance criteria are genuinely met, in substance, at `a792cd9a`. **C19.7's
@@ -508,11 +540,16 @@ run by the same agent, and a reviewer should re-run it rather than take it on tr
 
 ## 9. Known limitations of this reconciliation
 
-* It is documentation-only and changes no behaviour. No control was re-executed on hosted
-  infrastructure; §4.1 reports what those runs recorded, it does not re-run them.
+* It is documentation-only and changes no behaviour. **During the original evidence-gathering
+  period (2026-09-02T12:00Z–16:33Z) no control was re-executed on hosted infrastructure** — §4.1
+  reports what those runs recorded rather than re-running them. That scoping matters because this
+  pull request's own ordinary hosted checks (`ci` and `C19 lifecycle`) subsequently ran on its
+  commits in the normal way, as they do for any branch; those are this branch's checks, not
+  re-executions of the Phase 0 evidence in §4.1.
 * The project's own offline verifier and cosign were **not** executed locally, because no pinned
   cosign binary is present on this machine and acquiring one was outside the authorised scope. §4.3
-  is an independent recomputation, not a re-execution of the shipped path.
+  is an **alternate-tool recomputation by the implementer** — it proves package consistency, not
+  personnel independence — and it is not a re-execution of the shipped verification path.
 * Artifact retention: the three delivery packages are currently retrievable from GitHub. GitHub
   artifacts expire. The Rekor entries and the packages' self-contained bundles do not depend on
   that retention, but the convenience of `gh run download` does.
@@ -522,7 +559,7 @@ run by the same agent, and a reviewer should re-run it rather than take it on tr
   `apps/api/src/observation/coverage/` is excluded by the `coverage/` pattern at `.gitignore:4`, so
   `coverage.service.ts` and `facts.service.ts` were never committed. PR #28's `build-test` and
   `browser-regression` jobs fail on a fresh checkout with `TS2307: Cannot find module
-  '../coverage/coverage.service.js'` (runs 33628827694, 33628271070). It breaks a **Phase 1**
+  '../coverage/coverage.service.js'` (runs 33628827694#1, 33628271070#1). It breaks a **Phase 1**
   claim, not a Phase 0 acceptance claim, so under the standing instruction it belongs in the Phase 1
   backlog; it is recorded here because it was found here, and because PR #28 must not be described
   as a working implementation until it is fixed.

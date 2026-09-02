@@ -1241,8 +1241,10 @@ What is actually true at `a792cd9a33ad8e16e12fc16037541d56a7506417`:
 
 * C19 was implemented and merged in PR #21 (`82e90858`, 2026-09-01T16:41:53Z) and corrected in
   PR #25 (`e35996483a6b827603e04cac4d52101d27ca5269`).
-* **Three** Rekor publications exist — log indices `2678296492`, `2681035221` and `2684653822` —
-  each signing its own commit and none of them signing any later one.
+* **Three** Rekor publications existed during the recorded observation window (2026-09-02T12:00Z–
+  16:33Z) — log indices `2678296492`, `2681035221` and `2684653822` — each signing its own commit
+  and none of them signing any later one. The anchor publishes on every successful push to `main`,
+  so later merges add further entries; that extends the series, it does not falsify these three.
 * **Merged pull requests through #27 have zero submitted GitHub reviews; PR #28 is open, unmerged
   and also has zero.** The first publication reached the public transparency log with **no
   submitted GitHub review and no formal independent acceptance or sign-off** — which is not the
@@ -1252,10 +1254,10 @@ What is actually true at `a792cd9a33ad8e16e12fc16037541d56a7506417`:
 * Phase 1 implementation (PR #28) was opened before this reconciliation was performed. PR #28 is
   unmerged and frozen.
 
-The reconciled chronology, the evidence (separated into append-only Git and Rekor records versus
-externally hosted GitHub Actions evidence with its retention and re-run limits), the process
-exception PEX-P0-001, the proposed tag text and the separation between self-verification and
-independent evidence are in
+The reconciled chronology, the evidence (content-addressed Git objects and the append-only Rekor
+record, kept separate from externally hosted GitHub Actions evidence with its retention and re-run
+limits), the process exception PEX-P0-001, the proposed tag text and the separation between
+self-verification and what an independent reviewer must still do are in
 **[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**.
 
 **Status: READY FOR POST-MERGE INDEPENDENT ACCEPTANCE REVIEW — NOT FORMALLY CLOSED.**

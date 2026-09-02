@@ -1,5 +1,24 @@
 # GATE-2.2 — Final Consolidated Phase 0 Closure Plan (controlled execution record)
 
+> # ⚠️ WHOLE-DOCUMENT NOTICE — STATUS PASSAGES IN THIS PLAN ARE HISTORICAL
+>
+> This is a working plan written across the C1–C19 correction series. **Its normative content —
+> the mandates, the acceptance criteria, the reconciliation tables — remains governing. Its STATUS
+> passages do not.** Any sentence in this document describing what has or has not been done yet
+> ("is next", "has not been implemented", "no part of X has been started", "pending", "blocked on",
+> "deliberately not attempted", counts of tests or findings, and every "as of" figure) records the
+> moment it was written and has not been updated since.
+>
+> The current status of everything this plan describes is in
+> **[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**. In particular:
+> C19 was implemented and merged, corrected in a second pass, and three Rekor publications existed
+> during that document's recorded observation window; and the C19.7 criteria below require
+> *cryptographic* independence, which is a different requirement from the independent *human*
+> acceptance that Phase 0 closure needs.
+>
+> Individual status sentences are therefore **not** annotated one by one. This banner covers them
+> all, and no passage below should be read as current status.
+
 **Status:** IN EXECUTION. C1–C7 are CLOSED BY INTERNAL VERIFICATION (implementation
 progress, not independent approval); C9 is IN PROGRESS (isolation done, substantive
 fail-closed/recovery open). Migrations 0001–0019 are IMMUTABLE; corrections from 0020+. This is the live controlled record; the status ledger
