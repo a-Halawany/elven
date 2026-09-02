@@ -1,5 +1,13 @@
 # THE EYE — Phase 1 Build Packet
 
+> **⚠️ STATUS SUPERSEDED.** The line below is the packet's original status and is kept as the
+> historical record. What actually happened: the packet was **approved and merged** (PR #26,
+> `a792cd9a`, 2026-09-02T09:27:18Z); **Phase 1 implementation began** in PR #28 on
+> 2026-09-02T12:08:08Z; and Phase 1 is now **paused, with PR #28 unmerged and frozen, pending
+> formal Phase 0 closure**. Approval of this packet was Phase 1 scope approval and is **not**
+> independent Phase 0 acceptance — see
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §6.
+>
 > **Status: awaiting one consolidated owner review.** Documentation only. No migration, no
 > dependency, no workflow change, no application code has been written, and none will be until
 > `APPROVED: PHASE 1 BUILD PACKET AND IMPLEMENTATION`.

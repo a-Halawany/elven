@@ -15,9 +15,19 @@
 
 Phase 0 was described as closed in several places before any independent acceptance had happened.
 The record also carried statements that were true when written and false afterwards, and were never
-retracted. This document reconciles them against the actual GitHub history and the immutable
+retracted. This document reconciles them against the actual GitHub history and the append-only
 transparency-log evidence, and states the process exceptions plainly instead of smoothing them
 over.
+
+**A note on what "evidence" means here, because the distinction is load-bearing.** Only two classes
+of record in this document are append-only and content-addressed: **Git objects** (commits, trees,
+blobs, addressed by their own content) and **Rekor entries** (append-only, inclusion-proved,
+independently re-derivable). Everything sourced from GitHub Actions — run ids, per-job conclusions,
+step logs, artifact ids and artifact ZIP digests — is **externally hosted operational evidence**: it
+is authoritative for what the run reported, but it is hosted by a third party, subject to retention
+and expiry, and re-runnable, so a later attempt can change what the run's *latest* state reports.
+It is therefore cited with its **attempt number** and with the time it was read. This document does
+not call any of it immutable.
 
 It does not reopen C18 or C19, does not introduce new acceptance criteria, and does not claim
 independent acceptance. It is the target for that review, not a substitute for it.
@@ -27,27 +37,32 @@ independent acceptance. It is the target for that review, not a substitute for i
 ## 1. The reconciled chronology
 
 Every time is UTC and comes from the GitHub API or from the transparency log, not from a
-narrative. `reviews=0` is GitHub's own count of submitted pull-request reviews.
+narrative. `reviews=0` is GitHub's own count of **submitted** pull-request reviews.
 
-| When | What | Immutable reference |
+**Observation window.** Every GitHub Actions value in this document was read between
+2026-09-02T12:00Z and **2026-09-02T16:33Z**, and run references carry the attempt number observed
+then. A run can be re-run afterwards; its latest attempt may then differ from what is recorded
+here. The Rekor entries and the Git objects do not have that property.
+
+| When | What | Reference (operational evidence unless marked append-only) |
 |---|---|---|
-| 2026-09-01T16:32:36Z | `ci` and `C19 lifecycle` pass on PR #21's head `b6ac2467` | runs 33532406962, 33532406929 |
+| 2026-09-01T16:32:36Z | `ci` and `C19 lifecycle` pass on PR #21's head `b6ac2467` | runs 33532406962#1, 33532406929#1 |
 | **2026-09-01T16:41:53Z** | **PR #21 merged by `a-Halawany` with `reviews=0`** → merge commit `82e90858` | PR [#21](https://github.com/a-Halawany/elven/pull/21) |
-| 2026-09-01T16:41:55Z | `ci` on main at `82e90858` — success | run 33533348259 |
-| 2026-09-01T16:49:01Z | `C17 finalize` — success | run 33534058587 |
-| 2026-09-01T16:50:00Z | `C19 anchor` — `publish` job ran and **signed once** | run 33534158991, attempt 1 |
-| **2026-09-01T16:52:49Z** | **First irreversible Rekor publication** | logIndex `2678296492` |
+| 2026-09-01T16:41:55Z | `ci` on main at `82e90858` — success | run 33533348259#1 |
+| 2026-09-01T16:49:01Z | `C17 finalize` — success | run 33534058587#1 |
+| 2026-09-01T16:50:00Z | `C19 anchor` — `publish` job ran and **signed once** | run 33534158991 **attempt 1** (the run's latest observed attempt is 2 — see §4.2) |
+| **2026-09-01T16:52:49Z** | **First irreversible Rekor publication** | Rekor logIndex `2678296492` (append-only) |
 | 2026-09-01T21:47:17Z | PR #25 merged, `reviews=0` → `e3599648` (the corrected C19 implementation) | PR [#25](https://github.com/a-Halawany/elven/pull/25) |
 | 2026-09-01T21:54:55Z | `C19 anchor` attempt 1 signed; **attempt 2 re-ran and reused** the existing entry with `0 signing operation(s)` | run 33563602548 |
-| 2026-09-01T21:57:24Z | Second Rekor publication | logIndex `2681035221` |
-| 2026-09-01T21:58:13Z | `C15 patched-image recheck` (manual dispatch) — success | run 33563880127 |
+| 2026-09-01T21:57:24Z | Second Rekor publication | Rekor logIndex `2681035221` (append-only) |
+| 2026-09-01T21:58:13Z | `C15 patched-image recheck` (manual dispatch) — success | run 33563880127#1 |
 | 2026-09-02T09:19:41Z | PR #27 merged, `reviews=0` → `1440a09b` (gitleaks allowlist for a published URL parameter) | PR [#27](https://github.com/a-Halawany/elven/pull/27) |
 | 2026-09-02T09:27:18Z | PR #26 merged, `reviews=0` → **`a792cd9a`, the baseline under review** | PR [#26](https://github.com/a-Halawany/elven/pull/26) |
-| 2026-09-02T09:27:36Z | `C19 anchor` for the now-superseded `1440a09b` **refused to publish** — by design | run 33614221773 |
-| 2026-09-02T09:35:52Z | `C19 anchor` at `a792cd9a` — signed once | run 33614981989, attempt 1 |
-| 2026-09-02T09:38:25Z | Third Rekor publication | logIndex `2684653822` |
+| 2026-09-02T09:27:36Z | `C19 anchor` for the now-superseded `1440a09b` **refused to publish** — by design | run 33614221773#1 |
+| 2026-09-02T09:35:52Z | `C19 anchor` at `a792cd9a` — signed once | run 33614981989#1 |
+| 2026-09-02T09:38:25Z | Third Rekor publication | Rekor logIndex `2684653822` (append-only) |
 | **2026-09-02T12:08:08Z** | **PR #28 (Phase 1 implementation) opened — before this reconciliation existed** | PR [#28](https://github.com/a-Halawany/elven/pull/28), `reviews=0`, OPEN |
-| 2026-09-02T12:09:16Z | Scheduled `C15 patched-image recheck` — success, no patched image available | run 33628366761 |
+| 2026-09-02T12:09:16Z | Scheduled `C15 patched-image recheck` — success, no patched image available | run 33628366761#1 |
 
 The refusal at 09:27:36 is worth naming as a control that fired rather than as noise. The anchor
 run for `1440a09b` reached its resolution step and stopped: *"1440a09b… is no longer the tip of
@@ -62,7 +77,7 @@ evidence for a branch that has moved on."* No signature and no log write followe
 | "**C19 is the next gate and has not been implemented.**" | `PROGRESS.md` lines 61, 1106, 1169, 1228 | **Superseded.** C19 was implemented and merged in PR #21 and corrected in PR #25. |
 | "no part of C19 has been started" | `PROGRESS.md` lines 769, 813, 878, 937, 998, 1051 | **Superseded**, same reason. These sit inside dated historical records and remain accurate *as history*; they are not current status. |
 | "`e35996483a…` — the commit at which Phase 0 closed" | `PHASE1_BUILD_PACKET.md` line 8 | **Corrected.** `e3599648` is the commit at which the C19 implementation was completed and published. It is **not** a commit at which Phase 0 was independently accepted, because no independent acceptance has occurred. |
-| "C19 may be called closed only when … **Signatures existing is not closure.**" | `GATE2_2_FINAL_CLOSURE_PLAN.md` §C19.7 | **Still governing, and not yet satisfied by an independent party.** The technical conditions it lists are claimed complete by the implementer and are evidenced below; the independence it requires is exactly what is outstanding. |
+| "C19 may be called closed only when … **Signatures existing is not closure.**" | `GATE2_2_FINAL_CLOSURE_PLAN.md` §C19.7 | **Still governing.** Its "independent" is **cryptographic** — an independent signer, pinned trust material, a signature over canonical bytes, an anchor the implementer does not control — and the evidence for those conditions is in §3–§4. C19.7 does **not** require a human reviewer. Independent **human** acceptance of Phase 0 closure is a separate requirement of the Phase 0 closure process, and it is the one still outstanding. |
 
 Nothing above is deleted from its original location. Each carries a pointer to this record so that
 a reader arriving at the stale sentence learns it is stale, and the original wording survives as
@@ -80,12 +95,14 @@ These are three different things and the record has blurred them.
 | **Repository baseline under review** | `a792cd9a33ad8e16e12fc16037541d56a7506417` | Merge of PR #26. What this reconciliation describes and what an independent reviewer should verify. Has its **own** Rekor entry (logIndex `2684653822`). |
 | First C19 merge (superseded) | `82e908587f089403fc5dcea11c35e3617e209b20` | Merge of PR #21. The first irreversible publication (logIndex `2678296492`). Superseded by `e3599648` for implementation defects; the log entry remains and cannot be withdrawn. |
 
-**Intervening commits — all five, none of them implementation:**
+**Intervening commits — all five.** Four are documentation-only; `f44e03a` is not, and is
+described accurately below. None of the five changes the C19 signing or verification
+implementation.
 
 | SHA | Date | What |
 |---|---|---|
 | `bb8e300e32f22c1a5005db89a52b3cee2bac86c6` | 2026-09-02T07:25:06Z | Phase 1 Build Packet — documentation only |
-| `f44e03ac7a9b15d83b8c3ce762edb0fe4986712b` | 2026-09-02T09:10:29Z | Gate: gitleaks allowlist for one published URL parameter |
+| `f44e03ac7a9b15d83b8c3ce762edb0fe4986712b` | 2026-09-02T09:10:29Z | **Maintenance implementation / configuration change — NOT documentation-only.** Adds one narrowly scoped gitleaks allowlist entry (`.gitleaks.toml`, +28) and records it in the gate's `governed_exclusions` manifest (`scripts/gate/supply-chain.mjs`, +10). **It did not change the C19 signing or verification implementation**: it touches neither `scripts/gate/c19-*.mjs`, nor `scripts/gate/lib/c19-*`, nor any workflow. |
 | `1440a09b175eb80fab2e2f6a694d09ac2f853157` | 2026-09-02T09:19:41Z | Merge of PR #27 |
 | `c11c05ddc6b446750c20f539c3a78271c6a0a2df` | 2026-09-02T09:19:56Z | Merge of main into the packet branch |
 | `a792cd9a33ad8e16e12fc16037541d56a7506417` | 2026-09-02T09:27:17Z | Merge of PR #26 — the baseline |
@@ -104,7 +121,13 @@ forward.
 
 ---
 
-## 3. Delivery artifacts and immutable evidence
+## 3. Delivery artifacts and their evidence
+
+Within each table, the Rekor entry UUID, log index, integrated time, log id and entry kind are
+**append-only transparency-log records**. The artifact name, artifact id, size, GitHub ZIP digest
+and run ids are **externally hosted operational evidence** — GitHub artifacts expire, and a re-run
+can add an attempt. The payload digest, inner digest, certificate fields and source tree are bound
+inside the signed bundle and are therefore re-derivable from the package itself.
 
 Three publications exist. All three artifacts are still retrievable and none has expired.
 
@@ -221,10 +244,16 @@ two-platform evidence is genuinely separate from the single-platform publication
 
 ### 4.2 Recovery / reuse leg
 
-Run 33563602548 (at `e3599648`) was re-run. **Attempt 1** signed once. **Attempt 2** found the
-existing entry and reported `C19 deliver: reuse` followed by `publish PASS (0 signing
-operation(s))` — the reconstruction path executing in production against a real prior publication,
-not a fixture. Its offline verification passed identically.
+The reuse path executed in production **twice**, on both of the runs that were re-run:
+
+| Run | Attempt 1 | Attempt 2 (observed latest) |
+|---|---|---|
+| 33534158991 (`82e90858`) | `signed`; `publish PASS (1 signing operation(s))` | `reuse`; `publish PASS (0 signing operation(s))` |
+| 33563602548 (`e3599648`) | `signed`; `publish PASS (1 signing operation(s))` | `reuse`; `publish PASS (0 signing operation(s))` |
+
+Each attempt-2 found the existing entry and reconstructed from it rather than signing again — the
+recovery path running against a real prior publication, not a fixture. Both offline verifications
+passed identically. The certificates for the two signatures name `.../attempts/1` accordingly.
 
 Run 33614221773 exercised the **refusal** path: an anchor run whose upstream commit was no longer
 the tip of main stopped at resolution and never signed.
@@ -328,11 +357,19 @@ does not mean.
 
 This is recorded so that it cannot be quietly re-described later.
 
-1. **PR #21 was merged, and an irreversible Rekor publication followed, with zero GitHub reviews
-   and without the required pre-merge independent acceptance.** GitHub reports `reviews=0` and no
-   review decision for PR #21. It was merged at 2026-09-01T16:41:53Z; the resulting publication was
-   integrated into the public transparency log at 2026-09-01T16:52:49Z, log index `2678296492`, and
-   is permanent.
+1. **PR #21 was merged, and an irreversible Rekor publication followed, with no submitted GitHub
+   review and no formal independent acceptance or sign-off.** That is the exact proven statement.
+   GitHub reports `reviews=0` and no review decision for PR #21. It was merged at
+   2026-09-01T16:41:53Z; the resulting publication was integrated into the public transparency log
+   at 2026-09-01T16:52:49Z, log index `2678296492`, and is permanent.
+
+   **This does not mean no external review ever happened.** External correction reviews did occur
+   earlier in Phase 0 and are recorded in `PROGRESS.md`: the Gate-2.1 independent review that
+   identified ten executable attack paths at `2deded44`, the bounded independent review that closed
+   **C16** at `d63318e0` after five remediation rounds, and the independent reviews across the
+   C18.1.x series. What did not exist before the C19 merge and publication is a **submitted GitHub
+   review** or a **formal independent acceptance/sign-off of Phase 0 closure**. Those are different
+   things and this record keeps them apart.
 2. **This must not be rewritten as if approval occurred beforehand.** No document in this
    repository may describe the C19 merge, or any of the three publications, as having been
    independently accepted, approved or reviewed prior to merge. They were not. Approvals recorded
@@ -348,8 +385,11 @@ This is recorded so that it cannot be quietly re-described later.
    PR #26 was merged with `reviews=0`. The owner's approval message for the Build Packet approved
    *Phase 1 scope and implementation*; it neither reviewed nor accepted the Phase 0 / C19 closure
    evidence, and this record does not treat it as having done so.
-6. Every merge in the Phase 0 history carries `reviews=0`: PRs #14 … #28 inclusive. Single-operator
-   merging is the standing condition of this repository, not an exception made once.
+6. **Merged pull requests through #27 have zero submitted GitHub reviews. PR #28 is open,
+   unmerged, and also has zero submitted reviews.** Single-operator merging is the standing
+   condition of this repository, not an exception made once. "Zero submitted reviews" is a
+   statement about GitHub's review mechanism only; see item 1 for the external correction reviews
+   that did take place outside it.
 
 ---
 
@@ -358,24 +398,37 @@ This is recorded so that it cannot be quietly re-described later.
 Provided for the reviewer to accept, amend or reject. Nothing below has been created, pushed or
 published, and this branch grants itself no `contents: write`.
 
+**This pull request's own status remains `READY FOR POST-MERGE INDEPENDENT ACCEPTANCE REVIEW — NOT
+FORMALLY CLOSED`.** The tag below is the **post-acceptance** artifact: it is created only after
+that acceptance is given, and it is therefore the final tag rather than a release candidate. There
+is no contradiction between the two — one describes this document today, the other describes the
+repository after the decision this document is asking for.
+
 **Proposed tag target:** `a792cd9a33ad8e16e12fc16037541d56a7506417`
-**Proposed tag name:** `phase0-v1.0.0-rc.1`
+**Proposed tag name:** `phase0-v1.0.0` (final; not a release candidate)
 **Type:** annotated (`git tag -a`), created **only** by the owner after independent acceptance.
 
 Proposed annotation / release body:
 
 ```text
-Phase 0 — Foundation and Governance Spine (release candidate)
+Phase 0 — Foundation and Governance Spine
 
 Baseline: a792cd9a33ad8e16e12fc16037541d56a7506417
 
-What this tag marks: the repository state whose Phase 0 governance spine — identity, tenancy,
-policy, audit chain, canonical objects, capability-bound ports, the C1–C19 correction series and
-the C19 external-anchoring delivery chain — is offered for independent acceptance review.
+What this tag marks: the Phase 0 governance spine — identity, tenancy, policy, audit chain,
+canonical objects, capability-bound ports, the C1-C19 correction series and the C19
+external-anchoring delivery chain — as INDEPENDENTLY ACCEPTED AFTER THE FACT.
 
-What it does NOT mark: independent acceptance. No pull request in this history has been reviewed
-by a second party; every merge carries reviews=0. The C19 publication for PR #21 was written to
-the public Rekor log before any independent review existed, and that entry is permanent.
+The process exception is part of the record and is not erased by that acceptance. Phase 0 was
+NOT reviewed before its original merge or before its first publication. PR #21 was merged on
+2026-09-01T16:41:53Z with no submitted GitHub review and no formal independent acceptance, and
+the resulting Rekor entry (log index 2678296492) was integrated eleven minutes later and is
+permanent. Acceptance was given afterwards, against the reconciled record, not before the fact.
+
+Full reconciliation, including the chronology, the three publications, the CVE-2026-14456
+disposition and process exception PEX-P0-001:
+  PHASE0_ACCEPTANCE_RECONCILIATION.md at this tag
+  https://github.com/a-Halawany/elven/pull/29
 
 External anchoring for this commit:
   artifact   c19-delivery-a792cd9a33ad8e16e12fc16037541d56a7506417
@@ -402,12 +455,26 @@ matrices are non-vacuous; the `NOT_AFFECTED` and `RISK_ACCEPTED` reachability ju
 conditions are met. These were produced by the same agent that wrote the code. They are a target
 for review, not evidence of review.
 
-### 8.2 Immutable GitHub-hosted operational evidence
-Facts that exist outside this repository's narrative and can be re-read by anyone: workflow run
-ids, their per-job conclusions and their logs; artifact ids, sizes and ZIP digests; pull-request
-merge times, merge commits and `reviews=0`; the three Rekor entries with their UUIDs, log indices
-and integrated times; and the Fulcio certificates with their SAN, issuer and build-config
-extensions. Where this document states such a fact, it comes from that source.
+### 8.2 Externally hosted operational evidence, and the two append-only classes
+
+**Externally hosted operational evidence — GitHub.** Workflow run ids, per-job conclusions, step
+logs, artifact ids, sizes and ZIP digests, pull-request merge times, merge commits and `reviews=0`.
+These exist outside this repository's narrative and can be re-read by anyone, which is what makes
+them useful. They are **not immutable**: GitHub retains logs and artifacts for a limited period and
+then expires them; a run can be re-run, so the *latest attempt* of a run may report something
+different later — as runs 33534158991 and 33563602548 already demonstrate. Every such reference in
+this document therefore carries its **attempt number**, and all of them were read between
+2026-09-02T12:00Z and 2026-09-02T16:33Z.
+
+**Append-only, content-addressed — Git.** Commits, trees and blobs, including every SHA in §2.
+Addressed by their own content; they cannot change without changing their identity.
+
+**Append-only, inclusion-proved — Rekor.** The three entries, their UUIDs, log indices, integrated
+times and inclusion proofs. Each bundle carries its own signed checkpoint, so the entry verifies
+without consulting the log at all. The Fulcio certificates and their SAN, issuer and build-config
+extensions travel inside those bundles and are equally self-contained.
+
+Where this document states a fact, the class it belongs to is the class named here.
 
 ### 8.3 Process exceptions
 §6 (PEX-P0-001) in full: zero-review merges, publication before acceptance, Phase 1 beginning
@@ -421,7 +488,12 @@ is machine-checkable and does not depend on trusting this repository's narrative
 run by the same agent, and a reviewer should re-run it rather than take it on trust.
 
 ### 8.5 Findings that still require an independent reviewer
-1. Whether the C19.7 acceptance criteria are genuinely met, in substance, at `a792cd9a`.
+1. Whether the C19.7 acceptance criteria are genuinely met, in substance, at `a792cd9a`. **C19.7's
+   "independent" is cryptographic, not human**: it requires an independent *signer* and independent
+   *trust material* — a pinned key, a signature over canonical bytes, an anchor the implementer does
+   not control. That is a technical property, and the evidence for it is in §3–§4. It is a separate
+   requirement from **independent human acceptance of Phase 0 closure**, which is what this document
+   is submitted for. Neither substitutes for the other, and this record does not merge them.
 2. Whether the reachability judgements behind SCX-0004 … SCX-0009 are sound, particularly the
    `RISK_ACCEPTED` QUIC-listener argument.
 3. Whether the C1–C19 corrections closed the defects they claim to close, or merely relocated them.

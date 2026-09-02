@@ -3927,12 +3927,18 @@ property actually proved.
 offline verification, least-privilege isolation, permanent controls and the full delivery chain
 are.
 
-> **STILL GOVERNING, AND NOT YET SATISFIED BY AN INDEPENDENT PARTY.** These criteria are claimed
-> complete by the implementer; three publications exist and their evidence is enumerated in
-> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §3–§4. The
-> independence this section demands is exactly what remains outstanding: every merge in this
-> repository carries `reviews=0`, and the first C19 publication reached the public log before any
-> review existed. C19 must not be described as closed on the strength of the signatures alone.
+> **STILL GOVERNING — AND ITS "INDEPENDENT" IS CRYPTOGRAPHIC, NOT HUMAN.** What this section
+> requires is an independent *signer* and independent *trust material*: a pinned key, a signature
+> over canonical bytes, and an anchor the implementer does not control. It does **not** require a
+> human reviewer. These criteria are claimed complete by the implementer, and the evidence for them
+> — three publications, their bundles, certificates, inclusion proofs and offline verification — is
+> enumerated in [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §3–§4.
+>
+> Independent **human acceptance of Phase 0 closure** is a separate requirement of the Phase 0
+> closure process, and it is the one outstanding: merged pull requests through #27 carry zero
+> submitted GitHub reviews, and the first C19 publication reached the public log with no submitted
+> GitHub review and no formal independent acceptance. Neither requirement substitutes for the
+> other, and C19 must not be described as closed on the strength of the signatures alone.
 
 ## C19.8 The decision this design stops at
 
