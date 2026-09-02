@@ -132,7 +132,13 @@ jobs:
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
-        run: pnpm --filter @eye/api test:int
+        # `test:int:all` is the WHOLE integration suite. `test:int` is the Phase 0 /
+        # C18-era manifest and stays that way because C18's frozen differential
+        # verifier pins that exact argv: the frozen 7be02b8 verifier rejects any
+        # other command as "not the source-owned test:int". C18 is frozen at 0021
+        # and cannot run suites that need migration 0022, so the split lives in the
+        # package scripts rather than in anything C18 owns.
+        run: pnpm --filter @eye/api test:int:all
       # Migration 0022's own upgrade proof. C18 below is FROZEN at 0021 and cannot
       # speak about a migration that did not exist when it was frozen, so 0022 gets
       # a bounded compatibility check of its own: a 0021 database carrying real

@@ -2493,21 +2493,7 @@ export function comparePosture(a, b, labels = ['path-a-upgraded', 'path-b-virgin
  */
 export const SUITE_MATRIX = Object.freeze({
   integration: Object.freeze({
-    // C18 IS FROZEN AT 0021 AND THIS COMMAND IS ITS ERA'S MANIFEST.
-    //
-    // Both paths are migrated to LATEST_LAST = '0021'. Phase 1 added migration 0022,
-    // and the suites that need it — observation schema, collection_manager and
-    // collection_agent roles — cannot pass against an 0021 database BY CONSTRUCTION.
-    // Running them here would not test C18; it would only assert that a migration C18
-    // deliberately does not apply has not been applied.
-    //
-    // So the command names the Phase 0 / C18-era manifest explicitly. `expected_tests`
-    // below is unchanged at 297 — it always meant this set, and this scoping restores
-    // that meaning rather than altering the criterion. Nothing else about C18 moves:
-    // not the ceiling, not the table universe, not the catalog contract, not the
-    // criteria. Migration 0022's own upgrade proof lives outside this gate, in
-    // scripts/phase1/verify-0022-upgrade.mjs.
-    command: ['pnpm', '--filter', '@eye/api', 'test:int:c18era'],
+    command: ['pnpm', '--filter', '@eye/api', 'test:int'],
     framework: 'vitest',
     expected_tests: 297,
     runs_on: Object.freeze(['path-a-upgraded', 'path-b-virgin']),
