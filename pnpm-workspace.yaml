@@ -47,6 +47,17 @@ overrides:
   # fixes (every advisory states "patched >=3.1.6") and stays on the 3.x line ajv
   # declares, so nothing is forced across a semver major.
   fast-uri: 3.1.6
+  # Gate: qs <6.16.0 carries two MODERATE advisories published 2026-09-02 —
+  # GHSA-4mjr-xmp4-gh2g (denial of service via an attacker-controlled isBuffer) and
+  # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing). Reached
+  # transitively through @nestjs/platform-express > express > body-parser.
+  #
+  # The gate requires an EXACTLY clean audit receipt, so a moderate blocks a PASS as
+  # surely as a high. Exact reviewed version again, not a range: 6.16.0 is the first
+  # version carrying both fixes (both advisories state "patched >=6.16.0") and is the
+  # current 6.x release, so express's declared range is satisfied without crossing a
+  # semver major.
+  qs: 6.16.0
 
 # C17.1 E — TARGET MATERIALIZATION, INDEPENDENT OF THE EXECUTING HOST.
 #
