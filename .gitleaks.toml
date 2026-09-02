@@ -84,3 +84,31 @@ commits = ['''6d702d28252ee749b23c862f264fede060fed5df''']
 paths = ['''(^|/)GATE2_2_FINAL_CLOSURE_PLAN\.md$''']
 regexTarget = "match"
 regexes = ['''replacement/reuse/invalidation''']
+
+# ── 4. A PUBLISHED URL PARAMETER of an open-data endpoint, not a credential ──
+[[allowlists]]
+description = """
+FALSE POSITIVE, scoped as narrowly as the finding — to ONE rule and ONE exact
+literal.
+
+The EU Financial Sanctions Files (FSF) download endpoint is addressed as
+
+  https://webgate.ec.europa.eu/fsd/fsf/public/files/<file>/content?token=<value>
+
+The `token` parameter is PRINTED IN THE PUBLIC EU OPEN DATA PORTAL METADATA and in
+the public RSS feed's own <link> elements; it is a fixed, published path component
+of an anonymous open-data endpoint, not an issued credential, and it authenticates
+nobody. Its value decodes to the ASCII string "token-2017".
+
+The generic-api-key rule keys on the word `token` followed by a value-shaped run of
+characters, so every place the Phase 1 source documentation, source contract or
+replay manifest records that endpoint URL is matched.
+
+Scope: this allowlist matches the ONE exact literal. Any other token=, any other
+value, and every other rule remain fully in scope. The value is additionally covered
+at runtime by the PHASE1_PLAN §8.1 URL-query redaction, which strips query strings
+from logs, events and audit metadata regardless of this exclusion — the system never
+treats it as a secret, and equally never stores it as one.
+"""
+regexTarget = "match"
+regexes = ['''token=dG9rZW4tMjAxNw''']
