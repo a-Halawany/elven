@@ -296,6 +296,14 @@ export class CollectionOrchestrator {
             budgets,
           },
           agentId);
+        // A source may be activated BEFORE an agent exists for it, in which case
+        // there was nothing to schedule at activation. Registering the agent is
+        // the moment that becomes possible, so the schedule is synced here too —
+        // otherwise the source stays active with nothing scheduled to collect it
+        // and nothing ever revisits the decision.
+        if (contract.lifecycle_state === 'active') {
+          await this.syncSchedule(cap, scope, a.sourceId, contract.contract_version, 'active');
+        }
         return { result: r, targetType: 'AGT', targetId: agentId, targetVersion: '1', outboxEvent: null };
       });
 

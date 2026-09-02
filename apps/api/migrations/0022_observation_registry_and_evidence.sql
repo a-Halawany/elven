@@ -1597,7 +1597,12 @@ CREATE OR REPLACE FUNCTION observation.upsert_scheduler_entry(
 ) RETURNS void
 SECURITY DEFINER SET search_path = observation, ctx, public, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM observation.assert_authority(ARRAY['observation.source.transition', 'observation.schedule.set']);
+  -- Registering an agent for an ALREADY ACTIVE source is the moment its schedule
+  -- becomes possible, so that action establishes a schedule too. Without it a
+  -- source activated before its agent existed would stay active with nothing
+  -- scheduled to collect it.
+  PERFORM observation.assert_authority(ARRAY[
+    'observation.source.transition', 'observation.schedule.set', 'observation.agent.register']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
   IF p_status = 'scheduled' AND p_cadence < 60 THEN
     RAISE EXCEPTION 'schedule rejected: the local profile enforces a 60-second minimum polling interval (requested %s)',

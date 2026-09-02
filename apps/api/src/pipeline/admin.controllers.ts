@@ -42,6 +42,43 @@ export class AdminControllers {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * The caller's OWN identity and scope.
+   *
+   * The interface has to know which tenant and domain it is operating in, and a
+   * domain operator cannot list tenants to find out — nor should they be able to.
+   * This returns the authenticated principal's own home scope and its own role
+   * bindings, and nothing else: it is not a directory, and it discloses nothing
+   * about any other principal.
+   *
+   * It is a CONSEQUENTIAL READ like every other: the policy decision and audit
+   * event are durable before the answer is returned.
+   */
+  @Post('/me')
+  async me(@Req() req: EyeRequest) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      {
+        scope: principal.homeScope, tenantId: principal.homeTenantId, domainId: principal.homeDomainId,
+        action: 'identity.self.read', objectType: 'PRN', objectId: principal.principalId,
+        // An identity read runs on the IDENTITY authority. The commit authority
+        // is refused an identity capability by the database, and rightly so.
+        authority: 'identity',
+      },
+      PrincipalsCapability.read,
+      async () => ({
+        principalId: principal.principalId,
+        kind: principal.kind,
+        assurance: principal.assurance,
+        homeScope: principal.homeScope,
+        homeTenantId: principal.homeTenantId,
+        homeDomainId: principal.homeDomainId,
+        bindings: principal.bindings,
+      }));
+    return { me: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+  }
+
   /** Create a tenant-scoped principal (admin/analyst/auditor) with optional role binding. */
   @Post('/tenants/:tenantId/principals')
   async createTenantPrincipal(

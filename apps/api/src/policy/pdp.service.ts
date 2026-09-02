@@ -60,6 +60,28 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    /*
+     * A principal reading its OWN identity and bindings. Ordered before the
+     * general `identity.` rule so a domain operator can discover the scope it is
+     * working in without holding tenant administration — which it must not.
+     *
+     * The route returns the CALLER's own record only: there is no identifier to
+     * pass, so there is nothing to widen it into a directory.
+     */
+    actionPrefix: 'identity.self.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'collection_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
     actionPrefix: 'identity.',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },

@@ -10,6 +10,14 @@ export const API_BASE = process.env.NEXT_PUBLIC_EYE_API ?? 'http://localhost:340
 export interface Session {
   principalId: string;
   accessToken: string;
+  /**
+   * The scope the SERVER reported for this session at sign-in. It is stored
+   * because a correctly scoped envelope cannot be built without it, and it is
+   * never inferred or defaulted — an interface that guessed its own tenant would
+   * be one request away from a cross-tenant mistake.
+   */
+  scope?: { scope: 'PLATFORM' | 'TENANT' | 'DOMAIN'; tenantId: string | null; domainId: string | null };
+  bindings?: Array<{ roleCode: string; scope: string; tenantId: string | null; domainId: string | null }>;
 }
 
 export function getSession(): Session | null {
@@ -100,9 +108,16 @@ export async function call<T>(path: string, over: EnvelopeOverrides, payload: un
   }
 }
 
-export async function login(username: string, password: string): Promise<ApiResult<{ principalId: string; tokens: { accessToken: string } }>> {
+export interface LoginResult {
+  principalId: string;
+  tokens: { accessToken: string };
+  scope: { scope: 'PLATFORM' | 'TENANT' | 'DOMAIN'; tenantId: string | null; domainId: string | null };
+  bindings: Array<{ roleCode: string; scope: string; tenantId: string | null; domainId: string | null }>;
+}
+
+export async function login(username: string, password: string): Promise<ApiResult<LoginResult>> {
   const payload = { username, password };
-  const r = await call<{ principalId: string; tokens: { accessToken: string } }>('/v1/auth/login', {
+  const r = await call<LoginResult>('/v1/auth/login', {
     scope: 'PLATFORM',
     action: 'identity.session.create',
     object_type: 'SES',
@@ -110,7 +125,12 @@ export async function login(username: string, password: string): Promise<ApiResu
     purpose_id: 'authentication',
   }, payload);
   if (r.ok && r.data !== undefined) {
-    setSession({ principalId: r.data.principalId, accessToken: r.data.tokens.accessToken });
+    setSession({
+      principalId: r.data.principalId,
+      accessToken: r.data.tokens.accessToken,
+      scope: r.data.scope,
+      bindings: r.data.bindings,
+    });
   }
   return r;
 }
