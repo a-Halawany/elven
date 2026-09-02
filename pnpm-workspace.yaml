@@ -35,6 +35,18 @@ overrides:
   #   * engines "^10 || ^12 || ^13.7 || ^14 || >=15.0.1", which admits node 24.11.1.
   # Verified integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==
   nanoid: 3.3.18
+  # Gate: fast-uri <3.1.6 carries four HIGH advisories published 2026-09-02 —
+  # GHSA-jqff-g426-hqxp and GHSA-5jgf-p345-68v8 (host confusion via percent-encoded
+  # scheme / skipped IDN canonicalization on scheme-relative references) and
+  # GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf (SSRF via malformed IPv6
+  # normalization / repeated hostname percent-decoding). Reached only transitively,
+  # through ajv, ajv-formats and ajv-formats-draft2019.
+  #
+  # EXACT REVIEWED VERSION, not a range, for the reason recorded above for nanoid:
+  # a range is not a reviewed decision. 3.1.6 is the first version carrying all four
+  # fixes (every advisory states "patched >=3.1.6") and stays on the 3.x line ajv
+  # declares, so nothing is forced across a semver major.
+  fast-uri: 3.1.6
 
 # C17.1 E — TARGET MATERIALIZATION, INDEPENDENT OF THE EXECUTING HOST.
 #
