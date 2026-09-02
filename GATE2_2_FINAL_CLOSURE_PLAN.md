@@ -1,5 +1,24 @@
 # GATE-2.2 — Final Consolidated Phase 0 Closure Plan (controlled execution record)
 
+> # ⚠️ WHOLE-DOCUMENT NOTICE — STATUS PASSAGES IN THIS PLAN ARE HISTORICAL
+>
+> This is a working plan written across the C1–C19 correction series. **Its normative content —
+> the mandates, the acceptance criteria, the reconciliation tables — remains governing. Its STATUS
+> passages do not.** Any sentence in this document describing what has or has not been done yet
+> ("is next", "has not been implemented", "no part of X has been started", "pending", "blocked on",
+> "deliberately not attempted", counts of tests or findings, and every "as of" figure) records the
+> moment it was written and has not been updated since.
+>
+> The current status of everything this plan describes is in
+> **[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**. In particular:
+> C19 was implemented and merged, corrected in a second pass, and three Rekor publications existed
+> during that document's recorded observation window; and the C19.7 criteria below require
+> *cryptographic* independence, which is a different requirement from the independent *human*
+> acceptance that Phase 0 closure needs.
+>
+> Individual status sentences are therefore **not** annotated one by one. This banner covers them
+> all, and no passage below should be read as current status.
+
 **Status:** IN EXECUTION. C1–C7 are CLOSED BY INTERNAL VERIFICATION (implementation
 progress, not independent approval); C9 is IN PROGRESS (isolation done, substantive
 fail-closed/recovery open). Migrations 0001–0019 are IMMUTABLE; corrections from 0020+. This is the live controlled record; the status ledger
@@ -3926,6 +3945,19 @@ property actually proved.
 **Signatures existing is not closure.** Independent trust, complete binding, replay resistance,
 offline verification, least-privilege isolation, permanent controls and the full delivery chain
 are.
+
+> **STILL GOVERNING — AND ITS "INDEPENDENT" IS CRYPTOGRAPHIC, NOT HUMAN.** What this section
+> requires is an independent *signer* and independent *trust material*: a pinned key, a signature
+> over canonical bytes, and an anchor the implementer does not control. It does **not** require a
+> human reviewer. These criteria are claimed complete by the implementer, and the evidence for them
+> — three publications, their bundles, certificates, inclusion proofs and offline verification — is
+> enumerated in [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §3–§4.
+>
+> Independent **human acceptance of Phase 0 closure** is a separate requirement of the Phase 0
+> closure process, and it is the one outstanding: merged pull requests through #27 carry zero
+> submitted GitHub reviews, and the first C19 publication reached the public log with no submitted
+> GitHub review and no formal independent acceptance. Neither requirement substitutes for the
+> other, and C19 must not be described as closed on the strength of the signatures alone.
 
 ## C19.8 The decision this design stops at
 

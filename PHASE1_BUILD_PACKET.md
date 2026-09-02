@@ -1,11 +1,25 @@
 # THE EYE — Phase 1 Build Packet
 
+> **⚠️ STATUS SUPERSEDED.** The line below is the packet's original status and is kept as the
+> historical record. What actually happened: the packet was **approved and merged** (PR #26,
+> `a792cd9a`, 2026-09-02T09:27:18Z); **Phase 1 implementation began** in PR #28 on
+> 2026-09-02T12:08:08Z; and Phase 1 is now **paused, with PR #28 unmerged and frozen, pending
+> formal Phase 0 closure**. Approval of this packet was Phase 1 scope approval and is **not**
+> independent Phase 0 acceptance — see
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §6.
+>
 > **Status: awaiting one consolidated owner review.** Documentation only. No migration, no
 > dependency, no workflow change, no application code has been written, and none will be until
 > `APPROVED: PHASE 1 BUILD PACKET AND IMPLEMENTATION`.
 >
 > **Branch** `phase1-build-packet`, cut from main at **`e35996483a6b827603e04cac4d52101d27ca5269`**
 > — the commit at which Phase 0 closed.
+>
+> **CORRECTED.** `e3599648` is the commit at which the C19 implementation was completed and
+> published. It is **not** a commit at which Phase 0 was independently accepted: no pull request in
+> this repository has been reviewed by a second party. See
+> [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) §2 and §6. Approval or
+> merging of this packet is Phase 1 scope approval and is **not** Phase 0 acceptance.
 
 ---
 
