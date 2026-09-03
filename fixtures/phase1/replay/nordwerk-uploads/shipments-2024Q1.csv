@@ -1,0 +1,5 @@
+synthetic,shipment_id,component_id,qty,vessel,position_at_window_open,eta_rotterdam,status
+true,SYN-SHIP-4471,SYN-PART-MAG,38400,MV Kestrel Meridian,Approaching Bab el-Mandeb,2024-01-29,at risk
+true,SYN-SHIP-4472,SYN-PART-MAG,41000,MV Kestrel Aurora,Malacca Strait,2024-02-08,reroutable
+true,SYN-SHIP-4468,SYN-PART-PWR,12000,MV Hanse Trader,Suez transit,2024-01-19,in transit
+true,SYN-SHIP-4475,SYN-PART-MAG,39200,not yet loaded,Ningbo,2024-02-22,bookable

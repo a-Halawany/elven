@@ -1,0 +1,255 @@
+{
+  "objectIdFieldName": "ObjectId",
+  "globalIdFieldName": "",
+  "fields": [
+    {
+      "name": "portid",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "portname",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "date",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "portcalls",
+      "type": "esriFieldTypeInteger"
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-28",
+        "portcalls": 118,
+        "portcalls_cargo": 80,
+        "portcalls_tanker": 22
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-29",
+        "portcalls": 121,
+        "portcalls_cargo": 82,
+        "portcalls_tanker": 23
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-30",
+        "portcalls": 109,
+        "portcalls_cargo": 74,
+        "portcalls_tanker": 21
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-31",
+        "portcalls": 98,
+        "portcalls_cargo": 67,
+        "portcalls_tanker": 19
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-01",
+        "portcalls": 101,
+        "portcalls_cargo": 69,
+        "portcalls_tanker": 19
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-02",
+        "portcalls": 124,
+        "portcalls_cargo": 84,
+        "portcalls_tanker": 24
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-03",
+        "portcalls": 131,
+        "portcalls_cargo": 89,
+        "portcalls_tanker": 25
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-04",
+        "portcalls": 128,
+        "portcalls_cargo": 87,
+        "portcalls_tanker": 24
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-05",
+        "portcalls": 133,
+        "portcalls_cargo": 90,
+        "portcalls_tanker": 25
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-06",
+        "portcalls": 112,
+        "portcalls_cargo": 76,
+        "portcalls_tanker": 21
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-07",
+        "portcalls": 106,
+        "portcalls_cargo": 72,
+        "portcalls_tanker": 20
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-08",
+        "portcalls": 129,
+        "portcalls_cargo": 88,
+        "portcalls_tanker": 25
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-09",
+        "portcalls": 134,
+        "portcalls_cargo": 91,
+        "portcalls_tanker": 25
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-10",
+        "portcalls": 137,
+        "portcalls_cargo": 93,
+        "portcalls_tanker": 26
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-11",
+        "portcalls": 141,
+        "portcalls_cargo": 96,
+        "portcalls_tanker": 27
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-12",
+        "portcalls": 138,
+        "portcalls_cargo": 94,
+        "portcalls_tanker": 26
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-13",
+        "portcalls": 130,
+        "portcalls_cargo": 88,
+        "portcalls_tanker": 25
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-14",
+        "portcalls": 127,
+        "portcalls_cargo": 86,
+        "portcalls_tanker": 24
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-15",
+        "portcalls": 136,
+        "portcalls_cargo": 92,
+        "portcalls_tanker": 26
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-16",
+        "portcalls": 139,
+        "portcalls_cargo": 95,
+        "portcalls_tanker": 26
+      }
+    },
+    {
+      "attributes": {
+        "portid": "port1114",
+        "portname": "Rotterdam",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-17",
+        "portcalls": 142,
+        "portcalls_cargo": 97,
+        "portcalls_tanker": 27
+      }
+    }
+  ]
+}

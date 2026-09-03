@@ -86,12 +86,31 @@ export class AuthController {
     );
   }
 
+  /**
+   * Sign in.
+   *
+   * The response carries the principal's HOME SCOPE and its role bindings,
+   * because an interface cannot construct a correctly scoped envelope until it
+   * knows which tenant and domain it is operating in — and it must not guess.
+   * The values are read back from the freshly issued token through the ordinary
+   * verification path, so they are the server's own answer about this session
+   * rather than anything the client supplied or the handler assembled by hand.
+   *
+   * Only the CALLER's own scope and bindings are returned. This is not a
+   * directory, and it discloses nothing about any other principal.
+   */
   @Public()
   @Post('/login')
   async login(
     @Req() req: EyeRequest,
     @Body() body: { payload?: LoginPayload },
-  ): Promise<{ principalId: string; tokens: TokenPair; rotationRequired: boolean }> {
+  ): Promise<{
+    principalId: string;
+    tokens: TokenPair;
+    rotationRequired: boolean;
+    scope: { scope: string; tenantId: string | null; domainId: string | null };
+    bindings: Array<{ roleCode: string; scope: string; tenantId: string | null; domainId: string | null }>;
+  }> {
     const correlationId = requireCorrelation(req);
     const username = body.payload?.username;
     const password = body.payload?.password;
@@ -134,6 +153,10 @@ export class AuthController {
     const accessToken = await this.identity.signAccess(
       result.cred.principalId, result.session.sessionId, result.assurance, result.session.contextKey,
     );
+    // The scope this session actually has, read back through the same
+    // verification path every request uses. A bootstrap-rotation session has no
+    // usable scope yet and is reported as carrying none.
+    const verified = result.assurance === 'bootstrap_rotation' ? null : await this.identity.verifyAccess(accessToken);
     return {
       principalId: result.cred.principalId,
       tokens: {
@@ -142,6 +165,12 @@ export class AuthController {
         expiresInSeconds: this.identity.accessTtlSeconds,
       },
       rotationRequired: result.cred.mustRotate,
+      scope: {
+        scope: verified?.homeScope ?? 'PLATFORM',
+        tenantId: verified?.homeTenantId ?? null,
+        domainId: verified?.homeDomainId ?? null,
+      },
+      bindings: verified?.bindings ?? [],
     };
   }
 

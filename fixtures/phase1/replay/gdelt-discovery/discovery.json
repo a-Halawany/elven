@@ -1,0 +1,21 @@
+{
+  "articles": [
+    {
+      "url": "https://www.zerohedge.com/example-red-sea-commentary",
+      "title": "Red Sea commentary",
+      "domain": "zerohedge.com",
+      "seendate": "20240114T081500Z",
+      "language": "English",
+      "sourcecountry": "United States"
+    },
+    {
+      "url": "https://www.example-trade-press.test/bab-el-mandeb-transits-fall",
+      "title": "Transits through Bab el-Mandeb fall sharply",
+      "domain": "example-trade-press.test",
+      "seendate": "20240114T093000Z",
+      "language": "English",
+      "sourcecountry": "United Kingdom"
+    }
+  ],
+  "planted_defect_note": "DEF-10: the first article asserts corridor traffic is unchanged, contradicting the authoritative PortWatch series. Phase 1 records both and reconciles neither."
+}

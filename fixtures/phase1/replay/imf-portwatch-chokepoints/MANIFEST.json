@@ -1,0 +1,55 @@
+{
+  "set": "imf-portwatch-chokepoints",
+  "source_key": "imf-portwatch-chokepoints",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "covered_band": {
+    "start": "2023-12-28T00:00:00Z",
+    "end": "2024-01-18T00:00:00Z"
+  },
+  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint4%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint4.json",
+      "sha256": "8b64c610d20ce7beca71196ba0c7e0e7298d25e1cd6a2f87bc21b22bbd799ac1",
+      "byte_length": 8644,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-04: the 2024-01-13 row omits `n_total`, exercising schema drift against a zero-tolerance contract"
+    },
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint1%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint1.json",
+      "sha256": "75f0903911cff33c76ab1ca17b767ab49b5b8ec9e6294336697fc4afbeeaf625",
+      "byte_length": 8460,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27chokepoint7%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "chokepoint7.json",
+      "sha256": "5b1a6e15e924f87fcecb3e20ccb1141fd98e6fd86a3840717a6cb75493c08d8a",
+      "byte_length": 7842,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-08: 2024-01-09 and 2024-01-10 are absent, so completeness must report insufficient_evidence"
+    }
+  ]
+}

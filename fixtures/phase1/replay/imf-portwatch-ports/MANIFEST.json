@@ -1,0 +1,29 @@
+{
+  "set": "imf-portwatch-ports",
+  "source_key": "imf-portwatch-ports",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "covered_band": {
+    "start": "2023-12-28T00:00:00Z",
+    "end": "2024-01-18T00:00:00Z"
+  },
+  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0/query?where=portid%3D%27port1114%27&outFields=*&f=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "rotterdam.json",
+      "sha256": "fa71e48322ea9fe642f566fe9ff7f197d144f2c134e7515541ab04f485d12fa9",
+      "byte_length": 6193,
+      "acquisition_mode": "replay"
+    }
+  ]
+}

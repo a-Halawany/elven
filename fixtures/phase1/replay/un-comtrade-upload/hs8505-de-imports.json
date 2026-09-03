@@ -1,0 +1,20 @@
+{
+  "note": "Manual export. UN Comtrade requires free registration even on its free tier; no account was created and no key exists (owner decision C1/D6). This enters as uploaded replay evidence.",
+  "dataset": "HS 8505 (permanent magnets) — DE imports",
+  "rows": [
+    {
+      "period": "2022",
+      "reporter": "DEU",
+      "partner": "CHN",
+      "cmdCode": "8505",
+      "primaryValue": 412884112
+    },
+    {
+      "period": "2023",
+      "reporter": "DEU",
+      "partner": "CHN",
+      "cmdCode": "8505",
+      "primaryValue": 388204770
+    }
+  ]
+}

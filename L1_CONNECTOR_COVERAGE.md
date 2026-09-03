@@ -5,6 +5,14 @@
 > the first cohort only (3 connectors). Phase 1 does NOT claim the World
 > Observation Layer or the source universe is complete.** Every later cohort
 > lands through its own approved plan; this matrix is updated per phase.
+>
+> **Post-implementation (Phase 1 delivered, see [PHASE1_REPORT.md](PHASE1_REPORT.md)):** all
+> three cohort-1 connectors are built and exercised — file upload (PDF/DOCX/CSV), RSS/Atom,
+> and the governed generic REST poller — against a frozen replay set under registered source
+> contracts. **No connector was exercised against a live third-party endpoint, and no
+> credential, account or subscription was acquired for this phase.** The statuses below are
+> unchanged by implementation: building a connector is not the same as covering a source
+> class, and this register reports coverage.
 
 | # | Source class (Vol 0 App. B) | Phase 1 status | Planned cohort | Notes |
 |---|---|---|---|---|

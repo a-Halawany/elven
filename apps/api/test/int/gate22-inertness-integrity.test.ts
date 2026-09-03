@@ -21,6 +21,11 @@
  * NEGATIVE CONTROLS prove the gate is not vacuous: four fixtures each mutate state
  * in a way ROW COUNT CANNOT SEE, the gate is required to detect each one, and every
  * fixture is rolled back so the database is left exactly as found.
+ *
+ * THIS SUITE REQUIRES AN OTHERWISE-IDLE DATABASE. It compares the whole governed
+ * state before and after, so anything else writing concurrently — a locally running
+ * API, whose outbox publisher issues a capability on every poll tick — is reported
+ * as a mutation. That is the gate working, not a flake; stop the local API first.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';

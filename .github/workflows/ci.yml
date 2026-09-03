@@ -126,11 +126,33 @@ jobs:
         run: |
           pnpm db:migrate
           pnpm --filter @eye/api test:accept
-      - name: Integration tests (isolation, privileges, audit concurrency, refresh)
+      # Includes the Phase 1 suites: A4 fault injection (F01–F46), A10 hostile
+      # input, and the A1/A2/A3/A5/A6/A7/A9/A11 acceptance matrix.
+      - name: Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
-        run: pnpm --filter @eye/api test:int
+        # `test:int:all` is the WHOLE integration suite. `test:int` is the Phase 0 /
+        # C18-era manifest and stays that way because C18's frozen differential
+        # verifier pins that exact argv: the frozen 7be02b8 verifier rejects any
+        # other command as "not the source-owned test:int". C18 is frozen at 0021
+        # and cannot run suites that need migration 0022, so the split lives in the
+        # package scripts rather than in anything C18 owns.
+        run: pnpm --filter @eye/api test:int:all
+      # Migration 0022's own upgrade proof. C18 below is FROZEN at 0021 and cannot
+      # speak about a migration that did not exist when it was frozen, so 0022 gets
+      # a bounded compatibility check of its own: a 0021 database carrying real
+      # Phase 0 data and authorities, 0022 applied to it, every pre-existing row
+      # proven to survive, the additions proven to be exactly the declared ones,
+      # Phase 0 authority behaviour re-proven, the resulting schema compared with a
+      # virgin 0001-0022 database, and the Phase 1 suites run against the UPGRADED
+      # data. It uses the tracked migration runner and the suites that already
+      # exist — it is not another gate and defines no new criteria.
+      - name: Migration 0022 upgrade compatibility (tracked runner, blocking)
+        env:
+          EYE_DB_HOST: localhost
+          EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
+        run: node scripts/phase1/verify-0022-upgrade.mjs
       # C18 — BLOCKING dual-path database history proof. The tracked runner provisions two
       # fully isolated postgres+redis instances with per-run names, ports and credentials
       # (never the compose stack, never shared between paths), applies 0001-0012, seeds only
@@ -227,7 +249,9 @@ jobs:
         run: pnpm db:migrate
       - name: Install Chrome (stable channel)
         run: pnpm exec playwright install chrome
-      - name: Phase 0 browser regression gate (10 scenarios, blocking)
+      # Both browser suites run in one invocation: the Phase 0 ten stay a standing
+      # regression gate, and the Phase 1 sixteen are the A12 acceptance journey.
+      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen, blocking)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}

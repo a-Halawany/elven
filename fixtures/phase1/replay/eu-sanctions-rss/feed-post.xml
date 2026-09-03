@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>EU Financial Sanctions Files</title>
+    <link>https://webgate.ec.europa.eu/fsd/fsf/public/rss</link>
+    <description>Publication of consolidated financial sanctions files</description>
+    <item>
+      <title>CSV - v1.1</title>
+      <guid isPermaLink="false">fsf-csv-1.1</guid>
+      <pubDate>Sat, 13 Jan 2024 11:40:18 GMT</pubDate>
+      <link>https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw</link>
+    </item>
+    <item>
+      <title>XML - v1.1</title>
+      <guid isPermaLink="false">fsf-xml-1.1</guid>
+      <pubDate>Sat, 13 Jan 2024 11:40:18 GMT</pubDate>
+      <link>https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw</link>
+    </item>
+  </channel>
+</rss>

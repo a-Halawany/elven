@@ -1,0 +1,30 @@
+{
+  "set": "gdelt-discovery",
+  "source_key": "gdelt-discovery",
+  "captured_by": "scripts/phase1/build-replay-fixtures.mjs",
+  "manifest_version": "v1",
+  "frozen_window": {
+    "start": "2024-01-12T00:00:00Z",
+    "end": "2024-01-15T00:00:00Z"
+  },
+  "covered_band": {
+    "start": "2023-12-28T00:00:00Z",
+    "end": "2024-01-18T00:00:00Z"
+  },
+  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "entries": [
+    {
+      "url": "https://api.gdeltproject.org/api/v2/doc/doc?query=%22Bab%20el-Mandeb%22&mode=artlist&format=json",
+      "retrieved_at": "2026-09-02T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "discovery.json",
+      "sha256": "20c0da7c278f7d11e0a7ea20369e8e10c48ea5813d99691ed59c307c4ad8bbdc",
+      "byte_length": 775,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-10: an observational item contradicting the authoritative series; classification holds and no reconciliation is attempted"
+    }
+  ]
+}

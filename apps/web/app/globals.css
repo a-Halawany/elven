@@ -16,3 +16,80 @@ body {
 }
 /* Logical properties only — no left/right physical properties (RTL-safe). */
 main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); }
+
+/* ── WS-02 Observation Operations ─────────────────────────────────────────── */
+
+/*
+ * The rail collapses to icons below 1024px. The label is hidden VISUALLY only —
+ * it stays in the accessibility tree, so the navigation reads the same to a
+ * screen reader at every width.
+ */
+@media (max-width: 1023px) {
+  .eye-nav-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/*
+ * Motion is reserved for state transitions that matter. Under
+ * prefers-reduced-motion every transition collapses to instant — ambient motion
+ * would train the eye to ignore movement, which is the one thing this interface
+ * cannot afford.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Tables are real tables and never push the page sideways. */
+.eye-table { inline-size: 100%; border-collapse: collapse; font-size: var(--eye-type-body-sm); }
+.eye-table caption {
+  text-align: start;
+  color: var(--eye-color-ink-muted);
+  font-size: var(--eye-type-label-sm);
+  padding-block-end: var(--eye-space-4);
+}
+.eye-table th {
+  text-align: start;
+  border-block-end: 1px solid var(--eye-color-border-strong);
+  padding: var(--eye-space-4) var(--eye-space-8);
+  color: var(--eye-color-ink-muted);
+  font-size: var(--eye-type-label-sm);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.eye-table td {
+  border-block-end: 1px solid var(--eye-color-border-default);
+  padding: var(--eye-space-8);
+  vertical-align: top;
+}
+
+/* Below 768px the tables become cards: the page stays one column and never
+   scrolls horizontally. Provenance and authority never drop out. */
+@media (max-width: 767px) {
+  .eye-table thead { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+  .eye-table tr {
+    display: block;
+    border: 1px solid var(--eye-color-border-default);
+    border-radius: var(--eye-radius-md);
+    margin-block-end: var(--eye-space-8);
+    padding: var(--eye-space-8);
+  }
+  .eye-table td { display: block; border-block-end: none; padding: var(--eye-space-4) 0; }
+  .eye-table td::before {
+    content: attr(data-label) " ";
+    display: block;
+    color: var(--eye-color-ink-muted);
+    font-size: var(--eye-type-label-sm);
+    text-transform: uppercase;
+  }
+}

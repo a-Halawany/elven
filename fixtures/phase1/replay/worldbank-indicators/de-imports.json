@@ -1,0 +1,40 @@
+[
+  {
+    "page": 1,
+    "pages": 1,
+    "per_page": 50,
+    "total": 3
+  },
+  [
+    {
+      "indicator": {
+        "id": "NE.IMP.GNFS.ZS"
+      },
+      "country": {
+        "id": "DE"
+      },
+      "date": "2023",
+      "value": 40.1
+    },
+    {
+      "indicator": {
+        "id": "NE.IMP.GNFS.ZS"
+      },
+      "country": {
+        "id": "DE"
+      },
+      "date": "2022",
+      "value": 41.3
+    },
+    {
+      "indicator": {
+        "id": "NE.IMP.GNFS.ZS"
+      },
+      "country": {
+        "id": "DE"
+      },
+      "date": "2021",
+      "value": 39.8
+    }
+  ]
+]

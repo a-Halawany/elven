@@ -1,0 +1,363 @@
+{
+  "objectIdFieldName": "ObjectId",
+  "globalIdFieldName": "",
+  "fields": [
+    {
+      "name": "portid",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "portname",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "date",
+      "type": "esriFieldTypeString"
+    },
+    {
+      "name": "n_total",
+      "type": "esriFieldTypeInteger"
+    },
+    {
+      "name": "capacity",
+      "type": "esriFieldTypeDouble"
+    }
+  ],
+  "features": [
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-28",
+        "year": 2023,
+        "month": 12,
+        "day": 28,
+        "n_cargo": 49,
+        "n_tanker": 14,
+        "n_container": 30,
+        "n_total": 68,
+        "capacity": 2431188
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-29",
+        "year": 2023,
+        "month": 12,
+        "day": 29,
+        "n_cargo": 51,
+        "n_tanker": 15,
+        "n_container": 31,
+        "n_total": 71,
+        "capacity": 2610044
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-30",
+        "year": 2023,
+        "month": 12,
+        "day": 30,
+        "n_cargo": 45,
+        "n_tanker": 13,
+        "n_container": 28,
+        "n_total": 63,
+        "capacity": 2288901
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2023-12-31",
+        "year": 2023,
+        "month": 12,
+        "day": 31,
+        "n_cargo": 42,
+        "n_tanker": 12,
+        "n_container": 26,
+        "n_total": 59,
+        "capacity": 2104773
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-01",
+        "year": 2024,
+        "month": 1,
+        "day": 1,
+        "n_cargo": 44,
+        "n_tanker": 13,
+        "n_container": 27,
+        "n_total": 61,
+        "capacity": 2233410
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-02",
+        "year": 2024,
+        "month": 1,
+        "day": 2,
+        "n_cargo": 48,
+        "n_tanker": 14,
+        "n_container": 29,
+        "n_total": 66,
+        "capacity": 2402118
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-03",
+        "year": 2024,
+        "month": 1,
+        "day": 3,
+        "n_cargo": 42,
+        "n_tanker": 12,
+        "n_container": 26,
+        "n_total": 58,
+        "capacity": 2118934
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-04",
+        "year": 2024,
+        "month": 1,
+        "day": 4,
+        "n_cargo": 39,
+        "n_tanker": 11,
+        "n_container": 24,
+        "n_total": 54,
+        "capacity": 1988201
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-05",
+        "year": 2024,
+        "month": 1,
+        "day": 5,
+        "n_cargo": 41,
+        "n_tanker": 12,
+        "n_container": 25,
+        "n_total": 57,
+        "capacity": 2044887
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-06",
+        "year": 2024,
+        "month": 1,
+        "day": 6,
+        "n_cargo": 35,
+        "n_tanker": 10,
+        "n_container": 22,
+        "n_total": 49,
+        "capacity": 1804220
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-07",
+        "year": 2024,
+        "month": 1,
+        "day": 7,
+        "n_cargo": 37,
+        "n_tanker": 11,
+        "n_container": 23,
+        "n_total": 52,
+        "capacity": 1901466
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-08",
+        "year": 2024,
+        "month": 1,
+        "day": 8,
+        "n_cargo": 34,
+        "n_tanker": 10,
+        "n_container": 21,
+        "n_total": 47,
+        "capacity": 1733901
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-09",
+        "year": 2024,
+        "month": 1,
+        "day": 9,
+        "n_cargo": 37,
+        "n_tanker": 11,
+        "n_container": 22,
+        "n_total": 51,
+        "capacity": 1877340
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-10",
+        "year": 2024,
+        "month": 1,
+        "day": 10,
+        "n_cargo": 35,
+        "n_tanker": 10,
+        "n_container": 21,
+        "n_total": 48,
+        "capacity": 1798115
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "imf-portwatch-verified-2026-09-02",
+        "date": "2024-01-11",
+        "year": 2024,
+        "month": 1,
+        "day": 11,
+        "n_cargo": 40,
+        "n_tanker": 12,
+        "n_container": 24,
+        "n_total": 55,
+        "capacity": 2048432
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "imf-portwatch-verified-2026-09-02",
+        "date": "2024-01-12",
+        "year": 2024,
+        "month": 1,
+        "day": 12,
+        "n_cargo": 25,
+        "n_tanker": 7,
+        "n_container": 15,
+        "n_total": 35,
+        "capacity": 1470236
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "imf-portwatch-verified-2026-09-02",
+        "date": "2024-01-13",
+        "year": 2024,
+        "month": 1,
+        "day": 13,
+        "n_cargo": 31,
+        "n_tanker": 9,
+        "n_container": 19,
+        "capacity": 1717684
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "imf-portwatch-verified-2026-09-02",
+        "date": "2024-01-14",
+        "year": 2024,
+        "month": 1,
+        "day": 14,
+        "n_cargo": 19,
+        "n_tanker": 6,
+        "n_container": 12,
+        "n_total": 27,
+        "capacity": 826735
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "imf-portwatch-verified-2026-09-02",
+        "date": "2024-01-15",
+        "year": 2024,
+        "month": 1,
+        "day": 15,
+        "n_cargo": 21,
+        "n_tanker": 6,
+        "n_container": 13,
+        "n_total": 29,
+        "capacity": 1498065
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-16",
+        "year": 2024,
+        "month": 1,
+        "day": 16,
+        "n_cargo": 24,
+        "n_tanker": 7,
+        "n_container": 15,
+        "n_total": 33,
+        "capacity": 1244902
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "data_provenance": "reconstructed-context",
+        "date": "2024-01-17",
+        "year": 2024,
+        "month": 1,
+        "day": 17,
+        "n_cargo": 22,
+        "n_tanker": 7,
+        "n_container": 14,
+        "n_total": 31,
+        "capacity": 1188440
+      }
+    }
+  ]
+}
