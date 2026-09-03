@@ -127,6 +127,15 @@ and unused, and Phase 2 adds no connectors.
    "this was never mine" tells a reviewer nothing.
 6. The fixture keys were built from the wrong fields (the EVD *row* rather than its payload), so
    every replay missed. Keyed on the payload's locator and content digest, as the gateway is.
+7. **`intelligence.rebuild_projections()` counted every tenant in the cluster.** It is SECURITY
+   DEFINER, so row-level security is not a boundary it can rely on, and my first version took no
+   arguments and filtered nothing — a caller in one domain received counts covering all of them.
+   Not content, but a cross-tenant disclosure and simply a wrong answer about the domain asked
+   about. It now derives the scope from the **established context** (`public.eye_tenant()` /
+   `eye_domain()`) and refuses when no tenant is established. Phase 1's equivalent was already
+   scoped, by parameter; deriving it from the context is the stricter of the two, because there is
+   no argument a caller could get wrong. Caught by the demonstration reporting 29 methods for a
+   domain that has one.
 
 ## 6. Known limitations
 

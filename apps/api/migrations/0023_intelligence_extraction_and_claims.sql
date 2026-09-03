@@ -885,13 +885,34 @@ ON CONFLICT (object_type, schema_version) DO NOTHING;
 CREATE OR REPLACE FUNCTION intelligence.rebuild_projections()
 RETURNS TABLE (projection text, live_rows bigint, rebuilt_rows bigint, mismatched bigint)
 SECURITY DEFINER SET search_path = intelligence, observation, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE v_tenant uuid; v_domain uuid;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['intelligence.read', 'observation.read']);
+
+  /*
+   * SCOPE IT EXPLICITLY.
+   *
+   * This function is SECURITY DEFINER, so it runs as its owner and row-level
+   * security is not a boundary it can rely on. Without these predicates a caller
+   * in one domain would receive counts covering every tenant in the cluster —
+   * not content, but still a cross-tenant disclosure, and an answer that is
+   * simply wrong about the domain the caller asked about.
+   *
+   * The scope comes from the ESTABLISHED CONTEXT, never from an argument.
+   */
+  v_tenant := public.eye_tenant();
+  v_domain := public.eye_domain();
+  IF v_tenant IS NULL THEN
+    RAISE EXCEPTION 'projection rebuild rejected: no tenant is established in this context'
+      USING ERRCODE = '42501';
+  END IF;
 
   RETURN QUERY
   WITH last_method AS (
     SELECT DISTINCT ON (e.method_id) e.method_id, e.event
-      FROM intelligence.method_events e ORDER BY e.method_id, e.occurred_at DESC, e.event_id DESC
+      FROM intelligence.method_events e
+     WHERE e.tenant_id = v_tenant AND (v_domain IS NULL OR e.domain_id = v_domain)
+     ORDER BY e.method_id, e.occurred_at DESC, e.event_id DESC
   ), expect_method AS (
     SELECT lm.method_id,
            CASE lm.event WHEN 'method.registered' THEN 'draft'
@@ -902,7 +923,8 @@ BEGIN
       FROM last_method lm
   )
   SELECT 'methods_current'::text,
-         (SELECT count(*) FROM intelligence.methods_current),
+         (SELECT count(*) FROM intelligence.methods_current m
+           WHERE m.tenant_id = v_tenant AND (v_domain IS NULL OR m.domain_id = v_domain)),
          (SELECT count(*) FROM expect_method),
          (SELECT count(*) FROM intelligence.methods_current m
             JOIN expect_method x ON x.method_id = m.method_id
@@ -913,6 +935,7 @@ BEGIN
     SELECT DISTINCT ON (e.run_id) e.run_id, e.event
       FROM intelligence.run_events e
      WHERE e.event IN ('run.started','run.finished','run.failed','run.budget_exceeded')
+       AND e.tenant_id = v_tenant AND (v_domain IS NULL OR e.domain_id = v_domain)
      ORDER BY e.run_id, e.occurred_at DESC, e.event_id DESC
   ), expect_run AS (
     SELECT lr.run_id,
@@ -923,7 +946,8 @@ BEGIN
       FROM last_run lr
   )
   SELECT 'runs_current'::text,
-         (SELECT count(*) FROM intelligence.runs_current),
+         (SELECT count(*) FROM intelligence.runs_current r
+           WHERE r.tenant_id = v_tenant AND (v_domain IS NULL OR r.domain_id = v_domain)),
          (SELECT count(*) FROM expect_run),
          (SELECT count(*) FROM intelligence.runs_current r
             JOIN expect_run x ON x.run_id = r.run_id
@@ -932,7 +956,9 @@ BEGIN
   RETURN QUERY
   WITH last_case AS (
     SELECT DISTINCT ON (e.case_id) e.case_id, e.event
-      FROM intelligence.review_events e ORDER BY e.case_id, e.occurred_at DESC, e.event_id DESC
+      FROM intelligence.review_events e
+     WHERE e.tenant_id = v_tenant AND (v_domain IS NULL OR e.domain_id = v_domain)
+     ORDER BY e.case_id, e.occurred_at DESC, e.event_id DESC
   ), expect_case AS (
     SELECT lc.case_id,
            CASE lc.event WHEN 'case.queued' THEN 'queued'
@@ -942,7 +968,8 @@ BEGIN
       FROM last_case lc
   )
   SELECT 'review_current'::text,
-         (SELECT count(*) FROM intelligence.review_current),
+         (SELECT count(*) FROM intelligence.review_current c
+           WHERE c.tenant_id = v_tenant AND (v_domain IS NULL OR c.domain_id = v_domain)),
          (SELECT count(*) FROM expect_case),
          (SELECT count(*) FROM intelligence.review_current c
             JOIN expect_case x ON x.case_id = c.case_id
