@@ -2,8 +2,12 @@
 
 > Scope comes strictly from the frozen roadmap (`docs/the-eye-master-build-prompt.md`, Phase 2) and
 > the phase boundaries the demonstration already promises
-> (`docs/phase1/DEMO_STORYBOARD.md` §2). **Nothing here is implemented.** This plan is for review
-> alongside the Phase 1 candidate, and it does not touch Phases 3–7.
+> (`docs/phase1/DEMO_STORYBOARD.md` §2). It does not touch Phases 3–7.
+>
+> **APPROVED** by the owner as product acceptance — not as a claim of independent code review —
+> with the model decision recorded in §4 and criterion **B5 corrected before freezing**.
+> **B1–B6 are frozen** and are not to be expanded during implementation unless a constitutional
+> invariant is violated.
 
 ---
 
@@ -50,7 +54,7 @@ Phase 1's agent contract already governs (Phase 7).
 
 | Component | What it is |
 |---|---|
-| **Model Gateway** | The single egress for model calls. Versioned prompts and models as governed objects; every call logged with request digest, model id, version, latency, cost and outcome; declared fallback chain; **abstention as a first-class result**, not an error. No model call may originate anywhere else. |
+| **Model Gateway** | The single egress for model calls, in two modes — `replay` (recorded responses, the deterministic default) and `local-live` (a local open-weights model through an Ollama/llama.cpp adapter). Versioned prompts and models as governed objects; every call logged with **mode**, request digest, model id, weights digest, runtime version, prompt version, decoding configuration, latency and outcome; declared fallback chain; **abstention as a first-class result**, not an error. No model call may originate anywhere else, and no hosted API is used. |
 | **Extraction pipeline** | Evidence → typed extraction run → candidate claims. Runs under the Phase 1 agent contract: per-run reauthorization, code digest, budgets, stop-and-escalate. No external I/O inside a database transaction — the Phase 1 rule carries forward unchanged. |
 | **Claim store** | New canonical object types under the existing 43-column header and the four-axis temporal model: `ENT` (entity mention), `EVT` (event), `CLM` (claim), `REL` (relationship), `ASM` (assessment). Written only through `objects.admit_version`, append-only, corrected by supersession. |
 | **Method lineage** | Every claim binds method ref, model id and version, prompt version, input evidence ids with byte offsets, and the run that produced it. A claim whose lineage cannot be resolved is not admitted. |
@@ -75,19 +79,20 @@ only from authoritative responses, state never by colour alone, keyboard-operabl
 **No new connectors.** Phase 2 consumes what Phase 1 already collected. The ten sources, the replay
 set and the evidence vault are the inputs.
 
-**What is genuinely new is a model.** That is the one external dependency, and it is a real decision:
+**What is genuinely new is a model** — and the decision is made. The Model Gateway is **dual-mode**:
 
-| Option | What it costs | What it means for the demo |
+| Mode | Role | Cost |
 |---|---|---|
-| **A. Local open-weights model** (e.g. a small instruct model via Ollama or llama.cpp) | €0, no account, no key | Runs offline; extraction quality is lower; determinism must come from fixed seeds and pinned weights. Keeps the LOCAL-ONLY posture intact. |
-| **B. Hosted API model** | Paid, requires an API key in secret storage | Better extraction; introduces an external dependency and a per-run cost; needs a budget ceiling and an egress decision. |
-| **C. Recorded-response replay** | €0 | Extraction responses captured once and replayed thereafter, exactly as Phase 1 replays source bytes. Fully deterministic and demonstrable with **no credential at all**. |
+| **`replay`** — recorded responses | The **deterministic default** for CI, acceptance and the reproducible demonstration. Responses are captured once and replayed thereafter, exactly as Phase 1 replays source bytes. | €0, no credential |
+| **`local-live`** — a real local open-weights model | The **live extraction provider**, through an Ollama or llama.cpp adapter, with model name, **weights digest**, runtime version, prompt version and decoding configuration all pinned and recorded on every call. | €0, no credential |
 
-**Recommendation: build on C, keep A as the live path, defer B.** Phase 1's whole method is frozen
-replay evidence; the same discipline applied to model responses makes Phase 2's demonstration
-reproducible and free, and the Model Gateway abstraction means switching to A or B later is a
-configuration change rather than a rewrite. **This needs your decision before implementation
-starts** — it is the only genuinely blocking one in the phase.
+**A hosted model API is not used in Phase 2.** No API key and no paid subscription is requested.
+The existing UN Comtrade key stays untouched, and Phase 2 adds no connectors.
+
+**Replay is never presented as if a model ran live.** The mode is a first-class field on every
+gateway call, every extraction run, every claim's lineage and every receipt, and the UI labels it
+on the claim, the run and the gateway view. A reader must never have to infer whether a number came
+from a recorded response or from a model that actually executed.
 
 **What continues on frozen replay evidence:** all ten sources, the whole corridor demonstration,
 and the evidence the extraction reads. Nothing in Phase 2 requires going live.
@@ -120,7 +125,7 @@ roadmap names.
 | **B2** | A reviewer can approve, correct or reject a claim. A correction admits a **new version**; the prior version stays retrievable and a known-at query reproduces the pre-correction state. Nothing is overwritten. |
 | **B3** | Low-confidence and abstained output reaches the review queue and **cannot bypass it**. Abstention is recorded as its own outcome and is never rendered as absence or as a zero-confidence claim. |
 | **B4** | Every model call goes through the Model Gateway and is logged with model, version, prompt version and outcome. A call attempted outside the gateway fails closed. A budget breach stops the run and escalates. |
-| **B5** | Re-running an extraction with identical inputs and identical pinned model/prompt versions produces identical claims — the same determinism Phase 1 requires of health replay. |
+| **B5** | **Extraction identity and idempotency.** An extraction's identity is derived from the evidence digest plus the method, model, prompt and decoding-configuration digests. Repeating the same identity is **idempotent**: it returns the previously recorded result rather than silently calling the model again. In **`replay`** mode the recorded response is byte-identical and the canonical claims are byte-identical. A deliberately requested **new live attempt** is recorded as a new attempt — this criterion makes **no claim that separate live model executions are byte-identical across hardware or runtimes**, because they are not. Any difference between live attempts stays visible as its own attempt and **cannot silently overwrite an admitted claim**. |
 | **B6** | Phase 0 and Phase 1 regression: full CI green, no constitutional invariant weakened, C18 still frozen at 0021, and the Phase 1 operator journey unchanged. |
 
 ## 7. What this plan deliberately excludes

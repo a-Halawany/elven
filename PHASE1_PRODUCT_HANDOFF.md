@@ -1,5 +1,9 @@
 # THE EYE — Phase 1 Product Handoff
 
+> **ACCEPTED and MERGED.** The candidate `84be53004c870e2748459ca83e07c2632b3d186a` was accepted as
+> owner product acceptance — not a claim of independent code review — and merged to `main` as
+> **`045ee030aeb4173e8afc4e33df39655f9045723b`**. **Phase 1 is complete.**
+>
 > **Candidate frozen at `84be53004c870e2748459ca83e07c2632b3d186a`.** Phase 0 is closed at
 > [`phase0-v1.0.0`](https://github.com/a-Halawany/elven/releases/tag/phase0-v1.0.0) (target `a792cd9a`)
 > and is not reopened by anything here. PR [#28](https://github.com/a-Halawany/elven/pull/28) stays
