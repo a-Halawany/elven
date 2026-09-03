@@ -139,16 +139,17 @@ jobs:
         # and cannot run suites that need migration 0022, so the split lives in the
         # package scripts rather than in anything C18 owns.
         run: pnpm --filter @eye/api test:int:all
-      # Migration 0022's own upgrade proof. C18 below is FROZEN at 0021 and cannot
-      # speak about a migration that did not exist when it was frozen, so 0022 gets
-      # a bounded compatibility check of its own: a 0021 database carrying real
+      # The upgrade proof for every migration above C18's ceiling. C18 below is
+      # FROZEN at 0021 and cannot speak about migrations that did not exist when it
+      # was frozen, so 0022 and 0023 get a bounded compatibility check: a 0021
+      # database carrying real
       # Phase 0 data and authorities, 0022 applied to it, every pre-existing row
       # proven to survive, the additions proven to be exactly the declared ones,
       # Phase 0 authority behaviour re-proven, the resulting schema compared with a
       # virgin 0001-0022 database, and the Phase 1 suites run against the UPGRADED
       # data. It uses the tracked migration runner and the suites that already
       # exist — it is not another gate and defines no new criteria.
-      - name: Migration 0022 upgrade compatibility (tracked runner, blocking)
+      - name: Post-C18 migration upgrade compatibility (0022, 0023; tracked runner, blocking)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}

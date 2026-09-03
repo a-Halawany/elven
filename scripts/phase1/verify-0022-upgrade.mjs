@@ -1,5 +1,12 @@
 /**
- * MIGRATION 0022 UPGRADE COMPATIBILITY — a bounded, one-purpose verification.
+ * POST-C18 MIGRATION UPGRADE COMPATIBILITY — a bounded, one-purpose verification.
+ *
+ * Originally written for 0022 alone. C18 is frozen at 0021 and cannot speak about
+ * anything after it, so every migration beyond that ceiling is proved here — 0022
+ * when Phase 1 added it, 0023 now that Phase 2 has. Extending the ceiling is what
+ * the Phase 2 plan called for, and it is deliberately NOT a second gate: one
+ * script, one purpose, one list of declared additions that grows with the
+ * migrations it covers.
  *
  * C18 is FROZEN at 0021: its ceiling, catalog, table universe and criteria are
  * untouched by this file, and its dual-path proof continues to describe the world
@@ -110,10 +117,19 @@ function suite(database, args, label) {
   return null;
 }
 
+/*
+ * The Phase 0-era manifest for THIS check: everything except the suites that need
+ * a migration later than the one under test. The pattern names every phase rather
+ * than just Phase 1, because a check pinned to one ceiling must not start running
+ * suites that require a higher one — which is exactly what happened when Phase 2
+ * landed and this list still said `phase1-*` alone.
+ */
 const PHASE0_ONLY = ['--exclude', '**/node_modules/**', '--exclude', '**/dist/**',
-  '--exclude', 'test/int/phase1-*.test.ts'];
-const PHASE1_ONLY = ['test/int/phase1-acceptance.test.ts', 'test/int/phase1-fault-injection.test.ts',
-  'test/int/phase1-hostile-input.test.ts'];
+  '--exclude', 'test/int/phase[0-9]-*.test.ts'];
+/* Everything the upgraded database is expected to support, phase by phase. */
+const LATER_PHASE_SUITES = ['test/int/phase1-acceptance.test.ts',
+  'test/int/phase1-fault-injection.test.ts', 'test/int/phase1-hostile-input.test.ts',
+  'test/int/phase2-acceptance.test.ts'];
 
 /**
  * The SET of row digests for every governed table.
@@ -143,9 +159,12 @@ async function dataRows(c) {
  * under test, not a way of excusing whatever happened to change.
  */
 const INTENDED_ADDITIONS = Object.freeze({
-  'identity.roles': 2,             // collection_manager, collection_agent
-  'objects.schema_registry': 3,    // SRC, OBS, EVD
-  'public.schema_migrations': 1,   // 0022's own ledger line
+  // 0022: collection_manager, collection_agent · 0023: extraction_manager, extraction_agent
+  'identity.roles': 4,
+  // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
+  'objects.schema_registry': 8,
+  // one ledger line per migration applied above the ceiling
+  'public.schema_migrations': 2,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
@@ -187,7 +206,7 @@ async function roles(c) {
 
 /* ────────────────────────────────────────────────────────────────────────── */
 
-console.log('\n=== migration 0022 upgrade compatibility (C18 stays frozen at 0021) ===\n');
+console.log('\n=== post-C18 migration upgrade compatibility (C18 stays frozen at 0021) ===\n');
 
 console.log('1. a 0021 database carrying representative Phase 0 data and authorities');
 await recreate(UPGRADED);
@@ -200,11 +219,11 @@ const seededRows = [...before.values()].reduce((a, x) => a + x.size, 0);
 if (seededRows > 0) ok(`representative data present: ${seededRows} rows across ${before.size} governed tables`);
 else bad('the 0021 database carries no data, so nothing is being preserved');
 
-console.log('\n2. apply migration 0022');
+console.log('\n2. apply every migration above the C18 ceiling');
 const at22 = migrate(UPGRADED, null);
-ok(`migration set applied through 0022 (${at22} files present)`);
+ok(`migration set applied in full (${at22} files present)`);
 
-console.log('\n3. the data, the roles and Phase 0 authority behaviour survive it');
+console.log('\n3. the data, the roles and Phase 0 authority behaviour survive the upgrade');
 const after = await withDb(UPGRADED, dataRows);
 let problems = 0;
 let preserved = 0;
@@ -223,15 +242,15 @@ for (const [t, b] of before) {
   if (added > 0) additions.push([t, added]);
 }
 if (problems === 0) {
-  ok(`every pre-existing row survives 0022 unchanged: ${preserved} rows across ${before.size} tables`);
+  ok(`every pre-existing row survives the upgrade unchanged: ${preserved} rows across ${before.size} tables`);
 }
 for (const [t, n] of additions) {
   const want = INTENDED_ADDITIONS[t];
-  if (want === n) ok(`${t}: +${n} row(s), exactly what 0022 declares it adds`);
-  else bad(`${t}: +${n} row(s), but 0022 declares ${want === undefined ? 'none' : want}`);
+  if (want === n) ok(`${t}: +${n} row(s), exactly what these migrations declare they add`);
+  else bad(`${t}: +${n} row(s), but the declared total is ${want === undefined ? 'none' : want}`);
 }
 for (const [t, want] of Object.entries(INTENDED_ADDITIONS)) {
-  if (!additions.some(([x]) => x === t)) bad(`${t}: 0022 declares +${want} row(s) and added none`);
+  if (!additions.some(([x]) => x === t)) bad(`${t}: +${want} row(s) are declared and none were added`);
 }
 const rolesAfter = await withDb(UPGRADED, roles);
 const lost = rolesBefore.filter((r) => !rolesAfter.some((x) => x.rolname === r.rolname
@@ -242,15 +261,15 @@ const newRoles = await withDb(UPGRADED, async (c) =>
   (await c.query(`select code from identity.roles where code in ('collection_manager','collection_agent') order by 1`)).rows);
 if (newRoles.length === 2) ok('0022 registered collection_manager and collection_agent');
 else bad(`0022 registered ${newRoles.length} of the 2 expected observation roles`);
-const rerun = suite(UPGRADED, PHASE0_ONLY, 'Phase 0 authority behaviour after 0022');
+const rerun = suite(UPGRADED, PHASE0_ONLY, 'Phase 0 authority behaviour after the upgrade');
 if (seeded !== null && rerun !== null && seeded !== rerun) {
   bad(`the Phase 0 suite reported ${seeded} before and ${rerun} after — the same suite must report the same count`);
 }
 
-console.log('\n4. the upgraded schema equals a virgin 0001–0022 schema');
+console.log('\n4. the upgraded schema equals a virgin full-set schema');
 await recreate(VIRGIN);
 const allFiles = migrate(VIRGIN, null);
-ok(`virgin database migrated 0001–0022 (${allFiles} files)`);
+ok(`virgin database migrated from empty (${allFiles} files)`);
 const su = await withDb(UPGRADED, schemaDigest);
 const sv = await withDb(VIRGIN, schemaDigest);
 if (su.digest === sv.digest) ok(`schema digests match exactly: ${su.digest.slice(0, 16)}…`);
@@ -267,8 +286,8 @@ else {
   }
 }
 
-console.log('\n5. the Phase 1 integration suite against the UPGRADED database');
-suite(UPGRADED, PHASE1_ONLY, 'Phase 1 suites on upgraded data');
+console.log('\n5. the later-phase suites against the UPGRADED database');
+suite(UPGRADED, LATER_PHASE_SUITES, 'Phase 1 and Phase 2 suites on upgraded data');
 
 console.log(`\n=== ${failures === 0 ? 'PASS' : `FAIL — ${failures} problem(s)`} ===\n`);
 process.exit(failures === 0 ? 0 : 1);
