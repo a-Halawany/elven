@@ -81,7 +81,15 @@ new gate, no new framework.
 | **B3** | Low confidence and abstention cannot bypass review | Every claim below the threshold has a queued case; claims above it have none; an abstention **cannot** carry a claim — the constraint refuses it |
 | **B4** | Every model call goes through the gateway and is logged; a budget breach stops and escalates | Each call carries mode, model, prompt version, decoding digest and outcome; the log is append-only; a method budgeted at one call ends `budget_exceeded` and leaves a `run.budget_exceeded` event |
 | **B5** | Extraction identity and idempotency | A different prompt or decoding config yields a different identity; a repeat produces idempotent hits with **zero** gateway calls and admits nothing twice; recorded responses are byte-identical to their digests; a deliberate new attempt is recorded as **attempt 2**, not an overwrite; the attempts table is append-only |
-| **B6** | Phase 0 and Phase 1 untouched | `observation.item.admit` still pins `[OBS, EVD]` and `intelligence.claim.admit` cannot write either; migrations 0001–0023 all present, C18 frozen at 0021; every intelligence projection rebuilds with zero drift |
+| **B6** | Phase 0 and Phase 1 untouched; full regression green | `observation.item.admit` still pins `[OBS, EVD]` and `intelligence.claim.admit` cannot write either; migrations 0001–0023 all present, C18 frozen at 0021; every intelligence projection rebuilds with zero drift |
+
+**Regression, on a quiescent database:** integration `test:int:all` **490/490** (the Phase 0 and
+Phase 1 470 plus these 20) · Phase 0 acceptance **58/58** · the C18-era manifest `test:int`
+**297/297**, unchanged, which is the count C18 froze.
+
+> The C18-era manifest now excludes `phase2-*` as well as `phase1-*`. C18 is frozen at migration
+> 0021 and its differential verifier pins the suite's argv, so every later phase's suites stay out
+> of the set it counts — and 297 keeps meaning exactly what it meant when it was frozen.
 
 ## 4. The model decision, as implemented
 
