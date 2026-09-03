@@ -299,16 +299,19 @@ describe('B1 — claims carry method, model, version, confidence and evidence li
   it('the schema REFUSES a claim whose lineage is incomplete', async () => {
     // The registry validates against the CLM schema, so a claim missing its
     // lineage cannot be admitted even by a caller holding the right capability.
-    for (const t of ['ENT', 'EVT', 'CLM', 'REL', 'ASM']) {
+    // CLM@v1 is Phase 0's generic claim schema and is deliberately left alone; the
+    // Phase 2 claim schema is CLM@v2.
+    for (const [t, v] of [['ENT', 'v1'], ['EVT', 'v1'], ['CLM', 'v2'],
+      ['REL', 'v1'], ['ASM', 'v1']] as const) {
       const schema = (await sql<{ n: string }>`
         select count(*)::text n from objects.schema_registry
-         where object_type = ${t} and schema_version = 'v1'
+         where object_type = ${t} and schema_version = ${v}
            and json_schema -> 'required' ? 'lineage'
            and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'evidence_digest'
            and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'mode'
            and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'extraction_identity'`
         .execute(su)).rows[0];
-      expect(Number(schema?.n), `the ${t} schema does not make lineage mandatory`).toBe(1);
+      expect(Number(schema?.n), `the ${t}@${v} schema does not make lineage mandatory`).toBe(1);
     }
   });
 });
@@ -629,6 +632,15 @@ describe('B2 — a reviewer decides, and a correction never overwrites', () => {
 /* ───────────────────────── B6 ───────────────────────── */
 
 describe('B6 — Phase 0 and Phase 1 are untouched by Phase 2', () => {
+  it('Phase 0\u2019s CLM@v1 schema is untouched', async () => {
+    const v1 = (await sql<{ required: string }>`
+      select json_schema ->> 'required' as required from objects.schema_registry
+       where object_type = 'CLM' and schema_version = 'v1'`.execute(su)).rows[0];
+    // Phase 0 registered subject/predicate/object_value and nothing else. Phase 2
+    // adds v2 beside it rather than redefining a contract other objects cite.
+    expect(v1?.required).toBe('["subject", "predicate", "object_value"]');
+  });
+
   it('the Phase 1 canonical write actions still pin their own object types', async () => {
     const rows = (await sql<{ action: string; object_types: string[] }>`
       select action, object_types from observation.canonical_write_actions

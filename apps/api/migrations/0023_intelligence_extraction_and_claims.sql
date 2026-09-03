@@ -811,14 +811,29 @@ INSERT INTO observation.canonical_write_actions (action, object_types, rationale
 ON CONFLICT (action) DO NOTHING;
 
 /*
- * One schema shared by all five claim types. They differ in what `subject`,
- * `predicate` and `object_value` mean, not in shape, and a single schema keeps the
- * lineage fields mandatory for every one of them: a claim that cannot name its
- * method, model, mode and evidence span is refused at the schema boundary before
- * any port sees it.
+ * THE FIVE CLAIM SCHEMAS.
+ *
+ * `CLM@v1` ALREADY EXISTS. Migration 0006 registered a generic Phase 0 claim
+ * schema — subject, predicate, object_value, `additionalProperties: false` — and
+ * it is not ours to redefine: other Phase 0 objects were admitted under it and a
+ * registry entry is a contract with everything that already cited it.
+ *
+ * So the Phase 2 claim schema is `CLM@v2`, and the four types Phase 2 introduces
+ * take `v1` because nothing else has ever used them. The first cut of this
+ * migration inserted `CLM@v1` with ON CONFLICT DO NOTHING and then COPIED that row
+ * into the other four — which on a fresh database silently propagated the Phase 0
+ * schema instead, so no claim type required lineage at all. The copy is gone: each
+ * schema is written from one variable, explicitly, and a conflict on any of them
+ * would now be a real conflict rather than a silent substitution.
+ *
+ * The shape is shared because the five types differ in what `subject`, `predicate`
+ * and `object_value` MEAN, not in structure — and one body keeps the lineage
+ * fields mandatory for every one of them. A claim that cannot name its method,
+ * model, mode and evidence span is refused at the schema boundary.
  */
-INSERT INTO objects.schema_registry (object_type, schema_version, json_schema, compatibility) VALUES
-('CLM', 'v1', '{
+DO $$
+DECLARE
+  v_claim_schema jsonb := '{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -865,14 +880,16 @@ INSERT INTO objects.schema_registry (object_type, schema_version, json_schema, c
       }
     }
   }
-}'::jsonb, 'backward')
-ON CONFLICT (object_type, schema_version) DO NOTHING;
-
-INSERT INTO objects.schema_registry (object_type, schema_version, json_schema, compatibility)
-SELECT t, 'v1', (SELECT json_schema FROM objects.schema_registry
-                  WHERE object_type = 'CLM' AND schema_version = 'v1'), 'backward'
-  FROM unnest(ARRAY['ENT','EVT','REL','ASM']) AS t
-ON CONFLICT (object_type, schema_version) DO NOTHING;
+}'::jsonb;
+BEGIN
+  -- CLM takes v2: v1 belongs to Phase 0 and stays exactly as it is.
+  INSERT INTO objects.schema_registry (object_type, schema_version, json_schema, compatibility)
+  VALUES ('CLM', 'v2', v_claim_schema, 'backward');
+  -- The four types Phase 2 introduces have no prior version to respect.
+  INSERT INTO objects.schema_registry (object_type, schema_version, json_schema, compatibility)
+  SELECT t, 'v1', v_claim_schema, 'backward'
+    FROM unnest(ARRAY['ENT','EVT','REL','ASM']) AS u(t);
+END $$;
 
 -- ============================================================
 -- 10. Projection rebuild — the A11 property, extended to Phase 2.

@@ -240,7 +240,9 @@ export class ExtractionService {
         quality_profile: null,
         quality_state: null,
         freshness_state: null,
-        schema_ref: `${objectType}@v1`,
+        // CLM@v1 is Phase 0's generic claim schema and is not ours; the Phase 2
+        // claim schema is CLM@v2. The four types Phase 2 introduces take v1.
+        schema_ref: `${objectType}@${objectType === 'CLM' ? 'v2' : 'v1'}`,
         ontology_ref: null,
         correction_of: null,
         supersedes: null,
