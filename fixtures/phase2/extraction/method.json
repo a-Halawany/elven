@@ -1,0 +1,28 @@
+{
+  "methodKey": "corridor-transit-claims",
+  "name": "Corridor transit claims — chokepoint traffic, entities and assessments",
+  "targetTypes": [
+    "ENT",
+    "EVT",
+    "CLM",
+    "ASM"
+  ],
+  "modelId": "qwen2.5:3b-instruct",
+  "modelWeightsDigest": "d9ed12f78c8d2d0f574697d9b6ca4c50dff8aca30039614866dab609669c28c5",
+  "runtimeVersion": "ollama/0.12.3",
+  "promptRef": "extract/corridor-transit",
+  "promptVersion": "v1",
+  "promptText": "You read ONE piece of preserved evidence and return JSON only.\nReturn {\"claims\":[...]} where each claim has claim_kind (entity|event|claim|relationship|assessment),\nsubject, predicate, object_value, confidence (0..1), byte_start and byte_end naming the exact span\nof the evidence the claim rests on.\nIf the evidence does not support a claim you are willing to stand behind, return\n{\"abstain\":true,\"reason\":\"...\"} instead. Abstaining is a correct answer; guessing is not.",
+  "decoding": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 20260903,
+    "num_predict": 512
+  },
+  "confidenceFloor": 0.35,
+  "reviewBelow": 0.75,
+  "budgetCalls": 40,
+  "budgetSeconds": 300,
+  "promptDigest": "9519d69432857062e696662d500f31910fe602b3999495115dc5f4ffdabe9a98",
+  "decodingDigest": "44f57662acf2737a2978edfe891ad6d65863788268836ebd13c28940b2083be9"
+}
