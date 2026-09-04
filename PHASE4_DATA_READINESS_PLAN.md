@@ -44,7 +44,7 @@ than adjectives.
 
 | Requirement | Why | What "enough" means |
 |---|---|---|
-| **Historical depth** | A model that has seen one disruption has seen an anecdote. Corridor transit behaviour has a strong annual cycle (Lunar New Year, monsoon, holiday peaks) plus regime changes. | **≥ 3 years** of daily history per chokepoint for a 30/90-day horizon; **≥ 5 years** before a 1-year horizon is offered at all. |
+| **Historical depth** | A model that has seen one disruption has seen an anecdote. Corridor transit behaviour has a strong annual cycle (Lunar New Year, monsoon, holiday peaks) plus regime changes. | **≥ 3 years** of daily history per chokepoint for a 30/90-day horizon; **≥ 5 years** before a 1-year horizon is offered at all. **Measured available: 7.7 years — see §3a.** |
 | **Granularity** | The decision is per-corridor per-day. Weekly aggregates cannot express a 72-hour collapse. | **Daily**, per `portid`, per vessel class (`n_container`, `n_tanker`, …) — PortWatch's native grain. |
 | **Labels / ground truth** | A forecast is scoreable only against a recorded outcome. Today the platform has **no outcome objects at all**. | An `OUT` Strategy Graph object per resolved forecast, carrying the observed value, its evidence, and the instant it became known. |
 | **Known-at discipline** | Backtesting on revised data is the classic way to invent skill that does not exist. | Every training and evaluation read must go through Phase 3's **known-at** path, so a hindcast sees only what was believed then. Phases 1–3 already make this possible; Phase 4 must be built to actually use it. |
@@ -56,13 +56,39 @@ believes; it has never once recorded *what happened to a thing it predicted*. Ph
 starts, which means **its calibration numbers are worthless until the first horizon actually
 elapses** — an honest limitation to design around rather than to discover later.
 
+## 2a. The measurable target
+
+A capability with no number to hit is a demo. These are the thresholds Phase 4 must clear **before
+a forecast is shown to an operator at all** — they are targets to be met, not predictions that they
+will be met, and the honest outcome if they are missed is a Calibration screen that says so rather
+than a forecast that ships anyway.
+
+| # | Target | Measured how |
+|---|---|---|
+| **T1 — Calibration** | The 10–90 interval contains the outcome **80% ± 5pp** | Interval coverage over all held-out windows, per horizon |
+| **T2 — Skill** | **≥ 15% lower pinball loss than seasonal naïve** at the 30-day horizon | Both models scored on identical held-out windows, same known-at cut-offs |
+| **T3 — Usefulness** | The warning fires **before the decision window closes** in **≥ 80%** of replayed disruption episodes | Warning instant vs. the recorded window close, per episode |
+| **T4 — Honesty** | **100%** of shown forecasts carry distribution, drivers, assumptions and evidence; **0** shown without them | Schema-enforced at admission, asserted in acceptance |
+
+**T1 is the one that matters most and the one most likely to fail first.** A model can beat a naïve
+baseline on average and still be badly overconfident, and an overconfident band is worse than no
+band: it invites an operator to act on a precision that is not there.
+
+**T2's baseline is not a formality.** Seasonal naïve on daily chokepoint transits is genuinely hard
+to beat at a 30-day horizon. If the learned model cannot clear it by 15%, the right product answer
+is **to ship the seasonal baseline as the forecaster** and say so on screen — not to ship a heavier
+model that is not better.
+
+**None of these can be evaluated on the corridor replay** (§9). They require the multi-year history
+in §3a and, for T3, more than one disruption episode.
+
 ## 3. Existing replay sources: adequate, and not
 
 | Source | Replay coverage today | Adequate for Phase 4? |
 |---|---|---|
-| **S1 IMF PortWatch — chokepoints** | 3 chokepoints, **2023-12-01 → 2024-01-31** (~2 months) | **No — depth.** The grain and fields are exactly right; the window is ~2 months against a ≥3-year requirement. This is the one source where going live matters most, and it is free and anonymous. |
-| **S2 PortWatch — ports** | Rotterdam, Ningbo, same window | **No — same depth problem**, same fix. |
-| **S5 ECB EUR/USD** | Daily across the window | **No — depth**, trivially fixable: the ECB API serves the full historical series anonymously in one call. |
+| **S1 IMF PortWatch — chokepoints** | 3 chokepoints, **2023-12-01 → 2024-01-31** (~2 months) | **No — but the publisher holds 7.7 years** (§3a). The grain and fields are exactly right and the depth exists; what stands between us and it is the reuse question in §6, not availability. |
+| **S2 PortWatch — ports** | Rotterdam, Ningbo, same window | **Same position as S1** — same publisher, same terms, same fix. |
+| **S5 ECB EUR/USD** | Daily across the window | **No — depth**, and the cleanest position of any source: explicit free-reuse terms (§6), long-running series. Start date to be confirmed at activation (§3a). |
 | **S6 World Bank indicators** | Annual series | **Adequate as context**, useless as a predictor at a 30-day horizon. Annual data cannot forecast a daily corridor. |
 | **S7 UN Comtrade** | One uploaded export | **Partially.** Monthly trade by commodity is a genuine demand driver. Needs multi-year history. |
 | **S3/S4 EU sanctions** | RSS + payload | **Adequate for its job** — a discrete event feed for the event calendar, not a time series. |
@@ -72,7 +98,37 @@ elapses** — an honest limitation to design around rather than to discover late
 
 **Verdict: the replay sets are the right shape and roughly two orders of magnitude too short.** No
 new *kind* of source is needed for a first forecasting capability — the existing free ones simply
-have to be collected over their real history.
+have to be collected over their real history. **§3a establishes that the history exists.**
+
+## 3a. What history actually exists — measured, not assumed
+
+The first version of this plan said the depth requirement was unmet and left it there. That was an
+assumption. It has now been checked against the publishers.
+
+**IMF PortWatch — Daily Chokepoints Data.** Queried the live FeatureServer's own statistics
+endpoint (anonymous, read-only, one metadata request; nothing ingested):
+
+| Measured | Value |
+|---|---|
+| Earliest observation | **2019-01-01** |
+| Latest observation | **2026-08-30** |
+| Total rows | **78,372** |
+| Chokepoints | 28 |
+| Per chokepoint | ≈ 2,799 daily rows ≈ **7.7 years** |
+| `maxRecordCount` | 1,000 · `capabilities`: `Query` (read-only) |
+
+**This clears both bars in §2 with room to spare** — ≥3 years for a 30/90-day horizon and ≥5 years
+before a 1-year horizon. The depth problem is therefore **not a data-availability problem**. It is a
+collection problem and a **reuse-terms problem** (§6), and those are different things with different
+fixes.
+
+**ECB EUR/USD reference rate.** The ECB Data Portal API returned `503` on the probe, so the earliest
+observation was **not verified first-hand** and this plan does not assert it. The series is
+long-running and the reuse position is unusually clear (§6); confirm the start date at activation
+rather than taking it from here.
+
+**UN Comtrade.** Not probed — doing so would mean using the held credential, and nothing in this
+plan touches it.
 
 ## 4. Which connectors should go live, and in what order
 
@@ -82,9 +138,9 @@ frozen replay set — no new connector kind, no new credential.
 
 | Order | Source | Why first | What it needs |
 |---|---|---|---|
-| **1** | **S1 PortWatch chokepoints** | The corridor signal the whole demonstration turns on, at exactly the needed grain | A backfill run over ≥3 years, paginated at the published `maxRecordCount: 1000`, inside the existing §8.1 budgets. Rights state must be resolved first — see §6. |
-| **2** | **S5 ECB EUR/USD** | Cleanest licence position of any source, one call for the full series | Nothing beyond activation. |
-| **3** | **S2 PortWatch ports** | Port-level congestion, the second driver | Same as S1, same rights decision. |
+| **1** | **S5 ECB EUR/USD** | **Promoted to first.** Its reuse terms are explicit and permissive (§6); PortWatch's are not. Activating the source whose licence is settled, while the harder question is answered, is the free move. | Activation, plus the backfill work in §4a. |
+| **2** | **S1 PortWatch chokepoints** | The corridor signal the whole demonstration turns on, at exactly the needed grain, with 7.7 years available | §4a **and** a resolved answer to §6 — the IMF terms restrict *systematic* downloading, which is exactly what a backfill is. |
+| **3** | **S2 PortWatch ports** | Port-level congestion, the second driver | Same as S1, same decision. |
 | **Not yet** | S6 World Bank | Annual grain adds nothing at a 30-day horizon | — |
 | **Not yet** | S8 GDELT | Observational; would need a lawful-collection and attention-signal design of its own | — |
 
@@ -97,6 +153,26 @@ without owner approval.** Recommendation: activate it in Phase 4 **only after** 
 shown whether the corridor signal needs a demand covariate at all — buying complexity before
 evidence of need is how forecasting projects get heavy.
 
+## 4a. What a backfill actually requires to build
+
+"Run the existing poller over more history" understates the work. The connector Phase 1 shipped
+**polls forward from a checkpoint**; a historical backfill **walks backwards over a closed range**.
+That is a different traversal, and it is the real implementation cost.
+
+| Requirement | Detail |
+|---|---|
+| **Bounded backfill mode** | A new run mode on the existing REST poller: a closed `[from, to)` window, walked in deterministic pages, that terminates. Today's checkpoint semantics ("resume from the last cursor") have no end condition and no notion of walking into the past. |
+| **Deterministic pagination** | ArcGIS pages via `resultOffset`/`resultRecordCount`, and **page order is undefined without an explicit `orderByFields`**. Without it a backfill can silently skip and duplicate rows. Must order by `date,portid` and record the ordering in the source contract. |
+| **Request volume** | 78,372 rows ÷ 1,000 = **79 requests** for the entire global dataset; the 3 corridor chokepoints are ≈ 8,400 rows ≈ **9 requests**. The volume is trivial. |
+| **Budget conflict — real** | The source contract's `max_requests_per_run` is **12**. A full 28-chokepoint backfill (79) exceeds it. Either the backfill runs as several checkpointed runs inside the existing budget, or the contract is amended through the governed approval path. **Do not raise the budget silently** — the budget is a control, and a backfill is exactly the workload it exists to bound. |
+| **Idempotency** | A re-run must not admit duplicate evidence. The existing digest-comparison path handles this, but it has never been exercised over a range that overlaps an earlier run — that needs a focused test. |
+| **Evidence volume** | ≈ 8,400 framed items for 3 chokepoints → ≈ 8,400 EVD objects, vault bytes and custody entries. Comfortably within current storage; worth stating rather than discovering. |
+| **Publication lag** | PortWatch runs ≈ 7–10 days behind real time. A "today" forecast is really a "7–10 days ago" forecast, and the freshness indicator must carry that into the forecast object rather than leaving the operator to remember it. |
+| **Revision handling** | PortWatch revises rows in place with no corrections feed. Over 7.7 years revisions are certain. Each is a **supersession**, and the known-at path (T2/D2) depends on them being recorded as such — untested at this scale. |
+
+**Estimated: 3–4 days of connector work**, independent of the §6 decision. It is bounded, and it is
+not free.
+
 ## 5. Free-first source strategy
 
 1. **Anonymous free first.** PortWatch and ECB carry the corridor and the cost exposure between
@@ -107,30 +183,72 @@ evidence of need is how forecasting projects get heavy.
    purpose; Phase 4 does not get to relax it because it wants more data.
 4. **Paid: nothing, pending your decision** (§7).
 
-## 6. Rights and licensing status, as recorded
+## 6. Reuse terms, read at the source
 
-Both are recorded `UNVERIFIED` in `docs/phase1/SOURCE_DATA_MANIFEST.md`, and both are **decisions
-for you, not for me** — they are the difference between a live connector and a replay set.
+The first version of this plan said both were `UNVERIFIED` and that someone should read them. They
+have now been read. **One is settled and favourable; the other has a condition that changes the
+recommendation in §4.**
 
-**IMF PortWatch (S1, S2).** The ArcGIS Hub item licence is recorded as `custom`; PortWatch is
-published for public policy use, developed by the IMF with Oxford's Environmental Change Institute,
-ESRI, the UN Global Platform, the World Bank and the WTO. The source contract carries
-`rights_state: pending_confirmation` and the connector stays in `draft` until that is resolved.
-**What is needed:** someone reads the exact reuse notice on the PortWatch portal and records the
-finding through the existing rights-confirmation route. **Until then S1/S2 stay in replay** — which
-is precisely the depth problem in §3, so this is the single highest-value unblocking action in the
-whole plan and it costs nothing but a careful read.
+### ECB (S5) — settled, and permissive
 
-**ECB (S5).** ECB reuse policy with **attribution required**; recorded `UNVERIFIED — confirm exact
-notice at registration`. This is the least ambiguous position of any source: the ECB publishes its
-reference rates for reuse with attribution, and the platform already carries attribution fields on
-every source contract. **Expected outcome: confirmable, low risk** — still yours to confirm, not
-mine to assume.
+The ESCB reuse policy states publicly available ESCB statistics may be reused free of charge on the
+condition that **"the source is quoted (e.g. 'Source: ECB statistics.') and that the statistics
+(including metadata) are not modified."**
 
-**UN Comtrade (S7).** Attribution required; **redistribution restrictions apply**, recorded
-`UNVERIFIED — read the full policy before any redistribution claim`. Internal analysis is the
-intended use here and no redistribution is contemplated, but the policy must be read before any
-output derived from it leaves the platform.
+| Condition | What it means for us |
+|---|---|
+| Quote the source | The source contract already carries publisher and attribution fields; the UI must render "Source: ECB statistics" wherever a rate is shown or exported. **Small, real UI work.** |
+| Do not modify the statistics | We preserve original bytes with digests and never mutate evidence — Phase 1 already satisfies this by construction. **Derived** claims are ours and are marked `extracted`, not presented as ECB statistics. |
+| Not third-party data | The EUR/USD reference rate is the ECB's own. Clear. |
+| No continuity guarantee | Revisions and updates are expected; our supersession path already handles them. |
+| Access may be restricted in exceptional circumstances | Our replay fallback means an ECB restriction degrades us to replay, not to nothing. |
+
+**Position: activate.** This is the cleanest source in the portfolio and there is no reason it should
+be sitting in replay. It is why §4 promotes it to first.
+
+### IMF PortWatch (S1, S2) — a real condition, and it bites
+
+The dataset's own ArcGIS item metadata carries **`licenseInfo: https://www.imf.org/external/terms.htm`**
+— read first-hand from the `Daily_Chokepoints_Data` service item (`3da2b9ca97684916b75c4013f95d18ab`).
+That is the **IMF's general Copyright and Usage terms, not an open-data licence.** The layer's own
+`copyrightText` is empty and there is no CC or ODbL designation anywhere on the item.
+
+The IMF general terms, as published on that page, permit free **non-systematic** downloading for
+personal, non-commercial use; require attribution to the IMF as source when data is redistributed;
+and **require permission to copy or download Content in any systematic way**, or to re-use or
+disseminate a substantial amount beyond fair use.
+
+> **The finding:** a multi-year automated backfill of an entire daily series is *systematic
+> downloading* on any ordinary reading of that phrase, and 7.7 years × 28 chokepoints is
+> *substantial*. **The §4 recommendation to backfill PortWatch runs directly into the one condition
+> its licence actually imposes.**
+
+I could not retrieve `imf.org/external/terms.htm` directly — **it returns `403` to automated
+fetches**, which is itself consistent with a publisher that does not intend systematic machine
+collection. The wording above is from the IMF's published Copyright and Usage terms as indexed;
+**a person must open that page and read it before anyone relies on my summary of it.**
+
+**Three honest options, and none of them is "proceed quietly":**
+
+| Option | What it costs | What it gives |
+|---|---|---|
+| **A — Ask the IMF** | An email, and waiting. PortWatch is a public-policy platform built with Oxford, the World Bank and the WTO; a research/internal-analysis request is an ordinary one | The multi-year history, cleanly, with the permission recorded on the source contract as evidence |
+| **B — Stay in replay** | The corridor forecast is built on ~2 months and **cannot meet T1/T2** | Zero licence risk; the capability is not really delivered |
+| **C — Bounded non-systematic use** | Judgement call on where "non-systematic" ends | A middle path I do **not** recommend: the line is exactly the kind of thing that should not rest on our own reading of someone else's terms |
+
+**My recommendation is A**, started now, because it is the long pole and it is free. **B is the
+correct posture until A returns** — which is what Phase 1 already does, and it should not be relaxed
+because Phase 4 wants more data.
+
+**This is a licensing decision and it is yours.** It is the one thing in this plan I am not willing
+to decide by inference.
+
+### UN Comtrade (S7) — unchanged, and untouched
+
+Attribution required; **redistribution restrictions apply**; recorded `UNVERIFIED — read the full
+policy before any redistribution claim`. Not probed and not activated: doing either would mean
+using the held credential. Internal analysis is the intended use and no redistribution is
+contemplated, but the policy must be read before any output derived from it leaves the platform.
 
 ## 7. Optional paid source — capped, and not purchased
 
@@ -141,8 +259,12 @@ naming so the option is costed rather than discovered later:
 |---|---|---|
 | A commercial AIS or container-freight-rate feed (e.g. a vessel-position or freight-index API) | Vessel-level positions and freight rates — the two signals PortWatch's *derived* counts cannot give: it is a model over AIS, not a primary observation of our shipments | Entry tiers commonly **€100–500/month**; a bounded evaluation would sit inside the **€500 cap** |
 
-**Recommendation: do not buy anything for Phase 4.** Build the forecasting capability on free
-sources, get real backtest numbers, and let those numbers say whether a paid signal would actually
+**Recommendation: do not buy anything for Phase 4 — and §3a strengthened that considerably.** The
+free source holds 7.7 years of exactly the signal the corridor decision turns on. The binding
+constraint is **permission, not availability**, and no amount of money fixes a licence question
+about a different publisher's data.
+
+Build on free sources, get real T1/T2 numbers, and let those numbers say whether a paid signal would
 improve them. Buying before the baseline exists means never knowing what the money bought. If the
 backtests later show the free signal is the binding constraint, I will come back with the measured
 gap and a specific proposal — **and still purchase nothing without your approval.**
@@ -228,7 +350,9 @@ screen is opened and honestly reports that it has nothing to score yet, and why.
 
 | M | Deliverable | Est. |
 |---|---|---|
-| **P4-M0** | Rights confirmation for PortWatch and ECB; live backfill of S1, S2, S5 over ≥3 years through the existing governed poller | 3–4 days *(gated on §6, which is a decision, not work)* |
+| **P4-M0a** | **Bounded backfill mode** on the existing REST poller (§4a): closed-range traversal, deterministic ordering, idempotent re-run, checkpointed inside the existing request budget | 3–4 days *(not gated — build it regardless)* |
+| **P4-M0b** | Activate **ECB** (terms settled, §6) and backfill it; add source attribution to the UI | 1–2 days |
+| **P4-M0c** | **PortWatch backfill** — 7.7 years, 3 corridor chokepoints | **gated on your §6 decision, not on engineering** |
 | **P4-M1** | Migration `0025`, forecast/scenario/warning/outcome objects, upgrade check extended by one line | 4–5 days |
 | **P4-M2** | Baselines (seasonal naïve, ETS/ARIMA), the forecasting service, known-at-respecting feature assembly | 5–6 days |
 | **P4-M3** | Scenario trees, indicators, threshold breach and branch flip | 4–5 days |
@@ -237,15 +361,42 @@ screen is opened and honestly reports that it has nothing to score yet, and why.
 | **P4-M6** | Forecasts, Scenarios, Warnings and Calibration UI | 5–6 days |
 | **P4-M7** | Act IV demonstration, D1–D8 acceptance, Phase 4 report | 3–4 days |
 
-**Realistic duration: 5–6 weeks**, plus whatever the backfill takes in wall-clock time once the
-rights question in §6 is answered. That answer is the critical path — not the code.
+**Realistic duration: 5–6 weeks** of engineering, of which the backfill connector work (P4-M0a) is
+3–4 days and is **not** blocked by anything.
+
+**The critical path is not code — it is the PortWatch permission question in §6.** If the answer is
+A and it takes three weeks to come back, that is three weeks in which every other milestone can
+proceed and the forecaster is trained on ECB plus the existing replay. If the answer is B, Phase 4
+still delivers the *machinery* — forecast objects, scenarios, warnings, propagation into the
+Strategy Graph — and honestly reports that **T1 and T2 are unmet and no forecast is shown to an
+operator.** That is a real and defensible outcome. It is not the one worth aiming for.
 
 ## 12. Decisions I need from you
 
-1. **PortWatch reuse terms** (§6) — the single unblocking action; without it S1/S2 stay in replay
-   and the depth problem in §3 stands.
-2. **ECB reuse notice** (§6) — expected to be straightforward, still yours to confirm.
-3. **UN Comtrade** — activate the existing free-tier key in Phase 4, or leave it untouched until
-   the corridor signal shows it is needed? My recommendation is the latter.
-4. **Paid sources** — my recommendation is to buy nothing now and revisit with measured backtest
-   numbers. Confirm, and nothing will be purchased.
+Two of the four are now answered by reading the sources. Two remain, and the first is the whole
+critical path.
+
+1. **PortWatch — systematic collection.** *(Was: "read the reuse terms." Now: a decision.)* The
+   dataset's licence points at the IMF general terms, which **require permission for systematic
+   downloading**. A 7.7-year backfill is systematic. **Recommendation: option A — ask the IMF, start
+   now, stay in replay until it returns.** I will not proceed on my own reading of someone else's
+   terms.
+2. **ECB — settled.** Free reuse conditional on quoting the source and not modifying the statistics.
+   Both are things we already do or can do cheaply. **Recommendation: activate.** No decision needed
+   unless you disagree.
+3. **UN Comtrade** — activate the held free-tier key, or leave it untouched? **Recommendation: leave
+   it** until the corridor signal shows a demand covariate is actually needed. Untouched either way
+   until you say otherwise.
+4. **Paid sources** — **recommendation: buy nothing.** §3a removed the argument for buying: the free
+   source has 7.7 years of the exact signal, and the constraint is permission, not availability.
+   Money would not fix a licence question. Nothing will be purchased without your explicit approval.
+
+## 13. What changed in this revision
+
+| Was | Now |
+|---|---|
+| "The replay sets are two orders of magnitude too short" — with no check of what the publisher holds | **Measured: PortWatch holds 7.7 years, 78,372 rows, 2019-01-01 → 2026-08-30.** The depth requirement is satisfiable |
+| "Beat seasonal naïve" — no threshold | **T1–T4 in §2a**, with explicit numbers and a stated consequence for missing them |
+| "Run the existing poller over more history" | **§4a**: the poller has no closed-range mode, ArcGIS pagination is undefined without explicit ordering, and a full backfill exceeds the contract's request budget — 3–4 days of real work |
+| Both licences `UNVERIFIED`, "someone should read them" | **Both read.** ECB is settled and permissive. PortWatch points at the IMF general terms, which restrict systematic downloading — **which is what a backfill is** |
+| PortWatch recommended first | **ECB promoted to first**; PortWatch gated on a permission question that is yours, not mine |
