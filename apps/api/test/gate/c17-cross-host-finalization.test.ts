@@ -280,13 +280,13 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
   it('creates a canonical exact-nine comparison and verifies it independently', async () => {
     const result = await verifyFinal(f.finalized);
     expect(result.ok, result.problems.join('\n')).toBe(true);
-    expect(result.notes.join('\n')).toMatch(/cross_host_artifacts=9 development_components=312/);
+    expect(result.notes.join('\n')).toMatch(/cross_host_artifacts=9 development_components=320/);
     const dir = unzip(f.finalized, 'eye-c17-cross-host-positive-');
     try {
       const comparison = JSON.parse(readFileSync(join(dir, 'cross-host-comparison.json'), 'utf8'));
       expect(comparison.artifacts).toHaveLength(9);
       expect(comparison.artifacts.every((a: any) => a.equal === true)).toBe(true);
-      expect(comparison.contract.development_components).toBe(312);
+      expect(comparison.contract.development_components).toBe(320);
       expect(walk(dir).sort()).toEqual([...FINALIZED_PAYLOAD, 'SHA256SUMS.txt'].sort());
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
@@ -608,8 +608,8 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     try {
       const result = await verifyFinal(m.zip);
       expect(result.ok).toBe(false);
-      expect(result.problems.join('\n')).toMatch(/is 296, expected measured 312/);
-      expect(result.problems.join('\n')).toMatch(/development_components is 296, expected 312/);
+      expect(result.problems.join('\n')).toMatch(/is 296, expected measured 320/);
+      expect(result.problems.join('\n')).toMatch(/development_components is 296, expected 320/);
       expect(result.problems.join('\n')).not.toMatch(/checksum claims/);
     } finally { rmSync(m.root, { recursive: true, force: true }); }
   });

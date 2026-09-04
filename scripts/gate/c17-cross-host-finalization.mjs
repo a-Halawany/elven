@@ -69,7 +69,31 @@ export const REQUIRED_FINALIZER_STEPS = Object.freeze([
   'Create + verify the finalized cross-host evidence',
   'Upload the FINALIZED cross-host evidence',
 ]);
-export const DEVELOPMENT_COMPONENTS = 312;
+/**
+ * The MEASURED size of the development target closure.
+ *
+ * It is a measurement, not a policy: the finalizer asserts that both hosts see the
+ * same closure and that the closure is the one this source declares. So it moves
+ * only when a merged dependency change moves it, and every move is reconciled
+ * package by package before this line is touched.
+ *
+ * 312 → 320 at `045ee030` (PR #28, Phase 1). That merge added ONE direct
+ * dependency — `fast-xml-parser@5.11.1`, used by the RSS/XML connector in
+ * `apps/api/src/observation/connectors/xml-worker.js` — and version 5 of that
+ * package is modular, so it brings seven transitive packages with it:
+ *
+ *   fast-xml-parser  → @nodable/entities, fast-xml-builder, is-unsafe,
+ *                      path-expression-matcher, strnum, xml-naming
+ *   fast-xml-builder → xml-naming, path-expression-matcher   (already counted)
+ *   strnum           → anynum
+ *
+ * That closes at exactly eight new packages, all published by the same author as
+ * `fast-xml-parser` itself (Amit Gupta / NaturalIntelligence), each pinned in the
+ * lockfile by the integrity hash the registry serves. 312 + 8 = 320, and the count
+ * has not moved since — Phase 2 (`6b4b22d6`) and PR #33 (`ea7b3089`) added no
+ * dependencies and both reported 320.
+ */
+export const DEVELOPMENT_COMPONENTS = 320;
 export const COMPARISON_SCHEMA = '1.0.0';
 
 /**
