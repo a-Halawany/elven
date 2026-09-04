@@ -98,16 +98,78 @@ export function isForbiddenAddress(addr: string): boolean {
     return false;
   }
   if (v === 6) {
-    const a = addr.toLowerCase();
-    if (a === '::' || a === '::1') return true;                // unspecified, loopback
-    if (a.startsWith('fe80') || a.startsWith('fec0')) return true; // link-local, site-local
-    if (a.startsWith('fc') || a.startsWith('fd')) return true; // unique local
-    if (a.startsWith('ff')) return true;                       // multicast
-    if (a.startsWith('::ffff:')) return isForbiddenAddress(a.slice(7)); // IPv4-mapped
-    if (a.startsWith('64:ff9b:')) return true;                 // NAT64
+    /*
+     * NUMERIC, NOT TEXTUAL.
+     *
+     * The first version compared string prefixes, and an IPv6 address has many
+     * spellings of the same value: `::1` and `0:0:0:0:0:0:0:1` are the same
+     * loopback, and `startsWith('fe80')` sees a TENTH of the fe80::/10
+     * link-local range — `fe90::1` and `feb0::1` are equally link-local and were
+     * permitted. Expanding to the 16-bit words and testing prefixes by VALUE is
+     * the only way the check covers what it claims to.
+     */
+    const w = expandIpv6(addr);
+    if (w === null) return true;                               // unparseable: fail closed
+    const [w0, w1] = w as [number, number, ...number[]];
+
+    if (w.every((x) => x === 0)) return true;                                   // ::
+    if (w.slice(0, 7).every((x) => x === 0) && w[7] === 1) return true;         // ::1
+    if ((w0 & 0xffc0) === 0xfe80) return true;                                  // fe80::/10 link-local
+    if ((w0 & 0xffc0) === 0xfec0) return true;                                  // fec0::/10 site-local
+    if ((w0 & 0xfe00) === 0xfc00) return true;                                  // fc00::/7 unique local
+    if ((w0 & 0xff00) === 0xff00) return true;                                  // ff00::/8 multicast
+    if (w0 === 0x0064 && w1 === 0xff9b) return true;                            // 64:ff9b::/96 NAT64
+    if (w0 === 0x0100 && w1 === 0x0000) return true;                            // 100::/64 discard
+    if (w0 === 0x2001 && (w1 & 0xff00) === 0x0000) return true;                 // 2001::/23 IETF protocol
+    if (w0 === 0x2001 && (w1 & 0xfffe) === 0x0db8) return true;                 // 2001:db8::/32 documentation
+    // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible: the embedded v4 address
+    // decides, so ::ffff:127.0.0.1 and ::ffff:7f00:1 are the same refusal.
+    if (w.slice(0, 5).every((x) => x === 0) && (w[5] === 0xffff || w[5] === 0)) {
+      const v4 = `${(w[6] as number) >> 8}.${(w[6] as number) & 0xff}`
+        + `.${(w[7] as number) >> 8}.${(w[7] as number) & 0xff}`;
+      return isForbiddenAddress(v4);
+    }
     return false;
   }
   return true; // not an address at all
+}
+
+/**
+ * An IPv6 address as its eight 16-bit words, or null if it is not one.
+ *
+ * Node's `isIP` has already said the string is a v6 address; this turns every
+ * spelling of it — compressed, expanded, or with a trailing dotted-quad — into
+ * the one representation a range check can be written against.
+ */
+export function expandIpv6(addr: string): number[] | null {
+  let a = addr.toLowerCase().split('%')[0] ?? '';               // drop any zone id
+  // A trailing dotted-quad (::ffff:127.0.0.1) becomes two words.
+  const dotted = /^(.*:)((?:\d{1,3}\.){3}\d{1,3})$/.exec(a);
+  if (dotted !== null) {
+    const p = (dotted[2] as string).split('.').map(Number);
+    if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    const hi = ((p[0] as number) << 8) | (p[1] as number);
+    const lo = ((p[2] as number) << 8) | (p[3] as number);
+    a = `${dotted[1]}${hi.toString(16)}:${lo.toString(16)}`;
+  }
+  const halves = a.split('::');
+  if (halves.length > 2) return null;
+  const toWords = (part: string): number[] | null => {
+    if (part === '') return [];
+    const out: number[] = [];
+    for (const g of part.split(':')) {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      out.push(parseInt(g, 16));
+    }
+    return out;
+  };
+  const head = toWords(halves[0] ?? '');
+  const tail = halves.length === 2 ? toWords(halves[1] ?? '') : [];
+  if (head === null || tail === null) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const gap = 8 - head.length - tail.length;
+  if (gap < 1) return null;
+  return [...head, ...Array.from({ length: gap }, () => 0), ...tail];
 }
 
 /** The origin triple. A change in ANY component is a different origin. */

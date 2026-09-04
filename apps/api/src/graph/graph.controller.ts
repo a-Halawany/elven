@@ -627,8 +627,8 @@ export class GraphController {
         'triggerObjectId is required'), 400);
     }
     const kind = p.triggerKind ?? 'claim_correction';
-    if (!['claim_correction', 'claim_withdrawal', 'edge_retraction', 'entity_split', 'manual']
-      .includes(kind)) {
+    if (!['claim_correction', 'claim_withdrawal', 'edge_retraction', 'entity_split',
+          'evidence_correction', 'manual'].includes(kind)) {
       throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id,
         'triggerKind is not one this system propagates'), 400);
     }
@@ -650,6 +650,35 @@ export class GraphController {
                                            objectives: r.objectives.length } } };
       });
     return { impact: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * Corrections nothing has propagated yet.
+   *
+   * Propagation is operator-initiated: the outbox publishes `CorrectionApplied`
+   * and no consumer subscribes to it, so a correction can sit with its downstream
+   * impact unassessed. This route makes that queue visible instead of leaving it
+   * to be noticed.
+   */
+  @Post('/impact/awaiting')
+  async awaitingPropagation(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      this.route(tenantId, domainId, 'graph.read', 'COR', null),
+      GraphCapability.read,
+      async (cap) => this.impact.awaitingPropagation(cap, body.payload?.limit ?? 100));
+    return {
+      awaiting: out.result,
+      note: 'these corrections are applied and their downstream impact has not been assessed; '
+        + 'propagation is operator-initiated and no consumer performs it automatically',
+      receipt: receipt(out),
+    };
   }
 
   @Post('/impact/list')

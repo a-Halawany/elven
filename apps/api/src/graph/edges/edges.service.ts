@@ -19,6 +19,15 @@ import type { GraphReads, EdgeWrites, EdgeRetractionWrites } from '../graph.capa
 /** Traversal is bounded. An unbounded walk over a graph is a denial of service. */
 export const MAX_DEPTH = 4;
 export const MAX_EDGES = 2_000;
+/**
+ * How many edges a HISTORICAL query may examine.
+ *
+ * Deliberately larger than the listing bound: a historical filter must look past
+ * recent activity to find older eligible edges, and a cap sized for a page of
+ * results silently truncated exactly the answers this query exists to give. When
+ * it is reached, `asOfBounded` reports the answer as incomplete.
+ */
+export const MAX_SCAN = 50_000;
 
 export interface EdgeRow {
   edge_id: string; subject_entity_id: string; predicate: string; object_entity_id: string;
@@ -53,6 +62,12 @@ export function visibleAt(e: EdgeRow, at: AsOf): boolean {
 
 @Injectable()
 export class EdgesService {
+  /**
+   * Every edge, newest first, bounded.
+   *
+   * `all` is a LISTING. It is not the input to a historical query, and
+   * `asOf` no longer uses it — see the note there.
+   */
   async all(cap: GraphReads, limit = MAX_EDGES): Promise<EdgeRow[]> {
     return (await cap.readEdges().selectAll()
       .orderBy('asserted_at' as never, 'desc')
@@ -71,9 +86,41 @@ export class EdgesService {
       .orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
   }
 
-  /** The whole visible graph at an instant. */
+  /**
+   * The whole visible graph at an instant.
+   *
+   * FILTER FIRST, THEN BOUND. This previously took the newest 2,000 rows and
+   * filtered those — so a single eligible edge asserted in 2024, sitting behind
+   * 2,000 later ones, disappeared from a 2024 view entirely. A historical answer
+   * that silently omits eligible information is worse than a slow one, because
+   * nothing about it looks wrong.
+   *
+   * The scan is still bounded: `MAX_SCAN` caps how much is examined, and when the
+   * scan is exhausted the caller is told rather than quietly handed a partial
+   * graph — see `asOfBounded`.
+   */
   async asOf(cap: GraphReads, at: AsOf): Promise<EdgeRow[]> {
-    return (await this.all(cap)).filter((e) => visibleAt(e, at));
+    return (await this.asOfBounded(cap, at)).edges;
+  }
+
+  /**
+   * The visible graph at an instant, with an honest statement about completeness.
+   *
+   * `complete` is false when the scan bound was reached, which means edges beyond
+   * it were never examined. A reader deciding anything on a historical view needs
+   * to know that, and the API surfaces it rather than keeping it here.
+   */
+  async asOfBounded(
+    cap: GraphReads, at: AsOf,
+  ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
+    const rows = (await cap.readEdges().selectAll()
+      .orderBy('asserted_at' as never, 'desc')
+      .limit(MAX_SCAN).execute()) as EdgeRow[];
+    return {
+      edges: rows.filter((e) => visibleAt(e, at)),
+      scanned: rows.length,
+      complete: rows.length < MAX_SCAN,
+    };
   }
 
   /**

@@ -192,7 +192,10 @@ export interface ImpactWrites extends GraphReads {
   recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
-    statement: string; actor: string; eventId: string; correlationId: string;
+    statement: string;
+    /** A bounded walk that stopped early is recorded as partial, never as assessed. */
+    truncated: boolean; unexplored: unknown[];
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
   setAssumptionState(a: {
     objectId: string; tenantId: string; domainId: string; state: string; reason: string;
@@ -399,13 +402,15 @@ class GraphCapabilityImpl extends GraphCore
   async recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
-    statement: string; actor: string; eventId: string; correlationId: string;
+    statement: string; truncated: boolean; unexplored: unknown[];
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
       ${JSON.stringify(a.assumptions)}::jsonb, ${JSON.stringify(a.objectives)}::jsonb,
       ${JSON.stringify(a.decisions)}::jsonb, ${JSON.stringify(a.commitments)}::jsonb,
-      ${a.statement}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 }
 

@@ -190,10 +190,10 @@ endpoint in this phase.
 
 | # | Source | Kind | Rights | Live-ready? |
 |---|---|---|---|---|
-| 1 | `eu-sanctions-rss` | RSS | confirmed (Decision 2011/833/EU) | **Yes** — anonymous HTTPS, no credential |
-| 2 | `eu-sanctions-payload` | REST | confirmed (Decision 2011/833/EU) | **Yes** — anonymous HTTPS |
-| 3 | `worldbank-indicators` | REST | confirmed (CC-BY-4.0) | **Yes** — anonymous HTTPS |
-| 4 | `gdelt-discovery` | REST | confirmed (GDELT terms) | **Yes** — anonymous HTTPS |
+| 1 | `eu-sanctions-rss` | RSS | confirmed (Decision 2011/833/EU) | **Single-poll only** — anonymous HTTPS, no credential |
+| 2 | `eu-sanctions-payload` | REST | confirmed (Decision 2011/833/EU) | **Single-poll only** — anonymous HTTPS |
+| 3 | `worldbank-indicators` | REST | confirmed (CC-BY-4.0) | **Single-poll only** — anonymous HTTPS |
+| 4 | `gdelt-discovery` | REST | confirmed (GDELT terms) | **Single-poll only** — anonymous HTTPS |
 | 5 | `imf-portwatch-chokepoints` | REST | **pending — UNVERIFIED** | Blocked on rights, not on technology |
 | 6 | `imf-portwatch-ports` | REST | **pending — UNVERIFIED** | Blocked on rights |
 | 7 | `ecb-eurusd` | REST | **pending — UNVERIFIED** | Blocked on rights |
@@ -201,9 +201,27 @@ endpoint in this phase.
 | 9 | `nordwerk-internal` | upload | confirmed (internal) | Manual by design — synthetic manufacturer |
 | 10 | `carrier-advisories` | upload | confirmed (internal) | Manual by design |
 
-**Summary:** 4 ready for live acquisition with no credential and no licensing decision · 3 blocked
-solely on unverified reuse terms · 1 credential-gated · 2 manual by design. Activating any live
-source is a deliberate contract change plus a rights decision, not a code change.
+**Summary:** 4 ready for a single live poll with no credential and no licensing decision · 3 blocked
+on unverified reuse terms · 1 credential-gated · 2 manual by design.
+
+> **CORRECTED 2026-09-05, from the review of `6914af03`.** This section previously read *"Activating
+> any live source is a deliberate contract change plus a rights decision, **not a code change**."*
+> **That was wrong, and the table's bare "Yes" overstated what "live-ready" means.** Reading
+> `apps/api/src/observation/connectors/rest.connector.ts` at that commit: the poller issues
+> **exactly one request per configured endpoint**, carries conditional-cache headers on the
+> checkpoint, and stops. Two capabilities the phrase implied are **not in that path**:
+>
+> * **No pagination loop.** Any source whose history or result set exceeds one response cannot be
+>   collected in full without new connector code. A multi-year backfill is therefore an
+>   implementation task, not a configuration change.
+> * **No source-secret binding.** `credential_ref` exists on the source contract and **nothing in
+>   the poller reads it**. A keyed source — UN Comtrade being the one we hold a key for — needs
+>   that wiring built before it can be activated at all.
+>
+> What IS true is narrower and still useful: for a source that answers completely in one request,
+> under confirmed reuse terms, activation is a contract change. Everything beyond that shape needs
+> code. `PHASE4_DATA_READINESS_PLAN.md` §4a states the same requirement from the other direction
+> and sizes it.
 
 ## 7. UN Comtrade credential — recorded, not used
 

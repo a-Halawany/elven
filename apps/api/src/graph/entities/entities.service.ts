@@ -84,16 +84,33 @@ export class EntitiesService {
     });
   }
 
-  /** The claims behind a set of resolutions, current version of each. */
+  /**
+   * The claims behind a set of resolutions — at an instant, or now.
+   *
+   * WITHOUT A CUTOFF this is the current version of each claim. WITH one it is
+   * the version that was current THEN: the newest version whose `recorded_at` is
+   * at or before the cutoff.
+   *
+   * The cutoff is not optional decoration. A historical entity view selected the
+   * mentions that belonged to the entity at the cutoff and then fetched the
+   * LATEST version of each claim behind them — so a February view returned a
+   * correction recorded in March. That is hindsight contamination, and it is
+   * precisely what a backtest must not be able to do.
+   */
   async claimsFor(
-    cap: GraphReads, claimIds: readonly string[],
+    cap: GraphReads, claimIds: readonly string[], knownAt?: string,
   ): Promise<Array<Record<string, unknown>>> {
     if (claimIds.length === 0) return [];
     const rows = (await cap.readCanonicalObjects().selectAll()
       .where('object_id' as never, 'in', claimIds as never)
       .execute()) as Array<Record<string, unknown>>;
+    const cutoff = knownAt === undefined ? null : new Date(knownAt).getTime();
     const current = new Map<string, Record<string, unknown>>();
     for (const r of rows) {
+      if (cutoff !== null) {
+        const recorded = new Date(String(r['recorded_at'])).getTime();
+        if (Number.isNaN(recorded) || recorded > cutoff) continue;
+      }
       const id = String(r['object_id']);
       const prev = current.get(id);
       if (prev === undefined || Number(r['object_version']) > Number(prev['object_version'])) {

@@ -104,8 +104,17 @@ export function extractionIdentityOf(a: {
   }));
 }
 
-/** A response is well-formed or it is refused. Neither shape is inferred. */
-function parseResponse(raw: unknown): { claims: ExtractedClaim[]; abstain: string | null } | null {
+/**
+ * A response is well-formed or it is refused. Neither shape is inferred.
+ *
+ * `evidenceBytes` is the length of the evidence the request actually carried, and
+ * every claim's span must lie inside it. Without that bound the parser accepted
+ * `byte_end: 1000000` against three bytes of evidence — a lineage row pointing at
+ * an offset that cannot be read back is not provenance, it is a number.
+ */
+function parseResponse(
+  raw: unknown, evidenceBytes: number,
+): { claims: ExtractedClaim[]; abstain: string | null } | null {
   if (raw === null || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o['abstain'] === true) {
@@ -127,6 +136,11 @@ function parseResponse(raw: unknown): { claims: ExtractedClaim[]; abstain: strin
     if (typeof conf !== 'number' || conf < 0 || conf > 1) return null;
     const bs = x['byte_start']; const be = x['byte_end'];
     if (typeof bs !== 'number' || typeof be !== 'number' || bs < 0 || be < bs) return null;
+    if (!Number.isInteger(bs) || !Number.isInteger(be)) return null;
+    // THE SPAN MUST BE READABLE. A claim whose offsets fall outside the evidence
+    // it was given cannot be checked against the bytes, so it is refused rather
+    // than admitted with an unusable lineage row.
+    if (be > evidenceBytes) return null;
     const q = x['qualifiers'];
     claims.push({
       claim_kind: kind as ExtractedClaim['claim_kind'],
@@ -257,23 +271,49 @@ export class ModelGatewayService {
     let abstainReason: string | null = null;
     let failure: string | null = null;
     let detail: Record<string, unknown> = {};
+    let observedModel: string | null = null;
+
+    /*
+     * The evidence the request actually carried, in bytes. Every claim's span is
+     * checked against this, so a lineage row can always be read back.
+     */
+    const evidenceBytes = Buffer.byteLength(
+      String((a.req.input as Record<string, unknown>)['evidence'] ?? ''), 'utf8');
 
     try {
-      const raw = mode === 'replay'
-        ? await this.fromRecording(cap, ctx, requestDigest)
+      const got = mode === 'replay'
+        ? { raw: await this.fromRecording(cap, ctx, requestDigest), model: null }
         : await this.fromLocalModel(a.req);
+      const raw = got.raw;
+      observedModel = got.model;
 
-      if (raw === null) {
+      /*
+       * WHICH MODEL ANSWERED — not which one was asked for.
+       *
+       * The pin says what the method requires; the runtime's own response says
+       * what served it. Recording only the pin makes the lineage claim an
+       * execution fact it never established. When the two disagree the call
+       * FAILS: a claim attributed to a model that did not produce it is worse
+       * than no claim.
+       */
+      if (observedModel !== null && observedModel !== a.req.modelId) {
+        outcome = 'failed';
+        failure = `model mismatch: the method pinned ${a.req.modelId} and the runtime answered `
+          + `as ${observedModel}; the response is refused rather than attributed to the pin`;
+        detail = { request_digest: requestDigest, observed_model: observedModel,
+                   pinned_model: a.req.modelId, model_identity: 'observed_differs_from_pin' };
+      } else if (raw === null) {
         failure = mode === 'replay'
           ? 'no recorded response exists for this request digest — replay does not fall through to a live call'
           : 'the local model returned nothing';
         detail = { request_digest: requestDigest };
       } else {
         responseDigest = sha256(jcsCanonicalize(raw));
-        const parsed = parseResponse(raw);
+        const parsed = parseResponse(raw, evidenceBytes);
         if (parsed === null) {
           outcome = 'refused';
-          failure = 'the response did not match the extraction contract and was refused rather than coerced';
+          failure = 'the response did not match the extraction contract — its shape, or a byte '
+            + 'span that falls outside the evidence supplied — and was refused rather than coerced';
         } else if (parsed.abstain !== null) {
           outcome = 'abstained';
           abstainReason = parsed.abstain;
@@ -303,8 +343,25 @@ export class ModelGatewayService {
       modelId: a.req.modelId, weights: a.req.weightsDigest, runtime: a.req.runtimeVersion,
       promptVersion: a.req.promptVersion, decoding: a.req.decodingDigest,
       outcome, latencyMs,
-      detail: { ...detail, ...(failure === null ? {} : { failure }),
-                ...(abstainReason === null ? {} : { abstain_reason: abstainReason }) },
+      detail: {
+        /*
+         * WHAT WAS ASKED FOR AND WHAT ANSWERED, always both.
+         *
+         * `model_identity` states the strength of the evidence rather than
+         * leaving a reader to assume it: a replayed response observes no runtime
+         * at all, and saying so is the difference between recorded configuration
+         * and verified execution.
+         */
+        pinned_model: a.req.modelId,
+        observed_model: observedModel,
+        model_identity: mode === 'replay' ? 'not_observed_replay'
+          : observedModel === null ? 'not_reported_by_runtime'
+          : observedModel === a.req.modelId ? 'observed_matches_pin'
+          : 'observed_differs_from_pin',
+        ...detail,
+        ...(failure === null ? {} : { failure }),
+        ...(abstainReason === null ? {} : { abstain_reason: abstainReason }),
+      },
       correlationId: ctx.correlationId,
     });
 
@@ -330,7 +387,9 @@ export class ModelGatewayService {
    * endpoint. If nothing is listening the call FAILS and says so; it does not
    * quietly become a replay.
    */
-  private async fromLocalModel(req: GatewayRequest): Promise<unknown | null> {
+  private async fromLocalModel(
+    req: GatewayRequest,
+  ): Promise<{ raw: unknown | null; model: string | null }> {
     const host = process.env['EYE_MODEL_HOST'] ?? 'http://127.0.0.1:11434';
     const url = new URL('/api/generate', host);
     if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
@@ -379,10 +438,15 @@ export class ModelGatewayService {
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(`local model responded ${r.status}`);
-      const envelope = (await r.json()) as { response?: string };
-      if (typeof envelope.response !== 'string') return null;
+      // The runtime names the model that served the request in its own envelope.
+      // That name is the only execution evidence this call has, and it travels
+      // back so the caller can compare it against the pin rather than assume.
+      const envelope = (await r.json()) as { response?: string; model?: string };
+      const model = typeof envelope.model === 'string' && envelope.model.length > 0
+        ? envelope.model : null;
+      if (typeof envelope.response !== 'string') return { raw: null, model };
       try {
-        return JSON.parse(envelope.response) as unknown;
+        return { raw: JSON.parse(envelope.response) as unknown, model };
       } catch {
         throw new Error('the local model did not return the JSON the extraction contract requires');
       }
@@ -418,12 +482,19 @@ export class ModelGatewayService {
     let ranking: RankedCandidate[] = [];
     let abstainReason: string | null = null;
     let failure: string | null = null;
+    let observedModel: string | null = null;
 
     try {
-      const raw = mode === 'replay'
-        ? await this.fromRecording(cap, ctx, requestDigest)
+      const got = mode === 'replay'
+        ? { raw: await this.fromRecording(cap, ctx, requestDigest), model: null }
         : await this.rankFromLocalModel(a.req);
-      if (raw === null) {
+      const raw = got.raw;
+      observedModel = got.model;
+      if (observedModel !== null && observedModel !== a.req.modelId) {
+        outcome = 'failed';
+        failure = `model mismatch: the method pinned ${a.req.modelId} and the runtime answered `
+          + `as ${observedModel}; the ranking is refused rather than attributed to the pin`;
+      } else if (raw === null) {
         failure = mode === 'replay'
           ? 'no recorded ranking exists for this request digest — replay does not fall through to a live call'
           : 'the local model returned nothing';
@@ -460,6 +531,11 @@ export class ModelGatewayService {
       promptVersion: a.req.promptVersion, decoding: a.req.decodingDigest,
       outcome, latencyMs,
       detail: { purpose: 'entity-ranking', candidates: a.req.input.candidates.length,
+                pinned_model: a.req.modelId, observed_model: observedModel,
+                model_identity: mode === 'replay' ? 'not_observed_replay'
+                  : observedModel === null ? 'not_reported_by_runtime'
+                  : observedModel === a.req.modelId ? 'observed_matches_pin'
+                  : 'observed_differs_from_pin',
                 ...(failure === null ? {} : { failure }),
                 ...(abstainReason === null ? {} : { abstain_reason: abstainReason }) },
       correlationId: ctx.correlationId,
@@ -470,7 +546,9 @@ export class ModelGatewayService {
   }
 
   /** LOCAL-LIVE ranking. Same loopback-only rule; no hosted endpoint exists here. */
-  private async rankFromLocalModel(req: RankRequest): Promise<unknown | null> {
+  private async rankFromLocalModel(
+    req: RankRequest,
+  ): Promise<{ raw: unknown | null; model: string | null }> {
     const host = process.env['EYE_MODEL_HOST'] ?? 'http://127.0.0.1:11434';
     const url = new URL('/api/generate', host);
     if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
@@ -500,10 +578,12 @@ export class ModelGatewayService {
         }),
       });
       if (!r.ok) throw new Error(`local model responded ${r.status}`);
-      const envelope = (await r.json()) as { response?: string };
-      if (typeof envelope.response !== 'string') return null;
+      const envelope = (await r.json()) as { response?: string; model?: string };
+      const model = typeof envelope.model === 'string' && envelope.model.length > 0
+        ? envelope.model : null;
+      if (typeof envelope.response !== 'string') return { raw: null, model };
       try {
-        return JSON.parse(envelope.response) as unknown;
+        return { raw: JSON.parse(envelope.response) as unknown, model };
       } catch {
         throw new Error('the local model did not return the JSON the ranking contract requires');
       }

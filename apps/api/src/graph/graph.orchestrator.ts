@@ -547,13 +547,36 @@ export class GraphOrchestrator {
       return { accepted, existing, rows };
     });
 
-    // Resolved mention text (normalised) to entity. Built from ACCEPTED
-    // resolutions only: a proposal is not an identity.
-    const byName = new Map<string, string>();
+    /*
+     * A DISPLAY NAME IS NOT AN IDENTITY.
+     *
+     * This map previously collapsed every accepted resolution onto its normalised
+     * mention text, last write winning — so two separately accepted entities that
+     * normalise the same (an organisation and its subsidiary written the same way,
+     * a split that has not been renamed) silently shared a slot, and WHICH of them
+     * received a relationship depended on row order. Row order is not a governance
+     * decision.
+     *
+     * The map now records EVERY entity a name resolves to. One entity is a
+     * lookup; more than one is an ambiguity, and an ambiguity is refused with a
+     * named reason rather than settled by iteration order.
+     */
+    const byName = new Map<string, Set<string>>();
     for (const r of world.accepted) {
-      byName.set(normalizeName(String(r['mention_text'])), String(r['entity_id']));
+      const key = normalizeName(String(r['mention_text']));
+      const set = byName.get(key) ?? new Set<string>();
+      set.add(String(r['entity_id']));
+      byName.set(key, set);
     }
-    const alreadyBuilt = new Set(world.existing.map((e) => String(e['claim_object_id'])));
+    /*
+     * IDEMPOTENCY IS PER CLAIM VERSION, NOT PER CLAIM.
+     *
+     * Keying on the claim id alone meant a CORRECTED relationship — v2 of a claim
+     * whose v1 already had an edge — produced no new edge and no reported skip.
+     * The correction looked applied and the graph still carried the old assertion.
+     */
+    const alreadyBuilt = new Set(
+      world.existing.map((e) => `${String(e['claim_object_id'])}@${String(e['claim_version'])}`));
 
     const current = new Map<string, Record<string, unknown>>();
     for (const r of world.rows) {
@@ -571,26 +594,64 @@ export class GraphOrchestrator {
     for (const claim of current.values()) {
       if (outcome.edgesAsserted >= a.limit) break;
       const claimId = String(claim['object_id']);
-      if (alreadyBuilt.has(claimId)) continue;
+      const claimVersion = Number(claim['object_version']);
+      if (alreadyBuilt.has(`${claimId}@${claimVersion}`)) continue;
       outcome.relClaimsRead += 1;
 
       const payload = (claim['payload'] ?? {}) as Record<string, unknown>;
       const lineage = (payload['lineage'] ?? {}) as Record<string, unknown>;
-      const subjectName = normalizeName(String(payload['subject'] ?? ''));
-      const objectName = normalizeName(String(payload['object_value'] ?? ''));
-      const subject = byName.get(subjectName);
-      const object = byName.get(objectName);
-      if (subject === undefined || object === undefined) {
+
+      /*
+       * A CLAIM STILL AWAITING REVIEW IS NOT A FACT ABOUT THE WORLD.
+       *
+       * Phase 2 queues low-confidence output precisely so a person decides it.
+       * Building an edge from a queued claim promotes it into the graph — where
+       * traversals, paths and the Strategy Graph all treat it as settled — while
+       * the queue still shows it as undecided. The review state is checked here
+       * because this is the boundary the claim crosses.
+       */
+      const review = (payload['review'] ?? {}) as Record<string, unknown>;
+      const reviewState = String(review['state'] ?? 'not_required');
+      if (reviewState === 'queued' || reviewState === 'rejected') {
         outcome.skipped.push({
           claimObjectId: claimId,
-          reason: subject === undefined && object === undefined
+          reason: reviewState === 'queued'
+            ? 'this relationship is still queued for review; a claim a person has not '
+              + 'decided is not promoted into the graph'
+            : 'this relationship was rejected in review and is not admitted to the graph',
+        });
+        continue;
+      }
+
+      const subjectName = normalizeName(String(payload['subject'] ?? ''));
+      const objectName = normalizeName(String(payload['object_value'] ?? ''));
+      const subjectSet = byName.get(subjectName);
+      const objectSet = byName.get(objectName);
+      if (subjectSet === undefined || objectSet === undefined) {
+        outcome.skipped.push({
+          claimObjectId: claimId,
+          reason: subjectSet === undefined && objectSet === undefined
             ? 'neither end of this relationship resolves to an entity yet'
-            : subject === undefined
+            : subjectSet === undefined
               ? `the subject "${String(payload['subject'] ?? '')}" does not resolve to an entity yet`
               : `the object "${String(payload['object_value'] ?? '')}" does not resolve to an entity yet`,
         });
         continue;
       }
+      if (subjectSet.size > 1 || objectSet.size > 1) {
+        const which = subjectSet.size > 1
+          ? `"${String(payload['subject'] ?? '')}"` : `"${String(payload['object_value'] ?? '')}"`;
+        const n = subjectSet.size > 1 ? subjectSet.size : objectSet.size;
+        outcome.skipped.push({
+          claimObjectId: claimId,
+          reason: `${which} is ambiguous: more than one accepted entity (${n}) carries that `
+            + 'normalised name, and an endpoint is not chosen by row order — resolve or split '
+            + 'them before this relationship can be asserted',
+        });
+        continue;
+      }
+      const subject = [...subjectSet][0] as string;
+      const object = [...objectSet][0] as string;
       if (subject === object) {
         outcome.skipped.push({
           claimObjectId: claimId,
@@ -625,7 +686,7 @@ export class GraphOrchestrator {
             edgeId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
             subject, predicate: String(payload['predicate'] ?? 'related_to'), object,
             validFrom, validTo,
-            claimObjectId: claimId, claimVersion: Number(claim['object_version']),
+            claimObjectId: claimId, claimVersion,
             evidenceObjectId, evidenceDigest,
             methodId: null,
             runId: typeof lineage['run_id'] === 'string' ? (lineage['run_id'] as string) : null,

@@ -17,8 +17,8 @@ import { ObservationCapability, type AcquisitionWrites }
   from '../../observation/observation.capabilities.js';
 import { IntelligenceCapability, type ExtractionWrites, type IntelligenceReads,
   type MethodPin } from '../intelligence.capabilities.js';
-import { ExtractionService, type EvidenceUnit, type ExtractionOutcome,
-  type RetrievalReceipt } from './extraction.service.js';
+import { ExtractionService, inheritedControlsOf, type EvidenceUnit,
+  type ExtractionOutcome, type RetrievalReceipt } from './extraction.service.js';
 
 /** The declared-target bound the capability permits for one operation. */
 const MAX_CLAIMS_PER_EVIDENCE = 8;
@@ -161,6 +161,7 @@ export class ExtractionOrchestrator {
     let failure: string | null = null;
     const claims: ExtractionOutcome['claims'] = [];
     const evidenceRetrievals: RetrievalReceipt[] = [];
+    const undeclaredRefusals: ExtractionOutcome['undeclaredRefusals'] = [];
 
     for (const evd of evidence) {
       // BUDGETS STOP THE RUN. They are not advisory and they are not checked after
@@ -242,6 +243,9 @@ export class ExtractionOrchestrator {
         eventTime: evd['event_time'] === null || evd['event_time'] === undefined
           ? null : new Date(evd['event_time'] as string).toISOString(),
         itemKey: String(payload['locator']),
+        // ES-29-002: the evidence object's own control block, carried onto every
+        // claim derived from it. Read from the row, never defaulted here.
+        inherited: inheritedControlsOf(evd),
       };
 
       const route: RouteInfo = {
@@ -270,6 +274,7 @@ export class ExtractionOrchestrator {
         const out = await this.pipeline.write<{
           admitted: Array<{ objectId: string; type: string; confidence: number; review: string }>;
           abstained: boolean; idempotent: boolean; calls: number; queued: number;
+          undeclared: Array<{ kind: string; objectType: string }>;
         }, ExtractionWrites>(
           this.envelope({ ...read, principal: a.principal }, 'intelligence.claim.admit',
             'CLM', declaredClaimIds[0] as string),
@@ -305,6 +310,9 @@ export class ExtractionOrchestrator {
         if (out.result.idempotent) idempotentHits += 1;
         callsUsed += out.result.calls;
         queuedForReview += out.result.queued;
+        for (const u of out.result.undeclared) {
+          undeclaredRefusals.push({ evidenceObjectId: evdObjectId, ...u });
+        }
       } catch (e) {
         state = 'failed';
         failure = e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
@@ -330,6 +338,7 @@ export class ExtractionOrchestrator {
       });
 
     return { runId, mode, state, evidenceRead, claimsAdmitted, abstentions,
-             idempotentHits, callsUsed, queuedForReview, failure, claims, evidenceRetrievals };
+             idempotentHits, callsUsed, queuedForReview, failure, claims, evidenceRetrievals,
+             undeclaredRefusals };
   }
 }

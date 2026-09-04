@@ -44,9 +44,28 @@ export interface ImpactResult {
   objectives: AffectedObject[];
   decisions: AffectedObject[];
   commitments: AffectedObject[];
-  /** Entities and edges the changed claim reached on the way. */
+  /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
+  /**
+   * The claims the trigger reached.
+   *
+   * For an evidence correction these are resolved through `claim_lineage` — the
+   * evidence-to-derived-claim closure — rather than assumed to be the trigger
+   * itself.
+   */
+  reachedClaims: string[];
+  /**
+   * TRUE when the traversal bound was reached before the graph was exhausted.
+   *
+   * A bounded walk that reports "assessed" without saying it stopped early is the
+   * worst of both worlds: the correction looks handled and dependencies remain
+   * unexamined. When this is true the assessment is INCOMPLETE and says so in its
+   * own statement.
+   */
+  truncated: boolean;
+  /** The frontier the walk did not follow, so the residual work is nameable. */
+  unexplored: Array<{ kind: string; id: string; via: string }>;
   statement: string;
 }
 
@@ -70,25 +89,47 @@ export class ImpactService {
       .execute()) as Array<Record<string, unknown>>;
     const byId = new Map(strategy.map((s) => [String(s['strategy_object_id']), s]));
 
-    // The claim reaches entities through the resolutions that named it, and edges
-    // through the edges that rest on it. Both are dependency targets in their own
-    // right, so both widen the walk.
+    /*
+     * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
+     *
+     * A Phase 1 correction supersedes EVIDENCE objects — that is what
+     * `observation.correction.apply` writes. The walk previously understood only
+     * claim, entity, edge and split triggers, so the object a correction actually
+     * changes had no way into the graph at all, and the demonstration had to be
+     * handed a claim id by hand. `intelligence.claim_lineage` is the join that
+     * closes it: every claim records the evidence object and digest it was
+     * derived from, so an evidence correction reaches its claims, and each claim
+     * then reaches its entities and edges exactly as before.
+     */
     const reachedEntities = new Set<string>();
     const reachedEdges = new Set<string>();
-    if (a.triggerKind === 'claim_correction' || a.triggerKind === 'claim_withdrawal') {
-      const resolutions = (await cap.readResolutions().selectAll()
-        .where('claim_object_id' as never, '=', a.triggerObjectId as never)
-        .where('state' as never, '=', 'accepted' as never)
+    const reachedClaims = new Set<string>();
+
+    if (a.triggerKind === 'evidence_correction') {
+      const lineage = (await cap.readClaimLineage().selectAll()
+        .where('evidence_object_id' as never, '=', a.triggerObjectId as never)
         .execute()) as Array<Record<string, unknown>>;
-      for (const r of resolutions) reachedEntities.add(String(r['entity_id']));
-      const edges = (await cap.readEdges().selectAll()
-        .where('claim_object_id' as never, '=', a.triggerObjectId as never)
-        .execute()) as Array<Record<string, unknown>>;
-      for (const e of edges) reachedEdges.add(String(e['edge_id']));
+      for (const l of lineage) reachedClaims.add(String(l['claim_object_id']));
+    } else if (a.triggerKind === 'claim_correction' || a.triggerKind === 'claim_withdrawal') {
+      reachedClaims.add(a.triggerObjectId);
     } else if (a.triggerKind === 'edge_retraction') {
       reachedEdges.add(a.triggerObjectId);
     } else if (a.triggerKind === 'entity_split') {
       reachedEntities.add(a.triggerObjectId);
+    }
+
+    // Every claim reached — directly or through the evidence behind it — widens
+    // the walk to the entities it resolved to and the edges it asserted.
+    for (const claimId of reachedClaims) {
+      const resolutions = (await cap.readResolutions().selectAll()
+        .where('claim_object_id' as never, '=', claimId as never)
+        .where('state' as never, '=', 'accepted' as never)
+        .execute()) as Array<Record<string, unknown>>;
+      for (const r of resolutions) reachedEntities.add(String(r['entity_id']));
+      const edges = (await cap.readEdges().selectAll()
+        .where('claim_object_id' as never, '=', claimId as never)
+        .execute()) as Array<Record<string, unknown>>;
+      for (const e of edges) reachedEdges.add(String(e['edge_id']));
     }
 
     /*
@@ -97,7 +138,11 @@ export class ImpactService {
      * recorded so a reader sees the chain rather than an unexplained list.
      */
     const seeds: Array<{ kind: string; id: string; via: string }> = [
-      { kind: 'claim', id: a.triggerObjectId, via: 'rests on the changed claim directly' },
+      ...[...reachedClaims].map((id) => ({
+        kind: 'claim', id,
+        via: a.triggerKind === 'evidence_correction'
+          ? 'rests on a claim derived from the corrected evidence'
+          : 'rests on the changed claim directly' })),
       ...[...reachedEntities].map((id) => ({
         kind: 'entity', id, via: 'rests on an entity the changed claim resolved to' })),
       ...[...reachedEdges].map((id) => ({
@@ -106,7 +151,8 @@ export class ImpactService {
 
     const found = new Map<string, AffectedObject>();
     let frontier: Array<{ kind: string; id: string; via: string }> = seeds;
-    for (let hop = 1; hop <= MAX_HOPS && frontier.length > 0; hop += 1) {
+    let hop = 1;
+    for (; hop <= MAX_HOPS && frontier.length > 0; hop += 1) {
       const next: Array<{ kind: string; id: string; via: string }> = [];
       for (const seed of frontier) {
         for (const d of deps) {
@@ -131,6 +177,15 @@ export class ImpactService {
       }
       frontier = next;
     }
+    /*
+     * THE FRONTIER THE BOUND CUT OFF.
+     *
+     * If anything is still queued when the loop ends, the walk stopped because of
+     * `MAX_HOPS`, not because the graph was exhausted. Naming what was left makes
+     * the residual work actionable instead of invisible.
+     */
+    const truncated = frontier.length > 0;
+    const unexplored = frontier;
 
     const of = (t: string): AffectedObject[] =>
       [...found.values()].filter((x) => x.object_type === t)
@@ -145,6 +200,9 @@ export class ImpactService {
       commitments: of('CMT'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
+      reachedClaims: [...reachedClaims],
+      truncated,
+      unexplored,
     };
   }
 
@@ -184,7 +242,8 @@ export class ImpactService {
       invalidationId, tenantId, domainId,
       assumptions: walked.assumptions, objectives: walked.objectives,
       decisions: walked.decisions, commitments: walked.commitments,
-      statement, actor: a.actor, eventId: newId(), correlationId: a.correlationId,
+      statement, truncated: walked.truncated, unexplored: walked.unexplored,
+      actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
 
     return { ...walked, invalidationId, correctionCaseId: a.correctionCaseId, statement };
@@ -194,6 +253,26 @@ export class ImpactService {
     return (await cap.readInvalidations().selectAll()
       .orderBy('opened_at' as never, 'desc')
       .limit(Math.min(limit, 500)).execute()) as Array<Record<string, unknown>>;
+  }
+
+  /**
+   * Applied corrections that NOTHING has propagated yet.
+   *
+   * There is no consumer wiring `CorrectionApplied` to a dependency walk — the
+   * outbox publishes the event and no worker subscribes — so propagation happens
+   * only when a person asks for it. Until that consumer exists, the honest
+   * product behaviour is to make the outstanding obligation VISIBLE rather than
+   * let a correction sit silently unpropagated: this is the queue of corrections
+   * whose downstream impact nobody has assessed.
+   */
+  async awaitingPropagation(
+    cap: GraphReads, limit = 100,
+  ): Promise<Array<Record<string, unknown>>> {
+    const rows = (await cap.readCorrections().selectAll()
+      .orderBy('received_at' as never, 'desc')
+      .limit(Math.min(limit, 500)).execute()) as Array<Record<string, unknown>>;
+    return rows.filter((c) => c['state'] === 'applied'
+      && (c['propagation_assessment_id'] === null || c['propagation_assessment_id'] === undefined));
   }
 
   async get(cap: GraphReads, invalidationId: string): Promise<Record<string, unknown> | undefined> {
@@ -216,13 +295,27 @@ function buildStatement(
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length;
+  const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
+    + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
+  /*
+   * AN INCOMPLETE WALK SAYS SO, FIRST.
+   *
+   * The word "assessed" carries an implication of completeness, so a truncated
+   * walk leads with the truncation rather than burying it after the counts.
+   */
+  const truncation = w.truncated
+    ? ` — INCOMPLETE: the traversal bound was reached and ${w.unexplored.length} `
+      + 'dependency path(s) were not followed; this assessment is partial and the '
+      + 'residual work is recorded on the invalidation'
+    : '';
   if (total === 0) {
     return `dependency propagation assessed by invalidation ${invalidationId}: `
-      + 'the dependency graph was walked and nothing declared rests on this object';
+      + `the dependency graph was walked (${reach}) and nothing declared rests on this object`
+      + truncation;
   }
   return `dependency propagation assessed by invalidation ${invalidationId}: `
     + `${w.assumptions.length} assumption(s) marked unverified; `
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
     + `${w.commitments.length} commitment(s) reported for human review; `
-    + `reached through ${w.reachedEntities.length} entity(ies) and ${w.reachedEdges.length} edge(s)`;
+    + reach + truncation;
 }
