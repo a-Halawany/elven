@@ -141,12 +141,22 @@ export class ReviewService {
         contradiction_refs: [],
         corroboration_refs: [],
         human_refs: [a.decider],
+        /*
+         * A REVIEWER'S CORRECTION IS NOT A DECLASSIFICATION (ES-29-002).
+         *
+         * The new version corrects what the claim SAYS. It does not widen who may
+         * see it, where it may live, how long it is kept, or the rights under
+         * which it was obtained — so every control field is carried from the
+         * prior version rather than reset. These four were previously nulled,
+         * which quietly relaxed the obligations on exactly the objects a person
+         * had just looked at.
+         */
         classification: String(prior['classification']),
         purpose_scope: a.purposeId,
-        rights_profile: null,
-        residency_profile: null,
-        retention_profile: null,
-        access_policy_ref: null,
+        rights_profile: (prior['rights_profile'] as string | null) ?? null,
+        residency_profile: (prior['residency_profile'] as string | null) ?? null,
+        retention_profile: (prior['retention_profile'] as string | null) ?? null,
+        access_policy_ref: (prior['access_policy_ref'] as string | null) ?? null,
         quality_profile: null,
         quality_state: null,
         freshness_state: null,

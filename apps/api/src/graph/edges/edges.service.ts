@@ -19,6 +19,15 @@ import type { GraphReads, EdgeWrites, EdgeRetractionWrites } from '../graph.capa
 /** Traversal is bounded. An unbounded walk over a graph is a denial of service. */
 export const MAX_DEPTH = 4;
 export const MAX_EDGES = 2_000;
+/**
+ * How many edges a HISTORICAL query may examine.
+ *
+ * Deliberately larger than the listing bound: a historical filter must look past
+ * recent activity to find older eligible edges, and a cap sized for a page of
+ * results silently truncated exactly the answers this query exists to give. When
+ * it is reached, `asOfBounded` reports the answer as incomplete.
+ */
+export const MAX_SCAN = 50_000;
 
 export interface EdgeRow {
   edge_id: string; subject_entity_id: string; predicate: string; object_entity_id: string;
@@ -26,6 +35,8 @@ export interface EdgeRow {
   state: string; claim_object_id: string; claim_version: number;
   evidence_object_id: string; evidence_digest: string; mode: string; confidence: string;
   retraction_reason: string | null;
+  /** When a corrected claim replaced this edge. Record time, like retraction. */
+  superseded_at?: string | null;
 }
 
 export interface AsOf {
@@ -46,13 +57,36 @@ export function visibleAt(e: EdgeRow, at: AsOf): boolean {
   const valid = new Date(at.validAt).getTime();
   if (new Date(e.asserted_at).getTime() > known) return false;
   if (e.retracted_at !== null && new Date(e.retracted_at).getTime() <= known) return false;
+  // SUPERSESSION IS ALSO RECORD TIME. A corrected claim's replacement edge takes
+  // over from `superseded_at`; before that instant the old edge is what we
+  // believed, and a known-at query must still see it.
+  const sup = e.superseded_at ?? null;
+  if (sup !== null && sup !== undefined && new Date(sup).getTime() <= known) return false;
   if (new Date(e.valid_from).getTime() > valid) return false;
   if (e.valid_to !== null && new Date(e.valid_to).getTime() <= valid) return false;
   return true;
 }
 
+/**
+ * Does any visible edge lead from the last frontier to an entity the walk never
+ * reached? If so the traversal stopped because of its depth bound, not because
+ * the graph was exhausted — and the answer must say so.
+ */
+function leadsBeyond(visible: EdgeRow[], frontier: Set<string>, seen: Set<string>): boolean {
+  if (frontier.size === 0) return false;
+  return visible.some((e) =>
+    (frontier.has(e.subject_entity_id) && !seen.has(e.object_entity_id))
+    || (frontier.has(e.object_entity_id) && !seen.has(e.subject_entity_id)));
+}
+
 @Injectable()
 export class EdgesService {
+  /**
+   * Every edge, newest first, bounded.
+   *
+   * `all` is a LISTING. It is not the input to a historical query, and
+   * `asOf` no longer uses it — see the note there.
+   */
   async all(cap: GraphReads, limit = MAX_EDGES): Promise<EdgeRow[]> {
     return (await cap.readEdges().selectAll()
       .orderBy('asserted_at' as never, 'desc')
@@ -71,9 +105,62 @@ export class EdgesService {
       .orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
   }
 
-  /** The whole visible graph at an instant. */
+  /**
+   * The whole visible graph at an instant.
+   *
+   * FILTER FIRST, THEN BOUND. This previously took the newest 2,000 rows and
+   * filtered those — so a single eligible edge asserted in 2024, sitting behind
+   * 2,000 later ones, disappeared from a 2024 view entirely. A historical answer
+   * that silently omits eligible information is worse than a slow one, because
+   * nothing about it looks wrong.
+   *
+   * The scan is still bounded: `MAX_SCAN` caps how much is examined, and when the
+   * scan is exhausted the caller is told rather than quietly handed a partial
+   * graph — see `asOfBounded`.
+   */
   async asOf(cap: GraphReads, at: AsOf): Promise<EdgeRow[]> {
-    return (await this.all(cap)).filter((e) => visibleAt(e, at));
+    return (await this.asOfBounded(cap, at)).edges;
+  }
+
+  /**
+   * A LISTING at an instant: one bounded page, and the count of everything eligible.
+   *
+   * `/edges/list` previously handed out the historical scan (up to `MAX_SCAN` rows)
+   * beside a `total` taken from an unrelated newest-2,000 read, so with 50,001
+   * eligible edges it returned 50,000 of them, said `total: 2000`, and carried no
+   * completeness at all. The page is bounded at `MAX_EDGES`; `total` counts what
+   * is eligible at the instant; `complete` says whether the page is the whole
+   * answer.
+   */
+  async list(
+    cap: GraphReads, at: AsOf, limit = MAX_EDGES,
+  ): Promise<{ edges: EdgeRow[]; total: number; complete: boolean }> {
+    const page = Math.max(1, Math.min(limit, MAX_EDGES));
+    const got = await cap.edgesVisibleAt({ ...at, limit: page });
+    const edges = (got.rows as unknown as EdgeRow[]).filter((e) => visibleAt(e, at));
+    return { edges, total: got.total, complete: got.total <= edges.length };
+  }
+
+  /** A visible-at read where the caller cares only whether it saw everything. */
+  private async visible(
+    cap: GraphReads, at: AsOf,
+  ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
+    const got = await cap.edgesVisibleAt({ ...at, limit: MAX_SCAN });
+    const edges = (got.rows as unknown as EdgeRow[]).filter((e) => visibleAt(e, at));
+    return { edges, scanned: got.total, complete: got.total <= edges.length };
+  }
+
+  /**
+   * The visible graph at an instant, with an honest statement about completeness.
+   *
+   * `complete` is false when the scan bound was reached, which means edges beyond
+   * it were never examined. A reader deciding anything on a historical view needs
+   * to know that, and the API surfaces it rather than keeping it here.
+   */
+  async asOfBounded(
+    cap: GraphReads, at: AsOf,
+  ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
+    return this.visible(cap, at);
   }
 
   /**
@@ -82,29 +169,48 @@ export class EdgesService {
    * Direction is preserved in the answer (`out` / `in`) rather than flattened,
    * because "supplies" and "is supplied by" are not the same statement and a
    * reader deciding anything needs to know which way the edge points.
+   *
+   * THE ANSWER IS SCOPED TO THE DEPTH IT SEARCHED. `searchedDepth` is the depth
+   * actually walked (the request is clamped to `MAX_DEPTH`, and `depthClamped`
+   * says when that happened); `beyondDepth` is true when a visible edge leads
+   * from the last frontier to an entity the walk did not reach — so "everything
+   * within N hops" is never mistaken for "everything connected".
    */
   async neighbourhood(
     cap: GraphReads, entityId: string, depth: number, at: AsOf,
-  ): Promise<{ edges: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }>; entityIds: string[] }> {
-    const visible = await this.asOf(cap, at);
+  ): Promise<{ edges: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }>;
+               entityIds: string[]; complete: boolean; searchedDepth: number;
+               depthClamped: boolean; beyondDepth: boolean }> {
+    const got = await this.visible(cap, at);
+    const visible = got.edges;
     const bounded = Math.max(1, Math.min(depth, MAX_DEPTH));
     const seen = new Set<string>([entityId]);
+    const taken = new Set<string>();
     const out: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }> = [];
-    let frontier = [entityId];
-    for (let hop = 1; hop <= bounded && frontier.length > 0; hop += 1) {
-      const next: string[] = [];
+    let frontier = new Set<string>([entityId]);
+    for (let hop = 1; hop <= bounded && frontier.size > 0; hop += 1) {
+      const next = new Set<string>();
       for (const e of visible) {
-        if (frontier.includes(e.subject_entity_id) && !out.some((x) => x.edge_id === e.edge_id)) {
+        if (taken.has(e.edge_id)) continue;
+        if (frontier.has(e.subject_entity_id)) {
+          taken.add(e.edge_id);
           out.push({ ...e, direction: 'out', hop });
-          if (!seen.has(e.object_entity_id)) { seen.add(e.object_entity_id); next.push(e.object_entity_id); }
-        } else if (frontier.includes(e.object_entity_id) && !out.some((x) => x.edge_id === e.edge_id)) {
+          if (!seen.has(e.object_entity_id)) { seen.add(e.object_entity_id); next.add(e.object_entity_id); }
+        } else if (frontier.has(e.object_entity_id)) {
+          taken.add(e.edge_id);
           out.push({ ...e, direction: 'in', hop });
-          if (!seen.has(e.subject_entity_id)) { seen.add(e.subject_entity_id); next.push(e.subject_entity_id); }
+          if (!seen.has(e.subject_entity_id)) { seen.add(e.subject_entity_id); next.add(e.subject_entity_id); }
         }
       }
       frontier = next;
     }
-    return { edges: out, entityIds: [...seen] };
+    // A neighbourhood built from an incomplete scan is itself incomplete, and the
+    // caller is told rather than left to assume it saw everything.
+    return {
+      edges: out, entityIds: [...seen], complete: got.complete,
+      searchedDepth: bounded, depthClamped: bounded !== depth,
+      beyondDepth: leadsBeyond(visible, frontier, seen),
+    };
   }
 
   /**
@@ -113,24 +219,37 @@ export class EdgesService {
    * `null` means there is no path IN WHAT THE CALLER CAN SEE — which is not the
    * same as "no path exists", and the API says so rather than implying absence is
    * proof (C4).
+   *
+   * TWO BOUNDS, BOTH ACCOUNTED FOR. `MAX_SCAN` bounds how many eligible edges
+   * were examined; `MAX_DEPTH` bounds how far the traversal went. A five-edge
+   * chain previously came back as "no path" with `complete: true`, because only
+   * the scan was being reported: the traversal had stopped at four hops with
+   * entities still ahead of it. `complete` is now true only when the scan
+   * examined every eligible edge AND the traversal ran out of entities rather
+   * than out of depth; `bound` says which one bit.
    */
   async path(
     cap: GraphReads, from: string, to: string, at: AsOf,
-  ): Promise<Array<EdgeRow & { direction: 'out' | 'in' }> | null> {
-    if (from === to) return [];
-    const visible = await this.asOf(cap, at);
+  ): Promise<{ path: Array<EdgeRow & { direction: 'out' | 'in' }> | null; complete: boolean;
+               searchedDepth: number; bound: { scan: boolean; depth: boolean } }> {
+    const searchedDepth = MAX_DEPTH;
+    if (from === to) {
+      return { path: [], complete: true, searchedDepth, bound: { scan: false, depth: false } };
+    }
+    const got = await this.visible(cap, at);
+    const visible = got.edges;
     const prev = new Map<string, { edge: EdgeRow; direction: 'out' | 'in'; from: string }>();
     const seen = new Set<string>([from]);
-    let frontier = [from];
-    for (let hop = 0; hop < MAX_DEPTH && frontier.length > 0; hop += 1) {
-      const next: string[] = [];
+    let frontier = new Set<string>([from]);
+    for (let hop = 0; hop < MAX_DEPTH && frontier.size > 0; hop += 1) {
+      const next = new Set<string>();
       for (const e of visible) {
         const ends: Array<[string, string, 'out' | 'in']> = [
           [e.subject_entity_id, e.object_entity_id, 'out'],
           [e.object_entity_id, e.subject_entity_id, 'in'],
         ];
         for (const [a, b, direction] of ends) {
-          if (!frontier.includes(a) || seen.has(b)) continue;
+          if (!frontier.has(a) || seen.has(b)) continue;
           seen.add(b);
           prev.set(b, { edge: e, direction, from: a });
           if (b === to) {
@@ -138,18 +257,35 @@ export class EdgesService {
             let cursor = to;
             while (cursor !== from) {
               const step = prev.get(cursor);
-              if (step === undefined) return null;
+              if (step === undefined) {
+                return { path: null, complete: false, searchedDepth,
+                         bound: { scan: !got.complete, depth: false } };
+              }
               chain.unshift({ ...step.edge, direction: step.direction });
               cursor = step.from;
             }
-            return chain;
+            // A path found from an incomplete scan is a path, but not provably
+            // the shortest: unexamined edges could hold a shorter one.
+            return { path: chain, complete: got.complete, searchedDepth,
+                     bound: { scan: !got.complete, depth: false } };
           }
-          next.push(b);
+          next.add(b);
         }
       }
       frontier = next;
     }
-    return null;
+    /*
+     * NOT FINDING A PATH IS NOT THE SAME AS THERE NOT BEING ONE.
+     *
+     * The traversal ended either because no frontier remained (exhausted — every
+     * reachable entity was visited) or because the depth bound stopped it with
+     * entities still ahead. Only the first, on a complete scan, earns `complete`.
+     */
+    const depthBound = leadsBeyond(visible, frontier, seen);
+    return {
+      path: null, complete: got.complete && !depthBound, searchedDepth,
+      bound: { scan: !got.complete, depth: depthBound },
+    };
   }
 
   /** Every edge that rests on a given claim — the join invalidation walks. */

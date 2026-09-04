@@ -47,6 +47,13 @@ abstract class GraphCore {
  * read, under the same row-level security — so a row outside the caller's scope
  * is not visible to the query at all, which is most of C4.
  */
+/** Where the previous page of outstanding work ended: both key columns, exactly. */
+export interface OutstandingCursor {
+  /** The timestamp as PostgreSQL renders it — microseconds and all. */
+  receivedAt: string;
+  caseId: string;
+}
+
 export interface GraphReads {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readEntities(): any;
@@ -78,6 +85,24 @@ export interface GraphReads {
   readClaimLineage(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any;
+  /**
+   * Edges VISIBLE at an instant, filtered in the query.
+   *
+   * The bound has to come after the temporal predicate or it is not a bound on
+   * the answer, it is a bound on the search — and one eligible edge behind enough
+   * newer rows simply disappears. `total` is the count of everything eligible, so
+   * a caller can say whether the page it received was the whole answer.
+   */
+  edgesVisibleAt(a: { knownAt: string; validAt: string; limit: number }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
+  /**
+   * Applied corrections whose propagation is not complete, filtered in the query.
+   *
+   * Filtering after a page has been taken loses old outstanding work behind newer
+   * irrelevant rows, which is exactly what an outstanding-work list must not do.
+   */
+  correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
   rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
   }>>;
@@ -192,7 +217,10 @@ export interface ImpactWrites extends GraphReads {
   recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
-    statement: string; actor: string; eventId: string; correlationId: string;
+    statement: string;
+    /** A bounded walk that stopped early is recorded as partial, never as assessed. */
+    truncated: boolean; unexplored: unknown[];
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
   setAssumptionState(a: {
     objectId: string; tenantId: string; domainId: string; state: string; reason: string;
@@ -237,6 +265,56 @@ class GraphCapabilityImpl extends GraphCore
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any { return this.from('observation.correction_current'); }
+
+  async edgesVisibleAt(a: { knownAt: string; validAt: string; limit: number }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    const rows = await this.call<Record<string, unknown>>(sql`
+      select * from graph.edges_current
+       where asserted_at <= ${a.knownAt}::timestamptz
+         and (retracted_at is null or retracted_at > ${a.knownAt}::timestamptz)
+         and (superseded_at is null or superseded_at > ${a.knownAt}::timestamptz)
+         and valid_from <= ${a.validAt}::timestamptz
+         and (valid_to is null or valid_to > ${a.validAt}::timestamptz)
+       order by asserted_at desc, edge_id
+       limit ${a.limit}`);
+    const counted = await this.call<{ n: string }>(sql`
+      select count(*)::text n from graph.edges_current
+       where asserted_at <= ${a.knownAt}::timestamptz
+         and (retracted_at is null or retracted_at > ${a.knownAt}::timestamptz)
+         and (superseded_at is null or superseded_at > ${a.knownAt}::timestamptz)
+         and valid_from <= ${a.validAt}::timestamptz
+         and (valid_to is null or valid_to > ${a.validAt}::timestamptz)`);
+    return { rows, total: Number(counted[0]?.n ?? rows.length) };
+  }
+
+  /*
+   * A COMPOSITE, PRECISION-PRESERVING CURSOR.
+   *
+   * `received_at` alone with a strict `<` skipped every other case sharing the
+   * instant, and a cursor rendered through a JavaScript Date lost the column's
+   * microseconds — so even the composite key could skip rows in the same
+   * millisecond. The key is (received_at, case_id), compared as a row value in
+   * the same order the page is sorted, and the timestamp travels as the text
+   * PostgreSQL itself renders, microseconds included.
+   */
+  async correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    const rows = await this.call<Record<string, unknown>>(sql`
+      select c.*,
+             to_char(c.received_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+               as cursor_received_at
+        from observation.correction_current c
+       where c.state = 'applied' and c.propagation_state <> 'complete'
+         and (${a.cursor === null}::boolean
+              or (c.received_at, c.case_id)
+                 < (${a.cursor?.receivedAt ?? null}::timestamptz, ${a.cursor?.caseId ?? null}::uuid))
+       order by c.received_at desc, c.case_id desc
+       limit ${a.limit}`);
+    const counted = await this.call<{ n: string }>(sql`
+      select count(*)::text n from observation.correction_current
+       where state = 'applied' and propagation_state <> 'complete'`);
+    return { rows, total: Number(counted[0]?.n ?? rows.length) };
+  }
 
   async rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
@@ -399,13 +477,15 @@ class GraphCapabilityImpl extends GraphCore
   async recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
-    statement: string; actor: string; eventId: string; correlationId: string;
+    statement: string; truncated: boolean; unexplored: unknown[];
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
       ${JSON.stringify(a.assumptions)}::jsonb, ${JSON.stringify(a.objectives)}::jsonb,
       ${JSON.stringify(a.decisions)}::jsonb, ${JSON.stringify(a.commitments)}::jsonb,
-      ${a.statement}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 }
 

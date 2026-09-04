@@ -21,7 +21,7 @@ import { GraphCapability } from './graph.capabilities.js';
 import { GraphOrchestrator } from './graph.orchestrator.js';
 import { EntitiesService } from './entities/entities.service.js';
 import { ResolutionService } from './entities/resolution.service.js';
-import { EdgesService, nowAsOf, type AsOf } from './edges/edges.service.js';
+import { EdgesService, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
@@ -145,8 +145,11 @@ export class GraphController {
         const live = knownAt === undefined
           ? resolutions.filter((r) => r['state'] === 'accepted')
           : await this.entities.mentionsKnownAt(cap, entityId, knownAt);
+        // THE CUTOFF TRAVELS. Selecting the mentions current at an instant and then
+        // fetching the LATEST version of each claim behind them is hindsight with
+        // extra steps — the service takes the cutoff, so the endpoint gives it one.
         const claims = await this.entities.claimsFor(
-          cap, live.map((r) => String(r['claim_object_id'])));
+          cap, live.map((r) => String(r['claim_object_id'])), knownAt);
         return {
           entity,
           identifiers: await this.entities.identifiers(cap, entityId),
@@ -392,21 +395,30 @@ export class GraphController {
     @Req() req: EyeRequest,
     @Param('tenantId') tenantId: string,
     @Param('domainId') domainId: string,
-    @Body() body: { payload?: { knownAt?: string; validAt?: string } },
+    @Body() body: { payload?: { knownAt?: string; validAt?: string; limit?: number } },
   ) {
     const { envelope, principal } = ctx(req);
     const at = asOfFrom(body.payload);
+    const limit = Math.max(1, Math.min(Number(body.payload?.limit ?? MAX_EDGES) || MAX_EDGES, MAX_EDGES));
     const out = await this.pipeline.consequentialRead(
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'EDG', null),
       GraphCapability.read,
-      async (cap) => ({
-        all: await this.edges.all(cap),
-        visible: await this.edges.asOf(cap, at),
-      }));
+      async (cap) => this.edges.list(cap, at, limit));
+    const { edges, total, complete } = out.result;
+    /*
+     * ACCURATE COUNTS, DISCLOSED TRUNCATION.
+     *
+     * `total` is the number of edges eligible at this instant — not the size of
+     * some other read. When the page is smaller than that, the answer says so in
+     * words as well as in `complete`, so a screen has nothing to infer.
+     */
     return {
-      edges: out.result.visible, total: out.result.all.length,
-      asOf: at, receipt: receipt(out),
+      edges, total, returned: edges.length, limit, complete, asOf: at,
+      note: complete ? null
+        : `${edges.length} of ${total} eligible edge(s) are shown; the listing is bounded at `
+          + `${limit} and the remaining ${total - edges.length} were not returned`,
+      receipt: receipt(out),
     };
   }
 
@@ -464,9 +476,35 @@ export class GraphController {
         return {
           edges: n.edges,
           entities: n.entityIds.map((id) => byId.get(id) ?? null).filter((x) => x !== null),
+          complete: n.complete, searchedDepth: n.searchedDepth,
+          depthClamped: n.depthClamped, beyondDepth: n.beyondDepth,
         };
       });
-    return { neighbourhood: out.result, asOf: at, receipt: receipt(out) };
+    const n = out.result;
+    /*
+     * SCOPED TO THE DEPTH IT SEARCHED. A neighbourhood is "everything within N
+     * hops" by definition, so depth is its scope rather than a defect — but the
+     * scope is stated, a clamped request is named, and entities lying beyond it
+     * are reported rather than left to be assumed absent. Scan incompleteness is
+     * a defect in the answer and is reported as one.
+     */
+    const notes: string[] = [];
+    if (!n.complete) {
+      notes.push('this neighbourhood was built from an incomplete scan; edges beyond the bound '
+        + 'were not examined and the answer may be missing eligible relationships');
+    }
+    if (n.depthClamped) {
+      notes.push(`the requested depth was reduced to the bound of ${n.searchedDepth} hop(s)`);
+    }
+    return {
+      neighbourhood: n, asOf: at, complete: n.complete,
+      searchedDepth: n.searchedDepth, beyondDepth: n.beyondDepth,
+      scope: `everything within ${n.searchedDepth} hop(s) of the entity`
+        + (n.beyondDepth ? '; further entities lie beyond that depth and are not included'
+                         : '; nothing visible lies beyond that depth'),
+      note: notes.length === 0 ? null : notes.join('. '),
+      receipt: receipt(out),
+    };
   }
 
   @Post('/path')
@@ -489,12 +527,39 @@ export class GraphController {
       this.route(tenantId, domainId, 'graph.read', 'EDG', null),
       GraphCapability.read,
       async (cap) => this.edges.path(cap, from, to, at));
+    const { path, complete, searchedDepth, bound } = out.result;
+    /*
+     * A BOUNDED SEARCH MAY NOT CLAIM DEFINITIVE ABSENCE — AND AN INCOMPLETE
+     * ANSWER ALWAYS SAYS SO, FOUND OR NOT.
+     *
+     * "No path exists" is a statement about the world. A search that did not
+     * examine every eligible edge, or that stopped at its depth with entities
+     * still ahead, has not earned it and says the weaker, true thing instead. A
+     * FOUND path from an incomplete scan previously carried `note: null`, which a
+     * screen read as "nothing to say"; the note is now present whenever the
+     * answer is incomplete, independent of whether a path was found.
+     */
+    const notes: string[] = [];
+    if (path !== null) {
+      if (!complete) {
+        notes.push('a path was found, but the search did not examine every eligible edge, so '
+          + 'a shorter path may exist among the edges it did not see');
+      }
+    } else if (complete) {
+      notes.push('no path exists in what this principal may see at this instant');
+    } else {
+      if (bound.depth) {
+        notes.push(`no path of at most ${searchedDepth} hop(s) was found; entities beyond that `
+          + 'depth were not searched');
+      }
+      if (bound.scan) {
+        notes.push('no path was FOUND, and the search did not examine every eligible edge');
+      }
+      notes.push('this is not a statement that no path exists');
+    }
     return {
-      path: out.result, asOf: at,
-      // Absence is not proof: the API says what a null answer means (C4).
-      note: out.result === null
-        ? 'no path exists in what this principal may see at this instant'
-        : null,
+      path, asOf: at, complete, searchedDepth, bound,
+      note: notes.length === 0 ? null : notes.join(' — '),
       receipt: receipt(out),
     };
   }
@@ -627,10 +692,25 @@ export class GraphController {
         'triggerObjectId is required'), 400);
     }
     const kind = p.triggerKind ?? 'claim_correction';
-    if (!['claim_correction', 'claim_withdrawal', 'edge_retraction', 'entity_split', 'manual']
-      .includes(kind)) {
+    if (!['claim_correction', 'claim_withdrawal', 'edge_retraction', 'entity_split',
+          'evidence_correction', 'manual'].includes(kind)) {
       throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id,
         'triggerKind is not one this system propagates'), 400);
+    }
+    /*
+     * A WALK LINKED TO A CASE MUST BE ABLE TO COVER WHAT THE CASE CORRECTED.
+     *
+     * A correction supersedes evidence objects; only an `evidence_correction` walk
+     * of one of them reaches the claims derived from it. A `manual` walk linked
+     * to a case reaches nothing the case changed and previously counted as
+     * coverage anyway. The port (`graph.open_invalidation`) is the boundary and
+     * also checks the object is one the case recorded; this is the early,
+     * plainly-worded refusal.
+     */
+    if (typeof p.correctionCaseId === 'string' && kind !== 'evidence_correction') {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id,
+        'a walk linked to a correction case must be an evidence_correction of an object the '
+        + `case superseded; a ${kind} walk reaches none of them and cannot count as propagation`), 400);
     }
     const out = await this.pipeline.write(
       envelope, principal,
@@ -650,6 +730,43 @@ export class GraphController {
                                            objectives: r.objectives.length } } };
       });
     return { impact: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * Corrections nothing has propagated yet.
+   *
+   * Propagation is operator-initiated: the outbox publishes `CorrectionApplied`
+   * and no consumer subscribes to it, so a correction can sit with its downstream
+   * impact unassessed. This route makes that queue visible instead of leaving it
+   * to be noticed.
+   */
+  @Post('/impact/awaiting')
+  async awaitingPropagation(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { limit?: number; cursor?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const cursor = typeof body.payload?.cursor === 'string' ? body.payload.cursor : null;
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      this.route(tenantId, domainId, 'graph.read', 'COR', null),
+      GraphCapability.read,
+      async (cap) => this.impact.awaitingPropagation(cap, body.payload?.limit ?? 100, cursor));
+    return {
+      awaiting: out.result.cases,
+      total: out.result.total,
+      // A page is not the answer. When more outstanding work exists than fits,
+      // the continuation needed to reach it is part of the response — opaque,
+      // and carrying both key columns so a boundary inside tied timestamps loses
+      // nothing.
+      nextCursor: out.result.nextCursor,
+      note: 'these corrections are applied and their downstream propagation is not complete — '
+        + 'either nothing has walked them, or a walk was truncated or left corrected objects '
+        + 'uncovered. Propagation is operator-initiated; no consumer performs it automatically.',
+      receipt: receipt(out),
+    };
   }
 
   @Post('/impact/list')

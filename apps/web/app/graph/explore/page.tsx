@@ -35,7 +35,20 @@ export default function ExplorePage() {
   const [edges, setEdges] = useState<EdgeRow[] | null>(null);
   const [asOf, setAsOf] = useState<AsOf | null>(null);
   const [neighbours, setNeighbours] = useState<EntityRow[]>([]);
-  const [path, setPath] = useState<{ edges: EdgeRow[] | null; note: string | null } | null>(null);
+  const [path, setPath] = useState<
+    { edges: EdgeRow[] | null; note: string | null; complete: boolean } | null>(null);
+  const [scopeNote, setScopeNote] = useState<string | null>(null);
+  /*
+   * INCOMPLETENESS IS RENDERED FROM `complete`, NEVER FROM WHETHER A NOTE CAME.
+   *
+   * A found path from an incomplete scan once arrived with `note: null`, and this
+   * screen — keyed on the note — showed nothing. The flag decides; the note is
+   * the wording, with a fallback so an incomplete answer is never silent.
+   */
+  const [incomplete, setIncomplete] = useState<string | null>(null);
+  const flag = (complete: boolean, note: string | null): void => {
+    setIncomplete(complete ? null : (note ?? 'the search did not examine everything it could have'));
+  };
   const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
@@ -103,12 +116,22 @@ export default function ExplorePage() {
               throw new Error(r.error?.message ?? 'the edges could not be read');
             }
             setEdges(r.data.edges); setAsOf(r.data.asOf); setNeighbours([]);
+            setScopeNote(null);
+            flag(r.data.complete, r.data.note);
           }}
         />
         {asOf === null ? null : (
           <p style={{ color: 'var(--eye-color-ink-muted)' }}>
             known at {fmtInstant(asOf.knownAt)} · valid at {fmtInstant(asOf.validAt)}
           </p>
+        )}
+        {scopeNote === null ? null : (
+          <p style={{ color: 'var(--eye-color-ink-muted)' }}>{scopeNote}</p>
+        )}
+        {incomplete === null ? null : (
+          <UnknownNote>
+            <strong>This answer is incomplete.</strong> {incomplete}
+          </UnknownNote>
         )}
       </section>
 
@@ -136,6 +159,8 @@ export default function ExplorePage() {
               setEdges(r.data.neighbourhood.edges);
               setNeighbours(r.data.neighbourhood.entities);
               setAsOf(r.data.asOf);
+              setScopeNote(r.data.scope);
+              flag(r.data.complete, r.data.note);
             }}
           />
         </div>
@@ -170,8 +195,10 @@ export default function ExplorePage() {
               if (!r.ok || r.data === undefined) {
                 throw new Error(r.error?.message ?? 'the path could not be read');
               }
-              setPath({ edges: r.data.path, note: r.data.note });
+              setPath({ edges: r.data.path, note: r.data.note, complete: r.data.complete });
               setAsOf(r.data.asOf);
+              setScopeNote(`searched to ${r.data.searchedDepth} hop(s)`);
+              flag(r.data.complete, r.data.note);
             }}
           />
         </div>
@@ -180,6 +207,8 @@ export default function ExplorePage() {
         ) : path.edges.length === 0 ? (
           <Empty>Those are the same entity.</Empty>
         ) : (
+          <>
+          {path.complete ? null : <UnknownNote>{path.note}</UnknownNote>}
           <p>
             {path.edges.map((e, i) => (
               <span key={e.edge_id}>
@@ -189,6 +218,7 @@ export default function ExplorePage() {
               </span>
             ))}
           </p>
+          </>
         )}
       </section>
 

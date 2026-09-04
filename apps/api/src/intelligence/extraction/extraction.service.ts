@@ -31,6 +31,30 @@ const KIND_TO_TYPE: Readonly<Record<ExtractedClaim['claim_kind'], string>> = Obj
   entity: 'ENT', event: 'EVT', claim: 'CLM', relationship: 'REL', assessment: 'ASM',
 });
 
+/**
+ * THE CONTROL METADATA A DERIVED OBJECT MUST INHERIT (ES-29-002).
+ *
+ * A claim is a derived object, and a derived object inherits the most restrictive
+ * applicable obligations unless an authorized transformation records a valid
+ * change. Extraction is not such a transformation: it changes what is SAID about
+ * the bytes, not who may see them, where they may live, how long they are kept,
+ * or whether the world they describe is real.
+ *
+ * These five fields therefore travel from the evidence object onto every claim
+ * derived from it. They were previously hard-coded — `synthetic_state: false`,
+ * `classification: 'internal'`, and nulls for the rest — which meant a statement
+ * about a synthetic company arrived looking like a statement about a real one,
+ * and a claim from a restricted source lost the label that governed it.
+ */
+export interface InheritedControls {
+  syntheticState: boolean;
+  classification: string;
+  rightsProfile: string | null;
+  residencyProfile: string | null;
+  retentionProfile: string | null;
+  accessPolicyRef: string | null;
+}
+
 export interface EvidenceUnit {
   evdObjectId: string;
   obsObjectId: string | null;
@@ -40,6 +64,30 @@ export interface EvidenceUnit {
   sourceKey: string;
   eventTime: string | null;
   itemKey: string;
+  /** Taken from the evidence object itself, never invented. */
+  inherited: InheritedControls;
+}
+
+/**
+ * Read the control block off a canonical object.
+ *
+ * FAIL CLOSED. An evidence object that does not state its classification is
+ * treated as `restricted` and as synthetic-unknown-so-assume-synthetic, because
+ * the alternative — defaulting to `internal` and `false` — is exactly the
+ * silent widening this function exists to prevent.
+ */
+export function inheritedControlsOf(evidence: Record<string, unknown>): InheritedControls {
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 ? v : null;
+  return {
+    syntheticState: evidence['synthetic_state'] === true
+      || evidence['synthetic_state'] === undefined,
+    classification: str(evidence['classification']) ?? 'restricted',
+    rightsProfile: str(evidence['rights_profile']),
+    residencyProfile: str(evidence['residency_profile']),
+    retentionProfile: str(evidence['retention_profile']),
+    accessPolicyRef: str(evidence['access_policy_ref']),
+  };
 }
 
 export interface RetrievalReceipt {
@@ -70,6 +118,14 @@ export interface ExtractionOutcome {
    * bytes and writing the claims were authorised by different decisions.
    */
   evidenceRetrievals: RetrievalReceipt[];
+  /**
+   * Candidates the method was not approved to produce.
+   *
+   * Reported rather than dropped: a method quietly emitting a type nobody
+   * approved is a fact about the method, and a run that hid it would be hiding
+   * the reason its output looks thinner than the model's.
+   */
+  undeclaredRefusals: Array<{ evidenceObjectId: string; kind: string; objectType: string }>;
 }
 
 @Injectable()
@@ -97,6 +153,8 @@ export class ExtractionService {
   ): Promise<{
     admitted: Array<{ objectId: string; type: string; confidence: number; review: string }>;
     abstained: boolean; idempotent: boolean; calls: number; queued: number;
+    /** Candidates the method was not approved to produce, refused and reported. */
+    undeclared: Array<{ kind: string; objectType: string }>;
   }> {
     const tenantId = ctx.tenantId as string;
     const domainId = ctx.domainId as string;
@@ -116,7 +174,7 @@ export class ExtractionService {
     });
     if (claimed.decision === 'idempotent') {
       return { admitted: [], abstained: claimed.prior_outcome === 'abstained',
-               idempotent: true, calls: 0, queued: 0 };
+               idempotent: true, calls: 0, queued: 0, undeclared: [] };
     }
 
     const excerpt = a.unit.bytes.toString('utf8').slice(0, 8_000);
@@ -163,15 +221,18 @@ export class ExtractionService {
           runId: a.runId, methodId: a.methodId, reason: 'abstained', confidence: null,
           actor: a.agentPrincipalId, eventId: newId(), correlationId: a.correlationId,
         });
-        return { admitted: [], abstained: true, idempotent: false, calls: 1, queued: 1 };
+        return { admitted: [], abstained: true, idempotent: false, calls: 1, queued: 1,
+                 undeclared: [] };
       }
-      return { admitted: [], abstained: false, idempotent: false, calls: 1, queued: 0 };
+      return { admitted: [], abstained: false, idempotent: false, calls: 1, queued: 0,
+               undeclared: [] };
     }
 
     const floor = Number(a.pin.confidence_floor);
     const reviewBelow = Number(a.pin.review_below);
     const admitted: Array<{ objectId: string; type: string; confidence: number; review: string }> = [];
     const admittedIds: string[] = [];
+    const undeclared: Array<{ kind: string; objectType: string }> = [];
     let queued = 0;
 
     for (let i = 0; i < result.claims.length; i += 1) {
@@ -183,6 +244,18 @@ export class ExtractionService {
       if (c.confidence < floor) { continue; }
 
       const objectType = KIND_TO_TYPE[c.claim_kind];
+      /*
+       * A METHOD MAY ONLY PRODUCE WHAT IT DECLARED (C-012).
+       *
+       * `target_types` is part of the registered, approved method — the thing a
+       * second person signed off. A candidate outside it is refused here rather
+       * than admitted: an approval that does not bound the output is not an
+       * approval of anything.
+       */
+      if (!a.pin.target_types.includes(objectType)) {
+        undeclared.push({ kind: c.claim_kind, objectType });
+        continue;
+      }
       const needsReview = c.confidence < reviewBelow;
       const now = new Date().toISOString();
       const payload = {
@@ -245,7 +318,9 @@ export class ExtractionService {
         // An extracted claim is EXTRACTED, never observed. The truth state says so,
         // using the constitutional value rather than a word of our own.
         truth_state: 'extracted',
-        synthetic_state: false,
+        // INHERITED, NOT ASSUMED (ES-29-002). A claim about a synthetic world is
+        // synthetic; replay mode says nothing about that either way.
+        synthetic_state: a.unit.inherited.syntheticState,
         // The header's confidence is a STRUCTURED claim about how the number was
         // arrived at, not a bare number: method, scale and value travel together.
         confidence: { method: a.pin.method_key, scale: 'unit_interval',
@@ -257,12 +332,12 @@ export class ExtractionService {
         contradiction_refs: [],
         corroboration_refs: [],
         human_refs: [],
-        classification: 'internal',
+        classification: a.unit.inherited.classification,
         purpose_scope: a.purposeId,
-        rights_profile: null,
-        residency_profile: null,
-        retention_profile: null,
-        access_policy_ref: null,
+        rights_profile: a.unit.inherited.rightsProfile,
+        residency_profile: a.unit.inherited.residencyProfile,
+        retention_profile: a.unit.inherited.retentionProfile,
+        access_policy_ref: a.unit.inherited.accessPolicyRef,
         quality_profile: null,
         quality_state: null,
         freshness_state: null,
@@ -313,7 +388,8 @@ export class ExtractionService {
       claimIds: admittedIds, outcome: 'admitted', correlationId: a.correlationId,
     });
 
-    return { admitted, abstained: false, idempotent: false, calls: 1, queued };
+    return { admitted, abstained: false, idempotent: false, calls: 1, queued,
+             undeclared };
   }
 
   /** The canonical digest of a result set, used for the attempt record. */

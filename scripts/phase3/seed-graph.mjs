@@ -460,12 +460,26 @@ console.log('\n9. the publisher corrects the corridor series — and the graph s
 const corridorSource = (sourcesList.body.sources ?? [])
   .find((x) => x.source_key === 'imf-portwatch-chokepoints');
 let caseId = null;
-if (corridorSource !== undefined) {
-  const corridorEvidence = await call(`${O}/evidence/list`, as(collectionManager, {
-    action: 'observation.read.evidence', objectType: 'EVD', sideEffect: 'none', consequence: 'C1',
-    purposeId: 'observation',
-  }), { sourceId: corridorSource.source_id, limit: 20 }, collectionManager.token);
-  const affected = (corridorEvidence.body.evidence ?? []).slice(0, 3).map((e) => e.object_id);
+let affectedEvidence = [];
+if (corridorSource !== undefined && corridorEntity !== undefined) {
+  /*
+   * CORRECT THE EVIDENCE THE CORRIDOR CLAIMS ACTUALLY REST ON.
+   *
+   * A publisher restates rows; the rows that matter to this decision are the ones
+   * the corridor entity's own mentions were derived from. Taking an arbitrary
+   * slice of the evidence list would correct bytes nothing was built on, and a
+   * propagation that reaches nothing would be demonstrating nothing.
+   */
+  const ent = await call(`${G}/entities/${corridorEntity.entity_id}/get`, as(resolutionManager, {
+    action: 'graph.read', objectType: 'ENT', objectId: corridorEntity.entity_id,
+    sideEffect: 'none', consequence: 'C1',
+  }), {}, resolutionManager.token);
+  const fromClaims = [...new Set((ent.body.claims ?? [])
+    .map((c) => c.payload?.lineage?.evidence_object_id)
+    .filter((x) => typeof x === 'string'))];
+  const affected = fromClaims.slice(0, 3);
+  affectedEvidence = affected;
+  note(`${affected.length} evidence object(s) behind the corridor entity's own mentions`);
   const opened = await call(`${O}/corrections/submit`, as(operator, {
     action: 'observation.correction.receive', objectType: 'COR', purposeId: 'observation',
   }), {
@@ -490,38 +504,62 @@ if (corridorSource !== undefined) {
   } else bad(`correction refused (${opened.status}) ${JSON.stringify(opened.body).slice(0, 200)}`);
 }
 
-// The claim the assumption rests on, through the entity it resolved to.
-let triggerClaim = null;
-if (corridorEntity !== undefined) {
-  const ent = await call(`${G}/entities/${corridorEntity.entity_id}/get`, as(resolutionManager, {
-    action: 'graph.read', objectType: 'ENT', objectId: corridorEntity.entity_id,
-    sideEffect: 'none', consequence: 'C1',
-  }), {}, resolutionManager.token);
-  triggerClaim = (ent.body.mentions ?? [])[0]?.claim_object_id ?? null;
-}
-
-if (triggerClaim !== null) {
+/*
+ * THE TRIGGER IS THE EVIDENCE THE PUBLISHER CORRECTED.
+ *
+ * A Phase 1 correction supersedes EVIDENCE objects — that is what
+ * `observation.correction.apply` writes. The first version of this act had to
+ * hand the walk a CLAIM id it looked up by hand, which quietly skipped the step
+ * that matters: getting from the corrected bytes to everything derived from
+ * them. The walk now closes that itself through `intelligence.claim_lineage`.
+ */
+/*
+ * EVERY ROOT THE CASE SUPERSEDED, NOT THE FIRST ONE.
+ *
+ * The previous act walked `affectedEvidence[0]` and reported the correction as
+ * propagated. A case that superseded three objects had one of them walked and
+ * the other two never looked at — and the case said "assessed". The walk is now
+ * per root, and the CASE completes only when the database sees every recorded
+ * root covered.
+ */
+let prop = null;
+for (const triggerEvidence of affectedEvidence) {
   const preview = await call(`${G}/impact/preview`, as(strategyOwner, {
-    action: 'graph.read', objectType: 'INV', objectId: triggerClaim,
+    action: 'graph.read', objectType: 'INV', objectId: triggerEvidence,
     sideEffect: 'none', consequence: 'C1',
-  }), { triggerObjectId: triggerClaim, triggerKind: 'claim_correction' }, strategyOwner.token);
+  }), { triggerObjectId: triggerEvidence, triggerKind: 'evidence_correction' },
+  strategyOwner.token);
   if (preview.status < 400) {
     const p = preview.body.impact;
-    ok(`preview: ${p.assumptions.length} assumption(s), ${p.objectives.length} objective(s), ${p.commitments.length} commitment(s)`);
-  }
-  const prop = await call(`${G}/impact/propagate`, as(strategyOwner, {
-    action: 'graph.impact.propagate', objectType: 'INV', objectId: triggerClaim,
+    note(`root ${triggerEvidence.slice(0, 8)}…: ${p.reachedClaims.length} derived claim(s), `
+      + `${p.assumptions.length} assumption(s)`);
+    if (p.reachedClaims.length === 0) {
+      bad(`root ${triggerEvidence.slice(0, 8)}… reached no derived claim — the lineage closure did not hold`);
+    }
+  } else bad(`preview refused (${preview.status})`);
+  prop = await call(`${G}/impact/propagate`, as(strategyOwner, {
+    action: 'graph.impact.propagate', objectType: 'INV', objectId: triggerEvidence,
   }), {
-    triggerObjectId: triggerClaim, triggerKind: 'claim_correction', correctionCaseId: caseId,
+    triggerObjectId: triggerEvidence, triggerKind: 'evidence_correction',
+    correctionCaseId: caseId,
   }, strategyOwner.token);
-  if (prop.status < 400) {
+  if (prop.status >= 400) bad(`propagation refused (${prop.status})`);
+}
+ok(`walked all ${affectedEvidence.length} corrected root(s)`);
+
+if (prop !== null) {
+  {
     const p = prop.body.impact;
     ok(`propagated — ${p.statement}`);
     for (const a of p.assumptions) console.log(`      assumption unverified: ${a.title} (${a.reached_via})`);
     for (const o of p.objectives) console.log(`      objective reported:    ${o.title}`);
     for (const c of p.commitments) console.log(`      commitment reported:   ${c.title}`);
     if (p.assumptions.length === 0) bad('nothing was reported — the dependency graph did not connect');
-  } else bad(`propagation refused (${prop.status}) ${JSON.stringify(prop.body).slice(0, 250)}`);
+    if (p.truncated) {
+      note(`the walk was TRUNCATED: ${p.unexplored.length} path(s) unexplored, and the `
+        + "correction keeps its unresolved sentence because a partial walk has not earned it");
+    } else ok('the walk was complete — no dependency path was left unexplored');
+  }
 }
 
 /* ── 10. the sentence Phase 1 could not write ────────────────────────────── */
@@ -538,6 +576,42 @@ if (caseId !== null) {
   } else if (sentence !== null) {
     bad(`the case still says "${sentence}"`);
   } else note('the correction case could not be read back');
+}
+
+/* ── 10a. what nothing has propagated ────────────────────────────────────── */
+console.log('\n10a. corrections nothing has propagated yet');
+const awaiting = await call(`${G}/impact/awaiting`, as(strategyOwner, {
+  action: 'graph.read', objectType: 'COR', sideEffect: 'none', consequence: 'C1',
+}), {}, strategyOwner.token);
+if (awaiting.status < 400) {
+  const rows = awaiting.body.awaiting ?? [];
+  ok(`${rows.length} of ${awaiting.body.total} outstanding correction(s) on this page`
+    + (awaiting.body.nextCursor === null ? '' : ', a continuation cursor was issued'));
+  for (const r of rows.slice(0, 3)) {
+    note(`${String(r.case_id).slice(0, 8)}… ${r.propagation_state}: ${r.propagation_status}`);
+  }
+  if (rows.some((r) => String(r.case_id) === String(caseId))) {
+    bad('the fully walked correction is still listed as outstanding');
+  } else ok('the fully walked correction is no longer outstanding');
+  note(awaiting.body.note);
+} else bad(`the awaiting queue could not be read (${awaiting.status})`);
+
+/* ── 10b. the labels a derived claim must keep ───────────────────────────── */
+console.log('\n10b. synthetic state and source restrictions survive extraction');
+const supplyClaims = await call(`${I}/claims/list`, as(extractionManager, {
+  action: 'intelligence.read', objectType: 'CLM', sideEffect: 'none', consequence: 'C1',
+  purposeId: 'intelligence',
+}), { limit: 300 }, extractionManager.token);
+const nordwerkClaim = (supplyClaims.body.claims ?? [])
+  .find((c) => /NORDWERK|SYN-/i.test(String(c.payload?.subject ?? '')));
+if (nordwerkClaim === undefined) note('no synthetic-source claim found to check');
+else {
+  const syn = nordwerkClaim.synthetic_state;
+  if (syn === true) {
+    ok(`a claim about the synthetic manufacturer is marked synthetic (${nordwerkClaim.payload.subject})`);
+  } else {
+    bad(`a claim about the synthetic manufacturer is marked synthetic_state=${syn}`);
+  }
 }
 
 /* ── 11. projections ─────────────────────────────────────────────────────── */

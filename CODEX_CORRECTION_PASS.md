@@ -1,0 +1,477 @@
+# THE EYE — Bounded correction pass on the Codex review of `6914af03`
+
+> **Baseline reviewed:** `6914af0329a177a4603825d8ca90496e764ebc44` (Phase 3, merged).
+> **Scope:** the seven finding groups, in the product paths. Nothing else was reopened —
+> Phase 0's closure, C18's freeze at `0021` and C19's anchoring are untouched, and no new
+> testing framework or governance programme was created.
+>
+> **Candidate:** the head of `codex-correction-pass` — the exact SHA is on the pull request, so
+> this record cannot go stale against its own amendments.
+> **This PR is unmerged, for review.**
+>
+> **Three passes are recorded here.** §2–§5 are the first pass against the seven original finding
+> groups. §6–§9 are the second pass, against five concerns the review then raised about that first
+> pass at `762de2be`. **§10–§13 are the third pass**, against the F3/F4 residuals the review raised
+> about the second pass at `e5f188ba`. All are within the original F3/F4 scope plus the F1/F2/F5–F7
+> work that preceded them; nothing else was reopened.
+
+---
+
+## 1. How evidence is classified here
+
+The original review was explicit about its limits, and this pass preserves the same
+distinctions rather than flattening them into "verified".
+
+| Class | What it means | Where it lives |
+|---|---|---|
+| **Source** | Read the implementation at the baseline | inline, per finding |
+| **Service** | Real TypeScript implementations driven through in-memory capability doubles, and — where a network call is under test — a controlled local HTTP response | `apps/api/test/unit/codex-corrections.test.ts` (**40 tests** across the three passes) |
+| **Database / API** | Real PostgreSQL, real governed ports, real capability contexts, and — where the defect is in an endpoint's answer — the real controller | `apps/api/test/int/phase3-corrections.test.ts` (**20 tests** across the three passes) |
+| **Journey** | The three-act demonstration driving the real HTTP API end to end | `scripts/phase3/seed-graph.mjs` |
+| **Browser** | **Not performed in this pass.** No finding below is supported by UI evidence. |
+
+Every service and database probe below **failed at the baseline first**. They are kept as the
+regression: revert a fix and the corresponding probe goes red.
+
+## 2. Disposition of all seven groups
+
+### F1 — Source restrictions and synthetic provenance are not preserved through extraction
+
+**CONFIRMED** (source, service). The extraction header hard-coded `synthetic_state: false` and
+`classification: 'internal'` and nulled rights, residency, retention and access policy; the human
+correction path additionally nulled four of the same fields. Codex's own narrowing is preserved:
+the probe stopped at canonical validation, so **no database disclosure was demonstrated** at the
+baseline.
+
+**Corrected.** `inheritedControlsOf()` reads the control block off the evidence object and the
+derived claim carries all six fields (ES-29-002). It **fails closed**: evidence that does not state
+its classification is treated as `restricted`, and unstated synthetic state is treated as synthetic
+— the opposite of the previous defaults. `review.service.ts` now carries rights, residency,
+retention and access policy from the prior version, because a reviewer's correction is not a
+declassification.
+
+*Verified:* service ×3 · journey — the corrected run shows the claim about the synthetic
+manufacturer admitted with `synthetic_state = true`, which at the baseline was `false`.
+
+### F2 — Graph construction can bypass identity resolution and review meaning
+
+**CONFIRMED, both halves** (source, service). The endpoint map collapsed accepted resolutions onto
+normalised display names, last write winning, so row order decided which entity received a
+relationship; and no review-state check stood between a queued claim and an edge assertion.
+
+**Corrected.** The map now records *every* entity a name resolves to: one is a lookup, more than
+one is an ambiguity **refused with a named reason** rather than settled by iteration order. The
+review state is checked before assertion **and independently in the port** (`graph.assert_edge`,
+migration 0025) — two boundaries, as everywhere else in this system — with the admitting review
+state recorded on the edge event.
+
+*Verified:* service ×5 (order-independence, ambiguity refusal, happy path, queued refusal, approved
+admission) · database ×2 (the port refuses a queued claim and writes nothing; an approved claim is
+admitted and the event records `review_state`).
+
+### F3 — Known-at retrieval is not consistently historical
+
+**CONFIRMED, both halves** (source, service). A historical entity view selected the mentions
+current at the cutoff and then fetched the **latest** version of each claim behind them; and the
+edge path took the newest 2,000 rows *before* applying the historical filter, so a single eligible
+old edge behind 2,000 later ones vanished from a historical view.
+
+**Corrected.** `claimsFor(..., knownAt)` returns the version current *then*. `asOf` now **filters
+before bounding**, and `asOfBounded` reports `complete` so a caller is told when the scan bound was
+reached rather than handed a silently partial graph.
+
+*Verified:* service ×3 · database ×2.
+
+### F4 — Correction propagation is incomplete
+
+Four sub-items, and **they did not all end in the same place.**
+
+| # | Finding | Disposition |
+|---|---|---|
+| **4a** | No consumer connects `CorrectionApplied` / `ClaimReviewed` to graph impact | **CONFIRMED — NARROWED, NOT CLOSED.** See below. |
+| **4b** | The walk never established the evidence-to-derived-claim closure | **CONFIRMED — corrected.** |
+| **4c** | An 8-hop bound could return "assessed" with no truncation field | **CONFIRMED — corrected.** |
+| **4d** | "Already built" keyed on claim identity, not the corrected version | **CONFIRMED — corrected.** |
+
+**4a is not fixed, deliberately.** The outbox publishes to a BullMQ queue and **nothing
+subscribes** — confirmed by source. Building a governed consumer means a new worker with its own
+authority, principal, budgets, failure handling and escalation, which is a subsystem, not a bounded
+correction. What this pass does instead is **stop the gap being silent**: `/impact/awaiting` lists
+applied corrections whose downstream impact nobody has assessed, and says so in the response. The
+corrected journey reports two such corrections outstanding. *Propagation remains
+operator-initiated. That is a real remaining limitation, recorded in §4.*
+
+**4b corrected.** A Phase 1 correction supersedes **evidence**, and the walk understood only claim,
+entity, edge and split triggers — so the object a correction actually changes had no way in.
+Migration 0025 adds the `evidence_correction` trigger and the walk closes evidence → claims through
+`intelligence.claim_lineage`, then proceeds as before. *This is why the demonstration previously had
+to be handed a claim id by hand.*
+
+**4c corrected.** `truncated` and `unexplored` are computed, persisted and stated in the
+assessment's own words. Critically, **a truncated walk does not retire Phase 1's sentence**:
+replacing *"downstream consumers not yet present"* with an "assessed" statement is a claim of
+completeness a partial walk has not earned, so the case keeps its unresolved sentence and gains the
+assessment id — a reader sees both that something was assessed and that it did not finish.
+
+**4d corrected.** Idempotency is keyed on `claim@version`, so a corrected v2 rebuilds rather than
+being silently covered by the v1 edge.
+
+*Verified:* service ×5 · database ×3 · journey — the corrected run reaches **3 claims** from the
+corrected evidence and marks the assumption unverified while reporting the objective and commitment.
+
+### F5 — Stored model pins do not establish which model executed
+
+**CONFIRMED** (source; service, against a controlled local HTTP response). The gateway recorded the
+method's configured pin and accepted a response naming a different model.
+
+**Corrected.** The runtime's own `model` field is read back, compared to the pin, and **a mismatch
+fails the call** rather than being attributed to the pin. Every call record now carries
+`pinned_model`, `observed_model` and a `model_identity` verdict with four honest values:
+`observed_matches_pin`, `observed_differs_from_pin`, `not_reported_by_runtime`, and
+`not_observed_replay` — the last because a replayed response observes no runtime at all, and saying
+so is the difference between recorded configuration and verified execution. Both `call()` and
+`rank()` are covered.
+
+*Verified:* service ×2.
+
+### F6 — Evidence-span and method-output admission have gaps
+
+**6a CONFIRMED — corrected.** The parser accepted `byte_end: 1,000,000` against three bytes of
+evidence. It now bounds every span by the evidence the request actually carried; a claim whose
+offsets cannot be read back is refused, not admitted with unusable lineage.
+
+**6b CONFIRMED — corrected, and the narrowing matters.** A method declaring only `ENT` could
+construct a `REL` candidate. Codex did not demonstrate persistence, and this pass checked whether a
+later boundary would have caught it: **it would not.**
+`observation.canonical_write_actions` pins `intelligence.claim.admit` to
+`ENT, EVT, CLM, REL, ASM` — the *action's* range, not the *method's* declared `target_types`. The
+database would have accepted the REL. The gap was therefore real and unguarded, and is now closed at
+the service with the refusal **reported** as `undeclaredRefusals` rather than dropped, because a
+method quietly emitting a type nobody approved is a fact about the method.
+
+*Verified:* service ×3.
+
+### F7 — Live-connector readiness overstated, and a demonstrated IPv6 helper defect
+
+**Readiness: CONFIRMED** (source). `rest.connector.ts` issues exactly one request per configured
+endpoint and stops. There is **no pagination loop** and **nothing reads `credential_ref`**.
+
+The defect was the *claim*, so the claim is what was corrected.
+`PHASE1_PRODUCT_HANDOFF.md` §6 said *"Activating any live source is a deliberate contract change
+plus a rights decision, **not a code change**"* and marked four connectors bare "Yes". Both are now
+corrected in place, with the previous wording quoted so the record shows what changed: those
+connectors are **single-poll only**, a backfill needs connector code, and a keyed source needs the
+secret binding built first.
+
+**IPv6: CONFIRMED — corrected.** `isForbiddenAddress` compared string prefixes, so `::1` was caught
+and `0:0:0:0:0:0:0:1` was not, and `startsWith('fe80')` covered a **tenth** of the `fe80::/10`
+link-local range — `fe90::1`, `fea0::1`, `feb0::1` were all permitted. The check now expands to the
+eight 16-bit words and tests prefixes **by value**, covering loopback in every notation, the whole
+of `fe80::/10`, `fec0::/10`, `fc00::/7`, `ff00::/8`, NAT64, discard, documentation ranges and
+IPv4-mapped addresses in both dotted and hex form. Unparseable input fails closed.
+
+As Codex stated, this demonstrates a **guard defect, not a complete SSRF exploit** — and that
+distinction is preserved: the guard is one control among resolve-then-connect pinning, the host
+allowlist and the scheme allowlist.
+
+*Verified:* service ×5.
+
+## 3. Verification results
+
+| Suite | Result |
+|---|---|
+| Service-level probes (new) | **26 / 26** — all 26 failed at the baseline |
+| Database / API probes (new) | **9 / 9** |
+| Integration, everything | **545 / 545** (22 files) |
+| C18-era manifest (`test:int`) | **297 / 297** — the count C18's frozen contract pins, unchanged |
+| Phase 0 acceptance | **58 / 58** |
+| Unit (api) | **2060 / 2060** |
+| Post-C18 upgrade check (`0022`→`0025`) | **PASS** — 1020 pre-existing rows unchanged; upgraded and virgin schema digests identical (`0dbb0f7b8bdb64e4…`); later-phase suites on upgraded data **248 / 248** |
+| Typecheck · module boundaries | clean · no violations |
+| Corridor demonstration, all three acts | **0 problems** |
+
+## 4. Remaining limitations
+
+Stated because they are real, not because they are comfortable.
+
+* **Propagation is still operator-initiated (F4a).** No consumer subscribes to
+  `CorrectionApplied`. The obligation is now *visible* — `/impact/awaiting` lists corrections
+  nobody has walked — but nothing performs the walk automatically. Building that consumer is a
+  subsystem and belongs in its own change.
+* **Both traversals are still bounded.** `MAX_HOPS` is 8 and the historical edge scan is 50,000.
+  Neither is unbounded; the difference from the baseline is that reaching a bound is now **reported**
+  rather than indistinguishable from completeness.
+* **No browser verification in this pass.** Nothing above rests on UI evidence. The `/impact/awaiting`
+  route has no screen yet.
+* **`undeclaredRefusals` is service-enforced only.** The database pins types per *action*, not per
+  *method*, so this rule has one boundary rather than the two most rules here have.
+* **F6b's persistence was never demonstrated** — at the baseline or now. The construction gap was
+  real and is closed; whether a specific undeclared candidate would have survived the full
+  admission path was not established either way.
+
+## 5. What was deliberately not done
+
+The review's broader original-vision findings are not expanded into here. They belong in the
+roadmap and the capability preservation map, and this pass did not touch them. C18 and C19 were not
+reopened. Migration 0025 is additive and forward-only; no released migration was rewritten.
+
+
+---
+
+# Second pass — the five concerns raised against `762de2be`
+
+Reproduced before any code changed. Each concern is stated with **which boundary produced the
+evidence**, and with what a later boundary already prevented — where anything did.
+
+## 6. Reproduction
+
+Every probe below **failed at `762de2be`**. They are listed separately from the positive controls
+in §8, which passed both before and after and exist to show a fix did not overshoot.
+
+| Concern | Reproduced at | What happened |
+|---|---|---|
+| **1** — controller drops the cutoff | **API + database**, through `GraphController.getEntity` itself | A February query returned the **March** version. The service honoured the cutoff; the endpoint never passed it. |
+| **2** — historical queries hide eligible edges | **Service** | One eligible January edge behind 50,100 March edges → **empty** February neighbourhood, **null** path, and no completeness anywhere. |
+| **3** — outstanding work hidden | **Service** | A truncated assessment sets `propagation_assessment_id`, so the case **vanished** from the list; and an old outstanding case behind 120 newer rejected ones was **lost to the page limit**. |
+| **4** — one root stands for a whole case | **Database** | Two roots with disjoint assumptions; walking root A reported the **whole case** propagated while root B's assumption sat untouched. |
+| **5** — obsolete edge left active | **Database, boundary checked first** | `pg_trigger` and `pg_constraint` on `graph.edges_current`: **no trigger, no constraint** retires a prior edge. `assert_edge` only inserted. A→B (v1) and A→C (v2) were **both** visible. |
+
+**Concern 5's boundary check was done before assuming the defect**, as asked. Nothing in the
+database would have retired the old edge, so this was a real gap rather than something a later
+mechanism covered.
+
+## 7. Disposition
+
+### C1 — the endpoint now forwards the cutoff
+
+`getEntity` passes `knownAt` to `claimsFor`. One line, and it is the whole of the defect: the
+service fix from the first pass was correct and simply unreachable through the endpoint. Regression
+runs **through the controller**, not around it.
+
+### C2 — filter before bounding, and carry completeness
+
+`edgesVisibleAt` applies both temporal axes **in the query** and returns the count of everything
+eligible, so `complete` is exact rather than inferred from whether a page filled. `neighbourhood`
+and `path` return it, the API returns it, and the Explore screen renders it.
+
+**A bounded search can no longer claim definitive absence.** `path` previously answered *"no path
+exists in what this principal may see at this instant"* whether or not it had examined every
+eligible edge. It now says that only when `complete` is true, and otherwise says *"no path was
+FOUND, and the search did not examine every eligible edge — this is not a statement that no path
+exists."*
+
+`superseded_at` joins `retracted_at` as a record-time axis in `visibleAt`, which C5 needs.
+
+### C3 — outstanding work is filtered before it is paged, and states the truth
+
+`correctionsOutstanding` filters in SQL on `state = 'applied' AND propagation_state <> 'complete'`,
+then pages, and returns `total` plus a `nextBefore` continuation. A partially assessed case stays
+listed because `propagation_state` distinguishes `partial` from `complete` — which the assessment
+id never could.
+
+**On wording:** the stored Phase 1 column is left alone. `propagation_unresolved` on a case nothing
+has walked is Phase 1's own text and is preserved as the historical record it is; the outstanding
+list reports `propagation_status` — *"propagation incomplete: no dependency walk has run against
+this correction"* — beside it, with the old sentence returned as `historical_sentence`. **An
+operator reading this list is never shown the inaccurate sentence as current status**, and Phase 1's
+behaviour and its acceptance test are untouched.
+
+For a case that *has* been assessed, migration 0026 replaces the sentence outright with present-tense
+status. **This reverses the first pass's decision to retain it on a truncated walk** — that decision
+avoided a false claim of completeness but left a different inaccuracy standing, and the review was
+right about it.
+
+### C4 — a case completes only when every recorded root is covered
+
+Coverage is computed **in `graph.record_impact`**, from the case's own `affected_resolved` roots
+against every invalidation recorded against that case that is assessed and not truncated. It is not
+computed in the service, because only the database can see all the walks — and a caller that could
+assert completion could assert it after one root.
+
+`propagation_state` becomes `complete` only when no root is outstanding **and** no walk against the
+case was truncated. The demonstration now walks **every** root rather than `affectedEvidence[0]`.
+
+### C5 — a corrected relationship retires the edge it replaces
+
+`assert_edge` now supersedes every still-asserted edge from a **strictly lower** version of the same
+claim, setting `superseded_by` and `superseded_at` and emitting an `edge.superseded` event for each.
+
+* **History is preserved** — the old edge is superseded, never deleted, and keeps its provenance.
+* **Known-at still works** — a query positioned before `superseded_at` reproduces the graph as it
+  was believed then, which the database probe asserts directly.
+* **Repeat runs are idempotent** — only strictly lower versions are superseded, so a re-run is a
+  no-op rather than a chain of supersessions.
+
+## 8. Verification — second pass
+
+Tests that **failed before correction** are listed apart from **positive controls** that passed
+throughout, because a suite that does not distinguish them cannot show what it proved.
+
+| | Failed at `762de2be`, pass now | Positive controls |
+|---|---|---|
+| Service probes | 7 — buried edge, neighbourhood completeness, path absence, partial-assessment visibility, page-limit loss, truthful status, recency cap | 2 — a complete walk still drops its case; an unbounded scan still reports `complete` |
+| Database / API probes | 3 — the endpoint cutoff, case coverage across two roots, edge supersession | the 9 first-pass probes, unchanged |
+
+| Suite | Result |
+|---|---|
+| Service-level probes | **33 / 33** |
+| Database / API probes | **12 / 12** |
+| Integration, everything | **548 / 548** (22 files) |
+| C18-era manifest (`test:int`) | **297 / 297** — unchanged |
+| Phase 0 acceptance | **58 / 58** |
+| Unit (api) | **2067 / 2067** |
+| Post-C18 upgrade check (`0022`→`0026`) | **PASS** — upgraded and virgin schema digests identical (`f75c8947793458fc…`); later-phase suites on upgraded data **251 / 251** |
+| Typecheck · module boundaries | clean · no violations |
+| Corridor demonstration, all three acts | **0 problems** — three roots walked, the case completes, two unwalked corrections remain listed as outstanding |
+
+## 9. Remaining limitations after the second pass
+
+* **The automatic `CorrectionApplied` consumer is still deferred**, deliberately and by instruction.
+  Propagation is operator-initiated. What changed is that the outstanding queue is now **complete
+  and truthful** — filtered before paging, continuation exposed, partial work visible, status stated
+  in the present tense — so the manual workflow is reliable even though it is manual.
+* **`MAX_SCAN` is still 50,000** for a historical query, and `MAX_HOPS` still 8. The difference is
+  that both now *report* when they bind, and no answer built on a bound claims to be exhaustive.
+* **Supersession covers a corrected claim replacing its own edge.** An edge made obsolete some other
+  way — its entity split beneath it, say — is not retired by this mechanism. Not demonstrated as a
+  defect, and not claimed as covered.
+* **No browser verification in this pass either.** The Explore screen now renders an incompleteness
+  note and the awaiting list has no screen at all; neither was checked in a browser.
+* **Coverage is per correction case.** A corrected object that no case recorded — reached only
+  through the graph — has no case-level completion to satisfy. That is the same operator-initiated
+  boundary as the deferred consumer, and it is stated rather than implied.
+
+
+---
+
+# Third pass — the F3/F4 residuals raised against `e5f188ba`
+
+> **Reviewed:** `e5f188bae4daa76f9765f84b03f02f868492160d`. Codex confirmed the controller cutoff
+> and temporal filtering fixes and raised three groups of residuals from controller/service
+> executions with doubles plus SQL inspection. **Every database consequence was reproduced through
+> the existing database harness before anything changed.**
+
+## 10. Reproduction
+
+Every probe below **failed at `e5f188ba`**, at the level stated. Positive controls are listed
+separately in §12.
+
+| # | Residual | Reproduced at | What happened |
+|---|---|---|---|
+| **1a** | Depth exhaustion not accounted for | **API + database**, through `GraphController.path` | A five-edge chain: `path: null`, **`complete: true`**, and a note saying the search examined everything. Only the scan bound was being reported; the traversal had stopped at four hops with an entity still ahead of it. |
+| **1b** | `/edges/list` discards completeness | **API + database**, through `GraphController.listEdges` | 50,001 eligible edges: **50,000 returned, `total: 2000`**, no completeness field. `total` came from an unrelated newest-2,000 read. |
+| **1c** | Found path, `note: null` | **API + database**, through `GraphController.path` | The direct edge among 50,001 eligible: found, `complete: false`, **`note: null`** — and Explore keyed its warning on the note. |
+| **2** | Lossy pagination | **Database**, real `received_at` column | Three cases sharing a timestamp at page size one: **two unreachable**. Two more a microsecond apart in the same millisecond: the second **lost** even to a composite key, because the cursor had passed through a JavaScript `Date`. |
+| **3a** | Wrong-kind walk counts as coverage | **Database**, real `record_impact` | A `manual` walk of the root, linked to the case: reached nothing, and the case became **`complete`** while the assumption behind the root sat `verified`. |
+| **3b** | Historical truncation blocks completion | **Database** | A truncated walk, the chain pruned to within the bound, a clean walk: the case stayed **`partial`** for ever. |
+| **3c** | 0026 left assessed cases `pending` | **Database** | A case in the shape 0026 left — assessment linked, statement written, state at its default — was reported as **"no dependency walk has run"**. |
+
+Service-level reproductions of 1a and 2 (H1, H2 in the unit file) failed the same way through the
+doubles. The service double could not reproduce 3c: its filter dropped the case as complete where
+the real query does not, which is itself the reason the database is the evidence for that one.
+
+## 11. Disposition
+
+### T1 — completeness across the graph responses (bounds unchanged)
+
+**Traversal exhaustion is accounted for beside scan exhaustion.** `path` now ends in one of two
+ways and says which: the frontier ran out (exhausted) or the depth bound stopped it with a visible
+edge still leading from the last frontier to an entity never reached (`leadsBeyond`). `complete` is
+true only for an exhausted traversal over a complete scan; `bound: { scan, depth }` names what bit,
+and `searchedDepth` states the depth. `MAX_DEPTH` is still 4 and `MAX_SCAN` still 50,000.
+
+**A neighbourhood is scoped to the depth it searched.** It reports `searchedDepth`, whether the
+request was clamped, and `beyondDepth` — whether anything visible lies past the last hop — with a
+`scope` sentence. Scan incompleteness remains a defect in the answer and is reported as one.
+
+**`/edges/list` answers with accurate counts.** `total` is the number of edges eligible at the
+instant; the page is bounded at `MAX_EDGES` (2,000, with an explicit `limit`); `returned`,
+`complete` and a note in words disclose truncation. The unrelated newest-2,000 read is gone.
+
+**An incomplete answer always carries a note, found or not.** A found path from an incomplete
+scan says a shorter path may exist among the edges it did not see. Explore now renders the warning
+from `complete`, with the note as wording and a fallback so an incomplete answer is never silent.
+
+### T2 — lossless pagination
+
+The cursor is **(received_at, case_id)**, compared as a row value in the same order the page is
+sorted (`received_at DESC, case_id DESC`), and the index matches it. The timestamp travels as the
+text PostgreSQL renders — `to_char(..., 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`, microseconds included —
+never through a `Date`. The token is opaque (`nextCursor` / `cursor`), so a caller cannot rebuild the
+single-column cursor by hand.
+
+### T3 — the case-coverage lifecycle and the upgrade
+
+**Compatibility is validated at the boundary.** `graph.open_invalidation` refuses to link a walk to
+a case that recorded corrected objects unless the walk is an `evidence_correction` **of one of
+them**; the API refuses the wrong kind early with a plain sentence. A case that recorded **no**
+roots has nothing to cover: Phase 1 never applies such a case (an apply that resolves nothing is
+rejected), so these are fixtures — including the frozen Phase 3 acceptance fixture — and for them
+a linked walk is accepted and one untruncated walk completes the case, as before.
+
+**Coverage is per root, by the latest walk of that root.** `graph.case_propagation_coverage` is
+one definition used by `record_impact` and by reconciliation. A root is covered when its latest
+`evidence_correction` walk finished without truncation; an earlier truncated walk stays on record
+(the invalidation row, its `truncated` flag and its events are untouched) and no longer blocks
+completion; a later truncated walk reopens the root. The sentence distinguishes "remain
+unassessed" from "latest walk reached its traversal bound" from "assessments linked but none walked
+a corrected object".
+
+**0026's rows are reconciled, conservatively, and the reconciliation is history.** Migration 0027
+runs the same arithmetic over every applied case. It invents no coverage: a case reaches
+`complete` only by the assessments it actually carries; a wrong-kind assessment leaves it `partial`
+and says why; a case with no assessment stays `pending` with Phase 1's own sentence untouched.
+Every change is written to `graph.propagation_reconciliations` — append-only, under the same
+row-level isolation as every other graph table — with the previous state and sentence beside the
+new. The outstanding surface says "no dependency walk has run" **only** when no assessment is
+linked; a linked-but-unreconciled case (which 0027 should leave none of) is reported as exactly
+that.
+
+**The upgrade check now proves this on data, not only on a schema digest.** It migrates to the
+0025 ceiling, seeds eight correction cases in the shapes 0024 and 0025 actually wrote (never
+walked · one root walked clean · one root truncated · two roots one walked · a 0024-era
+`claim_correction` link · no roots walked clean · no roots never walked · rejected), applies the
+rest, and asserts each case's state, sentence, linked assessment and reconciliation record.
+
+## 12. Verification — third pass
+
+| | Failed at `e5f188ba`, pass now | Positive controls |
+|---|---|---|
+| Database / API probes (H1–H3) | **7** — depth-bound path, `/edges/list` counts, found-path note, tied-timestamp pagination, manual-walk coverage, truncated-then-clean reassessment, pre-0026 reconciliation | 1 — a four-hop chain is found and complete; the 12 earlier probes unchanged |
+| Service probes (H1–H3) | **4** — depth-bound path, neighbourhood scope, tied-timestamp pagination, and the new listing surface | 3 — four-hop found and complete; disconnected entities are `complete: true`; the linked-assessment wording (not reproducible through the double, see §10) |
+
+One first-pass database fixture changed shape: the truncation probe's case now records the
+evidence root it superseded and is walked as an `evidence_correction` of it, because the port now
+refuses the `claim_correction`-linked shape it used. Its assertions are unchanged.
+
+| Suite | Result |
+|---|---|
+| Service-level probes (`codex-corrections.test.ts`) | **40 / 40** |
+| Database / API probes (`phase3-corrections.test.ts`) | **20 / 20** |
+| Phase 3 acceptance (C1–C7, frozen) | **43 / 43** |
+| Integration, everything (`test:int:all`) | **556 / 556** (22 files) |
+| C18-era manifest (`test:int`) | **297 / 297** — unchanged |
+| Phase 0 acceptance (`test:accept`) | **58 / 58** |
+| Unit (api) | **2073 / 2074** under full concurrent load; the one failure — `receipt-invariants` C16-R3.4.4, a gate test this pass does not touch — passed **24 / 24** when the file was rerun alone. Reported, not explained away: it did not reproduce. |
+| Post-C18 upgrade check (`0022`→`0027`) | **PASS** — 1,020 pre-existing rows unchanged; `public.schema_migrations` +6 as declared; **8 pre-0026 correction cases reconciled to exactly the state their assessments justify**, with reconciliation records only where something changed; upgraded and virgin schema digests identical (`e0522a74c7550eaa…`); later-phase suites on upgraded data **259 / 259** |
+| Typecheck · module boundaries | clean · no violations (421 modules, 1,596 dependencies) |
+| Corridor demonstration, all three acts, on a freshly migrated and bootstrapped database | **0 problems** — three roots walked, the case reads *"propagation complete: all 3 corrected object(s) walked without truncation"*, the two unwalked corrections remain listed with *"no dependency walk has run"* |
+
+## 13. Remaining limitations after the third pass
+
+* **The automatic `CorrectionApplied` consumer is still deferred**, by instruction. Propagation is
+  operator-initiated; the outstanding queue is now complete, lossless and truthful about what it
+  lists.
+* **`MAX_SCAN` 50,000, `MAX_DEPTH` 4 and `MAX_HOPS` 8 are unchanged.** Every answer built on one
+  now says so, names which bound bit, and never claims exhaustiveness it did not earn.
+* **A neighbourhood is scoped, not complete.** "Everything within N hops" is stated as such with
+  `beyondDepth`; it does not enumerate what lies past the depth.
+* **A case that recorded no corrected object** is completed by any untruncated linked walk. Phase 1
+  cannot produce such a case; the shape exists only in fixtures and is kept for the frozen
+  acceptance test.
+* **Reconciliation runs once, at migration.** A row written after 0027 in the pre-0026 shape (an
+  assessment linked, state `pending`) would be reported as unreconciled rather than as never
+  walked; nothing in the product writes that shape.
+* **No browser verification in this pass either.** Explore's rendering of `complete`, the scope
+  line and the found-path note were changed and typechecked, not exercised in a browser; the
+  awaiting list still has no screen.

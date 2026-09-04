@@ -3,7 +3,8 @@
  *
  * Originally written for 0022 alone. C18 is frozen at 0021 and cannot speak about
  * anything after it, so every migration beyond that ceiling is proved here — 0022
- * when Phase 1 added it, 0023 when Phase 2 did, 0024 now that Phase 3 has.
+ * when Phase 1 added it, 0023 when Phase 2 did, 0024 when Phase 3 did, and
+ * 0025–0027 for the bounded correction passes on Phase 3.
  * Extending the ceiling this way is what the Phase 2 plan called for and what the
  * Phase 3 plan repeated, and it is deliberately NOT a second gate: one script, one
  * purpose, one list of declared additions that grows with the migrations it
@@ -23,11 +24,15 @@
  *   3. the data, the roles and Phase 0 authority behaviour survive it;
  *   4. the resulting schema equals a virgin 0001-0022 database's schema;
  *   5. the Phase 1 integration suite passes against the UPGRADED database, not
- *      only against a virgin one.
+ *      only against a virgin one;
+ *   6. correction cases ASSESSED before 0026 existed — seeded at the 0025
+ *      ceiling in the shapes 0024 and 0025 actually wrote — come through 0027's
+ *      reconciliation with the state their own assessments justify, and with
+ *      what changed recorded. A matching schema digest says nothing about this.
  *
  * Run: node scripts/phase1/verify-0022-upgrade.mjs
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { cpSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -130,7 +135,8 @@ const PHASE0_ONLY = ['--exclude', '**/node_modules/**', '--exclude', '**/dist/**
 /* Everything the upgraded database is expected to support, phase by phase. */
 const LATER_PHASE_SUITES = ['test/int/phase1-acceptance.test.ts',
   'test/int/phase1-fault-injection.test.ts', 'test/int/phase1-hostile-input.test.ts',
-  'test/int/phase2-acceptance.test.ts', 'test/int/phase3-acceptance.test.ts'];
+  'test/int/phase2-acceptance.test.ts', 'test/int/phase3-acceptance.test.ts',
+  'test/int/phase3-corrections.test.ts'];
 
 /**
  * The SET of row digests for every governed table.
@@ -166,8 +172,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT
   'objects.schema_registry': 13,
-  // one ledger line per migration applied above the ceiling
-  'public.schema_migrations': 3,
+  // one ledger line per migration applied above the ceiling (0022–0027)
+  'public.schema_migrations': 6,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
@@ -207,6 +213,98 @@ async function roles(c) {
   return rows;
 }
 
+/**
+ * Correction cases as 0024 and 0025 LEFT them — assessed, partly assessed, or
+ * never walked — seeded at the 0025 ceiling so the 0026 column and the 0027
+ * reconciliation meet real prior records rather than an empty table.
+ *
+ * Each case names the state its own assessments justify. Reconciliation must
+ * reach exactly that: never more (it invents no coverage) and never less (an
+ * assessed case is not "never walked").
+ */
+const PHASE1_SENTENCE = 'downstream consumers not yet present (KG/dependency graph arrives Phase 3)';
+async function seedAssessedCases(c) {
+  const tenant = randomUUID(); const domain = randomUUID(); const source = randomUUID();
+  const cases = [];
+  const insertCase = async (id, roots, state = 'applied') => {
+    await c.query(`insert into observation.correction_current (
+        case_id, scope, tenant_id, domain_id, source_id, kind, state, received_at, channel,
+        publisher_ref, reason, affected_resolved, propagation_unresolved)
+      values ($1, 'DOMAIN', $2, $3, $4, 'correction', $5, now(), 'test', null,
+              'seeded before 0026 existed', $6::jsonb, $7)`,
+      [id, tenant, domain, source, state,
+       JSON.stringify(roots.map((object_id) => ({ object_id, from: 1, to: 2 }))), PHASE1_SENTENCE]);
+  };
+  const statementOf = (inv) => `dependency propagation assessed by invalidation ${inv}: 1 assumption(s) marked unverified`;
+  // Captured BY VALUE: `inv` is reassigned per case below and the predicates run later.
+  const equals = (expected) => (x) => x === expected;
+  const insertWalk = async (caseId, kind, trigger, truncated) => {
+    const inv = randomUUID();
+    await c.query(`insert into graph.invalidations_current (
+        invalidation_id, scope, tenant_id, domain_id, trigger_kind, trigger_object_id,
+        correction_case_id, opened_by, statement, state, assessed_at, truncated, correlation_id)
+      values ($1, 'DOMAIN', $2, $3, $4, $5, $6, $7, $8, 'assessed', now(), $9, $10)`,
+      [inv, tenant, domain, kind, trigger, caseId, randomUUID(), statementOf(inv), truncated, randomUUID()]);
+    // What 0025's record_impact wrote on the case: the statement when the walk
+    // finished, Phase 1's sentence kept when it was truncated — and the
+    // assessment id either way.
+    await c.query(`update observation.correction_current
+        set propagation_assessment_id = $2,
+            propagation_unresolved = case when $3 then propagation_unresolved else $4 end
+      where case_id = $1`, [caseId, inv, truncated, statementOf(inv)]);
+    return inv;
+  };
+
+  // (a) never walked
+  let id = randomUUID(); await insertCase(id, [randomUUID()]);
+  cases.push({ id, label: 'never walked', expect: 'pending', sentence: (x) => x === PHASE1_SENTENCE, assessment: null });
+  // (b) one root, walked to completion as an evidence correction
+  id = randomUUID(); let root = randomUUID(); await insertCase(id, [root]);
+  let inv = await insertWalk(id, 'evidence_correction', root, false);
+  cases.push({ id, label: 'one root, walked clean', expect: 'complete', sentence: equals(statementOf(inv)), assessment: inv });
+  // (c) one root, walked but truncated (0025 kept Phase 1's sentence)
+  id = randomUUID(); root = randomUUID(); await insertCase(id, [root]);
+  inv = await insertWalk(id, 'evidence_correction', root, true);
+  cases.push({ id, label: 'one root, truncated', expect: 'partial', sentence: (x) => /propagation incomplete/.test(x) && /traversal bound/.test(x), assessment: inv });
+  // (d) two roots, one walked
+  id = randomUUID(); root = randomUUID(); await insertCase(id, [root, randomUUID()]);
+  inv = await insertWalk(id, 'evidence_correction', root, false);
+  cases.push({ id, label: 'two roots, one walked', expect: 'partial', sentence: (x) => /1 of 2/.test(x), assessment: inv });
+  // (e) one root, but the linked walk was a 0024-era claim_correction of something else
+  id = randomUUID(); root = randomUUID(); await insertCase(id, [root]);
+  inv = await insertWalk(id, 'claim_correction', randomUUID(), false);
+  cases.push({ id, label: 'wrong-kind walk', expect: 'partial', sentence: (x) => /none walked/.test(x), assessment: inv });
+  // (f) no roots recorded, one clean walk (the acceptance fixture's shape)
+  id = randomUUID(); await insertCase(id, []);
+  inv = await insertWalk(id, 'claim_correction', randomUUID(), false);
+  cases.push({ id, label: 'no roots, walked clean', expect: 'complete', sentence: equals(statementOf(inv)), assessment: inv });
+  // (g) no roots, never walked
+  id = randomUUID(); await insertCase(id, []);
+  cases.push({ id, label: 'no roots, never walked', expect: 'pending', sentence: (x) => x === PHASE1_SENTENCE, assessment: null });
+  // (h) a rejected case: not applied, not outstanding, not reconciled
+  id = randomUUID(); await insertCase(id, [randomUUID()], 'rejected');
+  cases.push({ id, label: 'rejected', expect: 'pending', sentence: (x) => x === PHASE1_SENTENCE, assessment: null, untouched: true });
+  return cases;
+}
+
+async function checkReconciled(c, cases) {
+  for (const k of cases) {
+    const { rows } = await c.query(`select propagation_state, propagation_unresolved,
+        propagation_assessment_id::text as assessment from observation.correction_current
+       where case_id = $1`, [k.id]);
+    const r = rows[0];
+    const good = r !== undefined && r.propagation_state === k.expect
+      && k.sentence(r.propagation_unresolved) && (r.assessment ?? null) === k.assessment;
+    if (good) ok(`${k.label}: ${r.propagation_state} — "${r.propagation_unresolved.slice(0, 96)}${r.propagation_unresolved.length > 96 ? '…' : ''}"`);
+    else bad(`${k.label}: expected ${k.expect}, got ${r?.propagation_state} — "${r?.propagation_unresolved}" (assessment ${r?.assessment})`);
+    const { rows: led } = await c.query(
+      `select count(*)::int n from graph.propagation_reconciliations where case_id = $1`, [k.id]);
+    const changed = k.expect !== 'pending';
+    if ((led[0].n > 0) === changed) ok(`${k.label}: ${led[0].n} reconciliation record(s), as expected`);
+    else bad(`${k.label}: ${led[0].n} reconciliation record(s) for a case that ${changed ? 'changed' : 'did not change'}`);
+  }
+}
+
 /* ────────────────────────────────────────────────────────────────────────── */
 
 console.log('\n=== post-C18 migration upgrade compatibility (C18 stays frozen at 0021) ===\n');
@@ -221,6 +319,12 @@ const rolesBefore = await withDb(UPGRADED, roles);
 const seededRows = [...before.values()].reduce((a, x) => a + x.size, 0);
 if (seededRows > 0) ok(`representative data present: ${seededRows} rows across ${before.size} governed tables`);
 else bad('the 0021 database carries no data, so nothing is being preserved');
+
+console.log('\n1b. correction cases assessed before 0026 existed, at the 0025 ceiling');
+migrate(UPGRADED, '0025');
+ok('migrated to 0025 — the last migration before propagation_state');
+const priorCases = await withDb(UPGRADED, seedAssessedCases);
+ok(`${priorCases.length} correction case(s) seeded in the shapes 0024 and 0025 wrote`);
 
 console.log('\n2. apply every migration above the C18 ceiling');
 const at22 = migrate(UPGRADED, null);
@@ -268,6 +372,9 @@ const rerun = suite(UPGRADED, PHASE0_ONLY, 'Phase 0 authority behaviour after th
 if (seeded !== null && rerun !== null && seeded !== rerun) {
   bad(`the Phase 0 suite reported ${seeded} before and ${rerun} after — the same suite must report the same count`);
 }
+
+console.log('\n3b. the previously assessed cases are reconciled, not defaulted');
+await withDb(UPGRADED, async (c) => checkReconciled(c, priorCases));
 
 console.log('\n4. the upgraded schema equals a virgin full-set schema');
 await recreate(VIRGIN);
