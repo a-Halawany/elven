@@ -1,6 +1,10 @@
 # THE EYE — Phase 2 Report: Intelligence Layer (L2)
 
-> Status: **IMPLEMENTED — awaiting owner review.** Built from `main` after Phase 0 closed at
+> Status: **COMPLETE.** Merged to `main` as **`6b4b22d69467ed398210c38cbf6c2183e2907c80`**
+> (PR [#32](https://github.com/a-Halawany/elven/pull/32)) after owner product acceptance — not a
+> claim of independent code review.
+>
+> Originally: Built from `main` after Phase 0 closed at
 > [`phase0-v1.0.0`](https://github.com/a-Halawany/elven/releases/tag/phase0-v1.0.0) and Phase 1
 > merged as `045ee030`.
 > Plan: [PHASE2_BUILD_PLAN.md](PHASE2_BUILD_PLAN.md) (approved, B1–B6 frozen) · Phase 1:
