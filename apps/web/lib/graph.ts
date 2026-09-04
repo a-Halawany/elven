@@ -251,7 +251,8 @@ export const graph = {
     } }>(s, '/edges/build', 'graph.edge.assert', 'EDG', { limit: 300 }),
 
   listEdges: (s: Scope, at?: Partial<AsOf>) =>
-    g<{ edges: EdgeRow[]; total: number; asOf: AsOf; receipt: Receipt }>(
+    g<{ edges: EdgeRow[]; total: number; returned: number; limit: number; complete: boolean;
+        note: string | null; asOf: AsOf; receipt: Receipt }>(
       s, '/edges/list', 'graph.read', 'EDG', at ?? {}),
 
   retractEdge: (s: Scope, edgeId: string, reason: string) =>
@@ -259,13 +260,15 @@ export const graph = {
       s, `/edges/${edgeId}/retract`, 'graph.edge.retract', 'EDG', { reason }, edgeId),
 
   neighbourhood: (s: Scope, entityId: string, depth: number, at?: Partial<AsOf>) =>
-    g<{ neighbourhood: { edges: EdgeRow[]; entities: EntityRow[]; complete: boolean };
-        asOf: AsOf; complete: boolean; note: string | null; receipt: Receipt }>(
+    g<{ neighbourhood: { edges: EdgeRow[]; entities: EntityRow[]; complete: boolean;
+                         searchedDepth: number; depthClamped: boolean; beyondDepth: boolean };
+        asOf: AsOf; complete: boolean; searchedDepth: number; beyondDepth: boolean;
+        scope: string; note: string | null; receipt: Receipt }>(
       s, '/neighbourhood', 'graph.read', 'EDG', { entityId, depth, ...(at ?? {}) }),
 
   path: (s: Scope, from: string, to: string, at?: Partial<AsOf>) =>
-    g<{ path: EdgeRow[] | null; asOf: AsOf; complete: boolean; note: string | null;
-        receipt: Receipt }>(
+    g<{ path: EdgeRow[] | null; asOf: AsOf; complete: boolean; searchedDepth: number;
+        bound: { scan: boolean; depth: boolean }; note: string | null; receipt: Receipt }>(
       s, '/path', 'graph.read', 'EDG', { from, to, ...(at ?? {}) }),
 
   listStrategy: (s: Scope) =>
@@ -294,11 +297,11 @@ export const graph = {
     g<{ invalidations: Array<Record<string, unknown>>; receipt: Receipt }>(
       s, '/impact/list', 'graph.read', 'INV', { limit: 200 }),
 
-  awaitingPropagation: (s: Scope, before?: string) =>
-    g<{ awaiting: Array<Record<string, unknown>>; total: number; nextBefore: string | null;
+  awaitingPropagation: (s: Scope, cursor?: string) =>
+    g<{ awaiting: Array<Record<string, unknown>>; total: number; nextCursor: string | null;
         note: string; receipt: Receipt }>(
       s, '/impact/awaiting', 'graph.read', 'COR',
-      before === undefined ? { limit: 100 } : { limit: 100, before }),
+      cursor === undefined ? { limit: 100 } : { limit: 100, cursor }),
 
   verifyProjections: (s: Scope) =>
     g<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string;

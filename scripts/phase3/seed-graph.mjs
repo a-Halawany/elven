@@ -586,7 +586,7 @@ const awaiting = await call(`${G}/impact/awaiting`, as(strategyOwner, {
 if (awaiting.status < 400) {
   const rows = awaiting.body.awaiting ?? [];
   ok(`${rows.length} of ${awaiting.body.total} outstanding correction(s) on this page`
-    + (awaiting.body.nextBefore === null ? '' : `, continue before ${awaiting.body.nextBefore}`));
+    + (awaiting.body.nextCursor === null ? '' : ', a continuation cursor was issued'));
   for (const r of rows.slice(0, 3)) {
     note(`${String(r.case_id).slice(0, 8)}… ${r.propagation_state}: ${r.propagation_status}`);
   }

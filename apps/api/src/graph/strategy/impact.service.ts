@@ -21,7 +21,7 @@
 import { Injectable } from '@nestjs/common';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
-import type { GraphReads, ImpactWrites } from '../graph.capabilities.js';
+import type { GraphReads, ImpactWrites, OutstandingCursor } from '../graph.capabilities.js';
 
 /** The walk is bounded: a dependency cycle must not become an infinite loop. */
 const MAX_HOPS = 8;
@@ -281,20 +281,24 @@ export class ImpactService {
   }
 
   /**
-   * Applied corrections that NOTHING has propagated yet.
+   * Applied corrections whose propagation is NOT COMPLETE.
    *
    * There is no consumer wiring `CorrectionApplied` to a dependency walk — the
    * outbox publishes the event and no worker subscribes — so propagation happens
    * only when a person asks for it. Until that consumer exists, the honest
    * product behaviour is to make the outstanding obligation VISIBLE rather than
    * let a correction sit silently unpropagated: this is the queue of corrections
-   * whose downstream impact nobody has assessed.
+   * whose downstream impact nobody has finished assessing.
+   *
+   * `cursor` is opaque to the caller and issued only by this method; it encodes
+   * BOTH key columns of the last row so a page boundary inside a run of tied
+   * timestamps loses nothing (see `correctionsOutstanding`).
    */
   async awaitingPropagation(
-    cap: GraphReads, limit = 100, before: string | null = null,
-  ): Promise<{ cases: Array<Record<string, unknown>>; total: number; nextBefore: string | null }> {
+    cap: GraphReads, limit = 100, cursor: string | null = null,
+  ): Promise<{ cases: Array<Record<string, unknown>>; total: number; nextCursor: string | null }> {
     const page = Math.min(limit, 500);
-    const got = await cap.correctionsOutstanding({ limit: page, before });
+    const got = await cap.correctionsOutstanding({ limit: page, cursor: decodeCursor(cursor) });
     /*
      * FILTERED IN THE QUERY, THEN PAGED.
      *
@@ -302,9 +306,6 @@ export class ImpactService {
      * afterwards, so an old outstanding case behind a hundred newer rejected ones
      * simply was not in the page and therefore was not in the answer. Outstanding
      * work is exactly the thing a list must not lose to recency.
-     *
-     * `partial` counts as outstanding: a truncated walk sets the assessment id,
-     * and keying on that id alone made a half-finished correction look done.
      */
     /*
      * TRUTHFUL CURRENT STATUS, WITHOUT REWRITING PHASE 1's COLUMN.
@@ -313,23 +314,38 @@ export class ImpactService {
      * `propagation_unresolved` — "downstream consumers not yet present" — which
      * described a world with no dependency graph and is no longer accurate. That
      * stored text is Phase 1's and stays as the historical record it is; the
-     * outstanding-work surface states the CURRENT status beside it, so an
-     * operator reading this list is never told something untrue.
+     * outstanding-work surface states the CURRENT status beside it.
+     *
+     * "No walk has run" is said ONLY when no assessment is linked to the case. A
+     * case that carries an assessment but still reads `pending` is one the 0027
+     * reconciliation has not seen — which should not happen after it — and is
+     * reported as exactly that rather than as never walked.
      */
-    const withStatus = got.rows.map((c) => ({
-      ...c,
-      propagation_status: c['propagation_state'] === 'partial'
-        ? String(c['propagation_unresolved'])
-        : 'propagation incomplete: no dependency walk has run against this correction',
-      historical_sentence: c['propagation_state'] === 'partial'
-        ? null : String(c['propagation_unresolved']),
-    }));
+    const withStatus = got.rows.map((c) => {
+      const state = String(c['propagation_state'] ?? 'pending');
+      const assessment = c['propagation_assessment_id'] ?? null;
+      const unwalked = state === 'pending' && assessment === null;
+      const status = unwalked
+        ? 'propagation incomplete: no dependency walk has run against this correction'
+        : state === 'pending'
+          ? `propagation state unreconciled: assessment ${String(assessment)} is linked to this `
+            + 'case but its coverage has not been reconciled; treat the case as partial until it is'
+          : String(c['propagation_unresolved']);
+      const { cursor_received_at: _c, ...row } = c;
+      return {
+        ...row,
+        propagation_status: status,
+        historical_sentence: unwalked ? String(c['propagation_unresolved']) : null,
+      };
+    });
     const last = got.rows[got.rows.length - 1];
     return {
       cases: withStatus,
       total: got.total,
-      nextBefore: got.rows.length < page || last === undefined
-        ? null : String(last['received_at']),
+      nextCursor: got.rows.length < page || last === undefined
+        ? null
+        : encodeCursor({ receivedAt: String(last['cursor_received_at'] ?? last['received_at']),
+                         caseId: String(last['case_id']) }),
     };
   }
 
@@ -376,4 +392,31 @@ function buildStatement(
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
     + `${w.commitments.length} commitment(s) reported for human review; `
     + reach + truncation;
+}
+
+/**
+ * The continuation token for the outstanding-work list.
+ *
+ * Opaque by design: a caller cannot construct one by hand from a timestamp and
+ * thereby reintroduce the single-column, precision-losing cursor this replaced.
+ */
+export function encodeCursor(c: OutstandingCursor): string {
+  return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
+}
+
+export function decodeCursor(s: string | null): OutstandingCursor | null {
+  if (s === null || s === '') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('cursor is not one this list issued');
+  }
+  const c = parsed as Record<string, unknown> | null;
+  if (c === null || typeof c !== 'object'
+      || typeof c['receivedAt'] !== 'string' || typeof c['caseId'] !== 'string'
+      || Number.isNaN(new Date(c['receivedAt']).getTime())) {
+    throw new Error('cursor is not one this list issued');
+  }
+  return { receivedAt: c['receivedAt'], caseId: c['caseId'] };
 }

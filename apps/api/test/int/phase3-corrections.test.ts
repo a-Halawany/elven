@@ -221,15 +221,28 @@ describe('F3 (database) — a historical read returns the version current then',
 
 describe('F4 (database) — propagation records what it did and did not do', () => {
   it('persists truncation, and a partial walk does NOT retire Phase 1\'s sentence', async () => {
-    // A correction case in Phase 1's own shape, carrying Phase 1's sentence.
+    // A correction case in Phase 1's own shape, carrying Phase 1's sentence and
+    // the evidence object it superseded; the walk is of that root.
     const caseId = uuidv7();
     const sentence = 'downstream consumers not yet present (KG/dependency graph arrives Phase 3)';
+    const root = uuidv7();
+    const trigger = uuidv7();
+    await sql`insert into intelligence.claim_lineage (
+        claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id,
+        method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end,
+        confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id,
+        correlation_id)
+      values (${trigger}::uuid, 1, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+        'CLM', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${root}::uuid,
+        ${sha256(root)}, 0, 4, 0.9, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid,
+        ${uuidv7()}::uuid)`.execute(su);
     await sql`insert into observation.correction_current (
         case_id, scope, tenant_id, domain_id, source_id, kind, state, received_at,
         channel, publisher_ref, reason, affected_resolved, propagation_unresolved)
       values (${caseId}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
         ${fx.sourceId}::uuid, 'correction', 'applied', now(), 'test', null,
-        'a correction whose walk will be truncated', '[]'::jsonb, ${sentence})`.execute(su);
+        'a correction whose walk will be truncated',
+        ${JSON.stringify([{ object_id: root, from: 1, to: 2 }])}::jsonb, ${sentence})`.execute(su);
 
     // A dependency chain longer than the traversal bound.
     const ids = Array.from({ length: 12 }, () => uuidv7());
@@ -241,7 +254,6 @@ describe('F4 (database) — propagation records what it did and did not do', () 
           'ASU', 1, ${`chain ${i}`}, 'a link in a long chain', 'active', 'verified',
           ${managerId}::uuid, ${uuidv7()}::uuid)`.execute(su);
     }
-    const trigger = uuidv7();
     await sql`insert into graph.dependencies (
         dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type,
         depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
@@ -260,13 +272,13 @@ describe('F4 (database) — propagation records what it did and did not do', () 
     }
 
     const out = await pipeline.write(
-      env('graph.impact.propagate', 'INV', trigger), manager,
+      env('graph.impact.propagate', 'INV', root), manager,
       { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
-        action: 'graph.impact.propagate', objectType: 'INV', objectId: trigger },
+        action: 'graph.impact.propagate', objectType: 'INV', objectId: root },
       GraphCapability.impact,
       async (cap: ImpactWrites, scope) => {
         const r = await impact.propagate(cap, scope, {
-          triggerKind: 'claim_correction', triggerObjectId: trigger,
+          triggerKind: 'evidence_correction', triggerObjectId: root,
           correctionCaseId: caseId, actor: managerId, correlationId: uuidv7() });
         return { result: r, targetType: 'INV', targetId: r.invalidationId,
                  targetVersion: '1', outboxEvent: null };
@@ -627,5 +639,371 @@ describe('G5 (database) — a corrected relationship retires the edge it replace
       knownAt: beforeCorrection, validAt: '2024-06-01T00:00:00.000Z' }));
     expect(before.filter((e) => e.claim_object_id === claimId).map((e) => e.edge_id),
       'the pre-correction view lost the edge that was believed at the time').toEqual([v1]);
+  });
+});
+
+/* ═════════ THIRD PASS · database and API evidence for e5f188ba ═════════ */
+
+/**
+ * The remaining F3/F4 residuals. Every probe here is DATABASE or API evidence:
+ * real ports, real capability contexts, and where the defect is in the
+ * endpoint's answer, the real controller.
+ */
+
+/** A relationship chain E0 → E1 → … → En, every link through the real port. */
+async function chain(n: number, predicate = 'feeds'): Promise<string[]> {
+  const ids: string[] = [];
+  for (let i = 0; i <= n; i += 1) {
+    const id = uuidv7();
+    await pipeline.write<void, ResolverWrites>(
+      env('graph.entity.create', 'ENT', id), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.entity.create', objectType: 'ENT', objectId: id },
+      GraphCapability.resolver,
+      async (cap, scope) => {
+        await cap.createEntity({
+          entityId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string,
+          entityType: 'organization', canonicalName: `link ${i} ${id.slice(-6)}`,
+          normalizedName: `link ${i} ${id.slice(-6)}`, actor: managerId, splitFrom: null,
+          eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: undefined, targetType: 'ENT', targetId: id, targetVersion: '1',
+                 outboxEvent: null };
+      });
+    ids.push(id);
+  }
+  for (let i = 0; i < n; i += 1) {
+    const claimId = uuidv7();
+    await seedClaim({ id: claimId, version: 1, type: 'REL', reviewState: 'not_required',
+                      recordedAt: '2026-01-01T00:00:00.000Z', subject: `link ${i}` });
+    const edgeId = uuidv7();
+    await pipeline.write<void, EdgeWrites>(
+      env('graph.edge.assert', 'EDG', edgeId), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.edge.assert', objectType: 'EDG', objectId: edgeId },
+      GraphCapability.edges,
+      async (cap, scope) => {
+        await cap.assertEdge({
+          edgeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string,
+          subject: ids[i] as string, predicate, object: ids[i + 1] as string,
+          validFrom: '2024-01-01T00:00:00.000Z', validTo: null,
+          claimObjectId: claimId, claimVersion: 1, evidenceObjectId: uuidv7(),
+          evidenceDigest: sha256('e'), methodId: null, runId: null, mode: 'replay',
+          confidence: 0.9, actor: managerId, eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: undefined, targetType: 'EDG', targetId: edgeId,
+                 targetVersion: '1', outboxEvent: null };
+      });
+  }
+  return ids;
+}
+
+/** A correction case in Phase 1's own shape, with the roots it recorded. */
+async function seedCase(a: { caseId: string; roots: string[]; receivedAt?: string;
+                             sentence?: string; state?: string }) {
+  const resolved = a.roots.map((object_id) => ({ object_id, from: 1, to: 2 }));
+  await sql`insert into observation.correction_current (
+      case_id, scope, tenant_id, domain_id, source_id, kind, state, received_at,
+      channel, publisher_ref, reason, affected_resolved, propagation_unresolved)
+    values (${a.caseId}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+      ${fx.sourceId}::uuid, 'correction', ${a.state ?? 'applied'},
+      ${a.receivedAt ?? new Date().toISOString()}::timestamptz, 'test', null,
+      'a correction case for the third pass', ${JSON.stringify(resolved)}::jsonb,
+      ${a.sentence ?? 'downstream consumers not yet present (KG/dependency graph arrives Phase 3)'})`
+    .execute(su);
+}
+
+/** Evidence → derived claim → an assumption resting on it. */
+async function seedRoot(root: string, label: string): Promise<{ claim: string; asu: string }> {
+  const claim = uuidv7(); const asu = uuidv7();
+  await sql`insert into intelligence.claim_lineage (
+      claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id,
+      method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end,
+      confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id,
+      correlation_id)
+    values (${claim}::uuid, 1, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+      'CLM', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${root}::uuid,
+      ${sha256(root)}, 0, 4, 0.9, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid,
+      ${uuidv7()}::uuid)`.execute(su);
+  await sql`insert into graph.strategy_current (
+      strategy_object_id, scope, tenant_id, domain_id, object_type, object_version,
+      title, statement, status, verification_state, owner_principal_id, correlation_id)
+    values (${asu}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+      'ASU', 1, ${`assumption on ${label}`},
+      'this assumption rests on a claim derived from the corrected evidence', 'active',
+      'verified', ${managerId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+  await sql`insert into graph.dependencies (
+      dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type,
+      depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+      ${asu}::uuid, 'ASU', 'claim', ${claim}::uuid,
+      'the assumption rests on this derived claim', 'active', ${managerId}::uuid,
+      ${uuidv7()}::uuid)`.execute(su);
+  return { claim, asu };
+}
+
+async function propagateAs(a: { kind: string; trigger: string; caseId: string | null }) {
+  const out = await pipeline.write(
+    env('graph.impact.propagate', 'INV', a.trigger), manager,
+    { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+      action: 'graph.impact.propagate', objectType: 'INV', objectId: a.trigger },
+    GraphCapability.impact,
+    async (cap: ImpactWrites, scope) => {
+      const r = await impact.propagate(cap, scope, {
+        triggerKind: a.kind, triggerObjectId: a.trigger, correctionCaseId: a.caseId,
+        actor: managerId, correlationId: uuidv7() });
+      return { result: r, targetType: 'INV', targetId: r.invalidationId,
+               targetVersion: '1', outboxEvent: null };
+    });
+  return out.result;
+}
+
+async function caseState(caseId: string) {
+  return (await sql<{ propagation_state: string; propagation_unresolved: string;
+                      propagation_assessment_id: string | null }>`
+    select propagation_state, propagation_unresolved, propagation_assessment_id::text
+      from observation.correction_current where case_id = ${caseId}::uuid`.execute(su)).rows[0];
+}
+
+describe('H1 (API) — completeness across the graph responses', () => {
+  const WINDOW = { knownAt: '2021-06-01T00:00:00.000Z', validAt: '2021-06-01T00:00:00.000Z' };
+  const BULK = 50_001;
+
+  beforeAll(async () => {
+    // More eligible edges than the scan bound, in a CLOSED world-time window
+    // nothing else uses — so the chain probes below, which ask about 2024, never
+    // see them and their completeness is decided by depth alone.
+    await sql`insert into graph.edges_current (
+        edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id,
+        valid_from, valid_to, asserted_at, state, claim_object_id, claim_version,
+        evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
+      select gen_random_uuid(), 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+             ${entA}::uuid, 'bulk-supplies', ${entB}::uuid,
+             '2021-01-01T00:00:00Z'::timestamptz, '2022-01-01T00:00:00Z'::timestamptz,
+             '2021-01-02T00:00:00Z'::timestamptz,
+             'asserted', gen_random_uuid(), 1, gen_random_uuid(), ${sha256('bulk')},
+             'replay', 0.5, ${managerId}::uuid, gen_random_uuid()
+        from generate_series(1, ${BULK})`.execute(su);
+  }, 120_000);
+
+  afterAll(async () => {
+    await sql`delete from graph.edges_current where predicate = 'bulk-supplies'
+        and tenant_id = ${fx.tenantId}::uuid`.execute(su);
+  });
+
+  it('a chain longer than the depth bound does not yield "no path" with complete: true', async () => {
+    const { GraphController } = await import('../../src/graph/graph.controller.js');
+    const controller = app.get(GraphController);
+    const ids = await chain(5);
+    const r = await controller.path(
+      req('graph.read', 'EDG', null), fx.tenantId, fx.domainId,
+      { payload: { from: ids[0], to: ids[5],
+                   knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
+        path: unknown[] | null; complete: boolean; note: string | null };
+    // Five hops exceed MAX_DEPTH (4): the path is not found. That is allowed.
+    // What is NOT allowed is presenting that as an exhaustive search.
+    expect(r.path).toBeNull();
+    expect(r.complete,
+      'a depth-bounded search that stopped with unexplored entities claimed completeness')
+      .toBe(false);
+    expect(String(r.note)).not.toMatch(/^no path exists/);
+    expect(String(r.note), 'the answer is not scoped to the depth it searched').toMatch(/hop/i);
+  });
+
+  it('a four-hop chain is found, and the search is complete', async () => {
+    const { GraphController } = await import('../../src/graph/graph.controller.js');
+    const controller = app.get(GraphController);
+    const ids = await chain(4, 'feeds-four');
+    const r = await controller.path(
+      req('graph.read', 'EDG', null), fx.tenantId, fx.domainId,
+      { payload: { from: ids[0], to: ids[4],
+                   knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
+        path: unknown[] | null; complete: boolean };
+    expect(r.path?.length).toBe(4);
+  });
+
+  it('/edges/list reports the eligible total and discloses truncation', async () => {
+    const { GraphController } = await import('../../src/graph/graph.controller.js');
+    const controller = app.get(GraphController);
+    const r = await controller.listEdges(
+      req('graph.read', 'EDG', null), fx.tenantId, fx.domainId, { payload: WINDOW }) as {
+        edges: unknown[]; total: number; complete?: boolean; note?: string | null };
+    expect(r.total, `${BULK} edges are eligible at this instant and the total says otherwise`)
+      .toBe(BULK);
+    expect(r.edges.length).toBeLessThanOrEqual(r.total);
+    expect(typeof r.complete, 'the listing carries no completeness').toBe('boolean');
+    expect(r.complete, 'fewer edges than the total were returned and the answer said it was complete')
+      .toBe(false);
+    expect(r.note ?? null, 'truncation is not disclosed in words').not.toBeNull();
+  }, 120_000);
+
+  it('a FOUND path from an incomplete scan still carries an incompleteness note', async () => {
+    const { GraphController } = await import('../../src/graph/graph.controller.js');
+    const controller = app.get(GraphController);
+    const r = await controller.path(
+      req('graph.read', 'EDG', null), fx.tenantId, fx.domainId,
+      { payload: { from: entA, to: entB, ...WINDOW } }) as {
+        path: unknown[] | null; complete: boolean; note: string | null };
+    expect(r.path, 'the direct edge was not found').not.toBeNull();
+    expect(r.complete, 'more eligible edges than the scan bound and the answer says complete')
+      .toBe(false);
+    expect(r.note, 'a found path from an incomplete scan carried no note, so a screen keyed '
+      + 'on the note shows nothing').not.toBeNull();
+  }, 120_000);
+});
+
+describe('H2 (database) — outstanding-work pagination is lossless', () => {
+  async function walkAll(pageSize: number): Promise<string[]> {
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 500; i += 1) {
+      const r = await readAs(async (cap) =>
+        impact.awaitingPropagation(cap, pageSize, cursor)) as unknown as Record<string, unknown>;
+      for (const c of r['cases'] as Array<Record<string, unknown>>) seen.push(String(c['case_id']));
+      const next = (r['nextCursor'] ?? r['nextBefore'] ?? null) as string | null;
+      if (next === null) break;
+      cursor = next;
+    }
+    return seen;
+  }
+
+  it('reaches every case that shares a timestamp, once', async () => {
+    const tied = [uuidv7(), uuidv7(), uuidv7()];
+    for (const id of tied) {
+      await seedCase({ caseId: id, roots: [uuidv7()], receivedAt: '2020-03-01T00:00:00.000Z' });
+    }
+    // Two more in the SAME millisecond, a microsecond apart — the cursor must keep
+    // the precision the column has, or the composite key does not help.
+    const micro = [uuidv7(), uuidv7()];
+    await seedCase({ caseId: micro[0] as string, roots: [uuidv7()],
+                     receivedAt: '2020-02-01T00:00:00.000002Z' });
+    await seedCase({ caseId: micro[1] as string, roots: [uuidv7()],
+                     receivedAt: '2020-02-01T00:00:00.000001Z' });
+
+    const seen = await walkAll(1);
+    for (const id of [...tied, ...micro]) {
+      const n = seen.filter((x) => x === id).length;
+      expect(n, `case ${id} was reached ${n} time(s) across the pages`).toBe(1);
+    }
+    expect(new Set(seen).size, 'a case was returned on more than one page').toBe(seen.length);
+  }, 120_000);
+});
+
+describe('H3 (database) — case coverage counts only appropriate propagation work', () => {
+  it('a case-linked MANUAL walk does not stand in for propagating a corrected root', async () => {
+    const root = uuidv7();
+    const { asu } = await seedRoot(root, 'manual-probe');
+    const caseId = uuidv7();
+    await seedCase({ caseId, roots: [root] });
+
+    let refused: string | null = null;
+    try {
+      await propagateAs({ kind: 'manual', trigger: root, caseId });
+    } catch (e) {
+      refused = String((e as Error).message);
+    }
+    const after = await caseState(caseId);
+    if (refused === null) {
+      // Accepted: then it must not have counted as coverage of the root, because
+      // a manual walk reaches no evidence-derived claim.
+      expect(after?.propagation_state,
+        'a manual walk that reached nothing completed the case').not.toBe('complete');
+    } else {
+      expect(refused).toMatch(/evidence_correction|compatib|root/i);
+    }
+    // Either way the assumption behind the root is untouched — nothing walked it.
+    const v = (await sql<{ v: string }>`select verification_state v
+      from graph.strategy_current where strategy_object_id = ${asu}::uuid`.execute(su)).rows[0];
+    expect(v?.v).toBe('verified');
+
+    // The appropriate walk completes it.
+    await propagateAs({ kind: 'evidence_correction', trigger: root, caseId });
+    expect((await caseState(caseId))?.propagation_state).toBe('complete');
+  });
+
+  it('a later untruncated reassessment completes the work an earlier truncated walk left', async () => {
+    const root = uuidv7();
+    const { claim } = await seedRoot(root, 'reassess');
+    // Extend the dependency chain past the traversal bound.
+    const ids = Array.from({ length: 12 }, () => uuidv7());
+    for (let i = 0; i < ids.length; i += 1) {
+      await sql`insert into graph.strategy_current (
+          strategy_object_id, scope, tenant_id, domain_id, object_type, object_version,
+          title, statement, status, verification_state, owner_principal_id, correlation_id)
+        values (${ids[i]}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+          'ASU', 1, ${`reassess link ${i}`}, 'a link in a long chain', 'active', 'verified',
+          ${managerId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+      await sql`insert into graph.dependencies (
+          dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type,
+          depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
+        values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+          ${ids[i]}::uuid, 'ASU', ${i === 0 ? 'claim' : 'strategy'},
+          ${i === 0 ? claim : ids[i - 1]}::uuid,
+          'each link rests on the one before it', 'active', ${managerId}::uuid,
+          ${uuidv7()}::uuid)`.execute(su);
+    }
+    const caseId = uuidv7();
+    await seedCase({ caseId, roots: [root] });
+
+    const first = await propagateAs({ kind: 'evidence_correction', trigger: root, caseId });
+    expect(first.truncated).toBe(true);
+    expect((await caseState(caseId))?.propagation_state).toBe('partial');
+
+    // The owner prunes the chain to within the bound, and walks the root again.
+    await sql`update graph.dependencies set state = 'removed'
+       where dependent_object_id = any(${ids.slice(7)}::uuid[])`.execute(su);
+    const second = await propagateAs({ kind: 'evidence_correction', trigger: root, caseId });
+    expect(second.truncated, 'the pruned chain still reported truncation').toBe(false);
+
+    const after = await caseState(caseId);
+    expect(after?.propagation_state,
+      'an earlier truncated walk permanently prevents completion').toBe('complete');
+    expect(after?.propagation_assessment_id).toBe(second.invalidationId);
+
+    // HISTORY IS PRESERVED: the first, truncated assessment is still on record.
+    const hist = (await sql<{ truncated: boolean; state: string }>`
+      select truncated, state from graph.invalidations_current
+       where invalidation_id = ${first.invalidationId}::uuid`.execute(su)).rows[0];
+    expect(hist?.truncated).toBe(true);
+    expect(hist?.state).toBe('assessed');
+  });
+
+  it('a previously assessed case is reconciled, not reported as never walked', async () => {
+    // The shape 0026 left behind: an assessment already linked to the case, the
+    // statement already written by the earlier record_impact, and the new column
+    // at its default because 0026 reconciled nothing.
+    const root = uuidv7();
+    await seedRoot(root, 'pre-0026');
+    const caseId = uuidv7();
+    await seedCase({ caseId, roots: [root] });
+    const inv = uuidv7();
+    await sql`insert into graph.invalidations_current (
+        invalidation_id, scope, tenant_id, domain_id, trigger_kind, trigger_object_id,
+        correction_case_id, opened_by, statement, state, assessed_at, truncated, correlation_id)
+      values (${inv}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+        'evidence_correction', ${root}::uuid, ${caseId}::uuid, ${managerId}::uuid,
+        ${`dependency propagation assessed by invalidation ${inv}: 1 assumption(s) marked unverified`},
+        'assessed', now(), false, ${uuidv7()}::uuid)`.execute(su);
+    await sql`update observation.correction_current
+         set propagation_assessment_id = ${inv}::uuid,
+             propagation_unresolved = ${`dependency propagation assessed by invalidation ${inv}: 1 assumption(s) marked unverified`},
+             propagation_state = 'pending'
+       where case_id = ${caseId}::uuid`.execute(su);
+
+    // Reproduction: the surface must not say no walk has run.
+    const listed = await readAs(async (cap) => impact.awaitingPropagation(cap, 500));
+    const row = listed.cases.find((c) => String(c['case_id']) === caseId);
+    if (row !== undefined) {
+      expect(String(row['propagation_status']),
+        'an assessed case was reported as never walked').not.toMatch(/no dependency walk has run/);
+    }
+
+    // Reconciliation, as the forward migration performs it for existing rows.
+    const rec = (await sql<{ s: string }>`
+      select graph.reconcile_case_propagation(${caseId}::uuid) as s`.execute(su)).rows[0];
+    expect(rec?.s).toBe('complete');
+    const after = await caseState(caseId);
+    expect(after?.propagation_state).toBe('complete');
+    expect(after?.propagation_assessment_id).toBe(inv);
+    const gone = await readAs(async (cap) => impact.awaitingPropagation(cap, 500));
+    expect(gone.cases.map((c) => String(c['case_id']))).not.toContain(caseId);
   });
 });

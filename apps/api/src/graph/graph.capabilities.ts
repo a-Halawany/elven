@@ -47,6 +47,13 @@ abstract class GraphCore {
  * read, under the same row-level security — so a row outside the caller's scope
  * is not visible to the query at all, which is most of C4.
  */
+/** Where the previous page of outstanding work ended: both key columns, exactly. */
+export interface OutstandingCursor {
+  /** The timestamp as PostgreSQL renders it — microseconds and all. */
+  receivedAt: string;
+  caseId: string;
+}
+
 export interface GraphReads {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readEntities(): any;
@@ -94,7 +101,7 @@ export interface GraphReads {
    * Filtering after a page has been taken loses old outstanding work behind newer
    * irrelevant rows, which is exactly what an outstanding-work list must not do.
    */
-  correctionsOutstanding(a: { limit: number; before: string | null }):
+  correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
   rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
@@ -280,13 +287,28 @@ class GraphCapabilityImpl extends GraphCore
     return { rows, total: Number(counted[0]?.n ?? rows.length) };
   }
 
-  async correctionsOutstanding(a: { limit: number; before: string | null }):
+  /*
+   * A COMPOSITE, PRECISION-PRESERVING CURSOR.
+   *
+   * `received_at` alone with a strict `<` skipped every other case sharing the
+   * instant, and a cursor rendered through a JavaScript Date lost the column's
+   * microseconds — so even the composite key could skip rows in the same
+   * millisecond. The key is (received_at, case_id), compared as a row value in
+   * the same order the page is sorted, and the timestamp travels as the text
+   * PostgreSQL itself renders, microseconds included.
+   */
+  async correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
     const rows = await this.call<Record<string, unknown>>(sql`
-      select * from observation.correction_current
-       where state = 'applied' and propagation_state <> 'complete'
-         and (${a.before}::timestamptz is null or received_at < ${a.before}::timestamptz)
-       order by received_at desc
+      select c.*,
+             to_char(c.received_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+               as cursor_received_at
+        from observation.correction_current c
+       where c.state = 'applied' and c.propagation_state <> 'complete'
+         and (${a.cursor === null}::boolean
+              or (c.received_at, c.case_id)
+                 < (${a.cursor?.receivedAt ?? null}::timestamptz, ${a.cursor?.caseId ?? null}::uuid))
+       order by c.received_at desc, c.case_id desc
        limit ${a.limit}`);
     const counted = await this.call<{ n: string }>(sql`
       select count(*)::text n from observation.correction_current

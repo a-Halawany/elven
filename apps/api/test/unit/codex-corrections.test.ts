@@ -88,19 +88,28 @@ function graphCap(w: WorldRows) {
         visibleAt(e as never, { knownAt: a.knownAt, validAt: a.validAt }));
       return { rows: eligible.slice(0, a.limit), total: eligible.length };
     },
-    correctionsOutstanding: async (a: { limit: number; before: string | null }) => {
-      const invalidations = w.invalidations ?? [];
-      const complete = (c: Record<string, unknown>): boolean => {
-        const inv = invalidations.filter(
-          (i) => String(i['correction_case_id']) === String(c['case_id']));
-        return inv.length > 0
-          && inv.every((i) => i['state'] === 'assessed' && i['truncated'] !== true);
-      };
+    /*
+     * The double models the SQL contract: outstanding = applied and not complete
+     * by the case's OWN `propagation_state`; ordered (received_at, case_id) both
+     * descending; continued from a composite cursor compared the same way.
+     */
+    correctionsOutstanding: async (a: {
+      limit: number; cursor: { receivedAt: string; caseId: string } | null }) => {
+      const key = (c: Record<string, unknown>): [number, string] =>
+        [new Date(String(c['received_at'])).getTime(), String(c['case_id'])];
       const eligible = (w.corrections ?? [])
-        .filter((c) => c['state'] === 'applied' && !complete(c))
-        .filter((c) => a.before === null
-          || new Date(String(c['received_at'])).getTime() < new Date(a.before).getTime())
-        .sort((x, y) => String(y['received_at']).localeCompare(String(x['received_at'])));
+        .filter((c) => c['state'] === 'applied' && c['propagation_state'] !== 'complete')
+        .map((c) => ({ ...c, cursor_received_at: String(c['received_at']) }))
+        .sort((x, y) => {
+          const [tx, ix] = key(x); const [ty, iy] = key(y);
+          return ty - tx || (iy < ix ? -1 : iy > ix ? 1 : 0);
+        })
+        .filter((c) => {
+          if (a.cursor === null) return true;
+          const [t, i] = key(c);
+          const ct = new Date(a.cursor.receivedAt).getTime();
+          return t < ct || (t === ct && i < a.cursor.caseId);
+        });
       return { rows: eligible.slice(0, a.limit), total: eligible.length };
     },
     rebuildProjections: async () => [],
@@ -745,7 +754,8 @@ describe('G3 — outstanding propagation stays discoverable', () => {
 
   it('keeps a PARTIALLY assessed correction on the list', async () => {
     const cap = graphCap({
-      corrections: [correction({ case_id: 'partial', propagation_assessment_id: 'inv-1' })],
+      corrections: [correction({ case_id: 'partial', propagation_assessment_id: 'inv-1',
+                                 propagation_state: 'partial' })],
       invalidations: [{ invalidation_id: 'inv-1', correction_case_id: 'partial',
                         state: 'assessed', truncated: true }],
     });
@@ -757,7 +767,8 @@ describe('G3 — outstanding propagation stays discoverable', () => {
 
   it('drops a correction only when its walk is complete', async () => {
     const cap = graphCap({
-      corrections: [correction({ case_id: 'done', propagation_assessment_id: 'inv-2' })],
+      corrections: [correction({ case_id: 'done', propagation_assessment_id: 'inv-2',
+                                 propagation_state: 'complete' })],
       invalidations: [{ invalidation_id: 'inv-2', correction_case_id: 'done',
                         state: 'assessed', truncated: false }],
     });
@@ -795,5 +806,124 @@ describe('G3 — outstanding propagation stays discoverable', () => {
     expect(rows.cases.map((c) => String(c['case_id'])),
       'an outstanding correction was lost behind newer rows because the limit came first')
       .toContain('old-outstanding');
+  });
+});
+
+/* ═════════ THIRD PASS · service-level evidence for e5f188ba ═════════ */
+
+/**
+ * The remaining F3/F4 residuals, at the service level. The database and API
+ * evidence for the same items — the real controller's answers, the real port's
+ * coverage arithmetic, the real cursor over a real timestamp column — is in
+ * `test/int/phase3-corrections.test.ts` (H1–H3). Nothing here is browser evidence.
+ */
+
+describe('H1 — completeness accounts for traversal exhaustion, not only scan exhaustion', () => {
+  const NOW = '2026-06-01T00:00:00.000Z';
+  const edge = (id: string, subject: string, object: string) => ({
+    edge_id: id, subject_entity_id: subject, predicate: 'feeds', object_entity_id: object,
+    valid_from: '2024-01-01T00:00:00.000Z', valid_to: null,
+    asserted_at: '2024-01-02T00:00:00.000Z', retracted_at: null, superseded_at: null,
+    state: 'asserted', claim_object_id: `c-${id}`, claim_version: 1,
+    evidence_object_id: 'e', evidence_digest: sha256('e'), mode: 'replay',
+    confidence: '0.9', retraction_reason: null,
+  });
+  /** E0 → E1 → … → En. */
+  const chain = (n: number) =>
+    Array.from({ length: n }, (_, i) => edge(`l${i}`, `E${i}`, `E${i + 1}`));
+
+  it('a five-edge chain yields no path AND says the search was bounded by depth', async () => {
+    const r = await new EdgesService().path(graphCap({ edges: chain(5) }), 'E0', 'E5',
+      { knownAt: NOW, validAt: NOW });
+    expect(r.path).toBeNull();
+    expect(r.complete,
+      'the depth bound stopped the traversal with entities unexplored, and the answer '
+      + 'claimed completeness').toBe(false);
+  });
+
+  it('a four-edge chain is found and the search is complete (positive control)', async () => {
+    const r = await new EdgesService().path(graphCap({ edges: chain(4) }), 'E0', 'E4',
+      { knownAt: NOW, validAt: NOW });
+    expect(r.path?.length).toBe(4);
+    expect(r.complete).toBe(true);
+  });
+
+  it('two disconnected entities yield no path with complete: true (positive control)', async () => {
+    const r = await new EdgesService().path(graphCap({ edges: chain(2) }), 'E0', 'Z',
+      { knownAt: NOW, validAt: NOW });
+    expect(r.path).toBeNull();
+    expect(r.complete, 'an exhausted traversal over a complete scan IS complete').toBe(true);
+  });
+
+  it('a neighbourhood states the depth it searched and whether entities lie beyond it', async () => {
+    const r = await new EdgesService().neighbourhood(graphCap({ edges: chain(6) }), 'E0', 2,
+      { knownAt: NOW, validAt: NOW }) as unknown as Record<string, unknown>;
+    expect(r['searchedDepth'], 'the neighbourhood does not say what depth it searched').toBe(2);
+    expect(r['beyondDepth'], 'entities beyond the searched depth are not reported').toBe(true);
+  });
+
+  it('a listing reports the eligible total and a bounded page (new surface)', async () => {
+    const many = Array.from({ length: 50_001 }, (_, i) => edge(`m${i}`, 'A', 'B'));
+    const svc = new EdgesService() as unknown as {
+      list: (cap: unknown, at: unknown, limit: number) =>
+        Promise<{ edges: unknown[]; total: number; complete: boolean }> };
+    expect(typeof svc.list, 'no listing method carries completeness').toBe('function');
+    const r = await svc.list(graphCap({ edges: many }), { knownAt: NOW, validAt: NOW }, 2_000);
+    expect(r.total).toBe(50_001);
+    expect(r.edges.length).toBe(2_000);
+    expect(r.complete).toBe(false);
+  });
+});
+
+describe('H2 — outstanding-work pagination is lossless across tied timestamps', () => {
+  const correction = (id: string, receivedAt: string) => ({
+    case_id: id, state: 'applied', received_at: receivedAt, propagation_state: 'pending',
+    propagation_assessment_id: null, propagation_unresolved: 'pending',
+  });
+
+  it('reaches three cases sharing a timestamp with page size one, each once', async () => {
+    const cap = graphCap({
+      corrections: [
+        correction('newer', '2026-05-01T00:00:00.000Z'),
+        correction('t1', '2026-04-01T00:00:00.000Z'),
+        correction('t2', '2026-04-01T00:00:00.000Z'),
+        correction('t3', '2026-04-01T00:00:00.000Z'),
+        correction('older', '2026-03-01T00:00:00.000Z'),
+      ],
+    });
+    const svc = new ImpactService();
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 50; i += 1) {
+      const r = await svc.awaitingPropagation(cap, 1, cursor) as unknown as Record<string, unknown>;
+      for (const c of r['cases'] as Array<Record<string, unknown>>) seen.push(String(c['case_id']));
+      const next = (r['nextCursor'] ?? r['nextBefore'] ?? null) as string | null;
+      if (next === null) break;
+      cursor = next;
+    }
+    expect(seen.sort(), 'pages lost or repeated cases that share a timestamp')
+      .toEqual(['newer', 'older', 't1', 't2', 't3']);
+  });
+});
+
+describe('H3 — the outstanding surface reports actual status for a previously assessed case', () => {
+  it('does not say "no walk has run" when an assessment is linked to the case', async () => {
+    const cap = graphCap({
+      corrections: [{
+        case_id: 'assessed-before-0026', state: 'applied',
+        received_at: '2026-01-01T00:00:00.000Z', propagation_state: 'pending',
+        propagation_assessment_id: 'inv-9',
+        propagation_unresolved: 'dependency propagation assessed by invalidation inv-9: nothing rests on it',
+      }],
+      invalidations: [{ invalidation_id: 'inv-9', correction_case_id: 'assessed-before-0026',
+                        state: 'assessed', truncated: false }],
+    });
+    const r = await new ImpactService().awaitingPropagation(cap, 100);
+    const row = r.cases.find((c) => String(c['case_id']) === 'assessed-before-0026');
+    if (row === undefined) return; // dropped as complete: also an acceptable outcome
+    expect(String(row['propagation_status']),
+      'a case with a linked assessment was reported as never walked')
+      .not.toMatch(/no dependency walk has run/);
+    expect(String(row['propagation_status'])).toMatch(/inv-9|reconcil|assess/i);
   });
 });
