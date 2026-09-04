@@ -39,6 +39,8 @@ const NAV = [
   { href: '/observation/evidence', label: 'Evidence', glyph: '❑' },
   { href: '/observation/quarantine', label: 'Quarantine', glyph: '⚠' },
   { href: '/observation/corrections', label: 'Corrections', glyph: '⟳' },
+  { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
+  { href: '/graph', label: 'Graph', glyph: '◈' },
 ];
 
 export default function ObservationLayout({ children }: { children: ReactNode }) {

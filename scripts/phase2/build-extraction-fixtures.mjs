@@ -94,7 +94,7 @@ CORRIDOR_METHOD.decodingDigest = sha256(jcs(CORRIDOR_METHOD.decoding));
  * contract requires and the only shape the gateway accepts — anything else is
  * REFUSED rather than coerced into looking like an answer.
  */
-function chokepointClaims(portname, date, transits, prior, excerpt) {
+function chokepointClaims(portname, date, transits, prior, excerpt, portid) {
   const drop = prior === null ? null : Math.round(((prior - transits) / prior) * 100);
   const at = (needle) => {
     const i = excerpt.indexOf(needle);
@@ -103,8 +103,23 @@ function chokepointClaims(portname, date, transits, prior, excerpt) {
   const [ns, ne] = at(portname);
   const [ts, te] = at(String(transits));
   const claims = [
-    { claim_kind: 'entity', subject: portname, predicate: 'is_a', object_value: 'maritime chokepoint',
-      confidence: 0.94, byte_start: ns, byte_end: ne },
+    {
+      claim_kind: 'entity', subject: portname, predicate: 'is_a',
+      object_value: 'maritime chokepoint',
+      confidence: 0.94, byte_start: ns, byte_end: ne,
+      /*
+       * THE IDENTIFIER THE PUBLISHER ITSELF PRINTS.
+       *
+       * `portid` is in the evidence bytes, so the claim carries it rather than
+       * leaving the corridor to be recognised by its name. Phase 3 resolves two
+       * differently spelled mentions to one entity through exactly this: an exact
+       * match on an authoritative external identifier is the ONLY thing that
+       * resolves automatically, and this is where that identifier enters.
+       */
+      ...(portid === null ? {} : {
+        qualifiers: { entity_type: 'place', identifiers: { imf_portwatch: portid } },
+      }),
+    },
     { claim_kind: 'event', subject: portname, predicate: 'daily_transit_count',
       object_value: `${transits} on ${date}`, confidence: 0.88, byte_start: ts, byte_end: te },
   ];
@@ -153,7 +168,7 @@ export function buildFixtures(units) {
     };
     const response = u.transits === null
       ? ABSTAIN
-      : chokepointClaims(u.portname, u.date, u.transits, prior, u.excerpt);
+      : chokepointClaims(u.portname, u.date, u.transits, prior, u.excerpt, u.portid ?? null);
     if (u.transits !== null) prior = u.transits;
     out.push({ request_digest: requestDigest(req), response,
                model_id: req.modelId, runtime_version: req.runtimeVersion });

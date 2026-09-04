@@ -77,6 +77,25 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
       { role: 'collection_agent', atScope: 'DOMAIN' },
+      /*
+       * EVERY DOMAIN ROLE, INCLUDING THE ONES LATER PHASES ADDED.
+       *
+       * This list was written when `collection_*` were the only domain roles, and
+       * it was never extended — so a Phase 2 or Phase 3 principal was refused its
+       * OWN identity, and the Intelligence and Graph shells (which resolve the
+       * working scope from the server's answer about who you are, deliberately
+       * never from anything the client remembered) could not open at all. An
+       * authenticated walkthrough as `resolution_manager` is what found it.
+       *
+       * Widening this is safe for the reason the route already relies on: it
+       * returns the CALLER's own record, there is no identifier to pass, and so
+       * there is nothing here to widen into a directory.
+       */
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -178,6 +197,9 @@ const BUNDLE_V1: Rule[] = [
       { role: 'collection_manager', atScope: 'DOMAIN' },
       { role: 'extraction_manager', atScope: 'DOMAIN' },
       { role: 'extraction_agent', atScope: 'DOMAIN' },
+      // Phase 3 reads the METHOD PIN it ranks under through Phase 2's own read.
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -229,6 +251,12 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'extraction_manager', atScope: 'DOMAIN' },
       { role: 'extraction_agent', atScope: 'DOMAIN' },
+      // PHASE 3, NARROWLY. The resolver's ambiguous tail reaches a model through
+      // Phase 2's single egress rather than one of its own, so the resolution
+      // roles hold THIS action in their own right — and holding it authorises
+      // reaching the model, nothing else. It does not let them admit a claim.
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
     ],
     requiresPurpose: true,
   },
@@ -251,6 +279,135 @@ const BUNDLE_V1: Rule[] = [
       { role: 'platform_admin', atScope: 'PLATFORM' },
       { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  // ───────────────────────── Phase 3: the graph layer ─────────────────────────
+  //
+  // THE EIGHT RESOLVER AUTHORITY RULES DIVIDE THIS SURFACE.
+  //
+  //   * PROPOSE vs. DECIDE. A resolution agent may run the resolver and propose
+  //     candidates; it may NOT decide one, split an entity or retract an edge.
+  //     Rule 6 says an ambiguous resolution needs a human who is not the proposing
+  //     agent — so no agent role appears on the deciding actions AT ALL, and
+  //     migration 0024 additionally refuses a decider who proposed the row. Two
+  //     independent boundaries, as everywhere else.
+  //   * OBSERVE vs. DECLARE. The Strategy Graph is declared by people. No agent
+  //     role can write an objective, an assumption or a commitment, because
+  //     nothing automatic has standing to say what an organisation intends.
+  {
+    actionPrefix: 'graph.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    // Creating an entity and registering an identifier system: the resolver
+    // surface. An identifier system is what makes an automatic resolution
+    // possible at all (rule 1), so declaring one is a governed act in its own
+    // right and not something a run does on the way past.
+    actionPrefix: 'graph.entity.create',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // A SPLIT IS A HUMAN ACT. Rule 8 makes wrong resolutions reversible; nothing
+    // automatic gets to decide that a merge was wrong.
+    actionPrefix: 'graph.entity.split',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'graph.resolution.propose',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // RULE 6, AT THE POLICY BOUNDARY. No agent role appears here, so an agent
+    // cannot hold this decision even before the database refuses it one.
+    actionPrefix: 'graph.resolution.decide',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'graph.edge.assert',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // Retracting an assertion the graph is built on is a judgement, not a job.
+    actionPrefix: 'graph.edge.retract',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'graph.strategy.declare',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'graph.strategy.link',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // Propagation REPORTS; it decides nothing. It is held by the people who own
+    // what it reports on — including the collection_manager, because a Phase 1
+    // correction is what most often triggers it.
+    actionPrefix: 'graph.impact.propagate',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
     ],
     requiresPurpose: true,
   },

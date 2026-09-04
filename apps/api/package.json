@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "dev": "node --watch --enable-source-maps -r ts-node/register src/main.ts",
     "test": "vitest run --exclude test/gate/hermetic-suite-meta.test.ts && vitest run test/gate/hermetic-suite-meta.test.ts --no-file-parallelism",
-    "test:int": "vitest run --config vitest.int.config.ts --exclude '**/node_modules/**' --exclude '**/dist/**' --exclude 'test/int/phase1-*.test.ts' --exclude 'test/int/phase2-*.test.ts'",
+    "test:int": "vitest run --config vitest.int.config.ts --exclude '**/node_modules/**' --exclude '**/dist/**' --exclude 'test/int/phase1-*.test.ts' --exclude 'test/int/phase2-*.test.ts' --exclude 'test/int/phase3-*.test.ts'",
     "test:int:all": "vitest run --config vitest.int.config.ts",
     "lint": "echo 'api: typecheck + depcruise cover lint (Phase 0)'",
     "db:migrate": "node scripts/migrate.mjs",

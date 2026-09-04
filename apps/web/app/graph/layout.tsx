@@ -1,6 +1,6 @@
 'use client';
 /**
- * The Intelligence shell — Phase 2's workspace, beside Observation Operations.
+ * The Graph shell — Phase 3's workspace, beside Observation and Intelligence.
  *
  * The persistent tenant/domain indicator is not decoration: cross-tenant
  * confusion is a governance failure, not a UX one, so the scope the operator is
@@ -22,34 +22,38 @@ interface ShellContext {
   scope: Scope;
   me: Me;
   /**
-   * True when this operator holds extraction_manager in the working domain.
+   * True when this operator holds resolution_manager in the working domain.
    *
    * It gates what the interface OFFERS, never what it enforces: the server
-   * refuses an approval or a review decision from anyone else regardless, and
+   * refuses a resolution decision or a split from anyone else regardless, and
    * hiding a control the server would refuse is courtesy, not security.
    */
-  isExtractionManager: boolean;
+  isResolutionManager: boolean;
+  /** True when this operator may declare Strategy Graph objects. */
+  isStrategyOwner: boolean;
 }
 
 const Ctx = createContext<ShellContext | null>(null);
 
 export function useShell(): ShellContext {
   const v = useContext(Ctx);
-  if (v === null) throw new Error('intelligence shell context is not available');
+  if (v === null) throw new Error('graph shell context is not available');
   return v;
 }
 
 const NAV = [
-  { href: '/intelligence', label: 'Overview', glyph: '◎' },
-  { href: '/intelligence/claims', label: 'Claims', glyph: '❝' },
-  { href: '/intelligence/review', label: 'Review', glyph: '⚖' },
-  { href: '/intelligence/methods', label: 'Methods', glyph: '⚙' },
-  { href: '/intelligence/gateway', label: 'Gateway', glyph: '⇄' },
-  { href: '/graph', label: 'Graph', glyph: '◈' },
+  { href: '/graph', label: 'Overview', glyph: '◎' },
+  { href: '/graph/search', label: 'Search', glyph: '⌕' },
+  { href: '/graph/entities', label: 'Entities', glyph: '◈' },
+  { href: '/graph/resolutions', label: 'Resolutions', glyph: '⚖' },
+  { href: '/graph/explore', label: 'Explore', glyph: '⁂' },
+  { href: '/graph/strategy', label: 'Strategy', glyph: '◇' },
+  { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
+  { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
   { href: '/observation', label: 'Observation', glyph: '⛁' },
 ];
 
-export default function IntelligenceLayout({ children }: { children: ReactNode }) {
+export default function GraphLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
@@ -81,7 +85,7 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
   if (problem !== null) {
     return (
       <main style={{ padding: 'var(--eye-space-32)' }}>
-        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Intelligence</h1>
+        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Graph</h1>
         <p role="alert" style={{ color: 'var(--eye-color-critical)' }}>{problem}</p>
       </main>
     );
@@ -92,7 +96,7 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
   if (me.homeTenantId === null || me.homeDomainId === null) {
     return (
       <main style={{ padding: 'var(--eye-space-32)' }}>
-        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Intelligence</h1>
+        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Graph</h1>
         <p role="alert">
           This workspace operates inside one Intelligence Domain. The signed-in principal is bound at{' '}
           <strong>{me.homeScope}</strong> scope and has no home domain, so there is no domain to open.
@@ -102,12 +106,15 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
   }
 
   const scope: Scope = { tenantId: me.homeTenantId, domainId: me.homeDomainId };
-  const isExtractionManager = me.bindings.some(
-    (b) => b.roleCode === 'extraction_manager' && b.domainId === me.homeDomainId,
+  const isResolutionManager = me.bindings.some(
+    (b) => b.roleCode === 'resolution_manager' && b.domainId === me.homeDomainId,
+  );
+  const isStrategyOwner = me.bindings.some(
+    (b) => b.roleCode === 'strategy_owner' && b.domainId === me.homeDomainId,
   );
 
   return (
-    <Ctx.Provider value={{ scope, me, isExtractionManager }}>
+    <Ctx.Provider value={{ scope, me, isResolutionManager, isStrategyOwner }}>
       <div style={{ minBlockSize: '100vh', display: 'flex', flexDirection: 'column' }}>
         <DegradedBanner visible={degraded} detail="the API reports degraded audit availability" />
         <header
@@ -119,7 +126,7 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
             paddingBlock: 'var(--eye-space-8)', paddingInline: 'var(--eye-space-16)',
           }}
         >
-          <strong style={{ color: 'var(--eye-color-ink-strong)' }}>Intelligence</strong>
+          <strong style={{ color: 'var(--eye-color-ink-strong)' }}>Graph</strong>
           <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>
             tenant <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.tenantId.slice(0, 8)}…</bdi>
             {' · '}domain <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.domainId.slice(0, 8)}…</bdi>
@@ -139,7 +146,7 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
         </header>
         <div style={{ display: 'flex', flex: 1, minInlineSize: 0 }}>
           <nav
-            aria-label="Intelligence"
+            aria-label="Graph"
             style={{
               inlineSize: 'clamp(3.5rem, 14vw, 13rem)',
               borderInlineEnd: '1px solid var(--eye-color-border-default)',
@@ -149,7 +156,7 @@ export default function IntelligenceLayout({ children }: { children: ReactNode }
           >
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {NAV.map((n) => {
-                const active = n.href === '/observation' ? pathname === n.href : pathname.startsWith(n.href);
+                const active = n.href === '/graph' ? pathname === n.href : pathname.startsWith(n.href);
                 return (
                   <li key={n.href} style={{ marginBlockEnd: 'var(--eye-space-4)' }}>
                     <Link
