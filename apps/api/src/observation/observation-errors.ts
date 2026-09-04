@@ -146,6 +146,94 @@ const RULES: Array<{
   },
 ];
 
+/*
+ * PHASE 2. The intelligence ports raise refusals of exactly the same kind — a
+ * registrar approving their own method, a decision without a reason, an agent
+ * deciding its own output, a state machine transition that is not reachable — and
+ * they deserve the same honest answers rather than a 500. They are listed here,
+ * beside the Phase 1 rules, because they are the same mechanism: a SQLSTATE the
+ * governed port chose, mapped to a sentence written in the product's own words.
+ */
+const INTELLIGENCE_RULES: typeof RULES = [
+  {
+    match: /method approval rejected: the registrar may not approve their own method/i,
+    status: 403,
+    code: 'EYE_AUT_001',
+    message:
+      'the operator who registered this extraction method may not approve it. Approval is a second person’s judgement about a model, a prompt and a set of thresholds — one person doing both is not review.',
+  },
+  {
+    match: /method approval rejected: method is (\w+), not draft/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this extraction method is no longer a draft, so it cannot be approved again.',
+  },
+  {
+    match: /method transition rejected: .* cannot become active/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message:
+      'this extraction method cannot become active from the state it is in. A method is approved before it is activated, and an active method is already active.',
+  },
+  {
+    match: /method transition rejected: .* is not a reachable state/i,
+    status: 400,
+    code: 'EYE_REQ_001',
+    message: 'that is not a state an extraction method can be moved to.',
+  },
+  {
+    match: /method (approval|transition) rejected: no such method/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized extraction method matches this identifier.',
+  },
+  {
+    match: /extraction rejected: method is (\w+), not active/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message:
+      'this extraction method is not active, so it cannot run. A method is registered, approved by a second person and activated before it reads any evidence.',
+  },
+  {
+    match: /extraction rejected: no such method/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized extraction method matches this identifier.',
+  },
+  {
+    match: /review decision rejected: a decision needs a reason/i,
+    status: 400,
+    code: 'EYE_REQ_001',
+    message:
+      'a review decision needs a written reason. The reason is the record of why a person accepted, corrected or rejected what the model produced.',
+  },
+  {
+    match: /review decision rejected: the agent that produced this output may not decide it/i,
+    status: 403,
+    code: 'EYE_AUT_001',
+    message:
+      'the extraction agent that produced this output may not decide its review. An agent clearing its own low-confidence work would make the queue decorative.',
+  },
+  {
+    match: /review decision rejected: case is already (\w+)/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this review case has already been decided. A reviewer’s judgement is a record, not a toggle.',
+  },
+  {
+    match: /review decision rejected: .* is not a decision/i,
+    status: 400,
+    code: 'EYE_REQ_001',
+    message: "a review decision must be 'approved', 'corrected' or 'rejected'.",
+  },
+  {
+    match: /review decision rejected: no such case/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized review case matches this identifier.',
+  },
+];
+
 /**
  * Translate a port refusal into its governed answer, or return null when the
  * error is not a recognised rule — in which case the caller must let it surface
@@ -162,7 +250,7 @@ export function asObservationRefusal(e: unknown, correlationId: string): HttpExc
   const code = typeof err.code === 'string' ? err.code : '';
   if (!['23514', '23503', '22023', '23505', '42501'].includes(code)) return null;
 
-  for (const rule of RULES) {
+  for (const rule of [...RULES, ...INTELLIGENCE_RULES]) {
     if (rule.match.test(message)) {
       return new HttpException(errorBody(rule.code, correlationId, rule.message), rule.status);
     }

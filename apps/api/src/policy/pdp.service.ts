@@ -156,6 +156,104 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
   },
+  // ───────────────────────── Phase 2: the intelligence layer ─────────────────────────
+  //
+  // The same two splits Phase 1 makes, for the same reasons.
+  //
+  //   * REGISTER vs. APPROVE. An extraction method is registered by an operator
+  //     and approved by an extraction_manager who is not its registrar — the
+  //     database enforces the second half, because a policy bundle cannot see who
+  //     registered what.
+  //   * EXTRACT vs. REVIEW. An extraction agent may run a method and admit claims;
+  //     it may NOT approve a method or decide a review case. An agent that could
+  //     clear its own low-confidence output would make the queue decorative.
+  {
+    actionPrefix: 'intelligence.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'intelligence.method.register',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // Approval and activation are the MANAGER surface, and deliberately not the
+    // agent's: nothing that runs extraction can decide what extraction may run.
+    actionPrefix: 'intelligence.method.approve',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'intelligence.method.activate',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'intelligence.run',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'intelligence.gateway.call',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'intelligence.claim.admit',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // THE REVIEW DECISION IS A HUMAN ACT. No agent role appears here, and the
+    // database additionally refuses a decision by the agent that produced the
+    // output — two independent boundaries, as everywhere else.
+    actionPrefix: 'intelligence.review.decide',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
   {
     // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
     // AUD are durable before any byte moves, and it is not folded into the
@@ -168,6 +266,15 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
+      // PHASE 2, NARROWLY. An extraction agent must read the bytes it makes claims
+      // about, and reading them is NOT something `intelligence.claim.admit` may
+      // authorise — that action writes claims. So the agent holds this decision in
+      // its own right, at DOMAIN scope, and every read it makes goes through the
+      // same manifest-resolved, digest-verified, custody-writing path an operator
+      // download uses. The collection agent is still absent: it WRITES evidence
+      // and has no business reading the original bytes back out.
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,

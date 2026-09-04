@@ -204,6 +204,16 @@ export class EvidenceService {
    */
   async retrieve(
     cap: AcquisitionWrites, ctx: ScopeContext, actor: string, evdId: string, correlationId: string,
+    /**
+     * Optional detail about WHY this retrieval happened, merged into the custody
+     * entry. An operator download passes nothing and the record is unchanged; a
+     * machine reader — Phase 2 extraction — passes its purpose, method and run so
+     * the custody chain says which extraction read these bytes and under what.
+     *
+     * It cannot change what is verified, what is served, or what is refused: it
+     * only says more about a read that happened anyway.
+     */
+    context: Readonly<Record<string, string>> = {},
   ): Promise<RetrievalResult> {
     const evd = (await cap
       .readCanonicalObjects()
@@ -275,6 +285,7 @@ export class EvidenceService {
           failure: e instanceof VaultIntegrityError ? e.reason : 'unknown',
           // No filesystem path, no locator, no hint about what else exists.
           disclosure: 'none',
+          ...context,
         },
         correlationId,
       });
@@ -291,7 +302,7 @@ export class EvidenceService {
       agentPrincipalId: null, agentVersion: null, codeDigest: null,
       connector: null, connectorVersion: null, methodRef: null,
       contentDigest: manifest.content_digest, digestVerified: true,
-      details: { verified_on_read: true, byte_length: bytes.byteLength },
+      details: { verified_on_read: true, byte_length: bytes.byteLength, ...context },
       correlationId,
     });
 
