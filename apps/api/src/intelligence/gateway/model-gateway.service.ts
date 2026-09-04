@@ -138,6 +138,100 @@ function parseResponse(raw: unknown): { claims: ExtractedClaim[]; abstain: strin
   return { claims, abstain: null };
 }
 
+/**
+ * WHAT A RANKING REQUEST IS.
+ *
+ * Phase 3's resolver reaches the gateway for exactly one thing: ordering
+ * candidate entities for a mention it could not resolve deterministically. It is
+ * a SEPARATE contract from extraction because it asks a different question, and
+ * it lives here rather than in a second gateway because "the single egress for
+ * model calls" is this file's whole reason to exist — a Phase 3 egress of its own
+ * would have broken that invariant to avoid touching this file, which is the
+ * wrong trade.
+ *
+ * Nothing about extraction changes: `call()` is untouched, and a ranking request
+ * digests differently, so the two can never collide in the replay store.
+ */
+export interface RankRequest {
+  promptRef: string;
+  promptVersion: string;
+  promptText: string;
+  promptDigest: string;
+  modelId: string;
+  weightsDigest: string;
+  runtimeVersion: string;
+  decodingDigest: string;
+  decodingOptions?: Record<string, unknown>;
+  /** The mention, and every candidate it might be. */
+  input: {
+    mention: string;
+    context: string;
+    candidates: Array<{ entity_id: string; canonical_name: string; entity_type: string }>;
+  };
+}
+
+export interface RankedCandidate {
+  entity_id: string;
+  score: number;
+  reason: string;
+}
+
+export interface RankResult {
+  callId: string;
+  mode: 'replay' | 'local-live';
+  outcome: 'completed' | 'abstained' | 'refused' | 'failed';
+  requestDigest: string;
+  responseDigest: string | null;
+  ranking: RankedCandidate[];
+  abstainReason: string | null;
+  failure: string | null;
+  latencyMs: number;
+}
+
+export function rankRequestDigestOf(req: RankRequest): string {
+  return sha256(jcsCanonicalize({
+    kind: 'entity-ranking',
+    prompt_ref: req.promptRef,
+    prompt_version: req.promptVersion,
+    prompt_digest: req.promptDigest,
+    model_id: req.modelId,
+    weights_digest: req.weightsDigest,
+    runtime_version: req.runtimeVersion,
+    decoding_digest: req.decodingDigest,
+    input: req.input,
+  }));
+}
+
+/** A ranking is well-formed or it is refused. Neither shape is inferred. */
+function parseRanking(
+  raw: unknown, permitted: ReadonlySet<string>,
+): { ranking: RankedCandidate[]; abstain: string | null } | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (o['abstain'] === true) {
+    const reason = typeof o['reason'] === 'string' && o['reason'].length > 0
+      ? o['reason'] : 'the model abstained without giving a reason';
+    return { ranking: [], abstain: reason };
+  }
+  if (!Array.isArray(o['ranking'])) return null;
+  const ranking: RankedCandidate[] = [];
+  for (const c of o['ranking'] as unknown[]) {
+    if (c === null || typeof c !== 'object') return null;
+    const x = c as Record<string, unknown>;
+    const id = x['entity_id'];
+    // A ranking may only order the candidates it was GIVEN. A model naming an
+    // entity that was not on the list is refused, not filtered: an answer to a
+    // different question is not a partially correct answer to this one.
+    if (typeof id !== 'string' || !permitted.has(id)) return null;
+    const score = x['score'];
+    if (typeof score !== 'number' || score < 0 || score > 1) return null;
+    const reason = x['reason'];
+    if (typeof reason !== 'string' || reason.length === 0) return null;
+    ranking.push({ entity_id: id, score, reason });
+  }
+  return { ranking, abstain: null };
+}
+
 @Injectable()
 export class ModelGatewayService {
   private readonly log = new Logger('ModelGateway');
@@ -291,6 +385,127 @@ export class ModelGatewayService {
         return JSON.parse(envelope.response) as unknown;
       } catch {
         throw new Error('the local model did not return the JSON the extraction contract requires');
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * RANK candidate entities for one ambiguous mention (resolver rule 3).
+   *
+   * The result is EVIDENCE, never a decision: the caller writes it onto a
+   * resolution PROPOSAL with its full lineage, and rule 4 — enforced by migration
+   * 0024's `res_auto_only_on_identifier` — means no proposal carrying it can
+   * become an acceptance without a person.
+   *
+   * Same two modes, same discipline: a replay miss FAILS with a named reason and
+   * never falls through to a live call.
+   */
+  async rank(
+    cap: ExtractionWrites,
+    ctx: { tenantId: string; domainId: string; correlationId: string },
+    a: { pin: MethodPin; runId: string | null; methodId: string; req: RankRequest },
+  ): Promise<RankResult> {
+    const started = Date.now();
+    const requestDigest = rankRequestDigestOf(a.req);
+    const callId = newId();
+    const mode = a.pin.gateway_mode;
+    const permitted = new Set(a.req.input.candidates.map((c) => c.entity_id));
+
+    let outcome: RankResult['outcome'] = 'failed';
+    let responseDigest: string | null = null;
+    let ranking: RankedCandidate[] = [];
+    let abstainReason: string | null = null;
+    let failure: string | null = null;
+
+    try {
+      const raw = mode === 'replay'
+        ? await this.fromRecording(cap, ctx, requestDigest)
+        : await this.rankFromLocalModel(a.req);
+      if (raw === null) {
+        failure = mode === 'replay'
+          ? 'no recorded ranking exists for this request digest — replay does not fall through to a live call'
+          : 'the local model returned nothing';
+      } else {
+        responseDigest = sha256(jcsCanonicalize(raw));
+        const parsed = parseRanking(raw, permitted);
+        if (parsed === null) {
+          outcome = 'refused';
+          failure = 'the ranking did not match the contract and was refused rather than coerced';
+        } else if (parsed.abstain !== null) {
+          outcome = 'abstained';
+          abstainReason = parsed.abstain;
+        } else {
+          outcome = 'completed';
+          ranking = [...parsed.ranking].sort((x, y) => y.score - x.score);
+        }
+        if (mode === 'local-live') {
+          await cap.recordResponse({
+            tenantId: ctx.tenantId, domainId: ctx.domainId, requestDigest, response: raw,
+            responseDigest, modelId: a.req.modelId, runtime: a.req.runtimeVersion,
+            from: 'local-live', correlationId: ctx.correlationId,
+          });
+        }
+      }
+    } catch (e) {
+      failure = e instanceof Error ? e.message.slice(0, 400) : String(e).slice(0, 400);
+    }
+
+    const latencyMs = Date.now() - started;
+    await cap.recordGatewayCall({
+      callId, tenantId: ctx.tenantId, domainId: ctx.domainId, runId: a.runId,
+      methodId: a.methodId, mode, requestDigest, responseDigest,
+      modelId: a.req.modelId, weights: a.req.weightsDigest, runtime: a.req.runtimeVersion,
+      promptVersion: a.req.promptVersion, decoding: a.req.decodingDigest,
+      outcome, latencyMs,
+      detail: { purpose: 'entity-ranking', candidates: a.req.input.candidates.length,
+                ...(failure === null ? {} : { failure }),
+                ...(abstainReason === null ? {} : { abstain_reason: abstainReason }) },
+      correlationId: ctx.correlationId,
+    });
+
+    return { callId, mode, outcome, requestDigest, responseDigest, ranking,
+             abstainReason, failure, latencyMs };
+  }
+
+  /** LOCAL-LIVE ranking. Same loopback-only rule; no hosted endpoint exists here. */
+  private async rankFromLocalModel(req: RankRequest): Promise<unknown | null> {
+    const host = process.env['EYE_MODEL_HOST'] ?? 'http://127.0.0.1:11434';
+    const url = new URL('/api/generate', host);
+    if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
+      throw new Error(`local-live refused: ${url.hostname} is not loopback; no hosted model API is used`);
+    }
+    const prompt = [
+      req.promptText,
+      '',
+      `MENTION: ${req.input.mention}`,
+      `CONTEXT: ${req.input.context}`,
+      '',
+      'CANDIDATES (rank only these; entity_id must be copied exactly):',
+      ...req.input.candidates.map(
+        (c) => `- entity_id=${c.entity_id} name="${c.canonical_name}" type=${c.entity_type}`),
+      '',
+      'JSON:',
+    ].join('\n');
+    const ac = new AbortController();
+    const timer = setTimeout(() => { ac.abort(); }, 120_000);
+    try {
+      const r = await fetch(url, {
+        method: 'POST', signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: req.modelId, prompt, stream: false, format: 'json',
+          options: req.decodingOptions ?? {},
+        }),
+      });
+      if (!r.ok) throw new Error(`local model responded ${r.status}`);
+      const envelope = (await r.json()) as { response?: string };
+      if (typeof envelope.response !== 'string') return null;
+      try {
+        return JSON.parse(envelope.response) as unknown;
+      } catch {
+        throw new Error('the local model did not return the JSON the ranking contract requires');
       }
     } finally {
       clearTimeout(timer);

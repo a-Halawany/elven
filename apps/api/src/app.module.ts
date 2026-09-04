@@ -10,6 +10,7 @@ import { ObjectsModule } from './objects/objects.module.js';
 import { PipelineModule } from './pipeline/pipeline.module.js';
 import { ObservationModule } from './observation/observation.module.js';
 import { IntelligenceModule } from './intelligence/intelligence.module.js';
+import { GraphModule } from './graph/graph.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { IntelligenceModule } from './intelligence/intelligence.module.js';
     PipelineModule,
     ObservationModule,
     IntelligenceModule,
+    GraphModule,
   ],
 })
 export class AppModule {}

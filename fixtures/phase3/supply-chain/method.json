@@ -1,0 +1,26 @@
+{
+  "methodKey": "corridor-supply-relationships",
+  "name": "Corridor supply relationships — shipments, components and the manufacturer",
+  "targetTypes": [
+    "ENT",
+    "REL"
+  ],
+  "modelId": "qwen2.5:3b-instruct",
+  "modelWeightsDigest": "d9ed12f78c8d2d0f574697d9b6ca4c50dff8aca30039614866dab609669c28c5",
+  "runtimeVersion": "ollama/0.12.3",
+  "promptRef": "extract/corridor-supply",
+  "promptVersion": "v1",
+  "promptText": "You read ONE internal shipment or inventory record and return JSON only.\nReturn {\"claims\":[...]} where each claim has claim_kind (entity|relationship),\nsubject, predicate, object_value, confidence (0..1), byte_start and byte_end naming the exact\nspan of the record the claim rests on. Name the things the record identifies and the\nrelationships it states between them, and nothing it does not state.\nIf the record supports no claim you are willing to stand behind, return\n{\"abstain\":true,\"reason\":\"...\"} instead. Abstaining is a correct answer; guessing is not.",
+  "decoding": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 20260904,
+    "num_predict": 512
+  },
+  "confidenceFloor": 0.35,
+  "reviewBelow": 0.75,
+  "budgetCalls": 40,
+  "budgetSeconds": 300,
+  "promptDigest": "5143235f5095f05590ab65df2811606c306af0e943677ff6cee54dce974f88e7",
+  "decodingDigest": "49612bbd50915b1d9a454f8386a95d16699d2eb17ae70f7b0d62b70a9364407e"
+}

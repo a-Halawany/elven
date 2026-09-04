@@ -252,6 +252,8 @@ for (const e of evidence) {
   const m = /"portname"\s*:\s*"([^"]+)"/.exec(excerpt);
   const t = /"n_total(?:_transit)?"\s*:\s*([0-9.]+)/.exec(excerpt) ?? /"transits"\s*:\s*([0-9.]+)/.exec(excerpt);
   const d = /"date"\s*:\s*"([^"]+)"/.exec(excerpt) ?? /(\d{4}-\d{2}-\d{2})/.exec(excerpt);
+  // The publisher's OWN identifier for the chokepoint, printed in the bytes.
+  const pid = /"portid"\s*:\s*"([^"]+)"/.exec(excerpt);
   // The locator and the content digest live in the EVD PAYLOAD, which is what the
   // extraction reads too — so the request digest the fixture is keyed by is the
   // one the gateway will compute.
@@ -260,6 +262,7 @@ for (const e of evidence) {
     contentDigest: String(e.payload?.content_digest ?? ''),
     excerpt,
     portname: m === null ? 'the corridor' : m[1],
+    portid: pid === null ? null : pid[1],
     transits: t === null ? null : Math.round(Number(t[1])),
     date: d === null ? 'the observed day' : d[1],
   });

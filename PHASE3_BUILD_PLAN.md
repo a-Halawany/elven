@@ -2,7 +2,12 @@
 
 > Scope comes strictly from the frozen roadmap (`docs/the-eye-master-build-prompt.md`, Phase 3) and
 > the boundary the demonstration already promises (`docs/phase1/DEMO_STORYBOARD.md` §2, row 3).
-> **Nothing here is implemented.** It does not touch Phases 4–7.
+> It does not touch Phases 4–7.
+>
+> **Status: APPROVED AND IMPLEMENTED.** The owner approved this plan and froze C1–C7 together with
+> the eight resolver authority rules recorded in §6a below. What was built, what it measured and
+> what it does not do are in [PHASE3_REPORT.md](PHASE3_REPORT.md); what an operator can do with it
+> is in [PHASE3_PRODUCT_HANDOFF.md](PHASE3_PRODUCT_HANDOFF.md).
 
 ---
 
@@ -59,7 +64,7 @@ agents beyond the bounded runs Phase 1's agent contract already governs (Phase 7
 | **Resolver** | Deterministic blocking + scoring first (normalised name, source-scoped identifiers, co-occurrence). The Model Gateway is available for the ambiguous tail, in the same two modes with the same lineage. Above a threshold it resolves; below it, the queue. **No automatic merge is unreviewable** — every one records what matched and by how much. |
 | **Graph edges** | `REL` claims become edges with temporal validity (`valid_from` / `valid_to`) and provenance on the edge itself. An edge is an assertion with a lifetime, not a fact. |
 | **Permission-aware retrieval** | Search over evidence, claims and entities under the existing capability model — the same scope triple, the same RLS. A result a caller may not see is absent, not redacted, and never an existence oracle. |
-| **Strategy Graph** | `OBJ` (objective), `ASM'` (assumption), `DEC` (decision), `CMT` (commitment), `OUT` (outcome) as canonical objects with the 43-column header, linked to the claims and entities they rest on. |
+| **Strategy Graph** | `OBJ` (objective), `ASU` (assumption — `ASM` is Phase 2's *assessment* and is not ours to redefine), `DEC` (decision), `CMT` (commitment), `OUT` (outcome) as canonical objects with the 43-column header, linked to the claims and entities they rest on. |
 | **Invalidation propagation** | A correction or withdrawal walks the dependency graph and marks every assumption resting on the changed claim as **unverified**, then reports the objectives and commitments above them. It does not decide anything — it tells a person what to look at. |
 
 **Data model.** One forward migration, `0024`, in the shape of `0022` and `0023`: entity registry
@@ -86,6 +91,9 @@ paid service, and the UN Comtrade key stays untouched.
 The Model Gateway is reused **as built** for the ambiguous resolution tail — `replay` for CI,
 acceptance and the demonstration; `local-live` against the same local model already pulled. No new
 model, no new provider, no hosted API.
+
+**Resolved by the owner: deterministic-first with Model Gateway assistance for the ambiguous tail.**
+The eight authority rules that decision came with are frozen in §6a. Original note:
 
 **One genuine decision, and it is small:** whether Phase 3's resolver may call the gateway at all,
 or must stay deterministic. Deterministic-only is simpler to defend and cheaper to run; the model
@@ -124,6 +132,28 @@ product capability the roadmap names.
 | **C5** | An edge carries temporal validity and provenance. An as-of query returns the graph **as it stood at that instant**, with no hindsight. |
 | **C6** | **Invalidating an assumption surfaces what rested on it.** Correcting or withdrawing a claim marks every dependent assumption unverified and lists the affected objectives and commitments — and Phase 1's correction cases stop saying propagation is unresolved, because it no longer is. |
 | **C7** | Phase 0, 1 and 2 regression: full CI green, no constitutional invariant weakened, C18 still frozen at 0021, and the Phase 1 and Phase 2 operator journeys unchanged. |
+
+## 6a. The eight resolver authority rules (frozen with C1–C7)
+
+Approved by the owner before implementation started, and enforced as database constraints and port
+refusals rather than as conventions a service is trusted to follow. The mapping from each rule to
+the exact constraint, port and policy rule that enforces it is in
+[PHASE3_REPORT.md](PHASE3_REPORT.md) §2.
+
+| # | Rule |
+|---|---|
+| **1** | An exact match on the same authoritative external identifier may resolve automatically, provided the identifier source, resolver rule/version and complete provenance are recorded. |
+| **2** | Name-only, fuzzy, conflicting or incomplete matches must never auto-resolve. |
+| **3** | When deterministic scoring cannot produce an authoritative exact match, the Model Gateway may rank or propose candidates. |
+| **4** | A model proposal is evidence for the resolution queue — not a final identity decision. |
+| **5** | Model-assisted resolution must carry mode, model/weights/runtime, prompt and decoding digests, confidence, candidate set and source evidence lineage. |
+| **6** | Ambiguous resolutions require approval by a human who is not the proposing agent, with a written reason. |
+| **7** | Abstention or insufficient evidence must remain unresolved; never force a best match. |
+| **8** | Wrong resolutions must be reversible through supersession/split while preserving history and known-at results. |
+
+Replay is the deterministic default; the already-proven loopback local model is the optional live
+path. No hosted API, new credential, paid service or connector is required, and the UN Comtrade key
+is untouched.
 
 ## 7. What this plan deliberately excludes
 

@@ -3,10 +3,11 @@
  *
  * Originally written for 0022 alone. C18 is frozen at 0021 and cannot speak about
  * anything after it, so every migration beyond that ceiling is proved here — 0022
- * when Phase 1 added it, 0023 now that Phase 2 has. Extending the ceiling is what
- * the Phase 2 plan called for, and it is deliberately NOT a second gate: one
- * script, one purpose, one list of declared additions that grows with the
- * migrations it covers.
+ * when Phase 1 added it, 0023 when Phase 2 did, 0024 now that Phase 3 has.
+ * Extending the ceiling this way is what the Phase 2 plan called for and what the
+ * Phase 3 plan repeated, and it is deliberately NOT a second gate: one script, one
+ * purpose, one list of declared additions that grows with the migrations it
+ * covers.
  *
  * C18 is FROZEN at 0021: its ceiling, catalog, table universe and criteria are
  * untouched by this file, and its dual-path proof continues to describe the world
@@ -129,7 +130,7 @@ const PHASE0_ONLY = ['--exclude', '**/node_modules/**', '--exclude', '**/dist/**
 /* Everything the upgraded database is expected to support, phase by phase. */
 const LATER_PHASE_SUITES = ['test/int/phase1-acceptance.test.ts',
   'test/int/phase1-fault-injection.test.ts', 'test/int/phase1-hostile-input.test.ts',
-  'test/int/phase2-acceptance.test.ts'];
+  'test/int/phase2-acceptance.test.ts', 'test/int/phase3-acceptance.test.ts'];
 
 /**
  * The SET of row digests for every governed table.
@@ -159,12 +160,14 @@ async function dataRows(c) {
  * under test, not a way of excusing whatever happened to change.
  */
 const INTENDED_ADDITIONS = Object.freeze({
-  // 0022: collection_manager, collection_agent · 0023: extraction_manager, extraction_agent
-  'identity.roles': 4,
+  // 0022: collection_manager, collection_agent · 0023: extraction_manager,
+  // extraction_agent · 0024: resolution_manager, resolution_agent, strategy_owner
+  'identity.roles': 7,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
-  'objects.schema_registry': 8,
+  // 0024: OBJ, ASU, DEC, CMT, OUT
+  'objects.schema_registry': 13,
   // one ledger line per migration applied above the ceiling
-  'public.schema_migrations': 2,
+  'public.schema_migrations': 3,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
