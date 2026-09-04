@@ -222,5 +222,11 @@ Five, all found by running the thing rather than by reading it.
   pages build and fail closed to the login screen. Signing in would have meant entering a
   credential into a form, which is not something this implementer does — an operator can see the
   screens by following §2 of the handoff.
+* **One unreproduced local unit failure.** A `pnpm test` run that overlapped with files being
+  written into the working tree reported `1 failed | 2033 passed`. Two subsequent full runs, and
+  CI's `build-test` on a clean runner, all reported **2034 / 2034**. The run that failed was
+  captured through a filter that kept only summary lines, so **the failing test's name was not
+  recorded and I could not identify it afterwards.** It is noted here rather than omitted: I do not
+  know what it was, and "not reproducible" is a weaker statement than "not real".
 * **`graph.` actions fail closed.** There is no catch-all rule: an unknown graph action is
   `indeterminate` and denied. That is deliberate and it means a new action needs a bundle entry.
