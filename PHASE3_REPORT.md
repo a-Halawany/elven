@@ -176,9 +176,53 @@ Three things, each additive and each with a reason that is not convenience.
   in its own bytes. That is a fixture becoming richer, not a code path changing: it is the
   identifier that makes rule 1 demonstrable on real published data.
 
+## 7a. The authenticated walkthrough, and the bug it found
+
+One smoke walkthrough was performed as `s.larsen` (`resolution_manager`), authenticated through
+the same environment-backed `/v1/auth/login` path the seed scripts use — no credential was typed,
+printed, logged or committed, and the session was installed exactly as `lib/api.ts#login` installs
+it. No test framework was added.
+
+**It failed on the first attempt, and the failure was real.** The Graph shell resolves the working
+scope from the server's answer about who you are — deliberately never from anything the client
+remembered — and that call, `identity.self.read`, was refused with *"no qualifying role binding for
+action in resolved scope"*. The policy rule for it had been written when `collection_*` were the
+only domain roles and was **never extended**: a `resolution_manager` could not read its own
+identity, so the workspace could not open at all.
+
+The same gap silently affected **Phase 2**: `extraction_manager` and `extraction_agent` were
+missing from that rule too, so the Intelligence workspace was equally unopenable for the roles it
+had introduced. Phase 2's API and acceptance suite never touched the route, so nothing caught it.
+
+The fix adds the five later-phase domain roles to that one rule. Widening it is safe for the reason
+the route already relies on: it returns the CALLER's own record, there is no identifier to pass, and
+so there is nothing to widen into a directory.
+
+**After the fix, every screen rendered against live demonstration data:**
+
+| Screen | What it showed |
+|---|---|
+| Overview | 10 entities · 48 accepted resolutions, **39 automatic** · 5 edges · 1 objective, 1 assumption, 1 commitment, 1 unverified · 1 invalidation assessed |
+| Entities | the registry, and `Suez Canal` opened to its identifier `imf_portwatch chokepoint1`, 21 mentions — 20 marked *"no person — an authoritative identifier resolved it"*, one by *"a person"* — and a full history carrying the `human-retarget@1` row with its written reason |
+| Resolution queue | 9 candidates, each with method, rule, score, *"this principal may not decide it"*, the evidence digest, what matched, and every candidate considered |
+| Manual redirect | **exercised live**: `"Suez"` redirected onto `Suez Canal` through the UI's own control — `201 Created`, queue 9 → 8 |
+| Explore | `Suez Canal → transits → MV Hanse Trader → carries → SYN-SHIP-4468 → carries → SYN-PART-PWR → depends_on → NORDWERK ANTRIEBSTECHNIK GmbH` |
+| Strategy | OBJ, ASU and CMT, with the assumption **UNVERIFIED** and the other two reading *"not applicable — only an assumption is verified"* |
+| Impact | the assessment, its statement, and the affected assumption, objective and commitment each with **how the walk reached it** |
+| Search | 52 results for "Suez", every hit stating why it matched, with the scope note on the response |
+
+The queue was empty after the demonstration cleared it, so a genuinely queued proposal was created
+first through a **deliberately requested new attempt** of the supply-chain extraction — Phase 2's
+own documented behaviour, not a back door.
+
 ## 8. Defects found and fixed during implementation
 
-Five, all found by running the thing rather than by reading it.
+Six, all found by running the thing rather than by reading it.
+
+0. **A later-phase role could not read its own identity**, so neither the Graph nor the Intelligence
+   workspace could open for the roles those phases introduced. Found by the authenticated
+   walkthrough above; it is listed first because it is the only one that a reader of the code would
+   have had no reason to look for.
 
 1. **A split violated its own separation-of-duties constraint.** `graph.split_entity` wrote the
    successor resolution with the deciding person as both proposer and decider, and
@@ -217,11 +261,6 @@ Five, all found by running the thing rather than by reading it.
   differs from every resolved mention's is skipped with a named reason rather than being guessed
   at. That is the right refusal, and it means relationship claims benefit from resolution having
   run first.
-* **The graph UI was verified by build and by the API it calls, not by signing in.** Every route
-  the screens use is exercised end to end by the demonstration and the acceptance suite, and the
-  pages build and fail closed to the login screen. Signing in would have meant entering a
-  credential into a form, which is not something this implementer does — an operator can see the
-  screens by following §2 of the handoff.
 * **One unreproduced local unit failure.** A `pnpm test` run that overlapped with files being
   written into the working tree reported `1 failed | 2033 passed`. Two subsequent full runs, and
   CI's `build-test` on a clean runner, all reported **2034 / 2034**. The run that failed was

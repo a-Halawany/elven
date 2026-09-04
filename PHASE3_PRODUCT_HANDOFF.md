@@ -75,6 +75,18 @@ The rail carries Overview, Search, Entities, Resolutions, Explore, Strategy and 
 | 1 assumption unverified, 1 objective and 1 commitment reported | The correction reached what rested on it, marked only what it has standing to mark, and reported the rest. |
 | The correction case's sentence changed | *"downstream consumers not yet present"* is retired for the case that was actually walked — and only for that case. |
 
+## 3a. Verified in the authenticated UI
+
+One smoke walkthrough as `s.larsen` (`resolution_manager`), through the existing environment-backed
+login. It found a real bug first — `identity.self.read` had never been extended past the Phase 1
+roles, so neither the Graph **nor the Intelligence** workspace could open for the roles Phases 2
+and 3 introduced. With that fixed, every required screen rendered against live data: the entity
+registry and one entity's full history including the human redirect and its reason; the resolution
+queue, with a redirect **exercised live** through its own control; the corridor path
+`Suez Canal → MV Hanse Trader → SYN-SHIP-4468 → SYN-PART-PWR → NORDWERK ANTRIEBSTECHNIK GmbH`; the
+Strategy Graph with its assumption unverified; and the Impact assessment naming how the walk
+reached each affected object. Report §7a has the detail.
+
 ## 4. The eight resolver rules as delivered
 
 The owner's rules are enforced by database constraints and port refusals, so a resolver bug can
@@ -97,8 +109,6 @@ constraint, port and policy rule that enforces it, including the one deliberate 
 * The model-assisted tail is implemented, lineage-enforced and unit-proven, but the corridor
   demonstration runs deterministic-only because no method is pinned to ranking. That is the posture
   the plan recommended.
-* The graph screens were verified by their build and by the API they call, not by signing in — the
-  implementer does not enter credentials into forms. An operator following §2 sees them directly.
 
 **Deliberately out of scope**
 

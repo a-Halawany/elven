@@ -77,6 +77,25 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
       { role: 'collection_agent', atScope: 'DOMAIN' },
+      /*
+       * EVERY DOMAIN ROLE, INCLUDING THE ONES LATER PHASES ADDED.
+       *
+       * This list was written when `collection_*` were the only domain roles, and
+       * it was never extended — so a Phase 2 or Phase 3 principal was refused its
+       * OWN identity, and the Intelligence and Graph shells (which resolve the
+       * working scope from the server's answer about who you are, deliberately
+       * never from anything the client remembered) could not open at all. An
+       * authenticated walkthrough as `resolution_manager` is what found it.
+       *
+       * Widening this is safe for the reason the route already relies on: it
+       * returns the CALLER's own record, there is no identifier to pass, and so
+       * there is nothing here to widen into a directory.
+       */
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_agent', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
