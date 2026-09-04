@@ -35,7 +35,9 @@ export default function ExplorePage() {
   const [edges, setEdges] = useState<EdgeRow[] | null>(null);
   const [asOf, setAsOf] = useState<AsOf | null>(null);
   const [neighbours, setNeighbours] = useState<EntityRow[]>([]);
-  const [path, setPath] = useState<{ edges: EdgeRow[] | null; note: string | null } | null>(null);
+  const [path, setPath] = useState<
+    { edges: EdgeRow[] | null; note: string | null; complete: boolean } | null>(null);
+  const [incomplete, setIncomplete] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
@@ -110,6 +112,11 @@ export default function ExplorePage() {
             known at {fmtInstant(asOf.knownAt)} · valid at {fmtInstant(asOf.validAt)}
           </p>
         )}
+        {incomplete === null ? null : (
+          <UnknownNote>
+            <strong>This answer is incomplete.</strong> {incomplete}
+          </UnknownNote>
+        )}
       </section>
 
       <section aria-labelledby="nb-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
@@ -136,6 +143,7 @@ export default function ExplorePage() {
               setEdges(r.data.neighbourhood.edges);
               setNeighbours(r.data.neighbourhood.entities);
               setAsOf(r.data.asOf);
+              setIncomplete(r.data.complete ? null : r.data.note);
             }}
           />
         </div>
@@ -170,8 +178,9 @@ export default function ExplorePage() {
               if (!r.ok || r.data === undefined) {
                 throw new Error(r.error?.message ?? 'the path could not be read');
               }
-              setPath({ edges: r.data.path, note: r.data.note });
+              setPath({ edges: r.data.path, note: r.data.note, complete: r.data.complete });
               setAsOf(r.data.asOf);
+              setIncomplete(r.data.complete ? null : r.data.note);
             }}
           />
         </div>

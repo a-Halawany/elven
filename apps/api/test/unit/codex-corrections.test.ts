@@ -22,7 +22,7 @@ import { ExtractionService, inheritedControlsOf }
   from '../../src/intelligence/extraction/extraction.service.js';
 import type { MethodPin } from '../../src/intelligence/intelligence.capabilities.js';
 import { EntitiesService } from '../../src/graph/entities/entities.service.js';
-import { EdgesService } from '../../src/graph/edges/edges.service.js';
+import { EdgesService, visibleAt } from '../../src/graph/edges/edges.service.js';
 import { ImpactService } from '../../src/graph/strategy/impact.service.js';
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -57,6 +57,8 @@ interface WorldRows {
   dependencies?: Array<Record<string, unknown>>;
   canonical?: Array<Record<string, unknown>>;
   recorded?: Array<Record<string, unknown>>;
+  corrections?: Array<Record<string, unknown>>;
+  invalidations?: Array<Record<string, unknown>>;
 }
 
 function graphCap(w: WorldRows) {
@@ -75,7 +77,32 @@ function graphCap(w: WorldRows) {
     readInvalidations: () => relation([]),
     readCanonicalObjects: () => relation(w.canonical ?? []),
     readClaimLineage: () => relation([]),
-    readCorrections: () => relation([]),
+    readCorrections: () => relation(w.corrections ?? []),
+    /*
+     * The double models the CAPABILITY CONTRACT, not the SQL: eligibility is
+     * applied before the bound, and `total` counts everything eligible. A double
+     * that bounded first would be modelling the defect rather than the interface.
+     */
+    edgesVisibleAt: async (a: { knownAt: string; validAt: string; limit: number }) => {
+      const eligible = (w.edges ?? []).filter((e) =>
+        visibleAt(e as never, { knownAt: a.knownAt, validAt: a.validAt }));
+      return { rows: eligible.slice(0, a.limit), total: eligible.length };
+    },
+    correctionsOutstanding: async (a: { limit: number; before: string | null }) => {
+      const invalidations = w.invalidations ?? [];
+      const complete = (c: Record<string, unknown>): boolean => {
+        const inv = invalidations.filter(
+          (i) => String(i['correction_case_id']) === String(c['case_id']));
+        return inv.length > 0
+          && inv.every((i) => i['state'] === 'assessed' && i['truncated'] !== true);
+      };
+      const eligible = (w.corrections ?? [])
+        .filter((c) => c['state'] === 'applied' && !complete(c))
+        .filter((c) => a.before === null
+          || new Date(String(c['received_at'])).getTime() < new Date(a.before).getTime())
+        .sort((x, y) => String(y['received_at']).localeCompare(String(x['received_at'])));
+      return { rows: eligible.slice(0, a.limit), total: eligible.length };
+    },
     rebuildProjections: async () => [],
   } as never;
 }
@@ -655,5 +682,118 @@ describe('F4d — a corrected claim rebuilds its edge', () => {
                 retraction_reason: null }],
     });
     expect(r.asserted.length).toBe(0);
+  });
+});
+
+/* ═══════════ SECOND PASS · concerns raised against 762de2be ═══════════ */
+
+/**
+ * These probes cover the five concerns the review raised against the FIRST
+ * correction pass. They are service-level: real implementations, capability
+ * doubles. The database and API evidence for the same concerns — and the only
+ * evidence that can speak about what PostgreSQL enforces — is in
+ * `test/int/phase3-corrections.test.ts`.
+ */
+
+describe('G2 — a bounded historical query filters before it bounds', () => {
+  const JAN = '2024-01-10T00:00:00.000Z';
+  const FEB = '2024-02-15T00:00:00.000Z';
+  const MAR = '2024-03-10T00:00:00.000Z';
+
+  const edge = (id: string, asserted: string, validFrom: string) => ({
+    edge_id: id, subject_entity_id: 'a', predicate: 'p', object_entity_id: 'b',
+    valid_from: validFrom, valid_to: null, asserted_at: asserted, retracted_at: null,
+    superseded_at: null, state: 'asserted', claim_object_id: `c-${id}`, claim_version: 1,
+    evidence_object_id: 'e', evidence_digest: sha256('e'), mode: 'replay',
+    confidence: '0.9', retraction_reason: null,
+  });
+
+  /** One eligible January edge, buried behind more March edges than the scan bound. */
+  const buried = () => {
+    const noise = Array.from({ length: 50_100 }, (_, i) => edge(`n${i}`, MAR, MAR));
+    return [...noise, edge('january', JAN, JAN)];
+  };
+
+  it('finds an eligible edge buried behind more recent rows than the scan bound', async () => {
+    const cap = graphCap({ edges: buried() });
+    const visible = await new EdgesService().asOf(cap, { knownAt: FEB, validAt: FEB });
+    expect(visible.map((e) => e.edge_id),
+      'the only eligible edge was dropped by a scan bound applied before the filter')
+      .toContain('january');
+  });
+
+  it('a neighbourhood carries whether its answer was complete', async () => {
+    const cap = graphCap({ edges: buried() });
+    const n = await new EdgesService().neighbourhood(cap, 'a', 2, { knownAt: FEB, validAt: FEB });
+    expect(n.complete, 'a neighbourhood answer carried no completeness').toBe(true);
+    expect(n.edges.map((e) => e.edge_id)).toContain('january');
+  });
+
+  it('a path search cannot claim definitive absence from an incomplete scan', async () => {
+    const cap = graphCap({ edges: buried() });
+    const r = await new EdgesService().path(cap, 'a', 'b', { knownAt: FEB, validAt: FEB });
+    expect(r.complete).toBe(true);
+    expect(r.path, 'the buried January edge was not found').not.toBeNull();
+  });
+});
+
+describe('G3 — outstanding propagation stays discoverable', () => {
+  const correction = (over: Record<string, unknown>) => ({
+    case_id: 'c', state: 'applied', received_at: '2026-01-01T00:00:00.000Z',
+    propagation_assessment_id: null, propagation_unresolved: 'pending', ...over,
+  });
+
+  it('keeps a PARTIALLY assessed correction on the list', async () => {
+    const cap = graphCap({
+      corrections: [correction({ case_id: 'partial', propagation_assessment_id: 'inv-1' })],
+      invalidations: [{ invalidation_id: 'inv-1', correction_case_id: 'partial',
+                        state: 'assessed', truncated: true }],
+    });
+    const rows = await new ImpactService().awaitingPropagation(cap, 100);
+    expect(rows.cases.map((c) => String(c['case_id'])),
+      'a truncated assessment removed the correction from the outstanding list')
+      .toContain('partial');
+  });
+
+  it('drops a correction only when its walk is complete', async () => {
+    const cap = graphCap({
+      corrections: [correction({ case_id: 'done', propagation_assessment_id: 'inv-2' })],
+      invalidations: [{ invalidation_id: 'inv-2', correction_case_id: 'done',
+                        state: 'assessed', truncated: false }],
+    });
+    const rows = await new ImpactService().awaitingPropagation(cap, 100);
+    expect(rows.cases.map((c) => String(c['case_id']))).not.toContain('done');
+  });
+
+  it('states truthful CURRENT status for a case nothing has walked', async () => {
+    const cap = graphCap({
+      corrections: [correction({ case_id: 'untouched', propagation_state: 'pending',
+        propagation_unresolved:
+          'downstream consumers not yet present (KG/dependency graph arrives Phase 3)' })],
+      invalidations: [],
+    });
+    const rows = await new ImpactService().awaitingPropagation(cap, 100);
+    const row = rows.cases[0] as Record<string, unknown>;
+    expect(String(row['propagation_status']),
+      'the outstanding list repeated a sentence that is no longer accurate')
+      .toMatch(/propagation incomplete/i);
+    expect(String(row['propagation_status'])).not.toMatch(/not yet present/);
+    // Phase 1's own stored text is preserved as history, not rewritten.
+    expect(String(row['historical_sentence'])).toMatch(/not yet present/);
+  });
+
+  it('does not lose an old outstanding case behind newer irrelevant ones', async () => {
+    const noise = Array.from({ length: 120 }, (_, i) => correction({
+      case_id: `rejected-${i}`, state: 'rejected',
+      received_at: `2026-06-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+    }));
+    const cap = graphCap({
+      corrections: [...noise, correction({ case_id: 'old-outstanding' })],
+      invalidations: [],
+    });
+    const rows = await new ImpactService().awaitingPropagation(cap, 100);
+    expect(rows.cases.map((c) => String(c['case_id'])),
+      'an outstanding correction was lost behind newer rows because the limit came first')
+      .toContain('old-outstanding');
   });
 });

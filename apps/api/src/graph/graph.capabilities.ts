@@ -78,6 +78,24 @@ export interface GraphReads {
   readClaimLineage(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any;
+  /**
+   * Edges VISIBLE at an instant, filtered in the query.
+   *
+   * The bound has to come after the temporal predicate or it is not a bound on
+   * the answer, it is a bound on the search — and one eligible edge behind enough
+   * newer rows simply disappears. `total` is the count of everything eligible, so
+   * a caller can say whether the page it received was the whole answer.
+   */
+  edgesVisibleAt(a: { knownAt: string; validAt: string; limit: number }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
+  /**
+   * Applied corrections whose propagation is not complete, filtered in the query.
+   *
+   * Filtering after a page has been taken loses old outstanding work behind newer
+   * irrelevant rows, which is exactly what an outstanding-work list must not do.
+   */
+  correctionsOutstanding(a: { limit: number; before: string | null }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
   rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
   }>>;
@@ -240,6 +258,41 @@ class GraphCapabilityImpl extends GraphCore
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any { return this.from('observation.correction_current'); }
+
+  async edgesVisibleAt(a: { knownAt: string; validAt: string; limit: number }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    const rows = await this.call<Record<string, unknown>>(sql`
+      select * from graph.edges_current
+       where asserted_at <= ${a.knownAt}::timestamptz
+         and (retracted_at is null or retracted_at > ${a.knownAt}::timestamptz)
+         and (superseded_at is null or superseded_at > ${a.knownAt}::timestamptz)
+         and valid_from <= ${a.validAt}::timestamptz
+         and (valid_to is null or valid_to > ${a.validAt}::timestamptz)
+       order by asserted_at desc, edge_id
+       limit ${a.limit}`);
+    const counted = await this.call<{ n: string }>(sql`
+      select count(*)::text n from graph.edges_current
+       where asserted_at <= ${a.knownAt}::timestamptz
+         and (retracted_at is null or retracted_at > ${a.knownAt}::timestamptz)
+         and (superseded_at is null or superseded_at > ${a.knownAt}::timestamptz)
+         and valid_from <= ${a.validAt}::timestamptz
+         and (valid_to is null or valid_to > ${a.validAt}::timestamptz)`);
+    return { rows, total: Number(counted[0]?.n ?? rows.length) };
+  }
+
+  async correctionsOutstanding(a: { limit: number; before: string | null }):
+    Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    const rows = await this.call<Record<string, unknown>>(sql`
+      select * from observation.correction_current
+       where state = 'applied' and propagation_state <> 'complete'
+         and (${a.before}::timestamptz is null or received_at < ${a.before}::timestamptz)
+       order by received_at desc
+       limit ${a.limit}`);
+    const counted = await this.call<{ n: string }>(sql`
+      select count(*)::text n from observation.correction_current
+       where state = 'applied' and propagation_state <> 'complete'`);
+    return { rows, total: Number(counted[0]?.n ?? rows.length) };
+  }
 
   async rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;

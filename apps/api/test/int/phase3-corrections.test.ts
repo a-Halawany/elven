@@ -280,15 +280,31 @@ describe('F4 (database) — propagation records what it did and did not do', () 
     expect((inv?.unexplored as unknown[]).length).toBeGreaterThan(0);
     expect(String(inv?.statement)).toContain('INCOMPLETE');
 
-    // Phase 1's sentence STANDS: a partial walk has not earned the claim of
-    // completeness that replacing it would make.
-    const corr = (await sql<{ propagation_unresolved: string; propagation_assessment_id: string }>`
-      select propagation_unresolved, propagation_assessment_id::text
+    /*
+     * THE HISTORICAL SENTENCE IS RETIRED, AND NOT FOR A CLAIM OF COMPLETENESS.
+     *
+     * "downstream consumers not yet present" described a world with no dependency
+     * graph, and that world is gone — keeping it would be inaccurate in a
+     * different direction. The case now states its CURRENT status: incomplete,
+     * and why.
+     */
+    const corr = (await sql<{ propagation_unresolved: string;
+                              propagation_assessment_id: string;
+                              propagation_state: string }>`
+      select propagation_unresolved, propagation_assessment_id::text, propagation_state
         from observation.correction_current where case_id = ${caseId}::uuid`.execute(su)).rows[0];
     expect(corr?.propagation_unresolved,
-      'a truncated walk retired the unresolved sentence').toBe(sentence);
+      'the case still carries the historical sentence').not.toBe(sentence);
+    expect(String(corr?.propagation_unresolved)).toMatch(/propagation incomplete/i);
+    expect(corr?.propagation_state,
+      'a truncated walk marked the case complete').toBe('partial');
     expect(corr?.propagation_assessment_id,
       'the partial assessment was not linked to the case').toBe(out.result.invalidationId);
+
+    // And it stays discoverable as outstanding work.
+    const stillAwaiting = await readAs(async (cap) => impact.awaitingPropagation(cap, 500));
+    expect(stillAwaiting.cases.map((c) => String(c['case_id'])),
+      'a truncated assessment removed the case from the outstanding list').toContain(caseId);
   });
 
   it('an EVIDENCE correction reaches the claims derived from it', async () => {
@@ -336,7 +352,7 @@ describe('F4 (database) — propagation records what it did and did not do', () 
         ${fx.sourceId}::uuid, 'correction', 'applied', now(), 'test', null,
         'nobody has propagated this one', '[]'::jsonb, 'pending')`.execute(su);
     const awaiting = await readAs(async (cap) => impact.awaitingPropagation(cap, 200));
-    expect(awaiting.map((c) => String(c['case_id'])),
+    expect(awaiting.cases.map((c) => String(c['case_id'])),
       'an applied, unpropagated correction was not surfaced').toContain(caseId);
   });
 });
@@ -366,5 +382,250 @@ describe('0025 — the forward migration is applied and additive', () => {
                         'entity_split', 'manual', 'evidence_correction']) {
       expect(String(def?.d)).toContain(kind);
     }
+  });
+});
+
+/* ═════════ SECOND PASS · database and API evidence for 762de2be ═════════ */
+
+/**
+ * A request the real controller accepts. The controller reads its envelope and
+ * principal off the request object, so a probe at the ENDPOINT boundary supplies
+ * exactly that and nothing else — no capability double, no shortcut past the
+ * pipeline.
+ */
+function req(action: string, objectType: string, objectId: string | null) {
+  return { eyeEnvelope: env(action, objectType, objectId), eyePrincipal: manager } as never;
+}
+
+describe('G1 (API) — the endpoint forwards the historical cutoff', () => {
+  it('returns the version current at the cutoff THROUGH the controller', async () => {
+    const { GraphController } = await import('../../src/graph/graph.controller.js');
+    const controller = app.get(GraphController);
+
+    const entityId = uuidv7();
+    await pipeline.write<void, ResolverWrites>(
+      env('graph.entity.create', 'ENT', entityId), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.entity.create', objectType: 'ENT', objectId: entityId },
+      GraphCapability.resolver,
+      async (cap, scope) => {
+        await cap.createEntity({
+          entityId, tenantId: scope.tenantId as string, domainId: scope.domainId as string,
+          entityType: 'organization', canonicalName: 'Cutoff Co',
+          normalizedName: 'cutoff co', actor: managerId, splitFrom: null,
+          eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: undefined, targetType: 'ENT', targetId: entityId,
+                 targetVersion: '1', outboxEvent: null };
+      });
+
+    const claimId = uuidv7();
+    await seedClaim({ id: claimId, version: 1, type: 'ENT', reviewState: 'not_required',
+                      recordedAt: '2026-01-10T00:00:00.000Z', subject: 'january-value' });
+    await seedClaim({ id: claimId, version: 2, type: 'ENT', reviewState: 'not_required',
+                      recordedAt: '2026-03-10T00:00:00.000Z', subject: 'march-value' });
+    // A resolution accepted in January, still current.
+    await sql`insert into graph.resolutions_current (
+        resolution_id, scope, tenant_id, domain_id, claim_object_id, claim_version,
+        mention_text, entity_id, method, rule_id, rule_version, score, match_evidence,
+        candidate_set, state, proposer_principal_id, accepted_at, evidence_object_id,
+        evidence_digest, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+        ${claimId}::uuid, 1, 'Cutoff Co', ${entityId}::uuid, 'deterministic_identifier',
+        'identifier-exact', '1', 1, '{}'::jsonb, '[]'::jsonb, 'accepted',
+        ${managerId}::uuid, '2026-01-10T00:00:00.000Z'::timestamptz, ${uuidv7()}::uuid,
+        ${sha256('e')}, ${uuidv7()}::uuid)`.execute(su);
+
+    const atFeb = await controller.getEntity(
+      req('graph.read', 'ENT', entityId), fx.tenantId, fx.domainId, entityId,
+      { payload: { knownAt: '2026-02-15T00:00:00.000Z' } }) as {
+        claims: Array<Record<string, unknown>>; knownAt: string | null };
+    expect(atFeb.knownAt).not.toBeNull();
+    expect(atFeb.claims.length).toBe(1);
+    expect(Number(atFeb.claims[0]?.['object_version']),
+      'the endpoint returned a version recorded after the cutoff it was given').toBe(1);
+
+    const now = await controller.getEntity(
+      req('graph.read', 'ENT', entityId), fx.tenantId, fx.domainId, entityId, {}) as {
+        claims: Array<Record<string, unknown>> };
+    expect(Number(now.claims[0]?.['object_version']),
+      'without a cutoff the endpoint must return the current version').toBe(2);
+  });
+});
+
+describe('G4 (database) — one walked root does not complete a whole correction case', () => {
+  it('leaves the case outstanding until every recorded root is covered', async () => {
+    // A case that superseded TWO evidence objects, each with its own assumption.
+    const rootA = uuidv7(); const rootB = uuidv7();
+    const claimA = uuidv7(); const claimB = uuidv7();
+    const asuA = uuidv7(); const asuB = uuidv7();
+    const caseId = uuidv7();
+
+    for (const [claim, root] of [[claimA, rootA], [claimB, rootB]] as const) {
+      await sql`insert into intelligence.claim_lineage (
+          claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id,
+          method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end,
+          confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id,
+          correlation_id)
+        values (${claim}::uuid, 1, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+          'CLM', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${root}::uuid,
+          ${sha256(root)}, 0, 4, 0.9, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid,
+          ${uuidv7()}::uuid)`.execute(su);
+    }
+    for (const [asu, claim, label] of [[asuA, claimA, 'A'], [asuB, claimB, 'B']] as const) {
+      await sql`insert into graph.strategy_current (
+          strategy_object_id, scope, tenant_id, domain_id, object_type, object_version,
+          title, statement, status, verification_state, owner_principal_id, correlation_id)
+        values (${asu}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+          'ASU', 1, ${`assumption on root ${label}`},
+          'this assumption rests on one of the corrected roots', 'active', 'verified',
+          ${managerId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+      await sql`insert into graph.dependencies (
+          dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type,
+          depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
+        values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+          ${asu}::uuid, 'ASU', 'claim', ${claim}::uuid,
+          'the assumption rests on this derived claim', 'active', ${managerId}::uuid,
+          ${uuidv7()}::uuid)`.execute(su);
+    }
+    await sql`insert into observation.correction_current (
+        case_id, scope, tenant_id, domain_id, source_id, kind, state, received_at,
+        channel, publisher_ref, reason, affected_resolved, propagation_unresolved)
+      values (${caseId}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid,
+        ${fx.sourceId}::uuid, 'correction', 'applied', now(), 'test', null,
+        'the publisher restated two rows',
+        ${JSON.stringify([{ object_id: rootA, from: 1, to: 2 },
+                          { object_id: rootB, from: 1, to: 2 }])}::jsonb,
+        'pending')`.execute(su);
+
+    // Walk only the FIRST root, as the demonstration did.
+    const first = await pipeline.write(
+      env('graph.impact.propagate', 'INV', rootA), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.impact.propagate', objectType: 'INV', objectId: rootA },
+      GraphCapability.impact,
+      async (cap: ImpactWrites, scope) => {
+        const r = await impact.propagate(cap, scope, {
+          triggerKind: 'evidence_correction', triggerObjectId: rootA,
+          correctionCaseId: caseId, actor: managerId, correlationId: uuidv7() });
+        return { result: r, targetType: 'INV', targetId: r.invalidationId,
+                 targetVersion: '1', outboxEvent: null };
+      });
+    expect(first.result.assumptions.map((x) => x.strategy_object_id)).toContain(asuA);
+
+    // Root B's assumption is untouched — correct, it was not walked.
+    const bState = (await sql<{ v: string }>`select verification_state v
+      from graph.strategy_current where strategy_object_id = ${asuB}::uuid`.execute(su)).rows[0];
+    expect(bState?.v).toBe('verified');
+
+    // THE CASE IS NOT COMPLETE. One walked root out of two recorded roots must not
+    // present the correction as fully propagated.
+    const corr = (await sql<{ propagation_unresolved: string }>`
+      select propagation_unresolved from observation.correction_current
+       where case_id = ${caseId}::uuid`.execute(su)).rows[0];
+    expect(String(corr?.propagation_unresolved),
+      'one walked root presented the whole correction case as propagated')
+      .toMatch(/incomplete|outstanding|1 of 2|remain/i);
+
+    // And it stays discoverable as outstanding.
+    const awaiting = await readAs(async (cap) => impact.awaitingPropagation(cap, 500));
+    expect(awaiting.cases.map((c) => String(c['case_id'])),
+      'a case with an unwalked root vanished from the outstanding list').toContain(caseId);
+
+    // Walking the second root completes it.
+    await pipeline.write(
+      env('graph.impact.propagate', 'INV', rootB), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.impact.propagate', objectType: 'INV', objectId: rootB },
+      GraphCapability.impact,
+      async (cap: ImpactWrites, scope) => {
+        const r = await impact.propagate(cap, scope, {
+          triggerKind: 'evidence_correction', triggerObjectId: rootB,
+          correctionCaseId: caseId, actor: managerId, correlationId: uuidv7() });
+        return { result: r, targetType: 'INV', targetId: r.invalidationId,
+                 targetVersion: '1', outboxEvent: null };
+      });
+    const done = (await sql<{ propagation_unresolved: string }>`
+      select propagation_unresolved from observation.correction_current
+       where case_id = ${caseId}::uuid`.execute(su)).rows[0];
+    expect(String(done.propagation_unresolved),
+      'covering every root did not complete the case').not.toMatch(/incomplete|outstanding/i);
+    const after = await readAs(async (cap) => impact.awaitingPropagation(cap, 500));
+    expect(after.cases.map((c) => String(c['case_id']))).not.toContain(caseId);
+  });
+});
+
+describe('G5 (database) — a corrected relationship retires the edge it replaces', () => {
+  it('supersedes the obsolete edge while keeping it historically visible', async () => {
+    const entC = uuidv7();
+    await pipeline.write<void, ResolverWrites>(
+      env('graph.entity.create', 'ENT', entC), manager,
+      { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+        action: 'graph.entity.create', objectType: 'ENT', objectId: entC },
+      GraphCapability.resolver,
+      async (cap, scope) => {
+        await cap.createEntity({
+          entityId: entC, tenantId: scope.tenantId as string,
+          domainId: scope.domainId as string, entityType: 'organization',
+          canonicalName: 'Third Party', normalizedName: 'third party', actor: managerId,
+          splitFrom: null, eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: undefined, targetType: 'ENT', targetId: entC,
+                 targetVersion: '1', outboxEvent: null };
+      });
+
+    const claimId = uuidv7();
+    await seedClaim({ id: claimId, version: 1, type: 'REL', reviewState: 'not_required',
+                      recordedAt: '2026-01-01T00:00:00.000Z', subject: 'Acme' });
+    const assertEdge = async (edgeId: string, object: string, version: number) => {
+      await pipeline.write<void, EdgeWrites>(
+        env('graph.edge.assert', 'EDG', edgeId), manager,
+        { scope: 'DOMAIN', tenantId: fx.tenantId, domainId: fx.domainId,
+          action: 'graph.edge.assert', objectType: 'EDG', objectId: edgeId },
+        GraphCapability.edges,
+        async (cap, scope) => {
+          await cap.assertEdge({
+            edgeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string,
+            subject: entA, predicate: 'supplies', object,
+            validFrom: '2024-01-01T00:00:00.000Z', validTo: null,
+            claimObjectId: claimId, claimVersion: version, evidenceObjectId: uuidv7(),
+            evidenceDigest: sha256('e'), methodId: null, runId: null, mode: 'replay',
+            confidence: 0.9, actor: managerId, eventId: uuidv7(), correlationId: uuidv7() });
+          return { result: undefined, targetType: 'EDG', targetId: edgeId,
+                   targetVersion: '1', outboxEvent: null };
+        });
+    };
+
+    const v1 = uuidv7();
+    await assertEdge(v1, entB, 1);
+    const beforeCorrection = new Date().toISOString();
+    await new Promise((r) => setTimeout(r, 25));
+
+    // The claim is corrected: the relationship now points somewhere else.
+    await seedClaim({ id: claimId, version: 2, type: 'REL', reviewState: 'not_required',
+                      recordedAt: new Date().toISOString(), subject: 'Acme' });
+    const v2 = uuidv7();
+    await assertEdge(v2, entC, 2);
+
+    const rows = (await sql<{ edge_id: string; state: string; superseded_by: string | null }>`
+      select edge_id::text, state, superseded_by::text from graph.edges_current
+       where claim_object_id = ${claimId}::uuid order by claim_version`.execute(su)).rows;
+    expect(rows.length).toBe(2);
+    const old = rows.find((r) => r.edge_id === v1);
+    expect(old?.state, 'the obsolete edge is still asserted after its claim was corrected')
+      .toBe('superseded');
+    expect(old?.superseded_by).toBe(v2);
+
+    // THE CURRENT GRAPH shows one edge, pointing at the corrected end.
+    const now = await readAs(async (cap) => edges.asOf(cap, {
+      knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' }));
+    const forClaim = now.filter((e) => e.claim_object_id === claimId);
+    expect(forClaim.map((e) => e.edge_id),
+      'both the obsolete and the corrected edge are visible in the current graph')
+      .toEqual([v2]);
+
+    // A HISTORICAL query before the correction still shows the edge we believed then.
+    const before = await readAs(async (cap) => edges.asOf(cap, {
+      knownAt: beforeCorrection, validAt: '2024-06-01T00:00:00.000Z' }));
+    expect(before.filter((e) => e.claim_object_id === claimId).map((e) => e.edge_id),
+      'the pre-correction view lost the edge that was believed at the time').toEqual([v1]);
   });
 });

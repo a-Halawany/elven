@@ -513,9 +513,17 @@ if (corridorSource !== undefined && corridorEntity !== undefined) {
  * that matters: getting from the corrected bytes to everything derived from
  * them. The walk now closes that itself through `intelligence.claim_lineage`.
  */
-const triggerEvidence = affectedEvidence[0] ?? null;
-
-if (triggerEvidence !== null) {
+/*
+ * EVERY ROOT THE CASE SUPERSEDED, NOT THE FIRST ONE.
+ *
+ * The previous act walked `affectedEvidence[0]` and reported the correction as
+ * propagated. A case that superseded three objects had one of them walked and
+ * the other two never looked at — and the case said "assessed". The walk is now
+ * per root, and the CASE completes only when the database sees every recorded
+ * root covered.
+ */
+let prop = null;
+for (const triggerEvidence of affectedEvidence) {
   const preview = await call(`${G}/impact/preview`, as(strategyOwner, {
     action: 'graph.read', objectType: 'INV', objectId: triggerEvidence,
     sideEffect: 'none', consequence: 'C1',
@@ -523,20 +531,24 @@ if (triggerEvidence !== null) {
   strategyOwner.token);
   if (preview.status < 400) {
     const p = preview.body.impact;
-    ok(`preview from the corrected EVIDENCE: ${p.reachedClaims.length} claim(s) derived from it, `
-      + `${p.assumptions.length} assumption(s), ${p.objectives.length} objective(s), `
-      + `${p.commitments.length} commitment(s)`);
+    note(`root ${triggerEvidence.slice(0, 8)}…: ${p.reachedClaims.length} derived claim(s), `
+      + `${p.assumptions.length} assumption(s)`);
     if (p.reachedClaims.length === 0) {
-      bad('the evidence correction reached no derived claim — the lineage closure did not hold');
+      bad(`root ${triggerEvidence.slice(0, 8)}… reached no derived claim — the lineage closure did not hold`);
     }
   } else bad(`preview refused (${preview.status})`);
-  const prop = await call(`${G}/impact/propagate`, as(strategyOwner, {
+  prop = await call(`${G}/impact/propagate`, as(strategyOwner, {
     action: 'graph.impact.propagate', objectType: 'INV', objectId: triggerEvidence,
   }), {
     triggerObjectId: triggerEvidence, triggerKind: 'evidence_correction',
     correctionCaseId: caseId,
   }, strategyOwner.token);
-  if (prop.status < 400) {
+  if (prop.status >= 400) bad(`propagation refused (${prop.status})`);
+}
+ok(`walked all ${affectedEvidence.length} corrected root(s)`);
+
+if (prop !== null) {
+  {
     const p = prop.body.impact;
     ok(`propagated — ${p.statement}`);
     for (const a of p.assumptions) console.log(`      assumption unverified: ${a.title} (${a.reached_via})`);
@@ -547,7 +559,7 @@ if (triggerEvidence !== null) {
       note(`the walk was TRUNCATED: ${p.unexplored.length} path(s) unexplored, and the `
         + "correction keeps its unresolved sentence because a partial walk has not earned it");
     } else ok('the walk was complete — no dependency path was left unexplored');
-  } else bad(`propagation refused (${prop.status}) ${JSON.stringify(prop.body).slice(0, 250)}`);
+  }
 }
 
 /* ── 10. the sentence Phase 1 could not write ────────────────────────────── */
@@ -573,7 +585,14 @@ const awaiting = await call(`${G}/impact/awaiting`, as(strategyOwner, {
 }), {}, strategyOwner.token);
 if (awaiting.status < 400) {
   const rows = awaiting.body.awaiting ?? [];
-  ok(`${rows.length} applied correction(s) awaiting a dependency walk`);
+  ok(`${rows.length} of ${awaiting.body.total} outstanding correction(s) on this page`
+    + (awaiting.body.nextBefore === null ? '' : `, continue before ${awaiting.body.nextBefore}`));
+  for (const r of rows.slice(0, 3)) {
+    note(`${String(r.case_id).slice(0, 8)}… ${r.propagation_state}: ${r.propagation_status}`);
+  }
+  if (rows.some((r) => String(r.case_id) === String(caseId))) {
+    bad('the fully walked correction is still listed as outstanding');
+  } else ok('the fully walked correction is no longer outstanding');
   note(awaiting.body.note);
 } else bad(`the awaiting queue could not be read (${awaiting.status})`);
 

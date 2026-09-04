@@ -8,6 +8,11 @@
 > **Candidate:** the head of `codex-correction-pass` — the exact SHA is on the pull request, so
 > this record cannot go stale against its own amendments.
 > **This PR is unmerged, for review.**
+>
+> **Two passes are recorded here.** §2–§5 are the first pass against the seven original finding
+> groups. **§6–§9 are the second pass**, against five concerns the review then raised about that
+> first pass at `762de2be`. Both are within the original F3/F4 scope plus the F1/F2/F5–F7 work that
+> preceded them; nothing else was reopened.
 
 ---
 
@@ -208,3 +213,129 @@ Stated because they are real, not because they are comfortable.
 The review's broader original-vision findings are not expanded into here. They belong in the
 roadmap and the capability preservation map, and this pass did not touch them. C18 and C19 were not
 reopened. Migration 0025 is additive and forward-only; no released migration was rewritten.
+
+
+---
+
+# Second pass — the five concerns raised against `762de2be`
+
+Reproduced before any code changed. Each concern is stated with **which boundary produced the
+evidence**, and with what a later boundary already prevented — where anything did.
+
+## 6. Reproduction
+
+Every probe below **failed at `762de2be`**. They are listed separately from the positive controls
+in §8, which passed both before and after and exist to show a fix did not overshoot.
+
+| Concern | Reproduced at | What happened |
+|---|---|---|
+| **1** — controller drops the cutoff | **API + database**, through `GraphController.getEntity` itself | A February query returned the **March** version. The service honoured the cutoff; the endpoint never passed it. |
+| **2** — historical queries hide eligible edges | **Service** | One eligible January edge behind 50,100 March edges → **empty** February neighbourhood, **null** path, and no completeness anywhere. |
+| **3** — outstanding work hidden | **Service** | A truncated assessment sets `propagation_assessment_id`, so the case **vanished** from the list; and an old outstanding case behind 120 newer rejected ones was **lost to the page limit**. |
+| **4** — one root stands for a whole case | **Database** | Two roots with disjoint assumptions; walking root A reported the **whole case** propagated while root B's assumption sat untouched. |
+| **5** — obsolete edge left active | **Database, boundary checked first** | `pg_trigger` and `pg_constraint` on `graph.edges_current`: **no trigger, no constraint** retires a prior edge. `assert_edge` only inserted. A→B (v1) and A→C (v2) were **both** visible. |
+
+**Concern 5's boundary check was done before assuming the defect**, as asked. Nothing in the
+database would have retired the old edge, so this was a real gap rather than something a later
+mechanism covered.
+
+## 7. Disposition
+
+### C1 — the endpoint now forwards the cutoff
+
+`getEntity` passes `knownAt` to `claimsFor`. One line, and it is the whole of the defect: the
+service fix from the first pass was correct and simply unreachable through the endpoint. Regression
+runs **through the controller**, not around it.
+
+### C2 — filter before bounding, and carry completeness
+
+`edgesVisibleAt` applies both temporal axes **in the query** and returns the count of everything
+eligible, so `complete` is exact rather than inferred from whether a page filled. `neighbourhood`
+and `path` return it, the API returns it, and the Explore screen renders it.
+
+**A bounded search can no longer claim definitive absence.** `path` previously answered *"no path
+exists in what this principal may see at this instant"* whether or not it had examined every
+eligible edge. It now says that only when `complete` is true, and otherwise says *"no path was
+FOUND, and the search did not examine every eligible edge — this is not a statement that no path
+exists."*
+
+`superseded_at` joins `retracted_at` as a record-time axis in `visibleAt`, which C5 needs.
+
+### C3 — outstanding work is filtered before it is paged, and states the truth
+
+`correctionsOutstanding` filters in SQL on `state = 'applied' AND propagation_state <> 'complete'`,
+then pages, and returns `total` plus a `nextBefore` continuation. A partially assessed case stays
+listed because `propagation_state` distinguishes `partial` from `complete` — which the assessment
+id never could.
+
+**On wording:** the stored Phase 1 column is left alone. `propagation_unresolved` on a case nothing
+has walked is Phase 1's own text and is preserved as the historical record it is; the outstanding
+list reports `propagation_status` — *"propagation incomplete: no dependency walk has run against
+this correction"* — beside it, with the old sentence returned as `historical_sentence`. **An
+operator reading this list is never shown the inaccurate sentence as current status**, and Phase 1's
+behaviour and its acceptance test are untouched.
+
+For a case that *has* been assessed, migration 0026 replaces the sentence outright with present-tense
+status. **This reverses the first pass's decision to retain it on a truncated walk** — that decision
+avoided a false claim of completeness but left a different inaccuracy standing, and the review was
+right about it.
+
+### C4 — a case completes only when every recorded root is covered
+
+Coverage is computed **in `graph.record_impact`**, from the case's own `affected_resolved` roots
+against every invalidation recorded against that case that is assessed and not truncated. It is not
+computed in the service, because only the database can see all the walks — and a caller that could
+assert completion could assert it after one root.
+
+`propagation_state` becomes `complete` only when no root is outstanding **and** no walk against the
+case was truncated. The demonstration now walks **every** root rather than `affectedEvidence[0]`.
+
+### C5 — a corrected relationship retires the edge it replaces
+
+`assert_edge` now supersedes every still-asserted edge from a **strictly lower** version of the same
+claim, setting `superseded_by` and `superseded_at` and emitting an `edge.superseded` event for each.
+
+* **History is preserved** — the old edge is superseded, never deleted, and keeps its provenance.
+* **Known-at still works** — a query positioned before `superseded_at` reproduces the graph as it
+  was believed then, which the database probe asserts directly.
+* **Repeat runs are idempotent** — only strictly lower versions are superseded, so a re-run is a
+  no-op rather than a chain of supersessions.
+
+## 8. Verification — second pass
+
+Tests that **failed before correction** are listed apart from **positive controls** that passed
+throughout, because a suite that does not distinguish them cannot show what it proved.
+
+| | Failed at `762de2be`, pass now | Positive controls |
+|---|---|---|
+| Service probes | 7 — buried edge, neighbourhood completeness, path absence, partial-assessment visibility, page-limit loss, truthful status, recency cap | 2 — a complete walk still drops its case; an unbounded scan still reports `complete` |
+| Database / API probes | 3 — the endpoint cutoff, case coverage across two roots, edge supersession | the 9 first-pass probes, unchanged |
+
+| Suite | Result |
+|---|---|
+| Service-level probes | **33 / 33** |
+| Database / API probes | **12 / 12** |
+| Integration, everything | **548 / 548** (22 files) |
+| C18-era manifest (`test:int`) | **297 / 297** — unchanged |
+| Phase 0 acceptance | **58 / 58** |
+| Unit (api) | **2067 / 2067** |
+| Post-C18 upgrade check (`0022`→`0026`) | **PASS** — upgraded and virgin schema digests identical (`f75c8947793458fc…`); later-phase suites on upgraded data **251 / 251** |
+| Typecheck · module boundaries | clean · no violations |
+| Corridor demonstration, all three acts | **0 problems** — three roots walked, the case completes, two unwalked corrections remain listed as outstanding |
+
+## 9. Remaining limitations after the second pass
+
+* **The automatic `CorrectionApplied` consumer is still deferred**, deliberately and by instruction.
+  Propagation is operator-initiated. What changed is that the outstanding queue is now **complete
+  and truthful** — filtered before paging, continuation exposed, partial work visible, status stated
+  in the present tense — so the manual workflow is reliable even though it is manual.
+* **`MAX_SCAN` is still 50,000** for a historical query, and `MAX_HOPS` still 8. The difference is
+  that both now *report* when they bind, and no answer built on a bound claims to be exhaustive.
+* **Supersession covers a corrected claim replacing its own edge.** An edge made obsolete some other
+  way — its entity split beneath it, say — is not retired by this mechanism. Not demonstrated as a
+  defect, and not claimed as covered.
+* **No browser verification in this pass either.** The Explore screen now renders an incompleteness
+  note and the awaiting list has no screen at all; neither was checked in a browser.
+* **Coverage is per correction case.** A corrected object that no case recorded — reached only
+  through the graph — has no case-level completion to satisfy. That is the same operator-initiated
+  boundary as the deferred consumer, and it is stated rather than implied.

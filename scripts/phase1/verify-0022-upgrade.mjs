@@ -4,7 +4,7 @@
  * Originally written for 0022 alone. C18 is frozen at 0021 and cannot speak about
  * anything after it, so every migration beyond that ceiling is proved here — 0022
  * when Phase 1 added it, 0023 when Phase 2 did, 0024 when Phase 3 did, and 0025
- * for the bounded correction pass on Phase 3.
+ * and 0025–0026 for the bounded correction pass on Phase 3.
  * Extending the ceiling this way is what the Phase 2 plan called for and what the
  * Phase 3 plan repeated, and it is deliberately NOT a second gate: one script, one
  * purpose, one list of declared additions that grows with the migrations it
@@ -168,8 +168,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT
   'objects.schema_registry': 13,
-  // one ledger line per migration applied above the ceiling (0022–0025)
-  'public.schema_migrations': 4,
+  // one ledger line per migration applied above the ceiling (0022–0026)
+  'public.schema_migrations': 5,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

@@ -35,6 +35,8 @@ export interface EdgeRow {
   state: string; claim_object_id: string; claim_version: number;
   evidence_object_id: string; evidence_digest: string; mode: string; confidence: string;
   retraction_reason: string | null;
+  /** When a corrected claim replaced this edge. Record time, like retraction. */
+  superseded_at?: string | null;
 }
 
 export interface AsOf {
@@ -55,6 +57,11 @@ export function visibleAt(e: EdgeRow, at: AsOf): boolean {
   const valid = new Date(at.validAt).getTime();
   if (new Date(e.asserted_at).getTime() > known) return false;
   if (e.retracted_at !== null && new Date(e.retracted_at).getTime() <= known) return false;
+  // SUPERSESSION IS ALSO RECORD TIME. A corrected claim's replacement edge takes
+  // over from `superseded_at`; before that instant the old edge is what we
+  // believed, and a known-at query must still see it.
+  const sup = e.superseded_at ?? null;
+  if (sup !== null && sup !== undefined && new Date(sup).getTime() <= known) return false;
   if (new Date(e.valid_from).getTime() > valid) return false;
   if (e.valid_to !== null && new Date(e.valid_to).getTime() <= valid) return false;
   return true;
@@ -103,6 +110,15 @@ export class EdgesService {
     return (await this.asOfBounded(cap, at)).edges;
   }
 
+  /** A visible-at read where the caller cares only whether it saw everything. */
+  private async visible(
+    cap: GraphReads, at: AsOf,
+  ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
+    const got = await cap.edgesVisibleAt({ ...at, limit: MAX_SCAN });
+    const edges = (got.rows as unknown as EdgeRow[]).filter((e) => visibleAt(e, at));
+    return { edges, scanned: got.total, complete: got.total <= edges.length };
+  }
+
   /**
    * The visible graph at an instant, with an honest statement about completeness.
    *
@@ -113,14 +129,7 @@ export class EdgesService {
   async asOfBounded(
     cap: GraphReads, at: AsOf,
   ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
-    const rows = (await cap.readEdges().selectAll()
-      .orderBy('asserted_at' as never, 'desc')
-      .limit(MAX_SCAN).execute()) as EdgeRow[];
-    return {
-      edges: rows.filter((e) => visibleAt(e, at)),
-      scanned: rows.length,
-      complete: rows.length < MAX_SCAN,
-    };
+    return this.visible(cap, at);
   }
 
   /**
@@ -132,8 +141,10 @@ export class EdgesService {
    */
   async neighbourhood(
     cap: GraphReads, entityId: string, depth: number, at: AsOf,
-  ): Promise<{ edges: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }>; entityIds: string[] }> {
-    const visible = await this.asOf(cap, at);
+  ): Promise<{ edges: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }>;
+               entityIds: string[]; complete: boolean }> {
+    const got = await this.visible(cap, at);
+    const visible = got.edges;
     const bounded = Math.max(1, Math.min(depth, MAX_DEPTH));
     const seen = new Set<string>([entityId]);
     const out: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }> = [];
@@ -151,7 +162,9 @@ export class EdgesService {
       }
       frontier = next;
     }
-    return { edges: out, entityIds: [...seen] };
+    // A neighbourhood built from an incomplete scan is itself incomplete, and the
+    // caller is told rather than left to assume it saw everything.
+    return { edges: out, entityIds: [...seen], complete: got.complete };
   }
 
   /**
@@ -163,9 +176,10 @@ export class EdgesService {
    */
   async path(
     cap: GraphReads, from: string, to: string, at: AsOf,
-  ): Promise<Array<EdgeRow & { direction: 'out' | 'in' }> | null> {
-    if (from === to) return [];
-    const visible = await this.asOf(cap, at);
+  ): Promise<{ path: Array<EdgeRow & { direction: 'out' | 'in' }> | null; complete: boolean }> {
+    if (from === to) return { path: [], complete: true };
+    const got = await this.visible(cap, at);
+    const visible = got.edges;
     const prev = new Map<string, { edge: EdgeRow; direction: 'out' | 'in'; from: string }>();
     const seen = new Set<string>([from]);
     let frontier = [from];
@@ -185,18 +199,25 @@ export class EdgesService {
             let cursor = to;
             while (cursor !== from) {
               const step = prev.get(cursor);
-              if (step === undefined) return null;
+              if (step === undefined) return { path: null, complete: got.complete };
               chain.unshift({ ...step.edge, direction: step.direction });
               cursor = step.from;
             }
-            return chain;
+            return { path: chain, complete: got.complete };
           }
           next.push(b);
         }
       }
       frontier = next;
     }
-    return null;
+    /*
+     * NOT FINDING A PATH IS NOT THE SAME AS THERE NOT BEING ONE.
+     *
+     * `complete` says whether every eligible edge was examined. A caller must not
+     * turn `path: null` from an incomplete search into a statement that no path
+     * exists — the API wording depends on this flag.
+     */
+    return { path: null, complete: got.complete };
   }
 
   /** Every edge that rests on a given claim — the join invalidation walks. */

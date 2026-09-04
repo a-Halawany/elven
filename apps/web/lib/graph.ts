@@ -259,11 +259,13 @@ export const graph = {
       s, `/edges/${edgeId}/retract`, 'graph.edge.retract', 'EDG', { reason }, edgeId),
 
   neighbourhood: (s: Scope, entityId: string, depth: number, at?: Partial<AsOf>) =>
-    g<{ neighbourhood: { edges: EdgeRow[]; entities: EntityRow[] }; asOf: AsOf; receipt: Receipt }>(
+    g<{ neighbourhood: { edges: EdgeRow[]; entities: EntityRow[]; complete: boolean };
+        asOf: AsOf; complete: boolean; note: string | null; receipt: Receipt }>(
       s, '/neighbourhood', 'graph.read', 'EDG', { entityId, depth, ...(at ?? {}) }),
 
   path: (s: Scope, from: string, to: string, at?: Partial<AsOf>) =>
-    g<{ path: EdgeRow[] | null; asOf: AsOf; note: string | null; receipt: Receipt }>(
+    g<{ path: EdgeRow[] | null; asOf: AsOf; complete: boolean; note: string | null;
+        receipt: Receipt }>(
       s, '/path', 'graph.read', 'EDG', { from, to, ...(at ?? {}) }),
 
   listStrategy: (s: Scope) =>
@@ -291,6 +293,12 @@ export const graph = {
   listImpact: (s: Scope) =>
     g<{ invalidations: Array<Record<string, unknown>>; receipt: Receipt }>(
       s, '/impact/list', 'graph.read', 'INV', { limit: 200 }),
+
+  awaitingPropagation: (s: Scope, before?: string) =>
+    g<{ awaiting: Array<Record<string, unknown>>; total: number; nextBefore: string | null;
+        note: string; receipt: Receipt }>(
+      s, '/impact/awaiting', 'graph.read', 'COR',
+      before === undefined ? { limit: 100 } : { limit: 100, before }),
 
   verifyProjections: (s: Scope) =>
     g<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string;

@@ -207,9 +207,34 @@ export class ImpactService {
   }
 
   /**
+   * The evidence roots a correction case recorded as affected.
+   *
+   * A case that superseded three objects has three roots, and walking one of them
+   * says nothing about the other two. The roots come from the case's OWN
+   * `affected_resolved` record rather than from whatever the caller passed, so a
+   * caller cannot shrink the work by naming fewer of them.
+   */
+  async rootsOf(cap: GraphReads, caseId: string): Promise<string[]> {
+    const row = (await cap.readCorrections().selectAll()
+      .where('case_id' as never, '=', caseId as never)
+      .executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (row === undefined) return [];
+    const resolved = row['affected_resolved'];
+    const arr = Array.isArray(resolved) ? resolved
+      : typeof resolved === 'string' ? (JSON.parse(resolved) as unknown[]) : [];
+    return [...new Set(arr
+      .map((x) => (x as Record<string, unknown>)?.['object_id'])
+      .filter((x): x is string => typeof x === 'string'))];
+  }
+
+  /**
    * Open the invalidation, mark every affected assumption unverified, and record
-   * the assessment — including, when the trigger was a Phase 1 correction case,
-   * the statement that replaces "downstream consumers not yet present".
+   * the assessment.
+   *
+   * WHETHER THE CASE IS COMPLETE IS NOT THIS METHOD'S CALL. It walks ONE root.
+   * `graph.record_impact` compares every root the case recorded against every
+   * root walked without truncation, and only then decides what the case's state
+   * is — because the database is the only place that can see all the walks.
    */
   async propagate(
     cap: ImpactWrites, ctx: ScopeContext,
@@ -266,13 +291,46 @@ export class ImpactService {
    * whose downstream impact nobody has assessed.
    */
   async awaitingPropagation(
-    cap: GraphReads, limit = 100,
-  ): Promise<Array<Record<string, unknown>>> {
-    const rows = (await cap.readCorrections().selectAll()
-      .orderBy('received_at' as never, 'desc')
-      .limit(Math.min(limit, 500)).execute()) as Array<Record<string, unknown>>;
-    return rows.filter((c) => c['state'] === 'applied'
-      && (c['propagation_assessment_id'] === null || c['propagation_assessment_id'] === undefined));
+    cap: GraphReads, limit = 100, before: string | null = null,
+  ): Promise<{ cases: Array<Record<string, unknown>>; total: number; nextBefore: string | null }> {
+    const page = Math.min(limit, 500);
+    const got = await cap.correctionsOutstanding({ limit: page, before });
+    /*
+     * FILTERED IN THE QUERY, THEN PAGED.
+     *
+     * The first version took a page of the newest corrections and filtered
+     * afterwards, so an old outstanding case behind a hundred newer rejected ones
+     * simply was not in the page and therefore was not in the answer. Outstanding
+     * work is exactly the thing a list must not lose to recency.
+     *
+     * `partial` counts as outstanding: a truncated walk sets the assessment id,
+     * and keying on that id alone made a half-finished correction look done.
+     */
+    /*
+     * TRUTHFUL CURRENT STATUS, WITHOUT REWRITING PHASE 1's COLUMN.
+     *
+     * A case nothing has walked still carries Phase 1's original
+     * `propagation_unresolved` — "downstream consumers not yet present" — which
+     * described a world with no dependency graph and is no longer accurate. That
+     * stored text is Phase 1's and stays as the historical record it is; the
+     * outstanding-work surface states the CURRENT status beside it, so an
+     * operator reading this list is never told something untrue.
+     */
+    const withStatus = got.rows.map((c) => ({
+      ...c,
+      propagation_status: c['propagation_state'] === 'partial'
+        ? String(c['propagation_unresolved'])
+        : 'propagation incomplete: no dependency walk has run against this correction',
+      historical_sentence: c['propagation_state'] === 'partial'
+        ? null : String(c['propagation_unresolved']),
+    }));
+    const last = got.rows[got.rows.length - 1];
+    return {
+      cases: withStatus,
+      total: got.total,
+      nextBefore: got.rows.length < page || last === undefined
+        ? null : String(last['received_at']),
+    };
   }
 
   async get(cap: GraphReads, invalidationId: string): Promise<Record<string, unknown> | undefined> {

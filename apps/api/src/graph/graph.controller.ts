@@ -145,8 +145,11 @@ export class GraphController {
         const live = knownAt === undefined
           ? resolutions.filter((r) => r['state'] === 'accepted')
           : await this.entities.mentionsKnownAt(cap, entityId, knownAt);
+        // THE CUTOFF TRAVELS. Selecting the mentions current at an instant and then
+        // fetching the LATEST version of each claim behind them is hindsight with
+        // extra steps — the service takes the cutoff, so the endpoint gives it one.
         const claims = await this.entities.claimsFor(
-          cap, live.map((r) => String(r['claim_object_id'])));
+          cap, live.map((r) => String(r['claim_object_id'])), knownAt);
         return {
           entity,
           identifiers: await this.entities.identifiers(cap, entityId),
@@ -464,9 +467,16 @@ export class GraphController {
         return {
           edges: n.edges,
           entities: n.entityIds.map((id) => byId.get(id) ?? null).filter((x) => x !== null),
+          complete: n.complete,
         };
       });
-    return { neighbourhood: out.result, asOf: at, receipt: receipt(out) };
+    return {
+      neighbourhood: out.result, asOf: at, complete: out.result.complete,
+      note: out.result.complete ? null
+        : 'this neighbourhood was built from an incomplete scan; edges beyond the bound were '
+          + 'not examined and the answer may be missing eligible relationships',
+      receipt: receipt(out),
+    };
   }
 
   @Post('/path')
@@ -489,12 +499,21 @@ export class GraphController {
       this.route(tenantId, domainId, 'graph.read', 'EDG', null),
       GraphCapability.read,
       async (cap) => this.edges.path(cap, from, to, at));
+    const { path, complete } = out.result;
     return {
-      path: out.result, asOf: at,
-      // Absence is not proof: the API says what a null answer means (C4).
-      note: out.result === null
-        ? 'no path exists in what this principal may see at this instant'
-        : null,
+      path, asOf: at, complete,
+      /*
+       * A BOUNDED SEARCH MAY NOT CLAIM DEFINITIVE ABSENCE.
+       *
+       * "No path exists" is a statement about the world. A search that did not
+       * examine every eligible edge has not earned it, and says the weaker, true
+       * thing instead. Absence is not proof, and neither is an exhausted budget.
+       */
+      note: path !== null ? null
+        : complete
+          ? 'no path exists in what this principal may see at this instant'
+          : 'no path was FOUND, and the search did not examine every eligible edge — this is '
+            + 'not a statement that no path exists',
       receipt: receipt(out),
     };
   }
@@ -665,18 +684,24 @@ export class GraphController {
     @Req() req: EyeRequest,
     @Param('tenantId') tenantId: string,
     @Param('domainId') domainId: string,
-    @Body() body: { payload?: { limit?: number } },
+    @Body() body: { payload?: { limit?: number; before?: string } },
   ) {
     const { envelope, principal } = ctx(req);
+    const before = typeof body.payload?.before === 'string' ? body.payload.before : null;
     const out = await this.pipeline.consequentialRead(
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'COR', null),
       GraphCapability.read,
-      async (cap) => this.impact.awaitingPropagation(cap, body.payload?.limit ?? 100));
+      async (cap) => this.impact.awaitingPropagation(cap, body.payload?.limit ?? 100, before));
     return {
-      awaiting: out.result,
-      note: 'these corrections are applied and their downstream impact has not been assessed; '
-        + 'propagation is operator-initiated and no consumer performs it automatically',
+      awaiting: out.result.cases,
+      total: out.result.total,
+      // A page is not the answer. When more outstanding work exists than fits,
+      // the continuation needed to reach it is part of the response.
+      nextBefore: out.result.nextBefore,
+      note: 'these corrections are applied and their downstream propagation is not complete — '
+        + 'either nothing has walked them, or a walk was truncated or left corrected objects '
+        + 'uncovered. Propagation is operator-initiated; no consumer performs it automatically.',
       receipt: receipt(out),
     };
   }
