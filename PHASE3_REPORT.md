@@ -86,6 +86,7 @@ integration harness. **43 tests, 43 passing.**
 | C18-era manifest (`test:int`) | **297 / 297** — the count C18's frozen contract pins, unchanged |
 | Phase 0 acceptance (`test:accept`) | **58 / 58** |
 | Post-C18 upgrade check (`0022`→`0024`) | **PASS** — 1020 pre-existing rows unchanged; `identity.roles` +7, `objects.schema_registry` +13, `public.schema_migrations` +3, exactly as declared; upgraded and virgin schema digests identical (`69a4c8530e4d4ea1…`); later-phase suites on upgraded data **239 / 239** |
+| Unit suites | api **2034** + **9** (hermetic suite meta, run unparallelised) · contracts **203** · tokens **3** |
 | Typecheck · module boundaries | clean · no violations (421 modules, 1596 dependencies) |
 | Corridor demonstration, all three acts | **0 problems** |
 
