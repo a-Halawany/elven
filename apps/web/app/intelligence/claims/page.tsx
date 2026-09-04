@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { intelligence, type ClaimRow } from '../../../lib/intelligence';
 import { Empty, LiveStatus, Mono, ModeBadge, ScrollBox, cardStyle,
-  DefinitionRow, fmtInstant } from '../../../components/observation';
+  DefinitionRow, UnknownNote, fmtInstant } from '../../../components/observation';
 
 const TYPE_LABEL: Record<string, string> = {
   ENT: 'entity', EVT: 'event', CLM: 'claim', REL: 'relationship', ASM: 'assessment',
@@ -138,6 +138,15 @@ export default function ClaimsPage() {
                 {open.payload.lineage.evidence_digest.slice(0, 32)}…
               </Mono>
             </DefinitionRow>
+            <DefinitionRow term="Read authorised by">
+              <Mono title={open.payload.lineage.retrieval_decision_id}>
+                POL {String(open.payload.lineage.retrieval_decision_id ?? '').slice(0, 8)}…
+              </Mono>{' '}
+              <span style={{ color: 'var(--eye-color-ink-muted)' }}>
+                audit #{open.payload.lineage.retrieval_audit_seq} — the
+                {' '}<Mono>observation.evidence.retrieve</Mono> decision that permitted reading these bytes
+              </span>
+            </DefinitionRow>
             <DefinitionRow term="Truth state"><Mono>{open.truth_state}</Mono></DefinitionRow>
             <DefinitionRow term="Recorded">{fmtInstant(open.recorded_at)}</DefinitionRow>
             <DefinitionRow term="Review">
@@ -146,6 +155,12 @@ export default function ClaimsPage() {
                 ? '' : ` — ${open.payload.review.reason}`}
             </DefinitionRow>
           </dl>
+          <UnknownNote>
+            Reading the evidence and writing this claim were <strong>two separate decisions</strong>.
+            The read ran under <Mono>observation.evidence.retrieve</Mono> and left its own custody
+            entry; the write ran under <Mono>intelligence.claim.admit</Mono>, which authorises writing
+            claims and does not authorise reading raw bytes.
+          </UnknownNote>
           <ScrollBox label="The claim as stored">
             {JSON.stringify(open.payload, null, 2)}
           </ScrollBox>

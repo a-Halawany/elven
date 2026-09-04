@@ -53,6 +53,7 @@ export interface ClaimRow {
       runtime_version: string; prompt_version: string; decoding_digest: string;
       evidence_object_id: string; evidence_digest: string; byte_start: number; byte_end: number;
       extraction_identity: string; run_id: string; call_id: string | null;
+      retrieval_decision_id: string; retrieval_audit_seq: number;
     };
     review: { state: string; reason: string | null; decider: string | null };
   };
@@ -146,6 +147,8 @@ export const intelligence = {
       runId: string; mode: GatewayMode; state: string; evidenceRead: number;
       claimsAdmitted: number; abstentions: number; idempotentHits: number;
       callsUsed: number; queuedForReview: number; failure: string | null;
+      evidenceRetrievals: Array<{ evidenceObjectId: string; policyDecisionId: string; auditSeq: number }>;
+      claims: Array<{ objectId: string; admissionDecisionId: string; admissionAuditSeq: number }>;
     } }>(s, '/extract', 'intelligence.claim.admit', 'CLM', { methodId, limit, newAttempt }),
 
   listRuns: (s: Scope) =>

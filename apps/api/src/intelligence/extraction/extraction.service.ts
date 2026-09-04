@@ -42,6 +42,12 @@ export interface EvidenceUnit {
   itemKey: string;
 }
 
+export interface RetrievalReceipt {
+  evidenceObjectId: string;
+  policyDecisionId: string;
+  auditSeq: number;
+}
+
 export interface ExtractionOutcome {
   runId: string;
   mode: 'replay' | 'local-live';
@@ -53,7 +59,17 @@ export interface ExtractionOutcome {
   callsUsed: number;
   queuedForReview: number;
   failure: string | null;
-  claims: Array<{ objectId: string; type: string; confidence: number; review: string }>;
+  claims: Array<{ objectId: string; type: string; confidence: number; review: string;
+                  admissionDecisionId: string; admissionAuditSeq: number }>;
+  /**
+   * THE READ DECISIONS, SEPARATELY.
+   *
+   * One per evidence object actually read, each the receipt of its own
+   * `observation.evidence.retrieve` operation. They are listed apart from the
+   * admissions on purpose: a reader of this receipt can see that reading the
+   * bytes and writing the claims were authorised by different decisions.
+   */
+  evidenceRetrievals: RetrievalReceipt[];
 }
 
 @Injectable()
@@ -75,6 +91,8 @@ export class ExtractionService {
       pin: MethodPin; methodId: string; runId: string; agentPrincipalId: string;
       unit: EvidenceUnit; correlationId: string; purposeId: string;
       newAttempt: boolean; declaredClaimIds: string[];
+      /** The decision that authorised READING the bytes — a different act. */
+      retrievalDecisionId: string; retrievalAuditSeq: number;
     },
   ): Promise<{
     admitted: Array<{ objectId: string; type: string; confidence: number; review: string }>;
@@ -105,11 +123,14 @@ export class ExtractionService {
     const req: GatewayRequest = {
       promptRef: a.pin.prompt_ref,
       promptVersion: a.pin.prompt_version,
+      promptText: a.pin.prompt_text,
       promptDigest: a.pin.prompt_digest,
       modelId: a.pin.model_id,
       weightsDigest: a.pin.model_weights_digest,
       runtimeVersion: a.pin.runtime_version,
       decodingDigest: a.pin.decoding_digest,
+      ...(a.pin.decoding_config === undefined ? {}
+        : { decodingOptions: a.pin.decoding_config }),
       input: {
         instruction: a.pin.prompt_ref,
         target_types: a.pin.target_types,
@@ -187,6 +208,11 @@ export class ExtractionService {
           byte_start: c.byte_start,
           byte_end: c.byte_end,
           extraction_identity: identity,
+          // THE READ'S OWN DECISION, named on the claim. The write's decision is
+          // recorded in the lineage row by the port, from the context — a caller
+          // does not get to name the decision that admitted its own claim.
+          retrieval_decision_id: a.retrievalDecisionId,
+          retrieval_audit_seq: a.retrievalAuditSeq,
         },
         review: {
           state: needsReview ? 'queued' : 'not_required',
@@ -262,6 +288,7 @@ export class ExtractionService {
         runId: a.runId, methodId: a.methodId, callId: result.callId, mode: result.mode,
         evidenceObjectId: a.unit.evdObjectId, evidenceDigest: a.unit.contentDigest,
         byteStart: c.byte_start, byteEnd: c.byte_end, confidence: c.confidence,
+        retrievalDecisionId: a.retrievalDecisionId, retrievalAuditSeq: a.retrievalAuditSeq,
         correlationId: a.correlationId,
       });
       if (needsReview) {

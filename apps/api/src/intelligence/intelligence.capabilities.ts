@@ -72,7 +72,8 @@ export interface RegisterMethodArgs {
   methodId: string; tenantId: string; domainId: string; registrar: string; owner: string;
   methodKey: string; name: string; sourceId: string | null; targetTypes: string[];
   gatewayMode: 'replay' | 'local-live'; modelId: string; weightsDigest: string;
-  runtimeVersion: string; promptRef: string; promptVersion: string; promptDigest: string;
+  runtimeVersion: string; promptRef: string; promptVersion: string;
+  promptText: string; promptDigest: string;
   decoding: Record<string, unknown>; decodingDigest: string;
   confidenceFloor: number; reviewBelow: number;
   budgetCalls: number; budgetSeconds: number; eventId: string; correlationId: string;
@@ -95,7 +96,9 @@ export interface MethodWrites extends IntelligenceReads {
 export interface MethodPin {
   method_key: string; method_version: number; gateway_mode: 'replay' | 'local-live';
   model_id: string; model_weights_digest: string; runtime_version: string;
-  prompt_ref: string; prompt_version: string; prompt_digest: string; decoding_digest: string;
+  prompt_ref: string; prompt_version: string; prompt_text: string;
+  prompt_digest: string; decoding_digest: string;
+  decoding_config?: Record<string, unknown>;
   confidence_floor: string; review_below: string; budget_calls: number; budget_seconds: number;
   target_types: string[]; source_id: string | null;
 }
@@ -141,6 +144,7 @@ export interface ExtractionWrites extends IntelligenceReads {
     claimId: string; version: number; tenantId: string; domainId: string; claimType: string;
     runId: string; methodId: string; callId: string | null; mode: string; evidenceObjectId: string;
     evidenceDigest: string; byteStart: number; byteEnd: number; confidence: number;
+    retrievalDecisionId: string; retrievalAuditSeq: number;
     correlationId: string;
   }): Promise<void>;
   queueReview(a: {
@@ -158,6 +162,7 @@ export interface ReviewWrites extends IntelligenceReads {
     claimId: string; version: number; tenantId: string; domainId: string; claimType: string;
     runId: string; methodId: string; callId: string | null; mode: string; evidenceObjectId: string;
     evidenceDigest: string; byteStart: number; byteEnd: number; confidence: number;
+    retrievalDecisionId: string; retrievalAuditSeq: number;
     correlationId: string;
   }): Promise<void>;
   decideReview(a: {
@@ -218,7 +223,7 @@ class IntelligenceCapabilityImpl extends IntelligenceCore
       ${a.methodId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.registrar}::uuid,
       ${a.owner}::uuid, ${a.methodKey}, ${a.name}, ${a.sourceId}::uuid,
       ${a.targetTypes}::text[], ${a.gatewayMode}, ${a.modelId}, ${a.weightsDigest},
-      ${a.runtimeVersion}, ${a.promptRef}, ${a.promptVersion}, ${a.promptDigest},
+      ${a.runtimeVersion}, ${a.promptRef}, ${a.promptVersion}, ${a.promptText}, ${a.promptDigest},
       ${JSON.stringify(a.decoding)}::jsonb, ${a.decodingDigest},
       ${a.confidenceFloor}::numeric, ${a.reviewBelow}::numeric,
       ${a.budgetCalls}, ${a.budgetSeconds}, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
@@ -329,13 +334,15 @@ class IntelligenceCapabilityImpl extends IntelligenceCore
     claimId: string; version: number; tenantId: string; domainId: string; claimType: string;
     runId: string; methodId: string; callId: string | null; mode: string; evidenceObjectId: string;
     evidenceDigest: string; byteStart: number; byteEnd: number; confidence: number;
+    retrievalDecisionId: string; retrievalAuditSeq: number;
     correlationId: string;
   }): Promise<void> {
     await this.call(sql`select intelligence.record_lineage(
       ${a.claimId}::uuid, ${a.version}::bigint, ${a.tenantId}::uuid, ${a.domainId}::uuid,
       ${a.claimType}, ${a.runId}::uuid, ${a.methodId}::uuid, ${a.callId}::uuid, ${a.mode},
       ${a.evidenceObjectId}::uuid, ${a.evidenceDigest}, ${a.byteStart}, ${a.byteEnd},
-      ${a.confidence}::numeric, ${a.correlationId}::uuid)`);
+      ${a.confidence}::numeric, ${a.retrievalDecisionId}::uuid, ${a.retrievalAuditSeq}::bigint,
+      ${a.correlationId}::uuid)`);
   }
 
   async queueReview(a: {

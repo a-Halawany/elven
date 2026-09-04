@@ -12,10 +12,13 @@ import { errorBody, type Envelope } from '@eye/contracts';
 import { PipelineService, type RouteInfo } from '../../pipeline/pipeline.service.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
-import { VaultService } from '../../observation/vault/vault.service.js';
+import { EvidenceService } from '../../observation/vault/evidence.service.js';
+import { ObservationCapability, type AcquisitionWrites }
+  from '../../observation/observation.capabilities.js';
 import { IntelligenceCapability, type ExtractionWrites, type IntelligenceReads,
   type MethodPin } from '../intelligence.capabilities.js';
-import { ExtractionService, type EvidenceUnit, type ExtractionOutcome } from './extraction.service.js';
+import { ExtractionService, type EvidenceUnit, type ExtractionOutcome,
+  type RetrievalReceipt } from './extraction.service.js';
 
 /** The declared-target bound the capability permits for one operation. */
 const MAX_CLAIMS_PER_EVIDENCE = 8;
@@ -25,7 +28,7 @@ export class ExtractionOrchestrator {
   constructor(
     private readonly pipeline: PipelineService,
     private readonly extraction: ExtractionService,
-    private readonly vault: VaultService,
+    private readonly evidence: EvidenceService,
   ) {}
 
   /** A governed read under the intelligence read action. */
@@ -157,6 +160,7 @@ export class ExtractionOrchestrator {
     let state: ExtractionOutcome['state'] = 'completed';
     let failure: string | null = null;
     const claims: ExtractionOutcome['claims'] = [];
+    const evidenceRetrievals: RetrievalReceipt[] = [];
 
     for (const evd of evidence) {
       // BUDGETS STOP THE RUN. They are not advisory and they are not checked after
@@ -166,24 +170,69 @@ export class ExtractionOrchestrator {
       if (Date.now() > deadline) { state = 'budget_exceeded'; failure = `time budget of ${budgetSeconds}s reached`; break; }
 
       const payload = evd['payload'] as Record<string, unknown>;
-      const locator = String(payload['locator'] ?? '');
+      const evdObjectId = String(evd['object_id']);
       const digest = String(payload['content_digest'] ?? '');
-      if (locator === '' || digest === '') continue;
+      if (digest === '') continue;
 
+      /*
+       * READ AND WRITE ARE TWO DECISIONS.
+       *
+       * Reading the original bytes is `observation.evidence.retrieve` — Phase 1's
+       * own consequential read, with its own policy decision, its own audit entry
+       * and its own custody record. `intelligence.claim.admit` authorises WRITING
+       * a claim and must not be allowed to stand in for reading evidence.
+       *
+       * There is no second vault path here: this calls Phase 1's EvidenceService,
+       * which resolves through the manifest only, re-verifies the digest, refuses
+       * a withdrawn or tombstoned object, and writes the custody entry — now
+       * carrying the purpose, method and run that read it.
+       */
       let bytes: Buffer;
+      let retrievalDecisionId: string;
+      let retrievalAuditSeq: number;
       try {
-        // OUTSIDE any transaction, exactly as Phase 1 requires of vault I/O.
-        const readBytes = await this.vault.read('evidence',
-          { tenantId: a.tenantId, domainId: a.domainId }, locator, digest);
-        bytes = readBytes.bytes;
+        const got = await this.pipeline.write<
+          { base64: string; contentDigest: string }, AcquisitionWrites>(
+          this.envelope({ ...read, principal: a.principal },
+            'observation.evidence.retrieve', 'EVD', evdObjectId),
+          a.principal,
+          { scope: 'DOMAIN', tenantId: a.tenantId, domainId: a.domainId,
+            action: 'observation.evidence.retrieve', objectType: 'EVD', objectId: evdObjectId },
+          ObservationCapability.acquisition,
+          async (cap, scope) => {
+            const r = await this.evidence.retrieve(
+              cap, scope, `agent:${a.principal.principalId}`, evdObjectId, correlationId,
+              {
+                read_for: 'intelligence.extraction',
+                purpose: purposeId,
+                method_id: a.methodId,
+                method_key: String(pinRow['method_key']),
+                run_id: runId,
+                mode,
+              });
+            return { result: { base64: r.base64, contentDigest: r.contentDigest },
+                     targetType: 'EVD', targetId: evdObjectId, targetVersion: '1',
+                     outboxEvent: null };
+          });
+        bytes = Buffer.from(got.result.base64, 'base64');
+        retrievalDecisionId = got.policyDecisionId;
+        retrievalAuditSeq = got.auditSeq;
+        evidenceRetrievals.push({
+          evidenceObjectId: evdObjectId,
+          policyDecisionId: got.policyDecisionId,
+          auditSeq: got.auditSeq,
+        });
       } catch {
-        continue;                            // a missing blob is the sweeper's business, not this run's
+        // A refused, withdrawn, tombstoned or damaged object is not this run's to
+        // repair. It is already recorded — by the refusal, or by the integrity
+        // failure Phase 1 writes into custody before it answers.
+        continue;
       }
       evidenceRead += 1;
 
       const declaredClaimIds = Array.from({ length: MAX_CLAIMS_PER_EVIDENCE }, () => newId());
       const unit: EvidenceUnit = {
-        evdObjectId: String(evd['object_id']),
+        evdObjectId,
         obsObjectId: payload['obs_object_id'] === null || payload['obs_object_id'] === undefined
           ? null : String(payload['obs_object_id']),
         contentDigest: digest,
@@ -207,8 +256,9 @@ export class ExtractionOrchestrator {
         model_weights_digest: String(pinRow['model_weights_digest']),
         runtime_version: String(pinRow['runtime_version']),
         prompt_ref: String(pinRow['prompt_ref']), prompt_version: String(pinRow['prompt_version']),
-        prompt_digest: String(pinRow['prompt_digest']),
+        prompt_text: String(pinRow['prompt_text']), prompt_digest: String(pinRow['prompt_digest']),
         decoding_digest: String(pinRow['decoding_digest']),
+        decoding_config: (pinRow['decoding_config'] ?? {}) as Record<string, unknown>,
         confidence_floor: String(pinRow['confidence_floor']),
         review_below: String(pinRow['review_below']),
         budget_calls: budgetCalls, budget_seconds: budgetSeconds,
@@ -233,6 +283,9 @@ export class ExtractionOrchestrator {
             const r = await this.extraction.extractOne(cap, scope, {
               pin, methodId: a.methodId, runId, agentPrincipalId: a.principal.principalId,
               unit, correlationId, purposeId, newAttempt: a.newAttempt, declaredClaimIds,
+              // The read's own decision travels with the write, so the claim can
+              // record BOTH and a reader can see which authorised which.
+              retrievalDecisionId, retrievalAuditSeq,
             });
             return { result: r, targetType: 'CLM',
                      targetId: declaredClaimIds[0] as string, targetVersion: '1',
@@ -243,7 +296,11 @@ export class ExtractionOrchestrator {
                      } };
           });
         claimsAdmitted += out.result.admitted.length;
-        claims.push(...out.result.admitted);
+        // Each admitted claim carries the decision that ADMITTED it, which is this
+        // write's own — distinct from the retrieval decision above.
+        claims.push(...out.result.admitted.map((c) => ({
+          ...c, admissionDecisionId: out.policyDecisionId, admissionAuditSeq: out.auditSeq,
+        })));
         if (out.result.abstained) abstentions += 1;
         if (out.result.idempotent) idempotentHits += 1;
         callsUsed += out.result.calls;
@@ -273,6 +330,6 @@ export class ExtractionOrchestrator {
       });
 
     return { runId, mode, state, evidenceRead, claimsAdmitted, abstentions,
-             idempotentHits, callsUsed, queuedForReview, failure, claims };
+             idempotentHits, callsUsed, queuedForReview, failure, claims, evidenceRetrievals };
   }
 }

@@ -26,16 +26,25 @@ import type { ExtractionWrites, MethodPin } from '../intelligence.capabilities.j
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 
+/** Canonical object code → the kind word the extraction contract accepts. */
+const TYPE_TO_KIND: Readonly<Record<string, string>> = Object.freeze({
+  ENT: 'entity', EVT: 'event', CLM: 'claim', REL: 'relationship', ASM: 'assessment',
+});
+
 /** What the model is asked for, canonically. The digest of this IS the cache key. */
 export interface GatewayRequest {
   promptRef: string;
   promptVersion: string;
+  /** The instruction itself. Digested into the identity, and actually sent. */
+  promptText: string;
   promptDigest: string;
   modelId: string;
   weightsDigest: string;
   runtimeVersion: string;
   decodingDigest: string;
-  /** The evidence excerpt and the extraction instruction, already assembled. */
+  /** The decoding configuration itself, as the runtime takes it. */
+  decodingOptions?: Record<string, unknown>;
+  /** The evidence excerpt and everything the instruction refers to. */
   input: Record<string, unknown>;
 }
 
@@ -233,13 +242,39 @@ export class ModelGatewayService {
     if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
       throw new Error(`local-live refused: ${url.hostname} is not loopback; Phase 2 uses no hosted model API`);
     }
-    const decoding = (req.input['decoding'] ?? {}) as Record<string, unknown>;
+    /*
+     * THE INSTRUCTION FIRST, THEN THE EVIDENCE.
+     *
+     * The first version sent JSON.stringify(input) as the whole prompt — a blob
+     * with no question in it — and a small instruct model did the only reasonable
+     * thing with that: it echoed the blob back. The gateway refused the answer,
+     * correctly, and the refusal was the only thing that was working.
+     */
+    const input = req.input as Record<string, unknown>;
+    const prompt = [
+      req.promptText,
+      '',
+      `SOURCE: ${String(input['source_key'] ?? '')}`,
+      `ITEM: ${String(input['item_key'] ?? '')}`,
+      // ASK IN THE VOCABULARY THE CONTRACT ACCEPTS. `target_types` are canonical
+      // object codes (ENT, EVT, CLM); the response contract takes kind WORDS. The
+      // first version put the codes in the prompt, the model dutifully answered
+      // with "ENT", and the parser refused it — a refusal caused by the question,
+      // not the answer.
+      `PERMITTED CLAIM KINDS: ${((input['target_types'] as string[]) ?? [])
+        .map((t) => TYPE_TO_KIND[t] ?? t).join(', ')}`,
+      '',
+      'EVIDENCE (byte offsets are into exactly this text):',
+      String(input['evidence'] ?? ''),
+      '',
+      'JSON:',
+    ].join('\n');
     const body = {
       model: req.modelId,
-      prompt: JSON.stringify(req.input),
+      prompt,
       stream: false,
       format: 'json',
-      options: decoding,
+      options: req.decodingOptions ?? {},
     };
     const ac = new AbortController();
     const timer = setTimeout(() => { ac.abort(); }, 120_000);

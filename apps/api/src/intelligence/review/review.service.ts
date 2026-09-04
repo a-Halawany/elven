@@ -175,6 +175,12 @@ export class ReviewService {
         evidenceDigest: String(a.lineage['evidence_digest']),
         byteStart: Number(a.lineage['byte_start']), byteEnd: Number(a.lineage['byte_end']),
         confidence: cv.confidence ?? Number(a.lineage['confidence']),
+        // A correction re-reads nothing: it inherits the retrieval decision that
+        // authorised reading the evidence this claim already rests on, rather than
+        // inventing one. The correction's OWN decision is the admitting operation's,
+        // which the port takes from the context.
+        retrievalDecisionId: String(a.lineage['retrieval_decision_id']),
+        retrievalAuditSeq: Number(a.lineage['retrieval_audit_seq']),
         correlationId: a.correlationId,
       });
     }

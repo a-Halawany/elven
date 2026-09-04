@@ -283,6 +283,45 @@ describe('B1 — claims carry method, model, version, confidence and evidence li
     }
   });
 
+  it('reading the evidence and writing the claim are TWO decisions, and both are recorded', async () => {
+    // The receipt shows them apart.
+    expect(runOutcome.evidenceRetrievals.length,
+      'the run recorded no evidence-retrieval receipts').toBeGreaterThan(0);
+    for (const r of runOutcome.evidenceRetrievals) {
+      expect(r.policyDecisionId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(r.auditSeq).toBeGreaterThan(0);
+    }
+    const admissionIds = new Set(runOutcome.claims.map((c) => c.admissionDecisionId));
+    const retrievalIds = new Set(runOutcome.evidenceRetrievals.map((r) => r.policyDecisionId));
+    for (const id of admissionIds) {
+      expect(retrievalIds.has(id),
+        'a claim was admitted under the same decision that authorised reading it').toBe(false);
+    }
+
+    // The lineage keeps them apart too, and they are different decisions.
+    const lineage = (await sql<{ retrieval_decision_id: string; admission_decision_id: string }>`
+      select retrieval_decision_id, admission_decision_id from intelligence.claim_lineage
+       where run_id = ${runOutcome.runId}::uuid`.execute(su)).rows;
+    expect(lineage.length).toBeGreaterThan(0);
+    for (const l of lineage) {
+      expect(l.retrieval_decision_id).not.toBe(l.admission_decision_id);
+    }
+  });
+
+  it('every evidence read leaves its own custody entry, naming the extraction', async () => {
+    const rows = (await sql<{ event: string; actor: string; details: Record<string, unknown> }>`
+      select event, actor, details from observation.custody_events
+       where event = 'custody.retrieved' and tenant_id = ${fx.tenantId}::uuid
+         and details ->> 'run_id' = ${runOutcome.runId}`.execute(su)).rows;
+    expect(rows.length, 'extraction read evidence without leaving a custody entry').toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.details['read_for']).toBe('intelligence.extraction');
+      expect(r.details['method_id']).toBe(methodId);
+      expect(r.details['purpose']).toBe('intelligence');
+      expect(r.details['verified_on_read']).toBe(true);
+    }
+  });
+
   it('the stored claim carries the whole pin, not a summary of it', async () => {
     const row = (await sql<{ payload: Record<string, unknown> }>`
       select payload from objects.canonical_objects
@@ -291,7 +330,8 @@ describe('B1 — claims carry method, model, version, confidence and evidence li
     const lineage = (row?.payload?.['lineage'] ?? {}) as Record<string, unknown>;
     for (const field of ['method_key', 'method_id', 'model_id', 'model_weights_digest',
       'runtime_version', 'prompt_version', 'decoding_digest', 'mode',
-      'evidence_object_id', 'evidence_digest', 'byte_start', 'byte_end', 'extraction_identity']) {
+      'evidence_object_id', 'evidence_digest', 'byte_start', 'byte_end', 'extraction_identity',
+      'retrieval_decision_id']) {
       expect(lineage[field], `a claim was admitted without ${field}`).toBeDefined();
     }
   });
@@ -309,7 +349,8 @@ describe('B1 — claims carry method, model, version, confidence and evidence li
            and json_schema -> 'required' ? 'lineage'
            and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'evidence_digest'
            and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'mode'
-           and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'extraction_identity'`
+           and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'extraction_identity'
+           and json_schema -> 'properties' -> 'lineage' -> 'required' ? 'retrieval_decision_id'`
         .execute(su)).rows[0];
       expect(Number(schema?.n), `the ${t}@${v} schema does not make lineage mandatory`).toBe(1);
     }

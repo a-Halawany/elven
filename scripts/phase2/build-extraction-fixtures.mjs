@@ -11,9 +11,14 @@
  * or the decoding configuration and the digest changes — the recording no longer
  * matches, replay MISSES, and the miss is a failure rather than a silent live call.
  *
- * These responses are what a small local instruct model produces for the corridor
- * evidence. They are recorded, not invented: `recorded_from` is 'fixture' and the
- * UI says so wherever a claim from them is shown.
+ * THESE RESPONSES ARE WRITTEN BY HAND. No model produced them. They are stored
+ * `recorded_from: 'fixture'`, the gateway view shows that column, and a claim built
+ * from one carries `mode: replay` — so nothing anywhere presents them as the output
+ * of a model that ran. Responses a model actually produced are stored
+ * `recorded_from: 'local-live'`, by the gateway, at the moment it made the call.
+ *
+ * They exist so the corridor demonstration is reproducible and free. The live path
+ * is proven separately, once, in scripts/phase2/live-extraction.mjs.
  */
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';

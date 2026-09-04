@@ -266,6 +266,15 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
+      // PHASE 2, NARROWLY. An extraction agent must read the bytes it makes claims
+      // about, and reading them is NOT something `intelligence.claim.admit` may
+      // authorise — that action writes claims. So the agent holds this decision in
+      // its own right, at DOMAIN scope, and every read it makes goes through the
+      // same manifest-resolved, digest-verified, custody-writing path an operator
+      // download uses. The collection agent is still absent: it WRITES evidence
+      // and has no business reading the original bytes back out.
+      { role: 'extraction_agent', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,

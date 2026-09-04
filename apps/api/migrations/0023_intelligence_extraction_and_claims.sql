@@ -92,7 +92,19 @@ CREATE TABLE intelligence.methods_current (
   runtime_version       text NOT NULL,
   prompt_ref            text NOT NULL,
   prompt_version        text NOT NULL,
+  /*
+   * THE INSTRUCTION ITSELF, not only its digest.
+   *
+   * A digest of text nobody kept is unverifiable: there is nothing later to hash.
+   * The prompt is stored so the pin can be CHECKED — and because the gateway has
+   * to send it. The first cut kept only the digest and sent the evidence with no
+   * instruction at all, and a 3B model did the reasonable thing with a JSON blob
+   * and no question: it echoed it back.
+   */
+  prompt_text           text NOT NULL CHECK (length(prompt_text) >= 8),
   prompt_digest         text NOT NULL CHECK (prompt_digest ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT mth_prompt_digest_matches CHECK (
+    prompt_digest = encode(sha256(convert_to(prompt_text, 'UTF8')), 'hex')),
   decoding_config       jsonb NOT NULL,
   decoding_digest       text NOT NULL CHECK (decoding_digest ~ '^[0-9a-f]{64}$'),
   -- ABSTENTION AND REVIEW.
@@ -287,6 +299,20 @@ CREATE TABLE intelligence.claim_lineage (
   byte_start         int NOT NULL CHECK (byte_start >= 0),
   byte_end           int NOT NULL CHECK (byte_end >= byte_start),
   confidence         numeric NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  /*
+   * TWO DECISIONS, KEPT APART.
+   *
+   * Reading the evidence and writing the claim are different acts with different
+   * authorities, and each has its own policy decision. Folding them into one
+   * would let `intelligence.claim.admit` quietly authorise reading raw bytes,
+   * which is precisely what it must not do. Both ids are recorded here so the
+   * lineage shows which decision permitted the read and which permitted the write.
+   */
+  retrieval_decision_id uuid NOT NULL,
+  retrieval_audit_seq   bigint NOT NULL,
+  -- Taken from the CONTEXT, never from an argument: the admitting operation's own
+  -- policy decision is not something its caller gets to name.
+  admission_decision_id uuid NOT NULL,
   recorded_at        timestamptz NOT NULL DEFAULT clock_timestamp(),
   correlation_id     uuid NOT NULL,
   PRIMARY KEY (claim_object_id, claim_version),
@@ -379,7 +405,7 @@ CREATE OR REPLACE FUNCTION intelligence.register_method(
   p_method_id uuid, p_tenant uuid, p_domain uuid, p_registrar uuid, p_owner uuid,
   p_method_key text, p_name text, p_source_id uuid, p_target_types text[],
   p_gateway_mode text, p_model_id text, p_weights_digest text, p_runtime_version text,
-  p_prompt_ref text, p_prompt_version text, p_prompt_digest text,
+  p_prompt_ref text, p_prompt_version text, p_prompt_text text, p_prompt_digest text,
   p_decoding jsonb, p_decoding_digest text,
   p_confidence_floor numeric, p_review_below numeric,
   p_budget_calls int, p_budget_seconds int, p_event_id uuid, p_correlation uuid
@@ -391,13 +417,13 @@ BEGIN
   INSERT INTO intelligence.methods_current (
     method_id, scope, tenant_id, domain_id, method_key, name, method_version,
     lifecycle_state, source_id, target_types, gateway_mode, model_id,
-    model_weights_digest, runtime_version, prompt_ref, prompt_version, prompt_digest,
+    model_weights_digest, runtime_version, prompt_ref, prompt_version, prompt_text, prompt_digest,
     decoding_config, decoding_digest, confidence_floor, review_below,
     budget_calls, budget_seconds, registrar_principal_id, owner_principal_id
   ) VALUES (
     p_method_id, 'DOMAIN', p_tenant, p_domain, p_method_key, p_name, 1,
     'draft', p_source_id, p_target_types, p_gateway_mode, p_model_id,
-    p_weights_digest, p_runtime_version, p_prompt_ref, p_prompt_version, p_prompt_digest,
+    p_weights_digest, p_runtime_version, p_prompt_ref, p_prompt_version, p_prompt_text, p_prompt_digest,
     p_decoding, p_decoding_digest, p_confidence_floor, p_review_below,
     p_budget_calls, p_budget_seconds, p_registrar, p_owner);
   INSERT INTO intelligence.method_events (
@@ -410,8 +436,8 @@ BEGIN
                        'model_id', p_model_id, 'prompt_version', p_prompt_version),
     p_correlation);
 END $$ LANGUAGE plpgsql;
-REVOKE ALL ON FUNCTION intelligence.register_method(uuid,uuid,uuid,uuid,uuid,text,text,uuid,text[],text,text,text,text,text,text,text,jsonb,text,numeric,numeric,int,int,uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION intelligence.register_method(uuid,uuid,uuid,uuid,uuid,text,text,uuid,text[],text,text,text,text,text,text,text,jsonb,text,numeric,numeric,int,int,uuid,uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION intelligence.register_method(uuid,uuid,uuid,uuid,uuid,text,text,uuid,text[],text,text,text,text,text,text,text,text,jsonb,text,numeric,numeric,int,int,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION intelligence.register_method(uuid,uuid,uuid,uuid,uuid,text,text,uuid,text[],text,text,text,text,text,text,text,text,jsonb,text,numeric,numeric,int,int,uuid,uuid) TO eye_commit;
 
 /*
  * Approval. The separation-of-duties CHECK is what actually stops a registrar
@@ -497,7 +523,8 @@ CREATE OR REPLACE FUNCTION intelligence.lock_active_method(
 ) RETURNS TABLE (
   method_key text, method_version int, gateway_mode text, model_id text,
   model_weights_digest text, runtime_version text, prompt_ref text, prompt_version text,
-  prompt_digest text, decoding_digest text, confidence_floor numeric, review_below numeric,
+  prompt_text text, prompt_digest text, decoding_digest text,
+  confidence_floor numeric, review_below numeric,
   budget_calls int, budget_seconds int, target_types text[], source_id uuid
 )
 SECURITY DEFINER SET search_path = intelligence, observation, ctx, public, pg_catalog, pg_temp AS $$
@@ -516,7 +543,7 @@ BEGIN
   RETURN QUERY
     SELECT m.method_key, m.method_version, m.gateway_mode, m.model_id,
            m.model_weights_digest, m.runtime_version, m.prompt_ref, m.prompt_version,
-           m.prompt_digest, m.decoding_digest, m.confidence_floor, m.review_below,
+           m.prompt_text, m.prompt_digest, m.decoding_digest, m.confidence_floor, m.review_below,
            m.budget_calls, m.budget_seconds, m.target_types, m.source_id
       FROM intelligence.methods_current m WHERE m.method_id = p_method_id;
 END $$ LANGUAGE plpgsql;
@@ -702,23 +729,30 @@ CREATE OR REPLACE FUNCTION intelligence.record_lineage(
   p_claim uuid, p_version bigint, p_tenant uuid, p_domain uuid, p_claim_type text,
   p_run_id uuid, p_method_id uuid, p_call_id uuid, p_mode text,
   p_evidence uuid, p_evidence_digest text, p_start int, p_end int,
-  p_confidence numeric, p_correlation uuid
+  p_confidence numeric, p_retrieval_decision uuid, p_retrieval_seq bigint,
+  p_correlation uuid
 ) RETURNS void
 SECURITY DEFINER SET search_path = intelligence, observation, ctx, public, pg_catalog, pg_temp AS $$
 BEGIN
   PERFORM observation.assert_authority(ARRAY['intelligence.claim.admit', 'intelligence.review.decide']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
+  IF public.eye_policy_decision() IS NULL THEN
+    RAISE EXCEPTION 'lineage rejected: no policy decision is established for this operation'
+      USING ERRCODE = '42501';
+  END IF;
   INSERT INTO intelligence.claim_lineage (
     claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id,
     method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end,
-    confidence, correlation_id
+    confidence, retrieval_decision_id, retrieval_audit_seq,
+    admission_decision_id, correlation_id
   ) VALUES (
     p_claim, p_version, 'DOMAIN', p_tenant, p_domain, p_claim_type, p_run_id,
     p_method_id, p_call_id, p_mode, p_evidence, p_evidence_digest, p_start, p_end,
-    p_confidence, p_correlation);
+    p_confidence, p_retrieval_decision, p_retrieval_seq,
+    public.eye_policy_decision(), p_correlation);
 END $$ LANGUAGE plpgsql;
-REVOKE ALL ON FUNCTION intelligence.record_lineage(uuid,bigint,uuid,uuid,text,uuid,uuid,uuid,text,uuid,text,int,int,numeric,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION intelligence.record_lineage(uuid,bigint,uuid,uuid,text,uuid,uuid,uuid,text,uuid,text,int,int,numeric,uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION intelligence.record_lineage(uuid,bigint,uuid,uuid,text,uuid,uuid,uuid,text,uuid,text,int,int,numeric,uuid,bigint,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION intelligence.record_lineage(uuid,bigint,uuid,uuid,text,uuid,uuid,uuid,text,uuid,text,int,int,numeric,uuid,bigint,uuid) TO eye_commit;
 
 CREATE OR REPLACE FUNCTION intelligence.queue_review(
   p_case_id uuid, p_tenant uuid, p_domain uuid, p_claim uuid, p_version bigint,
@@ -851,7 +885,7 @@ DECLARE
       "required": ["method_key","method_id","model_id","model_weights_digest",
                    "runtime_version","prompt_version","decoding_digest","mode",
                    "evidence_object_id","evidence_digest","byte_start","byte_end",
-                   "extraction_identity"],
+                   "extraction_identity","retrieval_decision_id"],
       "properties": {
         "method_key": { "type": "string" },
         "method_id": { "type": "string" },
@@ -867,7 +901,9 @@ DECLARE
         "evidence_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "byte_start": { "type": "integer", "minimum": 0 },
         "byte_end": { "type": "integer", "minimum": 0 },
-        "extraction_identity": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "extraction_identity": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "retrieval_decision_id": { "type": "string" },
+        "retrieval_audit_seq": { "type": "integer" }
       }
     },
     "review": {

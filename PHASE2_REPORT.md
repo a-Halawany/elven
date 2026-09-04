@@ -71,25 +71,75 @@ produced the output.
 
 ## 3. The six frozen criteria
 
-`apps/api/test/int/phase2-acceptance.test.ts` — **20/20**, on the existing integration harness. No
+`apps/api/test/int/phase2-acceptance.test.ts` — **23/23**, on the existing integration harness. No
 new gate, no new framework.
 
 | # | Criterion | Evidence |
 |---|---|---|
-| **B1** | Claims carry method, model, versions, confidence and evidence lineage | Every lineage row resolves to an evidence object carrying that digest; the stored claim carries all thirteen pin fields; all five claim schemas make `lineage`, `mode`, `evidence_digest` and `extraction_identity` mandatory |
+| **B1** | Claims carry method, model, versions, confidence and evidence lineage | Every lineage row resolves to an evidence object carrying that digest; the stored claim carries all fourteen pin fields; all five claim schemas make `lineage`, `mode`, `evidence_digest`, `extraction_identity` and `retrieval_decision_id` mandatory. **Reading and writing are two decisions**: the read/write decision sets are disjoint, and every read leaves a `custody.retrieved` entry naming its run and method |
 | **B2** | A reviewer approves, corrects or rejects; a correction versions, never overwrites | A correction admits v2 with `truth_state: asserted` while v1 stays `extracted` and retrievable; known-at before the correction returns v1; a reasonless decision is refused; the producing agent is refused |
 | **B3** | Low confidence and abstention cannot bypass review | Every claim below the threshold has a queued case; claims above it have none; an abstention **cannot** carry a claim — the constraint refuses it |
 | **B4** | Every model call goes through the gateway and is logged; a budget breach stops and escalates | Each call carries mode, model, prompt version, decoding digest and outcome; the log is append-only; a method budgeted at one call ends `budget_exceeded` and leaves a `run.budget_exceeded` event |
 | **B5** | Extraction identity and idempotency | A different prompt or decoding config yields a different identity; a repeat produces idempotent hits with **zero** gateway calls and admits nothing twice; recorded responses are byte-identical to their digests; a deliberate new attempt is recorded as **attempt 2**, not an overwrite; the attempts table is append-only |
 | **B6** | Phase 0 and Phase 1 untouched; full regression green | `observation.item.admit` still pins `[OBS, EVD]` and `intelligence.claim.admit` cannot write either; migrations 0001–0023 all present, C18 frozen at 0021; every intelligence projection rebuilds with zero drift |
 
-**Regression, on a quiescent database:** integration `test:int:all` **490/490** (the Phase 0 and
-Phase 1 470 plus these 20) · Phase 0 acceptance **58/58** · the C18-era manifest `test:int`
-**297/297**, unchanged, which is the count C18 froze.
+**Regression, on a quiescent database:** integration `test:int:all` **493/493** (the Phase 0 and
+Phase 1 470 plus these 23) · Phase 0 acceptance **58/58** · the C18-era manifest `test:int`
+**297/297**, unchanged, which is the count C18 froze · the post-C18 upgrade check (0022 and 0023)
+**PASS**, with 194/194 later-phase tests against the upgraded database.
 
 > The C18-era manifest now excludes `phase2-*` as well as `phase1-*`. C18 is frozen at migration
 > 0021 and its differential verifier pins the suite's argv, so every later phase's suites stay out
 > of the set it counts — and 297 keeps meaning exactly what it meant when it was frozen.
+
+## 3a. The live path, measured
+
+`local-live` is not a code path that exists — it has been run. One complete corridor
+extraction, against a real model executing on this machine:
+
+```
+0. the local runtime and the model it actually loaded
+   ✓ ollama 0.33.2 on 127.0.0.1:11434
+   ✓ qwen2.5:3b-instruct · weights 357c53fb659c5076de1d65cc…
+   · family qwen2 · params 3.1B · quant Q4_K_M
+1. register a local-live method, pinned to the reported weights
+   ✓ approved by a second operator, then activated
+2. one live extraction — a real model answers
+   ✓ run … mode=local-live state=completed in 1.7s
+     evidence read 2 · claims 2 · abstentions 0 · calls 2
+3. reading and writing were two decisions
+   · read  EVD 01a068a0… → POL … audit #5064
+   · read  EVD 01a068a0… → POL … audit #5066
+   · write claims          → POL …
+   ✓ the read decisions and the write decisions are disjoint
+4. the gateway log
+   ✓ mode=local-live outcome=completed model=qwen2.5:3b-instruct
+     runtime=ollama/0.33.2 in 689 ms
+   ✓ 2 live response(s) recorded — marked 'local-live', not 'fixture'
+5. replaying the recorded response calls the model zero times
+   ✓ 2 identities returned their recorded result; 0 model calls
+   ✓ the gateway logged no further live call
+6. the claims, as a reader sees them
+   · 2 claim(s) carry mode=local-live
+   ✓ the claim records the digest the runtime reported for the weights that answered
+=== live path proven ===
+```
+
+**The weights digest is the runtime's, not ours.** The method is pinned to the
+digest `ollama` reports for the blob it actually holds (`357c53fb…`), read from
+`/api/tags` at registration time. A pin to a value we chose would prove nothing
+about what answered.
+
+Run it yourself with `node scripts/phase2/live-extraction.mjs`, with `ollama serve`
+running and `qwen2.5:3b-instruct` pulled (1.93 GB). **It is not wired into CI** and
+is not meant to be: hosted CI runs `replay`, which is deterministic and needs no
+model.
+
+**On the quality of what it said.** The claims a 3B instruct model produced are
+thin — it identified the chokepoints and little else. That is the model, not the
+path, and the product shows it honestly: each claim carries its confidence, its
+mode and its evidence span, and anything below the method's threshold goes to a
+person. Phase 2 is not a claim that a small local model is a good analyst.
 
 ## 4. The model decision, as implemented
 
@@ -139,16 +189,20 @@ and unused, and Phase 2 adds no connectors.
 
 ## 6. Known limitations
 
-* **Everything here ran in `replay`.** The `local-live` path is implemented, pinned and refused
-  anything but loopback — but no local model executed in this phase's demonstration or its tests.
-  Claims produced under replay say so, in the lineage and on screen.
-* **The recorded responses are authored fixtures.** They are stored `recorded_from: 'fixture'`,
-  which the gateway view shows. They are what a small instruct model produces for this evidence;
-  they are not a transcript of one that ran.
-* **Extraction reads evidence bytes under its own action.** `intelligence.claim.admit` authorises
-  the vault read, rather than the Phase 1 `observation.evidence.retrieve` decision. Every byte read
-  is recorded — the evidence object and its digest are on the attempt and on every claim's lineage —
-  but this is a second path to the same bytes and it is named here rather than left implicit.
+* **The corridor demonstration runs in `replay`; the live path was exercised separately.** §3a is
+  one bounded live run over two evidence objects — enough to prove the product path, not a claim
+  that the whole corridor story has been extracted by a model. The acceptance suite and CI run
+  `replay` only, deliberately: they must be deterministic and must not need a model.
+* **The corridor demonstration's recorded responses are AUTHORED FIXTURES.** They were written by
+  hand for this evidence. No model produced them, and nothing in the product says one did: they are
+  stored `recorded_from: 'fixture'`, the gateway view shows that column, and a claim built from one
+  carries `mode: replay`. Responses a model actually produced are stored `recorded_from: 'local-live'`
+  — §3a's two are the only ones — and the two are never conflated.
+* ~~Extraction reads evidence bytes under its own action.~~ **Closed.** Extraction now obtains a
+  separate `observation.evidence.retrieve` decision per evidence object and reads through Phase 1's
+  own `EvidenceService` — manifest-resolved, digest re-verified, custody-writing. There is no second
+  vault path. Both decisions are visible in the extraction receipt and in every claim's lineage, and
+  the custody entry names the extraction that read the bytes.
 * **Confidence is the model's own number.** Nothing calibrates it, and Phase 2 does not claim it is
   calibrated. Calibration tracking arrives with forecasts in Phase 4.
 * **Claims are not entities.** Two claims about "Bab el-Mandeb Strait" are two strings, not one

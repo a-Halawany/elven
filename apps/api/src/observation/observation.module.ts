@@ -50,7 +50,11 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     // it is, and everything else falls through unchanged.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
-  exports: [VaultService, CollectionOrchestrator, SchedulerService],
+  // EvidenceService is exported so LATER PHASES REUSE THE RETRIEVAL PATH rather
+  // than growing a second one. Phase 2's extraction reads evidence through this
+  // exact implementation — manifest-resolved, digest-verified, custody-writing —
+  // under its own observation.evidence.retrieve decision.
+  exports: [VaultService, EvidenceService, CollectionOrchestrator, SchedulerService],
 })
 export class ObservationModule implements OnModuleInit {
   constructor(private readonly vault: VaultService) {}
