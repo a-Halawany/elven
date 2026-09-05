@@ -12,11 +12,23 @@
  * the last COMMITTED checkpoint rather than re-fetching the world.
  */
 import { createHash } from 'node:crypto';
-import { egress, EgressRefused } from './http-client.js';
+import { egress as liveEgress, EgressRefused, type EgressPolicy, type EgressResult } from './http-client.js';
 import { ReplayResponder } from './replay.js';
-import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, Connector } from './sdk.js';
+import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, BackfillDeclaration,
+  BackfillProgress, Connector } from './sdk.js';
 
-const VERSION = '1.1.0';
+/**
+ * 1.2.0 adds the CLOSED-RANGE BACKFILL (Phase 4 §4a). The framing method refs
+ * are unchanged — a backfilled window is framed exactly as a polled response —
+ * and the version bump is what makes a backfilled item attributable to the code
+ * that walked the range rather than to the poller that did not.
+ */
+const VERSION = '1.2.0';
+/** The traversal method recorded on every backfilled parent item. */
+export const BACKFILL_METHOD_REF = `rest-backfill-traversal@${VERSION}`;
+
+/** The transport a connector uses. Injectable so a traversal can be tested against a double. */
+export type Egress = (a: { url: string; headers: Record<string, string>; policy: EgressPolicy }) => Promise<EgressResult>;
 export const REST_METHOD_REF = `rest-transport-framing@${VERSION}`;
 /**
  * The framing method recorded on every child item. Naming the method and its
@@ -30,12 +42,18 @@ export class RestConnector implements Connector {
   readonly name = 'observation.rest';
   readonly version = VERSION;
   readonly codeDigest = createHash('sha256')
-    .update(`${this.name}@${VERSION}:${REST_METHOD_REF}`)
+    .update(`${this.name}@${VERSION}:${REST_METHOD_REF}:${BACKFILL_METHOD_REF}`)
     .digest('hex');
+
+  private readonly egress: Egress;
+
+  constructor(opts: { egress?: Egress } = {}) {
+    this.egress = opts.egress ?? liveEgress;
+  }
 
   async acquire(ctx: AcquisitionContext): Promise<AcquisitionOutput> {
     const { binding } = ctx;
-    const checkpoint = (ctx.checkpoint ?? {}) as Record<string, { etag?: string; lastModified?: string }>;
+    const checkpoint = (ctx.checkpoint ?? {}) as Record<string, unknown>;
     const items: AcquiredItem[] = [];
     // Raw responses preserved as PARENT evidence when framing is declared, so a
     // child fragment always has the exact bytes it was cut from.
@@ -47,6 +65,30 @@ export class RestConnector implements Connector {
     const replay = binding.acquisitionMode === 'replay'
       ? new ReplayResponder(ctx.replayRoot)
       : null;
+
+    /*
+     * A BACKFILL RUNS INSTEAD OF A FORWARD POLL, UNTIL IT IS DONE.
+     *
+     * The declared window is walked inside THIS run's budget and the progress is
+     * carried on the checkpoint. A run that finds the backfill unfinished continues
+     * it and touches no forward endpoint; a run that finds it finished polls
+     * forward exactly as Phase 1 did. The budget is the contract's own — a backfill
+     * that needs more requests than one run allows takes several runs, which is the
+     * plan's answer to a budget it is not permitted to raise silently.
+     */
+    if (replay === null && binding.backfill !== undefined) {
+      const progress = backfillProgressOf(checkpoint, binding.backfill, binding.contractVersion);
+      if (!progress.done) {
+        const walked = await this.backfill(ctx, binding.backfill, progress);
+        nextCheckpoint['backfill'] = walked.progress;
+        return {
+          items: [...walked.parents, ...walked.items],
+          checkpoint: nextCheckpoint,
+          bytesTransferred: walked.bytes, requestsMade: walked.requests,
+        };
+      }
+      nextCheckpoint['backfill'] = progress;
+    }
 
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
@@ -86,12 +128,12 @@ export class RestConnector implements Connector {
       }
 
       const conditional: Record<string, string> = {};
-      const cp = checkpoint[endpoint];
+      const cp = checkpoint[endpoint] as { etag?: string; lastModified?: string } | undefined;
       if (cp?.etag !== undefined) conditional['if-none-match'] = cp.etag;
       if (cp?.lastModified !== undefined) conditional['if-modified-since'] = cp.lastModified;
 
       try {
-        const res = await egress({ url: endpoint, headers: conditional, policy: binding.egress });
+        const res = await this.egress({ url: endpoint, headers: conditional, policy: binding.egress });
         if (res.status === 304) {
           // Nothing new. Not an error, not an item, and not a freshness failure.
           continue;
@@ -139,6 +181,175 @@ export class RestConnector implements Connector {
       checkpoint: nextCheckpoint, bytesTransferred, requestsMade,
     };
   }
+
+  /**
+   * Walk the declared window from where the checkpoint left off, within budget.
+   *
+   * DETERMINISTIC KEYS. A backfilled item is keyed by the window (or page) it
+   * covers, never by the retrieval instant, and is flagged `deterministic` — so a
+   * re-run over the same range is recognised by the lifecycle as the same window
+   * rather than admitted again as new evidence.
+   *
+   * THE BUDGET IS RESPECTED BEFORE IT IS SPENT. The loop stops when the next
+   * request would exceed the run's request budget, leaving the cursor where the
+   * next run should resume. A run never ends by breaching the budget it was
+   * given; it ends by declining to.
+   */
+  private async backfill(
+    ctx: AcquisitionContext, decl: BackfillDeclaration, start: BackfillProgress,
+  ): Promise<{ items: AcquiredItem[]; parents: AcquiredItem[]; progress: BackfillProgress;
+               bytes: number; requests: number }> {
+    const { binding } = ctx;
+    const progress: BackfillProgress = { ...start };
+    const items: AcquiredItem[] = [];
+    const parents: AcquiredItem[] = [];
+    let bytes = 0;
+    let requests = 0;
+    const budget = binding.budgets.maxRequestsPerRun;
+
+    while (!progress.done && requests < budget) {
+      const step = nextRequest(decl, progress);
+      ctx.budget.spendRequest();
+      requests += 1;
+      const res = await this.egress({ url: step.url, headers: {}, policy: binding.egress });
+      if (res.status < 200 || res.status >= 300) {
+        throw new EgressRefused('transport_failure', `backfill endpoint answered ${res.status}`);
+      }
+      ctx.budget.spendBytes(res.body.byteLength);
+      bytes += res.body.byteLength;
+
+      const parentItem: AcquiredItem = {
+        itemKey: step.itemKey,
+        bytes: res.body,
+        declaredMediaType: res.headers['content-type'] ?? null,
+        filename: step.filename,
+        publisherTime: res.headers['last-modified'] ?? null,
+        deterministic: true,
+        transport: {
+          connector: this.name,
+          connectorVersion: VERSION,
+          methodRef: BACKFILL_METHOD_REF,
+          endpoint: res.finalUrlRedacted,
+          httpStatus: res.status,
+          retainedHeaders: res.headers,
+          tlsVerified: res.tlsVerified,
+          originAllowlisted: res.originAllowlisted,
+          pinnedAddress: res.pinnedAddress,
+          redirectHops: res.hops,
+        },
+      };
+      const framed = frame(parentItem, binding.expectedSchema);
+      if (framed === null) items.push(parentItem);
+      else {
+        parents.push(parentItem);
+        // A framed child inherits determinism from the window it was cut from.
+        items.push(...framed.map((f) => ({ ...f, deterministic: true })));
+      }
+
+      const advanced = advance(decl, progress, step, res.body, framed?.length ?? 0);
+      progress.cursor = advanced.cursor;
+      progress.done = advanced.done;
+      progress.requests += 1;
+      progress.items += framed?.length ?? 1;
+      if (progress.done) progress.finishedAt = new Date().toISOString();
+    }
+    return { items, parents, progress, bytes, requests };
+  }
+}
+
+/* ───────────────────────── backfill traversal ───────────────────────── */
+
+/**
+ * Where to resume. A checkpoint that carries no backfill, one for a DIFFERENT
+ * declaration (window or strategy changed), or one made under an EARLIER
+ * contract version, starts from the declaration's own beginning. The last of
+ * these is how an operator re-collects a range after a publisher restatement:
+ * register a new contract version, and the walk runs again — identical windows
+ * no-op, changed windows become revisions.
+ */
+export function backfillProgressOf(
+  checkpoint: Record<string, unknown>, decl: BackfillDeclaration, contractVersion: number,
+): BackfillProgress {
+  const to = decl.to ?? new Date().toISOString().slice(0, 10);
+  const prior = checkpoint['backfill'] as Partial<BackfillProgress> | undefined;
+  if (prior !== undefined && prior.strategy === decl.strategy && prior.from === decl.from
+      && prior.to === to && prior.contractVersion === contractVersion
+      && prior.cursor !== undefined && typeof prior.done === 'boolean') {
+    return {
+      strategy: decl.strategy, from: decl.from, to, contractVersion, cursor: prior.cursor, done: prior.done,
+      requests: prior.requests ?? 0, items: prior.items ?? 0,
+      startedAt: prior.startedAt ?? new Date().toISOString(), finishedAt: prior.finishedAt ?? null,
+    };
+  }
+  return {
+    strategy: decl.strategy, from: decl.from, to, contractVersion,
+    cursor: decl.strategy === 'period-range' ? decl.from : 0,
+    done: false, requests: 0, items: 0, startedAt: new Date().toISOString(), finishedAt: null,
+  };
+}
+
+interface Step { url: string; itemKey: string; filename: string; windowStart: string; windowEnd: string; offset: number }
+
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The next request the traversal makes, and the deterministic key of what it returns. */
+export function nextRequest(decl: BackfillDeclaration, progress: BackfillProgress): Step {
+  const base = decl.endpoint;
+  const sep = base.includes('?') ? '&' : '?';
+  if (decl.strategy === 'period-range') {
+    const windowStart = String(progress.cursor);
+    // The window is [start, start + days); the publisher's end parameter is inclusive.
+    const exclusiveEnd = addDays(windowStart, decl.windowDays ?? 366);
+    const windowEnd = exclusiveEnd < progress.to ? exclusiveEnd : progress.to;
+    const inclusiveEnd = addDays(windowEnd, -1);
+    const url = `${base}${sep}${encodeURIComponent(decl.startParam ?? 'startPeriod')}=${windowStart}`
+      + `&${encodeURIComponent(decl.endParam ?? 'endPeriod')}=${inclusiveEnd}`;
+    return {
+      url, windowStart, windowEnd, offset: 0,
+      itemKey: `${safeUrl(base)}@backfill:${windowStart}..${windowEnd}`,
+      filename: `${windowStart}_${inclusiveEnd}.json`,
+    };
+  }
+  // arcgis-offset: one closed window, walked in ordered pages.
+  const offset = Number(progress.cursor);
+  const where = `(${decl.where ?? '1=1'}) AND (${decl.timeField} >= TIMESTAMP '${progress.from} 00:00:00' `
+    + `AND ${decl.timeField} < TIMESTAMP '${progress.to} 00:00:00')`;
+  const url = `${base}${sep}where=${encodeURIComponent(where)}&outFields=*`
+    + `&orderByFields=${encodeURIComponent(decl.orderBy as string)}`
+    + `&resultOffset=${offset}&resultRecordCount=${decl.pageSize ?? 1000}&f=json`;
+  return {
+    url, windowStart: progress.from, windowEnd: progress.to, offset,
+    itemKey: `${safeUrl(base)}@backfill:${progress.from}..${progress.to}#${offset}`,
+    filename: `${progress.from}_${progress.to}_${offset}.json`,
+  };
+}
+
+/** Advance the cursor after a page, and decide whether the window is exhausted. */
+function advance(
+  decl: BackfillDeclaration, progress: BackfillProgress, step: Step, body: Buffer, framedCount: number,
+): { cursor: string | number; done: boolean } {
+  if (decl.strategy === 'period-range') {
+    const next = step.windowEnd;
+    return { cursor: next, done: next >= progress.to };
+  }
+  // ArcGIS states whether a page was cut short (`exceededTransferLimit`). When
+  // the service says so, that is the answer; when it says nothing, a page
+  // smaller than the page size — or an empty one — is the last. Both are read
+  // from the bytes, never assumed.
+  let exceeded: boolean | null = null;
+  let count = framedCount;
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as { exceededTransferLimit?: boolean; features?: unknown[] };
+    if (typeof parsed.exceededTransferLimit === 'boolean') exceeded = parsed.exceededTransferLimit;
+    if (Array.isArray(parsed.features)) count = parsed.features.length;
+  } catch { /* an unframeable page ends the walk below */ }
+  const pageSize = decl.pageSize ?? 1000;
+  const more = exceeded !== null ? exceeded : count >= pageSize;
+  return { cursor: step.offset + count, done: !more || count === 0 };
 }
 
 /**

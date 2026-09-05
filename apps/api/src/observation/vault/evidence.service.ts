@@ -214,11 +214,20 @@ export class EvidenceService {
      * only says more about a read that happened anyway.
      */
     context: Readonly<Record<string, string>> = {},
+    /**
+     * A SPECIFIC VERSION, for a known-at reader. Phase 4's series assembly reads
+     * the version that was current at its cut-off, not the latest; without this
+     * a hindcast would quietly read a later revision. Omitted, the latest is served
+     * exactly as before.
+     */
+    version: number | null = null,
   ): Promise<RetrievalResult> {
-    const evd = (await cap
+    let q = cap
       .readCanonicalObjects()
       .selectAll()
-      .where('object_id' as never, '=', evdId as never)
+      .where('object_id' as never, '=', evdId as never);
+    if (version !== null) q = q.where('object_version' as never, '=', version as never);
+    const evd = (await q
       .orderBy('object_version' as never, 'desc')
       .limit(1)
       .executeTakeFirst()) as EvidenceSummary | undefined;

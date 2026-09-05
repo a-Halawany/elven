@@ -49,6 +49,7 @@ const NAV = [
   { href: '/graph/explore', label: 'Explore', glyph: '⁂' },
   { href: '/graph/strategy', label: 'Strategy', glyph: '◇' },
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
+  { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
   { href: '/observation', label: 'Observation', glyph: '⛁' },
 ];

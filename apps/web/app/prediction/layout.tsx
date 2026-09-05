@@ -1,6 +1,7 @@
 'use client';
 /**
- * WS-02 Observation Operations shell.
+ * The Prediction shell — Phase 4's workspace, beside Graph, Intelligence and
+ * Observation. Same discipline as the Graph shell it is modelled on.
  *
  * The persistent tenant/domain indicator is not decoration: cross-tenant
  * confusion is a governance failure, not a UX one, so the scope the operator is
@@ -21,30 +22,40 @@ import { DegradedBanner } from '../../components/ui';
 interface ShellContext {
   scope: Scope;
   me: Me;
-  /** True when this operator holds collection_manager in the working domain. */
-  isCollectionManager: boolean;
+  /**
+   * True when this operator holds resolution_manager in the working domain.
+   *
+   * It gates what the interface OFFERS, never what it enforces: the server
+   * refuses a resolution decision or a split from anyone else regardless, and
+   * hiding a control the server would refuse is courtesy, not security.
+   */
+  isResolutionManager: boolean;
+  /** True when this operator may declare Strategy Graph objects. */
+  isStrategyOwner: boolean;
+  /** True when this operator may issue forecasts, declare scenarios and acknowledge warnings. */
+  isForecastOwner: boolean;
 }
 
 const Ctx = createContext<ShellContext | null>(null);
 
 export function useShell(): ShellContext {
   const v = useContext(Ctx);
-  if (v === null) throw new Error('observation shell context is not available');
+  if (v === null) throw new Error('prediction shell context is not available');
   return v;
 }
 
 const NAV = [
-  { href: '/observation', label: 'Overview', glyph: '◎' },
-  { href: '/observation/sources', label: 'Sources', glyph: '⛁' },
-  { href: '/observation/evidence', label: 'Evidence', glyph: '❑' },
-  { href: '/observation/quarantine', label: 'Quarantine', glyph: '⚠' },
-  { href: '/observation/corrections', label: 'Corrections', glyph: '⟳' },
-  { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
+  { href: '/prediction', label: 'Overview', glyph: '◎' },
+  { href: '/prediction/forecasts', label: 'Forecasts', glyph: '↗' },
+  { href: '/prediction/scenarios', label: 'Scenarios', glyph: '⑂' },
+  { href: '/prediction/warnings', label: 'Warnings', glyph: '⚑' },
+  { href: '/prediction/calibration', label: 'Calibration', glyph: '◐' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
-  { href: '/prediction', label: 'Prediction', glyph: '↗' },
+  { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
+  { href: '/observation', label: 'Observation', glyph: '⛁' },
 ];
 
-export default function ObservationLayout({ children }: { children: ReactNode }) {
+export default function PredictionLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
@@ -76,7 +87,7 @@ export default function ObservationLayout({ children }: { children: ReactNode })
   if (problem !== null) {
     return (
       <main style={{ padding: 'var(--eye-space-32)' }}>
-        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Observation Operations</h1>
+        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Prediction</h1>
         <p role="alert" style={{ color: 'var(--eye-color-critical)' }}>{problem}</p>
       </main>
     );
@@ -87,7 +98,7 @@ export default function ObservationLayout({ children }: { children: ReactNode })
   if (me.homeTenantId === null || me.homeDomainId === null) {
     return (
       <main style={{ padding: 'var(--eye-space-32)' }}>
-        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Observation Operations</h1>
+        <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Prediction</h1>
         <p role="alert">
           This workspace operates inside one Intelligence Domain. The signed-in principal is bound at{' '}
           <strong>{me.homeScope}</strong> scope and has no home domain, so there is no domain to open.
@@ -97,12 +108,18 @@ export default function ObservationLayout({ children }: { children: ReactNode })
   }
 
   const scope: Scope = { tenantId: me.homeTenantId, domainId: me.homeDomainId };
-  const isCollectionManager = me.bindings.some(
-    (b) => b.roleCode === 'collection_manager' && b.domainId === me.homeDomainId,
+  const isResolutionManager = me.bindings.some(
+    (b) => b.roleCode === 'resolution_manager' && b.domainId === me.homeDomainId,
+  );
+  const isStrategyOwner = me.bindings.some(
+    (b) => b.roleCode === 'strategy_owner' && b.domainId === me.homeDomainId,
+  );
+  const isForecastOwner = me.bindings.some(
+    (b) => b.roleCode === 'forecast_owner' && b.domainId === me.homeDomainId,
   );
 
   return (
-    <Ctx.Provider value={{ scope, me, isCollectionManager }}>
+    <Ctx.Provider value={{ scope, me, isResolutionManager, isStrategyOwner, isForecastOwner }}>
       <div style={{ minBlockSize: '100vh', display: 'flex', flexDirection: 'column' }}>
         <DegradedBanner visible={degraded} detail="the API reports degraded audit availability" />
         <header
@@ -114,7 +131,7 @@ export default function ObservationLayout({ children }: { children: ReactNode })
             paddingBlock: 'var(--eye-space-8)', paddingInline: 'var(--eye-space-16)',
           }}
         >
-          <strong style={{ color: 'var(--eye-color-ink-strong)' }}>Observation Operations</strong>
+          <strong style={{ color: 'var(--eye-color-ink-strong)' }}>Prediction</strong>
           <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>
             tenant <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.tenantId.slice(0, 8)}…</bdi>
             {' · '}domain <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.domainId.slice(0, 8)}…</bdi>
@@ -134,7 +151,7 @@ export default function ObservationLayout({ children }: { children: ReactNode })
         </header>
         <div style={{ display: 'flex', flex: 1, minInlineSize: 0 }}>
           <nav
-            aria-label="Observation Operations"
+            aria-label="Prediction"
             style={{
               inlineSize: 'clamp(3.5rem, 14vw, 13rem)',
               borderInlineEnd: '1px solid var(--eye-color-border-default)',
@@ -144,7 +161,7 @@ export default function ObservationLayout({ children }: { children: ReactNode })
           >
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {NAV.map((n) => {
-                const active = n.href === '/observation' ? pathname === n.href : pathname.startsWith(n.href);
+                const active = n.href === '/prediction' ? pathname === n.href : pathname.startsWith(n.href);
                 return (
                   <li key={n.href} style={{ marginBlockEnd: 'var(--eye-space-4)' }}>
                     <Link

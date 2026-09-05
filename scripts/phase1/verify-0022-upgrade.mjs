@@ -4,7 +4,7 @@
  * Originally written for 0022 alone. C18 is frozen at 0021 and cannot speak about
  * anything after it, so every migration beyond that ceiling is proved here — 0022
  * when Phase 1 added it, 0023 when Phase 2 did, 0024 when Phase 3 did, and
- * 0025–0027 for the bounded correction passes on Phase 3.
+ * 0025–0027 for the bounded correction passes on Phase 3, 0028+ for Phase 4.
  * Extending the ceiling this way is what the Phase 2 plan called for and what the
  * Phase 3 plan repeated, and it is deliberately NOT a second gate: one script, one
  * purpose, one list of declared additions that grows with the migrations it
@@ -136,7 +136,7 @@ const PHASE0_ONLY = ['--exclude', '**/node_modules/**', '--exclude', '**/dist/**
 const LATER_PHASE_SUITES = ['test/int/phase1-acceptance.test.ts',
   'test/int/phase1-fault-injection.test.ts', 'test/int/phase1-hostile-input.test.ts',
   'test/int/phase2-acceptance.test.ts', 'test/int/phase3-acceptance.test.ts',
-  'test/int/phase3-corrections.test.ts'];
+  'test/int/phase3-corrections.test.ts', 'test/int/phase4-acceptance.test.ts'];
 
 /**
  * The SET of row digests for every governed table.
@@ -168,12 +168,13 @@ async function dataRows(c) {
 const INTENDED_ADDITIONS = Object.freeze({
   // 0022: collection_manager, collection_agent · 0023: extraction_manager,
   // extraction_agent · 0024: resolution_manager, resolution_agent, strategy_owner
-  'identity.roles': 7,
+  // 0029: forecast_owner, forecast_agent
+  'identity.roles': 9,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
-  // 0024: OBJ, ASU, DEC, CMT, OUT
-  'objects.schema_registry': 13,
-  // one ledger line per migration applied above the ceiling (0022–0027)
-  'public.schema_migrations': 6,
+  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN
+  'objects.schema_registry': 17,
+  // one ledger line per migration applied above the ceiling (0022–0029)
+  'public.schema_migrations': 8,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
