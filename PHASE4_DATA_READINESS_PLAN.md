@@ -88,7 +88,7 @@ in §3a and, for T3, more than one disruption episode.
 |---|---|---|
 | **S1 IMF PortWatch — chokepoints** | 3 chokepoints, **2023-12-01 → 2024-01-31** (~2 months) | **No — but the publisher holds 7.7 years** (§3a). The grain and fields are exactly right and the depth exists; what stands between us and it is the reuse question in §6, not availability. |
 | **S2 PortWatch — ports** | Rotterdam, Ningbo, same window | **Same position as S1** — same publisher, same terms, same fix. |
-| **S5 ECB EUR/USD** | Daily across the window | **No — depth**, and the cleanest position of any source: explicit free-reuse terms (§6), long-running series. Start date to be confirmed at activation (§3a). |
+| **S5 ECB EUR/USD** | Daily across the window | **No — depth**, and the cleanest position of any source: explicit free-reuse terms (§6), long-running series. **Start date now verified: 1999-01-04** (§3a). |
 | **S6 World Bank indicators** | Annual series | **Adequate as context**, useless as a predictor at a 30-day horizon. Annual data cannot forecast a daily corridor. |
 | **S7 UN Comtrade** | One uploaded export | **Partially.** Monthly trade by commodity is a genuine demand driver. Needs multi-year history. |
 | **S3/S4 EU sanctions** | RSS + payload | **Adequate for its job** — a discrete event feed for the event calendar, not a time series. |
@@ -122,19 +122,22 @@ before a 1-year horizon. The depth problem is therefore **not a data-availabilit
 collection problem and a **reuse-terms problem** (§6), and those are different things with different
 fixes.
 
-**ECB EUR/USD reference rate.** The ECB Data Portal API returned `503` on the probe, so the earliest
-observation was **not verified first-hand** and this plan does not assert it. The series is
-long-running and the reuse position is unusually clear (§6); confirm the start date at activation
-rather than taking it from here.
+**ECB EUR/USD reference rate.** A first attempt at this probe returned `503`. Re-probed on
+2026-09-05 with one anonymous five-day request (`startPeriod=1999-01-04&endPeriod=1999-01-08`,
+3,634 bytes, nothing ingested): **the series' first observation is 1999-01-04** (1.1789), the API
+answers `200`, and the SDMX-JSON shape matches the frozen replay set. That is **27.7 years** of
+daily business-day observations — far beyond either bar in §2.
 
 **UN Comtrade.** Not probed — doing so would mean using the held credential, and nothing in this
 plan touches it.
 
 ## 4. Which connectors should go live, and in what order
 
-All three are **anonymous, free, already implemented, and already contract-registered**. Going live
-means running the existing governed REST poller over a historical backfill window instead of a
-frozen replay set — no new connector kind, no new credential.
+All three are **anonymous, free, already contract-registered, and served by the existing governed
+REST poller** — which today polls *forward* from a checkpoint and has **no closed-range backfill
+mode** (§4a). Going live means adding that mode to the existing connector and running it over a
+historical window instead of a frozen replay set — no new connector *kind*, no new credential, and
+a **new contract version** for each activated source declaring the backfill it performs.
 
 | Order | Source | Why first | What it needs |
 |---|---|---|---|
@@ -271,7 +274,8 @@ gap and a specific proposal — **and still purchase nothing without your approv
 
 ## 8. APIs, UI and model approach
 
-**Data model.** One forward migration `0025` in the shape of `0022`–`0024`: forecast events +
+**Data model.** Forward migrations **starting at `0028`** — the correction passes on Phase 3 took
+`0025`–`0027` — in the shape of `0022`–`0024`: forecast events +
 projection, scenario trees and branch points, indicator definitions and threshold breaches, warning
 records, and the outcome/calibration ledger. Scope triple NOT NULL, `FORCE ROW LEVEL SECURITY`,
 SECURITY DEFINER ports asserting the caller's own bound action. Forecast, scenario and warning
@@ -353,7 +357,7 @@ screen is opened and honestly reports that it has nothing to score yet, and why.
 | **P4-M0a** | **Bounded backfill mode** on the existing REST poller (§4a): closed-range traversal, deterministic ordering, idempotent re-run, checkpointed inside the existing request budget | 3–4 days *(not gated — build it regardless)* |
 | **P4-M0b** | Activate **ECB** (terms settled, §6) and backfill it; add source attribution to the UI | 1–2 days |
 | **P4-M0c** | **PortWatch backfill** — 7.7 years, 3 corridor chokepoints | **gated on your §6 decision, not on engineering** |
-| **P4-M1** | Migration `0025`, forecast/scenario/warning/outcome objects, upgrade check extended by one line | 4–5 days |
+| **P4-M1** | Migration `0028`+ (the next unused number), forecast/scenario/warning/outcome objects, upgrade check extended by one line | 4–5 days |
 | **P4-M2** | Baselines (seasonal naïve, ETS/ARIMA), the forecasting service, known-at-respecting feature assembly | 5–6 days |
 | **P4-M3** | Scenario trees, indicators, threshold breach and branch flip | 4–5 days |
 | **P4-M4** | Early warning: response windows, routing, acknowledgement | 3–4 days |
@@ -400,3 +404,18 @@ critical path.
 | "Run the existing poller over more history" | **§4a**: the poller has no closed-range mode, ArcGIS pagination is undefined without explicit ordering, and a full backfill exceeds the contract's request budget — 3–4 days of real work |
 | Both licences `UNVERIFIED`, "someone should read them" | **Both read.** ECB is settled and permissive. PortWatch points at the IMF general terms, which restrict systematic downloading — **which is what a backfill is** |
 | PortWatch recommended first | **ECB promoted to first**; PortWatch gated on a permission question that is yours, not mine |
+
+
+## 14. Decisions recorded — 2026-09-05
+
+The owner settled the four §12 decisions as follows. Implementation proceeds on this basis.
+
+| # | Decision | Effect on the work |
+|---|---|---|
+| **1** | **PortWatch:** pursue permission; retain the existing replay posture until collection rights are resolved. The permission request is prepared for the owner to send ([PHASE4_PORTWATCH_PERMISSION_REQUEST.md](PHASE4_PORTWATCH_PERMISSION_REQUEST.md)). | S1/S2 stay `replay` with `rights_state: pending`. Nothing is collected from the IMF. The backfill mode is built and tested against a transport double for the ArcGIS strategy, so it is ready the day permission arrives. **This does not block any other milestone.** |
+| **2** | **ECB:** activate and backfill through the governed connector, preserving original evidence and attribution. | A `v2` contract for `ecb-eurusd`: `live`, `rights_state: confirmed` with the ESCB reuse policy recorded as evidence, the backfill declared in the contract, and "Source: ECB statistics." carried wherever a rate is shown or exported. |
+| **3** | **UN Comtrade:** defer activation; leave the existing key untouched. | Not read, not bound, not activated. |
+| **4** | **Paid sources:** buy nothing. | No purchase, no subscription, no evaluation account. |
+
+**Migration numbering.** Phase 4 starts at the next unused number, `0028`, because the bounded
+correction passes on Phase 3 took `0025`–`0027`.
