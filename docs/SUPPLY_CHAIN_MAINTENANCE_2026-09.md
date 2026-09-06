@@ -81,7 +81,9 @@ so far in exactly these places:
 **Remaining limitation, stated:** until merge, no scheduled run watches util-linux. The
 read-only dispatch above is how it is checked on demand
 (`gh workflow run c15-patched-image-recheck.yml --ref maintenance/c15-image-recheck-2026-09`),
-and every push to this branch or to PR #38 now executes it in the required job regardless of
-the gate's verdict. After merge the schedule picks it up on the next day's run with no further
+and every push to THIS branch executes it in the required job regardless of the gate's verdict.
+PR #38's branch does not carry the `ci.yml` change: its inspected run (34029714842) failed the
+gate and SKIPPED the recheck, exactly as before. The step executes there only once this PR is
+merged and PR #38 is rebased onto it. After mergethe schedule picks it up on the next day's run with no further
 change. C15 stays blocking; no waiver is added.
 
