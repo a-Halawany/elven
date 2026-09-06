@@ -382,3 +382,16 @@ window. Results in §4.
 * The maintenance note and PR #39 no longer claim that pushes to PR #38 execute the extended
   recheck; PR #38's run 34029714842 skipped it, as its branch lacks the `ci.yml` change.
 
+## 13. Disposition — the functional correction review is closed
+
+Codex verified both follow-ups of §12.4. **The agreed functional correction review of Phase 4
+is closed at PR #38 head `98e7d9e6f37135d3e9b603a00253baf338c366c8`** (2026-09-06). It stays
+closed unless new evidence warrants reopening a specific finding. What remains open is not
+functional: the C15 supply-chain gate is red on the pinned images for 13 ungoverned util-linux
+findings (§11, PR #39), and both PRs stay unmerged until a verified patched official image
+exists, the governed digest update and disposition reconciliation are made, and every required
+gate — including the C16/C17 steps currently skipped behind C15 — runs green on the resulting
+candidate. No waiver and no gate bypass is authorised. The source decisions, the forecast
+limitations (§2, §6), the frozen T1–T4 / D1–D8 criteria and the deferred correction consumer
+are unchanged.
+
