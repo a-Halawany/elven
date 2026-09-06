@@ -334,7 +334,12 @@ jobs:
       # image carries the fixed OpenSSL. An acceptance must not outlive its own justification because
       # nobody re-checked, so the check runs here, in the required job, on every run - and it FAILS
       # when a patched image appears, because the good news is what has to interrupt someone.
+      # It runs even when the gate above FAILED on its findings (the scanners are staged before any
+      # scan), so a red gate does not also blind the recheck that watches for the image that would
+      # turn it green. It still cannot run when the gate refused before staging — then it fails
+      # closed as indeterminate, which is the truthful answer.
       - name: C15 patched-image recheck (blocking; fails when the acceptance expires in fact)
+        if: always() && env.C15_OUT != ''
         run: |
           set -euo pipefail
           node scripts/gate/check-patched-images.mjs \
