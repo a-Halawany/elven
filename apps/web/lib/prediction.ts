@@ -82,6 +82,8 @@ export interface WarningRow {
   /** Timing: raised AS OF (replay: the breaching observation; live: the audit clock) versus the decision deadline. */
   flip_event_id?: string | null; raised_as_of?: string; timing_mode?: 'live' | 'replay'; decision_deadline?: string | null;
   timely?: boolean | null; controls?: Controls | null;
+  /** Issuance vs RESPONSE: decision_missed says the warning came at or after the deadline; response_timely says whether the answer came before the window closed. */
+  decision_missed?: boolean; acknowledged_as_of?: string | null; response_timely?: boolean | null; expired_as_of?: string | null;
 }
 
 export interface Calibration {
@@ -145,6 +147,6 @@ export const prediction = {
       s, `/indicators/${id}/evaluate`, 'prediction.indicator.evaluate', 'IND', { timing }, id),
   listWarnings: (s: Scope) => p<{ warnings: WarningRow[]; receipt: Receipt }>(s, '/warnings/list', 'prediction.read', 'WRN', { limit: 200 }),
   getWarning: (s: Scope, id: string) => p<{ warning: WarningRow; receipt: Receipt }>(s, `/warnings/${id}/get`, 'prediction.read', 'WRN', {}, id),
-  acknowledgeWarning: (s: Scope, id: string, note: string) =>
-    p<{ warning: { warningId: string; state: string }; receipt: Receipt }>(s, `/warnings/${id}/acknowledge`, 'prediction.warning.acknowledge', 'WRN', { note }, id),
+  acknowledgeWarning: (s: Scope, id: string, note: string, asOf?: string) =>
+    p<{ warning: { warningId: string; state: string }; receipt: Receipt }>(s, `/warnings/${id}/acknowledge`, 'prediction.warning.acknowledge', 'WRN', { note, ...(asOf ? { asOf } : {}) }, id),
 };

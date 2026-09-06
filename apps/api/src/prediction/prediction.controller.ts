@@ -73,10 +73,20 @@ export class PredictionController {
     @Body() body: { payload?: {
       seriesKey?: string; sourceKey?: string; parserRef?: string; valueField?: string; selector?: string | null;
       unit?: string; seasonalityDays?: number; subjectEntityId?: string | null; attribution?: string | null; description?: string;
+      publicationCalendar?: { rule?: string; closures?: unknown; authority?: string } | null;
     } },
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
+    const cal = p.publicationCalendar ?? null;
+    if (cal !== null) {
+      const closures = cal.closures ?? [];
+      if ((cal.rule !== 'daily' && cal.rule !== 'business-days') || typeof cal.authority !== 'string' || cal.authority.trim().length < 8
+        || !Array.isArray(closures) || !closures.every((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))) {
+        throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id,
+          "publicationCalendar must be { rule: 'daily' | 'business-days', closures: [YYYY-MM-DD...], authority: <who attests it, ≥ 8 chars> }"), 400);
+      }
+    }
     for (const k of ['seriesKey', 'sourceKey', 'parserRef', 'valueField', 'unit', 'description'] as const) {
       if (typeof p[k] !== 'string' || (p[k] as string).trim().length < 2) {
         throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `${k} is required`), 400);
@@ -95,6 +105,8 @@ export class PredictionController {
           sourceKey: p.sourceKey as string, parserRef: p.parserRef as string, valueField: p.valueField as string,
           selector: p.selector ?? null, unit: p.unit as string, seasonalityDays: p.seasonalityDays ?? 1,
           subjectEntityId: p.subjectEntityId ?? null, attribution: p.attribution ?? null, description: p.description as string,
+          publicationCalendar: cal === null ? null
+            : { rule: cal.rule as 'daily' | 'business-days', closures: (cal.closures ?? []) as string[], authority: cal.authority as string },
           actor: principal.principalId, correlationId: envelope.correlation_id,
         });
         return { result: { seriesKey: p.seriesKey }, targetType: 'SER', targetId: null, targetVersion: '1', outboxEvent: null };
@@ -343,10 +355,12 @@ export class PredictionController {
       PredictionCapability.evaluation,
       async (cap, scope) => {
         const r = await this.scenarios.evaluate(cap, scope, reader, indicatorId, knownAt, principal.principalId, envelope.correlation_id);
-        const expired = await cap.expireWarnings({ tenantId, domainId, actor: principal.principalId, correlationId: envelope.correlation_id });
+        // Live warnings expire on the audit clock; replayed ones only against THIS evaluation's replay clock.
+        const expired = await cap.expireWarnings({ tenantId, domainId, replayAsOf: timing === 'replay' ? r.replayAsOf : null,
+          actor: principal.principalId, correlationId: envelope.correlation_id });
         return { result: { ...r, expiredWarnings: expired }, targetType: 'IND', targetId: indicatorId, targetVersion: '1', outboxEvent: null };
       });
-    const warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; timingMode: string; branchId: string; recovered: boolean }> = [];
+    const warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: string; branchId: string; recovered: boolean }> = [];
     const failed: Array<{ branchId: string; flipEventId: string; reason: string }> = [];
     const due = [...out.result.flips.map((f) => ({ flip: f, recovered: false })), ...out.result.owed.map((f) => ({ flip: f, recovered: true }))];
     for (const { flip, recovered } of due) {
@@ -361,7 +375,7 @@ export class PredictionController {
               envelope.correlation_id, envelope.purpose_id ?? 'prediction', timing, new Date(), warningId);
             return { result: r, targetType: 'WRN', targetId: r.warningId, targetVersion: '1',
                      outboxEvent: { eventType: 'EarlyWarningRaised', payload: { warning_id: r.warningId, routed_to: r.routedTo,
-                                    raised_as_of: r.raisedAsOf, closes_at: r.closesAt, timing_mode: r.timingMode, timely: r.timely,
+                                    raised_as_of: r.raisedAsOf, closes_at: r.closesAt, timing_mode: r.timingMode, timely: r.timely, decision_missed: r.decisionMissed,
                                     branch_id: flip.branchId, flip_event_id: flip.flipEventId } } };
           });
         warnings.push({ ...w.result, branchId: flip.branchId, recovered });
@@ -369,14 +383,14 @@ export class PredictionController {
         failed.push({ branchId: flip.branchId, flipEventId: flip.flipEventId, reason: e instanceof Error ? e.message : String(e) });
       }
     }
-    const { owed: _owed, ...evaluation } = out.result;
+    const { owed: _owed, replayAsOf, ...evaluation } = out.result;
     if (failed.length > 0) {
       throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id,
         `${failed.length} flip(s) are committed and still OWE a warning that could not be raised `
         + `(${failed.map((f) => `branch ${f.branchId}: ${f.reason}`).join('; ')}); the obligation stays recorded on the branch and is retried by the next evaluation. `
         + `${warnings.length} warning(s) were raised.`), 409);
     }
-    return { evaluation: { ...evaluation, knownAt, timing, owedRecovered: out.result.owed.length }, warnings, receipt: receipt(out) };
+    return { evaluation: { ...evaluation, knownAt, timing, replayAsOf: timing === 'replay' ? replayAsOf : null, owedRecovered: out.result.owed.length }, warnings, receipt: receipt(out) };
   }
 
   @Post('/scenarios/declare')
@@ -450,14 +464,15 @@ export class PredictionController {
   async acknowledgeWarning(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
     @Param('warningId') warningId: string,
-    @Body() body: { payload?: { note?: string } },
+    @Body() body: { payload?: { note?: string; asOf?: string } },
   ) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'prediction.warning.acknowledge', 'WRN', warningId),
       PredictionCapability.acknowledge,
       async (cap, scope) => {
-        const state = await this.scenarios.acknowledge(cap, scope, warningId, body.payload?.note ?? '', principal.principalId, envelope.correlation_id);
+        const state = await this.scenarios.acknowledge(cap, scope, warningId, body.payload?.note ?? '',
+          typeof body.payload?.asOf === 'string' ? body.payload.asOf : null, principal.principalId, envelope.correlation_id);
         return { result: { warningId, state }, targetType: 'WRN', targetId: warningId, targetVersion: '1', outboxEvent: null };
       });
     return { warning: out.result, receipt: receipt(out) };

@@ -180,7 +180,7 @@ export class ScenariosService {
    */
   async evaluate(
     cap: EvaluationWrites, ctx: ScopeContext, reader: Reader, indicatorId: string, knownAt: string, actor: string, correlationId: string,
-  ): Promise<{ evaluated: number; breached: boolean; streak: number; flips: Flip[]; owed: Flip[] }> {
+  ): Promise<{ evaluated: number; breached: boolean; streak: number; flips: Flip[]; owed: Flip[]; replayAsOf: string | null }> {
     const ind = (await cap.readIndicators().selectAll()
       .where('indicator_id' as never, '=', indicatorId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (ind === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized indicator matches'), 404);
@@ -189,8 +189,12 @@ export class ScenariosService {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
         `${assembled.unreadable.length} evidence version(s) of ${String(ind['series_key'])} could not be read by this reader; the indicator is not evaluated on an incomplete history`), 409);
     }
-    const controlsFor = (objectId: string, version: number): Controls | null => {
-      const row = assembled.evidenceRows.find((r) => r.object_id === objectId && r.object_version === version);
+    // The controls of the EXACT version a flip cites — from this assembly when it
+    // contributed the point, otherwise read by object and version, so a later
+    // revision of the same evidence does not stand in for the one that breached.
+    const controlsFor = async (objectId: string, version: number): Promise<Controls | null> => {
+      const row = assembled.evidenceRows.find((r) => r.object_id === objectId && r.object_version === version)
+        ?? await cap.evidenceVersion({ objectId, version });
       return row === undefined ? null : foldControls([row]);
     };
     const last = dayOf(ind['last_observation_at']);
@@ -208,18 +212,21 @@ export class ScenariosService {
         if (r.flipped_branch_id !== null && r.flip_event_id !== null) {
           flips.push({ branchId: r.flipped_branch_id, flipEventId: r.flip_event_id, observationAt: p.date, value: p.value,
                        evidenceObjectId: p.evidence_object_id, evidenceVersion: p.evidence_version,
-                       evidenceControls: controlsFor(p.evidence_object_id, p.evidence_version) });
+                       evidenceControls: await controlsFor(p.evidence_object_id, p.evidence_version) });
         }
       }
     }
     // Every flip still owed a warning, from any earlier evaluation, minus the ones just made.
     const fresh_ids = new Set(flips.map((f) => f.flipEventId));
-    const owed: Flip[] = (await cap.owedFlips())
-      .filter((o) => !fresh_ids.has(o.flip_event_id))
-      .map((o) => ({ branchId: o.branch_id, flipEventId: o.flip_event_id, observationAt: dayOf(o.observation_at) ?? String(o.observation_at),
-                     value: Number(o.value), evidenceObjectId: o.evidence_object_id, evidenceVersion: Number(o.evidence_version),
-                     evidenceControls: controlsFor(o.evidence_object_id, Number(o.evidence_version)) }));
-    return { evaluated: fresh.length, breached, streak, flips, owed };
+    const owed: Flip[] = [];
+    for (const o of (await cap.owedFlips()).filter((x) => !fresh_ids.has(x.flip_event_id))) {
+      owed.push({ branchId: o.branch_id, flipEventId: o.flip_event_id, observationAt: dayOf(o.observation_at) ?? String(o.observation_at),
+                  value: Number(o.value), evidenceObjectId: o.evidence_object_id, evidenceVersion: Number(o.evidence_version),
+                  evidenceControls: await controlsFor(o.evidence_object_id, Number(o.evidence_version)) });
+    }
+    // The REPLAY CLOCK of this evaluation: the end of the newest observation day it can see.
+    const newest = assembled.points[assembled.points.length - 1]?.date ?? null;
+    return { evaluated: fresh.length, breached, streak, flips, owed, replayAsOf: newest === null ? null : `${newest}T23:59:59Z` };
   }
 
   /**
@@ -233,12 +240,20 @@ export class ScenariosService {
    * response window opens at that instant and closes at the earlier of the
    * branch's window and its decision deadline. `timely` compares raisedAsOf to
    * the deadline the declarer set; with no deadline it is null: T3 unmeasured.
-   * `recorded_at` stays the audit clock either way.
+   * Raised AT OR AFTER the deadline, the decision it served can no longer be
+   * taken: that is recorded as a MISSED DECISION, `timely` false, and the
+   * window still opens — for the branch's own duration, since a report must
+   * still be answered — rather than closing before it opens. `recorded_at`
+   * stays the audit clock either way.
+   *
+   * The controls come from the EXACT evidence version the flip cites. When they
+   * cannot be resolved the warning is not admitted at all: it stays owed on the
+   * branch, visibly, until they can be.
    */
   async warnForFlip(
     cap: WarningWrites, ctx: ScopeContext, flip: Flip, confidence: number, actor: string, correlationId: string, purposeId: string,
     timing: 'live' | 'replay', now = new Date(), warningId: string = newId(),
-  ): Promise<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; timingMode: 'live' | 'replay' }> {
+  ): Promise<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: 'live' | 'replay' }> {
     const branch = (await cap.readBranches().selectAll()
       .where('branch_id' as never, '=', flip.branchId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (branch === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized branch matches'), 404);
@@ -246,21 +261,27 @@ export class ScenariosService {
       .where('scenario_id' as never, '=', String(branch['scenario_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const indicator = (await cap.readIndicators().selectAll()
       .where('indicator_id' as never, '=', String(branch['indicator_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (flip.evidenceControls === null) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId,
+        `the controls of the cited evidence version ${flip.evidenceObjectId}@${flip.evidenceVersion} could not be resolved; `
+        + 'the warning is not admitted and stays owed on the branch'), 409);
+    }
     const hours = Number(branch['response_window_hours'] ?? 72);
     const recordedAt = now.toISOString();
     const raisedAsOf = timing === 'replay' ? `${flip.observationAt}T00:00:00.000Z` : recordedAt;
     const deadlineRaw = branch['decision_deadline'];
     const decisionDeadline = deadlineRaw == null ? null : new Date(String(deadlineRaw instanceof Date ? deadlineRaw.toISOString() : deadlineRaw)).toISOString();
+    const decisionMissed = decisionDeadline !== null && raisedAsOf >= decisionDeadline;
     const windowEnd = new Date(new Date(raisedAsOf).getTime() + hours * 3_600_000).toISOString();
-    const closesAt = decisionDeadline !== null && decisionDeadline < windowEnd ? decisionDeadline : windowEnd;
-    const timely = decisionDeadline === null ? null : raisedAsOf <= decisionDeadline;
+    const closesAt = decisionDeadline !== null && !decisionMissed && decisionDeadline < windowEnd ? decisionDeadline : windowEnd;
+    const timely = decisionDeadline === null ? null : !decisionMissed;
     const routedTo = String(branch['owner_principal_id']);
     const title = `${String(scenario?.['title'] ?? 'scenario')} — branch "${String(branch['name'])}" flipped`;
     // INHERITED: the scenario's controls folded with the breaching evidence's.
     // Evidence the evaluator could not see folds fail-closed.
     const controls = foldControls([
       controlsOf(scenario?.['controls']) ?? {},
-      flip.evidenceControls ?? {},
+      flip.evidenceControls,
     ]);
     const evidence = [{ kind: 'evidence', evidence_object_id: flip.evidenceObjectId, evidence_version: flip.evidenceVersion,
                         observation_at: flip.observationAt, value: flip.value },
@@ -272,7 +293,7 @@ export class ScenariosService {
       title, branch_id: flip.branchId, indicator_id: String(branch['indicator_id']),
       forecast_id: scenario?.['forecast_id'] ?? null, flip_event_id: flip.flipEventId,
       evidence, consequence: String(branch['consequence']), confidence,
-      timing: { mode: timing, raised_as_of: raisedAsOf, recorded_at: recordedAt, decision_deadline: decisionDeadline, timely },
+      timing: { mode: timing, raised_as_of: raisedAsOf, recorded_at: recordedAt, decision_deadline: decisionDeadline, timely, decision_missed: decisionMissed },
       response_window: { opens_at: raisedAsOf, closes_at: closesAt }, routed_to: `principal:${routedTo}`,
       controls,
     };
@@ -298,15 +319,22 @@ export class ScenariosService {
       warningId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, branchId: flip.branchId,
       indicatorId: String(branch['indicator_id']), forecastId: scenario?.['forecast_id'] === undefined ? null : (scenario['forecast_id'] as string | null),
       title, evidence, consequence: String(branch['consequence']), confidence, opensAt: raisedAsOf, closesAt, routedTo,
-      flipEventId: flip.flipEventId, raisedAsOf, timingMode: timing, decisionDeadline, timely, controls,
+      flipEventId: flip.flipEventId, raisedAsOf, timingMode: timing, decisionDeadline, timely, decisionMissed, controls,
       actor, eventId: newId(), correlationId,
     });
-    return { warningId, routedTo, raisedAsOf, closesAt, timely, timingMode: timing };
+    return { warningId, routedTo, raisedAsOf, closesAt, timely, decisionMissed, timingMode: timing };
   }
 
-  async acknowledge(cap: AcknowledgeWrites, ctx: ScopeContext, warningId: string, note: string, actor: string, correlationId: string): Promise<string> {
+  /**
+   * The response is AS OF an instant on the warning's own clock: the audit clock
+   * for a live warning, the replay instant the responder states for a replayed
+   * one. The port records whether it came before the window closed.
+   */
+  async acknowledge(cap: AcknowledgeWrites, ctx: ScopeContext, warningId: string, note: string, asOf: string | null, actor: string, correlationId: string): Promise<string> {
     if (note.trim().length < 4) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'an acknowledgement needs a note'), 422);
-    return cap.acknowledgeWarning({ warningId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, note, actor, eventId: newId(), correlationId });
+    if (asOf !== null && Number.isNaN(Date.parse(asOf))) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'asOf must be an instant'), 422);
+    return cap.acknowledgeWarning({ warningId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, note,
+      asOf: asOf === null ? null : new Date(asOf).toISOString(), actor, eventId: newId(), correlationId });
   }
 
   async listScenarios(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {

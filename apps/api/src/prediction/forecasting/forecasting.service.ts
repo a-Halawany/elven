@@ -32,6 +32,23 @@ export const HORIZONS: Readonly<Record<string, number>> = Object.freeze({
 export const MIN_HISTORY_FOR_BACKTEST = 400;
 export const MIN_ORIGINS = 20;
 
+/**
+ * Why the attested calendar says the publisher does not publish on `day`, or
+ * null when it says nothing of the kind. Only two grounds exist: the day of
+ * week under a business-days rule, and a listed closure. Nothing is inferred.
+ */
+export function nonPublicationDay(
+  day: string, calendar: { rule?: string; closures?: string[] } | null,
+): string | null {
+  if (calendar === null || typeof calendar !== 'object') return null;
+  if (Array.isArray(calendar.closures) && calendar.closures.includes(day)) return 'a listed closure';
+  if (calendar.rule === 'business-days') {
+    const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+    if (dow === 0 || dow === 6) return 'a weekend day';
+  }
+  return null;
+}
+
 function addDays(day: string, n: number): string {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
@@ -304,7 +321,7 @@ export class ForecastingService {
     }
 
     const rows: Array<Record<string, unknown>> = [];
-    let cov = 0; let pin = 0; let bcov = 0; let bpin = 0; let usable = 0; let unknowable = 0;
+    let cov = 0; let pin = 0; let bcov = 0; let bpin = 0; let usable = 0; let unknowable = 0; let incomplete = 0;
     for (const o of origins) {
       const originDate = full.points[o]?.date as string;
       const actual = full.points[o + steps] as { value: number; date: string };
@@ -318,6 +335,9 @@ export class ForecastingService {
          * why a backfilled series cannot validate historically.
          */
         const then = await this.series.assemble(reader, a.seriesKey, `${originDate}T23:59:59.999Z`, originDate);
+        // An origin whose own history this reader could not fully read is NOT fitted: a
+        // score on a partial history would be presented as a score on the history.
+        if (!then.complete) { incomplete += 1; continue; }
         train = then.points;
         if (train.length < minTrain) { unknowable += 1; continue; }
       }
@@ -332,11 +352,12 @@ export class ForecastingService {
                   pinball: round(p), baseline_pinball: round(bp) });
     }
     if (usable < MIN_ORIGINS) {
-      const verdict = `CANNOT VALIDATE (${mode}): ${usable} of ${origins.length} origin(s) had enough history recorded by their own day `
-        + `(${unknowable} had none — the history was recorded after them). A historical backtest needs ${MIN_ORIGINS} such origins. `
-        + 'No accuracy is claimed for this series and horizon under historical knowledge.';
-      await record({ verdict, origins: usable, details: { observations: n, cadence, steps, unknowable, reason: 'history recorded after the origins' } });
-      return { backtestId, mode, verdict, origins: usable, observations: n, unknowable, t1_met: null, t2_met: null };
+      const verdict = `CANNOT VALIDATE (${mode}): ${usable} of ${origins.length} origin(s) could be fitted on history complete and recorded by their own day `
+        + `(${unknowable} had none — the history was recorded after them; ${incomplete} had evidence this reader could not read). `
+        + `A historical backtest needs ${MIN_ORIGINS} such origins. No accuracy is claimed for this series and horizon under historical knowledge.`;
+      await record({ verdict, origins: usable, details: { observations: n, cadence, steps, unknowable, incomplete,
+                     reason: incomplete > 0 && unknowable === 0 ? 'incomplete history at the origins' : 'history recorded after the origins' } });
+      return { backtestId, mode, verdict, origins: usable, observations: n, unknowable, incomplete, t1_met: null, t2_met: null };
     }
     const k = usable;
     const coverage = cov / k; const bcoverage = bcov / k;
@@ -351,9 +372,9 @@ export class ForecastingService {
       windowFrom: full.points[origins[0] as number]?.date ?? full.points[0]?.date ?? '1970-01-01',
       origins: k, coverage: round(coverage), pinball: round(pinball), baselineCoverage: round(bcoverage),
       baselinePinball: round(bpinball), skill: round(skill), t1, t2, verdict,
-      details: { observations: n, cadence, steps, season: m, stride, unknowable, rows: rows.slice(-60) },
+      details: { observations: n, cadence, steps, season: m, stride, unknowable, incomplete, rows: rows.slice(-60) },
     });
-    return { backtestId, mode, verdict, origins: k, observations: n, coverage_80: round(coverage), pinball_mean: round(pinball),
+    return { backtestId, mode, verdict, origins: k, observations: n, unknowable, incomplete, coverage_80: round(coverage), pinball_mean: round(pinball),
              baseline_coverage_80: round(bcoverage), baseline_pinball_mean: round(bpinball), skill_vs_baseline: round(skill),
              t1_met: t1, t2_met: t2, discipline: this.discipline(full, mode) };
   }
@@ -370,12 +391,16 @@ export class ForecastingService {
   /**
    * Score a forecast against what the series says its target day turned out to be.
    *
-   * NEVER BEFORE THE TARGET. The reader must be positioned after the target
-   * day, and the observation must be the target day's own — or, for a series
-   * the publisher does not publish every calendar day, the last published
-   * observation within three days before it, taken only once a LATER observation
-   * proves the calendar moved on. The day actually observed and the reason for
-   * any substitution are persisted with the score.
+   * NEVER BEFORE THE TARGET, and NEVER FROM A GUESS ABOUT THE CALENDAR. The
+   * reader must be positioned after the target day, and the observation must be
+   * the target day's own. A stand-in — the last published observation within
+   * three days before the target — is admissible only when the series' attested
+   * PUBLICATION CALENDAR says the target is a day the publisher does not publish
+   * (a weekend under a business-days rule, or a listed closure) AND a later
+   * observation proves the calendar moved on. A weekday the publisher simply
+   * did not publish is not a holiday; mean cadence establishes nothing. Without
+   * an attested calendar the target stays unscored. The day actually observed and
+   * the reason for any substitution are persisted with the score.
    */
   async recordOutcome(
     cap: OutcomeWrites, ctx: ScopeContext, reader: Reader, forecastId: string, knownAt: string, actor: string, correlationId: string,
@@ -398,17 +423,21 @@ export class ForecastingService {
     const exact = assembled.points.find((p) => p.date === target);
     let point = exact; let substitution = 'none';
     if (point === undefined) {
-      const cadence = cadenceOf(assembled.points);
+      const calendar = assembled.series.publication_calendar ?? null;
+      const closed = nonPublicationDay(target, calendar);
       const later = assembled.points.some((p) => p.date > target);
       const before = [...assembled.points].reverse().find((p) => p.date < target && p.date >= addDays(target, -3));
-      if (cadence === 'business' && later && before !== undefined) {
+      if (closed !== null && later && before !== undefined) {
         point = before;
-        substitution = `previous published observation (${before.date}): the publisher does not publish on ${target}`;
+        substitution = `previous published observation (${before.date}): ${target} is ${closed} under the attested publication calendar (${String(calendar?.authority ?? 'unspecified authority')})`;
+      } else if (calendar === null) {
+        throw new HttpException(errorBody('EYE_STA_001', correlationId,
+          `no observation on ${target} is known at ${knownAt}, and the series attests no publication calendar; a stand-in cannot be justified, so the outcome stays unscored`), 409);
+      } else {
+        throw new HttpException(errorBody('EYE_STA_001', correlationId,
+          `no observation on ${target} is known at ${knownAt}; the attested publication calendar (${String(calendar.rule)}) says the publisher `
+          + `publishes on that day${later ? '' : ', and no later observation exists'}; a missing publication is not a holiday, so the outcome stays unscored`), 409);
       }
-    }
-    if (point === undefined) {
-      throw new HttpException(errorBody('EYE_STA_001', correlationId,
-        `no observation on ${target} is known at ${knownAt}, and no admissible substitution exists; the outcome cannot be scored yet`), 409);
     }
     const outcomeId = newId();
     await cap.recordOutcome({

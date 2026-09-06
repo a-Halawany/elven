@@ -55,7 +55,7 @@ Nothing below needs a paid service, a hosted model or a new credential. The ECB 
 ECB Data Portal anonymously, as the owner decided; PortWatch stays in replay.
 
 ```bash
-scripts/demo.sh                                # Phase 0: migrate (0001–0030), bootstrap, API on :3401
+scripts/demo.sh                                # Phase 0: migrate (0001–0031), bootstrap, API on :3401
 node scripts/phase1/seed-demo.mjs              # act I   — sources, replay collection
 node scripts/phase2/seed-extraction.mjs        # act II  — claims with lineage
 node scripts/phase3/seed-graph.mjs             # act III — entities, graph, strategy, impact
@@ -78,7 +78,16 @@ npx playwright test -c playwright.demo.config.ts
 It opens the overview, a forecast (the badge says `VALIDATED RETROSPECTIVELY` and lists the
 inherited controls), the calibration table (backtest `Mode`), the scenario tree (the branch's
 decision deadline, `T3 unmeasured` where none was declared) and the replayed warning (`REPLAY ·
-raised as of 2024-01-17 (recorded 2026-…)`, timely against the 2024-01-22 deadline).
+raised as of 2024-01-17 (recorded 2026-…)`, issued before the 2024-01-22 deadline). It then
+seeds fresh branches through the API and exercises the actions: acknowledge as of a replay
+instant (in time / late), a window expired by the replay clock, a missed decision. It also
+inspects `/readyz` and refuses to pass on a DEGRADED API.
+
+The demonstration is its own deployment: run its API with `EYE_DEGRADED_DIR` pointing at a
+demo-specific directory (see `scripts/demo.sh`), so the dev API's degraded-audit journal is not
+mistaken for the demonstration's. If `/readyz` reports `audit: degraded`, the procedure is
+`node apps/api/dist/audit/reconcile-degraded.js "<operator>" "<reason>"` against the database
+that holds the incidents; it refuses to clear a journal it cannot reconcile, by design.
 
 ## 3. What the demonstration shows
 
@@ -142,7 +151,7 @@ No hosted API, no new credential, no paid service. The UN Comtrade key was not r
 activation used the anonymous public endpoint; the reuse terms and attribution are on the
 contract.
 
-## 6. Migrations `0028`–`0030` — upgrade evidence
+## 6. Migrations `0028`–`0031` — upgrade evidence
 
 `0028` adds `SRC@v2` (backfill declaration, attribution notice) and the `item.revised` run event.
 `0029` adds the `prediction` schema — twelve tables under FORCE row-level security, eleven ports,
@@ -151,7 +160,9 @@ dependents and two target kinds. `0030` (the correction pass) adds backtest mode
 cut-offs, the validation binding on `issue_forecast`, inherited controls on forecasts, scenarios
 and warnings, the owed-warning obligation on branches (one warning per flip), replay timing and
 decision deadlines on warnings, and the observed-on / substitution record on outcomes — all
-forward-only, with `record_outcome` refusing a score before the target day. The post-C18 upgrade
-check applies all three to a 0021 database
+forward-only, with `record_outcome` refusing a score before the target day. `0031` adds the
+response side of a warning (`acknowledged_as_of`, `response_timely`, `expired_as_of`,
+`decision_missed`), the replay clock on `expire_warnings` and `acknowledge_warning`, and the
+series' attested `publication_calendar`. The post-C18 upgrade check applies all four to a 0021 database
 carrying Phase 0 data and previously assessed correction cases, matches the schema against a virgin
-0001–0030 database, and runs every later-phase suite on the upgraded data.
+0001–0031 database, and runs every later-phase suite on the upgraded data.

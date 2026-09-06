@@ -95,7 +95,11 @@ const CHOKEPOINTS = [
 const SERIES = [
   { seriesKey: 'ecb-eurusd', sourceKey: 'ecb-eurusd', parserRef: 'sdmx-json-observations@1', valueField: 'OBS_VALUE', selector: null,
     unit: 'USD per EUR', seasonalityDays: 1, subjectEntityId: null, attribution: ECB_ATTRIBUTION,
-    description: 'ECB euro foreign exchange reference rate against the US dollar, daily (TARGET business days)' },
+    description: 'ECB euro foreign exchange reference rate against the US dollar, daily (TARGET business days)',
+    // The publisher's calendar as attested: business days. TARGET closing days are NOT listed here, so an
+    // outcome whose target falls on one stays unscored until the closure is attested — no guessing.
+    publicationCalendar: { rule: 'business-days', closures: [],
+      authority: 'ECB: euro foreign exchange reference rates are published on TARGET business days only' } },
   ...CHOKEPOINTS.map((c) => ({
     seriesKey: `portwatch:${c.portid}:n_total`, sourceKey: 'imf-portwatch-chokepoints', parserRef: 'arcgis-feature-attribute@1',
     valueField: 'n_total', selector: c.portid, unit: 'transits/day', seasonalityDays: 7,
@@ -239,9 +243,12 @@ if (indicatorId !== null) {
     for (const w of r.body.warnings) {
       note(`warning ${w.warningId.slice(0, 8)}… routed to ${w.routedTo.slice(0, 8)}… (n.eriksen), raised AS OF ${w.raisedAsOf} (${w.timingMode}), window closes ${w.closesAt}, ${w.timely === null ? 'T3 unmeasured' : w.timely ? 'before the decision deadline' : 'AFTER the decision deadline'}`);
       if (w.timingMode !== 'replay' || String(w.raisedAsOf).startsWith('202' + '6')) bad('a replayed warning was timed by the audit clock');
+      // The response is AS OF a replay instant inside the window; the audit clock (2026) is recorded beside it.
       const ack = await call(`${P}/warnings/${w.warningId}/acknowledge`, fo({ action: 'prediction.warning.acknowledge', objectType: 'WRN', objectId: w.warningId }),
-        { note: 'rebooked SYN-SHIP-4468 via the Cape of Good Hope; 11-day delay accepted over an unbounded one' }, forecastOwner.token);
-      if (ack.ok) ok(`acknowledged inside the window (${ack.body.warning.state})`); else bad(`acknowledgement refused (${ack.status}) ${ack.body?.message ?? ''}`);
+        { note: 'rebooked SYN-SHIP-4468 via the Cape of Good Hope; 11-day delay accepted over an unbounded one', asOf: '2024-01-18T09:00:00Z' }, forecastOwner.token);
+      if (!ack.ok) bad(`acknowledgement refused (${ack.status}) ${ack.body?.message ?? ''}`);
+      else if (ack.body.warning.state !== 'acknowledged') bad(`the replayed response was recorded as ${ack.body.warning.state}`);
+      else ok('acknowledged as of 2024-01-18 — inside the replay window; response timely, recorded on the audit clock');
     }
     if (e.flips.length === 0 && e.evaluated > 0) bad('the replayed collapse did not flip the downside branch');
   }

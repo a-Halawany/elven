@@ -11,8 +11,11 @@
  * Runs through playwright.demo.config.ts only. Screenshots go to EYE_SHOTS.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+
+const API = process.env['EYE_API_BASE'] ?? 'http://localhost:3401';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -22,6 +25,51 @@ function required(name: string): string {
 const SHOTS = process.env['EYE_SHOTS'] ?? join(process.cwd(), 'evidence', 'phase4-browser');
 mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
+
+/* ── the governed API, for SEEDING the states the screens must then show ── */
+const jcs = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.keys(x as Record<string, unknown>).sort().map((k) => [k, (x as Record<string, unknown>)[k]])) : x));
+const digest = (v: unknown) => createHash('sha256').update(jcs(v ?? {}), 'utf8').digest('hex');
+interface Session { token: string; principalId: string; tenantId: string; domainId: string }
+async function post(path: string, envelope: Record<string, unknown>, payload: unknown, token: string) {
+  const r = await fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ envelope: { message_id: crypto.randomUUID(), issued_at: new Date().toISOString(), clock_quality: 'trusted',
+      correlation_id: crypto.randomUUID(), trace_id: 'e2e', schema_version: 'v1', payload_digest: digest(payload ?? {}), ...envelope }, payload }) });
+  return { status: r.status, body: (await r.json()) as Record<string, any> };
+}
+async function login(username: string, password: string): Promise<Session> {
+  const r = await post('/v1/auth/login', { scope: 'PLATFORM', tenant_id: null, domain_id: null, principal_id: 'anonymous', purpose_id: 'authentication',
+    action: 'identity.session.create', side_effect_class: 'reversible', consequence_class: 'C1', object_type: 'SES' }, { username, password }, '');
+  if (r.status !== 200 && r.status !== 201) throw new Error(`login failed (${r.status})`);
+  const b = (r.body.bindings ?? []).find((x: { tenantId: string | null; domainId: string | null }) => x.tenantId && x.domainId) ?? r.body.scope ?? {};
+  return { token: r.body.tokens.accessToken, principalId: r.body.principalId, tenantId: b.tenantId, domainId: b.domainId };
+}
+const P = (s: Session) => `/v1/tenants/${s.tenantId}/domains/${s.domainId}/prediction`;
+const fo = (s: Session, action: string, objectType: string, objectId: string | null = null) => ({
+  scope: 'DOMAIN', tenant_id: s.tenantId, domain_id: s.domainId, principal_id: `principal:${s.principalId}`, purpose_id: 'prediction',
+  action, side_effect_class: 'reversible', consequence_class: 'C2', object_type: objectType, object_id: objectId });
+
+/** A fresh downside branch on the corridor, flipped in REPLAY; returns its warning id. */
+async function seedReplayWarning(s: Session, title: string, over: Record<string, unknown> = {}): Promise<{ warningId: string; indicatorId: string }> {
+  const series = 'portwatch:chokepoint4:n_total';
+  const ind = await post(`${P(s)}/indicators/define`, fo(s, 'prediction.indicator.define', 'IND'),
+    { seriesKey: series, description: `${title}: transits below 41 for five consecutive published observations`, comparator: '<', threshold: 41, consecutiveDays: 5, owner: s.principalId }, s.token);
+  if (ind.status >= 300) throw new Error(`indicator refused (${ind.status}) ${ind.body.message ?? ''}`);
+  const indicatorId = ind.body.indicator.indicatorId as string;
+  const scn = await post(`${P(s)}/scenarios/declare`, fo(s, 'prediction.scenario.declare', 'SCN'), {
+    title, statement: 'seeded by the browser check', forecastId: null, owner: s.principalId, reviewCadence: 'weekly',
+    branches: [
+      { name: 'Baseline', kind: 'baseline', statement: 'as booked', owner: s.principalId, consequence: 'keep the booked routing', responseWindowHours: 72 },
+      { name: 'Corridor collapse', kind: 'downside', statement: 'transits stay below 41/day', indicatorId, owner: s.principalId, responseWindowHours: 48,
+        consequence: 'rebook shipment SYN-SHIP-4468 via the Cape before the booking deadline closes', decisionDeadline: '2024-01-22T00:00:00Z', ...over },
+    ] }, s.token);
+  if (scn.status >= 300) throw new Error(`scenario refused (${scn.status}) ${scn.body.message ?? ''}`);
+  const ev = await post(`${P(s)}/indicators/${indicatorId}/evaluate`, fo(s, 'prediction.indicator.evaluate', 'IND', indicatorId), { confidence: 0.85, timing: 'replay' }, s.token);
+  if (ev.status >= 300) throw new Error(`evaluation refused (${ev.status}) ${ev.body.message ?? ''}`);
+  const warningId = ev.body.warnings?.[0]?.warningId as string | undefined;
+  if (warningId === undefined) throw new Error(`the seeded branch did not flip (${JSON.stringify(ev.body.evaluation)})`);
+  return { warningId, indicatorId };
+}
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -74,7 +122,7 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
 
   test('the scenario tree shows the flipped branch with its decision deadline', async ({ page }) => {
     await page.goto('/prediction/scenarios');
-    await expect(page.getByRole('columnheader', { name: 'Window · deadline' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Window · deadline' }).first()).toBeVisible();
     const flipped = page.getByRole('row').filter({ hasText: 'FLIPPED' }).first();
     await expect(flipped).toBeVisible();
     await expect(flipped.getByText(/by .*2024/)).toBeVisible();
@@ -88,14 +136,93 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
     await expect(page.getByRole('columnheader', { name: 'Raised as of' })).toBeVisible();
     const row = page.getByRole('row').filter({ hasText: 'REPLAY' }).first();
     await expect(row).toBeVisible();
-    await expect(row.getByText('● timely')).toBeVisible();
+    await expect(row.getByText('● issued in time')).toBeVisible();
     await row.getByRole('button').first().click();
     const detail = page.locator('section[aria-labelledby="wrn-h"]');
     await expect(detail.getByText(/REPLAY · raised as of .*2024/).first()).toBeVisible();
-    await expect(detail.getByText(/\(recorded .*2026/)).toBeVisible();
+    await expect(detail.getByText(/\(recorded .*2026/).first()).toBeVisible();
     await expect(detail.getByText(/before the decision deadline/).first()).toBeVisible();
     await expect(detail.getByText(/one warning per flip/)).toBeVisible();
     await expect(detail.getByText(/classification/).first()).toBeVisible();
     await shot(page, '05-warnings');
+  });
+
+  test('the API is HEALTHY behind the banner-free shell: /readyz is inspected, not assumed', async ({ page }) => {
+    const r = await fetch(`${API}/readyz`);
+    const body = await r.json() as Record<string, unknown>;
+    expect(r.status, JSON.stringify(body)).toBe(200);
+    expect(body['status']).toBe('ok');
+    expect(body['audit']).not.toBe('degraded');
+    await page.goto('/prediction/warnings');
+    await expect(page.getByText(/DEGRADED/)).toHaveCount(0);
+  });
+
+  test('ACTION: a replayed warning is acknowledged AS OF a replay instant inside its window — recorded in time', async ({ page }) => {
+    const s = await login('n.eriksen', required('EYE_TEST_ADMIN_PASSWORD'));
+    const title = `Browser check · in time · ${Date.now().toString(36)}`;
+    await seedReplayWarning(s, title);
+    await page.goto('/prediction/warnings');
+    await page.getByRole('button', { name: new RegExp(title) }).click();
+    const detail = page.locator('section[aria-labelledby="wrn-h"]');
+    await expect(detail.getByText(/open in the replay/)).toBeVisible();
+    await detail.getByLabel('What you did about it').fill('rebooked SYN-SHIP-4468 via the Cape');
+    await detail.getByLabel(/Answered as of/).fill('2024-01-18T09:00:00Z');
+    await detail.getByRole('button', { name: 'Acknowledge' }).click();
+    await expect(page.getByText(/^acknowledged — /)).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: title }).first();
+    await expect(row.getByText(/acknowledged in time — as of 2024-01-18/)).toBeVisible();
+    await expect(row.getByText(/recorded 2026/)).toBeVisible();
+    await expect(row.getByText('● issued in time')).toBeVisible();
+    await shot(page, '06-acknowledged-in-time');
+  });
+
+  test('ACTION: a response AFTER the window is recorded as LATE — issuance stays timely', async ({ page }) => {
+    const s = await login('n.eriksen', required('EYE_TEST_ADMIN_PASSWORD'));
+    const title = `Browser check · late · ${Date.now().toString(36)}`;
+    await seedReplayWarning(s, title);
+    await page.goto('/prediction/warnings');
+    await page.getByRole('button', { name: new RegExp(title) }).click();
+    const detail = page.locator('section[aria-labelledby="wrn-h"]');
+    await detail.getByLabel('What you did about it').fill('rebooked, but only on the 25th');
+    await detail.getByLabel(/Answered as of/).fill('2024-01-25T09:00:00Z');
+    await detail.getByRole('button', { name: 'Acknowledge' }).click();
+    await expect(page.getByText(/^acknowledged late — /)).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: title }).first();
+    await expect(row.getByText(/acknowledged LATE — as of 2024-01-25/)).toBeVisible();
+    await expect(row.getByText('● issued in time')).toBeVisible();
+    await shot(page, '07-acknowledged-late');
+  });
+
+  test('STATE: a replayed window nobody answered is EXPIRED by the replay clock, and cannot be acknowledged', async ({ page }) => {
+    const s = await login('n.eriksen', required('EYE_TEST_ADMIN_PASSWORD'));
+    const title = `Browser check · expired · ${Date.now().toString(36)}`;
+    // A six-hour window: the replay's newest observation is 2024-01-17, so its clock (end of that day) closes it.
+    const { indicatorId } = await seedReplayWarning(s, title, { responseWindowHours: 6 });
+    // The next replay evaluation carries the replay clock (the newest observation, 2024-01-17) past the window.
+    const ev = await post(`${P(s)}/indicators/${indicatorId}/evaluate`, fo(s, 'prediction.indicator.evaluate', 'IND', indicatorId), { timing: 'replay' }, s.token);
+    expect(ev.status, JSON.stringify(ev.body)).toBeLessThan(300);
+    expect(ev.body.evaluation.expiredWarnings).toBeGreaterThanOrEqual(1);
+    await page.goto('/prediction/warnings');
+    const row = page.getByRole('row').filter({ hasText: title }).first();
+    await expect(row.getByText(/window closed unanswered — expired as of 2024-01-17/)).toBeVisible();
+    await row.getByRole('button').first().click();
+    const detail = page.locator('section[aria-labelledby="wrn-h"]');
+    await expect(detail.getByText(/This window closed without an answer/)).toBeVisible();
+    await expect(detail.getByRole('button', { name: 'Acknowledge' })).toHaveCount(0);
+    await shot(page, '08-expired');
+  });
+
+  test('STATE: a warning issued after its decision deadline is a MISSED DECISION with a valid window', async ({ page }) => {
+    const s = await login('n.eriksen', required('EYE_TEST_ADMIN_PASSWORD'));
+    const title = `Browser check · missed · ${Date.now().toString(36)}`;
+    await seedReplayWarning(s, title, { decisionDeadline: '2024-01-10T00:00:00Z' });
+    await page.goto('/prediction/warnings');
+    const row = page.getByRole('row').filter({ hasText: title }).first();
+    await expect(row.getByText('✕ decision missed')).toBeVisible();
+    await row.getByRole('button').first().click();
+    const detail = page.locator('section[aria-labelledby="wrn-h"]');
+    await expect(detail.getByText(/DECISION MISSED — issued at or after the deadline/)).toBeVisible();
+    await expect(detail.getByText(/2024-01-17 00:00:00Z → 2024-01-19 00:00:00Z|2024-01-17.*→.*2024-01-19/)).toBeVisible();
+    await shot(page, '09-decision-missed');
   });
 });

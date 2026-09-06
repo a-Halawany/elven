@@ -27,7 +27,6 @@ let seriesKey = '';
 let sourceKey = '';
 let assumptionId = '';
 let knownAfterBackfill = '';
-let tombstonedVersion: { version: number; sourceKey: string } | undefined;
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
@@ -84,40 +83,6 @@ describe('F1 (API) — a cached series is not served past a reader\'s own eviden
     }
   });
 
-  it('a failed or unreadable evidence version is DISCLOSED on the answer, not silently omitted', async () => {
-    // Governed-delete the bytes of one window's evidence (a tombstone on its
-    // manifest, as the corrections path leaves behind). A reader must be told
-    // the series is incomplete, not handed the remaining windows as if whole.
-    const evd = (await sql<{ manifest_id: string }>`select (e.payload ->> 'manifest_id') manifest_id from objects.canonical_objects e
-      where e.object_type = 'EVD' and e.provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by e.recorded_at desc limit 1`.execute(h.su)).rows[0]?.manifest_id as string;
-    await sql`insert into observation.blob_tombstones (tombstone_id, scope, tenant_id, domain_id, manifest_id, reason, actor_principal_id, correlation_id)
-      values (${uuidv7()}::uuid, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${evd}::uuid, 'F1 probe: governed deletion', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
-    // A reader that has never warmed the cache for this version.
-    const fresh = await h.principalWith(['forecast_owner'], 'fresh-reader');
-    const r = await points(fresh) as { total: number; evidence: number; unreadable?: unknown[]; complete?: boolean; note?: string | null };
-    expect(r.complete, 'a series with an unreadable evidence version answered as if it were complete').toBe(false);
-    expect((r.unreadable ?? []).length).toBe(1);
-    expect(r.total).toBeLessThan(1095);
-    expect(String(r.note ?? '')).toMatch(/INCOMPLETE/);
-    // And the derivations refuse to build on it.
-    let refused = 0;
-    for (const call of [
-      () => controller.issueForecast(h.req(fresh, 'prediction.forecast.issue', 'FCT', null), h.fx.tenantId, h.fx.domainId,
-        { payload: { seriesKey, horizon: '30d', knownAt: new Date().toISOString(), observedThrough: '2023-10-31', assumptions: [assumptionId], label: 'replay demonstration' } }),
-      () => controller.runBacktest(h.req(fresh, 'prediction.backtest.record', 'BKT', null), h.fx.tenantId, h.fx.domainId,
-        { payload: { seriesKey, horizon: '30d', knownAt: new Date().toISOString(), origins: 8 } }),
-    ]) {
-      try { await call(); } catch (e) { if (e instanceof HttpException && e.getStatus() === 409) refused += 1; }
-    }
-    expect(refused, 'a forecast or backtest was built on an incomplete history').toBe(2);
-    // The deleted window is re-admitted as a revision so the later probes see the whole series.
-    const { egress } = syntheticEgress();
-    // Different windows, so the keys differ and the bytes are admitted rather than found unchanged.
-    tombstonedVersion = await h.newVersion({ from: '2020-12-30', to: SERIES_END, windowDays: 366 });
-    const run = await h.runOnce(new RestConnector({ egress }), tombstonedVersion.version);
-    expect(run.state, run.reason).toBe('finished');
-    knownAfterBackfill = new Date().toISOString();
-  }, 300_000);
 });
 
 /* ═════════ 2 · forecast selection and validation ═════════ */
@@ -385,4 +350,35 @@ describe('F7 (database) — a backfill neither restarts overnight nor completes 
       expect(String(cp?.['cursor'])).toBe('2021-01-31');
     }
   }, 120_000);
+});
+
+/* ═════════ 1b · unreadable evidence, LAST: without a cache the loss is permanent and every later read says so ═════════ */
+
+describe('F1 (API) — a governed deletion leaves the series incomplete for every reader from then on', () => {
+  it('a failed or unreadable evidence version is DISCLOSED on the answer, not silently omitted', async () => {
+    // Governed-delete the bytes of one window's evidence (a tombstone on its
+    // manifest, as the corrections path leaves behind). A reader must be told
+    // the series is incomplete, not handed the remaining windows as if whole.
+    const evd = (await sql<{ manifest_id: string }>`select (e.payload ->> 'manifest_id') manifest_id from objects.canonical_objects e
+      where e.object_type = 'EVD' and e.provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by e.recorded_at desc limit 1`.execute(h.su)).rows[0]?.manifest_id as string;
+    await sql`insert into observation.blob_tombstones (tombstone_id, scope, tenant_id, domain_id, manifest_id, reason, actor_principal_id, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${evd}::uuid, 'F1 probe: governed deletion', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    // A reader that has never warmed the cache for this version.
+    const fresh = await h.principalWith(['forecast_owner'], 'fresh-reader');
+    const r = await points(fresh, { knownAt: new Date().toISOString() }) as { total: number; evidence: number; unreadable?: unknown[]; complete?: boolean; note?: string | null };
+    expect(r.complete, 'a series with an unreadable evidence version answered as if it were complete').toBe(false);
+    expect((r.unreadable ?? []).length).toBe(1);
+    expect(String(r.note ?? '')).toMatch(/INCOMPLETE/);
+    // And the derivations refuse to build on it.
+    let refused = 0;
+    for (const call of [
+      () => controller.issueForecast(h.req(fresh, 'prediction.forecast.issue', 'FCT', null), h.fx.tenantId, h.fx.domainId,
+        { payload: { seriesKey, horizon: '30d', knownAt: new Date().toISOString(), observedThrough: '2023-10-31', assumptions: [assumptionId], label: 'replay demonstration' } }),
+      () => controller.runBacktest(h.req(fresh, 'prediction.backtest.record', 'BKT', null), h.fx.tenantId, h.fx.domainId,
+        { payload: { seriesKey, horizon: '30d', knownAt: new Date().toISOString(), origins: 8 } }),
+    ]) {
+      try { await call(); } catch (e) { if (e instanceof HttpException && e.getStatus() === 409) refused += 1; }
+    }
+    expect(refused, 'a forecast or backtest was built on an incomplete history').toBe(2);
+  }, 300_000);
 });

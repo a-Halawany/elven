@@ -39,7 +39,8 @@ export function syntheticValue(dayIndex: number, date: string): number {
   return Number((base * disrupted + noise).toFixed(3));
 }
 
-export function sdmxWindow(from: string, toExclusive: string, revise: ((date: string, v: number) => number) | null = null): string {
+export function sdmxWindow(from: string, toExclusive: string, revise: ((date: string, v: number) => number) | null = null,
+                           skip: ((date: string) => boolean) | null = null): string {
   const dates: string[] = []; const obs: Record<string, number[]> = {};
   const d = new Date(`${from}T00:00:00Z`);
   const origin = new Date(`${SERIES_START}T00:00:00Z`).getTime();
@@ -49,8 +50,8 @@ export function sdmxWindow(from: string, toExclusive: string, revise: ((date: st
     const idx = Math.round((d.getTime() - origin) / 86_400_000);
     let v = syntheticValue(idx, date);
     if (revise !== null) v = revise(date, v);
-    dates.push(date); obs[String(i)] = [v];
-    i += 1; d.setUTCDate(d.getUTCDate() + 1);
+    if (skip === null || !skip(date)) { dates.push(date); obs[String(i)] = [v]; i += 1; }
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return JSON.stringify({
     dataSets: [{ series: { '0:0:0:0:0': { observations: obs } } }],
@@ -59,14 +60,21 @@ export function sdmxWindow(from: string, toExclusive: string, revise: ((date: st
 }
 
 /** A transport double answering each backfill window with the synthetic year it asks for. */
-export function syntheticEgress(revise: ((start: string) => ((date: string, v: number) => number) | null) | null = null) {
+export function syntheticEgress(revise: ((start: string) => ((date: string, v: number) => number) | null) | null = null,
+                                skip: ((date: string) => boolean) | null = null) {
   return fakeEgress((url) => {
     const q = new URL(url).searchParams;
     const start = q.get('startPeriod') as string; const end = q.get('endPeriod') as string;
     const endExclusive = new Date(`${end}T00:00:00Z`); endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
-    return sdmxWindow(start, endExclusive.toISOString().slice(0, 10), revise === null ? null : revise(start));
+    return sdmxWindow(start, endExclusive.toISOString().slice(0, 10), revise === null ? null : revise(start), skip);
   });
 }
+
+/** A publisher that publishes on business days only, and once skipped a Thursday. */
+export const WEEKDAYS_MINUS_ONE_THURSDAY = (date: string): boolean => {
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6 || date === '2023-06-15';
+};
 
 export function fakeEgress(bodyFor: (url: string) => string, status = 200) {
   const seen: string[] = [];

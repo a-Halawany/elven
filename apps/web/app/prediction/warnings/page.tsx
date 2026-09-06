@@ -12,11 +12,29 @@ import { ControlsLine } from '../forecasts/page';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
+/**
+ * The RESPONSE, on the warning's own clock. A replayed warning's window is dated
+ * in the replay, so no countdown against the wall clock is shown for it; a live
+ * warning's is. Whether the answer came before the window closed is the record's
+ * `response_timely`, never inferred here.
+ */
 function WindowState({ w, now }: { w: WarningRow; now: number }) {
-  const closes = new Date(w.response_window_closes_at).getTime();
-  const left = closes - now;
-  if (w.state === 'acknowledged') return <span style={{ color: 'var(--eye-color-success)' }}>● acknowledged {fmtInstant(w.acknowledged_at)}</span>;
-  if (w.state === 'expired' || left <= 0) return <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ window closed unanswered</span>;
+  const replay = (w.timing_mode ?? 'live') === 'replay';
+  if (w.state === 'acknowledged') {
+    const late = w.response_timely === false;
+    return (
+      <span style={{ color: late ? 'var(--eye-color-critical)' : 'var(--eye-color-success)', fontWeight: late ? 650 : 400 }}>
+        {late ? '✕ acknowledged LATE' : '● acknowledged in time'} — as of {fmtInstant(w.acknowledged_as_of ?? w.acknowledged_at)}
+        {replay ? <> (recorded {fmtInstant(w.acknowledged_at)})</> : null}
+      </span>
+    );
+  }
+  if (w.state === 'expired') {
+    return <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ window closed unanswered{w.expired_as_of ? <> — expired as of {fmtInstant(w.expired_as_of)}</> : null}</span>;
+  }
+  if (replay) return <span style={{ color: 'var(--eye-color-warning)', fontWeight: 650 }}>⚑ open in the replay — closes {fmtInstant(w.response_window_closes_at)} (replay clock)</span>;
+  const left = new Date(w.response_window_closes_at).getTime() - now;
+  if (left <= 0) return <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ window closed — not yet swept as expired</span>;
   const hours = Math.floor(left / 3_600_000); const mins = Math.floor((left % 3_600_000) / 60_000);
   return <span style={{ color: 'var(--eye-color-warning)', fontWeight: 650 }}>⚑ open — {hours} h {mins} min left</span>;
 }
@@ -31,8 +49,8 @@ function Timing({ w }: { w: WarningRow }) {
   const timely = w.timely === undefined || w.timely === null
     ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>T3 unmeasured — no decision deadline declared</span>
     : w.timely
-      ? <span style={{ color: 'var(--eye-color-success)' }}>● before the decision deadline {fmtInstant(w.decision_deadline)}</span>
-      : <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ AFTER the decision deadline {fmtInstant(w.decision_deadline)} — a report, not a warning</span>;
+      ? <span style={{ color: 'var(--eye-color-success)' }}>● issued before the decision deadline {fmtInstant(w.decision_deadline)}</span>
+      : <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ DECISION MISSED — issued at or after the deadline {fmtInstant(w.decision_deadline)}; a report, not a warning</span>;
   return (
     <span style={{ fontSize: 'var(--eye-type-label-sm)' }}>
       {mode === 'replay' ? <strong style={{ color: 'var(--eye-color-warning)' }}>REPLAY · </strong> : null}
@@ -47,6 +65,8 @@ export default function WarningsPage() {
   const [rows, setRows] = useState<WarningRow[] | null>(null);
   const [open, setOpen] = useState<WarningRow | null>(null);
   const [note, setNote] = useState('');
+  const [asOf, setAsOf] = useState('');
+  const [last, setLast] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   const now = Date.now();
@@ -67,7 +87,7 @@ export default function WarningsPage() {
       {rows.length === 0 ? <Empty>No warning has been raised.</Empty> : (
         <table className="eye-table" style={tableStyle}>
           <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{rows.length} warning(s)</caption>
-          <thead><tr><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Timing</Th><Th>Confidence</Th></tr></thead>
+          <thead><tr><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Issuance</Th><Th>Confidence</Th></tr></thead>
           <tbody>
             {rows.map((w) => (
               <tr key={w.warning_id}>
@@ -78,7 +98,7 @@ export default function WarningsPage() {
                 <Td>{fmtInstant(w.raised_as_of ?? w.raised_at)}{(w.timing_mode ?? 'live') === 'replay' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-warning)' }}>REPLAY</div> : null}</Td>
                 <Td>{fmtInstant(w.response_window_closes_at)}</Td>
                 <Td><WindowState w={w} now={now} /></Td>
-                <Td>{w.timely === undefined || w.timely === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>unmeasured</span> : w.timely ? <span style={{ color: 'var(--eye-color-success)' }}>● timely</span> : <span style={{ color: 'var(--eye-color-critical)' }}>✕ late</span>}</Td>
+                <Td>{w.timely === undefined || w.timely === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>unmeasured</span> : w.timely ? <span style={{ color: 'var(--eye-color-success)' }}>● issued in time</span> : <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ decision missed</span>}</Td>
                 <Td mono>{Number(w.confidence).toFixed(2)}</Td>
               </tr>
             ))}
@@ -107,17 +127,29 @@ export default function WarningsPage() {
             <>
               <label htmlFor="ack">What you did about it</label>
               <input id="ack" style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} />
+              {(open.timing_mode ?? 'live') === 'replay' ? (
+                <>
+                  <label htmlFor="ack-asof">Answered as of (replay instant, e.g. 2024-01-18T09:00:00Z)</label>
+                  <input id="ack-asof" style={inputStyle} value={asOf} onChange={(e) => setAsOf(e.target.value)} placeholder="YYYY-MM-DDTHH:MM:SSZ" />
+                </>
+              ) : null}
               <GovernedButton label="Acknowledge" pendingLabel="recording" onRun={async () => {
-                const r = await prediction.acknowledgeWarning(scope, open.warning_id, note);
+                const r = await prediction.acknowledgeWarning(scope, open.warning_id, note, (open.timing_mode ?? 'live') === 'replay' ? asOf : undefined);
                 if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the acknowledgement was refused');
-                setReceipt(r.data.receipt); await load(); setOpen(null);
+                setReceipt(r.data.receipt); setLast(`${r.data.warning.state.replace(/_/g, ' ')} — ${open.title}`); await load(); setOpen(null);
               }} />
             </>
+          ) : null}
+          {isForecastOwner && open.state === 'expired' ? (
+            <p style={{ color: 'var(--eye-color-critical)' }}>This window closed without an answer; the record keeps it as expired. An acknowledgement now is refused as such.</p>
           ) : null}
           <Receipt receipt={receipt} />
         </section>
       )}
-      <UnknownNote>A warning nobody acknowledged before its window closed is recorded as <strong>expired</strong> — a failure the record shows, not silence.</UnknownNote>
+      {last === null ? null : <LiveStatus>{last}</LiveStatus>}
+      <UnknownNote>A warning nobody acknowledged before its window closed is recorded as <strong>expired</strong> — a failure the record shows, not silence.
+        {' '}Issuance and response are judged separately: a warning issued at or after its decision deadline is a <strong>missed decision</strong>;
+        an answer after its window closed is <strong>late</strong>. A replayed warning is answered as of a replay instant; the audit clock is kept beside it.</UnknownNote>
     </>
   );
 }

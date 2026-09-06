@@ -98,27 +98,27 @@ and no accuracy is claimed for it anywhere.
 
 ## 4. Measured
 
-At the correction candidate (the head of `phase4-prediction`, PR #38), 2026-09-06:
+At the second correction candidate (the head of `phase4-prediction`, PR #38), 2026-09-06:
 
 | Suite | Result |
 |---|---|
-| Phase 4 acceptance, D1–D8 + M0 (`phase4-acceptance.test.ts`) | **15 / 15** (expectations updated to the corrected semantics: `validated_retrospective`, backtest `mode`, warning timing columns) |
-| Codex-review probes, database/API (`phase4-corrections.test.ts`) | **14 / 14** — 9 failed at `737ca81a`, F3's 2 could not run there (append-only scaffolding) |
-| Codex-review probes, connector (`test/unit/phase4-corrections.test.ts`) | **2 / 2** — both failed at `737ca81a` |
-| Service-level: backfill traversal, models, scores, parsers | **22 / 22** (`phase4-backfill` 11, `phase4-models` 11) |
-| Integration, everything (`test:int:all`) | **585 / 585** (24 files) |
+| Phase 4 acceptance, D1–D8 + M0 (`phase4-acceptance.test.ts`) | **15 / 15** |
+| Codex-review probes, first pass, database/API (`phase4-corrections.test.ts`) | **14 / 14** |
+| Codex-review probes, second pass, database/API (`phase4-corrections-2`, `-calendar`, `-historical`) | **7 / 7 · 6 / 6 · 2 / 2** — every one failed at `aec404c1` unless marked a control |
+| Codex-review probes, service-level doubles (`test/unit/phase4-corrections*.test.ts`) | **2 / 2 + 3 / 3** |
+| Service-level: backfill traversal, models, scores, parsers | **22 / 22** |
+| Integration, everything (`test:int:all`) | **600 / 600** (27 files) |
 | C18-era manifest (`test:int`, phases 1–4 excluded) | **297 / 297** — unchanged |
 | Phase 0 acceptance (`test:accept`) | **58 / 58** |
-| Unit (api) | **2098 / 2098** + 9 (hermetic suite meta) |
-| Post-C18 upgrade check (`0022`→`0030`) | **PASS** — pre-existing rows unchanged; roles +9, schema registry +17, ledger +9, exactly as declared; upgraded and virgin schema digests identical; later-phase suites on upgraded data **274 / 274** |
-| Typecheck (api, web) · lint · module boundaries | clean |
-| The demonstration, acts I–IV on a fresh database, with the live ECB activation (corrected act IV: both backtest modes, replay timing, decision deadline) | **0 problems** in every act |
-| Browser: the Prediction screens as `n.eriksen` against that demonstration (`e2e/phase4-prediction.demo.spec.ts`, installed Chrome via Playwright) | **5 / 5** — overview, forecasts, calibration, scenarios, warnings |
+| Unit + hermetic gate controls (api) | **2101 / 2101** + 9 — two C15 hermetic controls failed once in the batch run under load (18.8 s and 3.5 s) and pass alone (58 / 58); they are unrelated to this change |
+| Post-C18 upgrade check (`0022`→`0031`) | **PASS** — pre-existing rows unchanged; roles +9, schema registry +17, ledger +10, exactly as declared; upgraded and virgin schema digests identical; later-phase suites on upgraded data **274 / 274** |
+| Typecheck (api, web) · lint · module boundaries | clean · no violations (438 modules, 1,696 dependencies) |
+| The demonstration, acts I–IV on a fresh database, with the live ECB activation (ECB registered with its attested business-day calendar; the replayed warning answered as of 2024-01-18) | see §12.3 |
+| Browser: the Prediction screens and the warning ACTION PATHS as `n.eriksen` against that demonstration (`e2e/phase4-prediction.demo.spec.ts`, installed Chrome via Playwright) | see §12.3 |
 
 Not run locally: the C15 supply-chain gate, because the pinned scanner binaries are not installed
 on this machine (the gate refuses an unauthenticated executable, correctly). In CI it is **red on
-the current image pins for 13 util-linux findings** published after the last green run of `main`;
-see PR #39 and §11.
+the current image pins for 13 util-linux findings**; see §11 and PR #39.
 
 ## 5. The demonstration — act IV, measured
 
@@ -306,4 +306,66 @@ Alpine fix, so a re-pin to a patched image is not possible and no waiver was add
 maintenance PR #39 makes the daily recheck watch these findings so the re-pin happens the day a
 rebuild lands. This is unrelated to Phase 4's code and blocks nothing in it except the merge of a
 branch whose required check is red for reasons outside the branch.
+
+## 12. The Codex review of `aec404c1` — second bounded correction pass
+
+Codex ran the TypeScript with dependency doubles (six residual reproductions, eight passing
+controls) and inspected the database consequences in SQL. Each consequence was then established
+through the real ports and controllers on a real database before it was corrected
+(`phase4-corrections-2.test.ts`, `phase4-corrections-calendar.test.ts`,
+`phase4-corrections-historical.test.ts`; service-level doubles in
+`test/unit/phase4-corrections-2.test.ts` only for the two states a real database cannot stage).
+Migration **`0031_prediction_timing_calendar`** is forward-only.
+
+| # | Finding | Reproduced (real DB) | Correction | Regression |
+|---|---|---|---|---|
+| **F1** cached access survives revocation and deletion | the per-reader cache served parsed rows without re-asking | the same reader, its retrieval authority revoked after warming, read **1,095** cached points with `complete:true`; a tombstone after warming left the warm reader complete while a cold one was refused | **the cache is removed.** Every read is a governed retrieval — authorised, custody-recorded, integrity-checked — at the moment it is served; the cross-reader denial stays refused (403). A governed deletion is therefore permanent for every reader until the version is withdrawn, and every derivation refuses the incomplete history from then on | F1 ×2 (+ file 1's deletion probe, now last because the loss no longer hides) |
+| **F2** historical origins ignored incomplete history | the loop took `then.points` without `then.complete`; the earlier probe (12 origins < 20) never reached the loop | on a series dated after its own recording (2026-10 → 2029-06) the historical loop fits and scores **24 origins**; after a governed deletion the outer assembly refuses (409) and nothing is recorded; a MIX (doubles: 6 of 30 incomplete with sufficient history) excludes exactly those and enforces the 20-origin minimum | incomplete origins are counted out (`incomplete` on the record and in the verdict), never fitted | historical ×2, doubles ×2 |
+| **F3** recovery lost older evidence policies | `controlsFor` searched the current assembly, which after supersession holds only v2 | owed flip citing v1; the publisher restated the same windows under residency `EU-only` / licence `fixture-v2` (v2 of the cited objects); recovery from ANOTHER indicator's evaluation | controls are resolved from the **exact cited version** (`evidenceVersion` read) — residency `EU`, rights `fixture`, retention `24 months` on the recovered warning and its header; when they cannot be resolved the warning is **not admitted** and stays visibly owed (doubles: nothing admitted, nothing raised) | F3 ×1, doubles ×1 |
+| **F5/F4** late warnings produced invalid windows; replay timing only at issuance | a January 24 live warning against a January 22 deadline closed before it opened (`wrn_window`); expiry and acknowledgement used the wall clock | reproduced: the raise failed and every retry would fail the same way | raised **at or after** the deadline is a **missed decision** (`decision_missed`, `timely=false`) with the branch's own window, valid; exactly at the deadline is missed too. Expiry runs on each warning's own clock (`expire_warnings(p_replay_as_of)`: live on the audit clock, replay only against the evaluating call's replay clock — the newest observation's day). Acknowledgement is **as of** an instant on that clock (`acknowledged_as_of`, required for replayed warnings), with `response_timely` recorded separately from issuance `timely`; the audit `acknowledged_at` stays beside it. An expired warning still refuses acknowledgement (preserved) | F4/F5 ×4 |
+| **F6** a missing weekday read as a holiday | mean cadence plus a later observation justified a stand-in | a business-day fixture missing Thursday 2023-06-15 was scored from Wednesday | a stand-in is admissible only on the series' **attested publication calendar** (`publication_calendar` on the registry: `business-days` rule and/or listed closures, with the attesting authority) AND a later observation; a weekday the publisher did not publish stays unscored; without a calendar nothing is substituted. The before-target refusal is preserved | calendar ×6 |
+
+### 12.1 The DEGRADED banner
+
+`/readyz` said `{"status":"degraded","audit":"degraded","auditIncidents":4,"degradedSince":"2026-09-05T11:14:52Z"}`
+and the API log said `restored DEGRADED audit state from the durable journal`. The journal
+(`apps/api/.eye-local/degraded/audit-degraded.jsonl`) holds four `evidence_write_failed`
+records on `prediction.outcome.record` from 2026-09-05 11:14–11:16 — the first pass's outcome
+ledger UPDATE hitting the append-only trigger during the demonstration at `737ca81a`, the cause
+0030 removed. Those incidents were recorded in a demonstration database that has since been
+dropped and recreated, so `node dist/audit/reconcile-degraded.js` (the existing procedure)
+finds nothing to reconcile and — correctly, by C9 — refuses to clear the flag without a governed
+reconciliation. The journal is a property of the DEPLOYMENT: the demonstration now runs with its
+own `EYE_DEGRADED_DIR`, the dev API keeps its journal, and `/readyz` on the demonstration reports
+`ok` with `audit` not degraded — inspected by the browser check, not assumed from the banner.
+
+### 12.2 Browser verification, action paths
+
+`e2e/phase4-prediction.demo.spec.ts` now also **seeds** states through the governed API and
+exercises the actions on screen: acknowledging a replayed warning as of an instant inside its
+window (recorded in time, audit clock beside it), acknowledging after the window (recorded LATE,
+issuance still timely), a window nobody answered expired by the replay clock with acknowledgement
+refused, and a warning issued after its decision deadline shown as a missed decision with a valid
+window. Results in §4.
+
+### 12.3 The demonstration and the browser, at this candidate
+
+* Acts I–IV on a fresh database, with the live ECB activation: **0 problems** in every act. One
+  earlier run hit a transient egress timeout on the ECB endpoint at the 13th window; the
+  activation script resumed from the checkpoint at 2011-01-13 on rerun and finished
+  (28 windows) — F7's resume, exercised for real — and the whole demonstration was then rerun
+  clean. ECB is registered with its attested business-day calendar (no closures listed); the
+  replayed warning is answered as of 2024-01-18, inside its window, response timely, audit clock
+  recorded.
+* `/readyz` on the demonstration: `{"status":"ok","audit":"ok","auditIncidents":0}`.
+* Browser, `e2e/phase4-prediction.demo.spec.ts` through the installed Chrome: **10 / 10** — the
+  five screen checks, the readiness check (fails on any DEGRADED API), and four action-path
+  checks that seed their own branches through the governed API: acknowledged in time as of
+  2024-01-18 (recorded 2026-09-06); acknowledged LATE as of 2024-01-25 with issuance still in
+  time; a six-hour replayed window expired as of 2024-01-17 23:59:59Z by the replay clock with
+  acknowledgement refused; a warning issued after a 2024-01-10 deadline shown as a missed decision
+  with its 2024-01-17 → 2024-01-19 window.
+* Measurements unchanged from §10.8: ECB retrospective T1 85.0% / T2 skill −1.6%,
+  `validated_retrospective`; historical `CANNOT VALIDATE` (0 of 40 origins, 0 incomplete);
+  corridor `validation_impossible`; T3 unmeasured.
 

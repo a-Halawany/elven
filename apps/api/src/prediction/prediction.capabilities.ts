@@ -57,6 +57,8 @@ export interface PredictionReads {
    * whatever it says.
    */
   evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]>;
+  /** One exact evidence version with the controls it carries — the version a flip CITED, whatever superseded it since. */
+  evidenceVersion(a: { objectId: string; version: number }): Promise<EvidenceVersionRow | undefined>;
   /** Flipped branches still owed a warning — the obligation a failed raise left behind. */
   owedFlips(): Promise<Array<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
                                evidence_object_id: string; evidence_version: number }>>;
@@ -69,9 +71,13 @@ export interface SeriesWrites extends PredictionReads {
     tenantId: string; domainId: string; seriesKey: string; sourceKey: string; parserRef: string;
     valueField: string; selector: string | null; unit: string; seasonalityDays: number;
     subjectEntityId: string | null; attribution: string | null; description: string;
+    /** The publisher's calendar as the registrar attests it, or null: no stand-in outcome is ever scored without one. */
+    publicationCalendar: PublicationCalendar | null;
     actor: string; correlationId: string;
   }): Promise<void>;
 }
+
+export interface PublicationCalendar { rule: 'daily' | 'business-days'; closures: string[]; authority: string }
 
 export interface ForecastWrites extends PredictionReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
@@ -136,7 +142,11 @@ export interface EvaluationWrites extends PredictionReads {
     observationAt: string; value: number; evidenceObjectId: string; evidenceVersion: number;
     actor: string; correlationId: string;
   }): Promise<Array<{ breached: boolean; streak: number; flipped_branch_id: string | null; flip_event_id: string | null }>>;
-  expireWarnings(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<number>;
+  /**
+   * Live warnings expire on the audit clock. Replayed warnings expire only against the
+   * REPLAY clock the caller supplies (`replayAsOf`); a live sweep leaves them alone.
+   */
+  expireWarnings(a: { tenantId: string; domainId: string; replayAsOf: string | null; actor: string; correlationId: string }): Promise<number>;
 }
 
 export interface WarningWrites extends PredictionReads {
@@ -145,15 +155,17 @@ export interface WarningWrites extends PredictionReads {
     warningId: string; tenantId: string; domainId: string; branchId: string | null; indicatorId: string | null;
     forecastId: string | null; title: string; evidence: unknown[]; consequence: string; confidence: number;
     opensAt: string; closesAt: string; routedTo: string; flipEventId: string | null; raisedAsOf: string;
-    timingMode: 'live' | 'replay'; decisionDeadline: string | null; timely: boolean | null; controls: unknown;
+    timingMode: 'live' | 'replay'; decisionDeadline: string | null; timely: boolean | null; decisionMissed: boolean; controls: unknown;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
 
 export interface AcknowledgeWrites extends PredictionReads {
   acknowledgeWarning(a: {
-    warningId: string; tenantId: string; domainId: string; note: string; actor: string; eventId: string;
-    correlationId: string;
+    warningId: string; tenantId: string; domainId: string; note: string;
+    /** The replay instant the response is AS OF (required for a replayed warning); ignored for a live one. */
+    asOf: string | null;
+    actor: string; eventId: string; correlationId: string;
   }): Promise<string>;
 }
 
@@ -196,6 +208,17 @@ class PredictionCapabilityImpl extends PredictionCore
        order by v.recorded_at, v.object_id`);
   }
 
+  async evidenceVersion(a: { objectId: string; version: number }): Promise<EvidenceVersionRow | undefined> {
+    const rows = await this.call<EvidenceVersionRow>(sql`
+      select v.object_id::text, v.object_version::int, v.recorded_at::text, v.content_digest, v.lifecycle_state,
+             coalesce((v.payload ->> 'is_fragment')::boolean, false) as is_fragment,
+             coalesce(v.payload ->> 'source_key', '') as source_key,
+             v.synthetic_state, v.classification, v.rights_profile, v.residency_profile, v.retention_profile, v.access_policy_ref
+        from objects.canonical_objects v
+       where v.object_type = 'EVD' and v.object_id = ${a.objectId}::uuid and v.object_version = ${a.version}::int`);
+    return rows[0];
+  }
+
   async owedFlips() {
     return this.call<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
                        evidence_object_id: string; evidence_version: number }>(sql`
@@ -226,7 +249,8 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.register_series(
       ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.seriesKey}, ${a.sourceKey}, ${a.parserRef},
       ${a.valueField}, ${a.selector}, ${a.unit}, ${a.seasonalityDays}, ${a.subjectEntityId}::uuid,
-      ${a.attribution}, ${a.description}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+      ${a.attribution}, ${a.description}, ${a.publicationCalendar === null ? null : JSON.stringify(a.publicationCalendar)}::jsonb,
+      ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async issueForecast(a: Parameters<ForecastWrites['issueForecast']>[0]): Promise<void> {
@@ -291,9 +315,9 @@ class PredictionCapabilityImpl extends PredictionCore
         ${a.evidenceVersion}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 
-  async expireWarnings(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<number> {
+  async expireWarnings(a: { tenantId: string; domainId: string; replayAsOf: string | null; actor: string; correlationId: string }): Promise<number> {
     const rows = await this.call<{ n: number }>(sql`select prediction.expire_warnings(
-      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as n`);
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.replayAsOf}::timestamptz, ${a.actor}::uuid, ${a.correlationId}::uuid) as n`);
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -303,13 +327,13 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.forecastId}::uuid, ${a.title}, ${JSON.stringify(a.evidence)}::jsonb, ${a.consequence}, ${a.confidence},
       ${a.opensAt}::timestamptz, ${a.closesAt}::timestamptz, ${a.routedTo}::uuid,
       ${a.flipEventId}::uuid, ${a.raisedAsOf}::timestamptz, ${a.timingMode}, ${a.decisionDeadline}::timestamptz,
-      ${a.timely}, ${JSON.stringify(a.controls ?? {})}::jsonb,
+      ${a.timely}, ${a.decisionMissed}, ${JSON.stringify(a.controls ?? {})}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async acknowledgeWarning(a: Parameters<AcknowledgeWrites['acknowledgeWarning']>[0]): Promise<string> {
     const rows = await this.call<{ s: string }>(sql`select prediction.acknowledge_warning(
-      ${a.warningId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid,
+      ${a.warningId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.asOf}::timestamptz, ${a.actor}::uuid,
       ${a.eventId}::uuid, ${a.correlationId}::uuid) as s`);
     return String(rows[0]?.s ?? 'acknowledged');
   }

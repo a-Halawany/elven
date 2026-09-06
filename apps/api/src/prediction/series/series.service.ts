@@ -34,6 +34,7 @@ export interface SeriesRow {
   series_key: string; source_key: string; parser_ref: string; value_field: string; selector: string | null;
   unit: string; seasonality_days: number; subject_entity_id: string | null; attribution: string | null;
   description: string;
+  publication_calendar?: { rule: 'daily' | 'business-days'; closures?: string[]; authority?: string } | null;
 }
 
 export interface SeriesPoint extends Point {
@@ -74,13 +75,11 @@ export interface Reader {
   principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; purposeId: string;
 }
 
-interface CachedVersion { rows: ParsedObservation[]; digest: string; recordedAt: string; isFragment: boolean }
+interface LoadedVersion { rows: ParsedObservation[]; digest: string; recordedAt: string; isFragment: boolean }
 
-const CACHE_LIMIT = 8_000;
 
 @Injectable()
 export class SeriesService {
-  private readonly cache = new Map<string, CachedVersion>();
 
   constructor(private readonly pipeline: PipelineService, private readonly evidence: EvidenceService) {}
 
@@ -161,18 +160,17 @@ export class SeriesService {
    * Returns the parsed rows, or a REASON string when this reader could not read
    * the version.
    *
-   * THE CACHE IS PER READER AND PURPOSE. A cached parse is the product of a
-   * retrieval one principal was authorised for, under one purpose; serving it to
-   * another would let a warm cache stand in for a policy decision. So the key
-   * carries the principal and the purpose, and a different reader retrieves —
-   * and is authorised, and enters custody — in its own right.
+   * NO CACHE. An earlier version kept parsed rows per reader and purpose, and
+   * served them again without asking: a reader whose retrieval authority had been
+   * revoked, or whose evidence had been governed-deleted since, still got a
+   * complete series while a cold reader was refused. Every read is now a
+   * governed retrieval — authorised, custody-recorded, integrity-checked — at the
+   * moment it is served. That costs one retrieval per evidence version per
+   * assembly, which is the price of the answer being true when it is given.
    */
   private async load(
     r: Reader, v: EvidenceVersionRow, parse: ReturnType<typeof parserFor>, series: SeriesRow,
-  ): Promise<CachedVersion | string> {
-    const key = `${r.principal.principalId}|${r.purposeId}|${series.parser_ref}|${series.value_field}|${series.selector ?? ''}|${v.object_id}@${v.object_version}`;
-    const hit = this.cache.get(key);
-    if (hit !== undefined) return hit;
+  ): Promise<LoadedVersion | string> {
     let bytes: Buffer;
     try {
       const got = await this.pipeline.write<{ base64: string }, AcquisitionWrites>(
@@ -200,13 +198,10 @@ export class SeriesService {
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');
       return `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`;
     }
-    const entry: CachedVersion = {
+    return {
       rows: parse(bytes, series.value_field, series.selector), digest: v.content_digest,
       recordedAt: v.recorded_at, isFragment: v.is_fragment,
     };
-    if (this.cache.size >= CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value as string);
-    this.cache.set(key, entry);
-    return entry;
   }
 
   private envelope(r: Reader, action: string, objectType: string, objectId: string | null): Envelope {
