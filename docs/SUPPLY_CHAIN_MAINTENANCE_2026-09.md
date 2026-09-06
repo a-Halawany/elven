@@ -65,3 +65,23 @@ approves nothing.
 2. Re-scan under the gate; re-bind or delete the SCX records the new child digest invalidates —
    with the owner's approval, since the records carry `approved_on`.
 3. If the OpenSSL rebuild lands in the same image, delete SCX-0006…0009 as the recheck says.
+
+## 6. How the monitoring actually executes — and where it does not yet
+
+GitHub runs `schedule:` triggers **only from the default branch's copy of the workflow**. Until
+this PR is merged, the daily 07:20 UTC recheck on `main` runs `main`'s
+`check-patched-images.mjs`, which watches OpenSSL only. The util-linux extension has executed
+so far in exactly these places:
+
+| Where | Trigger | Commit | Result |
+|---|---|---|---|
+| `C15 patched-image recheck` on this branch | `workflow_dispatch --ref maintenance/c15-image-recheck-2026-09` (read-only: `contents: read`, asserted by `assert-readonly-workflow.mjs`) | `8cc6d25a3a706cea202f84962af7285d6a025fc6` | run `34029030389`, success — `[util-linux/postgres] AFFECTED: libuuid 2.42.1-r0`, `[util-linux/redis] AFFECTED: setpriv 2.41.4-r0`, OpenSSL still affected in both; "no patched official image yet" |
+| `ci.yml` required job, this branch | push / pull_request | `8cc6d25a…` | the recheck step now runs **after a failed C15 gate** (`if: always() && env.C15_OUT != ''`); before this commit a red gate skipped it, so the runs inspected on PR #38 and PR #39 never executed the recheck |
+
+**Remaining limitation, stated:** until merge, no scheduled run watches util-linux. The
+read-only dispatch above is how it is checked on demand
+(`gh workflow run c15-patched-image-recheck.yml --ref maintenance/c15-image-recheck-2026-09`),
+and every push to this branch or to PR #38 now executes it in the required job regardless of
+the gate's verdict. After merge the schedule picks it up on the next day's run with no further
+change. C15 stays blocking; no waiver is added.
+
