@@ -33,8 +33,14 @@ export interface AffectedObject {
   /** How the walk reached it — never a bare id in a list. */
   reached_via: string;
   hop: number;
-  /** The object the dependency came through (Phase 5: the port marks only versions that cite it). */
+  /** The object the dependency came through (Phase 5: the port marks the versions that cite it). */
   via_id?: string;
+  /**
+   * EVERY object a twin or run was reached through. A twin cited both the corrected
+   * evidence and a claim derived from it is one affected object with two routes; a
+   * version citing either must be marked, so none of the routes is dropped.
+   */
+  via_ids?: string[];
 }
 
 export interface ImpactResult {
@@ -202,7 +208,11 @@ export class ImpactService {
           if (String(d['depends_on_kind']) !== seed.kind) continue;
           if (String(d['depends_on_id']) !== seed.id) continue;
           const dependent = String(d['dependent_object_id']);
-          if (found.has(dependent)) continue;
+          const already = found.get(dependent);
+          if (already !== undefined) {
+            if (already.via_ids !== undefined && !already.via_ids.includes(seed.id)) already.via_ids.push(seed.id);
+            continue;
+          }
           const s = byId.get(dependent);
           if (s !== undefined) {
             found.set(dependent, {
@@ -249,7 +259,7 @@ export class ImpactService {
           if (tw !== undefined) {
             found.set(dependent, {
               strategy_object_id: dependent, object_type: 'TWN', title: String(tw['title']),
-              reached_via: seed.via, hop, via_id: seed.id,
+              reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
             });
             next.push({ kind: 'twin', id: dependent, via: `rests on twin "${String(tw['title'])}"` });
             continue;
@@ -259,7 +269,7 @@ export class ImpactService {
             found.set(dependent, {
               strategy_object_id: dependent, object_type: 'SIM',
               title: `${String(rn['run_kind'])} run on twin version ${String(rn['twin_version'])} (${String(rn['component'])})`,
-              reached_via: seed.via, hop, via_id: seed.id,
+              reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
             });
             next.push({ kind: 'run', id: dependent, via: 'compared against a run that rests on changed state' });
           }
@@ -363,7 +373,7 @@ export class ImpactService {
       assumptions: walked.assumptions, objectives: walked.objectives,
       decisions: walked.decisions, commitments: walked.commitments,
       forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
-      twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, reached_via: t.reached_via, hop: t.hop })),
+      twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, via_ids: t.via_ids ?? (t.via_id ? [t.via_id] : []), reached_via: t.reached_via, hop: t.hop })),
       simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,

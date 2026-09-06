@@ -147,13 +147,18 @@ if (v1 === null) {
   if (s.ok) ok(`transits OBSERVED from PortWatch: ${s.body.grounded.points} point(s) through ${s.body.grounded.observedThrough}, read at ${s.body.grounded.knownAt} (real, attributed; nothing "known in January 2024")`);
   else if (draft !== null && s.status === 409) note('the series is already grounded in the resumed draft (elements are append-only per draft: a key is grounded once)');
   else bad(`series grounding refused (${s.status}) ${s.body?.message ?? ''}`);
+  // OBSERVED values are ESTABLISHED from the uploaded records — the row (its id column) and the field that states each value;
+  // the caller's number is checked against the record, never taken on its word. Terms are ASSUMED and cite the document that states them.
+  const inv = (key, field, value, unit) => ({ key, kind: 'observed', value, unit, validFrom: '2024-01-11', citations: cite(records.inventory), record: { locator: 'SYN-INV-001', field } });
+  const ship = (id, value) => ({ key: `shipment:${id}`, kind: 'observed', value, validFrom: '2024-01-11', citations: cite(records.shipments),
+    record: { locator: id, fields: { qty: 'qty', eta_port: 'eta_rotterdam', position: 'position_at_window_open', status: 'status', component: 'component_id' } } });
   const elements = [
-    { key: 'inventory.on_hand:SYN-PART-MAG', kind: 'observed', value: 63400, unit: 'sets', validFrom: '2024-01-11', citations: cite(records.inventory) },
-    { key: 'inventory.safety_stock:SYN-PART-MAG', kind: 'observed', value: 40000, unit: 'sets', validFrom: '2024-01-11', citations: cite(records.inventory) },
-    { key: 'consumption.weekly:SYN-PART-MAG', kind: 'observed', value: 9200, unit: 'sets/week', validFrom: '2024-01-11', citations: cite(records.inventory) },
-    { key: 'shipment:SYN-SHIP-4471', kind: 'observed', value: { qty: 38400, eta_port: '2024-01-29', position: 'Approaching Bab el-Mandeb', status: 'at risk', component: 'SYN-PART-MAG' }, citations: cite(records.shipments) },
-    { key: 'shipment:SYN-SHIP-4472', kind: 'observed', value: { qty: 41000, eta_port: '2024-02-08', position: 'Malacca Strait', status: 'reroutable', component: 'SYN-PART-MAG' }, citations: cite(records.shipments) },
-    { key: 'shipment:SYN-SHIP-4475', kind: 'observed', value: { qty: 39200, eta_port: '2024-02-22', position: 'Ningbo', status: 'bookable', component: 'SYN-PART-MAG' }, citations: cite(records.shipments) },
+    inv('inventory.on_hand:SYN-PART-MAG', 'on_hand', 63400, 'sets'),
+    inv('inventory.safety_stock:SYN-PART-MAG', 'safety_stock', 40000, 'sets'),
+    inv('consumption.weekly:SYN-PART-MAG', 'weekly_consumption', 9200, 'sets/week'),
+    ship('SYN-SHIP-4471', { qty: 38400, eta_port: '2024-01-29', position: 'Approaching Bab el-Mandeb', status: 'at risk', component: 'SYN-PART-MAG' }),
+    ship('SYN-SHIP-4472', { qty: 41000, eta_port: '2024-02-08', position: 'Malacca Strait', status: 'reroutable', component: 'SYN-PART-MAG' }),
+    ship('SYN-SHIP-4475', { qty: 39200, eta_port: '2024-02-22', position: 'Ningbo', status: 'bookable', component: 'SYN-PART-MAG' }),
     { key: 'route.inland_days', kind: 'assumed', value: 14, unit: 'days', citations: cite(records.terms) },
     { key: 'route.reroute_delay_days', kind: 'assumed', value: 11, unit: 'days', citations: cite(records.terms) },
     { key: 'terms.reroute_cost_per_container', kind: 'assumed', value: 1850, unit: 'EUR', citations: cite(records.terms) },
@@ -165,6 +170,10 @@ if (v1 === null) {
     { key: 'shock.corridor_delay_days', kind: 'assumed', value: 14, unit: 'days', citations: cite(records.terms) },
     { key: 'production.policy:SYN-PART-MAG', kind: 'assumed', value: 'hold_safety_stock', citations: cite(records.terms) },
   ];
+  // What a wrong number gets: refused, with the record's own value in the answer.
+  const wrong = await call(`${W}/${TW}/versions/${v1}/ground`, tw({ action: 'twin.ground', objectType: 'TWN', objectId: TW }), { elements: [{ ...inv('inventory.on_hand:SYN-PART-MAG', 'on_hand', 99999, 'sets') }] }, twinOwner.token);
+  if (!wrong.ok && wrong.status === 422) ok(`a wrong on-hand (99999) is refused: the record establishes the value, not the caller (${String(wrong.body?.message ?? '').slice(0, 90)}…)`);
+  else bad('a value the record does not state was accepted as observed');
   const g = await call(`${W}/${TW}/versions/${v1}/ground`, tw({ action: 'twin.ground', objectType: 'TWN', objectId: TW }), { elements }, twinOwner.token);
   if (!g.ok) { bad(`grounding refused (${g.status}) ${g.body?.message ?? ''}`); process.exit(1); }
   ok(`${g.body.grounded.length} element(s) grounded: ${g.body.grounded.filter((x) => x.material).length} material, all citing the uploaded records; synthetic world: ${g.body.grounded.every((x) => x.syntheticState)}`);
@@ -181,7 +190,9 @@ const branch = scn?.branches?.find((b) => b.kind === 'downside');
 if (branch?.state === 'flipped') ok(`the scenario branch "${branch.name}" is FLIPPED (act IV) — the corridor delay applies`);
 else bad('act IV\'s downside branch is not flipped; the shock has no basis');
 const runs = await call(`${W}/simulations/list`, sm({ action: 'simulation.read', objectType: 'SIM', sideEffect: 'none' }), { twinId: TW }, twinOwner.token);
-const priorControl = (runs.body.runs ?? []).find((r) => r.run_kind === 'control' && r.twin_version === v1 && r.shock && r.state === 'completed');
+// A run is an event: every pass runs its own control, bound to the scenario version and branch as they stand now.
+const priorControl = null;
+void runs;
 const runOnce = async (label, payload) => {
   const r = await call(`${W}/simulations/run`, sm({ action: 'simulation.run', objectType: 'SIM' }), { twinId: TW, twinVersion: v1, component: 'SYN-PART-MAG', horizonDays: 90, stochastic: { mode: 'deterministic' },
     scenarioId: scn?.scenario_id ?? null, scenarioBranchId: branch?.branch_id ?? null, ...payload }, twinOwner.token);
@@ -217,7 +228,9 @@ if (sens.ok) {
 console.log('\n6. reproduce the control from its stored contract');
 const stored = sens.ok ? sens.body.run : null;
 if (stored) {
-  // THIS process is cold with respect to the API: it holds nothing but the stored contract and the pinned implementation.
+  // An INDEPENDENT control: this script is cold with respect to the API — it holds nothing but the stored contract and the pinned
+  // implementation — and reaches the same digest. The product's own reproduction (below) does not rest on this: it executes in a
+  // separate process it spawns itself, after establishing that every cited artefact is still available to the reader.
   const require = createRequire(import.meta.url);
   const { contractOf } = await import(join(ROOT, 'apps/api/dist/twin/simulations/simulation.service.js'));
   const { simulateSupplyFlow } = await import(join(ROOT, 'apps/api/dist/twin/models/supply-flow.js'));
@@ -229,7 +242,7 @@ if (stored) {
   if (digest === stored.outputs_digest) ok(`cold re-execution in this process: outputs digest ${digest.slice(0, 16)}… identical to the stored ${String(stored.outputs_digest).slice(0, 16)}…`);
   else bad(`cold re-execution produced ${digest.slice(0, 16)}… but the run recorded ${String(stored.outputs_digest).slice(0, 16)}…`);
 }
-const rep = await call(`${W}/simulations/${control.runId}/reproduce`, sm({ action: 'simulation.reproduce', objectType: 'SIM', objectId: control.runId }), { cold: false }, twinOwner.token);
+const rep = await call(`${W}/simulations/${control.runId}/reproduce`, sm({ action: 'simulation.reproduce', objectType: 'SIM', objectId: control.runId }), {}, twinOwner.token);
 if (rep.ok && rep.body.reproduction.verdict === 'reproduced') ok(`the API's reproduction: ${rep.body.reproduction.verdict.toUpperCase()} — ${rep.body.reproduction.reason}`);
 else bad(`reproduction ${rep.ok ? rep.body.reproduction.verdict : `refused (${rep.status})`}`);
 
@@ -249,7 +262,7 @@ if (alt === null) {
   }
 }
 if (alt !== null) {
-  const r = await call(`${W}/simulations/run`, sm({ action: 'simulation.run', objectType: 'SIM' }), { twinId: TW, twinVersion: alt, runKind: 'control', controlRunId: null, shock: true, component: 'SYN-PART-MAG', interventions: [{ type: 'none' }], horizonDays: 90, stochastic: { mode: 'deterministic' } }, twinOwner.token);
+  const r = await call(`${W}/simulations/run`, sm({ action: 'simulation.run', objectType: 'SIM' }), { twinId: TW, twinVersion: alt, runKind: 'control', controlRunId: null, shock: true, scenarioId: scn?.scenario_id ?? null, scenarioBranchId: branch?.branch_id ?? null, component: 'SYN-PART-MAG', interventions: [{ type: 'none' }], horizonDays: 90, stochastic: { mode: 'deterministic' } }, twinOwner.token);
   if (r.ok) ok(`control on the alternative branch: ${r.body.run.totals.line_stop_days} line-stop day(s), €${r.body.run.totals.cost.total} — a different contract, a different digest ${r.body.run.outputsDigest.slice(0, 16)}… (the two branches coexist; neither overwrote the other)`);
   const c2 = await call(`${W}/${TW}/compare`, tw({ action: 'twin.read', objectType: 'TWN', objectId: TW, sideEffect: 'none' }), { a: v1, b: alt }, twinOwner.token);
   if (c2.ok) ok(`versions ${v1} and ${alt} differ in exactly: ${c2.body.comparison.differing.map((d) => d.key).join(', ')}`);

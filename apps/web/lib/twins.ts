@@ -12,6 +12,8 @@ export interface Element {
   element_id: string; key: string; kind: 'observed' | 'estimated' | 'assumed' | 'predicted' | 'simulated'; basis_truth_state: string | null;
   value: unknown; unit: string | null; material: boolean; citations: Citation[]; health: 'complete' | 'incomplete' | 'unreadable' | 'stale';
   valid_from: string | null; valid_to: string | null; confidence: number | null; synthetic_state: boolean; version: number;
+  /** A PREDICTED element carries its forecast's validation state, exactly. */
+  inherited_validation?: string | null;
 }
 export interface TwinVersion {
   version: number; branch_id: string; forked_from_version: number | null; supersedes: number | null; state: 'draft' | 'admitted';
@@ -22,11 +24,14 @@ export interface Twin {
   twin_id: string; kind: string; title: string; statement: string; boundary: string[]; owner_principal_id: string; behaviour_model_ref: string;
   validation: { status: string; envelope?: Record<string, unknown>; limitations: string[] }; synthetic_state: boolean; declared_at: string;
   versions: TwinVersion[]; events?: Array<Record<string, unknown>>; reconciliations?: Array<Record<string, unknown>>;
-  propagation_pending?: Array<{ case_id: string; kind: string; state: string; propagation_state: string; propagation: string }>;
+  propagation_pending?: Array<{ case_id: string; kind: string; state: string; propagation_state: string; propagation: string; reached_via?: string }>;
 }
 export interface Run {
   run_id: string; twin_id: string; twin_version: number; branch_id: string; run_kind: 'control' | 'intervention'; control_run_id: string | null;
   shock: boolean; component: string; known_at: string; observed_through: string | null; initial_state_digest: string; model_ref: string;
+  /** The scenario binding the run applied — the exact SCN version and the branch's state at opening — and what the shock rests on. */
+  scenario_id: string | null; scenario_branch_id: string | null; scenario_version: number | null; scenario_branch_state: 'open' | 'flipped' | 'closed' | null;
+  shock_basis: 'none' | 'hypothetical' | 'scenario-branch-flipped' | 'unrecorded';
   implementation_digest: string; environment_digest: string; stochastic_mode: 'deterministic' | 'seeded'; rng: string | null; seed: number | null; samples: number | null;
   interventions: Array<Record<string, unknown>>; inputs_digest: string; outputs: { totals?: Totals; days?: Array<Record<string, unknown>> } | null;
   outputs_digest: string | null; sensitivity: { factors?: Array<{ key: string; cost_spread: string }>; outside_envelope?: boolean } | null;
@@ -52,6 +57,7 @@ export const twins = {
   runs: (s: Scope, twinId: string | null) => p<{ runs: Run[]; receipt: Receipt }>(s, '/simulations/list', 'simulation.read', 'SIM', twinId ? { twinId } : {}),
   run: (s: Scope, id: string) => p<{ run: Run; receipt: Receipt }>(s, `/simulations/${id}/get`, 'simulation.read', 'SIM', {}, id),
   simulate: (s: Scope, payload: Record<string, unknown>) => p<{ run: { runId: string; outputsDigest: string; totals: Totals; state: string }; receipt: Receipt }>(s, '/simulations/run', 'simulation.run', 'SIM', payload),
-  reproduce: (s: Scope, id: string) => p<{ reproduction: { verdict: string; expected: string; actual: string | null; reason: string; environmentMatches: boolean }; receipt: Receipt }>(s, `/simulations/${id}/reproduce`, 'simulation.reproduce', 'SIM', { cold: false }, id),
+  /** No attestation travels with the request: the product establishes availability and executes the stored contract in a separate process itself. */
+  reproduce: (s: Scope, id: string) => p<{ reproduction: { verdict: string; expected: string; actual: string | null; reason: string; environmentMatches: boolean; coldProcess: boolean; unavailable: string[] }; receipt: Receipt }>(s, `/simulations/${id}/reproduce`, 'simulation.reproduce', 'SIM', {}, id),
   compareRuns: (s: Scope, runIds: string[]) => p<{ comparison: { control_run_id: string; runs: Array<{ run_id: string; run_kind: string; interventions: Array<Record<string, unknown>>; totals: Totals; carrying: string[] }>; synthetic: boolean }; receipt: Receipt }>(s, '/simulations/compare', 'simulation.read', 'SIM', { runIds }),
 };

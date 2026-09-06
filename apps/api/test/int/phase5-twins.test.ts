@@ -18,6 +18,7 @@ import { PredictionCapability } from '../../src/prediction/prediction.capabiliti
 import { TwinCapability } from '../../src/twin/twin.capabilities.js';
 import type { TwinController } from '../../src/twin/twin.controller.js';
 import type { PredictionController } from '../../src/prediction/prediction.controller.js';
+import { RECORD_FILES, observedInventory, observedShipments, assumedTerms } from './phase5-fixtures.js';
 
 let h: Phase4Harness;
 let twins: TwinController;
@@ -34,6 +35,7 @@ let realEvd: { id: string; version: number; digest: string };
 let syntheticEvd: { id: string; version: number; digest: string };
 let extractedClaim = '';
 let twinId = '';
+let records: { inv: { id: string; version: number }; ship: { id: string; version: number }; terms: { id: string; version: number } };
 
 const entity = async (type: string, name: string): Promise<string> => {
   const id = uuidv7();
@@ -64,7 +66,9 @@ beforeAll(async () => {
   const syn = (await sql<{ id: string; version: number; digest: string }>`select object_id::text id, object_version::int version, content_digest digest
     from objects.canonical_objects where object_type = 'EVD' and provenance_ref = ${`SRC:${h.fx.sourceId}@${v2.version}`} order by recorded_at desc limit 1`.execute(h.su)).rows;
   syntheticEvd = syn[0] as typeof syntheticEvd;
-  knownAfterBackfill = new Date().toISOString();
+  // The uploaded records (synthetic), dated before this suite's world cut-off (2023-11-20) so they are observations of that world.
+  const up = await h.upload(RECORD_FILES('2023-11-01T00:00:00Z'));
+  records = { inv: up[0] as { id: string; version: number }, ship: up[1] as { id: string; version: number }, terms: up[2] as { id: string; version: number } };
   seriesKey = `fixture:${sourceKey}:value`;
   await prediction.registerSeries(h.req(owner, 'prediction.series.register', 'SER', null), h.fx.tenantId, h.fx.domainId,
     { payload: { seriesKey, sourceKey, parserRef: 'sdmx-json-observations@1', valueField: 'OBS_VALUE', unit: 'transits/day',
@@ -78,6 +82,8 @@ beforeAll(async () => {
     values (${extractedClaim}::uuid, 'CLM', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'DOMAIN', 1, 'admitted', 'CP-INT-01', 'principal:fixture',
       'extracted', 'internal', 'intelligence', 'CLM@v2', ${uuidv7()}::uuid, '{"subject":"SYN-PART-MAG","predicate":"weekly_consumption","object_value":"9200"}'::jsonb,
       ${'b'.repeat(64)}, '["EVD:fixture"]'::jsonb)`.execute(h.su);
+  // RECORD time for the probes: after everything above was recorded.
+  knownAfterBackfill = new Date().toISOString();
 }, 300_000);
 
 afterAll(async () => { await h?.close(); });
@@ -90,16 +96,12 @@ const admit = (version: number, allowIncomplete = false) => twins.admit(h.req(ow
 const evd = (e: { id: string; version: number }) => ({ kind: 'evidence', id: e.id, version: e.version });
 const status = async (p: Promise<unknown>): Promise<number | string> => { try { await p; return 'ok'; } catch (e) { return e instanceof HttpException ? e.getStatus() : (e instanceof Error ? e.message : String(e)); } };
 
-const REQUIRED: Array<[string, unknown, string | null]> = [
-  ['inventory.on_hand:SYN-PART-MAG', 63400, 'sets'], ['inventory.safety_stock:SYN-PART-MAG', 40000, 'sets'], ['consumption.weekly:SYN-PART-MAG', 9200, 'sets/week'],
-  ['shipment:SYN-SHIP-4471', { qty: 38400, eta_port: '2024-01-29', position: 'Approaching Bab el-Mandeb', status: 'at risk' }, null],
-  ['route.inland_days', 14, 'days'], ['route.reroute_delay_days', 11, 'days'], ['terms.reroute_cost_per_container', 1850, 'EUR'],
-  ['terms.units_per_container:SYN-PART-MAG', 1600, 'sets'], ['terms.air_cost_per_kg', 19.4, 'EUR'], ['terms.kg_per_unit:SYN-PART-MAG', 0.445652, 'kg'],
-  ['terms.air_lead_days', 7, 'days'], ['terms.line_stop_cost_per_day:SYN-LINE-A1', 142000, 'EUR'], ['shock.corridor_delay_days', 14, 'days'],
-  ['production.policy:SYN-PART-MAG', 'hold_safety_stock', null],
-];
-const assumed = (rows: typeof REQUIRED, cite: { id: string; version: number }) =>
-  rows.map(([key, value, unit]) => ({ key, kind: key.startsWith('inventory') || key.startsWith('consumption') || key.startsWith('shipment') ? 'observed' : 'assumed', value, unit, citations: [evd(cite)] }));
+/** The complete element set: observed values established from the uploaded records, assumed terms citing the document. */
+const REQUIRED_KEYS = ['inventory.on_hand', 'inventory.safety_stock', 'consumption.weekly', 'shipment', 'route.inland_days', 'route.reroute_delay_days',
+  'terms.reroute_cost_per_container', 'terms.units_per_container', 'terms.air_cost_per_kg', 'terms.kg_per_unit', 'terms.air_lead_days',
+  'terms.line_stop_cost_per_day', 'shock.corridor_delay_days', 'production.policy'];
+const complete = (termsCite: { id: string; version: number } = records.terms) =>
+  [...observedInventory(records.inv, '2023-11-01'), ...observedShipments(records.ship, '2023-11-01', ['SYN-SHIP-4471']), ...assumedTerms(termsCite)];
 
 /* ═════════ declare ═════════ */
 
@@ -198,8 +200,8 @@ describe('P5-M1 · E1 — grounding under two cut-offs; materiality from the sch
 
   it('E2 · synthetic state folds UPWARD: a version citing a synthetic upload is synthetic though the twin is asserted', async () => {
     const v = (await sql<{ version: number }>`select version from twin.twin_versions where twin_id = ${twinId}::uuid and branch_id = 'actual' and state = 'draft'`.execute(h.su)).rows[0]?.version as number;
-    const rest = REQUIRED.filter(([k]) => k !== 'consumption.weekly:SYN-PART-MAG');
-    const g = await ground(v, assumed(rest, syntheticEvd));
+    const rest = complete(syntheticEvd).filter((e) => e.key !== 'consumption.weekly:SYN-PART-MAG');
+    const g = await ground(v, rest);
     expect(g.grounded.every((x) => x.material && x.syntheticState && x.health === 'complete')).toBe(true);
     // Admission refuses while a required key is missing? All present now — admit.
     const a = await admit(v);
@@ -218,11 +220,12 @@ describe('P5-M1 · E1 — grounding under two cut-offs; materiality from the sch
     const deps = (await sql<{ k: string; n: string }>`select depends_on_kind k, count(*)::text n from graph.dependencies
       where dependent_object_id = ${twinId}::uuid and dependent_type = 'TWN' group by 1 order by 1`.execute(h.su)).rows;
     expect(deps.map((d) => d.k)).toEqual(['claim', 'entity', 'evidence']);
+    void REQUIRED_KEYS;
   }, 120_000);
 
   it('a required key that is MISSING keeps a version incomplete: admission is refused unless explicit, and an explicitly incomplete version is marked', async () => {
     const v = await open({ branchId: 'probe-incomplete', knownAt: knownAfterBackfill, observedThrough: '2023-11-20' });
-    await ground(v.version.version, assumed(REQUIRED.slice(0, 3), realEvd));
+    await ground(v.version.version, observedInventory(records.inv, '2023-11-01'));
     expect(await status(admit(v.version.version))).toBe(409);
     const a = await admit(v.version.version, true);
     expect(a.admitted.completeness).toBe('incomplete');

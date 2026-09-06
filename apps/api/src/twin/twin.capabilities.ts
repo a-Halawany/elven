@@ -18,6 +18,14 @@ export interface CitedObjectRow {
   object_id: string; object_type: string; object_version: number; content_digest: string; lifecycle_state: string;
   truth_state: string; synthetic_state: boolean; classification: string; rights_profile: string | null;
   residency_profile: string | null; retention_profile: string | null; access_policy_ref: string | null; recorded_at: string;
+  /** When the object was OBSERVED by this system (an upload's acquisition instant), as an instant. */
+  observation_time: string | null;
+  /** The object's own EVENT time — an uploaded record's stated document time — as an instant, when it has one. */
+  event_time: string | null;
+  /** The object's quality state — a forecast carries `{ validation }` here. */
+  quality_state: Record<string, unknown> | null;
+  /** The payload a claim carries, so an OBSERVED claim can establish a value. */
+  payload: Record<string, unknown> | null;
 }
 export interface EntityRow { entity_id: string; entity_type: string; canonical_name: string; lifecycle_state: string }
 
@@ -49,6 +57,9 @@ export interface TwinReads {
   readReconciliations(): any;
   readCorrections(): any;
   readInvalidations(): any;
+  /** The dependency table and the evidence-to-claim lineage: what a correction reaches before any walk. */
+  readDependencies(): any;
+  readClaimLineage(): any;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   entity(id: string): Promise<EntityRow | undefined>;
@@ -83,6 +94,8 @@ export interface GroundWrites extends TwinReads {
     kind: 'observed' | 'estimated' | 'assumed' | 'predicted' | 'simulated'; basisTruthState: string | null;
     value: unknown; unit: string | null; citations: Citation[]; health: 'complete' | 'incomplete' | 'unreadable' | 'stale';
     validFrom: string | null; validTo: string | null; confidence: number | null; syntheticState: boolean; controls: unknown;
+    /** The cited forecast version's validation state, carried exactly by a PREDICTED element. */
+    inheritedValidation: string | null;
     actor: string; eventId: string; correlationId: string;
   }): Promise<boolean>;
 }
@@ -113,12 +126,17 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
   readReconciliations(): any { return this.from('twin.reconciliations'); }
   readCorrections(): any { return this.from('observation.correction_current'); }
   readInvalidations(): any { return this.from('graph.invalidations_current'); }
+  readDependencies(): any { return this.from('graph.dependencies'); }
+  readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
 
   async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
     const rows = await this.call<CitedObjectRow>(sql`
       select o.object_id::text, o.object_type, o.object_version::int, o.content_digest, o.lifecycle_state, o.truth_state,
              o.synthetic_state, o.classification, o.rights_profile, o.residency_profile, o.retention_profile, o.access_policy_ref,
-             o.recorded_at::text
+             to_char(o.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as recorded_at,
+             to_char(o.observation_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as observation_time,
+             to_char(o.event_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as event_time,
+             o.quality_state, o.payload
         from objects.canonical_objects o
        where o.object_type = ${a.objectType} and o.object_id = ${a.id}::uuid
          and (${a.version}::int is null or o.object_version = ${a.version}::int)
@@ -169,7 +187,7 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
       ${a.elementId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.twinId}::uuid, ${a.version}::int, ${a.key}, ${a.kind},
       ${a.basisTruthState}, ${JSON.stringify(a.value ?? null)}::jsonb, ${a.unit}, ${JSON.stringify(a.citations)}::jsonb, ${a.health},
       ${a.validFrom}::date, ${a.validTo}::date, ${a.confidence}::numeric, ${a.syntheticState}, ${JSON.stringify(a.controls ?? {})}::jsonb,
-      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as m`);
+      ${a.inheritedValidation}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as m`);
     return rows[0]?.m === true;
   }
 

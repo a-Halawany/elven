@@ -20,6 +20,7 @@ import { TwinCapability } from '../../src/twin/twin.capabilities.js';
 import { SimulationCapability } from '../../src/twin/simulation.capabilities.js';
 import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../../src/twin/models/supply-flow.digest.js';
 import type { TwinController } from '../../src/twin/twin.controller.js';
+import { RECORD_FILES, completeElements } from './phase5-fixtures.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let h: Phase4Harness;
@@ -34,24 +35,8 @@ let entityId = '';
 let controlId = '';
 let rerouteId = '';
 
-const ELEMENTS = (cite: { id: string; version: number }) => [
-  { key: 'inventory.on_hand:SYN-PART-MAG', kind: 'observed', value: 63400, unit: 'sets', validFrom: '2024-01-11', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'inventory.safety_stock:SYN-PART-MAG', kind: 'observed', value: 40000, unit: 'sets', validFrom: '2024-01-11', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'consumption.weekly:SYN-PART-MAG', kind: 'observed', value: 9200, unit: 'sets/week', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shipment:SYN-SHIP-4471', kind: 'observed', value: { qty: 38400, eta_port: '2024-01-29', position: 'Approaching Bab el-Mandeb', status: 'at risk', component: 'SYN-PART-MAG' }, citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shipment:SYN-SHIP-4472', kind: 'observed', value: { qty: 41000, eta_port: '2024-02-08', position: 'Malacca Strait', status: 'reroutable', component: 'SYN-PART-MAG' }, citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shipment:SYN-SHIP-4475', kind: 'observed', value: { qty: 39200, eta_port: '2024-02-22', position: 'Ningbo', status: 'bookable', component: 'SYN-PART-MAG' }, citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'route.inland_days', kind: 'assumed', value: 14, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'route.reroute_delay_days', kind: 'assumed', value: 11, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.reroute_cost_per_container', kind: 'assumed', value: 1850, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.units_per_container:SYN-PART-MAG', kind: 'assumed', value: 1600, unit: 'sets', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.air_cost_per_kg', kind: 'assumed', value: 19.4, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.kg_per_unit:SYN-PART-MAG', kind: 'assumed', value: 4100 / 9200, unit: 'kg', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.air_lead_days', kind: 'assumed', value: 7, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.line_stop_cost_per_day:SYN-LINE-A1', kind: 'assumed', value: 142000, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shock.corridor_delay_days', kind: 'assumed', value: 14, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'production.policy:SYN-PART-MAG', kind: 'assumed', value: 'hold_safety_stock', citations: [{ kind: 'evidence', ...cite }] },
-];
+let records: { inv: { id: string; version: number }; ship: { id: string; version: number }; terms: { id: string; version: number } };
+const ELEMENTS = (_cite?: unknown) => completeElements(records);
 
 const status = async (p: Promise<unknown>): Promise<number | string> => { try { await p; return 'ok'; } catch (e) { return e instanceof HttpException ? e.getStatus() : (e instanceof Error ? e.message : String(e)); } };
 const message = async (p: Promise<unknown>): Promise<string> => { try { await p; return ''; } catch (e) { return e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? '') : (e instanceof Error ? e.message : String(e)); } };
@@ -79,6 +64,8 @@ beforeAll(async () => {
   const e = (await sql<{ id: string; version: number }>`select object_id::text id, object_version::int version from objects.canonical_objects
     where object_type = 'EVD' and provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by recorded_at limit 1`.execute(h.su)).rows[0] as { id: string; version: number };
   evd = e;
+  const up = await h.upload(RECORD_FILES());
+  records = { inv: up[0] as { id: string; version: number }, ship: up[1] as { id: string; version: number }, terms: up[2] as { id: string; version: number } };
   entityId = uuidv7();
   await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
     values (${entityId}::uuid, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'place', 'Bab el-Mandeb Strait', 'bab el-mandeb strait', 'active', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
@@ -118,7 +105,7 @@ describe('P5-M3 · E5 — the contract is complete or the run is refused; the co
     const obj = (await sql<{ truth_state: string; synthetic_state: boolean; schema_ref: string }>`select truth_state, synthetic_state, schema_ref from objects.canonical_objects where object_id = ${controlId}::uuid`.execute(h.su)).rows[0];
     expect(obj?.truth_state).toBe('synthetic');
     expect(obj?.synthetic_state).toBe(true);
-    expect(obj?.schema_ref).toBe('SIM@v1');
+    expect(obj?.schema_ref).toBe('SIM@v2');
     const deps = (await sql<{ k: string }>`select depends_on_kind k from graph.dependencies where dependent_object_id = ${controlId}::uuid and dependent_type = 'SIM'`.execute(h.su)).rows.map((d) => d.k);
     expect(deps).toEqual(['twin']);
     const sens = row['sensitivity'] as { factors: Array<{ key: string }>; outside_envelope: boolean };
@@ -172,6 +159,7 @@ describe('P5-M3 · E4 — reproducibility from the stored contract', () => {
     expect(r.reproduction.environmentMatches).toBe(true);
     const rows = (await sql<{ verdict: string; cold_process: boolean }>`select verdict, cold_process from simulation.reproductions where run_id = ${controlId}::uuid`.execute(h.su)).rows;
     expect(rows.map((x) => x.verdict)).toEqual(['reproduced']);
+    expect(rows.map((x) => x.cold_process), 'the product executes every reproduction in a separate process').toEqual([true]);
     const seeded = await run(base({ stochastic: { mode: 'seeded', seed: 42, samples: 50, jitter: { '-2': 0.1, '0': 0.6, '2': 0.2, '5': 0.1 } } }));
     const row = await runRow(seeded.run.runId);
     expect(row['rng']).toBe('xoshiro128**@1');
@@ -197,10 +185,12 @@ describe('P5-M3 · E4 — reproducibility from the stored contract', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { input: JSON.stringify(stored), encoding: 'utf8', cwd: join(HERE, '..', '..'), timeout: 60_000 });
     expect(child.status, child.stderr).toBe(0);
     expect(child.stdout.trim()).toBe(String(row['outputs_digest']));
-    const r = await twins.reproduce(h.req(operator, 'simulation.reproduce', 'SIM', controlId), h.fx.tenantId, h.fx.domainId, controlId, { payload: { cold: true } }) as { reproduction: { verdict: string } };
+    // The product's own reproduction: a separate process it spawns, whatever the request says.
+    const r = await twins.reproduce(h.req(operator, 'simulation.reproduce', 'SIM', controlId), h.fx.tenantId, h.fx.domainId, controlId, { payload: { cold: false } }) as { reproduction: { verdict: string; reason: string } };
     expect(r.reproduction.verdict).toBe('reproduced');
+    expect(r.reproduction.reason).toMatch(/separate process \(pid \d+/);
     const cold = (await sql<{ n: string }>`select count(*)::text n from simulation.reproductions where run_id = ${controlId}::uuid and cold_process`.execute(h.su)).rows[0]?.n;
-    expect(Number(cold)).toBe(1);
+    expect(Number(cold)).toBe(2);
   }, 120_000);
 
   it('when the pinned implementation is no longer the one the run recorded, the verdict is UNREPRODUCIBLE, never a substituted result', async () => {

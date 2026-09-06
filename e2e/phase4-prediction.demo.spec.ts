@@ -279,6 +279,9 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
     const detail = page.locator('section[aria-labelledby="run-d"]');
     await expect(detail.getByText(/Assumptions carrying the result/)).toBeVisible();
     await expect(detail.getByText(/observations through 2024-01-17, read at record time 2026/)).toBeVisible();
+    // the shock has a BASIS on screen: the bound scenario branch is flipped (act IV), never an unexplained flag
+    await expect(detail.getByText(/the bound scenario branch is/)).toBeVisible();
+    await expect(detail.getByText('FLIPPED', { exact: true }).first()).toBeVisible();
     await expect(detail.getByText(/shock.corridor_delay_days/).first()).toBeVisible();
     await detail.getByRole('button', { name: /Reproduce from the stored contract/ }).click();
     await expect(page.getByText(/reproduction REPRODUCED/)).toBeVisible();

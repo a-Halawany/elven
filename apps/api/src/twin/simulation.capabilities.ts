@@ -5,6 +5,7 @@
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
+import type { CitedObjectRow } from './twin.capabilities.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface SimulationReads {
@@ -16,21 +17,32 @@ export interface SimulationReads {
   readVersions(): any;
   readElements(): any;
   readBehaviourModels(): any;
+  /** The scenario trees and their branches (Phase 4), so a run binds the exact branch state it applies. */
+  readScenarios(): any;
+  readBranches(): any;
+  /** The exact canonical object version a citation names (latest when version is null), under RLS. */
+  citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+export type ShockBasis = 'none' | 'hypothetical' | 'scenario-branch-flipped';
+
 export interface OpenRunArgs {
   runId: string; tenantId: string; domainId: string; twinId: string; twinVersion: number; runKind: 'control' | 'intervention';
-  controlRunId: string | null; correctsRunId: string | null; scenarioId: string | null; scenarioBranchId: string | null; shock: boolean; component: string;
+  controlRunId: string | null; correctsRunId: string | null;
+  scenarioId: string | null; scenarioBranchId: string | null; scenarioVersion: number | null; scenarioBranchState: string | null;
+  shock: boolean; shockBasis: ShockBasis; component: string;
   modelRef: string; implementationDigest: string; environmentDigest: string; environment: unknown;
   stochasticMode: 'deterministic' | 'seeded'; rng: string | null; seed: number | null; samples: number | null; jitter: unknown | null;
   interventions: unknown[]; constraints: Record<string, unknown>; assumptions: Record<string, unknown>; inputsDigest: string; validationStatus: string;
+  /** Folded by the service from the twin version and the scenario; the port refuses anything less restricted than the twin's. */
+  controls: unknown;
   actor: string; eventId: string; correlationId: string;
 }
 export interface OpenedRun {
   initial_state: unknown[]; initial_state_digest: string; known_at: string; observed_through: string | null; branch_id: string;
-  synthetic_state: boolean; controls: unknown; verification_state: string;
+  synthetic_state: boolean; controls: unknown; verification_state: string; scenario_flip_event: string | null;
 }
 
 export interface RunWrites extends SimulationReads {
@@ -63,6 +75,23 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
   readVersions(): any { return this.from('twin.twin_versions'); }
   readElements(): any { return this.from('twin.state_elements'); }
   readBehaviourModels(): any { return this.from('twin.behaviour_models'); }
+  readScenarios(): any { return this.from('prediction.scenarios_current'); }
+  readBranches(): any { return this.from('prediction.branches_current'); }
+
+  async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
+    const rows = await this.call<CitedObjectRow>(sql`
+      select o.object_id::text, o.object_type, o.object_version::int, o.content_digest, o.lifecycle_state, o.truth_state,
+             o.synthetic_state, o.classification, o.rights_profile, o.residency_profile, o.retention_profile, o.access_policy_ref,
+             to_char(o.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as recorded_at,
+             to_char(o.observation_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as observation_time,
+             to_char(o.event_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as event_time,
+             o.quality_state, o.payload
+        from objects.canonical_objects o
+       where o.object_type = ${a.objectType} and o.object_id = ${a.id}::uuid
+         and (${a.version}::int is null or o.object_version = ${a.version}::int)
+       order by o.object_version desc limit 1`);
+    return rows[0];
+  }
 
   async rebuildProjections() {
     return this.call<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>(
@@ -72,11 +101,11 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
   async openRun(a: OpenRunArgs): Promise<OpenedRun> {
     const rows = await this.call<{ r: OpenedRun }>(sql`select simulation.open_run(
       ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.twinId}::uuid, ${a.twinVersion}::int, ${a.runKind}, ${a.controlRunId}::uuid, ${a.correctsRunId}::uuid,
-      ${a.scenarioId}::uuid, ${a.scenarioBranchId}::uuid, ${a.shock}, ${a.component},
+      ${a.scenarioId}::uuid, ${a.scenarioBranchId}::uuid, ${a.scenarioVersion}::int, ${a.scenarioBranchState}, ${a.shock}, ${a.shockBasis}, ${a.component},
       ${a.modelRef}, ${a.implementationDigest}, ${a.environmentDigest}, ${JSON.stringify(a.environment)}::jsonb,
       ${a.stochasticMode}, ${a.rng}, ${a.seed}::bigint, ${a.samples}::int, ${a.jitter === null ? null : JSON.stringify(a.jitter)}::jsonb,
       ${JSON.stringify(a.interventions)}::jsonb, ${JSON.stringify(a.constraints)}::jsonb, ${JSON.stringify(a.assumptions)}::jsonb, ${a.inputsDigest}, ${a.validationStatus},
-      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+      ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
     const r = rows[0]?.r;
     if (r === undefined) throw new Error('open_run returned no row');
     return r;

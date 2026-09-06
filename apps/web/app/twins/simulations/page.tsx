@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { twins as api, type Run, type Twin } from '../../../lib/twins';
+import { prediction, type ScenarioRow } from '../../../lib/prediction';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -26,15 +27,19 @@ export default function SimulationsPage() {
   const [runKind, setRunKind] = useState<'control' | 'intervention'>('control');
   const [controlRunId, setControlRunId] = useState('');
   const [intervention, setIntervention] = useState('reroute:SYN-SHIP-4472');
-  const [shock, setShock] = useState(true);
+  const [scenarios, setScenarios] = useState<ScenarioRow[]>([]);
+  /** The scenario branch a run binds: "" for none. A FLIPPED branch applies the shock; an open branch none; without a scenario a shock is a HYPOTHETICAL. */
+  const [branchKey, setBranchKey] = useState('');
+  const [hypothetical, setHypothetical] = useState(false);
   const [comparison, setComparison] = useState<{ control_run_id: string; runs: Array<{ run_id: string; run_kind: string; interventions: Array<Record<string, unknown>>; totals: Run['outputs'] extends infer _ ? { line_stop_days: number; days_below_safety_stock: number; cost: { total: string } } : never; carrying: string[] }> } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
 
   const load = async () => {
-    const [t, r] = await Promise.all([api.list(scope), api.runs(scope, null)]);
+    const [t, r, sc] = await Promise.all([api.list(scope), api.runs(scope, null), prediction.listScenarios(scope)]);
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the runs could not be read'); return; }
     setRuns(r.data.runs);
     if (t.ok && t.data !== undefined) { setTwins(t.data.twins); setTwinId((p) => p || (t.data?.twins[0]?.twin_id ?? '')); }
+    if (sc.ok && sc.data !== undefined) setScenarios(sc.data.scenarios);
   };
   useEffect(() => { void load(); }, [scope]);
   const openRun = async (id: string) => { const r = await api.run(scope, id); if (r.ok && r.data !== undefined) setOpen(r.data.run); };
@@ -68,7 +73,11 @@ export default function SimulationsPage() {
                 </select></label>
               </>
             ) : null}
-            <label><input type="checkbox" checked={shock} onChange={(e) => setShock(e.target.checked)} /> apply the flipped scenario branch (corridor delay)</label>
+            <label>Scenario branch<select style={inputStyle} value={branchKey} onChange={(e) => { setBranchKey(e.target.value); if (e.target.value !== '') setHypothetical(false); }}>
+              <option value="">none — no scenario bound</option>
+              {scenarios.flatMap((sc) => sc.branches.map((b) => <option key={b.branch_id} value={`${sc.scenario_id}|${b.branch_id}`}>{sc.title} · {b.name} ({b.state}{b.state === 'flipped' ? ': the shock applies' : ': no shock'})</option>))}
+            </select></label>
+            {branchKey === '' ? <label><input type="checkbox" checked={hypothetical} onChange={(e) => setHypothetical(e.target.checked)} /> apply a HYPOTHETICAL corridor delay (no scenario branch supports it; the run says so)</label> : null}
           </div>
           <GovernedButton label={runKind === 'control' ? 'Run control' : 'Run intervention'} pendingLabel="running" onRun={async () => {
             const parts = intervention.split('+');
@@ -77,7 +86,10 @@ export default function SimulationsPage() {
               if (p === 'draw_down') return { type: 'draw_down', component: 'SYN-PART-MAG', from: '2024-01-11', to: '2024-04-09' };
               return { type: 'reroute', shipment: p.split(':')[1] };
             });
-            const r = await api.simulate(scope, { twinId, twinVersion: Number(twinVersion), runKind, controlRunId: runKind === 'control' ? null : controlRunId, shock, component: 'SYN-PART-MAG',
+            const [scenarioId, scenarioBranchId] = branchKey === '' ? [null, null] : branchKey.split('|');
+            const bound = scenarios.flatMap((sc) => sc.branches).find((b) => b.branch_id === scenarioBranchId);
+            const shock = bound !== undefined ? bound.state === 'flipped' : hypothetical;
+            const r = await api.simulate(scope, { twinId, twinVersion: Number(twinVersion), runKind, controlRunId: runKind === 'control' ? null : controlRunId, shock, scenarioId, scenarioBranchId, component: 'SYN-PART-MAG',
               interventions, horizonDays: 90, stochastic: { mode: 'deterministic' } });
             if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the run was refused');
             setReceipt(r.data.receipt); setLast(`run ${r.data.run.runId.slice(0, 8)}… ${r.data.run.state}: ${r.data.run.totals.line_stop_days} line-stop day(s), total ${money(r.data.run.totals.cost.total)} — SYNTHETIC`); await load();
@@ -95,7 +107,7 @@ export default function SimulationsPage() {
                 <Td><button type="button" onClick={() => void openRun(r.run_id)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--eye-color-accent-default)', cursor: 'pointer', textDecoration: 'underline' }}><Mono>{r.run_id.slice(0, 8)}…</Mono></button></Td>
                 <Td mono>{r.run_kind}{r.control_run_id ? ` → ${r.control_run_id.slice(0, 8)}…` : ''}</Td>
                 <Td mono>v{r.twin_version} · {r.branch_id}</Td>
-                <Td>{r.shock ? 'corridor delay applied' : 'none'}</Td>
+                <Td>{r.shock_basis === 'scenario-branch-flipped' ? 'corridor delay — flipped branch' : r.shock_basis === 'hypothetical' ? <strong>corridor delay — HYPOTHETICAL</strong> : r.shock ? 'corridor delay (basis unrecorded)' : 'none'}</Td>
                 <Td>{iv(r)}</Td>
                 <Td mono>{r.outputs?.totals?.line_stop_days ?? '—'}</Td>
                 <Td mono>{money(r.outputs?.totals?.cost.total)}</Td>
@@ -130,6 +142,11 @@ export default function SimulationsPage() {
           <dl>
             <DefinitionRow term="Contract">twin v{open.twin_version} ({open.branch_id}) · {open.run_kind}{open.control_run_id ? <> on control <Mono>{open.control_run_id.slice(0, 8)}…</Mono></> : ''} · {iv(open)} · shock {open.shock ? 'applied' : 'not applied'}</DefinitionRow>
             <DefinitionRow term="Cut-offs">observations through <Mono>{String(open.observed_through ?? '').slice(0, 10)}</Mono>, read at record time <Mono>{fmtInstant(open.known_at)}</Mono></DefinitionRow>
+            <DefinitionRow term="Shock">{open.shock_basis === 'scenario-branch-flipped'
+              ? <>corridor delay applied — the bound scenario branch is <strong>FLIPPED</strong> (scenario <Mono>{String(open.scenario_id ?? '').slice(0, 8)}…</Mono> version {open.scenario_version ?? '?'}, branch <Mono>{String(open.scenario_branch_id ?? '').slice(0, 8)}…</Mono>)</>
+              : open.shock_basis === 'hypothetical' ? <><strong>HYPOTHETICAL</strong> corridor delay — no scenario branch supports it</>
+              : open.shock ? 'corridor delay applied — basis unrecorded (opened before the binding existed)'
+              : open.scenario_id ? <>none — bound to scenario <Mono>{String(open.scenario_id).slice(0, 8)}…</Mono> version {open.scenario_version ?? '?'}, branch {open.scenario_branch_state ?? '?'}</> : 'none'}</DefinitionRow>
             <DefinitionRow term="Bound"><Mono>{open.model_ref}</Mono> impl <Mono>{open.implementation_digest.slice(0, 16)}…</Mono> · env <Mono>{open.environment_digest.slice(0, 16)}…</Mono> · {open.stochastic_mode}{open.stochastic_mode === 'seeded' ? ` (${open.rng}, seed ${open.seed}, ${open.samples} samples)` : ''}</DefinitionRow>
             <DefinitionRow term="Digests">initial state <Mono>{open.initial_state_digest.slice(0, 16)}…</Mono> · inputs <Mono>{open.inputs_digest.slice(0, 16)}…</Mono> · outputs <Mono>{String(open.outputs_digest ?? '').slice(0, 16)}…</Mono></DefinitionRow>
             <DefinitionRow term="Totals">{open.outputs?.totals ? <>{open.outputs.totals.line_stop_days} line-stop day(s) from {open.outputs.totals.first_line_stop_date ?? 'never'} · {open.outputs.totals.days_below_safety_stock} day(s) below safety stock · min on-hand {open.outputs.totals.min_on_hand} · cost {money(open.outputs.totals.cost.total)} (reroute {money(open.outputs.totals.cost.reroute)}, air {money(open.outputs.totals.cost.air)}, line stop {money(open.outputs.totals.cost.line_stop)})</> : '—'}</DefinitionRow>

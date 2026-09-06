@@ -16,6 +16,7 @@ import { Phase4Harness, SERIES_START, SERIES_END, syntheticEgress } from './phas
 import type { TwinController } from '../../src/twin/twin.controller.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { ObservationController } from '../../src/observation/observation.controller.js';
+import { RECORD_FILES, TERMS_CSV, observedInventory, observedShipments, assumedTerms } from './phase5-fixtures.js';
 
 let h: Phase4Harness;
 let twins: TwinController; let graph: GraphController; let observation: ObservationController;
@@ -23,24 +24,10 @@ let owner: AuthenticatedPrincipal; let manager: AuthenticatedPrincipal;
 let ownerId = ''; let twinId = ''; let v1 = 0; let controlId = ''; let rerouteId = '';
 let evdA: { id: string; version: number }; let evdB: { id: string; version: number };
 
-const elements = (cite: { id: string; version: number }, shock: { id: string; version: number }) => [
-  { key: 'inventory.on_hand:SYN-PART-MAG', kind: 'observed', value: 63400, unit: 'sets', validFrom: '2024-01-11', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'inventory.safety_stock:SYN-PART-MAG', kind: 'observed', value: 40000, unit: 'sets', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'consumption.weekly:SYN-PART-MAG', kind: 'observed', value: 9200, unit: 'sets/week', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shipment:SYN-SHIP-4471', kind: 'observed', value: { qty: 38400, eta_port: '2024-01-29', position: 'Approaching Bab el-Mandeb', status: 'at risk', component: 'SYN-PART-MAG' }, citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'shipment:SYN-SHIP-4472', kind: 'observed', value: { qty: 41000, eta_port: '2024-02-08', position: 'Malacca Strait', status: 'reroutable', component: 'SYN-PART-MAG' }, citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'route.inland_days', kind: 'assumed', value: 14, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'route.reroute_delay_days', kind: 'assumed', value: 11, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.reroute_cost_per_container', kind: 'assumed', value: 1850, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.units_per_container:SYN-PART-MAG', kind: 'assumed', value: 1600, unit: 'sets', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.air_cost_per_kg', kind: 'assumed', value: 19.4, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.kg_per_unit:SYN-PART-MAG', kind: 'assumed', value: 4100 / 9200, unit: 'kg', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.air_lead_days', kind: 'assumed', value: 7, unit: 'days', citations: [{ kind: 'evidence', ...cite }] },
-  { key: 'terms.line_stop_cost_per_day:SYN-LINE-A1', kind: 'assumed', value: 142000, unit: 'EUR', citations: [{ kind: 'evidence', ...cite }] },
-  // The corridor-delay assumption cites a DIFFERENT evidence object: the one the publisher will correct.
-  { key: 'shock.corridor_delay_days', kind: 'assumed', value: 14, unit: 'days', citations: [{ kind: 'evidence', ...shock }] },
-  { key: 'production.policy:SYN-PART-MAG', kind: 'assumed', value: 'hold_safety_stock', citations: [{ kind: 'evidence', ...cite }] },
-];
+let records: { inv: { id: string; version: number }; ship: { id: string; version: number }; terms: { id: string; version: number } };
+/* The complete element set; the corridor-delay assumption cites a DIFFERENT document (the one the publisher will correct). */
+const elements = (_cite: { id: string; version: number }, shock: { id: string; version: number }) =>
+  [...observedInventory(records.inv), ...observedShipments(records.ship, '2024-01-11', ['SYN-SHIP-4471', 'SYN-SHIP-4472']), ...assumedTerms(records.terms, shock)];
 
 async function admitTwin(els: unknown[], branch: string): Promise<number> {
   const o = await twins.openVersion(h.req(owner, 'twin.version', 'TWN', twinId), h.fx.tenantId, h.fx.domainId, twinId, { payload: { branchId: branch, knownAt: new Date().toISOString(), observedThrough: '2024-01-17' } }) as { version: { version: number } };
@@ -65,7 +52,11 @@ beforeAll(async () => {
   expect(r.state, r.reason).toBe('finished');
   const evds = (await sql<{ id: string; version: number }>`select object_id::text id, object_version::int version from objects.canonical_objects
     where object_type = 'EVD' and provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by recorded_at`.execute(h.su)).rows;
-  evdA = evds[0] as typeof evdA; evdB = evds[2] as typeof evdB;
+  evdA = evds[0] as typeof evdA;
+  const up = await h.upload([...RECORD_FILES(), { filename: 'routes-and-terms-2024Q1-restated.csv', text: TERMS_CSV.replace('assumption', 'assumption (restated)'), documentTime: '2024-01-11T00:00:00Z' }]);
+  records = { inv: up[0] as { id: string; version: number }, ship: up[1] as { id: string; version: number }, terms: up[2] as { id: string; version: number } };
+  // The document the publisher will correct: the restated terms, cited only by the corridor-delay assumption.
+  evdB = up[3] as typeof evdB;
   const entityId = uuidv7();
   await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
     values (${entityId}::uuid, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'place', 'Bab el-Mandeb Strait', 'bab el-mandeb strait', 'active', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
@@ -85,7 +76,7 @@ describe('P5-M5 · E7 — the operator-initiated walk reaches twin versions and 
   let caseId = '';
   it('a correction case applied to cited evidence shows on the twin as PROPAGATION PENDING before any walk', async () => {
     const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), h.fx.tenantId, h.fx.domainId,
-      { payload: { sourceId: h.fx.sourceId, kind: 'correction', channel: 'publisher re-publication', publisherRef: 'fixture restated 2023', reason: 'the publisher restated the window the corridor-delay assumption cites', affectedEvdIds: [evdB.id] } }) as { correction: { caseId: string } };
+      { payload: { sourceId: await h.uploadSource(), kind: 'correction', channel: 'operator re-upload', publisherRef: 'fixture restated terms', reason: 'the author restated the document the corridor-delay assumption cites', affectedEvdIds: [evdB.id] } }) as { correction: { caseId: string } };
     caseId = opened.correction.caseId;
     const applied = await observation.applyCorrection(h.req(manager, 'observation.correction.apply', 'COR', caseId, 'observation'), h.fx.tenantId, h.fx.domainId, caseId,
       { payload: { decision: 'apply', affectedEvdIds: [evdB.id], reason: 'restatement verified against the publisher' } }) as { correction: Record<string, unknown> };
@@ -140,11 +131,16 @@ describe('P5-M5 · E7 — the operator-initiated walk reaches twin versions and 
 
 describe('P5-M5 · E3 — reconciliation records the difference and changes nothing', () => {
   it('a simulated element citing a run is reconciled against a later observation of the same key', async () => {
-    const simVersion = await admitTwin([...elements(evdA, evdA), { key: 'inventory.on_hand-2024-02-26:SYN-PART-MAG', kind: 'simulated', value: 2942.857, unit: 'sets', citations: [{ kind: 'run', id: controlId }] }], 'sim-branch');
+    const simVersion = await admitTwin([...elements(evdA, evdA), { key: 'inventory.on_hand-2024-02-26:SYN-PART-MAG', kind: 'simulated', value: 2942.857, unit: 'sets', validFrom: '2024-02-26', citations: [{ kind: 'run', id: controlId }] }], 'sim-branch');
     const el = (await sql<{ kind: string; synthetic_state: boolean }>`select kind, synthetic_state from twin.state_elements where twin_id = ${twinId}::uuid and version = ${simVersion} and key = 'inventory.on_hand-2024-02-26:SYN-PART-MAG'`.execute(h.su)).rows[0];
     expect(el?.kind).toBe('simulated');
     expect(el?.synthetic_state).toBe(true);
-    const obsVersion = await admitTwin([...elements(evdA, evdA), { key: 'inventory.on_hand-2024-02-26:SYN-PART-MAG', kind: 'observed', value: 3100, unit: 'sets', validFrom: '2024-02-26', citations: [{ kind: 'evidence', ...evdA }] }], 'obs-branch');
+    const count = (await h.upload([{ filename: 'plant-count-2024-02-26.csv', text: 'synthetic,record_id,component_id,on_hand\ntrue,SYN-CNT-001,SYN-PART-MAG,3100\n', documentTime: '2024-02-26T00:00:00Z' }]))[0] as { id: string; version: number };
+    const obsOpen = await twins.openVersion(h.req(owner, 'twin.version', 'TWN', twinId), h.fx.tenantId, h.fx.domainId, twinId, { payload: { branchId: 'obs-branch', knownAt: new Date().toISOString(), observedThrough: '2024-02-26' } }) as { version: { version: number } };
+    await twins.ground(h.req(owner, 'twin.ground', 'TWN', twinId), h.fx.tenantId, h.fx.domainId, twinId, String(obsOpen.version.version), { payload: { elements: [...elements(evdA, evdA),
+      { key: 'inventory.on_hand-2024-02-26:SYN-PART-MAG', kind: 'observed', value: 3100, unit: 'sets', validFrom: '2024-02-26', citations: [{ kind: 'evidence', ...count }], record: { locator: 'SYN-CNT-001', field: 'on_hand' } }] } });
+    await twins.admit(h.req(owner, 'twin.version.admit', 'TWN', twinId), h.fx.tenantId, h.fx.domainId, twinId, String(obsOpen.version.version), { payload: {} });
+    const obsVersion = obsOpen.version.version;
     const r = await twins.reconcile(h.req(owner, 'twin.ground', 'TWN', twinId), h.fx.tenantId, h.fx.domainId, twinId,
       { payload: { key: 'inventory.on_hand-2024-02-26:SYN-PART-MAG', fromVersion: simVersion, againstVersion: obsVersion, note: 'the plant count on 26 February came in' } }) as { reconciliation: { difference: { numeric: string } } };
     expect(Number(r.reconciliation.difference.numeric)).toBeCloseTo(157.143, 2);

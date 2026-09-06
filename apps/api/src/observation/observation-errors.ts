@@ -280,6 +280,12 @@ const TWIN_RULES: typeof RULES = [
     message: 'an admitted version is immutable: open a new version to change it.',
   },
   {
+    match: /grounding rejected: .* (names no truth state|carries no validation state)/i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a claim-derived element carries the claim\'s truth state, and a predicted element carries its forecast\'s validation state; neither may be absent.',
+  },
+  {
     match: /grounding rejected: .* substantiated by nothing but an entity/i,
     status: 422,
     code: 'EYE_REQ_001',
@@ -326,6 +332,36 @@ const TWIN_RULES: typeof RULES = [
     status: 404,
     code: 'EYE_STA_001',
     message: 'no authorized admitted twin version matches.',
+  },
+  {
+    match: /run rejected: twin version .* has no world-time cut-off/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this twin version names no world-time cut-off (observed_through); a run reads the twin under two cut-offs and cannot use it.',
+  },
+  {
+    match: /run rejected: inputs for component .* are not usable/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'a required input for the selected component is missing, stale or unreadable in this twin version; a healthy input of another component does not stand in for it.',
+  },
+  {
+    match: /run rejected: scenario .* is not an authorized scenario|run rejected: scenario .* has no authorized/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized scenario matches.',
+  },
+  {
+    match: /run rejected: (branch .* is not a branch of|branch .* is .* now|the shock contradicts|a scenario branch was named without|the shock basis offered|scenario .* is at version)/i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'the scenario binding is not what the authorized tree establishes: the branch must belong to the scenario, the shock must follow the branch\'s state (flipped), and a shock with no scenario is a hypothetical.',
+  },
+  {
+    match: /reconciliation rejected: (units differ|different targets|the observation cites evidence recorded|version .* is a draft)/i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a reconciliation compares admitted state in the same unit for the same target against an observation recorded AFTER the simulated or predicted value was established.',
   },
   {
     match: /run rejected: /i,

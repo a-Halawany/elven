@@ -89,10 +89,11 @@ export class TwinController {
     const raw = body.payload?.elements;
     if (!Array.isArray(raw) || raw.length === 0) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'elements must be a non-empty array'), 400);
     const elements = raw.map((e) => validateElementIntake(e as never, envelope.correlation_id));
+    const reader = this.reader(req, tenantId, domainId);
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'twin.ground', 'TWN', twinId), TwinCapability.ground,
       async (cap, scope) => {
-        const r = await this.twins.ground(cap, scope, twinId, version, elements, principal.principalId, envelope.correlation_id);
+        const r = await this.twins.ground(cap, scope, reader, twinId, version, elements, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'TWN', targetId: twinId, targetVersion: String(version), outboxEvent: null };
       });
     return { grounded: out.result, receipt: receipt(out) };
@@ -235,14 +236,20 @@ export class TwinController {
     }
   }
 
+  /**
+   * REPRODUCE. The request carries no attestation: the product establishes availability
+   * to this reader and executes the stored contract in a separate process itself; a
+   * `cold` flag in the payload is ignored, never recorded.
+   */
   @Post('/simulations/:runId/reproduce')
   async reproduce(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('runId') runId: string,
-                  @Body() body: { payload?: { cold?: boolean } }) {
+                  @Body() _body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
+    const reader = this.reader(req, tenantId, domainId);
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'simulation.reproduce', 'SIM', runId), SimulationCapability.reproduce,
       async (cap, scope) => {
-        const r = await this.simulations.reproduce(cap, scope, runId, body.payload?.cold === true, principal.principalId, envelope.correlation_id);
+        const r = await this.simulations.reproduce(cap, scope, reader, runId, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: null };
       });
     return { reproduction: out.result, receipt: receipt(out) };

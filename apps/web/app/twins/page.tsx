@@ -123,7 +123,7 @@ export default function TwinsPage() {
                   {(v.elements ?? []).map((e) => (
                     <tr key={e.element_id}>
                       <Td mono>{e.key}</Td>
-                      <Td><KindBadge kind={e.kind} synthetic={e.synthetic_state} basis={e.basis_truth_state} /></Td>
+                      <Td><KindBadge kind={e.kind} synthetic={e.synthetic_state} basis={e.basis_truth_state} />{e.inherited_validation ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>forecast {e.inherited_validation.replace(/_/g, ' ')}</div> : null}</Td>
                       <Td mono>{show(e.value)}{e.unit ? ` ${e.unit}` : ''}</Td>
                       <Td>{e.material ? 'material' : 'context'}</Td>
                       <Td>{HEALTH[e.health]}</Td>
