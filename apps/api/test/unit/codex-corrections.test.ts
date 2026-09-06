@@ -82,6 +82,8 @@ function graphCap(w: WorldRows) {
     readForecasts: () => relation([]),
     readScenarios: () => relation([]),
     readWarnings: () => relation([]),
+    readTwins: () => relation([]),
+    readRuns: () => relation([]),
     /*
      * The double models the CAPABILITY CONTRACT, not the SQL: eligibility is
      * applied before the bound, and `total` counts everything eligible. A double

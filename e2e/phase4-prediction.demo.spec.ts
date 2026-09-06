@@ -226,4 +226,66 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
     await expect(detail.getByText(/2024-01-17 00:00:00Z → 2024-01-19 00:00:00Z|2024-01-17.*→.*2024-01-19/)).toBeVisible();
     await shot(page, '09-decision-missed');
   });
+
+  /* ── Phase 5 · the Twins workspace and the Simulations action paths (Act V) ── */
+
+  test('TWINS: the NORDWERK twin shows its synthetic world, two cut-offs, element kinds and health', async ({ page }) => {
+    await uiLogin(page, 't.nakamura', required('EYE_TEST_ADMIN_PASSWORD'));
+    await page.goto('/twins');
+    await expect(page.getByRole('heading', { name: 'Twins' })).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: 'NORDWERK' }).first();
+    await expect(row.getByText('SYNTHETIC').first()).toBeVisible();
+    await expect(row.getByText(/unvalidated \(synthetic grounding\)/)).toBeVisible();
+    await row.getByRole('button').first().click();
+    const detail = page.locator('section[aria-labelledby="twn-h"]');
+    await expect(detail.getByText(/SYNTHETIC WORLD/).first()).toBeVisible();
+    await expect(detail.getByText(/observations through 2024-01-17, read at record time 2026/)).toBeVisible();
+    await expect(detail.getByText('● OBSERVED').first()).toBeVisible();
+    await expect(detail.getByText('◍ ASSUMED').first()).toBeVisible();
+    await expect(detail.getByText(/complete/).first()).toBeVisible();
+    // The corrected corridor evidence: the version cited it and is UNVERIFIED after the walk.
+    await expect(detail.getByText(/UNVERIFIED — a cited input was corrected/).first()).toBeVisible();
+    await shot(page, '10-twins');
+  });
+
+  test('SIMULATIONS: control and interventions compared on one baseline, every value SYNTHETIC; a reproduction from the stored contract', async ({ page }) => {
+    await uiLogin(page, 't.nakamura', required('EYE_TEST_ADMIN_PASSWORD'));
+    await page.goto('/twins/simulations');
+    await expect(page.getByRole('heading', { name: 'Simulations' })).toBeVisible();
+    await expect(page.getByText(/Every number on this screen is SYNTHETIC/)).toBeVisible();
+    const rows = page.getByRole('row').filter({ hasText: 'completed' });
+    await expect(rows.first()).toBeVisible();
+    // select ONE control and the interventions that reference it — read from the rows, since the list is newest-first
+    // and the newest control is the alternative branch's, which shares no baseline with anything.
+    const firstIntervention = page.getByRole('row').filter({ hasText: 'intervention' }).filter({ hasText: 'completed' }).first();
+    const ctl = (await firstIntervention.getByRole('cell').nth(2).innerText()).match(/→ ([0-9a-f]{8})…/)?.[1];
+    expect(ctl, 'an intervention row names its control').toBeTruthy();
+    // Ids are time-ordered, so an 8-character prefix is shared by every run of one pass: the control is the row that
+    // IS a control (kind cell says so, on the actual branch) and carries that prefix — not the first row carrying it.
+    const controlRow = page.getByRole('row').filter({ hasText: 'completed' }).filter({ hasText: '· actual' })
+      .filter({ has: page.getByRole('cell', { name: 'control', exact: true }) })
+      .filter({ has: page.getByRole('button', { name: `${ctl}…` }) }).first();
+    await controlRow.getByRole('checkbox').check();
+    const onThatControl = page.getByRole('row').filter({ hasText: `→ ${ctl}…` });
+    const n = Math.min(await onThatControl.count(), 4);
+    for (let i = 0; i < n; i += 1) await onThatControl.nth(i).getByRole('checkbox').check();
+    await page.getByRole('button', { name: /Compare/ }).click();
+    const cmp = page.locator('section[aria-labelledby="cmp-h"]');
+    await expect(cmp).toBeVisible();
+    await expect(cmp.getByText(/SYNTHETIC/)).toBeVisible();
+    await expect(cmp.getByRole('row').filter({ hasText: 'control' })).toBeVisible();
+    // open that control run and reproduce it
+    await controlRow.getByRole('button').first().click();
+    const detail = page.locator('section[aria-labelledby="run-d"]');
+    await expect(detail.getByText(/Assumptions carrying the result/)).toBeVisible();
+    await expect(detail.getByText(/observations through 2024-01-17, read at record time 2026/)).toBeVisible();
+    // the shock has a BASIS on screen: the bound scenario branch is flipped (act IV), never an unexplained flag
+    await expect(detail.getByText(/the bound scenario branch is/)).toBeVisible();
+    await expect(detail.getByText('FLIPPED', { exact: true }).first()).toBeVisible();
+    await expect(detail.getByText(/shock.corridor_delay_days/).first()).toBeVisible();
+    await detail.getByRole('button', { name: /Reproduce from the stored contract/ }).click();
+    await expect(page.getByText(/reproduction REPRODUCED/)).toBeVisible();
+    await expect(detail.getByText(/REPRODUCED/).first()).toBeVisible();
+    await shot(page, '11-simulations');
+  });
 });

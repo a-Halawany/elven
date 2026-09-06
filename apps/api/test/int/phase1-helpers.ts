@@ -127,7 +127,7 @@ export function fixtureContract(sourceKey: string): Record<string, unknown> {
  * Establish a commit capability exactly as the pipeline does, then run a body
  * inside it. This is the only way the fixture writes observation state.
  */
-async function inCommitContext<T>(
+export async function inCommitContext<T>(
   commitDb: Db,
   p: { sessionId: string; contextKey: string },
   scope: { tenantId: string; domainId: string },
