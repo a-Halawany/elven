@@ -247,6 +247,15 @@ export class AcquisitionLifecycle {
        */
       const prior = await this.loadPriorEvidence(
         req, tenantId, domainId, queue.filter((i) => i.deterministic === true).map((i) => i.itemKey));
+      /*
+       * A QUARANTINED WINDOW IS NOT A COLLECTED WINDOW. The checkpoint the run
+       * commits must not carry the backfill cursor past a window whose bytes were
+       * refused, or the range looks complete with a hole in it. The earliest
+       * quarantined window's cursor is where the next run resumes.
+       */
+      let rollbackTo: string | number | null = null;
+      const earlier = (a: string | number, b: string | number): boolean =>
+        typeof a === 'number' && typeof b === 'number' ? a < b : String(a) < String(b);
 
       for (const item of queue) {
         await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.fetched', {
@@ -264,12 +273,22 @@ export class AcquisitionLifecycle {
           parentEvdByKey.set(item.itemKey, result.evdObjectId);
         } else if (result.kind === 'quarantined') {
           quarantined += 1;
+          if (item.backfillCursor !== undefined && (rollbackTo === null || earlier(item.backfillCursor, rollbackTo))) {
+            rollbackTo = item.backfillCursor;
+          }
         } else {
           noop += 1;
         }
       }
 
       // ── step 9: advance the checkpoint ONLY after the DB commits ────────────
+      if (rollbackTo !== null && typeof output.checkpoint['backfill'] === 'object' && output.checkpoint['backfill'] !== null) {
+        const bf = output.checkpoint['backfill'] as Record<string, unknown>;
+        output.checkpoint['backfill'] = {
+          ...bf, cursor: rollbackTo, done: false, finishedAt: null,
+          incomplete: `a window starting at ${String(rollbackTo)} was quarantined; the cursor was rolled back to it`,
+        };
+      }
       fault.at('f28.before_checkpoint_append');
       await this.pipeline.write(
         this.envelope(req, 'observation.run.checkpoint', 'RUN', runId, tenantId, domainId),

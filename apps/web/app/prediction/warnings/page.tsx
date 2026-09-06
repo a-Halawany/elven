@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { prediction, type WarningRow } from '../../../lib/prediction';
+import { ControlsLine } from '../forecasts/page';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -18,6 +19,27 @@ function WindowState({ w, now }: { w: WarningRow; now: number }) {
   if (w.state === 'expired' || left <= 0) return <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ window closed unanswered</span>;
   const hours = Math.floor(left / 3_600_000); const mins = Math.floor((left % 3_600_000) / 60_000);
   return <span style={{ color: 'var(--eye-color-warning)', fontWeight: 650 }}>⚑ open — {hours} h {mins} min left</span>;
+}
+
+/**
+ * T3 on screen: raised AS OF, the decision deadline, and whether the one was
+ * before the other. A replayed warning's window is dated in the replay, and
+ * the audit clock is shown beside it so the two are never confused.
+ */
+function Timing({ w }: { w: WarningRow }) {
+  const mode = w.timing_mode ?? 'live';
+  const timely = w.timely === undefined || w.timely === null
+    ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>T3 unmeasured — no decision deadline declared</span>
+    : w.timely
+      ? <span style={{ color: 'var(--eye-color-success)' }}>● before the decision deadline {fmtInstant(w.decision_deadline)}</span>
+      : <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ AFTER the decision deadline {fmtInstant(w.decision_deadline)} — a report, not a warning</span>;
+  return (
+    <span style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+      {mode === 'replay' ? <strong style={{ color: 'var(--eye-color-warning)' }}>REPLAY · </strong> : null}
+      raised as of {fmtInstant(w.raised_as_of ?? w.raised_at)}
+      {mode === 'replay' ? <> (recorded {fmtInstant(w.raised_at)})</> : null} · {timely}
+    </span>
+  );
 }
 
 export default function WarningsPage() {
@@ -45,7 +67,7 @@ export default function WarningsPage() {
       {rows.length === 0 ? <Empty>No warning has been raised.</Empty> : (
         <table className="eye-table" style={tableStyle}>
           <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{rows.length} warning(s)</caption>
-          <thead><tr><Th>Warning</Th><Th>Routed to</Th><Th>Raised</Th><Th>Window closes</Th><Th>Response</Th><Th>Confidence</Th></tr></thead>
+          <thead><tr><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Timing</Th><Th>Confidence</Th></tr></thead>
           <tbody>
             {rows.map((w) => (
               <tr key={w.warning_id}>
@@ -53,9 +75,10 @@ export default function WarningsPage() {
                   style={{ background: 'none', border: 'none', padding: 0, color: 'var(--eye-color-accent-default)', cursor: 'pointer', textDecoration: 'underline', textAlign: 'start' }}>
                   {w.title}</button></Td>
                 <Td mono>{w.routed_to.slice(0, 8)}…{w.routed_to === me.principalId ? ' (you)' : ''}</Td>
-                <Td>{fmtInstant(w.raised_at)}</Td>
+                <Td>{fmtInstant(w.raised_as_of ?? w.raised_at)}{(w.timing_mode ?? 'live') === 'replay' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-warning)' }}>REPLAY</div> : null}</Td>
                 <Td>{fmtInstant(w.response_window_closes_at)}</Td>
                 <Td><WindowState w={w} now={now} /></Td>
+                <Td>{w.timely === undefined || w.timely === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>unmeasured</span> : w.timely ? <span style={{ color: 'var(--eye-color-success)' }}>● timely</span> : <span style={{ color: 'var(--eye-color-critical)' }}>✕ late</span>}</Td>
                 <Td mono>{Number(w.confidence).toFixed(2)}</Td>
               </tr>
             ))}
@@ -66,6 +89,8 @@ export default function WarningsPage() {
         <section aria-labelledby="wrn-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
           <h2 id="wrn-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{open.title}</h2>
           <WindowState w={open} now={now} />
+          <p><Timing w={open} /></p>
+          <p><ControlsLine controls={open.controls} /></p>
           <dl>
             <DefinitionRow term="Consequence">{open.consequence}</DefinitionRow>
             <DefinitionRow term="Evidence">
@@ -75,6 +100,7 @@ export default function WarningsPage() {
             </DefinitionRow>
             <DefinitionRow term="Response window">{fmtInstant(open.response_window_opens_at)} → {fmtInstant(open.response_window_closes_at)}</DefinitionRow>
             <DefinitionRow term="Routed to"><Mono>{open.routed_to}</Mono></DefinitionRow>
+            {open.flip_event_id === undefined || open.flip_event_id === null ? null : <DefinitionRow term="Flip event"><Mono>{open.flip_event_id}</Mono> — one warning per flip</DefinitionRow>}
             {open.acknowledgement === null ? null : <DefinitionRow term="Acknowledgement">{open.acknowledgement} — <Mono>{String(open.acknowledged_by).slice(0, 8)}…</Mono></DefinitionRow>}
           </dl>
           {isForecastOwner && open.state === 'raised' ? (

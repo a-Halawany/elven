@@ -486,15 +486,17 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
 
   it('D3/D4 · a backtest scores the learned model AGAINST seasonal naive on identical origins and records it either way', async () => {
     const r = await controller.runBacktest(req(owner, 'prediction.backtest.record', 'BKT', null), fx.tenantId, fx.domainId,
-      { payload: { seriesKey, horizon: '30d', knownAt: knownAfterBackfill, origins: 24, stride: 14 } }) as {
+      // Over the history the D1 forecast will be fitted on, so the record APPLIES to it.
+      { payload: { seriesKey, horizon: '30d', knownAt: knownAfterBackfill, observedThrough: '2023-10-31', origins: 24, stride: 14 } }) as {
         backtest: Record<string, unknown> };
     const b = r.backtest;
+    expect(b['mode']).toBe('retrospective');
     expect(Number(b['origins'])).toBeGreaterThanOrEqual(20);
     expect(typeof b['coverage_80']).toBe('number');
     expect(typeof b['baseline_pinball_mean']).toBe('number');
     expect(String(b['verdict'])).toMatch(/T1 (met|NOT met)/);
     expect(String(b['verdict'])).toMatch(/T2 (met|NOT met)/);
-    expect(String(b['discipline'])).toMatch(/dated at or before it/);
+    expect(String(b['discipline'])).toMatch(/RETROSPECTIVE: one evidence vintage/);
     const stored = (await sql<{ n: string }>`select count(*)::text n from prediction.backtests
       where series_key = ${seriesKey} and horizon_code = '30d'`.execute(su)).rows[0]?.n;
     expect(Number(stored)).toBe(1);
@@ -517,7 +519,9 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     forecastId = r.forecast.forecastId;
     expect(r.forecast.targetAt).toBe('2023-11-30');
     expect(r.forecast.quantiles.q10).toBeLessThanOrEqual(r.forecast.quantiles.q50);
-    expect(r.forecast.validationState).toBe('validated');
+    // A retrospective record validates as exactly that — never as historical knowledge.
+    expect(['validated_retrospective', 'unvalidated']).toContain(r.forecast.validationState);
+    expect(r.forecast.validationState).not.toBe('validated');
     expect(r.forecast.statement).toMatch(/REPLAY DEMONSTRATION/);
 
     const got = await controller.getForecast(req(owner, 'prediction.read', 'FCT', forecastId), fx.tenantId, fx.domainId, forecastId) as {
@@ -540,7 +544,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
 
   it('D3 · the learned model is used only when the backtest says it earned it; otherwise the baseline is the forecaster and says so', async () => {
     const bt = (await sql<{ t2: boolean | null }>`select t2_met t2 from prediction.backtests
-      where series_key = ${seriesKey} and horizon_code = '30d' order by computed_at desc limit 1`.execute(su)).rows[0];
+      where series_key = ${seriesKey} and horizon_code = '30d' and window_to <= '2023-10-31' order by computed_at desc limit 1`.execute(su)).rows[0];
     const f = (await sql<{ method: string; statement: string }>`select method, statement from prediction.forecasts_current
       where forecast_id = ${forecastId}::uuid`.execute(su)).rows[0];
     if (bt?.t2 === true) expect(f?.method).toBe('holt-winters-additive');
@@ -625,10 +629,10 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const wid = uuidv7();
     await sql`insert into prediction.warnings_current (
         warning_id, scope, tenant_id, domain_id, title, evidence, consequence, confidence,
-        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id)
+        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id, raised_as_of, timing_mode)
       values (${wid}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, 'stale warning',
         '[{"kind":"fixture"}]'::jsonb, 'this warning was never answered', 0.5,
-        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid)`.execute(su);
+        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid, now() - interval '3 days', 'live')`.execute(su);
     await sql`insert into prediction.warning_events (event_id, scope, tenant_id, domain_id, warning_id, event, actor_principal_id, details, correlation_id)
       values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, ${wid}::uuid, 'warning.raised', ${ownerId}::uuid, '{}'::jsonb, ${uuidv7()}::uuid)`.execute(su);
     const ind = (await sql<{ id: string }>`select indicator_id::text id from prediction.indicators_current where series_key = ${seriesKey} limit 1`.execute(su)).rows[0];

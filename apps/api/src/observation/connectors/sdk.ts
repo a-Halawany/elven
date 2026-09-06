@@ -143,6 +143,12 @@ export interface AcquiredItem {
    * range would admit duplicate evidence.
    */
   deterministic?: boolean;
+  /**
+   * For a backfilled window: the traversal cursor at which its window began, so
+   * the lifecycle can roll the checkpoint back to a window it QUARANTINED rather
+   * than let the cursor pass a window that was never collected.
+   */
+  backfillCursor?: string | number;
 }
 
 export interface AcquisitionOutput {

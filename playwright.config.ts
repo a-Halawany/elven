@@ -115,6 +115,9 @@ function required(name: string): string {
  */
 export default defineConfig({
   testDir: './e2e',
+  // *.demo.spec.ts run against the seeded demonstration database (scripts/demo.sh + acts I–IV) through
+  // playwright.demo.config.ts; the CI browser gate seeds its own data and does not run them.
+  testIgnore: ['**/*.demo.spec.ts'],
   timeout: 45_000,
   fullyParallel: false,
   workers: 1,

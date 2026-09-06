@@ -29,6 +29,9 @@ abstract class PredictionCore {
 export interface EvidenceVersionRow {
   object_id: string; object_version: number; recorded_at: string; content_digest: string;
   lifecycle_state: string; is_fragment: boolean; source_key: string;
+  /** The controls the evidence carries, inherited by whatever is derived from it. */
+  synthetic_state: boolean; classification: string; rights_profile: string | null;
+  residency_profile: string | null; retention_profile: string | null; access_policy_ref: string | null;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -54,6 +57,9 @@ export interface PredictionReads {
    * whatever it says.
    */
   evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]>;
+  /** Flipped branches still owed a warning — the obligation a failed raise left behind. */
+  owedFlips(): Promise<Array<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
+                               evidence_object_id: string; evidence_version: number }>>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -75,7 +81,8 @@ export interface ForecastWrites extends PredictionReads {
     method: string; methodVersion: string; baselineMethod: string; quantiles: Record<string, number>;
     path: unknown[]; drivers: unknown[]; assumptions: string[]; evidenceRefs: unknown[];
     refreshCadence: string; validationState: string; validationNote: string; label: string;
-    skill: unknown | null; statement: string; actor: string; eventId: string; correlationId: string;
+    skill: unknown | null; statement: string; backtestId: string | null; controls: unknown;
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
 
@@ -86,6 +93,7 @@ export interface BacktestWrites extends PredictionReads {
     windowFrom: string; windowTo: string; origins: number; coverage: number | null; pinball: number | null;
     baselineCoverage: number | null; baselinePinball: number | null; skill: number | null;
     t1: boolean | null; t2: boolean | null; verdict: string; discipline: string; details: unknown;
+    knownAt: string; observations: number; mode: 'retrospective' | 'historical';
     actor: string; correlationId: string;
   }): Promise<void>;
 }
@@ -94,6 +102,7 @@ export interface OutcomeWrites extends PredictionReads {
   recordOutcome(a: {
     outcomeId: string; tenantId: string; domainId: string; forecastId: string; observed: number;
     evidenceObjectId: string; evidenceVersion: number; evidenceDigest: string; knownAt: string;
+    observedOn: string; substitution: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
@@ -103,13 +112,13 @@ export interface ScenarioWrites extends PredictionReads {
   declareScenario(a: {
     scenarioId: string; tenantId: string; domainId: string; title: string; statement: string;
     forecastId: string | null; subjectEntityId: string | null; owner: string; reviewCadence: string;
-    actor: string; eventId: string; correlationId: string;
+    controls: unknown; actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
   addBranch(a: {
     branchId: string; tenantId: string; domainId: string; scenarioId: string; name: string; kind: string;
     statement: string; indicatorId: string | null; signpost: string | null; owner: string;
-    reviewCadence: string; responseHours: number; consequence: string; actor: string; eventId: string;
-    correlationId: string;
+    reviewCadence: string; responseHours: number; consequence: string; decisionDeadline: string | null;
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
 
@@ -135,7 +144,9 @@ export interface WarningWrites extends PredictionReads {
   raiseWarning(a: {
     warningId: string; tenantId: string; domainId: string; branchId: string | null; indicatorId: string | null;
     forecastId: string | null; title: string; evidence: unknown[]; consequence: string; confidence: number;
-    opensAt: string; closesAt: string; routedTo: string; actor: string; eventId: string; correlationId: string;
+    opensAt: string; closesAt: string; routedTo: string; flipEventId: string | null; raisedAsOf: string;
+    timingMode: 'live' | 'replay'; decisionDeadline: string | null; timely: boolean | null; controls: unknown;
+    actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
 
@@ -173,7 +184,8 @@ class PredictionCapabilityImpl extends PredictionCore
       versions as (
         select distinct on (e.object_id) e.object_id::text as object_id, e.object_version::int as object_version,
                e.recorded_at::text as recorded_at, e.payload ->> 'content_digest' as content_digest,
-               e.lifecycle_state, (e.payload -> 'fragment') is not null and jsonb_typeof(e.payload -> 'fragment') = 'object' as is_fragment
+               e.lifecycle_state, (e.payload -> 'fragment') is not null and jsonb_typeof(e.payload -> 'fragment') = 'object' as is_fragment,
+               e.synthetic_state, e.classification, e.rights_profile, e.residency_profile, e.retention_profile, e.access_policy_ref
           from objects.canonical_objects e
          where e.object_type = 'EVD'
            and exists (select 1 from src where e.provenance_ref like 'SRC:' || src.source_id::text || '@%')
@@ -182,6 +194,18 @@ class PredictionCapabilityImpl extends PredictionCore
       select v.*, ${a.sourceKey} as source_key from versions v
        where v.lifecycle_state <> 'withdrawn'
        order by v.recorded_at, v.object_id`);
+  }
+
+  async owedFlips() {
+    return this.call<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
+                       evidence_object_id: string; evidence_version: number }>(sql`
+      select b.branch_id::text, b.flip_event_id::text, (ev.details ->> 'observation_at') as observation_at,
+             (ev.details ->> 'value')::numeric as value, (ev.details ->> 'evidence_object_id')::text as evidence_object_id,
+             coalesce((ev.details ->> 'evidence_version')::int, 1) as evidence_version
+        from prediction.branches_current b
+        join prediction.scenario_events ev on ev.event_id = b.flip_event_id
+       where b.state = 'flipped' and b.warning_state = 'owed'
+       order by b.flipped_at`);
   }
 
   async rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>> {
@@ -213,6 +237,7 @@ class PredictionCapabilityImpl extends PredictionCore
       ${JSON.stringify(a.path)}::jsonb, ${JSON.stringify(a.drivers)}::jsonb, ${a.assumptions}::uuid[],
       ${JSON.stringify(a.evidenceRefs)}::jsonb, ${a.refreshCadence}, ${a.validationState}, ${a.validationNote},
       ${a.label}, ${a.skill === null ? null : JSON.stringify(a.skill)}::jsonb, ${a.statement},
+      ${a.backtestId}::uuid, ${JSON.stringify(a.controls ?? {})}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
@@ -222,6 +247,7 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.horizonDays}, ${a.method}, ${a.methodVersion}, ${a.baselineMethod}, ${a.windowFrom}::date,
       ${a.windowTo}::date, ${a.origins}, ${a.coverage}, ${a.pinball}, ${a.baselineCoverage}, ${a.baselinePinball},
       ${a.skill}, ${a.t1}, ${a.t2}, ${a.verdict}, ${a.discipline}, ${JSON.stringify(a.details)}::jsonb,
+      ${a.knownAt}::timestamptz, ${a.observations}, ${a.mode},
       ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 
@@ -229,6 +255,7 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.record_outcome(
       ${a.outcomeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.forecastId}::uuid, ${a.observed},
       ${a.evidenceObjectId}::uuid, ${a.evidenceVersion}, ${a.evidenceDigest}, ${a.knownAt}::timestamptz,
+      ${a.observedOn}::date, ${a.substitution},
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
@@ -236,6 +263,7 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.declare_scenario(
       ${a.scenarioId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.title}, ${a.statement},
       ${a.forecastId}::uuid, ${a.subjectEntityId}::uuid, ${a.owner}::uuid, ${a.reviewCadence},
+      ${JSON.stringify(a.controls ?? {})}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
@@ -243,7 +271,8 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.add_branch(
       ${a.branchId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.name}, ${a.kind},
       ${a.statement}, ${a.indicatorId}::uuid, ${a.signpost}, ${a.owner}::uuid, ${a.reviewCadence},
-      ${a.responseHours}, ${a.consequence}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.responseHours}, ${a.consequence}, ${a.decisionDeadline}::timestamptz,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async defineIndicator(a: Parameters<IndicatorWrites['defineIndicator']>[0]): Promise<void> {
@@ -273,6 +302,8 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.warningId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.branchId}::uuid, ${a.indicatorId}::uuid,
       ${a.forecastId}::uuid, ${a.title}, ${JSON.stringify(a.evidence)}::jsonb, ${a.consequence}, ${a.confidence},
       ${a.opensAt}::timestamptz, ${a.closesAt}::timestamptz, ${a.routedTo}::uuid,
+      ${a.flipEventId}::uuid, ${a.raisedAsOf}::timestamptz, ${a.timingMode}, ${a.decisionDeadline}::timestamptz,
+      ${a.timely}, ${JSON.stringify(a.controls ?? {})}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 

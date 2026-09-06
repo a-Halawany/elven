@@ -75,9 +75,9 @@ Graph, Intelligence and Observation. Validation state and label are rendered bef
 
 | # | Target | Measured | Result |
 |---|---|---|---|
-| **T1** | 10–90 band covers the outcome 80% ± 5pp | ECB EUR/USD, 30 days, 40 rolling origins: learned model **85.0%**, seasonal naive **85.0%** | **Met, at the edge**, on the one series with depth. **Not measurable on the corridor.** |
-| **T2** | ≥15% lower pinball than seasonal naive at 30 days | ECB: learned 0.0051 vs naive 0.0050 — **skill −1.6%** | **NOT met.** The seasonal baseline is the forecaster, and the forecast says so. |
-| **T3** | Warning fires before the decision window closes in ≥80% of episodes | The replay holds **one** episode; the warning fired on the last published observation (2024-01-17) with a 48-hour window | **1 of 1. Not a rate.** The ≥80% target needs more than one episode. |
+| **T1** | 10–90 band covers the outcome 80% ± 5pp | ECB EUR/USD, 30 days, 40 rolling origins, **retrospective** mode (one evidence vintage recorded 2026-09-05, cut by publisher date at each origin): learned model **85.0%**, seasonal naive **85.0%** | **Met, at the edge, retrospectively**, on the one series with depth. **Not measurable on the corridor**, and not measurable under historical knowledge on a backfilled vintage. |
+| **T2** | ≥15% lower pinball than seasonal naive at 30 days | ECB: learned 0.0051 vs naive 0.0050 — **skill −1.6%** (retrospective mode). In **historical** mode the backfilled vintage yields **0 usable origins**: every origin predates the day the history was recorded, so nothing can be validated under historical knowledge | **NOT met**, and only measurable retrospectively on this vintage. The seasonal baseline is the forecaster, and the forecast says so. |
+| **T3** | Warning fires before the decision window closes in ≥80% of episodes | **UNMEASURED.** The first pass timed the replayed January 2024 flip by the 2026 audit clock, which measures nothing. The correction pass separates `raised_as_of` (replay: the breaching observation, 2024-01-17) from `raised_at` (audit) and compares it to a decision deadline the declarer sets from the decision; the replay holds one episode and one declared deadline (2024-01-22) — **1 of 1 timely, which is not a rate** | **Unmeasured until demonstrated** on more than one episode with independently established deadlines. |
 | **T4** | 100% of shown forecasts carry distribution, drivers, assumptions, evidence | Enforced by `FCT@v1` and four table constraints; a forecast resting on nothing is refused (422) | **Met by construction.** |
 
 The corridor series (~20 observations) cannot be backtested (`CANNOT VALIDATE: 0 usable origins`),
@@ -98,17 +98,27 @@ and no accuracy is claimed for it anywhere.
 
 ## 4. Measured
 
+At the correction candidate (the head of `phase4-prediction`, PR #38), 2026-09-06:
+
 | Suite | Result |
 |---|---|
-| Phase 4 acceptance, D1–D8 + M0 (`phase4-acceptance.test.ts`) | **15 / 15** |
+| Phase 4 acceptance, D1–D8 + M0 (`phase4-acceptance.test.ts`) | **15 / 15** (expectations updated to the corrected semantics: `validated_retrospective`, backtest `mode`, warning timing columns) |
+| Codex-review probes, database/API (`phase4-corrections.test.ts`) | **14 / 14** — 9 failed at `737ca81a`, F3's 2 could not run there (append-only scaffolding) |
+| Codex-review probes, connector (`test/unit/phase4-corrections.test.ts`) | **2 / 2** — both failed at `737ca81a` |
 | Service-level: backfill traversal, models, scores, parsers | **22 / 22** (`phase4-backfill` 11, `phase4-models` 11) |
-| Integration, everything (`test:int:all`) | **571 / 571** (23 files) |
+| Integration, everything (`test:int:all`) | **585 / 585** (24 files) |
 | C18-era manifest (`test:int`, phases 1–4 excluded) | **297 / 297** — unchanged |
 | Phase 0 acceptance (`test:accept`) | **58 / 58** |
-| Unit (api) | **2096 / 2096** + 9 (hermetic suite meta) |
-| Post-C18 upgrade check (`0022`→`0029`) | **PASS** — 1,020 pre-existing rows unchanged; roles +9, schema registry +17, ledger +8, exactly as declared; eight pre-0026 correction cases reconciled; upgraded and virgin schema digests identical (`585d9a72e20eb19d…`); later-phase suites on upgraded data **274 / 274** |
-| Typecheck · module boundaries | clean · no violations (436 modules, 1,676 dependencies) |
-| The demonstration, acts I–IV on a fresh database, with the live ECB activation | **0 problems** in every act |
+| Unit (api) | **2098 / 2098** + 9 (hermetic suite meta) |
+| Post-C18 upgrade check (`0022`→`0030`) | **PASS** — pre-existing rows unchanged; roles +9, schema registry +17, ledger +9, exactly as declared; upgraded and virgin schema digests identical; later-phase suites on upgraded data **274 / 274** |
+| Typecheck (api, web) · lint · module boundaries | clean |
+| The demonstration, acts I–IV on a fresh database, with the live ECB activation (corrected act IV: both backtest modes, replay timing, decision deadline) | **0 problems** in every act |
+| Browser: the Prediction screens as `n.eriksen` against that demonstration (`e2e/phase4-prediction.demo.spec.ts`, installed Chrome via Playwright) | **5 / 5** — overview, forecasts, calibration, scenarios, warnings |
+
+Not run locally: the C15 supply-chain gate, because the pinned scanner binaries are not installed
+on this machine (the gate refuses an unauthenticated executable, correctly). In CI it is **red on
+the current image pins for 13 util-linux findings** published after the last green run of `main`;
+see PR #39 and §11.
 
 ## 5. The demonstration — act IV, measured
 
@@ -182,9 +192,17 @@ On a freshly migrated (0001–0029), bootstrapped database, after acts I–III a
   `validation_impossible`; its band is approximated from 1-step errors and says so. Validation
   waits on the multi-year PortWatch history, which waits on the IMF's answer. The `arcgis-offset`
   backfill that will collect it is built and tested against a transport double.
-* **T3 is one episode, not a rate.**
+* **T3 is unmeasured.** One replayed episode, timed in replay against one declared deadline, is
+  not a rate; and a live episode has not yet occurred. The record says `timely: null` (T3
+  unmeasured) on every branch declared without a decision deadline.
+* **Historical-knowledge validation is impossible on a backfilled vintage.** A `historical`
+  backtest gives every origin only the evidence recorded by the end of its own day; the ECB
+  history was recorded on 2026-09-05, so every origin before that sees nothing and the verdict is
+  `CANNOT VALIDATE (historical)`. The `retrospective` numbers above are exactly that, and the
+  forecast's state says `validated_retrospective`, never `validated`.
 * **No live outcome has been scored.** Calibration from outcomes starts when the first issued
-  horizon elapses; the screen says so and labels the backtests as backtests.
+  horizon elapses AND the target day has been observed; the outcome rule refuses anything
+  earlier, and the screen labels the backtests as backtests.
 * **The backfilled ECB history is the series as published now.** All 28 windows were recorded on
   2026-09-05; revisions the ECB made before that are indistinguishable. From now on every revision
   is a version, and the known-at discipline applies to it.
@@ -225,9 +243,67 @@ On a freshly migrated (0001–0029), bootstrapped database, after acts I–III a
 
 ## 9. Known limitations
 
-* No browser verification of the Prediction workspace in this pass: typechecked, not exercised.
+* The Prediction workspace was exercised in a browser in the correction pass (§10.9), not in
+  the first pass.
+* Series assembly caches parsed rows per reader, purpose and evidence version for the life of
+  the process. A governed deletion (tombstone) or withdrawal that lands AFTER a reader has
+  warmed the cache is not seen by that reader until the entry is evicted or the process
+  restarts; a reader that has not warmed it is refused. Reported, not changed in this pass.
+* Controls of an evidence version the evaluator can no longer see (superseded before an owed
+  warning is recovered) fold fail-closed: the warning is marked synthetic and restricted.
 * The Model Gateway is not used; `narrative` is `null`.
 * Scheduled continuation of a backfill relies on the source's cadence; Act IV triggers runs.
 * Series assembly retrieves every evidence version once per process and caches parsed rows; the
   custody chain records the first read, not every in-memory reuse.
 * UN Comtrade untouched; PortWatch in replay; nothing purchased.
+
+## 10. The Codex review of `737ca81a` — one consolidated correction pass
+
+Codex's evidence was implementation execution with dependency doubles plus SQL inspection.
+Each finding was first REPRODUCED against the real database through the real ports, lifecycle
+and controllers (`test/int/phase4-corrections.test.ts`, 14 probes, and
+`test/unit/phase4-corrections.test.ts`, 2 probes). At `737ca81a` **9 database/API probes and 2
+service probes failed**; the F3 probes could not be run at all until their scaffolding was
+rewritten, because the first draft tried to UPDATE `objects.canonical_objects`, which is
+append-only — the harness refused the shortcut. No downstream guard prevented any of the seven
+consequences. All 16 probes pass at the candidate. Migration **`0030_prediction_corrections`**
+is forward-only; 0028 and 0029 are untouched.
+
+| # | Finding | Reproduced at 737ca81a (real DB) | Correction | Regression |
+|---|---|---|---|---|
+| **F1** Evidence permissions | `SeriesService.load` served cached rows before the reader's own `observation.evidence.retrieve` decision; an unreadable version was silently dropped | A `strategy_owner` with no evidence-retrieval authority read **1,095** cached points after a `forecast_owner` had warmed the cache; a governed-deleted (tombstoned) window vanished from the answer with `total` reduced and nothing said | Cache key carries principal and purpose; every reader retrieves, is authorised and enters custody in its own right; a policy denial is raised (403); withdrawn / tombstoned / integrity-failed versions are returned as `unreadable[]` with `complete:false` and an `INCOMPLETE` note; forecasts, backtests, outcomes and indicator evaluations REFUSE (409) an incomplete history | F1 ×2 |
+| **F2** Selection and validation | explicit `method: holt-winters-additive` bypassed the leash with `t2_met=false`; a 46-observation forecast at origin 2021-02-15 became `validated` by a backtest whose window ended 2023-12-31; rolling origins trained on the latest revision | Reproduced as described; the "validated" record was bound to nothing (`backtest_id` did not exist) | `applicableBacktests()` — same series, horizon, `method_version`, `known_at ≤` the forecast's cut-off, `window_to ≤` its origin, ≥ MIN origins; the explicit request is subject to the same rule (422 otherwise); backtests carry `mode` (`retrospective` / `historical`), `known_at`, `observations`, and accept `observedThrough` so a record can be computed for exactly the history a forecast is fitted on; `historical` mode re-assembles the series per origin with `knownAt = end of the origin's own day`; states `validated` (historical only), `validated_retrospective`, `unvalidated`, `validation_impossible`; `issue_forecast` port re-checks the binding and refuses a validated state without an applicable record of the matching mode | F2 ×4 |
+| **F3** Inherited controls | forecast header took `synthetic_state` from the caller's label and hard-coded `classification: 'internal'`; scenarios and warnings hard-coded non-synthetic internal headers | A restricted, synthetic contract version re-collected the series; the forecast issued as `live` was admitted **non-synthetic, internal**; scenario and warning likewise | `foldControls()` (fail-closed: unknown classification → restricted, unknown synthetic → synthetic; most-restrictive classification; rights / residency / retention / access joined) from every evidence version that contributed a point → forecast header and `forecasts_current.controls`; scenario folds its forecast's controls; warning folds the scenario's with the breaching evidence's; all three headers carry the fold | F3 ×2 (residency `EU; EU-only` when two vintages contribute is the fold telling the truth) |
+| **F4** Lost warnings | the flip committed in one governed write; the warning was a second write; a failure between them left a flipped branch with no warning and nothing owed | Branch owner suspended: the flip committed, `warnings_current` had **0** rows, and a fresh evaluation raised nothing | `branches_current.warning_state` (`none` / `owed` / `raised`) set to `owed` by `evaluate_indicator` in the same transaction as the flip; `raise_warning` takes `flip_event_id` (unique partial index `wrn_one_per_flip`) and sets `raised`; `owedFlips()` is read on every evaluation and each owed flip is retried; a failed raise fails the call loudly (409) with the obligation named, never silently | F4 (recovered once, never twice) |
+| **F5** T3 timing | the window opened at the audit clock: a January 2024 flip got a September 2026 window | Reproduced | `timing: 'live' \| 'replay'` on evaluation; `raised_as_of` (replay: the breaching observation's date), `raised_at` stays the audit clock; branch `decision_deadline` set by the declarer; window closes at the earlier of the branch window and the deadline; `timely` = `raised_as_of ≤ deadline`, **null when no deadline** — T3 unmeasured, said so on screen | F5 |
+| **F6** Premature outcomes | the three-day stand-in scored a forecast before its target from an earlier observation | Origin 2023-12-02 → target 2024-01-01 with the series ending 2023-12-31 was **scored** from 2023-12-31 | The reader must be positioned after the target; only the target day's own observation, or — for a business-day series — the last published observation within three days before it, taken only once a LATER observation proves the calendar moved on; `observed_on` and `substitution` persisted (port `record_outcome` enforces the same rule; pre-0030 rows carry `observed_on = NULL`, documented) | F6 ×2 |
+| **F7** Backfill | ECB `to: null` moved the upper bound daily and an overnight resume restarted from 1999; an ArcGIS HTTP 200 `{error}` envelope marked the range complete with zero history | Both reproduced at the connector (unit) | `backfillProgressOf` keeps the prior resolved `to` when strategy, `from` and contract version match; an error envelope or non-object page is `EgressRefused('transport_failure')`; items carry their `backfillCursor` and the lifecycle rewrites the checkpoint to the earliest quarantined cursor with `done:false, incomplete` | F7 ×2 (unit) + phase4-backfill 11 |
+
+### 10.8 Corrected measurements
+
+* ECB EUR/USD 30 d, **retrospective**: T1 85.0% / 85.0%, skill −1.6% (unchanged numbers,
+  now labelled by mode). ECB 30 d, **historical**: `CANNOT VALIDATE (historical)` — 0 usable
+  origins, 40 unknowable. The ECB forecast is `validated_retrospective`, never `validated`.
+* Corridor: `validation_impossible`, unchanged.
+* T3: **unmeasured** (§2).
+* Suites at the candidate: §4 (updated).
+
+### 10.9 Browser verification
+
+Recorded in §4 and the handoff: the Prediction screens (overview, forecasts, scenarios,
+warnings, calibration) were opened as `n.eriksen` against the fresh demo database after act IV,
+and the corrected fields are rendered from the record: `VALIDATED RETROSPECTIVELY` and the
+inherited controls on the forecast; `REPLAY · raised as of 2024-01-17 (recorded 2026-09-06)`
+with the decision deadline and `timely` on the warning; the backtest `mode` column; the branch
+deadline column with `T3 unmeasured` where none was declared.
+
+## 11. The C15 gate and the September re-pin
+
+The `supply-chain` check fails on PR #38 — and would fail on `main` today — for **13 ungoverned
+HIGH util-linux findings** (CVE-2026-53612 family) in the exact pinned `postgres:18-alpine` and
+`redis:8-alpine` digests. No published official image of either, in any variant, carries the
+Alpine fix, so a re-pin to a patched image is not possible and no waiver was added. The
+maintenance PR #39 makes the daily recheck watch these findings so the re-pin happens the day a
+rebuild lands. This is unrelated to Phase 4's code and blocks nothing in it except the merge of a
+branch whose required check is red for reasons outside the branch.
+

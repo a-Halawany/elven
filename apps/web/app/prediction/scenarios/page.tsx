@@ -56,7 +56,7 @@ export default function ScenariosPage() {
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
           <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window</Th><Th>Consequence</Th></tr></thead>
+            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th></tr></thead>
             <tbody>
               {s.branches.map((b) => {
                 const i = ind(b.indicator_id);
@@ -64,11 +64,12 @@ export default function ScenariosPage() {
                   <tr key={b.branch_id}>
                     <Td>{b.name}</Td>
                     <Td mono>{b.kind}</Td>
-                    <Td><BranchState state={b.state} />{b.flipped_at === null ? null : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>{fmtInstant(b.flipped_at)} · event <Mono>{String(b.flip_event_id).slice(0, 8)}…</Mono></div>}</Td>
+                    <Td><BranchState state={b.state} />{b.flipped_at === null ? null : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>{fmtInstant(b.flipped_at)} · event <Mono>{String(b.flip_event_id).slice(0, 8)}…</Mono></div>}
+                      {b.warning_state === 'owed' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-critical)', fontWeight: 650 }}>⚠ WARNING OWED — the raise failed; the next evaluation retries it</div> : null}</Td>
                     <Td>{i === null ? '—' : <>{i.series_key} {i.comparator} {i.threshold} for {i.consecutive_days} day(s){i.breached ? ' · BREACHED' : ` · streak ${i.streak}`}</>}</Td>
                     <Td>{b.signpost ?? '—'}</Td>
                     <Td mono>{b.owner_principal_id.slice(0, 8)}…</Td>
-                    <Td>{b.response_window_hours} h</Td>
+                    <Td>{b.response_window_hours} h{b.decision_deadline === undefined || b.decision_deadline === null ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no deadline · T3 unmeasured</div> : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>by {fmtInstant(b.decision_deadline)}</div>}</Td>
                     <Td>{b.consequence}</Td>
                   </tr>
                 );
@@ -82,7 +83,8 @@ export default function ScenariosPage() {
                 if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the evaluation was refused');
                 setReceipt(r.data.receipt);
                 setLastEval(`${r.data.evaluation.evaluated} new observation(s) evaluated · streak ${r.data.evaluation.streak} · `
-                  + (r.data.evaluation.flips.length === 0 ? 'no flip' : `${r.data.evaluation.flips.length} flip(s), ${r.data.warnings.length} warning(s) raised`));
+                  + (r.data.evaluation.flips.length === 0 ? 'no flip' : `${r.data.evaluation.flips.length} flip(s), ${r.data.warnings.length} warning(s) raised`)
+                  + (r.data.evaluation.owedRecovered > 0 ? ` · ${r.data.evaluation.owedRecovered} owed warning(s) recovered` : ''));
                 await load();
               }} />
           )) : null}

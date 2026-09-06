@@ -10,15 +10,18 @@
  *   1. register two SERIES: the ECB rate collected live in P4-M0b, and the
  *      Bab el-Mandeb transit count from the frozen PortWatch replay
  *   2. BACKTEST both at 30 days — the learned model against seasonal naive on
- *      identical origins — and record the verdict whether or not it flatters
+ *      identical origins — in both knowledge modes: RETROSPECTIVE (one vintage
+ *      cut by publisher date) and HISTORICAL (each origin sees only what was
+ *      recorded by its own day, which a backfilled vintage cannot satisfy)
  *   3. ISSUE forecasts: ECB as `live` on 27 years of history; the corridor as a
  *      REPLAY DEMONSTRATION whose quality CANNOT be validated, and which says so
  *   4. declare a SCENARIO TREE on the corridor forecast with a downside branch
  *      whose indicator is "transits below 40/day for five consecutive
  *      observations", owned by a named person with a 48-hour response window
- *   5. EVALUATE the indicator over the replayed January collapse: the branch
- *      FLIPS with a receipt, a WARNING routes to the owner, the owner
- *      acknowledges it inside the window
+ *   5. EVALUATE the indicator over the replayed January collapse in REPLAY
+ *      timing: the branch FLIPS with a receipt, a WARNING is raised AS OF the
+ *      breaching observation against the declared decision deadline, the owner
+ *      acknowledges it
  *   6. the publisher CORRECTS evidence the corridor forecast rests on: Phase 3's
  *      propagation reaches the forecast and marks it for attention
  *   7. the CALIBRATION screen reports what it can and cannot say
@@ -129,16 +132,19 @@ ok(`the corridor: ${corridorPick.name} — median ${corridorPick.med}, minimum $
 if (corridor === undefined) { bad('no place entity from act III — run scripts/phase3/seed-graph.mjs first'); process.exit(1); }
 
 /* ── 2. backtests ────────────────────────────────────────────────────────── */
-console.log('\n2. backtests at 30 days — the learned model against seasonal naive, on identical origins');
+console.log('\n2. backtests at 30 days — the learned model against seasonal naive, on identical origins, in both knowledge modes');
 const verdicts = {};
 for (const s of SERIES) {
-  const r = await call(`${P}/backtests/run`, fo({ action: 'prediction.backtest.record', objectType: 'BKT' }),
-    { seriesKey: s.seriesKey, horizon: '30d', origins: 40 }, forecastOwner.token);
-  if (!r.ok) { bad(`backtest refused for ${s.seriesKey} (${r.status}) ${r.body?.message ?? ''}`); continue; }
-  const b = r.body.backtest;
-  verdicts[s.seriesKey] = b;
-  ok(`${s.seriesKey}: ${b.verdict}`);
-  if (b.t1_met !== null) note(`coverage ${(b.coverage_80 * 100).toFixed(1)}% (naive ${(b.baseline_coverage_80 * 100).toFixed(1)}%) · pinball ${b.pinball_mean} vs ${b.baseline_pinball_mean} · skill ${(b.skill_vs_baseline * 100).toFixed(1)}%`);
+  for (const mode of ['retrospective', 'historical']) {
+    const r = await call(`${P}/backtests/run`, fo({ action: 'prediction.backtest.record', objectType: 'BKT' }),
+      { seriesKey: s.seriesKey, horizon: '30d', origins: 40, mode }, forecastOwner.token);
+    if (!r.ok) { bad(`${mode} backtest refused for ${s.seriesKey} (${r.status}) ${r.body?.message ?? ''}`); continue; }
+    const b = r.body.backtest;
+    verdicts[`${s.seriesKey}:${mode}`] = b;
+    ok(`${s.seriesKey} (${mode}): ${b.verdict}`);
+    if (b.t1_met !== null) note(`coverage ${(b.coverage_80 * 100).toFixed(1)}% (naive ${(b.baseline_coverage_80 * 100).toFixed(1)}%) · pinball ${b.pinball_mean} vs ${b.baseline_pinball_mean} · skill ${(b.skill_vs_baseline * 100).toFixed(1)}%`);
+    if (mode === 'historical' && b.t2_met !== null) bad('a historical backtest validated on a vintage recorded after every origin');
+  }
 }
 
 /* ── 3. forecasts ────────────────────────────────────────────────────────── */
@@ -168,6 +174,7 @@ if (fxAsu) {
     { seriesKey: 'ecb-eurusd', horizon: '30d', assumptions: [fxAsu.strategy_object_id], refreshCadence: 'daily', label: 'live' }, forecastOwner.token);
   if (r.ok) { issued.ecb = r.body.forecast; ok(`ECB 30d [${r.body.forecast.validationState}] ${r.body.forecast.statement}`); }
   else bad(`ECB forecast refused (${r.status}) ${r.body?.message ?? ''}`);
+  if (r.ok && r.body.forecast.validationState === 'validated') bad('a forecast on a backfilled vintage was presented as validated under historical knowledge');
 }
 if (corridorAsu) {
   // The corridor forecast is issued AS OF the eve of the collapse, from what was published up to 2024-01-11.
@@ -206,6 +213,8 @@ if (scenario === undefined && issued.corridor) {
         { name: 'Corridor collapse', kind: 'downside', statement: `transits stay below ${threshold}/day for five consecutive published days`,
           indicatorId, signpost: `five consecutive published observations under ${threshold} transits/day`,
           owner: forecastOwner.principalId, reviewCadence: 'daily', responseWindowHours: 48,
+          // The decision the warning serves: the booking deadline, set from the decision, not from the clock.
+          decisionDeadline: '2024-01-22T00:00:00Z',
           consequence: 'rebook shipment SYN-SHIP-4468 via the Cape before the booking deadline closes' },
       ],
     }, forecastOwner.token);
@@ -218,17 +227,18 @@ if (scenario === undefined && issued.corridor) {
 }
 
 /* ── 5. the collapse, replayed ───────────────────────────────────────────── */
-console.log('\n5. the January collapse, replayed — the branch flips, the warning routes, the owner answers');
+console.log('\n5. the January collapse, replayed — the branch flips, the warning is raised as of the breach, the owner answers');
 if (indicatorId !== null) {
   const r = await call(`${P}/indicators/${indicatorId}/evaluate`, fo({ action: 'prediction.indicator.evaluate', objectType: 'IND', objectId: indicatorId }),
-    { confidence: 0.85 }, forecastOwner.token);
+    { confidence: 0.85, timing: 'replay' }, forecastOwner.token);
   if (!r.ok) bad(`evaluation refused (${r.status}) ${r.body?.message ?? ''}`);
   else {
     const e = r.body.evaluation;
     ok(`${e.evaluated} observation(s) evaluated · streak ${e.streak} · ${e.flips.length} flip(s) · ${r.body.warnings.length} warning(s)`);
     for (const f of e.flips) note(`branch ${f.branchId.slice(0, 8)}… FLIPPED on ${f.observationAt} at ${f.value} transits — event ${f.flipEventId.slice(0, 8)}…`);
     for (const w of r.body.warnings) {
-      note(`warning ${w.warningId.slice(0, 8)}… routed to ${w.routedTo.slice(0, 8)}… (n.eriksen), window closes ${w.closesAt}`);
+      note(`warning ${w.warningId.slice(0, 8)}… routed to ${w.routedTo.slice(0, 8)}… (n.eriksen), raised AS OF ${w.raisedAsOf} (${w.timingMode}), window closes ${w.closesAt}, ${w.timely === null ? 'T3 unmeasured' : w.timely ? 'before the decision deadline' : 'AFTER the decision deadline'}`);
+      if (w.timingMode !== 'replay' || String(w.raisedAsOf).startsWith('202' + '6')) bad('a replayed warning was timed by the audit clock');
       const ack = await call(`${P}/warnings/${w.warningId}/acknowledge`, fo({ action: 'prediction.warning.acknowledge', objectType: 'WRN', objectId: w.warningId }),
         { note: 'rebooked SYN-SHIP-4468 via the Cape of Good Hope; 11-day delay accepted over an unbounded one' }, forecastOwner.token);
       if (ack.ok) ok(`acknowledged inside the window (${ack.body.warning.state})`); else bad(`acknowledgement refused (${ack.status}) ${ack.body?.message ?? ''}`);

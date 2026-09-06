@@ -28,15 +28,25 @@ export interface ForecastRow {
   drivers: Array<{ series_key: string; role: string; share: number | null; evidence_object_id: string; evidence_version: number;
                    evidence_digest: string; attribution: string | null }>;
   assumptions: string[]; evidence_refs: Array<{ evidence_object_id: string; evidence_version: number; evidence_digest: string }>;
-  refresh_cadence: string; validation_state: 'unvalidated' | 'validated' | 'validation_impossible'; validation_note: string;
+  refresh_cadence: string; validation_state: 'unvalidated' | 'validated' | 'validated_retrospective' | 'validation_impossible'; validation_note: string;
   label: 'replay demonstration' | 'live'; skill: Record<string, unknown> | null; statement: string;
+  /** The record that validated it, when one did; and the controls inherited from its evidence. */
+  backtest_id?: string | null; controls?: Controls | null;
   state: 'issued' | 'superseded' | 'resolved' | 'withdrawn'; attention_state: 'none' | 'assumption_unverified';
   attention_reason: string | null; issued_by: string;
   events?: Array<Record<string, unknown>>; outcomes?: Array<Record<string, unknown>>; attribution?: string | null; unit?: string | null;
 }
 
+/** Controls inherited from the evidence a derived object rests on (fail-closed fold). */
+export interface Controls {
+  synthetic_state: boolean; classification: string; rights_profile: string | null; residency_profile: string | null;
+  retention_profile: string | null; access_policy_ref: string | null; inputs: number;
+}
+
 export interface BacktestRow {
   backtest_id: string; series_key: string; horizon_code: string; method: string; baseline_method: string; origins: number;
+  /** 'historical' — each origin saw only what was recorded by then; 'retrospective' — one vintage cut by publisher date. */
+  mode?: 'retrospective' | 'historical'; known_at?: string | null; observations?: number | null;
   coverage_80: number | null; pinball_mean: number | null; baseline_coverage_80: number | null; baseline_pinball_mean: number | null;
   skill_vs_baseline: number | null; t1_met: boolean | null; t2_met: boolean | null; verdict: string; window_from: string;
   window_to: string; computed_at: string;
@@ -47,6 +57,8 @@ export interface BranchRow {
   indicator_id: string | null; signpost: string | null; owner_principal_id: string; review_cadence: string;
   response_window_hours: number; consequence: string; state: 'open' | 'flipped' | 'closed'; flipped_at: string | null;
   flip_event_id: string | null; indicator?: IndicatorRow | null;
+  /** 'owed' — the flip is committed and its warning has not yet been raised. */
+  warning_state?: 'none' | 'owed' | 'raised'; decision_deadline?: string | null;
 }
 
 export interface ScenarioRow {
@@ -67,6 +79,9 @@ export interface WarningRow {
   response_window_opens_at: string; response_window_closes_at: string; routed_to: string; raised_at: string;
   state: 'raised' | 'acknowledged' | 'expired' | 'closed'; acknowledged_at: string | null; acknowledged_by: string | null;
   acknowledgement: string | null; events?: Array<Record<string, unknown>>;
+  /** Timing: raised AS OF (replay: the breaching observation; live: the audit clock) versus the decision deadline. */
+  flip_event_id?: string | null; raised_as_of?: string; timing_mode?: 'live' | 'replay'; decision_deadline?: string | null;
+  timely?: boolean | null; controls?: Controls | null;
 }
 
 export interface Calibration {
@@ -104,7 +119,8 @@ export const prediction = {
   listSeries: (s: Scope) => p<{ series: SeriesRow[]; parsers: string[]; receipt: Receipt }>(s, '/series/list', 'prediction.read', 'SER'),
   seriesPoints: (s: Scope, seriesKey: string, knownAt?: string, observedThrough?: string, limit = 400) =>
     p<{ seriesKey: string; knownAt: string; observedThrough: string | null; unit: string; attribution: string | null;
-        total: number; points: SeriesPoint[]; evidence: number; freshestRecordedAt: string | null; note: string | null }>(
+        total: number; points: SeriesPoint[]; evidence: number; freshestRecordedAt: string | null; note: string | null;
+        complete: boolean; unreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string }>; controls: Controls }>(
       s, `/series/${encodeURIComponent(seriesKey)}/points`, 'prediction.read', 'SER',
       { ...(knownAt ? { knownAt } : {}), ...(observedThrough ? { observedThrough } : {}), limit }),
   listForecasts: (s: Scope, knownAt?: string) =>
@@ -115,7 +131,7 @@ export const prediction = {
   issueForecast: (s: Scope, payload: { seriesKey: string; horizon: string; assumptions: string[]; label: string; knownAt?: string; observedThrough?: string; refreshCadence?: string }) =>
     p<{ forecast: { forecastId: string; method: string; validationState: string; quantiles: { q10: number; q50: number; q90: number }; statement: string; targetAt: string }; receipt: Receipt }>(
       s, '/forecasts/issue', 'prediction.forecast.issue', 'FCT', payload),
-  runBacktest: (s: Scope, payload: { seriesKey: string; horizon: string; origins?: number }) =>
+  runBacktest: (s: Scope, payload: { seriesKey: string; horizon: string; origins?: number; observedThrough?: string; mode?: 'retrospective' | 'historical' }) =>
     p<{ backtest: Record<string, unknown>; receipt: Receipt }>(s, '/backtests/run', 'prediction.backtest.record', 'BKT', payload),
   recordOutcome: (s: Scope, forecastId: string) =>
     p<{ outcome: Record<string, unknown>; receipt: Receipt }>(s, '/outcomes/record', 'prediction.outcome.record', 'OUT', { forecastId }, forecastId),
@@ -123,10 +139,10 @@ export const prediction = {
   listScenarios: (s: Scope) => p<{ scenarios: ScenarioRow[]; receipt: Receipt }>(s, '/scenarios/list', 'prediction.read', 'SCN'),
   getScenario: (s: Scope, id: string) => p<{ scenario: ScenarioRow; receipt: Receipt }>(s, `/scenarios/${id}/get`, 'prediction.read', 'SCN', {}, id),
   listIndicators: (s: Scope) => p<{ indicators: IndicatorRow[]; receipt: Receipt }>(s, '/indicators/list', 'prediction.read', 'IND'),
-  evaluateIndicator: (s: Scope, id: string) =>
-    p<{ evaluation: { evaluated: number; breached: boolean; streak: number; flips: unknown[]; expiredWarnings: number; knownAt: string };
-        warnings: Array<{ warningId: string; routedTo: string; closesAt: string }>; receipt: Receipt }>(
-      s, `/indicators/${id}/evaluate`, 'prediction.indicator.evaluate', 'IND', {}, id),
+  evaluateIndicator: (s: Scope, id: string, timing: 'live' | 'replay' = 'live') =>
+    p<{ evaluation: { evaluated: number; breached: boolean; streak: number; flips: unknown[]; expiredWarnings: number; knownAt: string; timing: string; owedRecovered: number };
+        warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; timingMode: string; recovered: boolean }>; receipt: Receipt }>(
+      s, `/indicators/${id}/evaluate`, 'prediction.indicator.evaluate', 'IND', { timing }, id),
   listWarnings: (s: Scope) => p<{ warnings: WarningRow[]; receipt: Receipt }>(s, '/warnings/list', 'prediction.read', 'WRN', { limit: 200 }),
   getWarning: (s: Scope, id: string) => p<{ warning: WarningRow; receipt: Receipt }>(s, `/warnings/${id}/get`, 'prediction.read', 'WRN', {}, id),
   acknowledgeWarning: (s: Scope, id: string, note: string) =>

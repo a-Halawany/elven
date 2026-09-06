@@ -55,7 +55,7 @@ Nothing below needs a paid service, a hosted model or a new credential. The ECB 
 ECB Data Portal anonymously, as the owner decided; PortWatch stays in replay.
 
 ```bash
-scripts/demo.sh                                # Phase 0: migrate (0001–0029), bootstrap, API on :3401
+scripts/demo.sh                                # Phase 0: migrate (0001–0030), bootstrap, API on :3401
 node scripts/phase1/seed-demo.mjs              # act I   — sources, replay collection
 node scripts/phase2/seed-extraction.mjs        # act II  — claims with lineage
 node scripts/phase3/seed-graph.mjs             # act III — entities, graph, strategy, impact
@@ -66,6 +66,19 @@ node scripts/phase4/seed-prediction.mjs        # act IV  — series, backtests, 
 The web shell at `http://localhost:3000/prediction` renders the same records: Overview, Forecasts,
 Scenarios, Warnings, Calibration. Sign in as `n.eriksen` (forecast owner) or `j.weber` (strategy
 owner) with the operator password from `.eye-local/env`.
+
+To look at the Prediction screens in a browser against that demonstration (API on :3401, web on
+:3000 from `pnpm --filter @eye/web start`), sign in as `n.eriksen` — or run the same walk-through
+Playwright does, through the installed Chrome:
+
+```bash
+npx playwright test -c playwright.demo.config.ts
+```
+
+It opens the overview, a forecast (the badge says `VALIDATED RETROSPECTIVELY` and lists the
+inherited controls), the calibration table (backtest `Mode`), the scenario tree (the branch's
+decision deadline, `T3 unmeasured` where none was declared) and the replayed warning (`REPLAY ·
+raised as of 2024-01-17 (recorded 2026-…)`, timely against the 2024-01-22 deadline).
 
 ## 3. What the demonstration shows
 
@@ -104,9 +117,15 @@ Act IV, on a database carrying acts I–III and the ECB backfill:
   history, which waits on the IMF's answer to the permission request
   ([PHASE4_PORTWATCH_PERMISSION_REQUEST.md](PHASE4_PORTWATCH_PERMISSION_REQUEST.md)). The backfill
   mode that will collect it is built and tested against a transport double.
-* **T3 (usefulness) is measured on one episode.** The replay holds one disruption. The warning
-  fired before the decision window closed in that one episode; the ≥80% target needs more than
-  one, and the record does not claim it.
+* **T3 (usefulness) is unmeasured.** The first pass timed the replayed January 2024 flip by the
+  2026 audit clock. Now a warning records `raised_as_of` (in replay, the breaching observation)
+  separately from `raised_at` (audit), and `timely` against a decision deadline the declarer
+  sets; without a deadline it is `null` and the screen says "T3 unmeasured". The replay holds
+  one episode; the ≥80% target needs more than one, and the record does not claim it.
+* **Validation on the backfilled ECB vintage is retrospective, never historical.** A
+  `historical` backtest gives each origin only what was recorded by its own day, and the whole
+  ECB history was recorded on 2026-09-05 — so it cannot validate, and says so. The forecast's
+  state is `validated_retrospective`, and the badge says what that means.
 * **Live outcomes: none yet.** Calibration from real outcomes starts when the first issued horizon
   elapses; until then the screen says so and shows backtests, labelled as backtests.
 * **The Model Gateway is not used for narrative.** Driver attribution is deterministic (the series
@@ -123,11 +142,16 @@ No hosted API, no new credential, no paid service. The UN Comtrade key was not r
 activation used the anonymous public endpoint; the reuse terms and attribution are on the
 contract.
 
-## 6. Migrations `0028`–`0029` — upgrade evidence
+## 6. Migrations `0028`–`0030` — upgrade evidence
 
 `0028` adds `SRC@v2` (backfill declaration, attribution notice) and the `item.revised` run event.
 `0029` adds the `prediction` schema — twelve tables under FORCE row-level security, eleven ports,
 three canonical schemas (FCT, SCN, WRN), two roles — and teaches the Strategy Graph three
-dependents and two target kinds. The post-C18 upgrade check applies both to a 0021 database
+dependents and two target kinds. `0030` (the correction pass) adds backtest modes and knowledge
+cut-offs, the validation binding on `issue_forecast`, inherited controls on forecasts, scenarios
+and warnings, the owed-warning obligation on branches (one warning per flip), replay timing and
+decision deadlines on warnings, and the observed-on / substitution record on outcomes — all
+forward-only, with `record_outcome` refusing a score before the target day. The post-C18 upgrade
+check applies all three to a 0021 database
 carrying Phase 0 data and previously assessed correction cases, matches the schema against a virgin
-0001–0029 database, and runs every later-phase suite on the upgraded data.
+0001–0030 database, and runs every later-phase suite on the upgraded data.

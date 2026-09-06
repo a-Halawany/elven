@@ -46,9 +46,12 @@ export class RestConnector implements Connector {
     .digest('hex');
 
   private readonly egress: Egress;
+  /** The calendar day an open-ended window resolves against. Injectable for tests. */
+  private readonly today: () => string;
 
-  constructor(opts: { egress?: Egress } = {}) {
+  constructor(opts: { egress?: Egress; today?: () => string } = {}) {
     this.egress = opts.egress ?? liveEgress;
+    this.today = opts.today ?? (() => new Date().toISOString().slice(0, 10));
   }
 
   async acquire(ctx: AcquisitionContext): Promise<AcquisitionOutput> {
@@ -77,7 +80,7 @@ export class RestConnector implements Connector {
      * plan's answer to a budget it is not permitted to raise silently.
      */
     if (replay === null && binding.backfill !== undefined) {
-      const progress = backfillProgressOf(checkpoint, binding.backfill, binding.contractVersion);
+      const progress = backfillProgressOf(checkpoint, binding.backfill, binding.contractVersion, this.today());
       if (!progress.done) {
         const walked = await this.backfill(ctx, binding.backfill, progress);
         nextCheckpoint['backfill'] = walked.progress;
@@ -218,6 +221,12 @@ export class RestConnector implements Connector {
       ctx.budget.spendBytes(res.body.byteLength);
       bytes += res.body.byteLength;
 
+      // AN ERROR ENVELOPE IS A FAILED PAGE. Some services answer 200 with an error
+      // body; admitting it as a window would record nothing as everything.
+      const envelope = errorEnvelope(res.body);
+      if (envelope !== null) {
+        throw new EgressRefused('transport_failure', `backfill page is an error envelope: ${envelope}`);
+      }
       const parentItem: AcquiredItem = {
         itemKey: step.itemKey,
         bytes: res.body,
@@ -225,6 +234,7 @@ export class RestConnector implements Connector {
         filename: step.filename,
         publisherTime: res.headers['last-modified'] ?? null,
         deterministic: true,
+        backfillCursor: progress.cursor,
         transport: {
           connector: this.name,
           connectorVersion: VERSION,
@@ -243,7 +253,7 @@ export class RestConnector implements Connector {
       else {
         parents.push(parentItem);
         // A framed child inherits determinism from the window it was cut from.
-        items.push(...framed.map((f) => ({ ...f, deterministic: true })));
+        items.push(...framed.map((f) => ({ ...f, deterministic: true, backfillCursor: progress.cursor })));
       }
 
       const advanced = advance(decl, progress, step, res.body, framed?.length ?? 0);
@@ -266,26 +276,54 @@ export class RestConnector implements Connector {
  * these is how an operator re-collects a range after a publisher restatement:
  * register a new contract version, and the walk runs again — identical windows
  * no-op, changed windows become revisions.
+ *
+ * THE UPPER BOUND IS RESOLVED ONCE AND PERSISTED. An open-ended declaration
+ * (`to: null`) resolves to the day the walk STARTED and keeps that bound on the
+ * checkpoint; a run on a later day continues to the same bound rather than
+ * finding a "different" declaration and restarting from the beginning. What
+ * lies beyond the bound is the forward poll's, and a new contract version
+ * resolves a new bound.
  */
 export function backfillProgressOf(
   checkpoint: Record<string, unknown>, decl: BackfillDeclaration, contractVersion: number,
+  today: string = new Date().toISOString().slice(0, 10),
 ): BackfillProgress {
-  const to = decl.to ?? new Date().toISOString().slice(0, 10);
   const prior = checkpoint['backfill'] as Partial<BackfillProgress> | undefined;
+  const declaredTo = decl.to ?? null;
   if (prior !== undefined && prior.strategy === decl.strategy && prior.from === decl.from
-      && prior.to === to && prior.contractVersion === contractVersion
+      && prior.contractVersion === contractVersion && typeof prior.to === 'string'
+      && (declaredTo === null || prior.to === declaredTo)
       && prior.cursor !== undefined && typeof prior.done === 'boolean') {
     return {
-      strategy: decl.strategy, from: decl.from, to, contractVersion, cursor: prior.cursor, done: prior.done,
+      strategy: decl.strategy, from: decl.from, to: prior.to, contractVersion, cursor: prior.cursor, done: prior.done,
       requests: prior.requests ?? 0, items: prior.items ?? 0,
       startedAt: prior.startedAt ?? new Date().toISOString(), finishedAt: prior.finishedAt ?? null,
     };
   }
   return {
-    strategy: decl.strategy, from: decl.from, to, contractVersion,
+    strategy: decl.strategy, from: decl.from, to: declaredTo ?? today, contractVersion,
     cursor: decl.strategy === 'period-range' ? decl.from : 0,
     done: false, requests: 0, items: 0, startedAt: new Date().toISOString(), finishedAt: null,
   };
+}
+
+/**
+ * A page that is an ERROR dressed as a document. ArcGIS answers 200 with
+ * `{"error": {...}}`; a JSON body that is not an object, or carries an `error`
+ * member and no data, is not a window. Returns the reason, or null for a page
+ * that may be data.
+ */
+export function errorEnvelope(body: Buffer): string | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body.toString('utf8')); } catch { return null; } // non-JSON is the schema check's to judge
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return 'the page is not a JSON object';
+  const o = parsed as Record<string, unknown>;
+  if (o['error'] !== undefined && o['error'] !== null) {
+    const e = o['error'] as Record<string, unknown>;
+    const msg = typeof e === 'object' ? String(e['message'] ?? e['code'] ?? 'error') : String(e);
+    return `service error: ${msg.slice(0, 160)}`;
+  }
+  return null;
 }
 
 interface Step { url: string; itemKey: string; filename: string; windowStart: string; windowEnd: string; offset: number }

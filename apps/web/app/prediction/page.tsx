@@ -48,8 +48,8 @@ export default function PredictionOverview() {
       <div style={{ display: 'flex', gap: 'var(--eye-space-16)', flexWrap: 'wrap' }}>
         <Stat label="Series" value={o.series} detail="registered, deterministic parsers" />
         <Stat label="Forecasts" value={o.forecasts.total} detail={fmt(o.forecasts.by_state)} />
-        <Stat label="Validation" value={o.forecasts.by_validation['validated'] ?? 0}
-              detail={`validated · ${fmt(o.forecasts.by_validation)}`} />
+        <Stat label="Validation" value={(o.forecasts.by_validation['validated'] ?? 0) + (o.forecasts.by_validation['validated_retrospective'] ?? 0)}
+              detail={`validated (historical or retrospective) · ${fmt(o.forecasts.by_validation)}`} />
         <Stat label="Needing attention" value={o.forecasts.attention} detail="an assumption they rest on changed" />
         <Stat label="Scenario branches" value={o.scenarios.branches} detail={`${o.scenarios.flipped} flipped`} />
         <Stat label="Warnings" value={o.warnings.total} detail={fmt(o.warnings.by_state)} />

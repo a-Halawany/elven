@@ -10,6 +10,11 @@
  * The evaluator reads the indicator's series through the known-at path and
  * feeds each NEW observation to the port in order, so a run of consecutive
  * days is counted exactly as the publisher dated it.
+ *
+ * CONTROLS ARE INHERITED, never declared: a scenario carries the controls of
+ * the forecast it rests on; a warning folds the scenario's with those of the
+ * evidence that breached. A flip's warning is an OBLIGATION recorded with the
+ * flip (`warning_state = 'owed'`) and discharged exactly once per flip.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -18,12 +23,25 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { PredictionReads, ScenarioWrites, IndicatorWrites, EvaluationWrites, WarningWrites,
   AcknowledgeWrites } from '../prediction.capabilities.js';
 import { SeriesService, dayOf, type Reader } from '../series/series.service.js';
+import { foldControls, controlsOf, type Controls } from '../controls.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface BranchIntake {
   name: string; kind: 'baseline' | 'upside' | 'downside'; statement: string; indicatorId: string | null;
   signpost: string | null; owner: string; reviewCadence: string; responseWindowHours: number; consequence: string;
+  /**
+   * The instant by which the decision the warning serves must be taken — set by
+   * the declarer from the decision, not from the clock. Without it, timeliness
+   * (T3) cannot be measured and is recorded as unmeasured.
+   */
+  decisionDeadline: string | null;
+}
+
+export interface Flip {
+  branchId: string; flipEventId: string; observationAt: string; value: number; evidenceObjectId: string; evidenceVersion: number;
+  /** The controls of the breaching evidence version, when the evaluator could see it; null means fold fail-closed. */
+  evidenceControls: Controls | null;
 }
 
 export interface ScenarioIntake {
@@ -51,6 +69,9 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
     if (typeof b.owner !== 'string' || !UUID.test(b.owner)) bad(`branch "${b.name}" needs a named owner`);
     if (typeof b.consequence !== 'string' || b.consequence.trim().length < 8) bad(`branch "${b.name}" needs a consequence of at least 8 characters`);
     if (typeof b.responseWindowHours !== 'number' || b.responseWindowHours < 1) bad(`branch "${b.name}" needs a response window in hours`);
+    if (b.decisionDeadline != null && (typeof b.decisionDeadline !== 'string' || Number.isNaN(Date.parse(b.decisionDeadline)))) {
+      bad(`branch "${b.name}": decisionDeadline must be an instant`);
+    }
   }
   return {
     title: m.title as string, statement: m.statement as string, forecastId: m.forecastId ?? null,
@@ -58,7 +79,8 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
     branches: branches.map((b) => ({
       name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId ?? null, signpost: b.signpost ?? null,
       owner: b.owner, reviewCadence: b.reviewCadence ?? (m.reviewCadence as string),
-      responseWindowHours: b.responseWindowHours, consequence: b.consequence })),
+      responseWindowHours: b.responseWindowHours, consequence: b.consequence,
+      decisionDeadline: b.decisionDeadline == null ? null : new Date(b.decisionDeadline).toISOString() })),
   };
 }
 
@@ -72,6 +94,18 @@ export class ScenariosService {
   ): Promise<{ scenarioId: string; branches: Array<{ branchId: string; name: string; kind: string }> }> {
     const branches = intake.branches.map((b) => ({ ...b, branchId: newId() }));
     const now = new Date().toISOString();
+    // INHERITED: the scenario carries the forecast's controls. A tree declared
+    // on no forecast rests on the declarer's own assertion, which is not
+    // synthetic and not more open than internal.
+    let controls: Controls;
+    if (intake.forecastId === null) {
+      controls = foldControls([{ synthetic_state: false, classification: 'internal' }]);
+    } else {
+      const f = (await cap.readForecasts().selectAll()
+        .where('forecast_id' as never, '=', intake.forecastId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+      if (f === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized forecast matches forecast_id'), 404);
+      controls = foldControls([controlsOf(f['controls']) ?? {}]);
+    }
     const payload = {
       title: intake.title, statement: intake.statement, forecast_id: intake.forecastId,
       subject_entity_id: intake.subjectEntityId, owner: `principal:${intake.owner}`, review_cadence: intake.reviewCadence,
@@ -79,18 +113,20 @@ export class ScenariosService {
         branch_id: b.branchId, name: b.name, kind: b.kind, statement: b.statement,
         indicator: b.indicatorId === null ? null : { indicator_id: b.indicatorId }, signpost: b.signpost,
         owner: `principal:${b.owner}`, review_cadence: b.reviewCadence, response_window_hours: b.responseWindowHours,
-        consequence: b.consequence })),
+        consequence: b.consequence, decision_deadline: b.decisionDeadline })),
+      controls,
     };
     const header: CanonicalHeader = {
       object_id: scenarioId, object_type: 'SCN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${intake.owner}`,
       source_object_ids: intake.forecastId === null ? [] : [`FCT:${intake.forecastId}@1`],
       event_time: null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: false,
+      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: controls.synthetic_state,
       confidence: null, uncertainty: null, evidence_refs: intake.forecastId === null ? [] : [`forecast:${intake.forecastId}`],
       provenance_ref: `principal:${intake.owner}`, method_ref: 'human-declaration@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${intake.owner}`], classification: 'internal',
-      purpose_scope: purposeId, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
+      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${intake.owner}`], classification: controls.classification,
+      purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
+      retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
       quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v1', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
@@ -100,14 +136,14 @@ export class ScenariosService {
     await cap.declareScenario({
       scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, title: intake.title,
       statement: intake.statement, forecastId: intake.forecastId, subjectEntityId: intake.subjectEntityId,
-      owner: intake.owner, reviewCadence: intake.reviewCadence, actor, eventId: newId(), correlationId,
+      owner: intake.owner, reviewCadence: intake.reviewCadence, controls, actor, eventId: newId(), correlationId,
     });
     for (const b of branches) {
       await cap.addBranch({
         branchId: b.branchId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, scenarioId,
         name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId, signpost: b.signpost,
         owner: b.owner, reviewCadence: b.reviewCadence, responseHours: b.responseWindowHours, consequence: b.consequence,
-        actor, eventId: newId(), correlationId,
+        decisionDeadline: b.decisionDeadline, actor, eventId: newId(), correlationId,
       });
     }
     return { scenarioId, branches: branches.map((b) => ({ branchId: b.branchId, name: b.name, kind: b.kind })) };
@@ -137,18 +173,29 @@ export class ScenariosService {
   /**
    * Evaluate one indicator against every observation NEWER than the last one it
    * saw, in date order, as known at `knownAt`. Returns every flip the port
-   * recorded so the caller can raise the warnings that follow.
+   * recorded in this evaluation PLUS every earlier flip still owed a warning,
+   * so the caller discharges the obligation a failed raise left behind. An
+   * incomplete history (evidence this reader could not read) is refused: a
+   * streak counted on a partial series is not the publisher's streak.
    */
   async evaluate(
     cap: EvaluationWrites, ctx: ScopeContext, reader: Reader, indicatorId: string, knownAt: string, actor: string, correlationId: string,
-  ): Promise<{ evaluated: number; breached: boolean; streak: number; flips: Array<{ branchId: string; flipEventId: string; observationAt: string; value: number; evidenceObjectId: string; evidenceVersion: number }> }> {
+  ): Promise<{ evaluated: number; breached: boolean; streak: number; flips: Flip[]; owed: Flip[] }> {
     const ind = (await cap.readIndicators().selectAll()
       .where('indicator_id' as never, '=', indicatorId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (ind === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized indicator matches'), 404);
     const assembled = await this.series.assemble(reader, String(ind['series_key']), knownAt, null);
+    if (!assembled.complete) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId,
+        `${assembled.unreadable.length} evidence version(s) of ${String(ind['series_key'])} could not be read by this reader; the indicator is not evaluated on an incomplete history`), 409);
+    }
+    const controlsFor = (objectId: string, version: number): Controls | null => {
+      const row = assembled.evidenceRows.find((r) => r.object_id === objectId && r.object_version === version);
+      return row === undefined ? null : foldControls([row]);
+    };
     const last = dayOf(ind['last_observation_at']);
     const fresh = assembled.points.filter((p) => last === null || p.date > last);
-    const flips: Array<{ branchId: string; flipEventId: string; observationAt: string; value: number; evidenceObjectId: string; evidenceVersion: number }> = [];
+    const flips: Flip[] = [];
     let breached = ind['breached'] === true; let streak = Number(ind['streak'] ?? 0);
     for (const p of fresh) {
       const rows = await cap.evaluateIndicator({
@@ -160,24 +207,38 @@ export class ScenariosService {
         breached = r.breached; streak = r.streak;
         if (r.flipped_branch_id !== null && r.flip_event_id !== null) {
           flips.push({ branchId: r.flipped_branch_id, flipEventId: r.flip_event_id, observationAt: p.date, value: p.value,
-                       evidenceObjectId: p.evidence_object_id, evidenceVersion: p.evidence_version });
+                       evidenceObjectId: p.evidence_object_id, evidenceVersion: p.evidence_version,
+                       evidenceControls: controlsFor(p.evidence_object_id, p.evidence_version) });
         }
       }
     }
-    return { evaluated: fresh.length, breached, streak, flips };
+    // Every flip still owed a warning, from any earlier evaluation, minus the ones just made.
+    const fresh_ids = new Set(flips.map((f) => f.flipEventId));
+    const owed: Flip[] = (await cap.owedFlips())
+      .filter((o) => !fresh_ids.has(o.flip_event_id))
+      .map((o) => ({ branchId: o.branch_id, flipEventId: o.flip_event_id, observationAt: dayOf(o.observation_at) ?? String(o.observation_at),
+                     value: Number(o.value), evidenceObjectId: o.evidence_object_id, evidenceVersion: Number(o.evidence_version),
+                     evidenceControls: controlsFor(o.evidence_object_id, Number(o.evidence_version)) }));
+    return { evaluated: fresh.length, breached, streak, flips, owed };
   }
 
   /**
    * The warning that follows a flip: routed to the branch's owner, with the
    * branch's response window, citing the flip event and the evidence that
    * breached the indicator.
+   *
+   * TIMING. `raisedAsOf` is the instant the warning is raised AS OF: the audit
+   * clock in live mode, the breaching observation's date in replay mode — a
+   * replay of January 2024 is not given a window that opens in 2026. The
+   * response window opens at that instant and closes at the earlier of the
+   * branch's window and its decision deadline. `timely` compares raisedAsOf to
+   * the deadline the declarer set; with no deadline it is null: T3 unmeasured.
+   * `recorded_at` stays the audit clock either way.
    */
   async warnForFlip(
-    cap: WarningWrites, ctx: ScopeContext,
-    flip: { branchId: string; flipEventId: string; observationAt: string; value: number; evidenceObjectId: string; evidenceVersion: number },
-    confidence: number, actor: string, correlationId: string, purposeId: string, now = new Date(),
-    warningId: string = newId(),
-  ): Promise<{ warningId: string; routedTo: string; closesAt: string }> {
+    cap: WarningWrites, ctx: ScopeContext, flip: Flip, confidence: number, actor: string, correlationId: string, purposeId: string,
+    timing: 'live' | 'replay', now = new Date(), warningId: string = newId(),
+  ): Promise<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; timingMode: 'live' | 'replay' }> {
     const branch = (await cap.readBranches().selectAll()
       .where('branch_id' as never, '=', flip.branchId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (branch === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized branch matches'), 404);
@@ -186,10 +247,21 @@ export class ScenariosService {
     const indicator = (await cap.readIndicators().selectAll()
       .where('indicator_id' as never, '=', String(branch['indicator_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const hours = Number(branch['response_window_hours'] ?? 72);
-    const opensAt = now.toISOString();
-    const closesAt = new Date(now.getTime() + hours * 3_600_000).toISOString();
+    const recordedAt = now.toISOString();
+    const raisedAsOf = timing === 'replay' ? `${flip.observationAt}T00:00:00.000Z` : recordedAt;
+    const deadlineRaw = branch['decision_deadline'];
+    const decisionDeadline = deadlineRaw == null ? null : new Date(String(deadlineRaw instanceof Date ? deadlineRaw.toISOString() : deadlineRaw)).toISOString();
+    const windowEnd = new Date(new Date(raisedAsOf).getTime() + hours * 3_600_000).toISOString();
+    const closesAt = decisionDeadline !== null && decisionDeadline < windowEnd ? decisionDeadline : windowEnd;
+    const timely = decisionDeadline === null ? null : raisedAsOf <= decisionDeadline;
     const routedTo = String(branch['owner_principal_id']);
     const title = `${String(scenario?.['title'] ?? 'scenario')} — branch "${String(branch['name'])}" flipped`;
+    // INHERITED: the scenario's controls folded with the breaching evidence's.
+    // Evidence the evaluator could not see folds fail-closed.
+    const controls = foldControls([
+      controlsOf(scenario?.['controls']) ?? {},
+      flip.evidenceControls ?? {},
+    ]);
     const evidence = [{ kind: 'evidence', evidence_object_id: flip.evidenceObjectId, evidence_version: flip.evidenceVersion,
                         observation_at: flip.observationAt, value: flip.value },
                       { kind: 'flip_event', event_id: flip.flipEventId, branch_id: flip.branchId },
@@ -200,19 +272,22 @@ export class ScenariosService {
       title, branch_id: flip.branchId, indicator_id: String(branch['indicator_id']),
       forecast_id: scenario?.['forecast_id'] ?? null, flip_event_id: flip.flipEventId,
       evidence, consequence: String(branch['consequence']), confidence,
-      response_window: { opens_at: opensAt, closes_at: closesAt }, routed_to: `principal:${routedTo}`,
+      timing: { mode: timing, raised_as_of: raisedAsOf, recorded_at: recordedAt, decision_deadline: decisionDeadline, timely },
+      response_window: { opens_at: raisedAsOf, closes_at: closesAt }, routed_to: `principal:${routedTo}`,
+      controls,
     };
     const header: CanonicalHeader = {
       object_id: warningId, object_type: 'WRN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${routedTo}`,
-      source_object_ids: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`],
-      event_time: `${flip.observationAt}T00:00:00.000Z`, observation_time: opensAt, valid_from: opensAt, valid_to: closesAt,
-      recorded_at: opensAt, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred',
-      synthetic_state: false, confidence: { value: confidence }, uncertainty: null,
+      source_object_ids: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `SCN:${String(branch['scenario_id'])}@1`],
+      event_time: `${flip.observationAt}T00:00:00.000Z`, observation_time: raisedAsOf, valid_from: raisedAsOf, valid_to: closesAt,
+      recorded_at: recordedAt, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred',
+      synthetic_state: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
       evidence_refs: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `flip:${flip.flipEventId}`],
       provenance_ref: `branch:${flip.branchId}`, method_ref: 'indicator-breach@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: 'internal', purpose_scope: purposeId,
-      rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null, quality_profile: null,
+      contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: controls.classification, purpose_scope: purposeId,
+      rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
+      access_policy_ref: controls.access_policy_ref, quality_profile: null,
       quality_state: null, freshness_state: null, schema_ref: 'WRN@v1', ontology_ref: null, correction_of: null,
       supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
@@ -222,10 +297,11 @@ export class ScenariosService {
     await cap.raiseWarning({
       warningId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, branchId: flip.branchId,
       indicatorId: String(branch['indicator_id']), forecastId: scenario?.['forecast_id'] === undefined ? null : (scenario['forecast_id'] as string | null),
-      title, evidence, consequence: String(branch['consequence']), confidence, opensAt, closesAt, routedTo,
+      title, evidence, consequence: String(branch['consequence']), confidence, opensAt: raisedAsOf, closesAt, routedTo,
+      flipEventId: flip.flipEventId, raisedAsOf, timingMode: timing, decisionDeadline, timely, controls,
       actor, eventId: newId(), correlationId,
     });
-    return { warningId, routedTo, closesAt };
+    return { warningId, routedTo, raisedAsOf, closesAt, timely, timingMode: timing };
   }
 
   async acknowledge(cap: AcknowledgeWrites, ctx: ScopeContext, warningId: string, note: string, actor: string, correlationId: string): Promise<string> {

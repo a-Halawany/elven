@@ -58,11 +58,11 @@ export default function CalibrationPage() {
         <h2 id="bt-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Backtests on held-out history — the learned model against seasonal naive</h2>
         {c.backtests.length === 0 ? <Empty>No backtest has been run.</Empty> : (
           <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Series</Th><Th>Horizon</Th><Th>Origins</Th><Th>Coverage (model / naive)</Th><Th>Pinball (model / naive)</Th><Th>Skill</Th><Th>T1</Th><Th>T2</Th><Th>Window</Th></tr></thead>
+            <thead><tr><Th>Series</Th><Th>Horizon</Th><Th>Mode</Th><Th>Origins</Th><Th>Coverage (model / naive)</Th><Th>Pinball (model / naive)</Th><Th>Skill</Th><Th>T1</Th><Th>T2</Th><Th>Window</Th></tr></thead>
             <tbody>
               {c.backtests.map((b) => (
                 <tr key={b.backtest_id}>
-                  <Td>{b.series_key}</Td><Td mono>{b.horizon_code}</Td><Td mono>{b.origins}</Td>
+                  <Td>{b.series_key}</Td><Td mono>{b.horizon_code}</Td><Td mono>{b.mode ?? 'retrospective'}</Td><Td mono>{b.origins}</Td>
                   <Td mono>{pct(b.coverage_80)} / {pct(b.baseline_coverage_80)}</Td>
                   <Td mono>{num(b.pinball_mean)} / {num(b.baseline_pinball_mean)}</Td>
                   <Td mono>{pct(b.skill_vs_baseline)}</Td><Td>{met(b.t1_met)}</Td><Td>{met(b.t2_met)}</Td>

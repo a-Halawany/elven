@@ -18,8 +18,9 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 
 export function ValidationBadge({ state, label }: { state: ForecastRow['validation_state']; label: ForecastRow['label'] }) {
   const map: Record<string, { glyph: string; token: string; text: string }> = {
-    validated: { glyph: '●', token: '--eye-color-success', text: 'VALIDATED — backtested on held-out history' },
-    unvalidated: { glyph: '◍', token: '--eye-color-warning', text: 'UNVALIDATED — no backtest has scored it' },
+    validated: { glyph: '●', token: '--eye-color-success', text: 'VALIDATED — backtested under historical knowledge on the history it was fitted on' },
+    validated_retrospective: { glyph: '◐', token: '--eye-color-warning', text: 'VALIDATED RETROSPECTIVELY — one evidence vintage cut by publisher date; not historical-knowledge validation' },
+    unvalidated: { glyph: '◍', token: '--eye-color-warning', text: 'UNVALIDATED — no applicable backtest has scored it' },
     validation_impossible: { glyph: '✕', token: '--eye-color-critical', text: 'CANNOT BE VALIDATED — history too short' },
   };
   const v = map[state] ?? (map['unvalidated'] as { glyph: string; token: string; text: string });
@@ -29,6 +30,21 @@ export function ValidationBadge({ state, label }: { state: ForecastRow['validati
       <span style={{ color: label === 'live' ? 'var(--eye-color-ink-muted)' : 'var(--eye-color-warning)', fontWeight: 650 }}>
         {label === 'live' ? 'live' : 'REPLAY DEMONSTRATION'}
       </span>
+    </span>
+  );
+}
+
+/** The controls a derived object inherited from its evidence — shown before its number, never after. */
+export function ControlsLine({ controls }: { controls: { synthetic_state: boolean; classification: string; rights_profile: string | null;
+  residency_profile: string | null; retention_profile: string | null; inputs?: number } | null | undefined }) {
+  if (controls === null || controls === undefined) return <span style={{ color: 'var(--eye-color-ink-muted)' }}>controls not recorded (issued before they were inherited)</span>;
+  return (
+    <span style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+      {controls.synthetic_state ? <strong style={{ color: 'var(--eye-color-critical)' }}>SYNTHETIC · </strong> : null}
+      classification <Mono>{controls.classification}</Mono>
+      {controls.rights_profile === null ? null : <> · rights <Mono>{controls.rights_profile}</Mono></>}
+      {controls.residency_profile === null ? null : <> · residency <Mono>{controls.residency_profile}</Mono></>}
+      {controls.retention_profile === null ? null : <> · retention <Mono>{controls.retention_profile}</Mono></>}
     </span>
   );
 }
@@ -111,6 +127,7 @@ export default function ForecastsPage() {
           <h2 id="fct-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{open.series_key} · {open.horizon_code}</h2>
           <ValidationBadge state={open.validation_state} label={open.label} />
           <p>{open.validation_note}</p>
+          <p><ControlsLine controls={open.controls} /></p>
           {open.attention_state === 'none' ? null : (
             <UnknownNote><strong>This forecast needs attention.</strong> {open.attention_reason}</UnknownNote>
           )}
@@ -124,7 +141,7 @@ export default function ForecastsPage() {
             </DefinitionRow>
             <DefinitionRow term="Method">
               <Mono>{open.method}@{open.method_version}</Mono> — compared against <Mono>{open.baseline_method}</Mono>
-              {open.skill === null ? ' (no backtest on record)' : ` · skill vs baseline ${num(open.skill['skill_vs_baseline'])} · coverage ${num(open.skill['coverage_80'])}`}
+              {open.skill === null ? ' (no applicable backtest on record)' : ` · applicable backtest (${String(open.skill['mode'] ?? 'retrospective')}) · skill vs baseline ${num(open.skill['skill_vs_baseline'])} · coverage ${num(open.skill['coverage_80'])}`}
             </DefinitionRow>
             <DefinitionRow term="Drivers">
               <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>

@@ -122,12 +122,15 @@ export class PredictionController {
     const knownAt = instant(body.payload?.knownAt, new Date().toISOString());
     const assembled = await this.series.assemble(reader, seriesKey, knownAt, day(body.payload?.observedThrough));
     const limit = Math.min(Math.max(1, body.payload?.limit ?? 400), 5000);
+    const unreadableNote = assembled.complete ? ''
+      : ` INCOMPLETE: ${assembled.unreadable.length} evidence version(s) could not be read by this reader and contributed no points.`;
     return {
       seriesKey, knownAt, observedThrough: assembled.observedThrough,
       unit: assembled.series.unit, attribution: assembled.attribution,
       total: assembled.points.length, points: assembled.points.slice(-limit),
       evidence: assembled.evidence.length, freshestRecordedAt: assembled.freshestRecordedAt,
-      note: assembled.attribution === null ? null : `${assembled.attribution} Shown as published; the statistics are not modified.`,
+      complete: assembled.complete, unreadable: assembled.unreadable, controls: assembled.controls,
+      note: (assembled.attribution === null ? '' : `${assembled.attribution} Shown as published; the statistics are not modified.`) + unreadableNote || null,
     };
   }
 
@@ -211,12 +214,15 @@ export class PredictionController {
   @Post('/backtests/run')
   async runBacktest(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
-    @Body() body: { payload?: { seriesKey?: string; horizon?: string; knownAt?: string; origins?: number; stride?: number } },
+    @Body() body: { payload?: { seriesKey?: string; horizon?: string; knownAt?: string; observedThrough?: string; origins?: number; stride?: number; mode?: string } },
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     if (typeof p.seriesKey !== 'string' || typeof p.horizon !== 'string') {
       throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'seriesKey and horizon are required'), 400);
+    }
+    if (p.mode !== undefined && p.mode !== 'retrospective' && p.mode !== 'historical') {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, "mode must be 'retrospective' or 'historical'"), 400);
     }
     const reader = this.reader(req, tenantId, domainId);
     const out = await this.pipeline.write(
@@ -225,8 +231,9 @@ export class PredictionController {
       async (cap, scope) => {
         const r = await this.forecasting.backtest(cap, scope, reader, {
           seriesKey: p.seriesKey as string, horizonCode: p.horizon as string,
-          knownAt: instant(p.knownAt, new Date().toISOString()),
+          knownAt: instant(p.knownAt, new Date().toISOString()), observedThrough: day(p.observedThrough),
           ...(typeof p.origins === 'number' ? { origins: p.origins } : {}), ...(typeof p.stride === 'number' ? { stride: p.stride } : {}),
+          ...(p.mode === 'historical' ? { mode: 'historical' as const } : {}),
         }, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'BKT', targetId: String(r['backtestId']), targetVersion: '1', outboxEvent: null };
       });
@@ -308,20 +315,29 @@ export class PredictionController {
 
   /**
    * Evaluate an indicator against everything newer than it last saw. A breach
-   * flips every open branch that names it, and each flip raises a WARNING to
-   * the branch owner in the same governed operation — so a flip without a
-   * warning cannot exist.
+   * flips every open branch that names it, and each flip records the WARNING
+   * it owes; the warning is raised to the branch owner in its own governed
+   * operation. A raise that fails leaves the obligation recorded on the branch
+   * and is retried by the next evaluation — a flip without a warning is not
+   * silent, it is owed, and this call fails loudly while it is.
+   *
+   * `timing` is 'live' (window opens at the audit clock) or 'replay' (window
+   * opens at the breaching observation; recorded_at stays the audit clock).
    */
   @Post('/indicators/:indicatorId/evaluate')
   async evaluateIndicator(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
     @Param('indicatorId') indicatorId: string,
-    @Body() body: { payload?: { knownAt?: string; confidence?: number } },
+    @Body() body: { payload?: { knownAt?: string; confidence?: number; timing?: string } },
   ) {
     const { envelope, principal } = ctx(req);
     const reader = this.reader(req, tenantId, domainId);
     const knownAt = instant(body.payload?.knownAt, new Date().toISOString());
     const confidence = Math.max(0, Math.min(1, Number(body.payload?.confidence ?? 0.8)));
+    const timing = body.payload?.timing ?? 'live';
+    if (timing !== 'live' && timing !== 'replay') {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, "timing must be 'live' or 'replay'"), 400);
+    }
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'prediction.indicator.evaluate', 'IND', indicatorId),
       PredictionCapability.evaluation,
@@ -330,23 +346,37 @@ export class PredictionController {
         const expired = await cap.expireWarnings({ tenantId, domainId, actor: principal.principalId, correlationId: envelope.correlation_id });
         return { result: { ...r, expiredWarnings: expired }, targetType: 'IND', targetId: indicatorId, targetVersion: '1', outboxEvent: null };
       });
-    const warnings: Array<{ warningId: string; routedTo: string; closesAt: string; branchId: string }> = [];
-    for (const flip of out.result.flips) {
+    const warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; timingMode: string; branchId: string; recovered: boolean }> = [];
+    const failed: Array<{ branchId: string; flipEventId: string; reason: string }> = [];
+    const due = [...out.result.flips.map((f) => ({ flip: f, recovered: false })), ...out.result.owed.map((f) => ({ flip: f, recovered: true }))];
+    for (const { flip, recovered } of due) {
       const warningId = newId();
-      const w = await this.pipeline.write(
-        { ...envelope, action: 'prediction.warning.raise', message_id: newId() }, principal,
-        this.route(tenantId, domainId, 'prediction.warning.raise', 'WRN', warningId),
-        PredictionCapability.warning,
-        async (cap, scope) => {
-          const r = await this.scenarios.warnForFlip(cap, scope, flip, confidence, principal.principalId,
-            envelope.correlation_id, envelope.purpose_id ?? 'prediction', new Date(), warningId);
-          return { result: r, targetType: 'WRN', targetId: r.warningId, targetVersion: '1',
-                   outboxEvent: { eventType: 'EarlyWarningRaised', payload: { warning_id: r.warningId, routed_to: r.routedTo,
-                                  closes_at: r.closesAt, branch_id: flip.branchId, flip_event_id: flip.flipEventId } } };
-        });
-      warnings.push({ ...w.result, branchId: flip.branchId });
+      try {
+        const w = await this.pipeline.write(
+          { ...envelope, action: 'prediction.warning.raise', message_id: newId() }, principal,
+          this.route(tenantId, domainId, 'prediction.warning.raise', 'WRN', warningId),
+          PredictionCapability.warning,
+          async (cap, scope) => {
+            const r = await this.scenarios.warnForFlip(cap, scope, flip, confidence, principal.principalId,
+              envelope.correlation_id, envelope.purpose_id ?? 'prediction', timing, new Date(), warningId);
+            return { result: r, targetType: 'WRN', targetId: r.warningId, targetVersion: '1',
+                     outboxEvent: { eventType: 'EarlyWarningRaised', payload: { warning_id: r.warningId, routed_to: r.routedTo,
+                                    raised_as_of: r.raisedAsOf, closes_at: r.closesAt, timing_mode: r.timingMode, timely: r.timely,
+                                    branch_id: flip.branchId, flip_event_id: flip.flipEventId } } };
+          });
+        warnings.push({ ...w.result, branchId: flip.branchId, recovered });
+      } catch (e) {
+        failed.push({ branchId: flip.branchId, flipEventId: flip.flipEventId, reason: e instanceof Error ? e.message : String(e) });
+      }
     }
-    return { evaluation: { ...out.result, knownAt }, warnings, receipt: receipt(out) };
+    const { owed: _owed, ...evaluation } = out.result;
+    if (failed.length > 0) {
+      throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id,
+        `${failed.length} flip(s) are committed and still OWE a warning that could not be raised `
+        + `(${failed.map((f) => `branch ${f.branchId}: ${f.reason}`).join('; ')}); the obligation stays recorded on the branch and is retried by the next evaluation. `
+        + `${warnings.length} warning(s) were raised.`), 409);
+    }
+    return { evaluation: { ...evaluation, knownAt, timing, owedRecovered: out.result.owed.length }, warnings, receipt: receipt(out) };
   }
 
   @Post('/scenarios/declare')

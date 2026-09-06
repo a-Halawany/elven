@@ -174,7 +174,7 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN
   'objects.schema_registry': 17,
   // one ledger line per migration applied above the ceiling (0022–0029)
-  'public.schema_migrations': 8,
+  'public.schema_migrations': 9,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
