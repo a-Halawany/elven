@@ -144,6 +144,11 @@ describe('P5-M1 · E1 — grounding under two cut-offs; materiality from the sch
     expect(g.grounded.points).toBeGreaterThan(1000);
     expect(g.grounded.health).toBe('complete');
     expect(g.grounded.observedThrough).toBe('2023-11-20');
+    // The version READ BACK names the same day: a DATE leaves as the day it names, never as a local-midnight instant printed in UTC.
+    const read = (await twins.get(h.req(owner, 'twin.read', 'TWN', twinId, 'twin'), h.fx.tenantId, h.fx.domainId, twinId)) as { twin: { versions: Array<{ version: number; observed_through: unknown; known_at: unknown }> } };
+    const readBack = read.twin.versions.find((x) => x.version === v.version.version);
+    expect(readBack?.observed_through).toBe('2023-11-20');
+    expect(typeof readBack?.known_at === 'string' ? readBack.known_at : (readBack?.known_at as Date).toISOString()).toBe(knownAfterBackfill);
     // The synthetic restated window (December 2023) was recorded before knownAt, but its observations lie after observed_through: not contributing.
     const el = (await sql<{ value: Record<string, unknown>; citations: unknown[]; synthetic_state: boolean; material: boolean }>`select value, citations, synthetic_state, material from twin.state_elements
       where twin_id = ${twinId}::uuid and version = ${v.version.version} and key = 'series.transits'`.execute(h.su)).rows[0];

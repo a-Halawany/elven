@@ -309,13 +309,13 @@ export class SimulationService {
     if (r === undefined) return undefined;
     const events = (await cap.readRunEvents().selectAll().where('run_id' as never, '=', runId as never).orderBy('occurred_at' as never).execute()) as unknown[];
     const reproductions = (await cap.readReproductions().selectAll().where('run_id' as never, '=', runId as never).orderBy('reproduced_at' as never).execute()) as unknown[];
-    return { ...r, events, reproductions };
+    return { ...withDays(r), events, reproductions };
   }
 
   async list(cap: SimulationReads, twinId: string | null): Promise<unknown[]> {
     let q = cap.readRuns().selectAll();
     if (twinId !== null) q = q.where('twin_id' as never, '=', twinId as never);
-    return (await q.orderBy('opened_at' as never, 'desc').limit(200).execute()) as unknown[];
+    return ((await q.orderBy('opened_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>).map(withDays);
   }
 }
 
@@ -337,6 +337,11 @@ export function contractOf(r: Record<string, unknown>): { params: SupplyFlowPara
 export type { SupplyFlowOutputs };
 
 function instantOf(v: unknown): string { return v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString(); }
+/* A DATE names a day; the driver's local-midnight Date would print in UTC a day west of Greenwich. */
+function withDays<T extends Record<string, unknown>>(row: T): T {
+  return 'observed_through' in row ? { ...row, observed_through: dayOf(row['observed_through']) } : row;
+}
+
 function dayOf(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;

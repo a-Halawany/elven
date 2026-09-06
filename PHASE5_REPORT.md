@@ -128,3 +128,117 @@ Routes: `twins/:id/reconcile`; `twins/:id/get` now returns `reconciliations` and
 | E7 · precision | a version on another branch that does not cite the corrected object is left `verified` by a second walk |
 | E3 · reconciliation | a `simulated` element citing the control run (synthetic) is reconciled against a later `observed` element of the same key: the numeric difference **157.143** is recorded with both citations, the simulated value is unchanged, and an observed element cannot be reconciled "as if" simulated |
 
+## 5. P5-M6 — the Twins workspace
+
+A fifth workspace beside Prediction, Graph, Intelligence and Observation (`apps/web/app/twins`,
+client `apps/web/lib/twins.ts`), linked from the other shells. **Twins**: the twin's world
+(`SYNTHETIC` or observed), validation status and limitations, boundary, versions and branches
+(fork lineage, draft/admitted, verified/unverified, complete/incomplete), the two cut-offs in
+words ("observations through … read at record time … — nothing recorded after that instant, and
+nothing observed after that day, is in this version"), the state-set digest, and every element
+with its kind (observed / estimated / assumed / predicted / simulated, plus the claim's truth
+state where derived and a `SYNTHETIC WORLD` marker), materiality, health, validity and exact
+citations; `PROPAGATION PENDING` for applied corrections no operator has walked; recorded
+reconciliations. **Simulations**: run a control or an intervention on an admitted, complete
+version against a chosen control; every run listed with its interventions, line-stop days and
+cost, `FAILED` with its reason where applicable, `twin version UNVERIFIED` where applicable;
+compare selected runs on their common control; a run's bound contract, cut-offs, digests,
+totals, the assumptions carrying the result, envelope breaches, reproductions with verdicts; a
+governed "Reproduce from the stored contract" action. Every value on that screen is labelled
+SYNTHETIC. The screens offer only what the server would allow (twin owner / simulation
+operator) and enforce nothing themselves.
+
+## 6. P5-M7 — the end-to-end demonstration and the browser
+
+### 6.1 Act V, through the same servers as acts I–IV
+
+`scripts/phase5/seed-twins.mjs` runs after acts I–IV on the demonstration deployment
+(`eye_demo`, API on :3401, degraded journal `apps/api/.eye-local/degraded-demo`), through the
+governed routes only. It is idempotent across passes: a persona is reused only when it IS that
+persona (a login already belonging to another persona is refused, never re-bound), an open draft
+left by an earlier pass is resumed, a series already grounded in that draft is reported rather
+than re-grounded (elements are append-only per draft), and a correction already walked is not
+staged again (a restatement is an event, not a fixture). The final pass reports **0 problems**:
+
+1. **The twin owner, the boundary, the records.** T. Nakamura (`twin_owner`) is created by the
+   platform administrator. The boundary is chosen from the graph acts I–III resolved — the
+   company `NORDWERK ANTRIEBSTECHNIK GmbH`, the constrained component `SYN-PART-MAG` and the
+   corridor place the graph actually holds (`Suez Canal`; no "Bab el-Mandeb" place entity exists
+   in the demonstration graph, and the script does not invent one). The three NORDWERK records
+   (inventory, shipments, routes-and-terms) are identified by **downloading their bytes** and
+   matching the CSV headers, never by a name; each is `synthetic_state = true` at object level.
+2. **Declare.** One twin, `supply-chain`, `supply-flow@1`, validation `unvalidated (synthetic
+   grounding)` with four limitations, two intended decisions.
+3. **Ground and admit version 1.** `series.transits:chokepoint4` OBSERVED from the PortWatch
+   replay — 20 points through 2024-01-17, `known_at` the real 2026 record instant — and 16
+   elements citing the uploaded records (all material, synthetic world folded upward);
+   ADMITTED complete with its state-set digest bound.
+4. **Control.** `run_kind = control`, intervention `none`, on the flipped branch's shock: 29
+   line-stop days from 2024-01-28, €4,118,000.00, outputs digest `4345238e…` — the executable
+   spec's shock checkpoint (§6b of the plan).
+5. **Interventions on that control.** Reroute SYN-SHIP-4472 via the Cape (€48,100 reroute, the
+   stop unchanged), the air bridge decided 2024-01-17 (22 stop days, €79,539.97 air), draw-down
+   (0 stops, 38 days below safety stock, €0), draw-down + reroute; rerouting the committed
+   SYN-SHIP-4471 refused (422); the comparison on one control; the assumption carrying the
+   control's result (`terms.line_stop_cost_per_day:SYN-LINE-A1`, spread €823,600.00).
+6. **Reproduce.** A cold re-execution in a fresh process from the stored contract and the API's
+   own reproduction both return the identical outputs digest: `REPRODUCED`.
+7. **Change one assumption by hand.** Branch `alt-30-day-delay`, version 2 forked from 1 with
+   carry-forward of everything but the corridor delay (now 30 days): a different state set, a
+   different contract, a different digest (45 stop days, €6,390,000.00); versions 1 and 2 differ
+   in exactly `shock.corridor_delay_days`; comparing runs on different initial states refused.
+8. **The correction reaches the twin through the operator.** A publisher restatement of a corridor
+   day is submitted and applied: the twin shows PROPAGATION PENDING and version 1 stays verified —
+   nothing moved by itself. The strategy owner runs the walk: version 1 UNVERIFIED by event, the
+   six runs built on it surfaced, the alternative branch (which cites the same evidence) unverified.
+9. **What the act does not say.** No option is recommended, nothing is decided — Phase 6.
+
+### 6.2 Browser verification
+
+`npx playwright test -c playwright.demo.config.ts` (installed Chrome, against the demonstration
+servers) — **12/12**: the ten Phase 4 checks unchanged, plus **TWINS** (as T. Nakamura: the
+NORDWERK row `SYNTHETIC`, `unvalidated (synthetic grounding)`; the detail's `SYNTHETIC WORLD`
+marker, the two cut-offs in words — "observations through 2024-01-17, read at record time 2026-…" —
+`● OBSERVED` and `◍ ASSUMED` kinds, `complete` health, and `UNVERIFIED — a cited input was
+corrected` after the walk) and **SIMULATIONS** (the SYNTHETIC banner; selecting one control and
+the interventions that reference it — read from the rows — and comparing them on that control;
+opening the control run, its cut-off line "observations through 2024-01-17, read at record time 2026-…",
+its assumptions carrying the result, and the governed "Reproduce from the stored contract" action
+returning `REPRODUCED`). Screenshots `evidence/phase4-browser/10-twins.png`
+and `11-simulations.png` are regenerated by the run and, like the Phase 4 screenshots, not committed.
+
+### 6.3 What the demonstration found, and what changed for it
+
+The end-to-end pass is the first time the routes were exercised over HTTP in sequence, and it
+found four defects the controller-harness probes could not see (the third in two services). Each is fixed with a check:
+
+| Found | Fix | Check |
+|---|---|---|
+| `POST …/twins/simulations/compare` answered "a and b must be version numbers": Express matches routes in declaration order and `/:twinId/compare` captured `simulations`. | The per-twin compare route is declared after the static simulations routes, with the reason recorded beside it. | Act V step 5 (comparison on one control) and the SIMULATIONS browser check pass over HTTP. |
+| Refusals raised by the twin and simulation ports (a second draft on a branch, grounding into an admitted version, an incompatible control, …) reached the operator as `500 internal integrity or processing failure`: the refusal translation knew only the Phase 1–2 ports. | `TWIN_RULES` in `observation-errors.ts`: each port refusal answers as what it is — 409 conflict, 422 bad request, 404 absent — in the product's words, with the port's text kept server-side; SQLSTATE `2F002` (immutability) admitted to the translation. | `test/unit/phase5-refusals.test.ts` (5 checks, including that a fault without a port SQLSTATE still stays a fault). |
+| The Twins screen showed `observations through 2024-01-16` for a version whose cut-off is 2024-01-17: `twin.get`/`list` returned DATE columns as driver Dates, which JSON printed in UTC — a day west of Greenwich. | Day-valued columns (`observed_through`, `valid_from`, `valid_to`) leave the twin service as the day they name; the same for a run's `observed_through` in the simulation service's get and list (the run detail showed the same day-early cut-off). | `phase5-twins.test.ts` WORLD-time probe reads the version back and asserts `observed_through === '2023-11-20'` and `known_at` unchanged (15/15); `phase5-simulations.test.ts` reads the control run back by get and list and asserts `2024-01-17` (9/9); the SIMULATIONS browser check asserts the run detail's cut-off line. |
+| The demonstration's twin owner login `r.okafor` already belonged to the Phase 2 extraction agent, so the "twin owner" was bound `extraction_agent` and every twin action was refused 403. | The twin owner is `t.nakamura`; `ensureOperator` refuses to reuse a login that belongs to a different persona. | Act V step 1; the TWINS/SIMULATIONS browser checks log in as `t.nakamura`. |
+
+Two observations recorded, not changed: the screens shorten object ids to eight characters, which
+for time-ordered ids is shared by every object of one pass (the browser check therefore selects
+the control by its kind and branch, not by prefix alone); and a series element lists every cited
+evidence version in full (twenty for the PortWatch series), which is exact but long.
+
+### 6.4 Harness evidence at the M7 commit
+
+All run from the main checkout with the API stopped (C14 inertness), after the browser suite:
+
+| Suite | Result |
+|---|---|
+| API unit (`pnpm run test`) | 2121 checks: 2118 passed; the 3 failures are the C15 hermetic scanner controls in `test/gate/receipt-contract.test.ts`, which fail under batch load and pass alone (14/14 rerun) — the same load-related behaviour recorded at M1–M5 |
+| API integration, all (`pnpm run test:int:all`) | 30 files, 628/628 (phase5-twins 15, phase5-simulations 9, phase5-propagation 4; the frozen `test:int` manifest still excludes `phase5-*`) |
+| Acceptance (`pnpm run test:accept`) | 58/58 |
+| Module boundaries (`pnpm run boundaries`) | no violations, 452 modules, 1753 dependencies |
+| Upgrade check (`scripts/phase1/verify-0022-upgrade.mjs`) | PASS (13 migrations, 19 schema-registry rows, 11 roles) |
+| Web (`vitest`, `tsc --noEmit`, `next build`) | 4/4, clean, built |
+| New unit: `test/unit/phase5-refusals.test.ts` | 5/5 |
+| Browser (`playwright.demo.config.ts`) | 12/12 |
+| Act V (`scripts/phase5/seed-twins.mjs` on `eye_demo`) | 0 problems; acts I–IV before it unchanged (the ECB live backfill hit its transient egress timeout once and resumed from the checkpoint) |
+| Secrets (`gitleaks git`) | no leaks found |
+| C15 supply-chain gate | unchanged: red on the 13 ungoverned util-linux findings (PR #39 recheck; no patched image), no waiver |
+

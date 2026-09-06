@@ -195,21 +195,6 @@ export class TwinController {
     return { asOf: at, branchId, version: out.result ?? null, receipt: receipt(out) };
   }
 
-  @Post('/:twinId/compare')
-  async compare(
-    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
-    @Body() body: { payload?: { a?: number; b?: number } },
-  ) {
-    const { envelope, principal } = ctx(req);
-    const a = Number(body.payload?.a); const b = Number(body.payload?.b);
-    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a and b must be version numbers'), 400);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'twin.read', 'TWN', twinId),
-      TwinCapability.read, async (cap) => this.twins.compare(cap, twinId, a, b));
-    return { comparison: out.result, receipt: receipt(out) };
-  }
-
-  // ───────────────────────── simulations ─────────────────────────
-
   /**
    * RUN: two governed writes. `simulation.run` binds the contract and snapshots the
    * initial state; `simulation.run.complete` executes from that snapshot, admits the
@@ -289,4 +274,23 @@ export class TwinController {
     if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized run matches'), 404);
     return { run: out.result, receipt: receipt(out) };
   }
+
+  /*
+   * Declared after the static `/simulations/compare` route on purpose: Express matches
+   * routes in declaration order, and `:twinId` would otherwise capture `simulations`.
+   */
+  @Post('/:twinId/compare')
+  async compare(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
+    @Body() body: { payload?: { a?: number; b?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const a = Number(body.payload?.a); const b = Number(body.payload?.b);
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a and b must be version numbers'), 400);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'twin.read', 'TWN', twinId),
+      TwinCapability.read, async (cap) => this.twins.compare(cap, twinId, a, b));
+    return { comparison: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── simulations ─────────────────────────
 }

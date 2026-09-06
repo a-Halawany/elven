@@ -324,7 +324,7 @@ export class TwinService {
   async list(cap: TwinReads): Promise<Array<Record<string, unknown>>> {
     const twins = (await cap.readTwins().selectAll().orderBy('declared_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
     const versions = (await cap.readVersions().selectAll().orderBy('version' as never).execute()) as Array<Record<string, unknown>>;
-    return twins.map((t) => ({ ...t, versions: versions.filter((v) => String(v['twin_id']) === String(t['twin_id'])) }));
+    return twins.map((t) => ({ ...t, versions: versions.filter((v) => String(v['twin_id']) === String(t['twin_id'])).map(withDays) }));
   }
 
   async get(cap: TwinReads, twinId: string): Promise<Record<string, unknown> | undefined> {
@@ -347,7 +347,7 @@ export class TwinService {
       const ids = affected.map((x) => (typeof x === 'string' ? x : String((x as Record<string, unknown>)['evd_object_id'] ?? (x as Record<string, unknown>)['object_id'] ?? '')));
       return ids.some((id) => cited.has(id)) && c['propagation_state'] !== 'complete';
     }).map((c) => ({ case_id: c['case_id'], kind: c['kind'], state: c['state'], propagation_state: c['propagation_state'] ?? 'pending', propagation: 'pending — an authorised operator has not yet run the dependency walk' }));
-    return { ...t, versions: versions.map((v) => ({ ...v, elements: elements.filter((e) => Number(e['version']) === Number(v['version'])) })), events, reconciliations, propagation_pending: pending };
+    return { ...t, versions: versions.map((v) => ({ ...withDays(v), elements: elements.filter((e) => Number(e['version']) === Number(v['version'])).map(withDays) })), events, reconciliations, propagation_pending: pending };
   }
 
   /** Reconcile a simulated or predicted element against a later observation of the same key; the difference is recorded, nothing changes. */
@@ -404,6 +404,18 @@ export class TwinService {
 function instantOf(v: unknown): string {
   if (v instanceof Date) return v.toISOString();
   return new Date(String(v)).toISOString();
+}
+
+/*
+ * A DATE column names a day, not an instant. The driver hands it back as a Date at
+ * LOCAL midnight, which JSON would then print in UTC — a day west of Greenwich —
+ * so every day-valued column is rendered as the day it names before it leaves.
+ */
+const DAY_COLUMNS = ['observed_through', 'valid_from', 'valid_to'] as const;
+function withDays<T extends Record<string, unknown>>(row: T): T {
+  const out: Record<string, unknown> = { ...row };
+  for (const c of DAY_COLUMNS) if (c in out) out[c] = dayOf(out[c]);
+  return out as T;
 }
 
 function dayOf(v: unknown): string | null {

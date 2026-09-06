@@ -239,6 +239,126 @@ const INTELLIGENCE_RULES: typeof RULES = [
  * error is not a recognised rule — in which case the caller must let it surface
  * as the internal failure it is.
  */
+/*
+ * PHASE 5. The twin and simulation ports refuse in the same way: a second draft on
+ * a branch that already holds one, grounding into an admitted version, admitting a
+ * version whose required inputs are missing, an intervention run naming an
+ * incompatible control. Each is the port doing its job, and each is answered as
+ * what it is — a conflict with the record, a bad request, or an absent object —
+ * never as a crash. The sentences below are the product's, not the port's: the
+ * port's exact text stays server-side.
+ */
+const TWIN_RULES: typeof RULES = [
+  {
+    match: /version rejected: branch .* already has an open draft/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this branch already has an open draft: ground into it or admit it before opening another version.',
+  },
+  {
+    match: /version rejected: (fork|carry-from) source .* is not an admitted version/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'a version can only fork from, or carry forward, an ADMITTED version of the same twin.',
+  },
+  {
+    match: /version rejected: no such twin/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized twin matches.',
+  },
+  {
+    match: /twin rejected: /i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a twin needs a boundary of resolved graph entities and a named, active owner in this tenant.',
+  },
+  {
+    match: /grounding rejected: version .* is not (an open )?draft/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'an admitted version is immutable: open a new version to change it.',
+  },
+  {
+    match: /grounding rejected: .* substantiated by nothing but an entity/i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a material element must cite evidence, a claim, a forecast, an assumption or a run; an entity names a subject and substantiates no value.',
+  },
+  {
+    match: /grounding rejected: /i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'every citation must bind an exact object: a kind, an id, a version and a digest.',
+  },
+  {
+    match: /admission rejected: required inputs are missing, unreadable or stale/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this version is incomplete: required inputs of its behaviour model are missing, unreadable or stale. Ground them, or admit it explicitly as incomplete.',
+  },
+  {
+    match: /admission rejected: the state set changed/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'the state set changed while it was being admitted; digest it again.',
+  },
+  {
+    match: /admission rejected: /i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'only an open draft of this twin can be admitted.',
+  },
+  {
+    match: /run rejected: control run .* is not compatible/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'the control run named is not comparable with this intervention: it must share the twin version, initial state, implementation, assumptions, constraints, shock and component.',
+  },
+  {
+    match: /run rejected: (control run .* is not (completed|an authorized run)|.* is not a control run)/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'an intervention run must reference a COMPLETED control run of this domain.',
+  },
+  {
+    match: /run rejected: version /i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized admitted twin version matches.',
+  },
+  {
+    match: /run rejected: /i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a run needs an admitted twin version, a registered behaviour model whose implementation digest matches, and — for a control — no intervention and no control reference.',
+  },
+  {
+    match: /completion rejected: run .* is already/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'this run has already finished; a run completes or fails exactly once.',
+  },
+  {
+    match: /completion rejected: no such run|no opened run|reproduction rejected: run|unverify rejected: version|impact rejected: no such invalidation|reconciliation rejected: no element/i,
+    status: 404,
+    code: 'EYE_STA_001',
+    message: 'no authorized record matches.',
+  },
+  {
+    match: /reconciliation rejected: /i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'a reconciliation compares one element across two admitted versions of the same twin.',
+  },
+  {
+    match: /is admitted and immutable|append-only: DELETE prohibited|the experiment contract of run .* is immutable/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'admitted twin versions and simulation runs are immutable and append-only; only a verification state may change, by event.',
+  },
+];
+
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {
   if (e instanceof HttpException) return e;
   const err = e as PgError;
@@ -246,11 +366,11 @@ export function asObservationRefusal(e: unknown, correlationId: string): HttpExc
   if (message === '') return null;
   // Only SQLSTATEs the observation ports actually raise are considered: a check
   // violation, a foreign-key/absence, an invalid parameter, a uniqueness clash,
-  // or an explicit privilege refusal.
+  // an explicit privilege refusal, or (twin/simulation ports) an immutability refusal.
   const code = typeof err.code === 'string' ? err.code : '';
-  if (!['23514', '23503', '22023', '23505', '42501'].includes(code)) return null;
+  if (!['23514', '23503', '22023', '23505', '42501', '2F002'].includes(code)) return null;
 
-  for (const rule of [...RULES, ...INTELLIGENCE_RULES]) {
+  for (const rule of [...RULES, ...INTELLIGENCE_RULES, ...TWIN_RULES]) {
     if (rule.match.test(message)) {
       return new HttpException(errorBody(rule.code, correlationId, rule.message), rule.status);
     }

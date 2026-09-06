@@ -40,6 +40,7 @@ const NAV = [
   { href: '/observation/quarantine', label: 'Quarantine', glyph: '⚠' },
   { href: '/observation/corrections', label: 'Corrections', glyph: '⟳' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
+  { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
 ];

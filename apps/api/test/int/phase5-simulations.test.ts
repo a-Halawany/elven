@@ -222,6 +222,15 @@ describe('P5-M3 · E4 — reproducibility from the stored contract', () => {
   }, 120_000);
 });
 
+describe('P5-M3 · a run read back names its days', () => {
+  it('get and list return observed_through as the day the contract named — never a local-midnight instant printed in UTC', async () => {
+    const got = (await twins.getRun(h.req(operator, 'simulation.read', 'SIM', controlId, 'simulation'), h.fx.tenantId, h.fx.domainId, controlId)) as { run: Record<string, unknown> };
+    expect(got.run['observed_through']).toBe('2024-01-17');
+    const listed = (await twins.listRuns(h.req(operator, 'simulation.read', 'SIM', null, 'simulation'), h.fx.tenantId, h.fx.domainId, { payload: {} })) as { runs: Array<Record<string, unknown>> };
+    expect(listed.runs.find((r) => r['run_id'] === controlId)?.['observed_through']).toBe('2024-01-17');
+  });
+});
+
 describe('P5-M3 · SIM admission boundaries and projections', () => {
   it('simulation.run.complete cannot admit a TWN; twin.version.admit cannot admit a SIM; an operator cannot ground', async () => {
     const { canonicalHeaderDigest } = await import('@eye/contracts');
