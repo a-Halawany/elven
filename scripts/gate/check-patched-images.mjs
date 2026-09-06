@@ -21,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RECHECK_SPEC, assessReport } from './lib/c19-patched-images.mjs';
+import { RECHECK_SPECS, advisoriesOf, assessReport } from './lib/c19-patched-images.mjs';
 
 const PLATFORM = 'linux/amd64';
 const argv = process.argv.slice(2);
@@ -42,7 +42,8 @@ function currentDigest(tag) {
 
 const patched = [];
 const indeterminate = [];
-for (const tag of RECHECK_SPEC.tags) {
+const tags = [...new Set(RECHECK_SPECS.flatMap((s) => s.tags))];
+for (const tag of tags) {
   const digest = currentDigest(tag);
   if (digest === null) { indeterminate.push(`${tag}: the registry digest could not be resolved`); continue; }
   const ref = `${tag.split(':')[0]}@${digest}`;
@@ -54,14 +55,17 @@ for (const tag of RECHECK_SPEC.tags) {
   if (r.status !== 0) { indeterminate.push(`${tag}: the scan failed (exit ${r.status})`); continue; }
   let report;
   try { report = JSON.parse(readFileSync(out, 'utf8')); } catch (e) {
-    indeterminate.push(`${tag}: the scan report is unreadable (${e.message.slice(0, 80)})`);
+    indeterminate.push(`${tag}: the scan report is unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})`);
     continue;
   }
-  const verdict = assessReport(report);
   say(`${tag} -> ${digest}`);
-  say(`  ${verdict.state.toUpperCase()}: ${verdict.why}`);
-  if (verdict.state === 'patched') patched.push({ tag, digest });
-  if (verdict.state === 'indeterminate') indeterminate.push(`${tag}: ${verdict.why}`);
+  // One scan per image; every spec that watches this tag is decided from the same report.
+  for (const spec of RECHECK_SPECS.filter((s) => s.tags.includes(tag))) {
+    const verdict = assessReport(report, spec);
+    say(`  [${spec.id}] ${verdict.state.toUpperCase()}: ${verdict.why}`);
+    if (verdict.state === 'patched') patched.push({ tag, digest, spec });
+    if (verdict.state === 'indeterminate') indeterminate.push(`${tag} [${spec.id}]: ${verdict.why}`);
+  }
 }
 
 if (indeterminate.length > 0) {
@@ -71,10 +75,18 @@ if (indeterminate.length > 0) {
   process.exit(1);
 }
 if (patched.length > 0) {
-  process.stderr.write(`\nc15-recheck: a PATCHED official image now exists for ${RECHECK_SPEC.advisory}.\n`);
-  for (const { tag, digest } of patched) process.stderr.write(`  re-pin ${tag} to ${digest}\n`);
-  process.stderr.write('Re-pin conformance.manifest.json and docker-compose.yml, then DELETE the\n'
-    + 'corresponding SCX records: the gate rejects a record that matches nothing.\n');
+  for (const spec of [...new Set(patched.map((p) => p.spec))]) {
+    process.stderr.write(`\nc15-recheck: a PATCHED official image now exists for ${advisoriesOf(spec).join('/')} [${spec.id}].\n`);
+    for (const { tag, digest } of patched.filter((p) => p.spec === spec)) process.stderr.write(`  re-pin ${tag} to ${digest}\n`);
+    if (spec.records.length > 0) {
+      process.stderr.write('Re-pin conformance.manifest.json and docker-compose.yml, then DELETE the\n'
+        + `corresponding SCX records (${spec.records.join(', ')}): the gate rejects a record that matches nothing.\n`);
+    } else {
+      process.stderr.write('Re-pin conformance.manifest.json and docker-compose.yml. No SCX record governs these\n'
+        + 'findings; the C15 gate is red on them today and the re-pin is what clears it.\n');
+    }
+  }
   process.exit(1);
 }
-say(`c15-recheck: no patched official image yet; SCX-0006..0009 remain justified`);
+say('c15-recheck: no patched official image yet; SCX-0006..0009 remain justified, and the util-linux findings '
+  + '(CVE-2026-53612 family) remain UNGOVERNED — no patched image, no waiver; the C15 gate stays red on them until upstream rebuilds');

@@ -87,6 +87,28 @@ describe('C15 — the patched-image recheck decides on versions, not on severity
     })).state).toBe('affected');
   });
 
+  it('util-linux specs: revision-aware ranges, one package per image', async () => {
+    const m = await load();
+    const pg = (v: string) => ({ Results: [{ Packages: [{ Name: 'libuuid', Version: v }], Vulnerabilities: [] }] });
+    const rd = (v: string) => ({ Results: [{ Packages: [{ Name: 'setpriv', Version: v }], Vulnerabilities: [] }] });
+    expect(m.assessReport(pg('2.42.1-r0'), m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('affected');
+    expect(m.assessReport(pg('2.42.3-r0'), m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('affected'); // -r1 needed
+    expect(m.assessReport(pg('2.42.3-r1'), m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('patched');
+    expect(m.assessReport(pg('2.42.4-r0'), m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('patched');
+    expect(m.assessReport(pg('2.42.3'), m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('affected');    // unknown revision fails safe
+    expect(m.assessReport(rd('2.41.4-r0'), m.UTIL_LINUX_REDIS_SPEC).state).toBe('affected');
+    expect(m.assessReport(rd('2.41.6-r0'), m.UTIL_LINUX_REDIS_SPEC).state).toBe('affected');
+    expect(m.assessReport(rd('2.41.6-r1'), m.UTIL_LINUX_REDIS_SPEC).state).toBe('patched');
+    // A report that lists a sibling advisory against a fixed version is a contradiction, not a fix.
+    const stale = { Results: [{ Packages: [{ Name: 'libuuid', Version: '2.42.3-r1' }],
+      Vulnerabilities: [{ VulnerabilityID: 'CVE-2026-78408', PkgName: 'libuuid', InstalledVersion: '2.42.3-r1', Severity: 'HIGH' }] }] };
+    expect(m.assessReport(stale, m.UTIL_LINUX_POSTGRES_SPEC).state).toBe('indeterminate');
+    // The OpenSSL spec is unchanged by the revision rule: its ranges name no revision.
+    expect(m.isAffectedVersion('3.5.8-r0')).toBe(false);
+    expect(m.isAffectedVersion('3.5.7-r9')).toBe(true);
+    expect(m.RECHECK_SPECS.map((x: { id: string }) => x.id)).toEqual(['openssl', 'util-linux/postgres', 'util-linux/redis']);
+  });
+
   it('CONTRADICTION: a fixed inventory with a stale advisory row is indeterminate', async () => {
     const m = await load();
     // This previously returned affected, so the CLI exited 0 and the contradiction passed unnoticed.
@@ -276,8 +298,10 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
   const PG_DIGEST = `sha256:${'1'.repeat(64)}`;
   const RD_DIGEST = `sha256:${'2'.repeat(64)}`;
 
+  // Every fake image carries util-linux at an AFFECTED version, so the OpenSSL controls below decide
+  // on OpenSSL alone; the util-linux controls further down vary those versions on purpose.
   const bothAt = (version: string, vulns: Array<[string, string, string]> = []) =>
-    buildReport({ packages: { libcrypto3: version, libssl3: version }, vulns });
+    buildReport({ packages: { libcrypto3: version, libssl3: version, libuuid: '2.42.1-r0', setpriv: '2.41.4-r0' }, vulns });
 
   const run = (reports: Record<string, unknown | null>, opts: {
     digests?: Record<string, string | null>; trivyWritesNothing?: boolean;
@@ -301,6 +325,35 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
     expect(r.status, r.out).toBe(0);
     expect(r.out).toMatch(/AFFECTED/);
     expect(r.out).toMatch(/remain justified/);
+    expect(r.out).toMatch(/util-linux findings .* remain UNGOVERNED/);
+  }, 120_000);
+
+  /**
+   * util-linux, 2026-09: no record governs these findings and the gate is red on them. The recheck
+   * has to be the thing that notices the rebuild, per image, and the revision matters.
+   */
+  it('util-linux PATCHED in postgres alone — FAILS, names the digest, says no record governs it', () => {
+    const r = run({
+      [PG]: buildReport({ packages: { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0', libuuid: '2.42.3-r1', setpriv: '2.41.4-r0' } }),
+      [RD]: bothAt('3.5.7-r0'),
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/PATCHED official image now exists for CVE-2026-53612.*\[util-linux\/postgres\]/);
+    expect(r.out).toContain(`re-pin ${PG} to ${PG_DIGEST}`);
+    expect(r.out).not.toContain(`re-pin ${RD} to ${RD_DIGEST}`);
+    expect(r.out).toMatch(/No SCX record governs these/);
+    expect(r.out).not.toMatch(/DELETE the/);
+  }, 120_000);
+
+  it('util-linux at the fixed BASE but the wrong REVISION is still AFFECTED', () => {
+    // CVE-2026-78408 is fixed in -r1; 2.42.3-r0 clears its siblings and not it.
+    const r = run({
+      [PG]: buildReport({ packages: { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0', libuuid: '2.42.3-r0', setpriv: '2.41.4-r0' } }),
+      [RD]: buildReport({ packages: { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0', libuuid: '2.42.1-r0', setpriv: '2.41.6-r0' } }),
+    });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/\[util-linux\/postgres\] AFFECTED/);
+    expect(r.out).toMatch(/\[util-linux\/redis\] AFFECTED/);
   }, 120_000);
 
   it('PATCHED at 3.5.8 — FAILS and names the digest to re-pin to', () => {
