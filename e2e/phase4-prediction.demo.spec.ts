@@ -134,7 +134,8 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
   test('a replayed warning is dated in the replay, audited now, and timely against its deadline', async ({ page }) => {
     await page.goto('/prediction/warnings');
     await expect(page.getByRole('columnheader', { name: 'Raised as of' })).toBeVisible();
-    const row = page.getByRole('row').filter({ hasText: 'REPLAY' }).first();
+    // Act IV's own warning, not one of the branches the action-path checks below seed on reruns.
+    const row = page.getByRole('row').filter({ hasText: 'Bab el-Mandeb Strait over the next 30 days' }).filter({ hasText: 'REPLAY' }).first();
     await expect(row).toBeVisible();
     await expect(row.getByText('● issued in time')).toBeVisible();
     await row.getByRole('button').first().click();

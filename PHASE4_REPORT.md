@@ -369,3 +369,16 @@ window. Results in §4.
   `validated_retrospective`; historical `CANNOT VALIDATE` (0 of 40 origins, 0 incomplete);
   corridor `validation_impossible`; T3 unmeasured.
 
+### 12.4 Follow-up from the Codex check of `843e2ccb`
+
+* **Response timing on screen is three states.** `response_timely` is a nullable 0031 column and
+  older acknowledgements carry NULL; the warnings screen read "not false" as "in time" and put a
+  positive claim on records that made none. `apps/web/lib/warning-timing.ts` now yields
+  `in_time` / `late` / `unknown`; a null or absent value renders "acknowledged — response timing
+  unknown (not recorded)" in a muted tone, timestamps shown as recorded and nothing inferred from
+  the audit clock. Focused check: `apps/web/lib/warning-timing.test.ts` (true, false, null,
+  absent), run by `pnpm --filter @eye/web test` — the web package's first unit check, so its
+  `test` script now runs vitest instead of an echo.
+* The maintenance note and PR #39 no longer claim that pushes to PR #38 execute the extended
+  recheck; PR #38's run 34029714842 skipped it, as its branch lacks the `ci.yml` change.
+

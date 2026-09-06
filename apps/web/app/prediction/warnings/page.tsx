@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { prediction, type WarningRow } from '../../../lib/prediction';
 import { ControlsLine } from '../forecasts/page';
+import { RESPONSE_TIMING_LABEL, RESPONSE_TIMING_TOKEN, responseTiming } from '../../../lib/warning-timing';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -21,11 +22,12 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 function WindowState({ w, now }: { w: WarningRow; now: number }) {
   const replay = (w.timing_mode ?? 'live') === 'replay';
   if (w.state === 'acknowledged') {
-    const late = w.response_timely === false;
+    // Three states: true, false, and a record that made no claim (null or absent).
+    const t = responseTiming(w);
     return (
-      <span style={{ color: late ? 'var(--eye-color-critical)' : 'var(--eye-color-success)', fontWeight: late ? 650 : 400 }}>
-        {late ? '✕ acknowledged LATE' : '● acknowledged in time'} — as of {fmtInstant(w.acknowledged_as_of ?? w.acknowledged_at)}
-        {replay ? <> (recorded {fmtInstant(w.acknowledged_at)})</> : null}
+      <span style={{ color: `var(${RESPONSE_TIMING_TOKEN[t]})`, fontWeight: t === 'late' ? 650 : 400 }}>
+        {RESPONSE_TIMING_LABEL[t]} — {w.acknowledged_as_of ? <>as of {fmtInstant(w.acknowledged_as_of)}</> : <>recorded {fmtInstant(w.acknowledged_at)}</>}
+        {replay && w.acknowledged_as_of ? <> (recorded {fmtInstant(w.acknowledged_at)})</> : null}
       </span>
     );
   }

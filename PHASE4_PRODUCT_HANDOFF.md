@@ -81,7 +81,8 @@ decision deadline, `T3 unmeasured` where none was declared) and the replayed war
 raised as of 2024-01-17 (recorded 2026-…)`, issued before the 2024-01-22 deadline). It then
 seeds fresh branches through the API and exercises the actions: acknowledge as of a replay
 instant (in time / late), a window expired by the replay clock, a missed decision. It also
-inspects `/readyz` and refuses to pass on a DEGRADED API.
+inspects `/readyz` and refuses to pass on a DEGRADED API. An acknowledgement recorded before 0031
+shows "response timing unknown", never "in time": the record made no claim.
 
 The demonstration is its own deployment: run its API with `EYE_DEGRADED_DIR` pointing at a
 demo-specific directory (see `scripts/demo.sh`), so the dev API's degraded-audit journal is not

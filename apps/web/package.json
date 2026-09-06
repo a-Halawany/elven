@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'web: typecheck covers lint (Phase 0)'",
-    "test": "echo 'web: e2e tests run from repo root (M7)'"
+    "test": "vitest run"
   },
   "dependencies": {
     "@eye/tokens": "workspace:*",
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@types/node": "26.1.2",
     "@types/react": "19.2.18",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
   }
 }
