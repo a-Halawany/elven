@@ -22,7 +22,9 @@
  * exclusive - the shape the advisory itself uses.
  */
 export const RECHECK_SPEC = Object.freeze({
+  id: 'openssl',
   advisory: 'CVE-2026-14456',
+  advisories: Object.freeze(['CVE-2026-14456']),
   packages: Object.freeze(['libcrypto3', 'libssl3']),
   ranges: Object.freeze([
     Object.freeze({ introduced: '3.5.0', fixed: '3.5.8' }),
@@ -30,6 +32,8 @@ export const RECHECK_SPEC = Object.freeze({
     Object.freeze({ introduced: '4.0.0', fixed: '4.0.2' }),
   ]),
   tags: Object.freeze(['postgres:18-alpine', 'redis:8-alpine']),
+  /** The governed records this acceptance rests on; a patched image retires them. */
+  records: Object.freeze(['SCX-0006', 'SCX-0007', 'SCX-0008', 'SCX-0009']),
   /**
    * The ranges are UPSTREAM. A distribution that backported the fix into an earlier revision - say
    * `3.5.7-r1` - still reads as affected here. That is the conservative direction: it keeps an
@@ -37,6 +41,56 @@ export const RECHECK_SPEC = Object.freeze({
    */
   note: 'upstream ranges; a distribution backport reads as affected, which fails safe',
 });
+
+/**
+ * util-linux (CVE-2026-53612 family), 2026-09: seven HIGH advisories against `libuuid` in
+ * `postgres:18-alpine` (Alpine 3.24, fixed in 2.42.3-r0 / -r1) and `setpriv` in `redis:8-alpine`
+ * (Alpine 3.23, fixed in 2.41.6-r0 / -r1). Alpine published the fixed packages; NO official image
+ * has been rebuilt with them, and NO disposition record governs the findings — the C15 gate is red
+ * on them by design until a rebuilt image exists. These specs make the daily recheck the thing that
+ * notices the rebuild, so the re-pin is done the day it becomes possible and not when someone
+ * remembers.
+ *
+ * The ranges here are Alpine PACKAGE versions, revision included: CVE-2026-78408 is fixed one
+ * revision later than its siblings, so `2.42.3-r0` is still affected and only `-r1` is clear. The
+ * comparison is revision-aware where the range says so and base-only where it does not.
+ */
+const UTIL_LINUX_ADVISORIES = Object.freeze([
+  'CVE-2026-53612', 'CVE-2026-53613', 'CVE-2026-53614', 'CVE-2026-76642',
+  'CVE-2026-78408', 'CVE-2026-78409', 'CVE-2026-78410',
+]);
+const UTIL_LINUX_RANGES = Object.freeze([
+  Object.freeze({ introduced: '2.42.0', fixed: '2.42.3-r1' }), // Alpine 3.24
+  Object.freeze({ introduced: '2.41.0', fixed: '2.41.6-r1' }), // Alpine 3.22 / 3.23
+]);
+export const UTIL_LINUX_POSTGRES_SPEC = Object.freeze({
+  id: 'util-linux/postgres',
+  advisory: 'CVE-2026-53612',
+  advisories: UTIL_LINUX_ADVISORIES,
+  packages: Object.freeze(['libuuid']),
+  ranges: UTIL_LINUX_RANGES,
+  tags: Object.freeze(['postgres:18-alpine']),
+  records: Object.freeze([]),
+  note: 'Alpine package ranges, revision-aware; no disposition record exists — the findings fail the gate until an official rebuild',
+});
+export const UTIL_LINUX_REDIS_SPEC = Object.freeze({
+  id: 'util-linux/redis',
+  advisory: 'CVE-2026-53612',
+  advisories: UTIL_LINUX_ADVISORIES,
+  packages: Object.freeze(['setpriv']),
+  ranges: UTIL_LINUX_RANGES,
+  tags: Object.freeze(['redis:8-alpine']),
+  records: Object.freeze([]),
+  note: 'Alpine package ranges, revision-aware; no disposition record exists — the findings fail the gate until an official rebuild',
+});
+
+/** Every acceptance or open finding the recheck watches, in the order it reports them. */
+export const RECHECK_SPECS = Object.freeze([RECHECK_SPEC, UTIL_LINUX_POSTGRES_SPEC, UTIL_LINUX_REDIS_SPEC]);
+
+/** The advisory ids a spec watches, whichever field names them. */
+export function advisoriesOf(spec) {
+  return Array.isArray(spec?.advisories) && spec.advisories.length > 0 ? spec.advisories : [spec?.advisory].filter(Boolean);
+}
 
 /** `{ base: [major, minor, patch], rev }`, or null for anything this does not understand. */
 export function parseApkVersion(v) {
@@ -79,7 +133,11 @@ export function isAffectedVersion(version, spec = RECHECK_SPEC) {
   for (const r of spec.ranges) {
     const introduced = parseApkVersion(r.introduced);
     const fixed = parseApkVersion(r.fixed);
-    if (compareBase(p.base, introduced.base) >= 0 && compareBase(p.base, fixed.base) < 0) return true;
+    if (compareBase(p.base, introduced.base) < 0) continue;
+    if (compareBase(p.base, fixed.base) < 0) return true;
+    // At the fixed BASE: affected only when the range names a revision the package has not reached.
+    // An unknown revision on the package reads as affected — the conservative direction.
+    if (compareBase(p.base, fixed.base) === 0 && fixed.rev !== null && (p.rev === null || p.rev < fixed.rev)) return true;
   }
   return false;
 }
@@ -154,8 +212,10 @@ export function assessReport(report, spec = RECHECK_SPEC) {
   }
 
   // ── 2. the advisory rows, at ANY severity ──
+  const ids = advisoriesOf(spec);
+  const label = ids.join('/');
   const listed = results.flatMap((r) => (Array.isArray(r?.Vulnerabilities) ? r.Vulnerabilities : []))
-    .filter((v) => v?.VulnerabilityID === spec.advisory);
+    .filter((v) => ids.includes(v?.VulnerabilityID));
 
   // ── 3. reconcile the two before trusting either ──
   if (listed.length > 0 && affectedByInventory.length === 0) {
@@ -163,7 +223,7 @@ export function assessReport(report, spec = RECHECK_SPEC) {
     const inv = [...inventory].map(([n, vs]) => `${n} ${vs[0]}`).join(', ');
     return {
       state: 'indeterminate',
-      why: `${spec.advisory} is still reported (${rows}) but the installed inventory is outside every `
+      why: `${label} is still reported (${rows}) but the installed inventory is outside every `
         + `affected range (${inv}); the report disagrees with itself and cannot settle whether the `
         + 'image was rebuilt',
     };
@@ -172,11 +232,11 @@ export function assessReport(report, spec = RECHECK_SPEC) {
     return {
       state: 'affected',
       why: `${affectedByInventory.join(', ')} falls inside an affected range`
-        + (listed.length > 0 ? ` and ${spec.advisory} is reported (${listed.length} row(s))`
-          : `; ${spec.advisory} is no longer listed, but the package was not rebuilt`),
+        + (listed.length > 0 ? ` and ${label} is reported (${listed.length} row(s))`
+          : `; ${label} is no longer listed, but the package was not rebuilt`),
       severities: [...new Set(listed.map((v) => v.Severity))],
     };
   }
   const at = [...inventory].map(([n, vs]) => `${n} ${vs[0]}`).join(', ');
-  return { state: 'patched', why: `${at} is outside every affected range for ${spec.advisory}` };
+  return { state: 'patched', why: `${at} is outside every affected range for ${label}` };
 }
