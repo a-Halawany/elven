@@ -33,6 +33,8 @@ export interface AffectedObject {
   /** How the walk reached it — never a bare id in a list. */
   reached_via: string;
   hop: number;
+  /** The object the dependency came through (Phase 5: the port marks only versions that cite it). */
+  via_id?: string;
 }
 
 export interface ImpactResult {
@@ -52,6 +54,13 @@ export interface ImpactResult {
   forecasts: AffectedObject[];
   scenarios: AffectedObject[];
   warnings: AffectedObject[];
+  /**
+   * Phase 5: twins whose admitted versions cite what changed (marked UNVERIFIED by
+   * event through the twin port) and simulation runs built on them (immutable,
+   * surfaced with an event). Reached in the same walk, through the same table.
+   */
+  twins: AffectedObject[];
+  simulations: AffectedObject[];
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -111,6 +120,12 @@ export class ImpactService {
     const warnings = new Map<string, Record<string, unknown>>(
       ((await cap.readWarnings().selectAll().execute()) as Array<Record<string, unknown>>)
         .map((f) => [String(f['warning_id']), f]));
+    const twins = new Map<string, Record<string, unknown>>(
+      ((await cap.readTwins().selectAll().execute()) as Array<Record<string, unknown>>)
+        .map((t) => [String(t['twin_id']), t]));
+    const runs = new Map<string, Record<string, unknown>>(
+      ((await cap.readRuns().selectAll().execute()) as Array<Record<string, unknown>>)
+        .map((r) => [String(r['run_id']), r]));
 
     /*
      * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
@@ -228,6 +243,25 @@ export class ImpactService {
               strategy_object_id: dependent, object_type: 'WRN', title: String(w['title']),
               reached_via: seed.via, hop,
             });
+            continue;
+          }
+          const tw = twins.get(dependent);
+          if (tw !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'TWN', title: String(tw['title']),
+              reached_via: seed.via, hop, via_id: seed.id,
+            });
+            next.push({ kind: 'twin', id: dependent, via: `rests on twin "${String(tw['title'])}"` });
+            continue;
+          }
+          const rn = runs.get(dependent);
+          if (rn !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'SIM',
+              title: `${String(rn['run_kind'])} run on twin version ${String(rn['twin_version'])} (${String(rn['component'])})`,
+              reached_via: seed.via, hop, via_id: seed.id,
+            });
+            next.push({ kind: 'run', id: dependent, via: 'compared against a run that rests on changed state' });
           }
         }
       }
@@ -257,6 +291,8 @@ export class ImpactService {
       forecasts: of('FCT'),
       scenarios: of('SCN'),
       warnings: of('WRN'),
+      twins: of('TWN'),
+      simulations: of('SIM'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -327,6 +363,8 @@ export class ImpactService {
       assumptions: walked.assumptions, objectives: walked.objectives,
       decisions: walked.decisions, commitments: walked.commitments,
       forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
+      twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, reached_via: t.reached_via, hop: t.hop })),
+      simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -429,12 +467,14 @@ function buildStatement(
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
-    + w.forecasts.length + w.scenarios.length + w.warnings.length;
+    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
     : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) and `
       + `${w.warnings.length} warning(s) reported`;
+  const phase5 = w.twins.length + w.simulations.length === 0 ? ''
+    : `; ${w.twins.length} twin(s) whose citing versions are marked unverified and ${w.simulations.length} simulation run(s) surfaced`;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *
@@ -454,7 +494,7 @@ function buildStatement(
   return `dependency propagation assessed by invalidation ${invalidationId}: `
     + `${w.assumptions.length} assumption(s) marked unverified; `
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
-    + `${w.commitments.length} commitment(s) reported for human review${phase4}; `
+    + `${w.commitments.length} commitment(s) reported for human review${phase4}${phase5}; `
     + reach + truncation;
 }
 

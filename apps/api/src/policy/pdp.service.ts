@@ -98,6 +98,8 @@ const BUNDLE_V1: Rule[] = [
       { role: 'strategy_owner', atScope: 'DOMAIN' },
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -317,6 +319,8 @@ const BUNDLE_V1: Rule[] = [
       { role: 'resolution_manager', atScope: 'DOMAIN' },
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -406,6 +410,82 @@ const BUNDLE_V1: Rule[] = [
     ],
     requiresPurpose: true,
   },
+
+  // ───────────────────────── Phase 5: twins ─────────────────────────
+  //   * READ is broad: a twin is for the people who decide on what it represents.
+  //   * A twin is DECLARED, versioned, grounded and admitted by its owner — four
+  //     separate governed writes. A simulation operator holds none of them.
+  {
+    actionPrefix: 'twin.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.declare',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.version.admit',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.version',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.ground',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+
+  // ───────────────────────── Phase 5: simulations ─────────────────────────
+  //   * A run is opened, completed and reproduced by a simulation operator or a
+  //     twin owner; READ is broad. Nothing here declares or grounds a twin.
+  {
+    actionPrefix: 'simulation.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.run.complete',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.run',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.reproduce',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
   {
     actionPrefix: 'graph.read',
     requiredAnyRole: [
@@ -421,6 +501,8 @@ const BUNDLE_V1: Rule[] = [
       { role: 'strategy_owner', atScope: 'DOMAIN' },
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -551,6 +633,8 @@ const BUNDLE_V1: Rule[] = [
       // custody, with the purpose and the series named on the entry.
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
