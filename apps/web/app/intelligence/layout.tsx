@@ -46,6 +46,7 @@ const NAV = [
   { href: '/intelligence/methods', label: 'Methods', glyph: '⚙' },
   { href: '/intelligence/gateway', label: 'Gateway', glyph: '⇄' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
+  { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/observation', label: 'Observation', glyph: '⛁' },
 ];
 

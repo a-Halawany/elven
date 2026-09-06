@@ -64,6 +64,11 @@ export interface RunOutcome {
   reason?: string;
 }
 
+/** The latest evidence held for a deterministic item key — what a re-run compares against. */
+interface PriorEvidence {
+  evdObjectId: string; objectVersion: number; contentDigest: string; obsObjectId: string;
+}
+
 interface ContractRow {
   source_id: string;
   contract_version: number;
@@ -232,6 +237,26 @@ export class AcquisitionLifecycle {
       const queue: AcquiredItem[] = output.parent != null ? [output.parent, ...output.items] : output.items;
       const parentEvdByKey = new Map<string, string>();
 
+      /*
+       * WHAT IS ALREADY HELD FOR THE DETERMINISTIC ITEMS, read once per run.
+       *
+       * A backfill window re-run is the same window: identical bytes are an
+       * audited no-op and changed bytes are a revision. The comparison needs the
+       * latest evidence per item key, and one governed read for the whole batch
+       * is the price of not admitting the same 2019 twice.
+       */
+      const prior = await this.loadPriorEvidence(
+        req, tenantId, domainId, queue.filter((i) => i.deterministic === true).map((i) => i.itemKey));
+      /*
+       * A QUARANTINED WINDOW IS NOT A COLLECTED WINDOW. The checkpoint the run
+       * commits must not carry the backfill cursor past a window whose bytes were
+       * refused, or the range looks complete with a hole in it. The earliest
+       * quarantined window's cursor is where the next run resumes.
+       */
+      let rollbackTo: string | number | null = null;
+      const earlier = (a: string | number, b: string | number): boolean =>
+        typeof a === 'number' && typeof b === 'number' ? a < b : String(a) < String(b);
+
       for (const item of queue) {
         await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.fetched', {
           item_key: item.itemKey, bytes: item.bytes.byteLength,
@@ -241,18 +266,29 @@ export class AcquisitionLifecycle {
         const result = await this.admitOrQuarantine(
           req, contract, runId, item, binding,
           item.parentItemKey != null ? parentEvdByKey.get(item.parentItemKey) ?? null : null,
+          item.deterministic === true ? prior.get(item.itemKey) ?? null : null,
         );
         if (result.kind === 'admitted') {
           admitted += 1;
           parentEvdByKey.set(item.itemKey, result.evdObjectId);
         } else if (result.kind === 'quarantined') {
           quarantined += 1;
+          if (item.backfillCursor !== undefined && (rollbackTo === null || earlier(item.backfillCursor, rollbackTo))) {
+            rollbackTo = item.backfillCursor;
+          }
         } else {
           noop += 1;
         }
       }
 
       // ── step 9: advance the checkpoint ONLY after the DB commits ────────────
+      if (rollbackTo !== null && typeof output.checkpoint['backfill'] === 'object' && output.checkpoint['backfill'] !== null) {
+        const bf = output.checkpoint['backfill'] as Record<string, unknown>;
+        output.checkpoint['backfill'] = {
+          ...bf, cursor: rollbackTo, done: false, finishedAt: null,
+          incomplete: `a window starting at ${String(rollbackTo)} was quarantined; the cursor was rolled back to it`,
+        };
+      }
       fault.at('f28.before_checkpoint_append');
       await this.pipeline.write(
         this.envelope(req, 'observation.run.checkpoint', 'RUN', runId, tenantId, domainId),
@@ -319,6 +355,8 @@ export class AcquisitionLifecycle {
     item: AcquiredItem,
     binding: SourceBinding,
     parentEvdObjectId: string | null,
+    /** What is already held for this deterministic item key, if anything. */
+    prior: PriorEvidence | null = null,
   ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop' }> {
     const tenantId = contract.tenant_id;
     const domainId = contract.domain_id;
@@ -326,6 +364,25 @@ export class AcquisitionLifecycle {
 
     // ── steps 5 + 6: store the exact original bytes, fsync, re-read, compare ──
     const stored = await this.vault.store('quarantine', scope, item.bytes);
+
+    /*
+     * A WINDOW ALREADY HELD, BYTE FOR BYTE, IS NOT NEW EVIDENCE.
+     *
+     * The Phase 1 rule — identical bytes retrieved later are a new observation —
+     * is about a forward poll, whose item is the retrieval. A backfill item is the
+     * window, and retrieving 2019-01 again with the same digest is the same
+     * observation of the same window. It no-ops, AUDITED, and the quarantine copy
+     * is tombstoned. Changed bytes fall through and become a revision below.
+     */
+    if (prior !== null && prior.contentDigest === stored.contentDigest) {
+      await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
+        item_key: item.itemKey, evd_object_id: prior.evdObjectId, evd_version: prior.objectVersion,
+        digest: stored.contentDigest,
+        reason: 'identical bytes for a window already held; a backfill re-run admits nothing twice',
+      });
+      await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
+      return { kind: 'noop' };
+    }
 
     // ── step 7: bounded validation and safety scanning ──────────────────────
     const verdict = inspectContent(item.bytes, {
@@ -368,7 +425,12 @@ export class AcquisitionLifecycle {
     }
 
     const obsObjectId = newId();
-    const evdObjectId = newId();
+    // A REVISION is the next VERSION of the evidence object already held for this
+    // window, never a second object: the prior bytes stay retrievable at their
+    // version, and a known-at read positioned before this run still sees them.
+    const revisionOf = prior;
+    const evdObjectId = revisionOf !== null ? revisionOf.evdObjectId : newId();
+    const evdVersion = revisionOf !== null ? revisionOf.objectVersion + 1 : 1;
     const manifestId = newId();
     const observedAt = new Date().toISOString();
 
@@ -452,7 +514,8 @@ export class AcquisitionLifecycle {
 
         // 8e, write 3 of 7: the EVD canonical object — the bytes, their digest,
         // and the FOUR SEPARATE authenticity concepts, never collapsed into one.
-        await this.admitEvd(cap, req, contract, item, obsObjectId, evdObjectId, manifestId, candidate, verdict, parentEvdObjectId);
+        await this.admitEvd(cap, req, contract, item, obsObjectId, evdObjectId, manifestId, candidate, verdict, parentEvdObjectId,
+          evdVersion, revisionOf === null ? null : `${revisionOf.evdObjectId}@${revisionOf.objectVersion}`);
         fault.at('f23b.after_evd_before_custody');
 
         // 8e, write 4 of 7: the custody entry.
@@ -470,6 +533,9 @@ export class AcquisitionLifecycle {
           details: {
             quarantine_locator_tombstoned_next: true,
             verified: ['pre-store', 'post-store', 'candidate-post-copy'],
+            ...(revisionOf === null ? {} : {
+              revision: { from_version: revisionOf.objectVersion, to_version: evdVersion,
+                          prior_digest: revisionOf.contentDigest } }),
           },
           correlationId: req.correlationId,
         });
@@ -482,8 +548,9 @@ export class AcquisitionLifecycle {
           codeDigest: req.connector.codeDigest,
           connector: req.connector.name, connectorVersion: req.connector.version,
           acquisitionMode: contract.acquisition_mode,
-          event: 'item.admitted',
-          details: { item_key: item.itemKey, evd_object_id: evdObjectId, digest: candidate.contentDigest },
+          event: revisionOf === null ? 'item.admitted' : 'item.revised',
+          details: { item_key: item.itemKey, evd_object_id: evdObjectId, digest: candidate.contentDigest,
+                     ...(revisionOf === null ? {} : { evd_version: evdVersion, prior_digest: revisionOf.contentDigest }) },
           correlationId: req.correlationId,
         });
         await cap.markAttemptOutcome({
@@ -499,11 +566,12 @@ export class AcquisitionLifecycle {
         fault.at('f24.at_admission_commit');
         return {
           result: { kind: 'admitted' as const, evdObjectId },
-          targetType: 'EVD', targetId: evdObjectId, targetVersion: '1',
+          targetType: 'EVD', targetId: evdObjectId, targetVersion: String(evdVersion),
           outboxEvent: {
             eventType: 'ObservationRecorded',
             payload: {
               obs_object_id: obsObjectId, evd_object_id: evdObjectId,
+              evd_version: evdVersion, revision: revisionOf !== null,
               source_id: req.sourceId, contract_version: req.contractVersion,
               run_id: runId, acquisition_mode: contract.acquisition_mode,
               authority_class: contract.authority_class,
@@ -547,7 +615,7 @@ export class AcquisitionLifecycle {
           correlationId: req.correlationId,
         });
         fault.at('f26.after_finalized_custody_before_tombstone');
-        return { result: {}, targetType: 'EVD', targetId: evdObjectId, targetVersion: '1', outboxEvent: null };
+        return { result: {}, targetType: 'EVD', targetId: evdObjectId, targetVersion: String(evdVersion), outboxEvent: null };
       },
     );
     await this.vault.tombstone('quarantine', scope, stored.locator);
@@ -608,6 +676,7 @@ export class AcquisitionLifecycle {
     obsObjectId: string, evdObjectId: string, manifestId: string,
     candidate: { locator: string; contentDigest: string; byteLength: number },
     verdict: ReturnType<typeof inspectContent>, parentEvdObjectId: string | null,
+    version = 1, supersedes: string | null = null,
   ): Promise<void> {
     const payload = {
       obs_object_id: obsObjectId,
@@ -653,6 +722,7 @@ export class AcquisitionLifecycle {
       sourceObjectIds: [`OBS:${obsObjectId}`],
       schemaRef: 'EVD@v1',
       contentRef: `vault:evidence/${candidate.locator}`,
+      version, supersedes,
     });
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
   }
@@ -661,7 +731,7 @@ export class AcquisitionLifecycle {
     objectId: string; objectType: string; contract: ContractRow; req: RunRequest;
     eventTime: string | null; observationTime: string; validFrom: string | null;
     truthState: string; methodRef: string; evidenceRefs: string[]; sourceObjectIds: string[];
-    schemaRef: string; contentRef?: string;
+    schemaRef: string; contentRef?: string; version?: number; supersedes?: string | null;
   }): CanonicalHeader {
     const recordedAt = new Date().toISOString();
     const header: CanonicalHeader = {
@@ -670,7 +740,7 @@ export class AcquisitionLifecycle {
       tenant_id: a.contract.tenant_id,
       domain_id: a.contract.domain_id,
       scope: 'DOMAIN',
-      object_version: '1',
+      object_version: String(a.version ?? 1),
       lifecycle_state: 'admitted',
       owning_component: 'CP-OBS-01',
       accountable_owner: `principal:${a.req.principal.principalId}`,
@@ -709,7 +779,7 @@ export class AcquisitionLifecycle {
       schema_ref: a.schemaRef,
       ontology_ref: null,
       correction_of: null,
-      supersedes: null,
+      supersedes: a.supersedes ?? null,
       withdrawal_reason: null,
       audit_correlation_id: a.req.correlationId,
       content_ref: a.contentRef ?? null,
@@ -856,6 +926,27 @@ export class AcquisitionLifecycle {
     return out.result ?? null;
   }
 
+  private async loadPriorEvidence(
+    req: RunRequest, tenantId: string, domainId: string, itemKeys: string[],
+  ): Promise<Map<string, PriorEvidence>> {
+    const out = new Map<string, PriorEvidence>();
+    if (itemKeys.length === 0) return out;
+    const got = await this.pipeline.consequentialRead(
+      this.envelope(req, 'observation.read.evidence', 'EVD', null, tenantId, domainId),
+      req.principal,
+      this.route('observation.read.evidence', tenantId, domainId, 'EVD', null),
+      ObservationCapability.read,
+      async (cap) => cap.latestEvidenceByItemKeys({ sourceId: req.sourceId, itemKeys }),
+    );
+    for (const r of got.result) {
+      out.set(r.item_key, {
+        evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
+        contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
+      });
+    }
+    return out;
+  }
+
   private async loadCheckpoint(
     req: RunRequest, tenantId: string, domainId: string,
   ): Promise<Record<string, unknown> | null> {
@@ -882,11 +973,27 @@ export class AcquisitionLifecycle {
           media_types: string[]; required_fields: string[]; drift_tolerance: number;
           max_bytes?: number; item_path?: string; item_key_field?: string; item_time_field?: string;
         };
+        backfill?: {
+          strategy: 'period-range' | 'arcgis-offset'; endpoint: string; from: string; to?: string | null;
+          window_days?: number; start_param?: string; end_param?: string; page_size?: number;
+          order_by?: string; time_field?: string; where?: string;
+        };
       };
     };
     const b = c.security_and_operations.budgets;
     const es = c.security_and_operations.expected_schema;
+    const bf = c.security_and_operations.backfill;
     return {
+      ...(bf !== undefined ? { backfill: {
+        strategy: bf.strategy, endpoint: bf.endpoint, from: bf.from, to: bf.to ?? null,
+        ...(bf.window_days !== undefined ? { windowDays: bf.window_days } : {}),
+        ...(bf.start_param !== undefined ? { startParam: bf.start_param } : {}),
+        ...(bf.end_param !== undefined ? { endParam: bf.end_param } : {}),
+        ...(bf.page_size !== undefined ? { pageSize: bf.page_size } : {}),
+        ...(bf.order_by !== undefined ? { orderBy: bf.order_by } : {}),
+        ...(bf.time_field !== undefined ? { timeField: bf.time_field } : {}),
+        ...(bf.where !== undefined ? { where: bf.where } : {}),
+      } } : {}),
       sourceId: contract.source_id,
       sourceKey: contract.source_key,
       replaySet: String(

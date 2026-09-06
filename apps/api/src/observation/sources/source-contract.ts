@@ -38,6 +38,13 @@ export interface SourceContractV1 {
   authority_and_rights: {
     owner: string;
     steward: string;
+    /**
+     * The exact attribution the publisher's terms require, rendered wherever the
+     * data is shown or exported (e.g. "Source: ECB statistics."). Optional in the
+     * schema because not every licence asks for one; when present it travels
+     * with every derived object.
+     */
+    attribution?: string | null;
     authority: string;
     legal_basis: string;
     rights_state: RightsState;
@@ -112,6 +119,25 @@ export interface SourceContractV1 {
      * is a coupling nobody reviews.
      */
     replay_set?: string;
+    /**
+     * A CLOSED-RANGE BACKFILL this contract performs on activation (Phase 4 §4a),
+     * declared here so the traversal — strategy, window, ordering, page size — is
+     * part of the reviewed contract rather than a connector's private choice.
+     * Live acquisition only; a replay contract reads its frozen set as before.
+     */
+    backfill?: {
+      strategy: 'period-range' | 'arcgis-offset';
+      endpoint: string;
+      from: string;
+      to?: string | null;
+      window_days?: number;
+      start_param?: string;
+      end_param?: string;
+      page_size?: number;
+      order_by?: string;
+      time_field?: string;
+      where?: string;
+    };
   };
   lifecycle: {
     contract_version: number;
@@ -267,6 +293,70 @@ export function validateSourceContract(input: unknown): ValidationResult {
       if (es.item_key_field !== undefined && typeof es.item_path !== 'string') {
         push('expected_schema.item_path is required when expected_schema.item_key_field is declared');
       }
+    }
+
+    const bf = so.backfill;
+    if (bf !== undefined) {
+      if (bf === null || typeof bf !== 'object') push('security_and_operations.backfill must be an object');
+      else {
+        enumOf(bf.strategy, 'backfill.strategy', ['period-range', 'arcgis-offset'] as const);
+        str(bf.endpoint, 'backfill.endpoint');
+        if (typeof bf.endpoint === 'string') {
+          try {
+            const u = new URL(bf.endpoint);
+            if (u.protocol !== 'https:') push('backfill.endpoint must be https');
+            const hosts = Array.isArray(c.identity?.endpoints)
+              ? c.identity.endpoints.map((e) => { try { return new URL(e).hostname.toLowerCase(); } catch { return ''; } })
+              : [];
+            // The backfill may not reach a host the contract's own endpoints do not
+            // name: the egress allowlist is derived from those, and a declaration
+            // that quietly widened it would be a second allowlist nobody reviewed.
+            if (!hosts.includes(u.hostname.toLowerCase())) {
+              push('backfill.endpoint must be on a host the contract\'s identity.endpoints already name');
+            }
+          } catch {
+            push('backfill.endpoint is not a valid URL');
+          }
+        }
+        const day = /^\d{4}-\d{2}-\d{2}$/;
+        if (typeof bf.from !== 'string' || !day.test(bf.from) || Number.isNaN(Date.parse(bf.from))) {
+          push('backfill.from must be a YYYY-MM-DD date');
+        }
+        if (bf.to != null && (typeof bf.to !== 'string' || !day.test(bf.to) || Number.isNaN(Date.parse(bf.to)))) {
+          push('backfill.to must be a YYYY-MM-DD date or null');
+        } else if (typeof bf.to === 'string' && typeof bf.from === 'string' && bf.to <= bf.from) {
+          push('backfill.to must be after backfill.from');
+        }
+        if (bf.strategy === 'period-range') {
+          if (typeof bf.window_days !== 'number' || !Number.isInteger(bf.window_days) || bf.window_days < 1 || bf.window_days > 3660) {
+            push('backfill.window_days must be an integer between 1 and 3660 for period-range');
+          }
+          str(bf.start_param, 'backfill.start_param');
+          str(bf.end_param, 'backfill.end_param');
+        }
+        if (bf.strategy === 'arcgis-offset') {
+          if (typeof bf.page_size !== 'number' || !Number.isInteger(bf.page_size) || bf.page_size < 1 || bf.page_size > 10_000) {
+            push('backfill.page_size must be an integer between 1 and 10000 for arcgis-offset');
+          }
+          // UNORDERED PAGING IS UNDEFINED. ArcGIS does not promise a stable order
+          // without orderByFields, so a backfill that omits it can skip and
+          // duplicate rows while looking complete.
+          str(bf.order_by, 'backfill.order_by');
+          str(bf.time_field, 'backfill.time_field');
+          if (typeof bf.order_by === 'string' && typeof bf.time_field === 'string'
+              && !bf.order_by.split(',').map((x) => x.trim().split(/\s+/)[0]).includes(bf.time_field)) {
+            push('backfill.order_by must include backfill.time_field so pages are ordered by the window field');
+          }
+        }
+        if (c.acquisition_mode === 'replay') {
+          push('backfill is declared on a replay contract; a replay set is addressed by URL and cannot be walked');
+        }
+      }
+    }
+    if (c.authority_and_rights !== undefined && c.authority_and_rights !== null
+        && typeof c.authority_and_rights === 'object'
+        && c.authority_and_rights.attribution != null && typeof c.authority_and_rights.attribution !== 'string') {
+      push('authority_and_rights.attribution must be a string or null');
     }
 
     const fe = so.freshness_expectation;

@@ -72,6 +72,10 @@ elif [[ $bootstrap_rc -ne 0 ]]; then
 fi
 
 echo "==> 5/6 start API (:3401) and web shell (:3000)"
+# The demonstration is its OWN deployment: its degraded-audit journal must not be the dev API's,
+# or incidents of a database that was dropped and recreated keep reporting the demo DEGRADED.
+export EYE_DEGRADED_DIR="${EYE_DEGRADED_DIR:-$PWD/apps/api/.eye-local/degraded-demo}"
+mkdir -p "$EYE_DEGRADED_DIR"
 (cd apps/api && node dist/main.js &> /tmp/eye-api.log &)
 (pnpm --filter @eye/web start &> /tmp/eye-web.log &)
 for _ in $(seq 1 30); do

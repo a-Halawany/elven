@@ -17,8 +17,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { EyeConfig } from '../../src/config/config.js';
 import type { Db } from '../../src/shared/db.js';
 import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
+import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
+/** The connector version the fixture agent is registered as — read from the connector, not pinned. */
+export const REST_CONNECTOR_VERSION = new RestConnector().version;
 
 export interface Phase1Fixture {
   tenantId: string;
@@ -182,7 +185,7 @@ export async function seedPhase1Domain(
   for (const [id, name, login, role, kind] of [
     [registrarId, `fixture-registrar-${run}`, `fx-reg-${run}`, 'domain_analyst', 'human'],
     [managerId, `fixture-manager-${run}`, `fx-mgr-${run}`, 'collection_manager', 'human'],
-    [agentPrincipalId, `agent:observation.rest@1.1.0-${run}`, `fx-agent-${run}`, 'collection_agent', 'agent'],
+    [agentPrincipalId, `agent:observation.rest@${REST_CONNECTOR_VERSION}-${run}`, `fx-agent-${run}`, 'collection_agent', 'agent'],
   ] as const) {
     await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
               values (${id}::uuid, ${kind}, 'DOMAIN', ${tenantId}::uuid, ${domainId}::uuid, ${name}, ${login}, 'active')`.execute(su);
