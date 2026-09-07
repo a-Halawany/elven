@@ -45,7 +45,7 @@ branch protection; the required checks are enforced by the workflow verdicts and
 | [#38](https://github.com/a-Halawany/elven/pull/38) | `phase4-prediction` (`879ce2d8`) | Phase 4 implementation, review closed at `98e7d9e6` | `main` |
 | [#40](https://github.com/a-Halawany/elven/pull/40) | `phase5-plan` (`9e33e97b`) | Phase 5 build plan, E1–E8 frozen | `main` |
 | [#41](https://github.com/a-Halawany/elven/pull/41) | `phase5-twins` (`f527446c`) | Phase 5 implementation, review closed at `48f43bed` | `phase4-prediction` |
-| [#43](https://github.com/a-Halawany/elven/pull/43) | `integrations/source-readiness-2026-09` (`68d650f5`) | Source readiness register (live / replay / operator upload / blocked), connector and credential inventory (`SOURCE_INTEGRATION_STATUS.md`), live-collection proposals A (EU sanctions) and B (World Bank) awaiting the owner's decision; nothing activated, no credential, nothing purchased | `phase5-twins` |
+| [#43](https://github.com/a-Halawany/elven/pull/43) | `integrations/source-readiness-2026-09` | Source readiness register (live / replay / operator upload / blocked, unbound credential first), connector and credential inventory (`SOURCE_INTEGRATION_STATUS.md`); proposals A (EU Financial Sanctions) and B (World Bank Indicators) activated on the demonstration deployment 2026-09-07 through the governed path (register → second-operator approval → rights evidence → activation → operator-triggered live runs); schedule entries recorded, no scheduler runs in that deployment; no credential, nothing purchased | `phase5-twins` |
 
 ### Labels reconciled
 
