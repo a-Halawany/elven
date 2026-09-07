@@ -123,6 +123,47 @@ The publisher answered `curl` in under a second minutes later, and an **operator
 does not count as automatic; the register still shows the automatic outcome for ECB as failed until
 the next scheduled fire.
 
+**A cadence tick, observed.** The API was rebuilt and restarted at 22:07 UTC (migration 0039);
+startup reconciliation re-upserted the four schedulers and BullMQ kept their fire times. At
+**22:34:12 UTC** the hourly EU RSS scheduler fired on its own — no promotion, no operator — the
+worker ran the governed path and the attempt was recorded **finished** (job
+`repeat:…:1788820451298`, run `01a07e01…`): 1 admitted (the feed's parent bytes differ each hour
+because its `lastBuildDate` moves), 5 entries confirmed unchanged; next fire 23:34:11 UTC. The
+payload (03:34 UTC), ECB (2026-09-08 21:34 UTC) and World Bank (2026-09-14) ticks lie outside this
+session and are reported as configured, not observed.
+
 Readiness now shows, per live row, the configured entry ("configured · every N s"), the runtime
 ("worker running here · next fire …") and the observed attempts ("FINISHED … · n ok / n failed / n
 refused") in the Automatic column, beside the last governed run of any trigger.
+
+### 3.4 Verification at the candidate
+
+| Suite | Result |
+|---|---|
+| unit (`pnpm test`) | 38 files, 2130 passed (incl. `scheduler-names`); hosted upgrade check 9 passed |
+| int:all | 33 files, 662 passed after the C14 matrix gained the scenario coverage (`phase6-scheduler-capability` 7/7; `phase6-scheduled-collection` 7/7 with real Redis) |
+| accept | 58 passed |
+| web unit / typecheck | 4 passed / clean |
+| demo browser suite, SOURCES | passed against the demo with the scheduler running; `12-sources-register` re-captured with the Automatic column |
+| boundaries | no violations (455 modules) |
+| gitleaks | no leaks (every commit) |
+| GitHub, PR #44 at `368983b` | build-test **pass** (the post-C18 upgrade check and the C18 dual-path gate both green after 0039 and the phase6 exclusion), browser-regression pass, C19 lifecycle pass; **supply-chain fails at C15** (util-linux CVEs, no patched image) with FINAL C16/C17 skipped behind it |
+
+Two CI corrections were needed and are recorded honestly: the C14 matrix re-run at migration 0021
+cannot carry a coverage entry for a `ctx` port added by 0038, so 0039 moved the minter into the
+observation schema; and the C18 integration suite's path-a database is the Phase 0 boundary, so the
+phase6 suites are excluded there exactly as phases 1–5 are.
+
+## 4. Remaining blockers and what is not done
+
+* **C15** blocks every merge (#41 → #43 → #44) until a patched image exists; no waiver.
+* Scheduled ticks for the payload, ECB and World Bank are configured and not yet observed in this
+  session; ECB's one automatic attempt failed at the publisher (timeout) and stands as failed until
+  its next fire.
+* The vault does not de-duplicate identical bytes across polls; the unchanged-confirmation path
+  now avoids storing them, so this only matters for a poll whose bytes change every time (the RSS
+  feed parent, ~4 KB per hour).
+* Per-source concurrency is the operator's knob (`EYE_CONNECTOR_PER_SOURCE_CONCURRENCY`); the demo
+  runs at 1 so a source's ticks never overlap. A per-scheduler lock is not built.
+* PortWatch stays in replay (redrafted request in `PORTWATCH_PERMISSION_REQUEST_2026-09.md`, not
+  sent); UN Comtrade deferred, key untouched; purchases zero; the CorrectionApplied consumer deferred.
