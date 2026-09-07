@@ -54,6 +54,14 @@ describe('P5 · port refusals are translated, not swallowed', () => {
     expect(answer('22023', "run rejected: scenario x stood at version 1 at this version's known_at (2026-09-01T12:00:00Z), not 2")?.status).toBe(422);
   });
 
+  it('R2 world clock: a flip observed after the run\'s world cut-off is not an observed shock, and the refusal says so', () => {
+    const a = answer('22023', "run rejected: branch b was open under this run's cut-offs (known_at 2026-09-01T12:00:00Z, observations through 2023-11-23; the flip was recorded 2026-08-31 and observed 2023-11-24), not flipped");
+    expect(a?.status).toBe(422);
+    expect(a?.body.message).toMatch(/record cut-off|world|later information/i);
+    expect(a?.body.message).not.toMatch(/run rejected/);
+    expect(answer('22023', "run rejected: the shock contradicts the bound branch: branch b was open under this run's cut-offs (a shock without a flipped branch is a hypothetical and names no scenario)")?.status).toBe(422);
+  });
+
   it('a fault that is not a port refusal stays a fault: no SQLSTATE, or a SQLSTATE the ports do not raise, translates to nothing', () => {
     expect(asObservationRefusal(new Error('version rejected: branch actual already has an open draft'), 'corr')).toBeNull();
     expect(asObservationRefusal(pg('XX000', 'version rejected: branch actual already has an open draft'), 'corr')).toBeNull();

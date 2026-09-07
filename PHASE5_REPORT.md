@@ -410,3 +410,73 @@ The earlier batch upgrade FAIL with an isolated PASS stays in the record with it
 unestablished; this pass adds no gate to explain it, and the hosted `build-test` job's tracked
 migration step passed at the previous candidate.
 
+## 9. R2's world clock — the remaining condition (migration `0037_branch_flip_under_both_clocks`)
+
+The review of `37bf4103` closed R1, R3 and R4 and the record-time half of R2, and named one
+condition still open: a branch flip has two times, and only the first was applied. This pass
+closes the second. Phase 4's evaluator is unchanged — the dates were already recorded.
+
+### 9.1 Reproduced at the database and controller boundary
+
+`test/int/phase5-corrections.test.ts` block **R2w** uses the flip Phase 4's own indicator
+evaluator recorded in this harness: the event carries `details.observation_at`, and the
+evaluation row carries the same day (the probe asserts they agree). In that run the flip was
+observed on **2023-11-24** and recorded in 2026. A twin whose every input is eligible — records
+uploaded dated 2023-11-22, elements valid from 2023-11-22, `known_at` after the flip was
+recorded — and whose world ends **2023-11-23** bound that branch with `shock: true` and
+**completed**, recording `shock_basis = scenario-branch-flipped`. The run claimed an observed
+corridor collapse from a day it cannot see. Confirmed, not refuted.
+
+### 9.2 The correction
+
+* `prediction.branch_flip_observed_at(branch)` reads the world day behind a flip: the flip
+  event's `details.observation_at`, falling back to the evaluation's own `observation_at`.
+* `prediction.branch_state_as_of(branch, known_at, observed_through)` — a new three-argument
+  function; 0036's two-argument one is left exactly as it is — reads `open` when the flip was
+  written after `known_at` (record clock, as before) **or** when the observation behind it lies
+  after `observed_through` (world clock), and when no observation date can be established at
+  all, because a shock must name the day it rests on.
+* `simulation.open_run` verifies the offered branch state under both clocks, refuses a shock the
+  binding does not support, records the flip event only when it is a basis under both, and puts
+  `flip_recorded_at` and `flip_observed_at` into the run-opened event.
+* The service asks for both clocks and says which one refused, and on what day.
+
+### 9.3 What the regression holds
+
+| Case | Behaviour |
+|---|---|
+| Flip observed on D, run's world ends D−1 | refused; no run row is written |
+| The same twin without a scenario | runs, `shock_basis = none` |
+| The same twin, shock asserted with no scenario | runs, `shock_basis = hypothetical` |
+| Flip observed on D, run's world reaches D | observed shock: `scenario-branch-flipped`, scenario version 1, branch `flipped`, flip event bound |
+| The scenario's controls | still fold into the run and its SIM object |
+| The binding in the digest | a run with no scenario still has a different inputs digest |
+| Flip recorded after `known_at` | still refused (0036's record clock, unchanged) |
+| Scenario recorded after `known_at` | still refused |
+
+The demonstration is a positive control on real replayed data: act IV's corridor-collapse flip
+rests on the observation of **2024-01-17**, exactly the twin's world cut-off, so Act V's bound
+shock remains an observed one and the §6b anchor is unchanged (29 line-stop days, €4,118,000).
+
+### 9.4 Harness evidence at the world-clock candidate
+
+Batch results and isolated reruns are reported separately. Everything ran from the main checkout with the API stopped (C14 inertness), after the demonstration and the browser suite.
+
+| Suite | Batch | Isolated rerun |
+|---|---|---|
+| API unit (`pnpm run test`) | 2124/2127 — the 3 failures are the C15/C18 hermetic scanner controls, which fail under batch load | 2127/2127 |
+| API integration, all (`pnpm run test:int:all`) | 31 files, 650/650 (phase5-corrections 22, including R1–R4 and R2w; phase5-twins 15, phase5-simulations 9, phase5-propagation 4; phase4-corrections 14 and phase4-corrections-2 7 re-run separately, unchanged) | — |
+| Acceptance (`pnpm run test:accept`) | 58/58 | — |
+| Module boundaries (`pnpm run boundaries`) | no violations, 454 modules, 1768 dependencies | — |
+| Upgrade check (`scripts/phase1/verify-0022-upgrade.mjs`) | PASS (16 migrations) | — |
+| Web (`vitest`, `tsc --noEmit`, `next build`) | 4/4, clean, built | — |
+| Reproduction at `37bf4103` (R2w probe) | FAILED with the review's consequence: a flip observed 2023-11-24 gave `shock_basis = scenario-branch-flipped` to a run whose world ends 2023-11-23 | at the candidate: 22/22 pass |
+| Demonstration (Act V on `eye_demo`) | 0 problems; act IV's flip is observed 2024-01-17, exactly the twin's world cut-off, so the bound shock stays observed and the §6b anchor is unchanged | — |
+| Browser (`playwright.demo.config.ts`) | 12/12 | — |
+| Secrets (`gitleaks git`) | no leaks found | — |
+| C15 supply-chain gate | unchanged: red on the util-linux findings, no waiver, separate work | — |
+
+The earlier batch failures and their isolated passes stay in the record with their causes
+unestablished; no gate was added to explain them. In this batch the boundary and upgrade checks
+both reported in full, and the upgrade check passed.
+

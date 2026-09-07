@@ -24,8 +24,14 @@ export interface SimulationReads {
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   /** The version an object stood at, as of a record instant — what a run bound under its own cut-off may use. */
   versionAsOf(a: { objectType: string; id: string; at: string }): Promise<number | null>;
-  /** A scenario branch's state AS OF a record instant: a flip recorded later had not happened yet. */
-  branchStateAsOf(a: { branchId: string; at: string }): Promise<string | undefined>;
+  /**
+   * A scenario branch's state under BOTH of a run's cut-offs: a flip recorded after
+   * `at` had not been written yet, and a flip caused by an observation after
+   * `observedThrough` is one this run's world has not seen. The two instants come back
+   * with it, so a refusal can say which clock refused and on what day.
+   */
+  branchStateAsOf(a: { branchId: string; at: string; observedThrough: string | null }):
+    Promise<{ state: string; flipRecordedAt: string | null; flipObservedAt: string | null } | undefined>;
   /** The citations the SELECTED component's required inputs rest on — the selection rule lives in the port. */
   requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
@@ -91,9 +97,16 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
     return v === null || v === undefined ? null : Number(v);
   }
 
-  async branchStateAsOf(a: { branchId: string; at: string }): Promise<string | undefined> {
-    const rows = await this.call<{ s: string }>(sql`select prediction.branch_state_as_of(${a.branchId}::uuid, ${a.at}::timestamptz) as s`);
-    return rows[0]?.s ?? undefined;
+  async branchStateAsOf(a: { branchId: string; at: string; observedThrough: string | null }):
+    Promise<{ state: string; flipRecordedAt: string | null; flipObservedAt: string | null } | undefined> {
+    const rows = await this.call<{ s: string | null; recorded: string | null; observed: string | null }>(sql`
+      select prediction.branch_state_as_of(${a.branchId}::uuid, ${a.at}::timestamptz, ${a.observedThrough}::date) as s,
+             to_char(b.flipped_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as recorded,
+             prediction.branch_flip_observed_at(${a.branchId}::uuid)::text as observed
+        from prediction.branches_current b where b.branch_id = ${a.branchId}::uuid`);
+    const r = rows[0];
+    if (r === undefined || r.s === null) return undefined;
+    return { state: r.s, flipRecordedAt: r.recorded, flipObservedAt: r.observed };
   }
 
   async requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>> {

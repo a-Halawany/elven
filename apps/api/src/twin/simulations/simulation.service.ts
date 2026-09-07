@@ -205,6 +205,7 @@ export class SimulationService {
       throw new HttpException(errorBody('EYE_STA_001', correlationId, `twin version ${intake.twinVersion} has no world-time cut-off (observed_through); a run reads the twin under two cut-offs and this version names only one`), 409);
     }
     const knownAt = instantOf(version['known_at']);
+    const observedThrough = dayOf(version['observed_through']);
     /*
      * AVAILABILITY NOW, FOR THIS READER. The version's stored health is what was true
      * when it was grounded; this run is asked for now. A required input whose document
@@ -238,11 +239,26 @@ export class SimulationService {
         throw new HttpException(errorBody('EYE_REQ_001', correlationId,
           `scenario ${intake.scenarioId} was recorded after this twin version's known_at (${knownAt}); it was not known at record time and cannot give this run's shock its basis`), 422);
       }
-      const state = (await cap.branchStateAsOf({ branchId: intake.scenarioBranchId, at: knownAt })) ?? String(branch['state']);
+      /*
+       * BOTH CLOCKS. A flip has two times and Phase 4 records both: the instant it was
+       * written, and the day of the observation that caused it. A flip written after this
+       * run's `known_at` was not known to it; a flip caused by an observation after its
+       * `observed_through` is a day this run's world does not reach. Either way the branch
+       * is not flipped FOR THIS RUN, and the shock has no observed basis.
+       */
+      const asOf = await cap.branchStateAsOf({ branchId: intake.scenarioBranchId, at: knownAt, observedThrough });
+      const state = asOf?.state ?? String(branch['state']);
       if (intake.shock !== (state === 'flipped')) {
+        const later = String(branch['state']) === 'flipped' && state !== 'flipped'
+          ? (asOf?.flipRecordedAt !== null && asOf?.flipRecordedAt !== undefined && new Date(asOf.flipRecordedAt).getTime() > new Date(knownAt).getTime()
+              ? ` — its flip was recorded later (${asOf.flipRecordedAt})`
+              : asOf?.flipObservedAt !== null && asOf?.flipObservedAt !== undefined
+                ? ` — its flip rests on an observation of ${asOf.flipObservedAt}, after this run's world cut-off ${observedThrough}`
+                : ' — its flip names no observation date, so nothing establishes that it had happened in this run\'s world')
+          : '';
         throw new HttpException(errorBody('EYE_REQ_001', correlationId,
-          intake.shock ? `the shock contradicts the bound branch: branch "${String(branch['name'])}" was ${state} at this run's record cut-off (${knownAt})${String(branch['state']) === 'flipped' && state !== 'flipped' ? ' — its flip was recorded later' : ''}, not flipped; a shock without a flipped branch is a hypothetical and names no scenario`
-                       : `the bound branch "${String(branch['name'])}" was flipped at this run's record cut-off; a run on it applies the shock (shock: true) or names no scenario`), 422);
+          intake.shock ? `the shock contradicts the bound branch: branch "${String(branch['name'])}" was ${state} under this run's cut-offs (known_at ${knownAt}, observations through ${String(observedThrough)})${later}, not flipped; a shock without a flipped branch is a hypothetical and names no scenario`
+                       : `the bound branch "${String(branch['name'])}" was flipped under this run's cut-offs; a run on it applies the shock (shock: true) or names no scenario`), 422);
       }
       const obj = await cap.citedObject({ objectType: 'SCN', id: intake.scenarioId, version: asOfVersion });
       if (obj === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `scenario ${intake.scenarioId} has no authorized canonical version`), 404);

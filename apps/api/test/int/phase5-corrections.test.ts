@@ -31,7 +31,7 @@ import type { PredictionController } from '../../src/prediction/prediction.contr
 import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { ObservationController } from '../../src/observation/observation.controller.js';
 
-import { INVENTORY_CSV, TERMS_CSV, RECORD_FILES, cite, observedInventory as inventoryOf, observedShipments as shipmentsOf, assumedTerms as termsOf } from './phase5-fixtures.js';
+import { INVENTORY_CSV, SHIPMENTS_CSV, TERMS_CSV, RECORD_FILES, cite, observedInventory as inventoryOf, observedShipments as shipmentsOf, assumedTerms as termsOf } from './phase5-fixtures.js';
 
 type Evd = { id: string; version: number; digest: string; recordedAt: string };
 
@@ -518,5 +518,60 @@ describe('R4 · pending work follows the same reachability the walk uses, includ
     const marked = (await sql<{ s: string }>`select verification_state s from twin.twin_versions where twin_id = ${twinId}::uuid and version = ${v}`.execute(h.su)).rows[0];
     expect(marked?.s, 'the version citing the reached entity was not marked by the walk').toBe('unverified');
   }, 300_000);
+});
+
+/* ═════════ R2w · the shock's flip is bound under BOTH clocks ═════════ */
+
+describe('R2w · an observed branch-flip shock must have been observed within the run\'s world cut-off', () => {
+  it('a flip recorded before known_at but caused by an observation the run cannot see is not an observed shock; with that day inside the cut-off it is', async () => {
+    // The flip Phase 4's evaluator actually recorded, and the world date of the observation that caused it.
+    const flip = (await sql<{ observation_at: string; occurred_at: string; evaluation_at: string | null }>`
+      select e.details ->> 'observation_at' as observation_at, e.occurred_at::text as occurred_at,
+             (select ev.observation_at::text from prediction.indicator_evaluations ev where ev.evaluation_id = (e.details ->> 'evaluation_id')::uuid) as evaluation_at
+        from prediction.scenario_events e
+       where e.branch_id = ${flippedBranch}::uuid and e.event = 'branch.flipped'`.execute(h.su)).rows[0];
+    expect(flip?.observation_at, 'the flip event records no observation date').toBeTruthy();
+    expect(flip?.evaluation_at?.slice(0, 10)).toBe(flip?.observation_at?.slice(0, 10));
+    const D = String(flip?.observation_at).slice(0, 10);
+    const day = (offset: number): string => new Date(new Date(`${D}T00:00:00Z`).getTime() + offset * 86_400_000).toISOString().slice(0, 10);
+    const before = day(-1); const earlier = day(-2);
+    // The flip was RECORDED before this run's record cut-off — only the world clock can refuse it.
+    const branchRow = (await sql<{ flipped_at: string; state: string }>`select flipped_at::text, state from prediction.branches_current where branch_id = ${flippedBranch}::uuid`.execute(h.su)).rows[0];
+    expect(branchRow?.state).toBe('flipped');
+    // Records and elements dated before the cut-off: every other input stays eligible.
+    const early = await h.upload([
+      { filename: `inventory-${earlier}.csv`, text: INVENTORY_CSV, documentTime: `${earlier}T00:00:00Z` },
+      { filename: `shipments-${earlier}.csv`, text: SHIPMENTS_CSV, documentTime: `${earlier}T00:00:00Z` },
+      { filename: `routes-and-terms-${earlier}.csv`, text: TERMS_CSV, documentTime: `${earlier}T00:00:00Z` },
+    ]) as [Evd, Evd, Evd];
+    const eligible = [...inventoryOf(early[0], earlier), ...shipmentsOf(early[1], earlier, ['SYN-SHIP-4471', 'SYN-SHIP-4472']), ...termsOf(early[2])];
+    const knownAt = new Date().toISOString();
+    expect(new Date(String(branchRow?.flipped_at)).getTime(), 'the flip must be recorded before this run\'s record cut-off, or the record clock would refuse it').toBeLessThan(new Date(knownAt).getTime());
+    const outside = await admitted('r2w-before-the-observation', eligible, { knownAt, observedThrough: before });
+    const m = await message(run(baseRun({ twinVersion: outside, shock: true, scenarioId, scenarioBranchId: flippedBranch })));
+    expect(m, `a flip observed on ${D} gave an observed shock to a run whose world ends ${before}`).toMatch(/observed_through|world cut-off|observed on/i);
+    expect((await sql<{ n: string }>`select count(*)::text n from simulation.runs_current where twin_id = ${twinId}::uuid and twin_version = ${outside}`.execute(h.su)).rows[0]?.n).toBe('0');
+    // The same twin may still run: the branch simply is not a shock basis it can see.
+    const noShock = await run(baseRun({ twinVersion: outside, shock: false }));
+    expect(noShock.run.state).toBe('completed');
+    expect((await runRow(noShock.run.runId))['shock_basis']).toBe('none');
+    // A HYPOTHETICAL shock stays available, and says what it is.
+    const hypothetical = await run(baseRun({ twinVersion: outside, shock: true }));
+    expect((await runRow(hypothetical.run.runId))['shock_basis']).toBe('hypothetical');
+    // POSITIVE CONTROL: with D inside the world cut-off, the same binding is an observed shock.
+    const inside = await admitted('r2w-through-the-observation', eligible, { knownAt, observedThrough: D });
+    const ok = await run(baseRun({ twinVersion: inside, shock: true, scenarioId, scenarioBranchId: flippedBranch }));
+    const row = await runRow(ok.run.runId);
+    expect(row['shock_basis']).toBe('scenario-branch-flipped');
+    expect(Number(row['scenario_version'])).toBe(1);
+    expect(row['scenario_branch_state']).toBe('flipped');
+    expect(row['scenario_flip_event']).toBeTruthy();
+    const scn = (await sql<{ classification: string }>`select classification from objects.canonical_objects where object_id = ${scenarioId}::uuid`.execute(h.su)).rows[0];
+    const sim = (await sql<{ classification: string }>`select classification from objects.canonical_objects where object_id = ${ok.run.runId}::uuid`.execute(h.su)).rows[0];
+    expect(sim?.classification, 'the scenario\'s controls no longer fold into the run').toBe(scn?.classification);
+    // and the binding still changes the experiment: a run with no scenario has a different inputs digest
+    const bare = await run(baseRun({ twinVersion: inside, shock: false }));
+    expect((await runRow(bare.run.runId))['inputs_digest']).not.toBe(row['inputs_digest']);
+  }, 600_000);
 });
 
