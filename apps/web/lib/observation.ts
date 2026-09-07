@@ -45,7 +45,7 @@ export interface SourceSummary {
 /** What a source IS and what stands between it and live collection — from stored records, activating nothing. */
 export interface SourceReadiness {
   verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
-  reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null;
+  reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null; scheduler_enabled: boolean;
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;
   health: { state: string; lag_class: string | null; evaluated_at: string } | null;

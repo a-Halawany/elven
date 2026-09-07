@@ -8,9 +8,11 @@
  * two years later; the projection is what the runtime enforces. They are written
  * together so they cannot disagree.
  */
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
+import { EYE_CONFIG } from '../../config/config.module.js';
+import type { EyeConfig } from '../../config/config.js';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ObservationReads, RegistryWrites } from '../observation.capabilities.js';
@@ -22,6 +24,12 @@ export interface SourceReadiness {
   reason: string;
   credential: string;
   scheduled: boolean; cadence_seconds: number | null;
+  /**
+   * Whether THIS deployment executes schedule entries at all. A schedule entry is a
+   * recorded intention; a run is an observed fact. With the scheduler disabled the
+   * entry is recorded and nothing polls, so every run shown here was operator-triggered.
+   */
+  scheduler_enabled: boolean;
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;
   health: { state: string; lag_class: string | null; evaluated_at: string } | null;
@@ -51,6 +59,7 @@ function bad(corr: string, msg: string, status = 422): HttpException {
 
 @Injectable()
 export class SourcesService {
+  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
   /**
    * Register a source contract as `draft`. It cannot self-approve and it cannot
    * be activated here — both are separate governed actions with their own
@@ -256,19 +265,28 @@ export class SourcesService {
       const lifecycle = String(s.lifecycle_state);
       const rights = String(s.rights_state);
       const upload = String(s.connector_kind) === 'upload';
-      // The verdict, in the product's words. Order matters: a contract that is not active is not collecting whatever its mode says.
+      const scheduled = schedule !== undefined && schedule['status'] === 'scheduled';
+      const schedulerEnabled = this.cfg['eye.scheduler.enabled'];
+      // The verdict, in the product's words. Order matters: a contract that is not active is
+      // not collecting whatever its mode says; an upload source is never polled; and a
+      // credential the deployment does not bind blocks collection BEFORE the mode is
+      // consulted — a live contract with a schedule entry and an unbound credential is
+      // blocked, not live (the review's P2: the live branch used to be consulted first).
+      // Schedule and run facts are carried separately whatever the verdict.
       let verdict: SourceReadiness['verdict']; let reason: string;
       if (lifecycle !== 'active') { verdict = 'inactive'; reason = `contract version ${String(s.contract_version)} is ${lifecycle}`; }
       else if (upload) { verdict = 'operator-upload'; reason = 'records arrive only when an operator uploads them; nothing is polled'; }
+      else if (credentialRef !== null) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential${mode === 'live' ? (scheduled ? '; the schedule entry cannot be served' : '; nothing is scheduled') : ''}`; }
       else if (mode === 'live') {
-        verdict = schedule === undefined || schedule['status'] !== 'scheduled' ? 'live-unscheduled' : 'live';
-        reason = verdict === 'live' ? `polled every ${String(schedule?.['cadence_seconds'])} s under contract version ${String(s.contract_version)}` : 'the contract is live but no collection is scheduled for it';
+        verdict = scheduled ? 'live' : 'live-unscheduled';
+        reason = verdict === 'live'
+          ? `live under contract version ${String(s.contract_version)}; schedule entry every ${String(schedule?.['cadence_seconds'])} s${schedulerEnabled ? '' : ' (this deployment runs no scheduler: runs are operator-triggered)'}`
+          : 'the contract is live but no collection is scheduled for it';
       } else if (rights !== 'confirmed') { verdict = 'blocked-rights'; reason = `reuse rights are ${rights}: the source stays in replay until the publisher's terms are resolved`; }
-      else if (credentialRef !== null) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential`; }
       else { verdict = 'replay'; reason = 'rights confirmed and no credential needed: live collection needs a new contract version declaring it, approved and activated by a second operator'; }
       out.push({ ...s, readiness: {
         verdict, reason, credential: credentialRef === null ? 'none required' : `reference ${credentialRef} (not bound in this deployment)`,
-        scheduled: schedule !== undefined && schedule['status'] === 'scheduled', cadence_seconds: schedule === undefined ? null : Number(schedule['cadence_seconds']),
+        scheduled, cadence_seconds: schedule === undefined ? null : Number(schedule['cadence_seconds']), scheduler_enabled: schedulerEnabled,
         last_run: lastRun === undefined ? null : { run_id: String(lastRun['run_id']), state: String(lastRun['state']), mode: String(lastRun['acquisition_mode']),
           finished_at: lastRun['finished_at'] === null || lastRun['finished_at'] === undefined ? null : new Date(String(lastRun['finished_at'])).toISOString(),
           admitted: Number(lastRun['items_admitted'] ?? 0), quarantined: Number(lastRun['items_quarantined'] ?? 0), noop: Number(lastRun['items_noop'] ?? 0), failure: (lastRun['failure_reason'] as string | null) ?? null },

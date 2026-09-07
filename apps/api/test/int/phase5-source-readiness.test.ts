@@ -23,7 +23,7 @@ let h: Phase4Harness;
 let observation: ObservationController;
 
 type Row = { source_id: string; source_key: string; contract_version: number; acquisition_mode: string; connector_kind: string; rights_state: string; lifecycle_state: string;
-  readiness: { verdict: string; reason: string; credential: string; scheduled: boolean; last_run: { state: string; mode: string; admitted: number } | null; evidence_objects: number; health: { state: string } | null } };
+  readiness: { verdict: string; reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null; scheduler_enabled: boolean; last_run: { state: string; mode: string; admitted: number } | null; evidence_objects: number; health: { state: string } | null } };
 
 const readiness = async (): Promise<Row[]> => {
   const r = await observation.sourcesReadiness(h.req(h.manager, 'observation.read.sources', 'SRC', null, 'observation'), h.fx.tenantId, h.fx.domainId, { payload: { limit: 100 } }) as { sources: Row[] };
@@ -71,6 +71,39 @@ describe('the source readiness register', () => {
     expect(r.state, r.reason).toBe('finished');
     const again = (await readiness()).find((x) => x.source_id === h.fx.sourceId && x.contract_version === v.version);
     expect(again?.readiness.last_run?.mode).toBe('live');
+  }, 300_000);
+
+  it('a LIVE contract naming a credential this deployment does not bind reads BLOCKED — CREDENTIAL, scheduled or not; the public live version and the superseded one are unchanged', async () => {
+    // The review's reproduction (P2): the live branch was consulted before the credential
+    // branch, so an active live contract with a schedule entry read LIVE while its own
+    // credential column said "not bound in this deployment", and the unscheduled one read
+    // LIVE — UNSCHEDULED. Through the real registry port and the real controller:
+    const ref = 'vault/sources/fixture/api-key';
+    const v = await h.newVersion({ from: SERIES_START, to: SERIES_END, windowDays: 366, credentialRef: ref });
+    const unscheduled = (await readiness()).find((x) => x.source_id === h.fx.sourceId && x.contract_version === v.version);
+    expect(unscheduled?.acquisition_mode).toBe('live');
+    expect(unscheduled?.readiness.credential).toBe(`reference ${ref} (not bound in this deployment)`);
+    expect(unscheduled?.readiness.verdict, 'an unbound credential was outranked by the live-unscheduled verdict').toBe('blocked-credential');
+    expect(unscheduled?.readiness.scheduled).toBe(false);
+    // now with a schedule entry recorded through the registry port, as activation records it
+    await h.pipeline.write(h.env(h.manager, 'observation.source.transition', 'SRC', h.fx.sourceId), h.manager,
+      { scope: 'DOMAIN', tenantId: h.fx.tenantId, domainId: h.fx.domainId, action: 'observation.source.transition', objectType: 'SRC', objectId: h.fx.sourceId }, ObservationCapability.registry,
+      async (cap) => { await cap.upsertSchedulerEntry({ sourceId: h.fx.sourceId, tenantId: h.fx.tenantId, domainId: h.fx.domainId, contractVersion: v.version,
+        schedulerId: `obs:${h.fx.tenantId}:${h.fx.domainId}:src:${h.fx.sourceId}`, queueName: `obs:${h.fx.tenantId}:${h.fx.domainId}:collection`, cadenceSeconds: 3600, jitterSeconds: 5, status: 'scheduled' }); return { result: {}, targetType: 'SRC', targetId: h.fx.sourceId, targetVersion: String(v.version), outboxEvent: null }; });
+    const scheduled = (await readiness()).find((x) => x.source_id === h.fx.sourceId && x.contract_version === v.version);
+    expect(scheduled?.readiness.scheduled).toBe(true);
+    expect(scheduled?.readiness.cadence_seconds).toBe(3600);
+    expect(scheduled?.readiness.verdict, 'an unbound credential was outranked by the live verdict').toBe('blocked-credential');
+    expect(scheduled?.readiness.reason).toMatch(/binds no source credential/);
+    // controls: a public live version after it reads live-unscheduled (no entry of its own); the credentialed one is then inactive
+    const pub = await h.newVersion({ from: SERIES_START, to: SERIES_END, windowDays: 366 });
+    const rows = await readiness();
+    const open = rows.find((x) => x.source_id === h.fx.sourceId && x.contract_version === pub.version);
+    expect(open?.readiness.credential).toBe('none required');
+    expect(open?.readiness.verdict).toBe('live-unscheduled');
+    expect(rows.find((x) => x.source_id === h.fx.sourceId && x.contract_version === v.version)?.readiness.verdict).toBe('inactive');
+    // and the register says whether THIS deployment executes schedules at all
+    expect(typeof open?.readiness.scheduler_enabled).toBe('boolean');
   }, 300_000);
 
   it('an upload source reads OPERATOR UPLOAD', async () => {
