@@ -23,6 +23,7 @@ import { CoverageFactsService } from './coverage/facts.service.js';
 import { AgentsService } from './agents/agents.service.js';
 import { AgentSessionService } from './agents/agent-session.service.js';
 import { SchedulerService } from './scheduling/scheduler.service.js';
+import { CollectionWorkerService } from './scheduling/collection-worker.service.js';
 import { SweeperService } from './sweeper/sweeper.service.js';
 import { AcquisitionLifecycle } from './acquisition/lifecycle.service.js';
 import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
@@ -42,6 +43,7 @@ import { ObservationExceptionFilter } from './observation.filter.js';
     AgentsService,
     AgentSessionService,
     SchedulerService,
+    CollectionWorkerService,
     SweeperService,
     AcquisitionLifecycle,
     CollectionOrchestrator,
@@ -54,7 +56,7 @@ import { ObservationExceptionFilter } from './observation.filter.js';
   // than growing a second one. Phase 2's extraction reads evidence through this
   // exact implementation — manifest-resolved, digest-verified, custody-writing —
   // under its own observation.evidence.retrieve decision.
-  exports: [VaultService, EvidenceService, CollectionOrchestrator, SchedulerService],
+  exports: [VaultService, EvidenceService, CollectionOrchestrator, SchedulerService, CollectionWorkerService],
 })
 export class ObservationModule implements OnModuleInit {
   constructor(private readonly vault: VaultService) {}

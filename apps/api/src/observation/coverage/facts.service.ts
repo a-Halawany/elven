@@ -13,6 +13,7 @@
  * the same timeline.
  */
 import { Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { ObservationReads } from '../observation.capabilities.js';
 import type { ObservedFacts } from './coverage.service.js';
 
@@ -70,6 +71,19 @@ export class CoverageFactsService {
       .orderBy('started_at' as never, 'desc')
       .limit(200)
       .execute()) as Array<{ run_id: string; state: string; started_at: Date; finished_at: Date | null }>;
+
+    // Confirmations: polls that returned exactly the bytes already held. Each is an
+    // observation of the source being current, recorded on the run, storing nothing.
+    const confirmed = (await cap
+      .readRunEvents()
+      .select(['occurred_at' as never])
+      .where('source_id' as never, '=', sourceId as never)
+      .where('event' as never, '=', 'item.noop' as never)
+      .where(sql`details ->> 'unchanged'` as never, '=', 'true' as never)
+      .orderBy('occurred_at' as never, 'desc')
+      .limit(1)
+      .execute()) as Array<{ occurred_at: Date | string }>;
+    const lastConfirmedAt = confirmed[0] === undefined ? null : new Date(confirmed[0].occurred_at);
 
     const corrections = (await cap
       .readCorrections()
@@ -147,6 +161,12 @@ export class CoverageFactsService {
       bucketsCovered,
       bucketsExpected,
       lastAdmittedAt: newest !== null ? newest.at.toISOString() : null,
+      lastObservedAt: (() => {
+        const a = newest !== null ? newest.at.getTime() : null;
+        const c = lastConfirmedAt !== null ? lastConfirmedAt.getTime() : null;
+        if (a === null && c === null) return null;
+        return new Date(Math.max(a ?? 0, c ?? 0)).toISOString();
+      })(),
       lastSuccessfulRunAt: successfulRuns[0] !== undefined
         ? new Date(successfulRuns[0].finished_at ?? successfulRuns[0].started_at).toISOString() : null,
       lastFailedRunAt: failedRuns[0] !== undefined

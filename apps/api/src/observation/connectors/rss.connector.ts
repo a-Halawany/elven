@@ -80,6 +80,7 @@ export class RssConnector implements Connector {
     // against — exactly what arrived.
     const parent: AcquiredItem = {
       itemKey: `feed:${endpoint}@${digestShort(body)}`,
+      pollKey: `feed:${endpoint}`,
       bytes: body,
       declaredMediaType: transport.retainedHeaders['content-type'] ?? 'application/xml',
       filename,
@@ -100,6 +101,7 @@ export class RssConnector implements Connector {
     const frames = locateItems(body, parsed.value);
     const items: AcquiredItem[] = frames.map((f) => ({
       itemKey: f.key,
+      pollKey: f.key,
       bytes: body.subarray(f.byteStart, f.byteEnd),
       declaredMediaType: 'application/xml',
       filename: `${sanitize(f.guid ?? f.key)}.item.xml`,

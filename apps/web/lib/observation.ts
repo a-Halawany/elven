@@ -43,9 +43,20 @@ export interface SourceSummary {
 }
 
 /** What a source IS and what stands between it and live collection — from stored records, activating nothing. */
+export interface ScheduledAttempt {
+  attempt_id: string; job_id: string; outcome: string; run_id: string | null; reason: string | null;
+  started_at: string; finished_at: string; admitted: number; noop: number; quarantined: number;
+}
 export interface SourceReadiness {
   verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
   reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null; scheduler_enabled: boolean;
+  automatic: {
+    schedule_entry: { status: string; cadence_seconds: number; scheduler_id: string } | null;
+    runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_scheduler: { present: boolean; every_seconds: number | null; next_at: string | null }; redis_names: { queue: string; scheduler: string } };
+    last_attempt: ScheduledAttempt | null;
+    last_success: ScheduledAttempt | null;
+    attempts: { finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number };
+  };
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;
   health: { state: string; lag_class: string | null; evaluated_at: string } | null;

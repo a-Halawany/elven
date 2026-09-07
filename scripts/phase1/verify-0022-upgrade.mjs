@@ -173,8 +173,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM
   'objects.schema_registry': 20,
-  // one ledger line per migration applied above the ceiling (0022–0029)
-  'public.schema_migrations': 16,
+  // one ledger line per migration applied above the ceiling (0022–0038)
+  'public.schema_migrations': 17,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

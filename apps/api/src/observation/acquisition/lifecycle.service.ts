@@ -48,6 +48,8 @@ export interface RunRequest {
   principal: AuthenticatedPrincipal;
   correlationId: string;
   purposeId: string;
+  /** Who or what opened the run: an operator (with the principal) or the scheduler (with the job). Recorded on run.started. */
+  trigger?: { kind: 'scheduler' | 'operator'; by?: string; jobId?: string };
 }
 
 /** What the admission transaction actually committed for one item. */
@@ -62,6 +64,8 @@ export interface RunOutcome {
   quarantined: number;
   noop: number;
   reason?: string;
+  /** FALSE when nothing was persisted: the run id was allocated but no run.started exists. */
+  opened?: boolean;
 }
 
 /** The latest evidence held for a deterministic item key — what a re-run compares against. */
@@ -150,7 +154,7 @@ export class AcquisitionLifecycle {
     fault.at('f02.after_agent_auth');
     const contract = await this.loadContract(req, null, null, req.contractVersion);
     if (contract === null) {
-      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: 'no such source contract version' };
+      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: 'no such source contract version', opened: false };
     }
     const { tenant_id: tenantId, domain_id: domainId } = contract;
     fault.at('f03.after_scope_resolution');
@@ -191,7 +195,8 @@ export class AcquisitionLifecycle {
             connector: req.connector.name, connectorVersion: req.connector.version,
             acquisitionMode: contract.acquisition_mode,
             event: 'run.started',
-            details: { agent_id: req.agentId, budgets: agent.budgets, owner: agent.owner_principal_id },
+            details: { agent_id: req.agentId, budgets: agent.budgets, owner: agent.owner_principal_id,
+                       trigger: req.trigger ?? { kind: 'operator' } },
             correlationId: req.correlationId,
           });
           fault.at('f06.at_run_start_commit');
@@ -201,13 +206,15 @@ export class AcquisitionLifecycle {
     } catch (e) {
       // Nothing was persisted: the transaction carried POL, AUD and run.started
       // together, so there is no half-started run to reconcile.
-      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e) };
+      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e), opened: false };
     }
     fault.at('f07.after_run_start_commit');
 
     let admitted = 0;
     let quarantined = 0;
     let noop = 0;
+    /** Bytes that became NEW stored evidence this run — distinct from bytes transferred. */
+    let bytesStored = 0;
 
     try {
       // ── step 3: revalidate the exact contract version immediately before egress ──
@@ -248,6 +255,15 @@ export class AcquisitionLifecycle {
       const prior = await this.loadPriorEvidence(
         req, tenantId, domainId, queue.filter((i) => i.deterministic === true).map((i) => i.itemKey));
       /*
+       * WHAT IS ALREADY HELD FOR WHAT WAS POLLED. A forward poll's item key carries
+       * the retrieval instant and never repeats; its POLL KEY (the endpoint, the
+       * feed, the feed entry) does. Bytes equal to the latest evidence for the same
+       * poll key are an audited confirmation — freshness-bearing, storing nothing
+       * twice — never a second copy (SCHEDULED_COLLECTION.md §1.3).
+       */
+      const priorByPoll = await this.loadPriorByPollKeys(
+        req, tenantId, domainId, [...new Set(queue.filter((i) => i.deterministic !== true && i.pollKey !== undefined).map((i) => i.pollKey as string))]);
+      /*
        * A QUARANTINED WINDOW IS NOT A COLLECTED WINDOW. The checkpoint the run
        * commits must not carry the backfill cursor past a window whose bytes were
        * refused, or the range looks complete with a hole in it. The earliest
@@ -267,9 +283,11 @@ export class AcquisitionLifecycle {
           req, contract, runId, item, binding,
           item.parentItemKey != null ? parentEvdByKey.get(item.parentItemKey) ?? null : null,
           item.deterministic === true ? prior.get(item.itemKey) ?? null : null,
+          item.deterministic !== true && item.pollKey !== undefined ? priorByPoll.get(item.pollKey) ?? null : null,
         );
         if (result.kind === 'admitted') {
           admitted += 1;
+          bytesStored += item.bytes.byteLength;
           parentEvdByKey.set(item.itemKey, result.evdObjectId);
         } else if (result.kind === 'quarantined') {
           quarantined += 1;
@@ -321,6 +339,8 @@ export class AcquisitionLifecycle {
         admitted, quarantined, noop,
         budget_spent: meter.spent,
         requests: output.requestsMade, bytes: output.bytesTransferred,
+        // Transfer and storage, measured separately: a confirmed-unchanged poll transfers and stores nothing new.
+        bytes_transferred: output.bytesTransferred, bytes_stored: bytesStored,
       });
       return { runId, state: 'finished', admitted, quarantined, noop };
     } catch (e) {
@@ -357,6 +377,8 @@ export class AcquisitionLifecycle {
     parentEvdObjectId: string | null,
     /** What is already held for this deterministic item key, if anything. */
     prior: PriorEvidence | null = null,
+    /** What is already held for what this forward poll polled (its poll key), if anything. */
+    heldForPoll: PriorEvidence | null = null,
   ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop' }> {
     const tenantId = contract.tenant_id;
     const domainId = contract.domain_id;
@@ -383,6 +405,26 @@ export class AcquisitionLifecycle {
       await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
       return { kind: 'noop' };
     }
+
+    /*
+     * A FORWARD POLL THAT RETURNED EXACTLY WHAT IS HELD is a confirmation, not new
+     * evidence. The run records it — which evidence was confirmed, its digest, the
+     * instant — so the poll is audited and freshness advances; the bytes were
+     * transferred, are not stored a second time, and the quarantine copy is
+     * tombstoned. Different bytes for the same poll key fall through and are
+     * admitted as a new observation that names what it changed from.
+     */
+    if (heldForPoll !== null && heldForPoll.contentDigest === stored.contentDigest) {
+      await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
+        item_key: item.itemKey, poll_key: item.pollKey ?? null, unchanged: true,
+        evd_object_id: heldForPoll.evdObjectId, evd_version: heldForPoll.objectVersion,
+        digest: stored.contentDigest, bytes: item.bytes.byteLength,
+        reason: 'identical bytes to the evidence already held for this poll; confirmed, not stored again',
+      });
+      await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
+      return { kind: 'noop' };
+    }
+    const changedFrom = heldForPoll !== null && heldForPoll.contentDigest !== stored.contentDigest ? heldForPoll : null;
 
     // ── step 7: bounded validation and safety scanning ──────────────────────
     const verdict = inspectContent(item.bytes, {
@@ -550,7 +592,8 @@ export class AcquisitionLifecycle {
           acquisitionMode: contract.acquisition_mode,
           event: revisionOf === null ? 'item.admitted' : 'item.revised',
           details: { item_key: item.itemKey, evd_object_id: evdObjectId, digest: candidate.contentDigest,
-                     ...(revisionOf === null ? {} : { evd_version: evdVersion, prior_digest: revisionOf.contentDigest }) },
+                     ...(revisionOf === null ? {} : { evd_version: evdVersion, prior_digest: revisionOf.contentDigest }),
+                     ...(changedFrom === null ? {} : { changed_from: { evd_object_id: changedFrom.evdObjectId, evd_version: changedFrom.objectVersion, digest: changedFrom.contentDigest } }) },
           correlationId: req.correlationId,
         });
         await cap.markAttemptOutcome({
@@ -940,6 +983,27 @@ export class AcquisitionLifecycle {
     );
     for (const r of got.result) {
       out.set(r.item_key, {
+        evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
+        contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
+      });
+    }
+    return out;
+  }
+
+  private async loadPriorByPollKeys(
+    req: RunRequest, tenantId: string, domainId: string, pollKeys: string[],
+  ): Promise<Map<string, PriorEvidence>> {
+    const out = new Map<string, PriorEvidence>();
+    if (pollKeys.length === 0) return out;
+    const got = await this.pipeline.consequentialRead(
+      this.envelope(req, 'observation.read.evidence', 'EVD', null, tenantId, domainId),
+      req.principal,
+      this.route('observation.read.evidence', tenantId, domainId, 'EVD', null),
+      ObservationCapability.read,
+      async (cap) => cap.latestEvidenceByPollKeys({ sourceId: req.sourceId, pollKeys }),
+    );
+    for (const r of got.result) {
+      out.set(r.poll_key, {
         evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
         contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
       });

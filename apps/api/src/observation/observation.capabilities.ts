@@ -84,6 +84,18 @@ export interface ObservationReads {
     item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
     content_digest: string; recorded_at: string;
   }>>;
+  /**
+   * The latest evidence held per POLL KEY — the stable identity of what was polled
+   * (a REST endpoint, a feed, a feed entry). A forward poll's item key carries the
+   * retrieval instant, so it never repeats; the poll key is what an unchanged
+   * response is compared against.
+   */
+  latestEvidenceByPollKeys(a: { sourceId: string; pollKeys: string[] }): Promise<Array<{
+    poll_key: string; item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
+    content_digest: string; recorded_at: string;
+  }>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readScheduledAttempts(): any;
   rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
   }>>;
@@ -291,6 +303,34 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
                        where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
                        order by e.object_version desc limit 1) e on true`);
   }
+
+  async latestEvidenceByPollKeys(a: { sourceId: string; pollKeys: string[] }): Promise<Array<{
+    poll_key: string; item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
+    content_digest: string; recorded_at: string;
+  }>> {
+    if (a.pollKeys.length === 0) return [];
+    // An OBS belongs to a poll key when its item key IS the poll key (a feed entry)
+    // or is the poll key followed by '@' and the retrieval instant (a forward poll).
+    return this.call(sql`
+      with keys as (select unnest(${a.pollKeys}::text[]) as poll_key),
+      obs as (
+        select distinct on (k.poll_key) k.poll_key, o.object_id, o.payload ->> 'item_key' as item_key
+          from keys k
+          join objects.canonical_objects o
+            on o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and (o.payload ->> 'item_key' = k.poll_key or left(o.payload ->> 'item_key', length(k.poll_key) + 1) = k.poll_key || '@')
+         order by k.poll_key, o.recorded_at desc, o.object_version desc)
+      select obs.poll_key, obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readScheduledAttempts(): any { return this.from('observation.scheduled_attempts'); }
 
   async rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;

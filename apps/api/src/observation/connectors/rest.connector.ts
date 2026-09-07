@@ -117,7 +117,7 @@ export class RestConnector implements Connector {
           originAllowlisted: null,
         };
         const parentItem: AcquiredItem = {
-          itemKey: itemKeyFor(endpoint, got.entry.retrieved_at),
+          itemKey: itemKeyFor(endpoint, got.entry.retrieved_at), pollKey: safeUrl(endpoint),
           bytes: got.body,
           declaredMediaType: got.entry.retained_headers['content-type'] ?? null,
           filename: got.entry.file,
@@ -151,7 +151,7 @@ export class RestConnector implements Connector {
           ...(res.headers['last-modified'] !== undefined ? { lastModified: res.headers['last-modified'] } : {}),
         };
         const parentItem: AcquiredItem = {
-          itemKey: itemKeyFor(endpoint, new Date().toISOString()),
+          itemKey: itemKeyFor(endpoint, new Date().toISOString()), pollKey: safeUrl(endpoint),
           bytes: res.body,
           declaredMediaType: res.headers['content-type'] ?? null,
           filename: filenameFor(endpoint),

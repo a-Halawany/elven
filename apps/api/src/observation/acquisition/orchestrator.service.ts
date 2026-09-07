@@ -41,6 +41,8 @@ import { RssConnector } from '../connectors/rss.connector.js';
 import { UploadConnector, type UploadedFile } from '../connectors/upload.connector.js';
 import type { Connector, RunBudgets } from '../connectors/sdk.js';
 
+type TestEgress = NonNullable<NonNullable<ConstructorParameters<typeof RestConnector>[0]>['egress']>;
+
 const EMPTY_PAYLOAD_DIGEST = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a';
 
 /**
@@ -97,10 +99,22 @@ export class CollectionOrchestrator {
     private readonly principals: PrincipalsService,
   ) {}
 
+  /**
+   * TEST CONTROL ONLY: the egress the REST connector uses when a scheduled job runs
+   * in the test runtime, so a controlled test can stand in for a publisher without a
+   * network. Refused outside the test runtime; production connectors always use the
+   * live, allowlisted, pinned egress.
+   */
+  private egressForTests: TestEgress | null = null;
+  useEgressForTests(egress: TestEgress | null): void {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('useEgressForTests is available only in the test runtime');
+    this.egressForTests = egress;
+  }
+
   /** Cohort 1 and nothing else. An unknown kind is refused, never approximated. */
   connectorFor(kind: string, files: UploadedFile[] = []): Connector {
     switch (kind) {
-      case 'rest': return new RestConnector();
+      case 'rest': return this.egressForTests === null ? new RestConnector() : new RestConnector({ egress: this.egressForTests });
       case 'rss': return new RssConnector();
       case 'upload': return new UploadConnector(files);
       default:
@@ -154,6 +168,7 @@ export class CollectionOrchestrator {
       agentId: agent.agent_id, agentVersion: agent.agent_version,
       codeDigest: agent.code_digest, connectorKind: contract.connector_kind,
       correlationId: a.correlationId, purposeId: a.purposeId, files: a.files ?? [],
+      trigger: { kind: 'operator', by: a.triggeredBy },
     });
     return { ...outcome, triggeredBy: a.triggeredBy };
   }
@@ -167,14 +182,16 @@ export class CollectionOrchestrator {
    * tampered with, or whose agent was revoked while it sat in the queue, is
    * refused at execution rather than at enqueue.
    */
-  async handleScheduledJob(payload: CollectionJobPayload): Promise<RunOutcome> {
+  async handleScheduledJob(payload: CollectionJobPayload, jobId = 'unknown'): Promise<RunOutcome> {
     return this.runAsAgent({
       tenantId: payload.tenantId, domainId: payload.domainId,
       sourceId: payload.sourceId, contractVersion: payload.contractVersion,
       agentId: payload.agentId, agentVersion: payload.agentVersion,
       codeDigest: payload.codeDigest, connectorKind: payload.connector,
-      correlationId: payload.correlationId, purposeId: 'observation',
+      // Every job carries its own correlation: a scheduler re-fires the same payload, and two runs must not share one.
+      correlationId: newId(), purposeId: 'observation',
       files: [],
+      trigger: { kind: 'scheduler', jobId },
     });
   }
 
@@ -188,8 +205,14 @@ export class CollectionOrchestrator {
     tenantId: string; domainId: string; sourceId: string; contractVersion: number;
     agentId: string; agentVersion: string; codeDigest: string; connectorKind: string;
     correlationId: string; purposeId: string; files: UploadedFile[];
+    trigger: { kind: 'scheduler' | 'operator'; by?: string; jobId?: string };
   }): Promise<RunOutcome> {
-    const connector = this.connectorFor(a.connectorKind, a.files);
+    let connector: Connector;
+    try {
+      connector = this.connectorFor(a.connectorKind, a.files);
+    } catch (e) {
+      return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: e instanceof Error ? e.message : 'unknown connector kind' };
+    }
     if (connector.codeDigest !== a.codeDigest || connector.version !== a.agentVersion) {
       return {
         runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
@@ -213,6 +236,7 @@ export class CollectionOrchestrator {
       sourceId: a.sourceId, contractVersion: a.contractVersion,
       agentId: a.agentId, agentVersion: a.agentVersion,
       connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
+      trigger: a.trigger,
     });
   }
 

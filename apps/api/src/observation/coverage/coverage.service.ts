@@ -91,6 +91,8 @@ export interface ObservedFacts {
   bucketsExpected: number | null;
   /** Latest admitted item's OBSERVATION time, or null if the source has none. */
   lastAdmittedAt: string | null;
+  /** The last time the source was seen current: an admission, or a poll confirmed unchanged. Freshness measures this. */
+  lastObservedAt?: string | null;
   /** Latest SUCCESSFUL run, whether or not it produced an item. */
   lastSuccessfulRunAt: string | null;
   /** Latest FAILED run. */
@@ -161,8 +163,10 @@ export class CoverageService {
           errorClass: null, confidence: 'derived-from-admissions',
         }));
 
-    // freshness — how long since the last admitted item, against the threshold.
-    out.push(na('freshness') ?? (facts.lastAdmittedAt === null
+    // freshness — how long since the source was last seen current (an admission, or a
+    // poll confirmed unchanged), against the threshold.
+    const lastSeen = facts.lastObservedAt ?? facts.lastAdmittedAt;
+    out.push(na('freshness') ?? (lastSeen === null
       ? {
           dimension: 'freshness', state: 'insufficient_evidence', valueNumeric: null,
           valueText: 'no item has ever been admitted for this source',
@@ -170,7 +174,7 @@ export class CoverageService {
         }
       : {
           dimension: 'freshness', state: 'measured',
-          valueNumeric: secondsBetween(facts.lastAdmittedAt, input.evaluatedAt),
+          valueNumeric: secondsBetween(lastSeen, input.evaluatedAt),
           valueText: null, denominator: input.freshnessThresholdSeconds,
           naReason: null, errorClass: null, confidence: 'derived-from-admissions',
         }));

@@ -144,6 +144,15 @@ export interface AcquiredItem {
    */
   deterministic?: boolean;
   /**
+   * The stable identity of WHAT WAS POLLED, across runs: a REST endpoint (its
+   * redacted URL), a feed, a feed entry's guid + pubDate. A forward poll's item key
+   * is bound to the retrieval instant by design (§5.12); the poll key is what the
+   * lifecycle compares bytes against, so a poll that returns exactly what is
+   * already held is recorded as an audited, freshness-bearing confirmation and
+   * stores no second copy. Absent for items that have no stable identity.
+   */
+  pollKey?: string;
+  /**
    * For a backfilled window: the traversal cursor at which its window began, so
    * the lifecycle can roll the checkpoint back to a window it QUARANTINED rather
    * than let the cursor pass a window that was never collected.
