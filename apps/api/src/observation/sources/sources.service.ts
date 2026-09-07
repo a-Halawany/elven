@@ -9,11 +9,23 @@
  * together so they cannot disagree.
  */
 import { HttpException, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ObservationReads, RegistryWrites } from '../observation.capabilities.js';
 import { validateSourceContract, type SourceContractV1 } from './source-contract.js';
+
+export interface SourceReadiness {
+  /** live · live-unscheduled · replay · operator-upload · blocked-rights · blocked-credential · inactive */
+  verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
+  reason: string;
+  credential: string;
+  scheduled: boolean; cadence_seconds: number | null;
+  last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
+  evidence_objects: number;
+  health: { state: string; lag_class: string | null; evaluated_at: string } | null;
+}
 
 export interface SourceRow {
   source_id: string;
@@ -207,6 +219,64 @@ export class SourcesService {
       .orderBy('created_at' as never, 'desc')
       .limit(Math.min(limit, 500))
       .execute()) as SourceRow[];
+  }
+
+  /**
+   * READINESS, per registered source, from stored records alone: what the source IS
+   * (live, replay or operator upload), what stands between it and live collection
+   * (unresolved reuse rights, a credential this deployment does not bind, a superseded
+   * or suspended contract), whether anything is scheduled, the last governed run, the
+   * evidence held, and the latest recorded health verdict. It activates nothing and
+   * consults no clock: an operator reads it to know what is real, what is replayed and
+   * what is blocked, and by what.
+   */
+  async readiness(cap: ObservationReads, limit = 100): Promise<Array<SourceRow & { readiness: SourceReadiness }>> {
+    const rows = await this.list(cap, limit);
+    const out: Array<SourceRow & { readiness: SourceReadiness }> = [];
+    for (const s of rows) {
+      const sourceId = String(s.source_id);
+      const schedule = (await cap.readSchedulerEntries().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
+        .executeTakeFirst()) as Record<string, unknown> | undefined;
+      const lastRun = (await cap.readRuns().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
+        .orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const health = (await cap.readHealthEvents().select(['new_state', 'lag_class', 'evaluated_at'])
+        .where('source_id' as never, '=', sourceId as never)
+        .orderBy('evaluated_at' as never, 'desc').orderBy('event_id' as never, 'desc').limit(1).executeTakeFirst()) as { new_state: string; lag_class: string | null; evaluated_at: Date | string } | undefined;
+      const evidence = (await cap.readCanonicalObjects()
+        .select(sql<string>`count(*)`.as('n'))
+        .where('object_type' as never, '=', 'EVD' as never)
+        .where('provenance_ref' as never, 'like', `SRC:${sourceId}@%` as never)
+        .executeTakeFirst()) as { n: string | number } | undefined;
+      const contract = ((s.contract ?? {}) as unknown) as Record<string, unknown>;
+      const so = (contract['security_and_operations'] ?? {}) as Record<string, unknown>;
+      const credentialRef = typeof so['credential_ref'] === 'string' ? (so['credential_ref'] as string) : null;
+      const mode = String(s.acquisition_mode);
+      const lifecycle = String(s.lifecycle_state);
+      const rights = String(s.rights_state);
+      const upload = String(s.connector_kind) === 'upload';
+      // The verdict, in the product's words. Order matters: a contract that is not active is not collecting whatever its mode says.
+      let verdict: SourceReadiness['verdict']; let reason: string;
+      if (lifecycle !== 'active') { verdict = 'inactive'; reason = `contract version ${String(s.contract_version)} is ${lifecycle}`; }
+      else if (upload) { verdict = 'operator-upload'; reason = 'records arrive only when an operator uploads them; nothing is polled'; }
+      else if (mode === 'live') {
+        verdict = schedule === undefined || schedule['status'] !== 'scheduled' ? 'live-unscheduled' : 'live';
+        reason = verdict === 'live' ? `polled every ${String(schedule?.['cadence_seconds'])} s under contract version ${String(s.contract_version)}` : 'the contract is live but no collection is scheduled for it';
+      } else if (rights !== 'confirmed') { verdict = 'blocked-rights'; reason = `reuse rights are ${rights}: the source stays in replay until the publisher's terms are resolved`; }
+      else if (credentialRef !== null) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential`; }
+      else { verdict = 'replay'; reason = 'rights confirmed and no credential needed: live collection needs a new contract version declaring it, approved and activated by a second operator'; }
+      out.push({ ...s, readiness: {
+        verdict, reason, credential: credentialRef === null ? 'none required' : `reference ${credentialRef} (not bound in this deployment)`,
+        scheduled: schedule !== undefined && schedule['status'] === 'scheduled', cadence_seconds: schedule === undefined ? null : Number(schedule['cadence_seconds']),
+        last_run: lastRun === undefined ? null : { run_id: String(lastRun['run_id']), state: String(lastRun['state']), mode: String(lastRun['acquisition_mode']),
+          finished_at: lastRun['finished_at'] === null || lastRun['finished_at'] === undefined ? null : new Date(String(lastRun['finished_at'])).toISOString(),
+          admitted: Number(lastRun['items_admitted'] ?? 0), quarantined: Number(lastRun['items_quarantined'] ?? 0), noop: Number(lastRun['items_noop'] ?? 0), failure: (lastRun['failure_reason'] as string | null) ?? null },
+        evidence_objects: Number(evidence?.n ?? 0),
+        health: health === undefined ? null : { state: health.new_state, lag_class: health.lag_class, evaluated_at: new Date(String(health.evaluated_at)).toISOString() },
+      } });
+    }
+    return out;
   }
 
   async get(cap: ObservationReads, sourceId: string, correlationId: string): Promise<SourceRow> {

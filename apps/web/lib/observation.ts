@@ -42,6 +42,16 @@ export interface SourceSummary {
   health_state: HealthState;
 }
 
+/** What a source IS and what stands between it and live collection — from stored records, activating nothing. */
+export interface SourceReadiness {
+  verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
+  reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null;
+  last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
+  evidence_objects: number;
+  health: { state: string; lag_class: string | null; evaluated_at: string } | null;
+}
+export type SourceWithReadiness = SourceSummary & { publisher?: string; readiness: SourceReadiness };
+
 export interface Overview {
   sources: SourceSummary[];
   counts: {
@@ -128,6 +138,8 @@ export const observation = {
 
   listSources: (s: Scope) =>
     obs<{ sources: SourceSummary[]; receipt: Receipt }>(s, '/sources/list', 'observation.read.sources', 'SRC', { limit: 200 }),
+  sourcesReadiness: (s: Scope) =>
+    obs<{ sources: SourceWithReadiness[]; receipt: Receipt }>(s, '/sources/readiness', 'observation.read.sources', 'SRC', { limit: 200 }),
 
   getSource: (s: Scope, sourceId: string) =>
     obs<Record<string, unknown>>(s, `/sources/${sourceId}/get`, 'observation.read.sources', 'SRC', {}, sourceId),
