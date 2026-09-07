@@ -340,6 +340,18 @@ const TWIN_RULES: typeof RULES = [
     message: 'this twin version names no world-time cut-off (observed_through); a run reads the twin under two cut-offs and cannot use it.',
   },
   {
+    match: /run rejected: required inputs for component .* are no longer available/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'a required input of this twin version rests on a document that is no longer available — withdrawn, deleted, or not readable by this reader. A run establishes that now; the version\'s stored health says only what was true when it was grounded.',
+  },
+  {
+    match: /run rejected: (scenario .* (was recorded after|stood at version)|branch .* was .* at this)/i,
+    status: 422,
+    code: 'EYE_REQ_001',
+    message: 'the scenario binding is later information than this run\'s record cut-off: a tree admitted, or a branch flipped, after the twin version\'s known_at was not known then and gives the run\'s shock no basis.',
+  },
+  {
     match: /run rejected: inputs for component .* are not usable/i,
     status: 409,
     code: 'EYE_STA_002',

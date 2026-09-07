@@ -57,9 +57,12 @@ export interface TwinReads {
   readReconciliations(): any;
   readCorrections(): any;
   readInvalidations(): any;
-  /** The dependency table and the evidence-to-claim lineage: what a correction reaches before any walk. */
+  /** The dependency table, the evidence-to-claim lineage, and the entities and edges a claim produced:
+   *  the same reachability the impact walk uses, read here without writing anything. */
   readDependencies(): any;
   readClaimLineage(): any;
+  readResolutions(): any;
+  readEdges(): any;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   entity(id: string): Promise<EntityRow | undefined>;
@@ -128,6 +131,8 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
   readInvalidations(): any { return this.from('graph.invalidations_current'); }
   readDependencies(): any { return this.from('graph.dependencies'); }
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
+  readResolutions(): any { return this.from('graph.resolutions_current'); }
+  readEdges(): any { return this.from('graph.edges_current'); }
 
   async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
     const rows = await this.call<CitedObjectRow>(sql`

@@ -42,6 +42,18 @@ describe('P5 · port refusals are translated, not swallowed', () => {
     expect(answer('23503', 'reproduction rejected: run x is not a completed run in this domain')?.status).toBe(404);
     expect(answer('23503', 'impact rejected: no such invalidation')?.status).toBe(404);
   });
+  it('R1/R2: the new-boundary refusals answer as conflicts and bad requests, in the product\'s words', () => {
+    // availability of a required input, established at the RUN boundary rather than from stored health
+    const a = answer('22023', 'run rejected: required inputs for component SYN-PART-MAG are no longer available: [{"key": "route.inland_days", "problem": "withdrawn"}]');
+    expect(a?.status).toBe(409);
+    expect(a?.body.message).toMatch(/no longer available|withdrawn/i);
+    expect(a?.body.message).not.toMatch(/run rejected/);
+    // the scenario, under the run's own record cut-off
+    expect(answer('22023', "run rejected: scenario x was recorded after this version's known_at (2026-09-01T12:00:00Z); it was not known at record time")?.status).toBe(422);
+    expect(answer('22023', "run rejected: branch b was open at this version's known_at (2026-09-01T12:00:00Z), not flipped")?.status).toBe(422);
+    expect(answer('22023', "run rejected: scenario x stood at version 1 at this version's known_at (2026-09-01T12:00:00Z), not 2")?.status).toBe(422);
+  });
+
   it('a fault that is not a port refusal stays a fault: no SQLSTATE, or a SQLSTATE the ports do not raise, translates to nothing', () => {
     expect(asObservationRefusal(new Error('version rejected: branch actual already has an open draft'), 'corr')).toBeNull();
     expect(asObservationRefusal(pg('XX000', 'version rejected: branch actual already has an open draft'), 'corr')).toBeNull();

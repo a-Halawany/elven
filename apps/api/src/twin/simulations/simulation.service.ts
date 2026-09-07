@@ -187,7 +187,7 @@ export class SimulationService {
   constructor(private readonly series: SeriesService) {}
 
   /** Bind the contract and snapshot the initial state (governed write: `simulation.run`). */
-  async open(cap: RunWrites, ctx: ScopeContext, intake: RunIntake, actor: string, correlationId: string, runId: string = newId()):
+  async open(cap: RunWrites, ctx: ScopeContext, reader: Reader, intake: RunIntake, actor: string, correlationId: string, runId: string = newId()):
     Promise<{ runId: string; opened: OpenedRun; params: SupplyFlowParams; options: SupplyFlowOptions; assumptions: Record<string, unknown>; envelope: Record<string, unknown> }> {
     const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', intake.twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (twin === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin matches'), 404);
@@ -204,10 +204,26 @@ export class SimulationService {
     if (version['observed_through'] === null || version['observed_through'] === undefined) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId, `twin version ${intake.twinVersion} has no world-time cut-off (observed_through); a run reads the twin under two cut-offs and this version names only one`), 409);
     }
+    const knownAt = instantOf(version['known_at']);
     /*
-     * THE SCENARIO IS RESOLVED AND BOUND. A shock's basis is the bound branch's state at
-     * opening — flipped, or it is not a shock the scenario supports. A shock with no
-     * scenario is a HYPOTHETICAL: recorded as such, never as an observed flip.
+     * AVAILABILITY NOW, FOR THIS READER. The version's stored health is what was true
+     * when it was grounded; this run is asked for now. A required input whose document
+     * has since been withdrawn, deleted or become unreadable to this reader is not one
+     * the run may use, however complete the version was. (The port refuses the same,
+     * from the object's own lifecycle; here the governed retrieval also decides.)
+     */
+    const unavailable = await this.unavailableInputs(cap, reader, intake.twinId, intake.twinVersion, intake.component, correlationId);
+    if (unavailable.length > 0) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId,
+        `required inputs for ${intake.component} are no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000)), 409);
+    }
+    /*
+     * THE SCENARIO IS RESOLVED AND BOUND, UNDER THIS RUN'S OWN RECORD CUT-OFF. A tree
+     * admitted after the twin version's `known_at`, or a branch that flipped after it,
+     * was not known then and gives this run's shock nothing. A shock's basis is the
+     * bound branch's state AS OF that instant — flipped, or it is not a shock the
+     * scenario supports. A shock with no scenario is a HYPOTHETICAL: recorded as such,
+     * never as an observed flip.
      */
     let scenario: ScenarioBinding | null = null;
     if (intake.scenarioId !== null && intake.scenarioBranchId !== null) {
@@ -217,16 +233,21 @@ export class SimulationService {
       if (branch === undefined || String(branch['scenario_id']) !== intake.scenarioId) {
         throw new HttpException(errorBody('EYE_REQ_001', correlationId, `branch ${intake.scenarioBranchId} is not a branch of scenario ${intake.scenarioId}`), 422);
       }
-      const state = String(branch['state']);
+      const asOfVersion = await cap.versionAsOf({ objectType: 'SCN', id: intake.scenarioId, at: knownAt });
+      if (asOfVersion === null) {
+        throw new HttpException(errorBody('EYE_REQ_001', correlationId,
+          `scenario ${intake.scenarioId} was recorded after this twin version's known_at (${knownAt}); it was not known at record time and cannot give this run's shock its basis`), 422);
+      }
+      const state = (await cap.branchStateAsOf({ branchId: intake.scenarioBranchId, at: knownAt })) ?? String(branch['state']);
       if (intake.shock !== (state === 'flipped')) {
         throw new HttpException(errorBody('EYE_REQ_001', correlationId,
-          intake.shock ? `the shock contradicts the bound branch: branch "${String(branch['name'])}" is ${state}, not flipped — a shock without a flipped branch is a hypothetical and names no scenario`
-                       : `the bound branch "${String(branch['name'])}" is flipped; a run on it applies the shock (shock: true) or names no scenario`), 422);
+          intake.shock ? `the shock contradicts the bound branch: branch "${String(branch['name'])}" was ${state} at this run's record cut-off (${knownAt})${String(branch['state']) === 'flipped' && state !== 'flipped' ? ' — its flip was recorded later' : ''}, not flipped; a shock without a flipped branch is a hypothetical and names no scenario`
+                       : `the bound branch "${String(branch['name'])}" was flipped at this run's record cut-off; a run on it applies the shock (shock: true) or names no scenario`), 422);
       }
-      const obj = await cap.citedObject({ objectType: 'SCN', id: intake.scenarioId, version: null });
+      const obj = await cap.citedObject({ objectType: 'SCN', id: intake.scenarioId, version: asOfVersion });
       if (obj === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `scenario ${intake.scenarioId} has no authorized canonical version`), 404);
       scenario = { scenarioId: intake.scenarioId, version: obj.object_version, branchId: intake.scenarioBranchId, branchState: state,
-                   flipEventId: branch['flip_event_id'] === null || branch['flip_event_id'] === undefined ? null : String(branch['flip_event_id']),
+                   flipEventId: state === 'flipped' && branch['flip_event_id'] !== null && branch['flip_event_id'] !== undefined ? String(branch['flip_event_id']) : null,
                    controls: { synthetic_state: obj.synthetic_state, classification: obj.classification, rights_profile: obj.rights_profile,
                                residency_profile: obj.residency_profile, retention_profile: obj.retention_profile, access_policy_ref: obj.access_policy_ref } };
     }
@@ -269,6 +290,49 @@ export class SimulationService {
       interventions: intake.interventions, constraints, assumptions: derived.assumptions, inputsDigest, validationStatus, controls, actor, eventId: newId(), correlationId,
     });
     return { runId, opened, params: derived.params, options, assumptions: derived.assumptions, envelope };
+  }
+
+  /**
+   * Is every artefact in this set still available TO THIS READER, now? The exact version
+   * must be readable and neither withdrawn nor retired, its object must not have been
+   * withdrawn or retired since (a withdrawal supersedes the cited version with a
+   * withdrawn one), and evidence bytes must survive the governed retrieval — policy,
+   * governed deletion and integrity decide at the moment of asking. Returns what is
+   * unavailable, named; an empty list is the only pass.
+   */
+  private async unavailable(
+    cap: SimulationReads, reader: Reader, citations: Array<{ key: string; kind: string; id: string; version: number }>, readFor: string, context: Record<string, string>,
+  ): Promise<string[]> {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const c of citations) {
+      if (c.kind === 'entity') continue;
+      const id = `${c.kind}:${c.id}@${c.version}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const objectType = c.kind === 'evidence' ? 'EVD' : c.kind === 'claim' ? 'CLM' : c.kind === 'forecast' ? 'FCT'
+        : c.kind === 'run' ? 'SIM' : c.kind === 'scenario' ? 'SCN' : 'ASU';
+      const exact = await cap.citedObject({ objectType, id: c.id, version: c.version });
+      if (exact === undefined) { out.push(`${c.kind} ${c.id}@${c.version} (${c.key}): not available to this reader`); continue; }
+      const latest = await cap.citedObject({ objectType, id: c.id, version: null });
+      if (latest !== undefined && (latest.lifecycle_state === 'withdrawn' || latest.lifecycle_state === 'retired')) {
+        out.push(`${c.kind} ${c.id}@${c.version} (${c.key}): ${latest.lifecycle_state} at version ${latest.object_version}`); continue;
+      }
+      if (exact.lifecycle_state === 'withdrawn' || exact.lifecycle_state === 'retired') { out.push(`${c.kind} ${c.id}@${c.version} (${c.key}): ${exact.lifecycle_state}`); continue; }
+      if (c.kind === 'evidence') {
+        const got = await this.series.retrieveBytes(reader, c.id, c.version, { read_for: readFor, ...context, key: c.key });
+        if ('refused' in got) out.push(`evidence ${c.id}@${c.version} (${c.key}): ${got.refused}`);
+        else if (got.bytes.byteLength === 0) out.push(`evidence ${c.id}@${c.version} (${c.key}): no bytes`);
+      }
+    }
+    return out;
+  }
+
+  /** The selected component's required inputs, as the port selects them, checked for availability now. */
+  private async unavailableInputs(cap: RunWrites, reader: Reader, twinId: string, version: number, component: string, correlationId: string): Promise<string[]> {
+    void correlationId;
+    const citations = await cap.requiredCitations({ twinId, version, component });
+    return this.unavailable(cap, reader, citations, 'simulation.run', { twin_id: twinId, version: String(version), component });
   }
 
   private async elements(cap: SimulationReads, twinId: string, version: number): Promise<Snapshot[]> {
@@ -373,30 +437,19 @@ export class SimulationService {
       verdict = 'unreproducible';
       reason = `the pinned implementation of ${String(r['model_ref'])} is no longer the one the run recorded (${String(r['implementation_digest']).slice(0, 16)}…); the stored contract cannot be re-executed by the same code`;
     } else {
-      // 2. AVAILABILITY of every cited artefact, to this reader, now.
+      /*
+       * 2. AVAILABILITY of every artefact the run RESTS ON, to this reader, now: every
+       *    citation of its immutable snapshot, AND the scenario version it bound — the
+       *    scenario is part of the experiment contract, so its availability is part of
+       *    what a reproduction establishes. Nothing is re-read to CHANGE the contract:
+       *    the stored snapshot is what the separate process executes.
+       */
       const snapshot = (r['initial_state'] as Snapshot[]) ?? [];
-      const seen = new Set<string>();
-      for (const e of snapshot) for (const c of e.citations ?? []) {
-        const id = `${c.kind}:${c.id}@${c.version}`;
-        if (c.kind === 'entity' || seen.has(id)) continue;
-        seen.add(id);
-        const objectType = c.kind === 'evidence' ? 'EVD' : c.kind === 'claim' ? 'CLM' : c.kind === 'forecast' ? 'FCT' : c.kind === 'run' ? 'SIM' : 'ASU';
-        // The exact version must be readable by this reader, and the object must not have been WITHDRAWN or retired since
-        // (a withdrawal supersedes the object with a withdrawn version: what the run cited is no longer served as standing).
-        const exact = await cap.citedObject({ objectType, id: c.id, version: c.version });
-        const latest = exact === undefined ? undefined : await cap.citedObject({ objectType, id: c.id, version: null });
-        if (exact === undefined) { unavailable.push(`${c.kind} ${c.id}@${c.version} (${e.key}): not available to this reader`); continue; }
-        if (latest !== undefined && (latest.lifecycle_state === 'withdrawn' || latest.lifecycle_state === 'retired')) {
-          unavailable.push(`${c.kind} ${c.id}@${c.version} (${e.key}): ${latest.lifecycle_state} at version ${latest.object_version}`); continue;
-        }
-        if (exact.lifecycle_state === 'withdrawn' || exact.lifecycle_state === 'retired') { unavailable.push(`${c.kind} ${c.id}@${c.version} (${e.key}): ${exact.lifecycle_state}`); continue; }
-        if (c.kind === 'evidence') {
-          // The BYTES: governed retrieval for this reader — policy, governed deletion and integrity decide, now.
-          const got = await this.series.retrieveBytes(reader, c.id, c.version, { read_for: 'simulation.reproduce', run_id: runId, key: e.key });
-          if ('refused' in got) unavailable.push(`evidence ${c.id}@${c.version} (${e.key}): ${got.refused}`);
-          else if (got.bytes.byteLength === 0) unavailable.push(`evidence ${c.id}@${c.version} (${e.key}): no bytes`);
-        }
+      const citations = snapshot.flatMap((e) => (e.citations ?? []).map((c) => ({ key: e.key, kind: String(c.kind), id: c.id, version: c.version })));
+      if (r['scenario_id'] !== null && r['scenario_id'] !== undefined && r['scenario_version'] !== null && r['scenario_version'] !== undefined) {
+        citations.push({ key: 'scenario (the bound experiment contract)', kind: 'scenario', id: String(r['scenario_id']), version: Number(r['scenario_version']) });
       }
+      unavailable.push(...await this.unavailable(cap, reader, citations, 'simulation.reproduce', { run_id: runId }));
       if (unavailable.length > 0) {
         verdict = 'unreproducible';
         reason = `an artefact the run rests on is no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000);

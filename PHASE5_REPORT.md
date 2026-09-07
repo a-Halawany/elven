@@ -324,3 +324,89 @@ Batch results and isolated reruns are reported separately. Everything ran from t
 | Secrets (`gitleaks git`) | no leaks found | — |
 | C15 supply-chain gate | unchanged: red on the 13 ungoverned util-linux findings (PR #39 recheck; no patched image), no waiver | — |
 
+## 8. The four residuals of the review of `1a05af89` (migration `0036_run_input_availability_and_scenario_as_of`)
+
+The review confirmed eleven corrected service paths and named four residuals, each as service
+evidence with dependency doubles plus source and SQL inspection. Each was put to the real
+database and controller harness at `1a05af89` before anything changed; the probes live in
+`test/int/phase5-corrections.test.ts` (blocks R1–R4) and are the regression afterwards.
+
+| Residual | Reproduced at `1a05af89`? | Disposition |
+|---|---|---|
+| **R1** a new run completes on an input whose document was withdrawn | **Yes**, at the database boundary: after the governed withdrawal the element's stored health still reads `complete`, and a NEW run opened and completed; reproducing it immediately returned `unreproducible` | **Corrected** |
+| **R2** the scenario binding accepts a tree recorded after the run's `known_at` | **Yes**: a version whose `known_at` precedes the scenario's canonical record time bound it and ran | **Corrected** |
+| **R3** reproduction omits the bound scenario from availability | **No — refuted at the governance boundary**, and the guard added anyway | **Refuted + guarded** |
+| **R4** the pending list misses a twin reached through an accepted entity resolution | **Yes**: the walk reached the twin and marked its version; `propagation_pending` was empty | **Corrected** |
+
+### R1 — a run establishes availability at the moment it is asked for
+
+Stored health is what was true when a version was grounded; it cannot decide a NEW run. Both
+boundaries now establish availability of the SELECTED component's required inputs:
+
+* **Port** (`twin.required_citations` / `twin.unavailable_inputs`, refused in `simulation.open_run`):
+  the citations of the component's required elements — the same selection rule `twin.unusable_inputs`
+  uses — whose object's LATEST canonical version is withdrawn or retired, or which the reader cannot
+  see, refuse the run.
+* **Service** (`SimulationService.unavailableInputs`, sharing one `unavailable` routine with
+  reproduction): the same set, plus the governed byte retrieval for evidence, so policy, governed
+  deletion and integrity decide for THIS reader at the moment of asking.
+
+The regression admits a version, runs it, withdraws its terms document through
+`submitCorrection`/`applyCorrection`, and then: the stored health is still `complete`, a new run is
+refused, no run row is left behind, the earlier run is `unreproducible`, and an intact twin still
+runs.
+
+### R2 — the scenario is bound under the run's own record cut-off
+
+A run reads the twin under two cut-offs, and the scenario it binds is part of what it reads.
+`prediction.scenario_version_as_of` and `prediction.branch_state_as_of` resolve the tree and the
+branch AS THEY STOOD at the twin version's `known_at`: a tree admitted later is refused, and a flip
+recorded later reads as `open`, so a shock resting on it contradicts the binding and is refused.
+The service resolves the as-of version and state and binds them; the port re-verifies both against
+`v.known_at` rather than against today. A closure carries no instant, so a closed branch reads as
+closed — recorded as a limitation, and never a shock basis in any case.
+
+### R3 — refuted at the governance boundary, and guarded anyway
+
+The supposed path is a correction naming the scenario. `CorrectionsService.resolveAffected` accepts
+only objects whose `provenance_ref` is `SRC:<sourceId>@…` — an SCN's provenance is
+`principal:<owner>`, so a correction can never resolve a scenario. The regression executes exactly
+that attempt through the real ports: the claim is rejected, the scenario keeps one `active`
+canonical version, and the scenario-bound run still reproduces in a separate process. Every SCN a
+run can bind is in the run's own domain, so it is readable whenever the run is. **The stated
+consequence is therefore not reachable today.** The guard is added regardless, because it is the
+same rule and costs one read: the bound scenario version joins the reproduction's availability set,
+and an unreadable, withdrawn or retired scenario makes the run `unreproducible` — while the
+original stored contract, never a later revision, is what the separate process executes.
+
+### R4 — pending work uses the walk's own reachability, entity resolutions included
+
+`TwinService.reachedVia` now widens the corrected evidence's derived claims through ACCEPTED entity
+resolutions and asserted edges, exactly as `ImpactService.walk` does, and `TwinReads` gained the
+`graph.resolutions_current` and `graph.edges_current` reads for it. A twin that names such an entity
+as its subject — while its material elements cite their own documents — is shown as pending before
+any walk, and the walk agrees. Propagation stays operator-initiated, the traversal bound is
+unchanged, and nothing is written by the read.
+
+### 8.1 Harness evidence at the residual candidate
+
+Batch results and isolated reruns are reported separately. Everything ran from the main checkout with the API stopped (C14 inertness), after the demonstration and the browser suite.
+
+| Suite | Batch | Isolated rerun |
+|---|---|---|
+| API unit (`pnpm run test`) | 2124/2126 — the 2 failures are the C15/C18 hermetic scanner controls, which fail under batch load | 2126/2126 |
+| API integration, all (`pnpm run test:int:all`) | 31 files, 649/649 (phase5-corrections 21, including R1–R4; phase5-twins 15, phase5-simulations 9, phase5-propagation 4) | — |
+| Acceptance (`pnpm run test:accept`) | 58/58 | — |
+| Module boundaries (`pnpm run boundaries`) | no verdict captured by the batch's tail | no violations, 454 modules, 1768 dependencies |
+| Upgrade check (`scripts/phase1/verify-0022-upgrade.mjs`) | no verdict captured by the batch's tail | PASS (15 migrations) |
+| Web (`vitest`, `tsc --noEmit`, `next build`) | 4/4, clean, built | — |
+| Reproduction at `1a05af89` (R1–R4 probes) | R1, R2, R4 FAILED with the review's consequences; R3 PASSED — the correction path cannot name a scenario (`repro-1a05af89.log`) | at the candidate: 21/21 pass |
+| Demonstration (Act V on `eye_demo`) | 0 problems; the product's reproduction ran in a separate process (pid recorded) | — |
+| Browser (`playwright.demo.config.ts`) | 12/12 | — |
+| Secrets (`gitleaks git`) | no leaks found | — |
+| C15 supply-chain gate | unchanged: red on the util-linux findings, no waiver, separate work | — |
+
+The earlier batch upgrade FAIL with an isolated PASS stays in the record with its cause
+unestablished; this pass adds no gate to explain it, and the hosted `build-test` job's tracked
+migration step passed at the previous candidate.
+

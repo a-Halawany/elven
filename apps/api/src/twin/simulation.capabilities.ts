@@ -22,6 +22,12 @@ export interface SimulationReads {
   readBranches(): any;
   /** The exact canonical object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
+  /** The version an object stood at, as of a record instant — what a run bound under its own cut-off may use. */
+  versionAsOf(a: { objectType: string; id: string; at: string }): Promise<number | null>;
+  /** A scenario branch's state AS OF a record instant: a flip recorded later had not happened yet. */
+  branchStateAsOf(a: { branchId: string; at: string }): Promise<string | undefined>;
+  /** The citations the SELECTED component's required inputs rest on — the selection rule lives in the port. */
+  requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -77,6 +83,24 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
   readBehaviourModels(): any { return this.from('twin.behaviour_models'); }
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   readBranches(): any { return this.from('prediction.branches_current'); }
+
+  async versionAsOf(a: { objectType: string; id: string; at: string }): Promise<number | null> {
+    const rows = await this.call<{ v: number | null }>(sql`select max(o.object_version)::int as v from objects.canonical_objects o
+       where o.object_type = ${a.objectType} and o.object_id = ${a.id}::uuid and o.recorded_at <= ${a.at}::timestamptz`);
+    const v = rows[0]?.v;
+    return v === null || v === undefined ? null : Number(v);
+  }
+
+  async branchStateAsOf(a: { branchId: string; at: string }): Promise<string | undefined> {
+    const rows = await this.call<{ s: string }>(sql`select prediction.branch_state_as_of(${a.branchId}::uuid, ${a.at}::timestamptz) as s`);
+    return rows[0]?.s ?? undefined;
+  }
+
+  async requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>> {
+    const rows = await this.call<{ c: Array<{ key: string; kind: string; id: string; version: number; digest: string }> }>(
+      sql`select twin.required_citations(${a.twinId}::uuid, ${a.version}::int, ${a.component}) as c`);
+    return rows[0]?.c ?? [];
+  }
 
   async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
     const rows = await this.call<CitedObjectRow>(sql`

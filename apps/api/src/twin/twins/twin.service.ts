@@ -570,10 +570,28 @@ export class TwinService {
     const lineage = (await cap.readClaimLineage().selectAll().where('evidence_object_id' as never, 'in', roots as never).execute()) as Array<Record<string, unknown>>;
     const claims = [...new Set(lineage.map((l) => String(l['claim_object_id'])))];
     if (claims.some((id) => cited.has(id))) return 'cites a claim derived from the corrected evidence';
+    /*
+     * THE SAME SEEDS THE WALK USES. A claim reached through the corrected evidence widens
+     * the reach to the entities it RESOLVED to and the edges it asserted — so a twin that
+     * names one of those entities as its subject is reached here exactly as the operator's
+     * walk would reach it. Read-only: this decides what to SHOW as pending, never what to mark.
+     */
+    const entities: string[] = []; const edges: string[] = [];
+    if (claims.length > 0) {
+      const resolutions = (await cap.readResolutions().selectAll()
+        .where('claim_object_id' as never, 'in', claims as never).where('state' as never, '=', 'accepted' as never).execute()) as Array<Record<string, unknown>>;
+      for (const r of resolutions) entities.push(String(r['entity_id']));
+      const asserted = (await cap.readEdges().selectAll().where('claim_object_id' as never, 'in', claims as never).execute()) as Array<Record<string, unknown>>;
+      for (const e of asserted) edges.push(String(e['edge_id']));
+    }
+    if (entities.some((id) => cited.has(id))) return 'names an entity the corrected evidence\'s claim resolved to';
+    if (edges.some((id) => cited.has(id))) return 'cites an edge the corrected evidence\'s claim asserted';
     const KIND_OF: Record<string, string> = { FCT: 'forecast', SCN: 'strategy', WRN: 'strategy', TWN: 'twin', SIM: 'run', OBJ: 'strategy', ASU: 'strategy', DEC: 'strategy', CMT: 'strategy', OUT: 'strategy' };
     let frontier: Array<{ kind: string; id: string; via: string }> = [
       ...roots.map((id) => ({ kind: 'evidence', id, via: 'the corrected evidence' })),
       ...claims.map((id) => ({ kind: 'claim', id, via: 'a claim derived from the corrected evidence' })),
+      ...[...new Set(entities)].map((id) => ({ kind: 'entity', id, via: 'an entity the corrected evidence\'s claim resolved to' })),
+      ...[...new Set(edges)].map((id) => ({ kind: 'edge', id, via: 'an edge the corrected evidence\'s claim asserted' })),
     ];
     const seen = new Set<string>();
     for (let hop = 1; hop <= MAX_HOPS && frontier.length > 0; hop += 1) {
@@ -583,7 +601,11 @@ export class TwinService {
           if (String(d['depends_on_kind']) !== seed.kind || String(d['depends_on_id']) !== seed.id) continue;
           const dependent = String(d['dependent_object_id']);
           const type = String(d['dependent_type']);
-          if (dependent === twinId && type === 'TWN') return `cites ${seed.kind === 'forecast' ? 'a forecast' : seed.kind === 'run' ? 'a run' : seed.kind === 'claim' ? 'a claim' : 'an object'} that rests on ${seed.via}`;
+          if (dependent === twinId && type === 'TWN') {
+            return seed.kind === 'entity' || seed.kind === 'edge'
+              ? `rests on ${seed.via}`
+              : `cites ${seed.kind === 'forecast' ? 'a forecast' : seed.kind === 'run' ? 'a run' : seed.kind === 'claim' ? 'a claim' : 'an object'} that rests on ${seed.via}`;
+          }
           if (seen.has(dependent)) continue;
           seen.add(dependent);
           const kind = KIND_OF[type];

@@ -206,11 +206,12 @@ export class TwinController {
   async run(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
     const intake = validateRunIntake(body.payload ?? {}, envelope.correlation_id);
+    const reader = this.reader(req, tenantId, domainId);
     const runId = newId();
     const opened = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'simulation.run', 'SIM', runId), SimulationCapability.run,
       async (cap, scope) => {
-        const r = await this.simulations.open(cap, scope, intake, principal.principalId, envelope.correlation_id, runId);
+        const r = await this.simulations.open(cap, scope, reader, intake, principal.principalId, envelope.correlation_id, runId);
         return { result: { runId: r.runId, initialStateDigest: r.opened.initial_state_digest, knownAt: r.opened.known_at, observedThrough: r.opened.observed_through },
                  targetType: 'SIM', targetId: runId, targetVersion: '0', outboxEvent: null };
       });

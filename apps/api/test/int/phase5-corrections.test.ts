@@ -419,3 +419,104 @@ describe('F6 · as-of verification, comparison of material semantics, reconcilia
     expect(Number(r.reconciliation.difference.numeric)).toBeCloseTo(157.143, 2);
   }, 300_000);
 });
+
+/* ═════════ R1–R4 · the four residuals of the review of 1a05af89 ═════════ */
+
+describe('R1 · a NEW run re-establishes the availability of the required inputs it is about to use', () => {
+  it('after a governed withdrawal of a cited document, a new run on that admitted version is refused — and the intact twin still runs', async () => {
+    const terms = (await h.upload([{ filename: 'routes-and-terms-r1.csv', text: TERMS_CSV.replace('door-to-door', 'door-to-door (R1)'), documentTime: '2024-01-11T00:00:00Z' }]))[0] as Evd;
+    const v = await admitted('r1-withdrawn-input', [...observedInventory(), ...observedShipments(), ...assumedTerms(terms)]);
+    // Before the withdrawal the run is honest and completes.
+    const before = await run(baseRun({ twinVersion: v }));
+    expect(before.run.state).toBe('completed');
+    const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), h.fx.tenantId, h.fx.domainId,
+      { payload: { sourceId: uploadSourceId, kind: 'withdrawal', channel: 'operator', publisherRef: 'terms document withdrawn', reason: 'the R1 terms document was withdrawn by its author', affectedEvdIds: [terms.id] } }) as { correction: { caseId: string } };
+    await observation.applyCorrection(h.req(manager, 'observation.correction.apply', 'COR', opened.correction.caseId, 'observation'), h.fx.tenantId, h.fx.domainId, opened.correction.caseId,
+      { payload: { decision: 'apply', affectedEvdIds: [terms.id], reason: 'withdrawal verified' } });
+    // The stored health still says complete — and that is exactly what must not decide a NEW run.
+    const el = await elementRow(v, 'route.inland_days');
+    expect(el?.['health']).toBe('complete');
+    const m = await message(run(baseRun({ twinVersion: v })));
+    expect(m, 'a new run used a required input whose document had been withdrawn').toMatch(/withdrawn|no longer available|not available/i);
+    const after = (await sql<{ n: string }>`select count(*)::text n from simulation.runs_current where twin_id = ${twinId}::uuid and twin_version = ${v}`.execute(h.su)).rows[0]?.n;
+    expect(after, 'the refused run left a row behind').toBe('1');
+    // The old run is unreproducible for the same reason, and an intact version still runs.
+    expect((await reproduce(before.run.runId)).reproduction.verdict).toBe('unreproducible');
+    const intact = await admitted('r1-intact', complete());
+    expect((await run(baseRun({ twinVersion: intact }))).run.state).toBe('completed');
+  }, 300_000);
+});
+
+describe('R2 · the scenario binding is resolved under the run\'s own record cut-off', () => {
+  it('a scenario recorded after the twin version\'s known_at cannot be bound; the same binding under a later cut-off is accepted', async () => {
+    // knownNow was taken BEFORE the scenario tree was declared: its canonical version is recorded after it.
+    const early = await admitted('r2-early-cutoff', complete(), { knownAt: knownNow });
+    const m = await message(run(baseRun({ twinVersion: early, shock: true, scenarioId, scenarioBranchId: flippedBranch })));
+    expect(m, 'a scenario recorded after the version\'s known_at was bound to it').toMatch(/known_at|record time|recorded after|did not exist/i);
+    // and the branch's flip is subject to the same clock
+    const m2 = await message(run(baseRun({ twinVersion: early, shock: false, scenarioId, scenarioBranchId: baselineBranch })));
+    expect(m2).toMatch(/known_at|record time|recorded after|did not exist/i);
+    const late = await admitted('r2-late-cutoff', complete());
+    expect((await run(baseRun({ twinVersion: late, shock: true, scenarioId, scenarioBranchId: flippedBranch }))).run.state).toBe('completed');
+  }, 300_000);
+});
+
+describe('R3 · the bound scenario is part of what a reproduction establishes', () => {
+  it('a correction case cannot name a scenario at all (its provenance is a person, not a source), and a scenario-bound run reproduces with its scenario checked', async () => {
+    // The governance path the review supposed: a correction naming the SCN. The observation port refuses to resolve it.
+    const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), h.fx.tenantId, h.fx.domainId,
+      { payload: { sourceId: uploadSourceId, kind: 'withdrawal', channel: 'operator', publisherRef: 'scenario withdrawal attempt', reason: 'probe: can a correction reach a scenario at all', affectedEvdIds: [scenarioId] } }) as { correction: { caseId: string } };
+    const applied = await observation.applyCorrection(h.req(manager, 'observation.correction.apply', 'COR', opened.correction.caseId, 'observation'), h.fx.tenantId, h.fx.domainId, opened.correction.caseId,
+      { payload: { decision: 'apply', affectedEvdIds: [scenarioId], reason: 'probe' } }) as { correction: Record<string, unknown> };
+    expect(String(JSON.stringify(applied.correction)), 'a correction resolved a scenario object').toMatch(/rejected|no authorized object|not evidence of the source/i);
+    const scn = (await sql<{ n: string; states: string }>`select count(*)::text n, string_agg(distinct lifecycle_state, ',') states from objects.canonical_objects where object_id = ${scenarioId}::uuid`.execute(h.su)).rows[0];
+    expect(scn?.n, 'the scenario gained a version from a correction').toBe('1');
+    expect(scn?.states).toBe('active');
+    // The scenario-bound run reproduces; its scenario is one of the artefacts the reproduction establishes.
+    const v = await admitted('r3-scenario-bound', complete());
+    const r = await run(baseRun({ twinVersion: v, shock: true, scenarioId, scenarioBranchId: flippedBranch }));
+    const rep = await reproduce(r.run.runId);
+    expect(rep.reproduction.verdict).toBe('reproduced');
+    expect(rep.reproduction.reason).toMatch(/separate process/);
+  }, 300_000);
+});
+
+describe('R4 · pending work follows the same reachability the walk uses, including entity resolutions', () => {
+  it('a corrected document reaching the twin through a derived claim and an ACCEPTED entity resolution is shown pending, and the walk agrees', async () => {
+    const advisory = (await h.upload([{ filename: 'carrier-advisory-r4.csv', text: 'synthetic,record_id,corridor,note\ntrue,SYN-ADV-001,Bab el-Mandeb,transits suspended\n', documentTime: '2024-01-11T00:00:00Z' }]))[0] as Evd;
+    // evidence → claim (lineage) → ACCEPTED resolution → entity: the scaffolding rows the intelligence and resolver ports write.
+    const claim = uuidv7();
+    await sql`insert into objects.canonical_objects (object_id, object_type, tenant_id, domain_id, scope, object_version, lifecycle_state, owning_component,
+        accountable_owner, truth_state, classification, purpose_scope, schema_ref, audit_correlation_id, payload, content_digest, evidence_refs)
+      values (${claim}::uuid, 'CLM', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'DOMAIN', 1, 'admitted', 'CP-INT-01', 'principal:fixture',
+        'extracted', 'internal', 'intelligence', 'CLM@v2', ${uuidv7()}::uuid, '{"subject":"Bab el-Mandeb Strait","predicate":"status","object_value":"suspended"}'::jsonb,
+        ${'e'.repeat(64)}, ${JSON.stringify([`EVD:${advisory.id}@${advisory.version}`])}::jsonb)`.execute(h.su);
+    await sql`insert into intelligence.claim_lineage (claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id, method_id, call_id, mode,
+        evidence_object_id, evidence_digest, byte_start, byte_end, confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id, correlation_id)
+      values (${claim}::uuid, 1, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'CLM', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay',
+        ${advisory.id}::uuid, ${advisory.digest}, 0, 10, 0.9, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    await sql`insert into graph.resolutions_current (resolution_id, scope, tenant_id, domain_id, claim_object_id, claim_version, mention_text, entity_id, method,
+        rule_id, rule_version, score, match_evidence, state, proposer_principal_id, accepted_at, evidence_object_id, evidence_digest, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, ${claim}::uuid, 1, 'Bab el-Mandeb', ${entityId}::uuid, 'deterministic_identifier',
+        'exact-identifier', 'v1', 1.0, '{}'::jsonb, 'accepted', ${ownerId}::uuid, clock_timestamp(), ${advisory.id}::uuid, ${advisory.digest}, ${uuidv7()}::uuid)`.execute(h.su);
+    // The twin cites the ENTITY for its subject and a DIFFERENT document for substantiation: not entity-only grounding.
+    const v = await admitted('r4-entity-path', [...complete(),
+      { key: 'context.corridor', kind: 'assumed', value: 'Bab el-Mandeb', citations: [{ kind: 'entity', id: entityId }, cite(termsEvd)] }]);
+    const deps = (await sql<{ k: string }>`select depends_on_kind k from graph.dependencies where dependent_object_id = ${twinId}::uuid and dependent_type = 'TWN' and depends_on_id = ${entityId}::uuid`.execute(h.su)).rows;
+    expect(deps.map((d) => d.k), 'the admitted version does not rest on the entity it cites').toContain('entity');
+    const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), h.fx.tenantId, h.fx.domainId,
+      { payload: { sourceId: uploadSourceId, kind: 'correction', channel: 'operator re-upload', publisherRef: 'advisory restated', reason: 'the advisory behind the corridor claim was restated', affectedEvdIds: [advisory.id] } }) as { correction: { caseId: string } };
+    await observation.applyCorrection(h.req(manager, 'observation.correction.apply', 'COR', opened.correction.caseId, 'observation'), h.fx.tenantId, h.fx.domainId, opened.correction.caseId,
+      { payload: { decision: 'apply', affectedEvdIds: [advisory.id], reason: 'restatement verified' } });
+    const t = await getTwin();
+    expect(t.twin.propagation_pending.map((p) => p.case_id), 'a correction reaching the twin through an accepted entity resolution is not shown pending').toContain(opened.correction.caseId);
+    // The walk agrees: it reaches this twin through the same path.
+    const out = await graph.propagate(h.req(owner, 'graph.impact.propagate', 'INV', advisory.id, 'graph'), h.fx.tenantId, h.fx.domainId,
+      { payload: { triggerKind: 'evidence_correction', triggerObjectId: advisory.id, correctionCaseId: opened.correction.caseId } }) as { impact: { twins: Array<{ strategy_object_id: string; via_ids?: string[] }>; reachedEntities: string[] } };
+    expect(out.impact.reachedEntities).toContain(entityId);
+    expect(out.impact.twins.map((x) => x.strategy_object_id)).toContain(twinId);
+    const marked = (await sql<{ s: string }>`select verification_state s from twin.twin_versions where twin_id = ${twinId}::uuid and version = ${v}`.execute(h.su)).rows[0];
+    expect(marked?.s, 'the version citing the reached entity was not marked by the walk').toBe('unverified');
+  }, 300_000);
+});
+
