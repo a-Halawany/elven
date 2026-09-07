@@ -221,3 +221,24 @@ PortWatch in replay pending written permission (the request is on #36 for the ow
 Comtrade deferred, key untouched; purchases zero; the automatic CorrectionApplied consumer deferred;
 Phase 4 and Phase 5 functional reviews closed; C15 and the required downstream checks remain the
 merge gates for #41, #42 and #43.
+
+## 8. Closure record — the three bounded follow-ups, closed at `91263061`
+
+The independent review of `68d650f5` (2026-09-07) raised one reproduced service-level defect and
+two proposal details. All three are closed at `91263061a5f103722d3dbd9b96bfde6476b496d8` and
+confirmed by the reviewer's own execution of the candidate's service and validator (5/5 credential
+and control cases; all three corrected contracts valid):
+
+| # | Follow-up | Closed by | Evidence |
+|---|---|---|---|
+| 1 | Unbound credential must outrank LIVE / LIVE — UNSCHEDULED | reproduced at the real DB/controller harness, then the verdict order corrected in `SourcesService.readiness` | `phase5-source-readiness.test.ts` 5/5; §5 |
+| 2 | EU RSS and payload are independent hourly / six-hour pollers; the duplicate payload endpoint removed; endpoints and dataset terms verified before registration | proposal A drafts and §4 | `049cb95c…` byte-identical check; data.europa.eu record; §4, §7 |
+| 3 | WTO named as provider of the World Bank merchandise-export series | proposal B draft and §4 | the Bank's indicator metadata and Dataset Terms; §7.5 |
+
+Phase 4 and Phase 5 functional reviews remain closed. The next increment — functioning automatic
+collection for the four approved live sources, including the BullMQ 6.0.6 queue-name incompatibility
+the reviewer identified (`queueNameFor()` yields `obs:<tenant>:<domain>:collection`, which the
+pinned `QueueBase` refuses with "Queue name cannot contain :") — is a separate PR stacked on this
+one, with its own scope record (`SCHEDULED_COLLECTION.md`). C15 and the required downstream checks
+remain the merge gates.
+
