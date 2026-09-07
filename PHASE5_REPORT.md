@@ -480,3 +480,34 @@ The earlier batch failures and their isolated passes stay in the record with the
 unestablished; no gate was added to explain them. In this batch the boundary and upgrade checks
 both reported in full, and the upgrade check passed.
 
+## 10. Disposition — the Phase 5 functional correction review is closed
+
+Codex's Phase 5 functional correction review is **CLOSED at PR #41 code head
+`48f43bede3df6fc3687e85d0d2f1cd2c5b702627`** (2026-09-07), within the original six finding groups,
+their residuals, E1–E8 and §6a. The independent runner at that candidate reported 20 corrected
+service checks, 0 residual outcomes and 0 probe errors; the database and controller evidence is
+§7.4, §8.1 and §9.4 above.
+
+What the closure records, and keeps distinct:
+
+* **R2's world clock** is corrected (§9, migration 0037). **R1** and **R4** were reproduced at the
+  database boundary and corrected (§8, migration 0036). **R3's** source-correction consequence was
+  **refuted at the supported governance boundary** — a correction can never name a scenario — and
+  the defensive scenario-availability guard was added regardless; that distinction stands, and it
+  is not rewritten as a reproduced database defect. The six groups of the first pass (§7, migration
+  0035) stay closed.
+* **Evidence classes stay separate.** The reviewer's runs are service and process evidence with
+  capability doubles; the harness results above are this checkout's database, controller,
+  demonstration and browser evidence; the hosted jobs are the CI record. The unit-batch failures
+  with isolated passes, and the one batch upgrade FAIL with an isolated PASS, remain in the record
+  with their causes unestablished; no gate was added to explain them.
+* **Closure is not a merge.** PR #41 stays unmerged behind C15, which is separate maintenance work
+  with no waiver or bypass. The eventual merge candidate must pass the complete required chain,
+  including the FINAL C16/C17 steps that C15's failure currently skips.
+* **Frozen and untouched:** E1–E8 and §6a; T1–T4 / D1–D8 and Phase 4's closed review; PortWatch in
+  replay pending permission; the UN Comtrade key untouched; nothing purchased; the forecast and
+  synthetic-validation limitations; the deferred CorrectionApplied consumer.
+
+The next work — a current phase-status record for the repository and the real-world source
+integrations — proceeds in separate, reviewable changes.
+
