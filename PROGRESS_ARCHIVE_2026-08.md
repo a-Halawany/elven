@@ -1,0 +1,1285 @@
+# THE EYE — Progress archive (through 2026-09-04)
+
+> Moved verbatim from `PROGRESS.md` on 2026-09-07 when the current phase-status table replaced the
+> narrative opening. Every section below is a dated record and keeps its own superseded-by markers.
+> Nothing was edited or dropped; the current status is the table at the top of
+> [PROGRESS.md](PROGRESS.md). Where a sentence below was true when written and false afterwards
+> ("not started", "awaiting owner review", "NOT MERGED"), the table is the correction.
+
+## The superseded opening table and phase rows (as they stood on `main` at `4491c7f5`)
+
+The opening table:
+
+| Phase | Layers | Status | Notes |
+|---|---|---|---|
+| Phase 0 — Foundation & Governance Spine | Cross-cutting | **COMPLETE + GATE-2.1 CLOSURE SUBMITTED 2026-08-07** | Report: [PHASE0_REPORT.md](PHASE0_REPORT.md). Plan: [PHASE0_PLAN.md](PHASE0_PLAN.md) (Rev 3). Remediation: [PHASE0_INVARIANT_REMEDIATION_PLAN.md](PHASE0_INVARIANT_REMEDIATION_PLAN.md) (R1–R10) then [PHASE0_GATE2_CLOSURE_PLAN.md](PHASE0_GATE2_CLOSURE_PLAN.md) (G1–G10), then [GATE2_1_PLAN.md](GATE2_1_PLAN.md) (C1–C11). Evidence: [PHASE0_EVIDENCE.md](PHASE0_EVIDENCE.md). ADRs: [DECISIONS.md](DECISIONS.md). Exceptions: [EXCEPTIONS.md](EXCEPTIONS.md) (5 open P0 in-date; 2 P1 proposed). |
+
+The phase rows that sat in the milestone log (labels superseded by the current table; Phase 4 and 5
+here carry the master build prompt's old layer grouping):
+
+| Phase | Layers | Status | Notes |
+|---|---|---|---|
+| Phase 1 — World Observation Layer | L1 | **COMPLETE — merged `045ee030`** | Report: [PHASE1_REPORT.md](PHASE1_REPORT.md). Handoff: [PHASE1_PRODUCT_HANDOFF.md](PHASE1_PRODUCT_HANDOFF.md). Plan: [PHASE1_PLAN.md](PHASE1_PLAN.md) (Rev 5). Coverage: [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md). Migration 0022. Owner product acceptance, not independent code review. |
+| Phase 2 — Intelligence Layer | L2 | **COMPLETE — merged `6b4b22d6`** | Report: [PHASE2_REPORT.md](PHASE2_REPORT.md). Plan: [PHASE2_BUILD_PLAN.md](PHASE2_BUILD_PLAN.md) (B1–B6 frozen). Migration 0023. Dual-mode Model Gateway: recorded replay as the deterministic default, one measured local-live execution against `qwen2.5:3b-instruct` on loopback. No hosted model API. |
+| Phase 3 — Enterprise Memory & Knowledge Graph | L3–L4 | **IMPLEMENTED — awaiting owner review** | Report: [PHASE3_REPORT.md](PHASE3_REPORT.md). Handoff: [PHASE3_PRODUCT_HANDOFF.md](PHASE3_PRODUCT_HANDOFF.md). Plan: [PHASE3_BUILD_PLAN.md](PHASE3_BUILD_PLAN.md) (C1–C7 frozen with the owner's eight resolver authority rules). Migration 0024. Entity registry, governed resolver, resolution queue with split, bitemporal provenance-bound edges, permission-aware search, Strategy Graph and invalidation propagation. Acceptance 43/43; integration 536/536; C18-era 297/297; upgrade check PASS. |
+| Phase 4 — Digital Twins & Prediction Engine | L5–L6 | Not started | Twin Reconciliation/Prediction agents |
+| Phase 5 — Scenario Intelligence & Simulation Engine | L7–L8 | Not started | Scenario/Simulation agents |
+| Phase 6 — Decision Intelligence & Executive OS | L9–L10 | Not started | Decision/Briefing/Reporting agents; Planner/Supervisor/Workflow completed |
+| Phase 7 — System-wide agent governance, continuous learning, marketplaces, production hardening | Cross-cutting | Not started | Deepens existing controls; does not introduce them (C-006, C-035) |
+
+Agents are introduced progressively with the layers they serve; the agent/workload principal model exists from Phase 0.
+
+## Gate-2.2 — final consolidated Phase 0 closure (IN PROGRESS, started 2026-08-08)
+
+Gate-2.1 (`1e6b29b` source / `2ee3a26` evidence) was **rejected**; Gate-2.2 is the
+final consolidated correction pass (C1–C19). Controlled record:
+[GATE2_2_FINAL_CLOSURE_PLAN.md](GATE2_2_FINAL_CLOSURE_PLAN.md). Governed forward
+migrations from **0013**; 0001–0012 byte-identical (no rebaseline/rehash).
+
+**Measured baseline of the rejected candidate** (rebuilt virgin before any change):
+integration 147/147, unit+contracts+tokens 198/198, acceptance 41/42 (the one
+failure was a *leftover degraded journal* from earlier stale-DB runs, not a code
+regression — confirmed by a clean run at 42/42). So Gate-2.2 corrects architecture,
+not a broken build.
+
+**Status discipline:** C1–C7 are **CLOSED BY INTERNAL VERIFICATION** — that is
+implementation progress, *not* independent approval. C9 is **IN PROGRESS**: its
+execution-environment isolation is complete, but the substantive fail-closed and
+governed-recovery requirements remain open. Migrations **0001–0019 are IMMUTABLE**
+from this point; further database corrections use forward migrations **0020+**.
+
+**Resumption ledger (safe to resume across sessions):**
+
+| Area | Migration / files | State |
+|---|---|---|
+| C1 operation closure | `0013_operation_closure.sql`, `test/int/gate22-operation-closure.test.ts` | ✅ CLOSED (internal verification), committed `bf9f039` |
+| C2 evidence de-authorization | `0014_evidence_deauthorization.sql`, `test/int/gate22-evidence-deauthorization.test.ts` | ✅ CLOSED (internal verification) (RLS visibility gated on read-capable mode; `issue_evidence` PLATFORM-elevation bug fixed with authority-parity binding check) |
+| C3 single-use bootstrap | `0016_bootstrap_claim_binding.sql`, `test/int/gate22-bootstrap.test.ts` | ✅ CLOSED (internal verification) — claim bound to bootstrap capability + correlation nonce; only the winning capability completes it; consumed-claim reuse refused (9 tests + real AC-1 flow) |
+| C4 identity mutators | `0017_identity_mutator_governance.sql`, `test/int/gate22-identity-mutators.test.ts` | ✅ CLOSED (internal verification) — subject/action-bound capability on external mutators; victim-takeover blocked (rotate cap for A cannot rotate B); 6 tests + real auth flow |
+| C5 verifier/seal/availability | `0018_verifier_seal_governance.sql`, `test/int/gate22-verifier-seal.test.ts` | ✅ CLOSED (internal verification) — partition-bound verify/seal capabilities on all four seal/integrity ports (9 tests). `reconcile_availability_incident` governance folded into C9. |
+| C6 capability binding | `0019_capability_binding_enforcement.sql`, `test/int/gate22-capability-binding.test.ts` | ✅ CLOSED (internal verification) — exact target binding at every business port, server-derived lifecycle actor (actor param removed), header↔operation correlation binding, causation bound + checked at closure (9 tests) |
+| C7 outbox hardening | `0015_outbox_hardening.sql`, `test/int/gate22-outbox-hardening.test.ts` | ✅ CLOSED (internal verification) — lease TTL clamped [1,300]s, retry budget 10 → governed dead_letter, lease-bound terminal ack, `outbox_release` |
+| C9 fail-closed + governed recovery | `0020_governed_degraded_recovery.sql`, `src/audit/reconcile-degraded.ts`, `src/audit/audit.service.ts`, `src/shared/degraded-store.ts`, `test/int/gate22-degraded-recovery.test.ts` | ✅ CLOSED (internal verification) — isolation: each isolated gate run gets its OWN controlled degraded-journal dir (`EYE_DEGRADED_DIR`, mkdtemp), initial state asserted empty, restart persistence still exercised explicitly (AC-11), recorded teardown that removes only this run's dir and never a real unreconciled journal. Acceptance now **44/44** with no manual cleanup. Substantive C9 now closed: PDP denial whose evidence cannot persist fails through the SAME governed path (503 + fsynced journal + availability incident, never raw 500) with zero business effect; the ungoverned `reconcile_availability_incident` port is **dropped**; reconciliation requires a recovery capability bound to the exact incident and writes inseparable integrity evidence in the same transaction; replay refused; `markRecovered` refuses without governed proof (empty proof or non-zero remaining); production caller `dist/audit/reconcile-degraded.js`. Full cycle proven in acceptance: degrade → restart → still degraded → governed reconciliation → healthy → restart → **still healthy**. |
+| C8 action-specific capabilities | `shared/capabilities.ts` + all services/controllers | ✅ CLOSED (internal verification) — per-action capabilities; relation is not a parameter (compile-time restriction); outbox pipeline-private; no raw tx/SQL escape |
+| Deterministic suite isolation | `test/acceptance/acceptance.test.ts` | ✅ CLOSED — acceptance owns a per-run database (`eye_accept_<pid>`, created fresh, dropped at teardown) + pristine-state precondition proof + per-run journal dir. **Proven order-independent both ways** (integration→acceptance and acceptance→integration, no reset) with no leftover databases. Removes the manually-consumed-bootstrap and stale-journal classes of failure. |
+| C10 audit.verify completeness | `src/audit/audit.service.ts`, `src/pipeline/pipeline.service.ts`, `test/int/gate22-audit-verify.test.ts` | ✅ CLOSED (internal verification) — **byte-for-byte `event_jcs` vs canonical JCS** (the row hash was recomputed from the GENERATED `event` column, so a byte rewrite that preserved the parsed JSON passed verification); **orphan-row detection above the head** (rows > head were excluded from verification entirely); every result now RETAINS its exact authorizing policy decision (C10 supersedes the Gate-2.1 null-on-failure rule; outcome/decision-class agreement still enforced by `audit.commit_event`); the integrity mutation writes its OWN inseparable `integrity.incident_opened` evidence in the verifier transaction. 5 dedicated tests + acceptance. |
+| C11 strict RFC 8785 / I-JSON | `packages/contracts/src/jcs.ts`, `packages/contracts/test/rfc8785-rejection.test.ts`, `apps/api/test/int/rfc8785-crosslang.test.ts` | ✅ CLOSED (internal verification) — three real defects fixed: **`undefined` array elements were coerced to `null`** (so `[undefined]` and `[null]` shared bytes), **sparse arrays emitted syntactically INVALID JSON** (`[1,,3]`) with no error, and **lone UTF-16 surrogates were accepted** in keys and values. Non-plain objects (Date/Map/Set/RegExp) also rejected — a `Date` previously enumerated to `{}`. 22 rejection cases + SQL parity: Postgres rejects the `\ud800` escape form at the jsonb boundary, and a raw lone surrogate cannot survive UTF-8 transmission (arrives as U+FFFD) — measured and recorded, which is exactly why the TS boundary must refuse it first. |
+| C12 correlation traceability | `src/shared/correlation.ts`, auth/tenancy/objects/admin controllers, `principals.service.ts`, acceptance C12 block | ✅ CLOSED (internal verification) — swept every authenticated failure path. Removed the `?? 'unknown'` **placeholder** correlations (a placeholder satisfies the response shape and locates nothing); replaced with `requireCorrelation(req)`, which returns the request's own envelope correlation and raises a wiring defect rather than inventing one. No downstream service mints a replacement. Proven by 14 acceptance assertions over 7 failure paths (unknown user, wrong password, garbage refresh token, short-password rotation, workload-with-password principal validation, tenant-name validation, malformed verify): the returned `correlationId` **equals the envelope correlation**, is never a placeholder or fresh uuid, and **locates the durable POL/AUD evidence** (which always records a refusal, never a success). |
+| C13 catalog authority gate | `apps/api/scripts/authority-inventory.mjs`, `0021_authority_surface_closure.sql` | ✅ CLOSED (internal verification) — inventory **generated from live pg catalogs, no handwritten port list**; fails on any unclassified/new/renamed port, any PUBLIC EXECUTE, unintended direct DML, RLS gap, or retired role that can log in. Current run: **89 functions, 81 SECURITY DEFINER, 63 runtime-granted ports all classified, 0 PUBLIC EXECUTE, 0 RLS gaps (28 relations), direct DML allocator-only** → exit 0. **The gate found real surface a handwritten list had kept passing:** `identity.auth_principal` / `auth_bindings` / `session_get_active` still existed and were still granted to `eye_identity` (unbounded lookup by arbitrary UUID) → **dropped** in 0021; retired `eye_system` could still log in and `eye_audit_allocator` had a live login it never needs → both **NOLOGIN**. |
+| C14 full state-integrity inertness | `test/int/gate22-inertness-integrity.test.ts` | ✅ CLOSED — row-count-only inertness **replaced** by a deterministic state digest over every dynamically-discovered governed relation: column identity, ordered PK, **logical** row-value digest, **physical (xmin)** digest so a delete+reinsert of identical values is still caught, row counts reported separately, plus all sequence last_values, the migration registry and a catalog digest (function bodies+ACLs, policies, RLS flags, role attributes). **4 negative controls prove non-vacuity** — in-place UPDATE (count blind, physical detects), delete+reinsert with identical values (logical AND count blind, only physical detects), sequence advance, and a write to an unexpected new relation (detected as `relation APPEARED` + catalog change) — **each isolated in a transaction and rolled back**, with a follow-up test proving the database is left exactly as found. The 8 statically-uncertain guards are then proven inert against this full digest. 9 tests. |
+| C14 closure audit (reconciled) | `apps/api/scripts/gate/authority-matrix-report.mjs`, `evidence/authority-matrix.json` | ✅ CLOSED — **exact reconciled arithmetic**: 63 discovered runtime-granted ports = **43 mutators + 20 non-mutators**; mutators = **7 minters + 1 break-glass + 2 guarded no-ops + 33 capability-required**; both reconcile `true`. **7-vs-10 RESOLVED**: 10 classified no-capability entrypoints = 7 expected-success + **3 null-arg refusers** (`issue_commit` needs a ≥20-char context key, `issue_evidence` needs action+correlation, `issue_verify` needs a partition) — no port changed behaviour, the earlier report just didn't publish the split. Classification strengthened beyond keywords: write DML (**fixed a real regex bug — `update\s+\w\b` can never match `UPDATE identity`, which had hidden `bump_epoch`/`sessions_revoke_all_v2`/`outbox_ack_leased` as non-mutators**), TRUNCATE, DDL, dynamic EXECUTE, writable CTE, `set_config`, row locks, plus **transitive mutation to a fixpoint (2 rounds)**; overloads no longer collapsed (keyed by full signature). **8 statically-uncertain guards now carry an EXECUTABLE inertness proof** (zero row-count delta across all 28 governed tables); `uncertain_classification: 0`, fail-closed otherwise. |
+| C14 catalog-driven adversarial matrix | `test/int/gate22-authority-matrix.test.ts` | ✅ CLOSED (internal verification) — **discovers the surface from the catalogs, no handwritten list as source of truth**. Every discovered runtime-granted port is either machine-classified a NON-MUTATOR (body inspected via `prosrc` for write statements — not a trusted label) or a MUTATOR with (a) a generic executable probe proving it refuses with NO capability on each granted role, (b) a generic cross-role probe proving non-grantees cannot reach it, and (c) a named scenario file (existence-checked; **stale entries fail**). The 10 legitimate no-capability entrypoints (7 minters, break-glass rebuild, 2 guarded no-ops) are classified with reasons and **proven INERT executably** (open_operation returns NULL and records nothing; mark_obligations changes nothing; a minted publish capability still cannot enqueue; break-glass unreachable by every app role). Allocator confirmed **NOLOGIN, DML confined to the audit ledger, zero business/identity/policy/objects EXECUTE**; retired `eye_system` NOLOGIN with zero governed EXECUTE. **Negative control run: deleting one coverage entry fails the gate** with the port name and its write evidence. 15 tests. |
+| **C15 supply-chain runner** | `scripts/gate/supply-chain.mjs`, `.gitleaks.toml`, `pnpm-workspace.yaml` | ✅ CLOSED (internal verification) — pinned runner (pnpm 11.9.0, node v24.11.1, gitleaks 8.30.1, trivy 0.73.0) that **verifies every pin BEFORE scanning and fails closed on mismatch**. 8 steps, 6 blocking: pnpm audit (human+JSON), gitleaks **worktree AND full history** (`--all --full-history`), trivy fs (vuln+secret+misconfig) table+JSON, and trivy against **both digest-pinned images read from docker-compose.yml**. Every step records argv, tool+version, source SHA, start/finish, exit code, and the **SHA-256 of raw stdout/stderr** written to disk. **REAL FINDINGS FIXED: `nanoid <3.3.17` (CVE-2026-67213, HIGH) flagged independently by BOTH pnpm audit and trivy → overridden in `pnpm-workspace.yaml` (pnpm 11 no longer reads `package.json` overrides). **SUPERSEDED BY C16:** that first remediation used the RANGE `>=3.3.17`, which floated to 6.0.1 — a semver-major above the only consumer's declared range. **The governed version is exactly `3.3.18`**, pinned as an exact value; both closures resolve only 3.3.18 and the residual check is part of the gate. Governed exclusions only: `.eye-local/` and `apps/web/.next/` (each **proven untracked AND ignored by the gate every run**), plus one narrow `condition=AND` match-exclusion for `context_key_hash` — a **SQL column name** in migration SELECT lists, not a credential. **Non-vacuity proven twice**: a planted RSA private key fails the gate, and a mis-pinned scanner fails it before any scan runs. |
+| **C16 target-resolved closures** | `scripts/gate/target-descriptor.json`, `scripts/gate/generate-closures.mjs`, `scripts/gate/lib/{lock-closure,sbom,reconcile}.mjs`, `scripts/gate/closure-exclusions.json` | ✅ CLOSED (internal verification) — **REMEDIATED after independent source review of `e3a0b1f`**, which found that the counts reproduced but the gate could still certify semantically incorrect SBOMs. 12 defects corrected; see `GATE2_2_FINAL_CLOSURE_PLAN.md` §6 for the full record. **Canonical PURLs** now come from exact-pinned `packageurl-js@2.0.1` — the old `pkg:npm/%40scope%2Fname` form parses as a *namespace-less* package and was therefore a different identity, not a spelling variant. **Real first-party identities** read from each `package.json` and bound to its SHA-256 (`@eye/contracts@0.0.1`, not `contracts@0.0.0`), with a control proving a manifest can change identity but never membership. **Exact-pinned `yaml@2.9.0`** replaces the bespoke partial reader. **Traversal rewritten in two phases**: cycle-safe discovery that **fails closed on every unresolved reference, required OR optional** (the old code `continue`d past optional ones, so an incomplete closure could certify itself complete); `link:` resolved with `posix.normalize` **relative to the importer** instead of fuzzy `endsWith`; a linked workspace expanded **recursively even when not a declared root** (its transitive runtime deps were previously absent while genuinely required); and scope membership propagated to a **fixed point** — this moved **61 of 289** dev components' provenance and raised genuinely-shared components from 11 to 23 — with one narrowing rule so a workspace's `devDependencies` never inherit an inbound runtime scope (otherwise typescript/vitest became production deps of `@eye/api`). **Mixed positive/negative** os/cpu/libc constraints now apply both rules. **Subject connectivity**: the metadata subject previously had NO dependency entry, so a consumer walking from the declared subject reached zero components; it now names every importer root and the reconciler *requires* those edges — roots are not exempt from the orphan check, because exempting them is what hid the disconnected graph. **Full-field multiset reconciliation** replaces the Map/Set comparison that collapsed duplicates and checked only 4 fields: duplicate components / dependency entries / `dependsOn` values / properties are all rejected, and name, type, canonical PURL parts, integrity hashes, patch hash, peer context, target, scope, os/cpu/libc, workspace manifest digest, subject identity and every provenance binding are compared in both directions. Production **195 components / 290 + 4 subject edges**; development **294 / 446 + 5**; clean over all **16** failure dimensions, counts agreeing on both sides. Byte-identical across separate dirs at different times (prod `94651e12…`, dev `718b6665…`). **Provenance binding**: each SBOM binds source SHA, lockfile, descriptor and generator digests plus the pinned implementation versions. |
+| **C16 exclusions are OPERATIONAL** | `scripts/gate/closure-exclusions.json` (schema v2.0.0), `scripts/gate/lib/reconcile.mjs` | ✅ CLOSED — the previous validator checked entries and then **never applied them**, so a "valid" exclusion had no effect and could never be observed to work. One documented semantic now: a valid exclusion **removes** the exact node and every incident edge and records it in a separate `excluded` set; reconciliation runs against the reduced closure, which must itself reconcile clean. 11 required fields including `approver` (must differ from `owner` — an exclusion cannot approve itself), `evidence_sha256`, `approved_on`, `expires_on`. 9 rejection rules enforced: wildcard/name-only, stale, unused, version-changed, wrong-target, wrong-parent, **expired**, **unapproved**, and compatible-mandatory. **Zero exclusions declared.** A positive fixture proves a fully valid entry is accepted and applied exactly once. |
+| **C16 clean-checkout CI** | `.github/workflows/ci.yml`, `apps/api/test/gate/supply-chain-artifacts.test.ts` | ✅ CLOSED — the review found CI still ran the legacy Gate-2.1 SBOM generator while tests read a **gitignored** C16 path, so a local run could pass on leftover preliminary files while a clean checkout failed. Now: node pinned to exactly **24.11.1** in all three jobs (was floating `'24'`); the legacy self-reconciling generator **removed from the active gate** and recorded as superseded (with a test asserting its absence); gitleaks **8.30.1** and trivy **0.73.0** installed and version-verified before scanning; both tracked runners **blocking**, writing to explicit per-run temp dirs; and the C16 artifact gate **invokes the runner itself** into a fresh temp dir so it depends on no ignored state. **Proven end to end**: a pristine export (no `.git`, no `node_modules`, no preliminary outputs) ran install → licence inventory → C16 gate → `pnpm test` with C16 **PASS** and **400/400** tests. |
+| **C16-R2 hosted-CI truth** | `.github/workflows/ci.yml`, `scripts/gate/lib/trivy-cache.mjs`, `scripts/gate/scanner-pins.json`, `scripts/gate/scanner-exclusions.json`, `scripts/gate/lib/scanner-exclusions.mjs` | ✅ CLOSED (internal verification) — **REMEDIATED a second time after hosted-CI review of `e120b21`.** The finding that mattered: **no hosted run in this repository had ever been green** (4 runs, all red, back to Gate-2.1), so every prior "CI enforces…" claim rested on local execution only. Diagnosed from the logs: (1) `supply-chain` failed with *"trivy misconfiguration check bundle reports no digest"* because CI prefetched only the vulnerability DB while my own enforcement required a checks-bundle digest — trivy 0.73 has **no `--download-check-only`** and fetches the bundle lazily on the first misconfig scan; it passed locally only because an earlier misconfig scan had warmed the **default** cache, which the probe read instead of the scans' cache. (2) `browser-regression` failed with `password authentication failed for user "eye_publisher"` because the job **never ran `pnpm db:migrate`** — pre-existing since the original monorepo scaffold, unrelated to C16. (3) The evidence upload found nothing because the runner exited before writing. Corrections: an isolated trivy cache that acquires **both** artifacts, captures provenance (binary path+SHA-256, version, DB metadata + byte digests, checks-bundle **OCI digest**, timestamps, computed freshness, target platform) from **that same cache**, enforces fail-closed on every missing/malformed/stale condition, runs all authoritative scans with `--skip-db-update --skip-check-update`, and proves the cache **fingerprint unchanged**; scanner downloads authenticated against tracked upstream checksums; every action pinned to an **immutable commit SHA**; node pinned to exactly 24.11.1; `db:migrate` added to `browser-regression`; and a failure manifest + raw diagnostic **always** written, including a top-level handler for unexpected crashes. |
+| **C16-R2 governed scan dispositions** | `scripts/gate/scanner-exclusions.json`, `.trivyignore` (deleted) | ✅ CLOSED — the bare global `.trivyignore` is **gone**. It listed 16 CVE ids with prose governance, and a bare id suppresses that advisory in **every** image and package, so a new occurrence elsewhere would be silently hidden while expiry sat unenforced in a comment. The gate now scans with **no suppression** and reconciles the complete finding set against target-specific machine-governed records (exact image digest, scan platform, package, PURL prefix, owner, approver ≠ owner, reason, evidence, approval/expiry, compensating controls). An **unmatched** finding fails; an **unused** record fails as stale. Measured: **16 findings on the linux/amd64 postgres child (1 c-ares + 15 golang stdlib in gosu), all governed by 2 records (SUPERSEDED by C16-R3.1: **3 records**, the lone CRITICAL split out), 0 unmatched, 0 unused.** Coverage normalised: the JSON filesystem capture previously omitted `--severity` and so added LOW/MEDIUM coverage nothing enforced; both fs steps now share one argument list and the runner **compares coverage descriptors** of any pair claiming equivalence. **12 behavioural controls SPAWN the real runner** against a planted secret, a bad tool pin, an expired disposition, a widened disposition, fake evidence, self-approval, a removed disposition, an unused disposition, a resurrected `.trivyignore`, and both final-source violations. |
+| **C16-R2 exactness + traversal** | `scripts/gate/lib/{reconcile,lock-closure,sbom}.mjs`, `scripts/gate/closure-exclusions.json` (v3.0.0) | ✅ CLOSED — exclusion policy is **code-owned** (`EXCLUSION_REQUIRED_FIELDS`/`EXCLUSION_SCHEMA_VERSIONS` in code; the document's own list is cross-checked and rejected on disagreement, so data cannot weaken its own validation), with unique ids, duplicate-entry rejection, date chronology, **evidence digest verified against actual bytes**, `parent_edge` required to terminate at the excluded component, a scope the node actually holds, exact cardinality agreement, and **deterministic descendant cascade** (unreachable-from-roots descendants removed and individually recorded; no orphans or dangling refs). Reconciliation is now literal: **exact property set** (missing/unknown/duplicate/altered all fail), **exact integrity multiset**, subject reconciled field-by-field, all 16 metadata bindings required with unknown ones rejected, and a dependency entry for an unknown ref rejected even with empty `dependsOn`. **Governed first-party types** (apps→application, packages→library; unmapped is an error). Traversal: **optional ancestry propagates** (production went from a flat `dependencies: 191` to `dependencies+optionalDependencies: 146, dependencies: 49`); **a bug in my own C16 fix** where `expandImporter` seeded non-link children unconditionally is fixed, so a dev-only linked workspace keeps its runtime deps in dev scope; **patch_hash separated from peer context**; integrity required and validated for registry packages; `lockfileVersion` validated exactly. Also removed **two literal NUL bytes** from `sbom.mjs`. Suites: 84 + 49 + 12 + 34 + 10 + 39 gate tests. |
+| **C16-R3 final fail-closed closure** | `scripts/gate/supply-chain.mjs`, `scripts/gate/lib/{trivy-cache,scanner-exclusions,lock-closure,sbom,reconcile}.mjs`, `scripts/gate/{scanner-pins,scanner-exclusions}.json`, `scripts/gate/{install-scanners.sh,assert-final-manifests.mjs}`, `.github/workflows/ci.yml` | ✅ CLOSED (internal verification) — hosted run `31544091029` (3/3 green) retained as valid preliminary evidence; independent adversarial testing then found remaining **false-PASS and false-FAIL** paths, all corrected. **(1) Final mode could never succeed**: `safeGit()` returned `git rev-parse HEAD` WITH its trailing newline, so the correct SHA compared unequal to itself. Normalised at the single entry point; CI now runs both runners with `--final --expected-sha $GITHUB_SHA` and a tracked script asserts the manifests state final mode and the exact head SHA. **(2) A nonzero scanner exit now always blocks**: the unconditional `rec.failed = false` discarded every image-scan failure, and since the image command omits `--exit-code`, findings return zero — so *every* nonzero status was a scanner failure being thrown away. Findings from a failed run are no longer ingested; raw stdout/stderr/exit are preserved. Proven with a fake trivy that reports the right version, emits valid JSON and exits 3. **(3) Checks-bundle byte integrity**: the fingerprint hashed only file COUNT and TOTAL BYTES, so an equal-length rego edit was invisible; replaced with a deterministic recursive manifest (path+size+SHA-256 per file, **641 files** on the real cache), with controls for equal-length edit, file swap and DB edit. Acquisition failure is now fatal even when an older cache exists, and complete stdout/stderr are captured and digested rather than a 4-line tail. **(4) Exact dispositions**: a record must match advisory id, image digest, resolved platform, package, exact canonical PURL, installed version, severity and result target; `package_purl_prefix` is rejected (a prefix matches other versions); `HIGH_AND_CRITICAL` replaced by explicit `severities` arrays with the lone CRITICAL split into its own record. 16 findings governed by 3 records, 0 unmatched, 0 unused. **(5) Always-written failure evidence**: the R2 top-level handler **never existed** (its string anchor silently failed to match, leaving a bare `main();`), so `--trivy-cache` with no value produced NOTHING; now validated arg parsing plus an outermost boundary that always writes a manifest and RESULT-FAIL.txt with exception, arguments, SHA and timestamp. **(6) Executed-binary authentication**: pins carry archive AND extracted-executable digests, the installer verifies both, and the runner digests the executable it resolves on PATH — the Homebrew builds report correct versions with different bytes and are correctly rejected. Raw OCI index digest verified against the configured reference before trusting any child. **(7) Metadata multiset**: `Object.fromEntries` collapsed duplicate bindings; properties are now a multiset rejecting identical and conflicting duplicates (before or after the legitimate value), plus full document identity (bomFormat, specVersion, version, serialNumber, subject fields). **(8) Governed types enforced** against a code-owned allowed set, before serialization. |
+| **C16-R3 optional-scope correction** | `scripts/gate/lib/lock-closure.mjs` | ✅ CLOSED — the old control asserted `toContain('optionalDependencies')`, which passes even when a component ALSO wrongly claims `dependencies`. Scope is now a **channel** (production/development) plus an **optionality bit**, propagated to a fixed point: production+optional yields `optionalDependencies` ONLY, development+optional yields `devDependencies`+`optionalDependencies`, and a genuine mandatory path still unions correctly. Optionality comes from an `optionalDependencies` edge **or** the child snapshot's own `optional: true` — **79 snapshots carry that flag and it was ignored entirely**. All assertions are now exact set equality, with fixtures for optional-only child+grandchild, mandatory+optional dual path, development-only linked workspace, snapshot-flagged optional, and an optional native subtree. **Truthfully changed counts**: production went from `{dependencies+optionalDependencies: 146, dependencies: 49}` to `{dependencies+optionalDependencies: 131, dependencies: 49, optionalDependencies: 15}` — 15 production components had been mislabelled mandatory; development gained 9 optional-only. Component/edge totals unchanged (195/290+4, 294/446+5). |
+| **C16-R3.1 fail-closed corrections** | `scripts/gate/lib/{reconcile,lock-closure,scanner-exclusions}.mjs`, `scripts/gate/{supply-chain,generate-closures,assert-final-manifests}.mjs`, `scripts/gate/scanner-exclusions.json`, `docs/SCANNER_DISPOSITIONS.md` | ✅ CLOSED (internal verification) — eight remaining bypasses found by independent adversarial testing, all corrected; see `GATE2_2_FINAL_CLOSURE_PLAN.md` §9 for the finding-by-finding map. **(1) Prototype pollution**: `name in bindings` consults the PROTOTYPE CHAIN, so `toString`, `constructor` and `__proto__` all passed as governed metadata; now a null-prototype governed map with `Object.hasOwn()`, for component properties too (6 mutation controls). **(2) Direct snapshot optionality**: a direct importer dependency whose snapshot carries `optional: true` was seeded MANDATORY and, if platform-incompatible, failed as required instead of being a governed optional exclusion; optionality is now resolved BEFORE seeding and platform handling and records whether the edge or the flag applied (4 fixtures). **(3) Final-manifest assertion** accepted any status merely *beginning* with `FINAL`, an EMPTY C16 target set and an EMPTY authenticated-tool set — all vacuous passes; now exact code-owned constants with the target set derived from the descriptor and the tool set from the pins, plus every required report/artifact/reconciliation by name (13 controls). **(4) Dispositions** had no byte-level evidence binding and a TYPE-GATED matcher, so a string `severities` or numeric `result_target` skipped matching entirely; now mandatory `evidence_sha256` recomputed from tracked bytes, a code-owned type contract for all 17 fields where a wrong type is FATAL, and unconditional matching that FAILS CLOSED — note `'HIGH'.includes('HIGH')` is true for a string, so removing the array guard alone was not enough. **(5) Closure-exclusion digest**: `evidence_sha256: 123` skipped both format validation and the recompute; now strict string + lowercase-hex + unconditional recompute (6 controls incl. a one-byte change). **(6) C16 failure evidence**: gitless final mode left the output directory EMPTY; now validated argument parsing and an outermost boundary that always writes a structured manifest and `RESULT-FAIL.txt` with source/expected SHA, mode, phase, error category, timestamp and bound artifacts. **(7) Authenticate before execute**: the runner probed `--version` and warmed the cache — both of which EXECUTE the binary — before digesting it; scanners are now resolved, digested, compared and STAGED into a private per-run directory, every invocation uses that absolute path, the staged bytes are re-verified after scanning, and worktree cleanliness is re-checked as a delta. Proven by a same-version wrong binary whose execution marker never appears and with `steps: []`. **(8) Evidence binding order**: bindings were computed BEFORE the result receipt was written, so `RESULT-PASS/FAIL.txt` was never bound; receipt is now written first on the success, governed-failure and crash paths, with only `supply-chain-manifest.json` unbound by documented necessity. |
+| **C16-R3.1 disposition evidence** | `docs/SCANNER_DISPOSITIONS.md`, `scripts/gate/scanner-exclusions.json` | ✅ CLOSED — the generic `PHASE0_EVIDENCE.md` citations are replaced by a dedicated, non-self-referential document that identifies every governed finding with its configured reference, index kind and child count, resolved platform, scanned child digest, index-integrity check, scanner and vulnerability-database identity with freshness ceiling, checks-bundle OCI digest, scan mode, and per-record advisory ids, package, PURL, installed version, severity, result target, reason, compensating controls, owner, approver, approval and expiry — plus an explicit prohibited-exposure section. Records are now **3**: `SCX-0001` (c-ares HIGH), `SCX-0002` (14 Go stdlib HIGH), `SCX-0003` (the single Go stdlib CRITICAL, held separately so a HIGH approval cannot absorb a CRITICAL). Every record binds the document by SHA-256 and the gate recomputes it from the tracked bytes each run. |
+| **C16 CLOSED** | `scripts/gate/assert-final-manifests.mjs`, `scripts/gate/lib/*`, `docs/SCANNER_DISPOSITIONS.md`, `docs/evidence/govulncheck-gosu-b6a16ed0.{json,txt}` | ✅ **CLOSED by bounded independent review** at `d63318e099a152cef18682e97d84ea7e1a70abd9` after five remediation rounds (R3.1–R3.4.5). Hosted run `31806239862`, all three jobs green; evidence archive sha256 `27ba79b0681b855e710c8b82e0d95c39ff971dc7770bee601d08fe7858027e04`. Measured at closure: gate **587**, API unit + gate **601** (= 587 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Container findings reconcile at **18** across **4** governed records (SCX-0001/2/3 `RISK_ACCEPTED`, SCX-0004 `NOT_AFFECTED` on symbol-aware govulncheck evidence). |
+| C17 CycloneDX + obligations | *(superseded row removed at C17.1)* | ➡️ See the **C17.1** row below. The original C17 row claimed this area was NEXT and was never updated when C17 landed, so the ledger carried a stale entry alongside a completed one. |
+| **C17 + C17.1 CycloneDX, licences and obligations** | `vendor/{cyclonedx/1.6.2,spdx-licenses/v3.28.0}/**`, `scripts/gate/lib/{cyclonedx-schema,license-closure,licence-texts,legal-dispositions}.mjs`, `scripts/gate/{licence-obligations,package-c17-evidence}.mjs`, `scripts/gate/{legal-dispositions,source-offers}.json`, `apps/api/test/gate/c17-*.test.ts`, `pnpm-workspace.yaml`, `.github/workflows/ci.yml` | ✅ **COMPLETE (internal verification)** — evidence-bearing SHA `084ce19f4edef71825b0d34dfe230c4915a1b3fb`, hosted run `31893384717` (build-test, supply-chain, browser-regression all success). Archive `c17-evidence-084ce19f4edef71825b0d34dfe230c4915a1b3fb.zip`, **576771 bytes**, sha256 `e0a24dd12ddb4ca4f5b34bca87f075056ad8245e16c46a100206f376e6b62d6c`, built by the tracked packager inside the run: **19 payload files + 1 checksum manifest = 20 regular files across 25 ZIP entries**, **19 checksum lines**, manifest excludes itself. Verified from a genuinely foreign clean clone with `--online`: both SBOMs re-derived and schema-valid, licence reconciliation rerun, and the run receipt checked against GitHub's public API (id, head_sha, conclusion=success). SBOM digests production `c65ea1250232438fbf642920e2beb07f5497be7fe7942d847b166f8fd21de2cb` (195 components) and development `804ca78c0d63524032555571cd08f7b6802bbb5a313cb82247813623a18fbc2a` (296 components), both **0 schema errors** against the official CycloneDX 1.6.2 schema (tag `1.6.2`, commit `e833d732337dd33aceb45ff1991f896796f1e5e7`) compiled offline with Ajv **8.18.0** / ajv-formats **3.0.1** / ajv-formats-draft2019 **1.6.1**. Licence inventory: production **195** classified, development **312**, **0 unresolved**, **0 reconciliation problems** in both directions. Notices carry **475** shipped-text blocks and **25** canonical-SPDX-text blocks, every copyright line, named CC-BY attribution and **3** source-offer records; **0** legal dispositions, deliberately. **Cross-host determinism proven**: all 8 target artifacts byte-identical between a darwin/arm64 clean clone and hosted ubuntu Linux. C15, C16 and C17 all PASS in `--final` from a Darwin clean clone. Measured suites: gate **721**, API unit + gate **735** (721 + 14), integration **297**, acceptance **58**, contracts **203**, tokens **3**, Playwright **10** on a virgin database. Migrations 0001–0021 byte-identical; content digest `43e15e642efaecca1be224af0936e223f14cf17ffc846b79f40896d717f65588`, Git-tree digest `47a651c95228429a5f10c497dfbd5b4a3588bce7256af65f0c90554bf3b5baca`. |
+| **C18 → C18.1.14 dual-path database history proof** | `scripts/gate/c18-db-paths.mjs`, `scripts/gate/c18-watchdog.mjs`, `scripts/gate/lib/{c18-contract,c18-query-plan,c18-seed-0012,c18-seed-spec,c18-seed-coverage,c18-seed-validators,c18-coverage-runner,c18-post-upgrade,c18-inventory}.mjs`, `scripts/gate/lib/c18-catalog-contract.json`, `apps/api/test/gate/c18-*.{test.ts,ctl.ts}`, `apps/api/test/gate/c18-{seed,post-upgrade}-world.ts`, `scripts/gate/lib/c18-{serialized-types,migration-owned}.{mjs,json}`, `apps/api/test/gate/fixtures/c18-legacy-{…,2c3cab3,220b26c,53fb889}/**`, `apps/api/vitest.c18{,-serial}.config.ts`, `.github/workflows/ci.yml` | ✅ **CLOSED** — evidence-bearing SHA `a8d34c4d1dc91d1f205fac6044332907da210d46`; see the C18-closure provenance section below and `GATE2_2_FINAL_CLOSURE_PLAN.md` §29–§32, whose reconciliation table (§32.4) lists all twenty items with predecessor, reproduction status, correction, control and disposition. All five independently reproduced defects are closed with permanent controls and fully rebound differentials, and the complete local and hosted delivery chain is green. The three observational limits remain **C19 external-anchoring concerns**, declared with what is proved of each — none is a hidden verifier claim. Interim deliveries `d5061b8` … `7959ec9`, `e2077e1` and `04442ed` (all authentic, LEAK-FREE, database-verifier-valid and provenance-valid, superseded for verification gaps only) are SUPERSEDED. **C19 is the next gate and has not been implemented.** ⚠️ **SUPERSEDED as current status** — C19 was implemented and merged (PR #21, `82e90858`) and corrected (PR #25, `e3599648`); three Rekor publications exist. The sentence is kept as the historical record of what this row claimed at the time. See [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md). |
+| C19 docs + NOLOGIN roles | `apps/api/migrations/0021_authority_surface_closure.sql` | ✅ **STALE ROW CORRECTED — the roles are NOLOGIN.** This row claimed `eye_system` and the legacy roles "still LOGIN"; that was true before migration **0021**, which is present at the frozen baseline `a792cd9a`. 0021 sets the retired `eye_system` NOLOGIN and sets `eye_audit_allocator` NOLOGIN (it is reached only as the owner of the chain-head definer functions, so removing its login removes a live credential without touching the definer path). Observed in a database with the baseline migrations applied: `eye_system` and `eye_audit_allocator` both `rolcanlogin = false`; the six least-privilege runtime authorities (`eye_app`, `eye_commit`, `eye_identity`, `eye_publisher`, `eye_verifier`, `eye_recovery`) retain login because processes connect as them. See [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md). |
+| **Evidence sequencing (applied)** | `.gitignore` | ✅ `evidence/authority-matrix.json`, the `evidence/supply-chain/` runner outputs, `evidence/supply-chain/c16/` and `evidence/db-paths/` are **untracked**: generated gate OUTPUTS are regenerated from the FROZEN source during the isolated run and committed only in the evidence-only attestation child commit. The GENERATORS (`scripts/authority-inventory.mjs`, `scripts/gate/authority-matrix-report.mjs`, `scripts/gate/supply-chain.mjs`, `scripts/gate/generate-closures.mjs`) remain in source. The matrix generated at `caac521` and the C16 closures generated during this pass are **preliminary** and are not final evidence — the C16 report carries a `status` field saying so, so a stray copy cannot be mistaken for final. |
+| Freeze + external-review handoff + ZIP | — | ⏳ |
+
+**Environment notes for resumption:** virgin rebuild via
+`scratchpad/virgin.sh` (force-removes `eye-redis`/`eye-postgres`, `down -v`, `up`,
+`pnpm db:migrate`). Integration suite: `cd apps/api && node_modules/.bin/vitest run
+--config vitest.int.config.ts`. Full integration currently **297/297**, acceptance **58/58** (per-run journal isolation closed; no manual cleanup); api gate+unit **508/508** (gate suites alone **494**, all hermetic — zero live network), contracts **203/203**, tokens **3/3**, typecheck **0**, build **0**, boundaries clean (107 modules, 298 dependencies). Gate runners: `pnpm gate:supply-chain` (8 steps, 6 blocking, PASS) and `pnpm gate:closures` (both targets reconcile clean over all 16 dimensions, PASS); each also accepts `--final`, which refuses a dirty worktree. Migrations 0001-0021 are byte-identical to `e3a0b1f`. Migrations now **0001–0021** (0001–0020 immutable; 0021 = C13 surface closure). **Both DB paths proven at 0019**: forward upgrade from a real 0001–0012 database seeded through the historical bootstrap port (19 migrations, zero data loss, pre-existing rows/hashes/chain/digests byte-identical, chain verifies with no rehash, full suite 251/251 on the upgraded DB) and virgin install 0001–0019 (251/251 + acceptance 44/44). **External independent
+review is pending against the final frozen source and evidence package** — Claude's
+own in-place testing is verification, not independent review, and Phase 0 remains
+unapproved until that external final review. The 52 MB `evidence/the-eye-source.bundle`
+is now **untracked** (kept on disk) and `evidence/*.bundle` + `*.zip` are gitignored
+per the approved packaging decision.
+
+## Gate-2.1 closure — final authority-boundary closure (2026-08-07)
+
+Source candidate reviewed: `2deded44904e5a4ec264938085c2aaa93d9636b6` (evidence attestation
+`09ab1144d04ada7dcd3a159c3ba03a7f94751c18`, archive SHA-256 `b45025ad…1e81d`). An independent review
+identified ten executable attack paths that the green 70-test suite did not exercise. The bounded
+correction C1–C11 was authorized and executed as **governed forward migrations 0011 + 0012**
+(0001–0010 untouched, every previously applied digest still valid — **no rebaseline**). Migration
+range is now **0001–0012**.
+
+Delivered:
+
+* **No direct authoritative privilege anywhere.** Direct INSERT/UPDATE/DELETE on every governed
+  table is revoked from every runtime role; the chain-head allocator pair is callable by no request
+  authority; PUBLIC holds EXECUTE on nothing in the governed schemas. RLS is `ENABLE`d **and**
+  `FORCE`d on every table in those schemas (`FORCE` alone was inert where RLS had never been enabled),
+  with policies that state the boundary explicitly for allocator-owned and reference tables.
+* **The universal system context is gone.** `ctx.issue_system(reason)` — unrestricted PLATFORM
+  authority on the strength of free text — is dropped, replaced by six **operation-specific
+  capability minters** (`issue_commit`, `issue_evidence`, `issue_publish`, `issue_verify`,
+  `issue_identity_op`, `issue_bootstrap`). A capability binds action, target, correlation id,
+  policy-decision id, bundle version, operation class, session, principal, scope, purpose and
+  consequence class, and the **mintable action set is bound to the minting role** (identity.* to the
+  identity authority, everything else to the commit authority).
+* **Business handlers never receive a transaction.** They receive a `BoundedCapability` whose surface
+  is the ports their route declared; the Kysely transaction is a private field that is never exposed.
+* **Evidence mode cannot fabricate an allow or a success.** A decision records how it was written
+  (`evidence_only`), and a success may never reference such a decision — in that transaction or any
+  later one. Every request AUD is linked to its POL on principal, action, scope, tenant, domain,
+  correlation and bundle, and outcome class must agree with decision class.
+* **Expiry and revocation are wall-clock and re-checked at every port.** `clock_timestamp()` replaces
+  `now()`, so a capability lapses inside a long transaction; session, expiry, principal, epoch,
+  binding and rotation are revalidated at each authoritative boundary — a capability minted in one
+  transaction stops working the moment another revokes the authority behind it.
+* **Identity and metadata leakage closed.** `auth_principal`/`auth_bindings`/`session_get_active` are
+  withdrawn from the application role and replaced by caller-bound lookups requiring proof of
+  possession of that session; `audit.my_partition_status` (tenant-global head state for DOMAIN
+  callers) is dropped in favour of a domain-scoped projection; a PDP-denied identity operation now
+  returns the governed 403 with matching durable POL/AUD instead of failing 503.
+* **Outbox transitions are lease-tied compare-and-set only.** `outbox_ack`/`outbox_claim` are gone;
+  publication requires a live lease, the permitted transition and the expected current state.
+* **Complete request audit coverage.** Every authenticated controller edge routes through the
+  centralized durable rejection path; `audit.verify` records requested partition, verified head,
+  expected vs calculated head, ok/headMatches, broken sequence and incident — an unknown or damaged
+  partition is evidenced as a failure, never as a generic success; the degraded journal is reloaded on
+  startup and `/readyz` stays degraded across a restart until governed reconciliation records recovery.
+* **Real RFC 8785.** The in-database canonicalizer now implements ECMAScript `Number::toString`
+  (fractions, exponent forms, negative zero), UTF-16 code-unit key ordering, Unicode keys,
+  multilingual values, control-character escaping and IEEE-754/I-JSON validity. One conformance
+  corpus runs against both TypeScript and the database. Canonical admission enforces full header
+  **semantics** — enums, temporal constraints, structured confidence/quality, schema-reference shape
+  and authoritative `recorded_at` — not merely key presence and digest.
+* **Gate controls corrected.** No executable credential default in the migration runner; the licence
+  allowlist covers production **and** development closures; CycloneDX 1.6 schema validation;
+  bidirectional SBOM↔closure reconciliation with governed exclusions; the browser gate loads every
+  runtime authority through the canonical loader with permission repair.
+
+Suites at the Gate-2.1 candidate: contracts **181**, tokens **3**, api unit **14**, api gate
+**43** (supply-chain negative fixtures, shipped-artifact gates, loader/handoff invariants), integration **199** (Gate-2.1 adversarial
+matrix 52 + RFC 8785 cross-language 74 + domain isolation 16 + audit chain 8 + Gate-2 adversarial 49),
+acceptance **42** (15 criteria + §7.2 + R4/R10 + Gate-2.1 tests 14–17), Playwright **10** — **492
+tests**. All 22 mandated Gate-2.1 adversarial tests are present and green. Both database paths are
+proven: forward upgrade of an existing 0001–0010 database carrying real pre-upgrade data through
+0011/0012 with byte-identical audit hashes and no rebaseline, and a virgin install of 0001–0012 — the
+complete suites pass on **both**. Supply chain: CycloneDX 1.6 SBOM (280 components, schema-valid),
+bidirectional reconciliation with 0 unmatched identities, licence gate green over both scopes.
+
+Five real defects were found *by* this work and fixed: an RLS sweep that deny-alled the allocator's
+own tables and the schema-registry reference data; a live-authority check that demanded a session from
+the deliberately session-less identity capability (which silently disabled all intake evidence); an
+authority refusal misreported as a 503 availability incident instead of a 403 denial; an evidence-mode
+rule that erased the true decision of an allowed-then-failed request; and a role-binding check written
+against `current_user`, which is the owner inside a `SECURITY DEFINER` function and therefore vacuous.
+
+## Gate-2 closure (2026-08-06)
+
+Source candidate reviewed: `562fffaf3d848dd730e7287771e3344b2e5b05b2` (archive SHA-256 `505fed9e…9447a`). Source inspection found remaining constitutional gaps; the bounded closure G1–G10 was authorized and executed as **governed forward migrations 0009 + 0010** (0001–0008 untouched, all previously applied digests still valid — no rebaseline). Migration range is now **0001–0010**.
+
+Delivered: six least-privilege runtime roles (app / commit / identity / publisher / verifier / recovery, the last never loaded by any application pool); a bound, single-use, transaction-and-connection-bound context requiring proof of possession of the session context key, invalidated by revocation, binding removal, credential rotation, expiry and replay; exact-match DOMAIN isolation with no tenant-wide fallback plus an authorized tenant read model and a binding-authority trigger; unforgeable POL/AUD built inside the trusted boundary with an **in-database RFC 8785 implementation** (stored `event_jcs` is exactly the hashed bytes — verified byte-for-byte against the TypeScript reference); canonical admission as the only object write path with server-side digest recomputation; immutable outbox events with a compare-and-set publish acknowledgement; complete audited request coverage with fail-closed 503 + an independent fsynced degraded journal + degraded `/readyz`; restart-durable suppression accounting; `audit.verify` as its own governed action; an append-only refresh-token family ledger detecting replay of any older generation; database-enforced single-use bootstrap with structural local/test eligibility; and a clean-source typecheck gate wired into CI.
+
+Suites at the closure candidate: contracts **118**, tokens **3**, api unit **14**, acceptance **34**, integration **70** (adversarial matrix + domain isolation + audit chain), Playwright **10**. Boundaries clean (86 modules, 222 dependencies). Three real defects were found *by* the new adversarial tests and fixed: same-connection context replay, a residual canonical INSERT grant, and bootstrap guard ordering.
+
+## Invariant-remediation gate (2026-08-05)
+
+Candidate reviewed: `ce1ee0d`. Source inspection found invariant violations the green suite did not detect; the bounded remediation R1–R10 was authorized and executed. Final candidate: **`75522e3`** (`75522e3` — the R1–R10 remediation commit; submitted for review as `562fffaf3d848dd730e7287771e3344b2e5b05b2` after the bundle-only metadata correction). See `evidence/git-metadata.txt` in that gate's package. Migration range extended to **0001–0008** (0008 = signed request context + DOMAIN-aware FORCE-RLS matrix, PUBLIC-EXECUTE revocation + bounded append/seal/recovery ports, refresh-token rotation with reuse detection, identity integrity, temporal constraint). Suites at the final SHA: contracts **118**, tokens **3**, api unit **14**, integration **38** (domain-isolation, privileges, audit-chain incl. concurrent append-vs-verify/seal, refresh), acceptance **34** (15 criteria + §7.2 + R4/R10 #6/#7/#8), Playwright **10**. Supply chain: non-empty CycloneDX SBOM (280 components) + prod/dev license reconciliation; `pnpm audit` **0**; exact-image Trivy scans of the pinned postgres:18-alpine / redis:8-alpine digests **clean at HIGH/CRITICAL** under dated `.trivyignore` dispositions. No Phase 1/L1 application code written.
+
+
+## C17.1 evidence provenance (no SHA cycle)
+
+The evidence-bearing candidate is **`084ce19f4edef71825b0d34dfe230c4915a1b3fb`**. Hosted run **`31893384717`** ran at exactly that SHA,
+and the archive `c17-evidence-084ce19f4edef71825b0d34dfe230c4915a1b3fb.zip` (sha256 `e0a24dd12ddb4ca4f5b34bca87f075056ad8245e16c46a100206f376e6b62d6c`) was
+built by tracked code *inside* that run and carries a receipt naming it.
+
+This document, and the ledger row above, are written in a **docs-only child commit** that records
+those values. The child is deliberately NOT the evidence source: it cannot be, because a commit
+cannot contain the digest of an archive produced from itself. Verification must therefore be
+performed against `084ce19f4edef71825b0d34dfe230c4915a1b3fb`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 084ce19f4edef71825b0d34dfe230c4915a1b3fb
+pnpm install --frozen-lockfile
+node scripts/gate/package-c17-evidence.mjs verify --zip <archive> --root "$PWD" --online
+```
+
+The child changes no executable file, so the gates' verdicts at `084ce19f4edef71825b0d34dfe230c4915a1b3fb` are unaffected by it.
+
+## C17.2 evidence provenance (no SHA cycle)
+
+The evidence-bearing source is **`cb9022a4f2684431c9531aded212377cb8c1c855`**.
+
+* Source run **`32124967274`** (push, `main`, attempt 1) ran at exactly that SHA; all three jobs
+  (`build-test`, `browser-regression`, `supply-chain`) succeeded in the same attempt, and the
+  blocking C17 packager built and self-verified the archive inside the run. The uploaded artifact
+  **`c17-evidence-archive-a1-a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`**
+  carries the inner ZIP `c17-evidence-cb9022a4f2684431c9531aded212377cb8c1c855.zip`
+  (1,206,092 bytes, sha256 `a2485e44700b54203eb044a45c7ef630bf0e53f4a9a4cdf0b1b768931bb1f468`).
+* The automatic macOS finalizer, run **`32125285602`** (workflow_run, `macos-14`, attempt 1),
+  bound that exact source run and SHA, regenerated C16 + C17 on Darwin/ARM64, compared the
+  code-owned nine-artifact set byte-for-byte, and uploaded
+  **`c17-evidence-finalized-a1-89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`**
+  containing `c17-cross-host-finalized-cb9022a4f2684431c9531aded212377cb8c1c855.zip`
+  (9,470,293 bytes, sha256 `89417bfeeb35a42e76931537f9c2da345a81b7d5b9036db9529f41f320f920d1`).
+
+**Superseded predecessor, recorded honestly.** `c757e0fb6a019ac6da37fbbcb23b9335e01790e6` carried
+the same verifier and gate logic and its own push/main CI run `32116234678` was fully green — but
+its first real finalizer run `32116543012` failed deterministically, because that commit's
+immutable finalizer workflow downloaded the source artifact into a repository-relative
+`incoming/` directory whose non-gitignored contents dirtied the checkout that final-mode
+regeneration requires to be clean. `c757e0f` was superseded **solely** because of that
+repository-relative download defect; `cb9022a` changes exactly the download destination
+(`${{ runner.temp }}/incoming`) plus one parsed-YAML regression control.
+
+Verification must be performed against `cb9022a4f2684431c9531aded212377cb8c1c855`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout cb9022a4f2684431c9531aded212377cb8c1c855
+pnpm install --frozen-lockfile
+node scripts/gate/package-c17-evidence.mjs verify --zip <source archive> --root "$PWD" \
+  --profile delivery --online --require-hosted
+node scripts/gate/c17-cross-host-finalization.mjs verify --zip <finalized archive> --root "$PWD" --online
+```
+
+This document is written in a **docs-only child commit** recording those values; the child cannot
+be the evidence source, because a commit cannot contain the digest of an archive produced from
+itself. The child changes no executable file, so the gates' verdicts at
+`cb9022a4f2684431c9531aded212377cb8c1c855` are unaffected by it.
+
+## C18 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1 below
+
+**SUPERSEDED at C18.1**: the d5061b8 verifier false-passed wholesale-forged archives and its
+evidence artifacts exposed ephemeral secrets (the raw ctx signing secret in snapshots and
+generated PostgreSQL/Redis passwords in the command ledger). The record below stays as honest
+history; verification and review target the C18.1 section.
+
+The C18 evidence-bearing source was **`d5061b8add0f9d138110816ff504e0dfd4967aee`**. Source run
+**`32150089911`** (push, `main`, attempt 1) ran at exactly that SHA with the BLOCKING C18
+dual-path gate green inside `build-test`; the finalizer run **`32150603136`** (`macos-14`,
+attempt 1) completed green. The uploaded evidence:
+
+* `c18-db-paths-evidence-a1` → `c18-db-paths-evidence-d5061b8….zip`
+  (sha256 `2233af31fc71433500a9c3995f3f58b122434a1e5bccc44f7e02aca274ef6278`);
+* `c17-evidence-archive-a1-535e44c80b00f92a6c7a66798c4a2970ee7e26048420e0dcff26caf6328ab457`;
+* `c17-evidence-finalized-a1-65a49b5bcbef4d9174081f3f0a1a96999dc33a5bde03ef4255d8e63d1a257e4a`.
+
+Full details, the two superseded predecessors (`8d22235`, `695fb84`) with their honestly
+recorded hosted failures, and the complete claim inventory live in
+[GATE2_2_FINAL_CLOSURE_PLAN.md](GATE2_2_FINAL_CLOSURE_PLAN.md) §14. Verification runs against
+`d5061b8add0f9d138110816ff504e0dfd4967aee`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout d5061b8add0f9d138110816ff504e0dfd4967aee
+pnpm install --frozen-lockfile
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD"
+node scripts/gate/package-c17-evidence.mjs verify --zip <source archive> --root "$PWD" \
+  --profile delivery --online --require-hosted
+node scripts/gate/c17-cross-host-finalization.mjs verify --zip <finalized archive> --root "$PWD" --online
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so
+the gates' verdicts at `d5061b8add0f9d138110816ff504e0dfd4967aee` are unaffected by it.
+
+## C18.1 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.1 below
+
+**SUPERSEDED at C18.1.1**: the 8a23526 archive leaked the raw database-generated
+`ctx.context_secret.secret` in four `raw/*ctx_context_secret.stdout.txt` receipts (snapshot
+digest-substitution ran after the raw psql output was already written), and its verifier accepted
+rebound false evidence (deletion/alteration of processed snapshots while contradictory raw query
+output stayed intact). The record below stays as honest history; verification targets C18.1.1.
+
+The C18 evidence-bearing source is **`8a235263d55545bd708b5b5af200670c467a457a`**. Source run
+**`32192797516`** (push, `main`, attempt 1) ran at exactly that SHA with the BLOCKING C18.1
+dual-path gate green inside `build-test` — producer, offline self-verification AND the 38-test
+mutation/differential control suite against the freshly produced archive — and the finalizer
+run **`32193194227`** (`macos-14`, attempt 1) completed green. The delivery artifact:
+
+* **`c18-db-paths-evidence-a1-35854e8b7146e9f1fda3de4f3945450627b934d4c0c9b828fb8956ce5665e549`**
+  — exactly the archive `c18-db-paths-evidence-8a23526….zip` (outer sha256
+  `35854e8b7146e9f1fda3de4f3945450627b934d4c0c9b828fb8956ce5665e549`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Verified from a fresh foreign
+  checkout at exactly `8a23526` with **`--online --require-hosted`**: hosted push/main run,
+  attempt, successful build-test, successful blocking C18 step and the exact digest-bound
+  artifact all authenticated (`standing=delivery-online`).
+
+Why `d5061b8` was superseded: its verifier accepted synthetic archives (fake SHA, arbitrary
+suite text, empty audit worlds, vacuously equal postures — each now a frozen-fixture
+DIFFERENTIAL control that the exact old verifier still passes and C18.1 rejects), and its
+evidence exposed ephemeral secrets (raw `ctx.context_secret` in snapshots; generated
+PostgreSQL/Redis passwords in `commands.json`). The contaminated hosted artifacts are
+enumerated in §15 of the closure plan with a targeted-deletion recommendation; they have NOT
+been deleted (owner authorization required).
+
+Verification runs against `8a235263d55545bd708b5b5af200670c467a457a`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 8a235263d55545bd708b5b5af200670c467a457a
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so
+the gates' verdicts at `8a235263d55545bd708b5b5af200670c467a457a` are unaffected by it.
+
+## C18.1.1 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.2 below
+
+**SUPERSEDED at C18.1.2**: the 567a70f evidence itself is authentic and LEAK-FREE — it is NOT
+secret-contaminated — but its verifier still ACCEPTED ten fully-rebound false packages
+(duplicated/deleted/exit-forged ledger commands, a tampered port receipt, forged seed
+principals and summaries, a forged post-upgrade eventId, identical attacker posture on both
+paths over genuine raw receipts, and an evidence-only or attacker-principal closure decision).
+Each was reproduced against the frozen verbatim 567a70f verifier and is rejected by C18.1.2
+for its semantic reason. The record below stays as honest history; verification targets the
+C18.1.2 section.
+
+The C18 evidence-bearing source was **`567a70f4f823a83b069460cce9e103cd80044467`**. Source run
+**`32231834550` attempt 2** (push, `main`; attempt 1's `browser-regression` was cancelled by a
+transient GitHub "Install Chrome" infrastructure failure, so the ENTIRE workflow was re-run per
+the recovery contract; all three jobs green in attempt 2 with the blocking C18.1.1 gate — the
+leak-fixed producer, offline self-verification and the 57-test in-gate mutation/differential
+suite). Finalizer run **`32234840732`** (`macos-14`, green). Delivery artifact:
+
+* **`c18-db-paths-evidence-a2-a93dc04547fa0652eeb769c5067356ad017eda92e6514b630d631b4084b93f6f`**
+  — exactly the archive `c18-db-paths-evidence-567a70f4….zip` (outer sha256
+  `a93dc04547fa0652eeb769c5067356ad017eda92e6514b630d631b4084b93f6f`, equal to the artifact-name
+  digest) plus its verified sidecar, nothing else. Its bytes are LEAK-FREE (no raw
+  ctx.context_secret, no env/argv password, no private key). Verified from a fresh foreign
+  checkout at exactly `567a70f` both offline and with **`--online --require-hosted`**: workflow
+  ci, push/main, exact SHA + attempt, all three jobs successful, the blocking C18 step successful,
+  and the unique unexpired digest-bound artifact authenticated (`standing=delivery-online`).
+
+Why `8a23526` was superseded: its evidence leaked the raw `ctx.context_secret.secret`, and its
+verifier accepted rebound false evidence. Both are proven by the frozen-verbatim 8a23526 verifier
+fixture (`apps/api/test/gate/fixtures/c18-legacy-8a23526/`): differential controls show it
+accepts a raw-secret receipt and an altered-processed/intact-raw archive that C18.1.1 rejects.
+The contaminated C18.1 hosted artifacts are recorded in §16 with a targeted-deletion
+recommendation; none have been deleted (owner authorization required).
+
+Verification runs against `567a70f4f823a83b069460cce9e103cd80044467`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 567a70f4f823a83b069460cce9e103cd80044467
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `567a70f4f823a83b069460cce9e103cd80044467` are unaffected by it.
+
+## C18.1.2 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.3 below
+
+**SUPERSEDED at C18.1.3**: the 15e8239 evidence is authentic and LEAK-FREE — it is NOT
+secret-contaminated — but its verifier did not authenticate exact SQL (its command graph accepted
+ANY text in the final `psql -c` position), the migration executable and subject (only the argv
+suffix was checked), exact secret classes (any string beginning `<REDACTED:` passed), several
+seed relationships (session families, canonical-object correlations, the correlation set in the
+unused direction, additional role bindings), suite-stream ownership, or the governed seeding and
+cleanup phases. The record below stays as honest history; verification targets C18.1.3.
+
+The C18 evidence-bearing source is **`15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`**. Candidate CI
+ran green as pull-request run **`32260721217`**; source run **`32261313938` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **79-test** in-gate
+mutation/differential suite (all ten 567a70f-accepts/C18.1.2-rejects differentials, the d5061b8
+and 8a23526 differential families, command-graph/binding/projection rejections, the real-CLI
+hidden-untracked-file refusal and the real SIGTERM cleanup control). Finalizer run
+**`32261859846`** (`macos-14`, green). Delivery artifact:
+
+* **`c18-db-paths-evidence-a1-ed6a58718575b9d3793f5de1c0df5b6dc74f8e00bf6f1659f9ba8942fadbf5b4`**
+  (290,893 B wrapper) — exactly the archive
+  `c18-db-paths-evidence-15e8239….zip` (434,057 B, outer sha256
+  `ed6a58718575b9d3793f5de1c0df5b6dc74f8e00bf6f1659f9ba8942fadbf5b4`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic: 264 commands,
+  792 raw stream files, 9 fixed top-level regular files, 801 regular files, + the `raw/`
+  directory entry = 802 ZIP entries. Verified from a fresh foreign checkout at exactly
+  `15e8239` both offline and with **`--online --require-hosted`**: workflow ci, push/main,
+  exact SHA + attempt, all three jobs successful, the blocking C18 step successful, and the
+  unique unexpired digest-bound artifact authenticated (`standing=delivery-online`).
+
+Why `567a70f` was superseded (stated honestly): its evidence is authentic and LEAK-FREE — it is
+NOT secret-contaminated — but its verifier accepted ten fully-rebound false packages. The exact
+567a70f verifier is frozen BYTE-VERBATIM at `apps/api/test/gate/fixtures/c18-legacy-567a70f/`
+(per-file SHA-256 pinned and cross-checked against `git show 567a70f:…` where history is
+available; its ROOT compose lookup is satisfied by a tracked symlink, never by editing the
+frozen file), and the in-gate differentials prove it ACCEPTS each of the ten rebound false
+packages that C18.1.2 rejects for its semantic reason. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §17
+for the full A–E correction record.
+
+Verification runs against `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 15e8239007f0b25a9d62ea52bfc9c2101cfcdca6
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `15e8239007f0b25a9d62ea52bfc9c2101cfcdca6` are unaffected by it.
+
+## C18.1.3 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.4 below
+
+**SUPERSEDED at C18.1.4**: the 83d158c archive, leak fix, CI topology and delivery chain are
+authentic — it is NOT secret-contaminated — but its VERIFIER accepted nine reproduced false
+passes: a PostgreSQL credential position carrying another valid class; a self-asserted
+`runner_sha256` over a foreign workspace; a removed column and a weakened foreign-key action with
+every processed value, raw receipt and checksum rebound on both paths; a role binding re-scoped
+and re-attributed; seed steps reporting no, misattributed or duplicated identities; and cleanup
+"absence" proved by a failed `docker inspect`. The record below stays as honest history;
+verification targets C18.1.4.
+
+The C18 evidence-bearing source is **`83d158cca00d3a85ae78c3a4e9019c483426c5a7`**. Candidate CI
+ran green as pull-request run **`32351402879`**; source run **`32351964148` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **107-test** in-gate
+mutation/differential suite. Finalizer run **`32352446987`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-372ffb5f73a45a26df98c4ffcb35e0c4fbeea1feb2afb0b6d8a2ca904ebf924c`**
+  (294,514 B wrapper) — exactly the archive `c18-db-paths-evidence-83d158cc….zip` (441,336 B,
+  outer sha256 `372ffb5f73a45a26df98c4ffcb35e0c4fbeea1feb2afb0b6d8a2ca904ebf924c`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic: 272 commands,
+  816 raw stream files, 9 fixed top-level regular files, 825 regular files, + the `raw/`
+  directory entry = 826 ZIP entries. Verified from a fresh foreign checkout at exactly
+  `83d158c` both offline and with **`--online --require-hosted`** (`standing=delivery-online`).
+  A standalone scan of every member and the final ZIP finds ZERO generated credentials: the
+  evidence carries 24 distinct exact `<REDACTED:<path>:<CLASS>>` placeholders (12 classes × 2
+  paths) and no 48-hex credential token anywhere.
+
+Why `15e8239` was superseded (stated honestly): its evidence is authentic and LEAK-FREE — it is
+NOT secret-contaminated — but its verifier did not authenticate exact SQL, the migration
+executable and subject, exact secret classes, several seed relationships, suite-stream ownership,
+governed seeding or cleanup execution. The exact 15e8239 verifier is frozen BYTE-VERBATIM at
+`apps/api/test/gate/fixtures/c18-legacy-15e8239/`, and twelve of the thirteen mandated classes
+were first REPRODUCED as accepted false passes against it; the thirteenth (cleanup and seeding)
+was accepted because that evidence did not exist at all. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §18
+for the full A–F correction record.
+
+Verification runs against `83d158cca00d3a85ae78c3a4e9019c483426c5a7`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 83d158cca00d3a85ae78c3a4e9019c483426c5a7
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `83d158cca00d3a85ae78c3a4e9019c483426c5a7` are unaffected by it.
+
+## C18.1.4 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.5 below
+
+**SUPERSEDED at C18.1.5**: the 7be02b8 archive, CI chain, catalogue contract, credential handling
+and earlier corrections are authentic and LEAK-FREE — it is NOT secret-contaminated — but its
+VERIFIER left four evidence-consistency gaps, each reproduced as accepted against the
+byte-verbatim frozen 7be02b8 fixture: a migration applied by the runner but absent from the
+manifest; a migration file present in the governed workspace but never enumerated or hashed; an
+additional seeded tenant admitted by minimum-only seed validation; a duplicated active
+role-binding tuple and an unexpected revoked binding; and a "successful" absence probe that wrote
+a permission error to stderr. The record below stays as honest history; verification targets
+C18.1.5.
+
+The C18 evidence-bearing source is **`7be02b8ed64bffbe22afc4b8374c21406cf73fa5`**. Candidate CI
+ran green as pull-request run **`32360529728`**; source run **`32361402701` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **127-test** in-gate
+mutation/differential suite. Finalizer run **`32361886321`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-0214f66bc43939328074145ee13a0c7aaf45eaf9674b995e36576e9363e46e77`**
+  (302,966 B wrapper) — exactly the archive `c18-db-paths-evidence-7be02b8e….zip` (446,319 B,
+  outer sha256 `0214f66bc43939328074145ee13a0c7aaf45eaf9674b995e36576e9363e46e77`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic: 275 commands
+  (including 3 migration attestations and 4 authenticated absence probes), 825 raw stream files,
+  9 fixed top-level regular files, 834 regular files, + the `raw/` directory entry = 835 ZIP
+  entries. Verified from a fresh foreign checkout at exactly `7be02b8` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `83d158c` was superseded (stated honestly): its archive, leak fix, CI topology and delivery
+chain are authentic and leak-free — it is NOT secret-contaminated — but its verifier did not
+authenticate credential classes per position, the migration runner's and workspace migrations'
+executed bytes, the complete catalog (columns, primary keys, FK definitions), the complete
+role-binding relationship tuple, exact per-step seed identities, or absence itself. All nine
+reviewer-reproduced false passes were confirmed against the byte-verbatim frozen 83d158c fixture
+before any fix. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §19 for the full correction record.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.4 review; no closure is claimed.
+
+Verification runs against `7be02b8ed64bffbe22afc4b8374c21406cf73fa5`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 7be02b8ed64bffbe22afc4b8374c21406cf73fa5
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `7be02b8ed64bffbe22afc4b8374c21406cf73fa5` are unaffected by it.
+
+## C18.1.5 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.6 below
+
+**SUPERSEDED at C18.1.6**: the 8362cba archive, hosted runs, role-binding multiset, revoked-row
+handling, cleanup checks and every previous correction passed independent review and are
+preserved unchanged — it is authentic and LEAK-FREE, NOT secret-contaminated. Two
+evidence-consistency issues remained: its `ls -1` inventory omitted dot-prefixed filenames while
+the runner applies every `.sql` it finds, and its output parser assumed filenames without
+whitespace, so `.0022 hidden backdoor.sql` could be applied invisibly; and its seed validation
+fixed exact quantities but checked deterministic VALUES only for agreement between record and
+snapshots, so consistently renaming a tenant, domain or principal still validated. The record
+below stays as honest history; verification targets C18.1.6.
+
+The C18 evidence-bearing source is **`8362cba116657c9119a96f16cde40faac1727113`**. Candidate CI
+ran green as pull-request run **`32373661813`**; source run **`32374447671` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **144-test** in-gate
+mutation/differential suite. Finalizer run **`32375058694`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`**
+  (295,589 B wrapper) — exactly the archive `c18-db-paths-evidence-8362cba1….zip` (449,377 B,
+  outer sha256 `7ce45824fe89203c8c68da68c206cdb1034f50e6c20494ad61b87aa551023cac`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **278 commands** (3 workspace inventories, 3 migration attestations,
+  4 checked removals, 4 authenticated absence probes), **834 raw stream files**, **9 fixed
+  top-level regular files**, **843 regular files**, + the `raw/` directory entry = **844 ZIP
+  entries**. Verified from a fresh foreign checkout at exactly `8362cba` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `7be02b8` was superseded (stated honestly): its archive, CI chain, catalogue contract and
+credential handling are authentic and leak-free — it is NOT secret-contaminated — but its
+verifier did not enumerate the complete governed migration directory, did not parse the runner's
+own application sequence, validated the seed by minima rather than exactly, compared role
+bindings without multiset multiplicity or revoked-row accounting, and accepted an absence probe
+that wrote diagnostics to stderr. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §20 for the full record.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.5 review; no closure is claimed.
+
+Verification runs against `8362cba116657c9119a96f16cde40faac1727113`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 8362cba116657c9119a96f16cde40faac1727113
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `8362cba116657c9119a96f16cde40faac1727113` are unaffected by it.
+
+## C18.1.6 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.7 below
+
+**SUPERSEDED at C18.1.7**: the dccfcf26 archive, promotion, CI, finalizer, migration
+immutability, sidecar, checksums, inventory, leak-free status and hosted bindings were
+independently verified as authentic and are preserved unchanged — it is NOT secret-contaminated.
+Two verifier-completeness issues remained: migration receipts were parsed rather than compared
+byte-for-byte, so pretty-printed inventory JSON and a shasum receipt with an impossible blank
+line both passed; and the seed specification, while owning names and placement, did not enforce
+several declared or evidence-visible values — object subjects, payloads, deterministic header
+fields and content digests, the declared admitting principal, per-decision posture (an allow
+flipped to deny passed), and deterministic outbox payloads. The record below stays as honest
+history; verification targets C18.1.7.
+
+The C18 evidence-bearing source is **`dccfcf26b0111edeb4b5d710b6d0f707beb34f46`**. Candidate CI
+ran green as pull-request run **`32398239519`**; source run **`32399868648` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **171-test** in-gate
+mutation/differential suite. Finalizer run **`32400475534`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-4a9eba0cda45dbe78abce2a4b3b2dd31e088ff4c649ecd107cd41fffccd0997a`**
+  (296,162 B wrapper) — exactly the archive `c18-db-paths-evidence-dccfcf26….zip` (449,944 B,
+  outer sha256 `4a9eba0cda45dbe78abce2a4b3b2dd31e088ff4c649ecd107cd41fffccd0997a`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **278 commands** (3 workspace inventories, 3 attestations, 4 checked
+  removals, 4 authenticated absence probes), **834 raw stream files**, **9 fixed top-level
+  regular files**, **843 regular files**, + the `raw/` directory entry = **844 ZIP entries**.
+  Verified from a fresh foreign checkout at exactly `dccfcf2` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `8362cba` was superseded (stated honestly): it is authentic and leak-free, and everything
+independent review approved is preserved. Its verifier enumerated the governed workspace with
+`ls -1` — which omits dot-prefixed entries and emits line-delimited text — while the migration
+runner applies every name ending in `.sql`, and its output parser matched `applying (\S+) ... ok`
+anywhere in the stream; and its seed validation fixed exact quantities without owning the
+deterministic values. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §21 for the full record.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.6 review; no closure is claimed.
+
+Verification runs against `dccfcf26b0111edeb4b5d710b6d0f707beb34f46`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout dccfcf26b0111edeb4b5d710b6d0f707beb34f46
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `dccfcf26b0111edeb4b5d710b6d0f707beb34f46` are unaffected by it.
+
+## C18.1.7 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.8 below
+
+**SUPERSEDED at C18.1.8**: independent review verified the bfc8695 archive, checksums, leak-free
+status, exact-receipt correction, CI, finalizer, hosted bindings and unchanged migrations — all
+preserved. Its supposedly closed seed model nonetheless omitted deterministic base-row posture
+(tenant and domain status and profiles, principal status, session status) and left audit history
+unclaimed: `bindSeedSpec` populated `claimedAuditEvents` but never consumed it while audit
+cardinalities stayed minimum-only, so a suspended tenant, a disabled bootstrap principal, a
+revoked session, a changed retention profile and an entire additional production-valid audit
+event all reconciled. The record below stays as honest history; verification targets C18.1.8.
+
+The C18 evidence-bearing source is **`bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`**. Candidate CI
+ran green as pull-request run **`32409590023`**; source run **`32410169418` attempt 1** (push,
+`main`) ran at exactly that SHA with all three jobs green in ONE attempt, including the blocking
+C18 gate — the corrected producer, offline self-verification and the **193-test** in-gate
+mutation/differential suite. Finalizer run **`32410870143`** (`macos-14`, green). Delivery
+artifact:
+
+* **`c18-db-paths-evidence-a1-fb5f93874926478fcba3ba8a0e5f1c54d35cc2dff8b446cfb63537c24353460a`**
+  (295,607 B wrapper) — exactly the archive `c18-db-paths-evidence-bfc8695b….zip` (449,213 B,
+  outer sha256 `fb5f93874926478fcba3ba8a0e5f1c54d35cc2dff8b446cfb63537c24353460a`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **278 commands** (3 workspace inventories, 3 attestations, 4 checked
+  removals, 4 authenticated absence probes), **834 raw stream files**, **9 fixed top-level
+  regular files**, **843 regular files**, + the `raw/` directory entry = **844 ZIP entries**.
+  Verified from a fresh foreign checkout at exactly `bfc8695` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `dccfcf26` was superseded (stated honestly): it is authentic and leak-free, and everything
+independent review verified is preserved. Its verifier PARSED migration receipts instead of
+comparing them byte-for-byte, and its seed specification did not enforce object subjects,
+payloads, deterministic header fields, content digests, the declared admitting principal,
+per-decision posture or deterministic outbox payloads. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §22.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.7 review; no closure is claimed.
+
+Verification runs against `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `bfc8695b2ac1b5cf41cf7bd717aad23d40a180e4` are unaffected by it.
+
+## C18.1.8 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.9 below
+
+**SUPERSEDED at C18.1.9**: `77489f5` is authentic and leak-free, and everything independent review
+verified is preserved. Its published seed-coverage classification was nonetheless **descriptive
+rather than executable** — for many columns the verifier enforced a weaker property, or none — and
+six mutations contradicting the published classification were accepted by the complete frozen
+77489f5 verifier. The record below stays as honest history; verification targets C18.1.9.
+
+The C18 evidence-bearing source is **`77489f50fdb07d7f469f9181ddd808b37b70c964`**. Candidate CI
+ran green as pull-request run **`32420967676`**; source run **`32421740131` attempt 2** (push,
+`main`) ran at exactly that SHA with all three jobs green, including the blocking C18 gate — the
+corrected producer, offline self-verification and the **217-test** in-gate mutation/differential
+suite. Attempt 1 was re-run in full per the recovery contract after a transient failure in a
+pre-existing browser scenario (`datetime-local` fill in `e2e/phase0.spec.ts:226`) that this
+change does not touch; the identical tree had passed candidate CI, and passes 10/10 locally.
+Finalizer run **`32422894325`** (`macos-14`, green). Delivery artifact:
+
+* **`c18-db-paths-evidence-a2-6800db195a7a2255f08566277381a92386038a4d14363fdd786b23c0210e7c57`**
+  (353,249 B wrapper) — exactly the archive `c18-db-paths-evidence-77489f50….zip` (524,576 B,
+  outer sha256 `6800db195a7a2255f08566277381a92386038a4d14363fdd786b23c0210e7c57`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **336 commands**, **1,008 raw stream files**, **11 fixed top-level regular
+  files**, **1,019 regular files**, + the `raw/` directory entry = **1,020 ZIP entries**.
+  Verified from a fresh foreign checkout at exactly `77489f5` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `bfc8695` was superseded (stated honestly): it is authentic and leak-free, and everything
+independent review verified is preserved. Its seed model omitted deterministic base-row posture
+and left audit history unclaimed. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §23.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.8 review; no closure is claimed.
+
+Verification runs against `77489f50fdb07d7f469f9181ddd808b37b70c964`:
+
+```
+git clone https://github.com/a-Halawany/elven && cd elven
+git checkout 77489f50fdb07d7f469f9181ddd808b37b70c964
+pnpm install --frozen-lockfile && pnpm --filter @eye/contracts build
+node scripts/gate/c18-db-paths.mjs verify --zip <c18 evidence zip> --root "$PWD" --online --require-hosted
+```
+
+This section is written in a docs-only child commit; the child changes no executable file, so the
+gates' verdicts at `77489f50fdb07d7f469f9181ddd808b37b70c964` are unaffected by it.
+
+## C18.1.9 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.10 below
+
+**SUPERSEDED at C18.1.10**: `53a4eec` is authentic and leak-free and everything independent review
+verified is preserved. Eleven mutations were nonetheless accepted by the complete frozen verifier —
+`after → final` was checked only by ID-set membership on four tables, the declared Argon2id
+parameters were dead code and wrong, digest uniqueness was ignored, an outbox correlation needed
+only to agree with the seed record, timestamps went through unrestricted parsing, bootstrap timing
+needed only a movable window, and the registry excluded the later-era and dedicated-model columns
+while reporting itself complete. The record below stays as honest history; verification targets
+C18.1.10.
+
+The C18 evidence-bearing source is **`53a4eec4d9f83422969a34efe37e277f7accc809`**. Candidate CI ran green as pull-request
+run **`32479491584`**; source run **`32480029784`** (push, `main`) ran at exactly that SHA with all three
+jobs green, including the blocking C18 gate — the producer, offline self-verification and the
+**234-test** in-gate mutation/differential suite. Finalizer run **`32480596912`**
+(`macos-14`, green). Delivery artifact:
+
+* **`c18-db-paths-evidence-a1-4eef12de660110aeb0676270ccc3b5f7ef9e69c080b568e1494525a82399a58c`** (353,074 B wrapper) — exactly the archive
+  `c18-db-paths-evidence-53a4eec….zip` (524,540 B, outer sha256 `4eef12de660110aeb0676270ccc3b5f7ef9e69c080b568e1494525a82399a58c`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **336 commands**, **1,008 raw stream files**, **11 fixed top-level regular
+  files**, **1,019 regular files**, + the `raw/` directory entry = **1,020 ZIP entries**.
+  Verified from a fresh foreign checkout at exactly `53a4eec` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+Why `77489f5` was superseded (stated honestly): it is **authentic and leak-free**, and everything
+independent review verified at C18.1.8 — the archive, checksums, command ledger, raw receipts,
+CI and finalizer topology, hosted bindings and migrations — is preserved. It is superseded only
+because several of its machine-readable coverage claims were **not executable verifier
+guarantees**: `seed-coverage.json` classified every seeded column, but the verifier enforced a
+weaker property, or none, for many of them. Six mutations contradicting the published
+classification were accepted by the complete frozen 77489f5 verifier. See
+`GATE2_2_FINAL_CLOSURE_PLAN.md` §24.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.9 review; no closure is claimed, and
+no part of C19 has been started.
+
+
+## C18.1.10 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.11 below
+
+**SUPERSEDED at C18.1.11**: `a424505` is authentic and leak-free and everything independent review
+verified is preserved. Its `after → final` authentication nonetheless COUNTED rows instead of
+classifying their columns, and its credential-expiry check accepted a range rather than the
+source-owned formula; twenty-two mutations were accepted by the complete frozen verifier with zero
+findings. The record below stays as honest history; verification targets C18.1.11.
+
+The C18 evidence-bearing source is **`a424505a82970d8e4446ea5e0aacaf5f0a85a2e9`**. Candidate CI ran
+green as pull-request run **`32529804949`**; source run **`32530262825`** (push, `main`) ran at
+exactly that SHA with all three jobs green, including the blocking C18 gate — the producer, offline
+self-verification and the **247-test** in-gate mutation/differential suite. Finalizer run
+**`32530692547`** (`macos-14`, green). Delivery artifact:
+
+* **`c18-db-paths-evidence-a1-791bdc48d7a81d5e6edf50f4109100720ea185e773688d0755469aab880cb47b`**
+  (353,145 B wrapper) — exactly the archive `c18-db-paths-evidence-a424505….zip` (524,617 B, outer
+  sha256 `791bdc48d7a81d5e6edf50f4109100720ea185e773688d0755469aab880cb47b`, equal to the
+  artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **336 commands**, **1,008 raw stream files**, **11 fixed top-level regular
+  files**, **1,019 regular files**, + the `raw/` directory entry = **1,020 ZIP entries**. The
+  delivered `seed-coverage.json` publishes **145 classified columns, every one executable, and no
+  opaque column**. Verified from a fresh foreign checkout at exactly `a424505` both offline and
+  with **`--online --require-hosted`** (`standing=delivery-online`).
+
+**Measured durations, from the final source.** In-gate control suite, three clean local runs:
+144.57 s / 145.99 s / 145.67 s → **median 145.67 s, max 145.99 s** (247 controls, zero failures).
+Hosted control suite **70.4 s** (candidate) and **80.2 s** (push/main). Complete C18 gate **~3.6 min
+locally** and **2 m 17 s hosted**. C18.1.9's control suite took roughly three hours locally; no
+control was removed, sampled or weakened to achieve this — the suite grew from 234 to 247.
+
+**Two defects in this pass's own work were caught by the delivery chain, not by local runs, and
+both are now pinned by controls.** The frozen predecessor's dependency shim sat under a path the
+repository's `dist/` rule ignores, so it existed locally and was missing from the checkout CI
+makes; and splitting ingress from the semantic core moved the hosted-artifact binding away from the
+archive's own bytes, so `--online --require-hosted` failed at `2c41dae` while every offline control
+passed.
+
+Why `53a4eec` was superseded (stated honestly): it is **authentic and leak-free**, and everything
+independent review verified at C18.1.9 is preserved. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §25.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.10 review; no closure is claimed, and
+no part of C19 has been started.
+
+
+## C18.1.11 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.12 below
+
+**SUPERSEDED at C18.1.12**: `2c3cab3` is **authentic, leak-free and provenance-valid**, and its
+evidence is NOT contaminated. It is superseded because its verifier accepts a family of fully
+rebound semantic packages — an exact capability tuple minted twice, coordinated invalid or deleted
+values at both ends of a linked pair, consistent lifetime rewrites, same-instant respellings and a
+coordinated non-uuid identifier — and because its watchdog handed children `stdio: 'inherit'`, so
+nothing they printed was redacted. The record below stays as honest history; verification targets
+C18.1.12.
+
+## C18.1.11 evidence provenance (original record)
+
+The C18 evidence-bearing source is **`2c3cab3442b4bd495bf74aca803bd9be9bd7d0ea`**. Candidate CI ran
+green as pull-request run **`32574792444`** (attempt 1, 3/3); source run **`32575145266`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **265-test** in-gate mutation/differential
+suite. Finalizer run **`32575476455`** (`macos-14`, green).
+
+**Two superseded deliveries, recorded honestly.** `77c723f` was green end to end (candidate
+`32573318668`, source `32573661621`, finalizer `32573952177`, artifact `4631da3f…`, foreign checkout
+offline and `standing=delivery-online`); its records child `a3f1692` then failed the blocking C18
+gate (run `32574204045`) because the governed-lifetime rule compared truncated seconds, so a prior
+session's observed 3,599.997 s and the new session's 3,600.006 s — the same governed hour —
+disagreed. The rule now rounds to the whole-second TTL and allows a sub-second clock skew, pinned by
+four controls. Earlier, `3dbf787` was itself a complete green delivery
+(candidate `32571494533`, source `32571797819`, finalizer `32572074661`, artifact `feba8637…`,
+foreign checkout offline and `standing=delivery-online`). Its records child `6d702d2` then failed
+the blocking C15 supply-chain gate (run `32572490921`) because a sentence in the records text
+matched gitleaks' `generic-api-key` rule — the English phrase `replacement/reuse/invalidation`
+following the word `token`, naming three nullable columns. The sentence was reworded and one
+allowlist entry, pinned to that single rule, file, phrase and commit id, covers the historical
+occurrence. That is a source change, so a new evidence SHA was produced and the complete candidate
+and delivery sequence repeated; no evidence from an earlier SHA is reused. Delivery artifact:
+
+* **`c18-db-paths-evidence-a1-ba40fca39a153a91abad08d69646c2e41fb698a552cdfa5ab39d79fa3bac91f8`**
+  (353,337 B wrapper) — exactly the archive `c18-db-paths-evidence-2c3cab3….zip` (outer sha256
+  `ba40fca39a153a91abad08d69646c2e41fb698a552cdfa5ab39d79fa3bac91f8`, equal to both the sidecar and
+  the artifact-name digest) plus its verified sidecar, nothing else. Arithmetic, measured from the
+  delivered archive: **336 commands**, **1,008 raw stream files**, **11 fixed top-level regular
+  files**, **1,019 regular files**, + the `raw/` directory entry = **1,020 ZIP entries**. The
+  checksum manifest binds 1,018 members with none unbound, none mismatched and no self-entry; there
+  are no unsafe or duplicate ZIP paths; `source_sha` equals the evidence SHA; and the secret scan is
+  clean. Verified from a fresh foreign checkout at exactly `2c3cab3` both offline and with
+  **`--online --require-hosted`** (`standing=delivery-online`).
+
+**Measured durations.** In-gate control suite, three clean local runs: 146.38 s / 148.16 s /
+151.40 s → **median 148.16 s, max 151.40 s**, and 159.64 s at the delivered SHA. Hosted control
+suite 78.35 s, 88.61 s and 107.42 s across the three delivery attempts. Hosted C18 gate 3 m 04 s
+(candidate) and 3 m 02 s (push/`main`), each including the producer, offline self-verification and
+the 265-control suite. Hosted CI also ran API hermetic
+1,536 + 9, integration 297 and acceptance 58, all green.
+
+**Credential incident.** A GitHub token had been passed through argv and echoed into a watchdog log.
+The watchdog now redacts everything it prints, canary controls prove a secret inherited through the
+environment appears in no output and that none can appear in the evidence archive, and the owner
+rotated the exposed credential before hosted delivery resumed. The hosted CI logs for this delivery
+contain zero token-shaped strings.
+
+Why `a424505` was superseded (stated honestly): it is **authentic and leak-free**, and everything
+independent review verified at C18.1.10 is preserved. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §26.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.11 review; no closure is claimed, and
+no part of C19 has been started.
+
+## C18.1.12 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.13 below
+
+**SUPERSEDED at C18.1.13**: `220b26c` is **authentic, leak-free and provenance-valid**, and its
+evidence is NOT contaminated. Its artifact and delivery provenance mechanisms pass independent
+review and are preserved unchanged. It is superseded because its verifier accepts cross-family
+timestamp respellings, consistently omitted fields and serialized-type substitutions, and because
+its watchdog remains incomplete at value and stream boundaries. The record below stays as honest
+history; verification targets C18.1.13.
+
+## C18.1.12 evidence provenance (original record)
+
+The C18 evidence-bearing source is **`220b26cf591d0ecd30060942040ee3341be798e6`**. Candidate CI ran
+green as pull-request run **`32591391366`** (attempt 1, 3/3); source run **`32591765637`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **280-control** in-gate
+mutation/differential suite. Finalizer run **`32592075561`** (attempt 1, green). No superseded
+delivery attempt was needed: one candidate run, one source run, one finalizer, each on its first
+attempt.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-67f2bd5c42878f02ce5242820b820e1ddedc11c1eeac783a736aa4dfb569debe`
+(353,307 B), containing exactly `c18-db-paths-evidence-220b26c….zip` and its sidecar. The
+artifact-name digest, the outer archive sha256 and the sidecar all equal
+`67f2bd5c42878f02ce5242820b820e1ddedc11c1eeac783a736aa4dfb569debe`. Measured from the delivered
+archive: 336 commands, 1,008 raw stream files, 11 fixed top-level regular files, 1,019 regular
+files plus the `raw/` directory entry = 1,020 ZIP entries; the checksum manifest binds 1,018
+members with none unbound or mismatched and no self-entry; no unsafe, absolute, traversing or
+duplicate paths; `source_sha` equals the evidence SHA. A fresh foreign clone checked out at exactly
+`220b26c` verified it **offline** and **`--online --require-hosted`**
+(`standing=delivery-online`).
+
+**Reproduced before it was corrected.** The exact `2c3cab3` verifier was frozen byte-for-byte
+(twelve files, each pinned by sha256 and asserted against `git show`). Pristine evidence passes it
+with zero findings; **eleven of eleven** residual semantic packages, plus the watchdog's
+environment-secret leak and the bootstrap `expires_at - 10 ms` mutation, were accepted by it with
+zero findings each, every attacker-controlled binding rebound. Each is non-vacuous in all three
+directions — pristine accepted, mutation accepted by the frozen verifier, corrected verifier
+rejecting it for its own owning rule.
+
+**Measured durations.** In-gate control suite, three clean local runs: 68 s / 66 s / 63 s →
+**median 66 s, max 68 s** (≤180 s), with 15 more controls than the 148 s median it replaces.
+Hosted control suite **49.89 s** (candidate) and **49.54 s** (push/`main`), both ≤90 s and both a
+substantial improvement on C18.1.11's 107.42 s. Complete hosted C18 gate **2 m 09 s** (≤6 min).
+Hosted CI also ran API hermetic 1,622 + 9, integration 297 and acceptance 58, all green. Every long
+command ran under the portable 900-second process-group watchdog; no stale monitors, orphaned
+processes or leftover gate containers.
+
+**Credentials.** The replacement credential reached every authenticated command through the
+ENVIRONMENT only and never through argv. Local gitleaks scans of the worktree and of the full
+history are clean, and the only token-shaped string in the repository remains the deliberate
+synthetic canary constant.
+
+Why `2c3cab3` was superseded (stated honestly): it is **authentic, leak-free and provenance-valid**,
+its evidence is NOT contaminated, and everything independent review verified at C18.1.11 is
+preserved. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §27.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.12 review; no closure is claimed, and
+no part of C19 has been started.
+
+## C18.1.13 evidence provenance (no SHA cycle) — SUPERSEDED by C18.1.14 below
+
+**SUPERSEDED at C18.1.14**: `53fb889` is **authentic, leak-free and provenance-valid**, and its
+evidence is NOT contaminated. It is superseded because a broad omission audit — not the supplied
+examples — found that six catalogued tables written by the frozen migrations carried rows with no
+value model at all, so eight fully rebound packages rewriting the role catalog, the runtime
+profile, the canonical field registry and the cited policy bundle were accepted with zero findings.
+The record below stays as honest history; verification targets C18.1.14.
+
+## C18.1.13 evidence provenance (original record)
+
+The C18 evidence-bearing source is **`53fb8897053b20e810ba05be695d62d81ea65475`**. Candidate CI ran
+green as pull-request run **`32639332615`** (attempt 1, 3/3); source run **`32639658788`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **289-control** in-gate
+mutation/differential suite. Finalizer run **`32639913439`** (attempt 1, green). No superseded
+delivery attempt was needed: one candidate run, one source run, one finalizer, each on its first
+attempt.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-13badf6fb1566fcf36c667ae343abab2ef79ea282da409c3d035737af2abc2b6`
+(348,848 B), containing exactly `c18-db-paths-evidence-53fb889….zip` and its sidecar. The
+artifact-name digest, the outer archive sha256 and the sidecar all equal
+`13badf6fb1566fcf36c667ae343abab2ef79ea282da409c3d035737af2abc2b6`. Measured from the delivered
+archive: 336 commands, 1,008 raw stream files, 11 fixed top-level regular files, 1,019 regular
+files plus the `raw/` directory entry = 1,020 ZIP entries; the checksum manifest binds 1,018
+members with none unbound or mismatched and no self-entry; no unsafe, absolute, traversing or
+duplicate paths; `source_sha` equals the evidence SHA. A fresh foreign clone checked out at exactly
+`53fb889` verified it **offline** and **`--online --require-hosted`** (`standing=delivery-online`).
+C18.1.12's artifact and delivery provenance mechanisms are preserved unchanged.
+
+**Reproduced before it was corrected.** The exact `220b26c` verifier was frozen byte-for-byte
+(fourteen files, each pinned by sha256 and asserted against `git show`). Pristine evidence passes
+it with zero findings; five archive packages — two cross-family timestamp respellings, one
+consistently omitted nullable field, one numeric-string audit sequence and one numeric `txid` —
+were accepted by it with zero findings each, fully rebound. Three watchdog disclosure paths
+reproduced against the frozen watchdog: an arbitrary environment credential on stdout, stderr and
+in a thrown error; a shaped canary across the forced carry boundary at 19 of 36 split offsets; and
+multiline private material split across delayed writes.
+
+**Measured durations.** In-gate control suite, three clean local runs: 66 s / 67 s / 66 s →
+**median 66 s** (≤180 s), with nine more controls than C18.1.12. Hosted control suite **50.44 s**
+(candidate) and **40.68 s** (push/`main`), both ≤90 s. Complete hosted C18 gate **2 m 06 s**
+(≤6 min). Hosted CI also ran API hermetic 1,729 + 9, integration 297 and acceptance 58, all green.
+Every long command ran under the portable 900-second process-group watchdog; no stale monitors,
+orphaned processes or leftover gate containers.
+
+**Credentials.** The credential reached every authenticated command through the ENVIRONMENT only
+and never through argv. Local gitleaks scans of the worktree and of the full history are clean. The
+delivered archive is asserted by control to contain no provider token, no private-key block and
+none of the synthetic canaries; the 76 strings a raw `generic-api-key` heuristic flags in the
+extracted archive are all its own sha-256 content digests.
+
+Why `220b26c` was superseded (stated honestly): it is **authentic, leak-free and provenance-valid**,
+its evidence is NOT contaminated, and everything independent review verified at C18.1.12 —
+including its artifact and delivery provenance — is preserved. See
+`GATE2_2_FINAL_CLOSURE_PLAN.md` §28.
+
+**C18 remains OPEN.** This delivery awaits independent C18.1.13 review; no closure is claimed, and
+no part of C19 has been started.
+
+## C18.1.14 evidence provenance (no SHA cycle) — SUPERSEDED by the C18.1.14 completion below
+
+**COMPLETED at `e2077e1`**: `7959ec9` is **authentic and provenance-valid**. Five defects were
+independently reproduced against it — four watchdog disclosures (a short secret-named value, a
+multiline secret, a PGP private-key block, and password-only URL userinfo) and one verifier false
+pass (a single context-secret digest shared by both independently provisioned paths). All five are
+closed in the completion recorded below. The record here stays as honest history.
+
+## C18.1.14 evidence provenance (original record)
+
+The C18 evidence-bearing source is **`7959ec993a00c7d29931e5546ccbe143328c6d02`**. Candidate CI ran
+green as pull-request run **`32720013004`** (attempt 1, 3/3); source run **`32720475317`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **302-control** in-gate
+mutation/differential suite. Finalizer run **`32721043205`** (attempt 1, green). One candidate run,
+one source run, one finalizer, each on its first attempt.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-62cdd7d2419a02f7d5e3b271400d2b3ae7130e1c4f3e9ddc5ea4103f9dd6eb2b`
+(353,378 B). The artifact-name digest, the outer archive sha256 and the sidecar all equal
+`62cdd7d2419a02f7d5e3b271400d2b3ae7130e1c4f3e9ddc5ea4103f9dd6eb2b`. Measured from the delivered
+archive: 336 commands, 1,008 raw stream files, 11 fixed top-level regular files, 1,019 regular
+files plus the `raw/` directory entry = 1,020 ZIP entries; 1,018 bound members with none unbound or
+mismatched and no self-entry; no unsafe, absolute, traversing or duplicate paths; `source_sha`
+equals the evidence SHA. A fresh foreign clone at exactly `7959ec9` verified it **offline** and
+**`--online --require-hosted`** (`standing=delivery-online`).
+
+**A broad audit, not just the supplied examples.** This pass began by inventorying the whole
+verifier: migration-owned rows, every timestamp column of both eras, every unowned or exempt
+declaration, every coercion, every validator that could report unestablished success, every
+suppression-capable conditional, the Path A preservation rules and A ↔ B comparisons, the
+raw-receipt reconstructions, the watchdog's thresholds and buffering, the offline/online/hosted
+paths, fixture trackedness, and control registration. It found a blocking class no review had
+supplied: six catalogued tables written by the frozen migrations carried rows with **no value
+model**, and eight fully rebound packages — a re-scoped role, a deleted role, a `production`
+runtime profile, deleted and de-authorised registry rows, a `draft` and a renamed policy bundle,
+and a context secret that was not a digest — were accepted by the frozen `53fb889` verifier with
+zero findings. `GATE2_2_FINAL_CLOSURE_PLAN.md` §29.3 reconciles all 37 issues.
+
+**Measured durations.** In-gate control suite, three clean local runs: 66 s / 65 s / 67 s →
+**median 66 s** (≤180 s). Hosted control suite **38.19 s** (candidate) and **55.99 s**
+(push/`main`), both ≤90 s. Complete hosted C18 gate **1 m 41 s** (≤6 min). Hosted CI also ran API
+hermetic 1,779 + 9, integration 297 and acceptance 58, all green.
+
+**Credentials.** The credential reached every authenticated command through the ENVIRONMENT only.
+Both gitleaks scans are clean — a new synthetic test constant tripped `generic-api-key` locally and
+was renamed before the branch was pushed, so no allowlist entry was needed and no delivery attempt
+was wasted.
+
+**Status.** This is the final comprehensive C18 correction pass. It awaits final independent C18
+review; if that review finds no remaining reproducible claim-breaking false pass, C18 is closed and
+the next gate is C19. No part of C19 has been started.
+
+## C18.1.14 COMPLETION — SUPERSEDED by the watchdog redesign below
+
+**SUPERSEDED at `04442ed`**: `e2077e1` is **authentic and provenance-valid** — its archive is
+internally valid and secret-clean, and its database verifier and evidence format are accepted and
+unchanged. It is superseded solely because the watchdog's credential preflight and streaming state
+machine still had six reproducible bypasses, closed in the redesign recorded below. The record
+here stays as honest history.
+
+## C18.1.14 COMPLETION (original record)
+
+The C18 evidence-bearing source is **`e2077e1c7e1997bb3814e87871d356ec0353ded5`**. Candidate CI ran
+green as pull-request run **`32752573402`** (attempt 1, 3/3); source run **`32753238367`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **309-control** in-gate
+mutation/differential suite. Finalizer run **`32753745417`** (attempt 1, green). One candidate run,
+one source run, one finalizer, each on its first attempt.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-ef5a05ab7c79a16d919e7015eb69fd2107943cd956a39b6af40350094d19b8c2`
+(353,002 B). The artifact-name digest, the outer archive sha256 and the sidecar all equal
+`ef5a05ab7c79a16d919e7015eb69fd2107943cd956a39b6af40350094d19b8c2`. Measured from the delivered
+archive: 336 commands, 1,008 raw stream files, 11 fixed top-level regular files, 1,019 regular
+files plus the `raw/` directory entry = 1,020 ZIP entries; 1,018 bound members with none unbound or
+mismatched and no self-entry; no unsafe, absolute, traversing or duplicate paths; `source_sha`
+equals the evidence SHA; the secret scan finds no provider token, no private-key block and none of
+the synthetic canaries. A fresh foreign clone at exactly `e2077e1` verified it **offline** and
+**`--online --require-hosted`** (`standing=delivery-online`).
+
+**Five defects, reproduced before anything was changed.** The exact `7959ec9` verifier AND watchdog
+were frozen byte-for-byte (nineteen files, each pinned by sha256 and asserted against `git show`).
+Pristine evidence passes with zero findings, and each defect reproduces against that frozen
+predecessor: a seven-character secret-named value printed verbatim; a multiline secret forwarded
+line by line in LF and CRLF; a `BEGIN PGP PRIVATE KEY BLOCK` and its payload forwarded whole;
+`redis://:password@host` forwarded with the password intact; and an archive in which both
+independently provisioned databases carried the same valid 64-hex context secret accepted with
+`{"ok":true,"problems":[]}`. `GATE2_2_FINAL_CLOSURE_PLAN.md` §30 records each correction.
+
+**Measured counts and timings for this delivery.** Hermetic gate **917**; in-gate
+mutation/differential **309**; API hermetic **1,857 + 9**; integration **297**; acceptance **58**;
+Playwright **10**; typecheck, build, lint and boundaries clean; migrations 0001–0021 byte-identical
+(21 files, zero drift). In-gate control suite, three clean local runs: 73 s / 76 s / 74 s →
+**median 74 s** (≤180 s). Hosted control suite **56.11 s** (candidate) and **43.33 s**
+(push/`main`), both ≤90 s. Both gitleaks scans clean; credentials reached every authenticated
+command through the ENVIRONMENT only, never argv.
+
+**Closure.**
+
+* **C18.1.14 is complete.**
+* **C18 is closed.**
+* The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
+  the specific values of per-instance generated secrets — remain **C19 external-anchoring
+  concerns**, declared in `c18-observational-limits.mjs` with what is proved of each. None is a
+  hidden verifier claim.
+* **C19 is the next gate and has not been implemented.**
+
+## C18 watchdog redesign (`04442ed`) — SUPERSEDED by the closure below
+
+**SUPERSEDED at `a8d34c4`**: `04442ed` is **authentic, leak-free, database-verifier-valid and
+provenance-valid**; its archive independently passed digest, sidecar, ZIP-safety, inventory,
+member-checksum, source-binding, secret-shape and exact-source offline verification, and its
+evidence is neither withdrawn nor contaminated. It is superseded solely for watchdog preflight and
+state-machine defects, the missing gate integration, and incomplete differential accounting — all
+closed below. The record here stays as honest history.
+
+## C18 watchdog redesign (`04442ed`) — original record
+
+The C18 evidence-bearing source is **`04442ed956fb3e45b36694f0d084bcfe1df9cfaf`**. Candidate CI ran
+green as pull-request run **`32760180744`** (attempt 1, 3/3); source run **`32760983596`** (push,
+`main`, attempt 1) ran at exactly that SHA with all three jobs green, including the blocking C18
+gate — the producer, offline self-verification and the **309-control** in-gate
+mutation/differential suite. Finalizer run **`32761622339`** (attempt 1, green). One candidate run,
+one source run, one finalizer, each on its first attempt.
+
+**Scope.** One production file changed: `scripts/gate/c18-watchdog.mjs`, plus its controls. The
+database verifier, the evidence format and every other accepted part of C18 are untouched.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-b51db97e9eb6a4a461dcad8fb9670b913200b9b347126b52900d2853b2bb1e66`
+(353,353 B). The artifact-name digest, the outer archive sha256 and the sidecar all equal
+`b51db97e9eb6a4a461dcad8fb9670b913200b9b347126b52900d2853b2bb1e66`. Measured from the delivered
+archive: 336 commands, 1,008 raw stream files, 11 fixed top-level regular files, 1,019 regular
+files plus the `raw/` directory entry = 1,020 ZIP entries; all 1,018 member checksums verify; no
+unsafe, absolute, traversing or duplicate paths; `source_sha` equals the evidence SHA; the secret
+scan finds no provider token, no private-key block and none of the synthetic canaries. A fresh
+foreign clone at exactly `04442ed` verified it **offline** and **`--online --require-hosted`**
+(`standing=delivery-online`).
+
+**Six bypasses, reproduced before anything changed.** The exact `e2077e1` watchdog was frozen
+byte-for-byte (`40be1dfe…`). Twelve probes run against both watchdogs: **12 bypasses on the frozen
+one, 0 on this one.** The child was spawned before the refusal, so an exit-3 run still let a
+detached child finish its work; boolean-looking passwords were exempted globally; `DB_PASS`,
+`REDIS_PASS` and `POSTGRES_PASS` were invisible to substring matching; only the whole multiline
+value was measured, so a three-character first line printed; any protected END closed any protected
+block; and an oversized BEGIN line was dropped without its block state being recorded.
+
+**The redesign** puts credential preflight, the streaming sanitiser and the process lifecycle into
+three stages with an explicit contract: preflight completes before any child exists, names are
+classified by component rather than substring, a flag exemption requires both a flag-shaped name
+and a boolean literal, every component of a multiline value is judged, marker state advances for
+every line the parser observes including those it drops, and suppression is keyed on the exact
+label BEGIN captured.
+
+**Measured counts and timings for this delivery.** Hermetic gate **994**; in-gate
+mutation/differential **309**; API hermetic **1,934 + 9**; integration **297**; acceptance **58**;
+Playwright **10**; typecheck, build, lint and boundaries clean; migrations 0001–0021 byte-identical
+(21 files, zero drift). Hosted control suite **55.51 s** (push/`main`: 52.22 s parallel + 3.29 s
+serial), ≤90 s. Both gitleaks scans clean; credentials reached every authenticated command through
+the ENVIRONMENT only, never argv.
+
+**Closure.**
+
+* **C18 is closed.**
+* The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
+  the specific values of per-instance generated secrets — remain **C19 external-anchoring
+  concerns**, declared in `c18-observational-limits.mjs` with what is proved of each. None is a
+  hidden verifier claim.
+* **C19 is the next gate and has not been implemented.**
+
+## C18 CLOSURE — the watchdog redesigned and the gate actually bound
+
+The C18 evidence-bearing source is **`a8d34c4d1dc91d1f205fac6044332907da210d46`**. Candidate CI ran
+green as pull-request run **`32771796350`**; source run **`32772872150`** (push, `main`, attempt 1)
+ran at exactly that SHA with all three jobs green, including the blocking C18 gate. Finalizer run
+**`32773496008`** (attempt 1, green). An earlier candidate attempt, run `32771230855`, failed on a
+new fixture control and is recorded honestly in `GATE2_2_FINAL_CLOSURE_PLAN.md` §32.5.
+
+**Delivery artifact.**
+`c18-db-paths-evidence-a1-f2e7e42f682e4a51f92f6445a2ee584daacef9ceafdb18552beb86a35c3a0b1c`
+(353,025 B), containing exactly the archive and its sidecar. The artifact-name digest, the computed
+digest and the sidecar all equal
+`f2e7e42f682e4a51f92f6445a2ee584daacef9ceafdb18552beb86a35c3a0b1c`. 336 commands, 1,008 raw stream
+files, 11 top-level regular files, 1,020 ZIP entries, **all 1,018 member checksums verify**, no
+unsafe or duplicate paths, `source_sha` equals the evidence SHA, secret scan clean. A fresh foreign
+clone at exactly `a8d34c4` verified it **offline** and **`--online --require-hosted`**
+(`standing=delivery-online`).
+
+### The accounting, stated separately
+
+Earlier records conflated three different sets of findings. They are distinct:
+
+* **Five earlier verifier/watchdog findings** (closed at `e2077e1`): four watchdog disclosures — a
+  short secret-named value, a multiline secret, a PGP private-key block, password-only URL
+  userinfo — and one verifier false pass, a context-secret digest shared by both paths.
+* **Six bounded-watchdog redesign bypasses** (closed at `04442ed`): spawn before refusal,
+  boolean-looking passwords, compact `_PASS` names, a short multiline component, a mismatched END
+  label, and an oversized BEGIN marker.
+* **Ten `04442ed` findings plus two hardening items** (closed here): a split BEGIN swallowed by
+  drop mode; same-label nesting closing early; markers on one line out of textual order; compact
+  names such as `PGPASSWORD`; a URL password printed alone by the child; pointer/flag exemption by
+  name alone; `spawnargs` serialised on spawn failure; a parent signal orphaning the child group;
+  secret-bearing argv reaching the process list; the CI step never running under the watchdog; plus
+  ignored backpressure and a fragile main-module guard.
+
+**Differential accounting corrected.** The previous records said the historical bypasses were
+"tested against both watchdogs" when only one case actually executed the frozen leg. Five more real
+CLI differentials now do, each asserting the frozen predecessor still exhibits the defect, and the
+`e2077e1` fixture digest — previously unpinned — is pinned, tracked and byte-compared against
+history where history is present.
+
+**Measured counts and timings.** Hermetic gate **1,083**; in-gate mutation/differential **309**;
+API hermetic **2,023 + 9**; integration **297**; acceptance **58**; Playwright **10**; typecheck,
+build, lint and boundaries clean; migrations 0001–0021 byte-identical. Whole gate under the
+watchdog: **141 s local**, **138.4 s hosted**, inside a 900-second bound that is now real. Both
+gitleaks scans clean; credentials reached every authenticated command through the ENVIRONMENT only.
+
+**Closure.**
+
+* **C18 is closed.**
+* The watchdog's guarantee is finite and stated in source: literal reproduction of registered and
+  derived credential material and registered syntactic shapes, across chunk and line boundaries,
+  oversize, nesting, timeout and process failure. It explicitly does NOT cover a malicious child
+  that transforms a secret, covert channels, unregistered formats, or SIGKILL to the watchdog.
+  Least-privilege isolation is **C19** work.
+* The three observational limits — the bootstrap marking instant, backend-assigned identifiers, and
+  the drawn values of per-instance secrets — remain **C19 external-anchoring concerns**.
+* **C19 is the next gate and has not been implemented.**
+
+---
+
+## PHASE 1 — L1 World Observation Layer, implemented (`phase1-implementation`)
+
+Built from `main` after the documentation-only Build Packet merged, against the approval of
+`bb8e300` and the recommendations it carried: replay-only acquisition, PortWatch and ECB reuse
+terms left **UNVERIFIED**, a 72-hour decision clock, €0 spent, no account, key, subscription or
+confidential data, and the locked *72-Hour Corridor Decision* demonstration.
+
+**Delivered** in seven milestone commits: migration `0022` (the observation registry, evidence
+custody, quarantine, coverage/health and corrections, all under RLS behind capability-asserting
+ports); the evidence vault; the three cohort-1 connectors with §8 network and content hardening;
+agents, scheduling, coverage and health; quarantine review, corrections, withdrawal and the orphan
+sweeper; the WS-02 Observation Operations interface; and the acceptance extension.
+
+**Measured.** Contracts **203**; tokens **3**; API hermetic **2,034**; integration **470** (from a
+297 baseline — the Phase 1 additions are 46 acceptance, 43 fault-injection F01–F46, 84 hostile
+input); Phase 0 acceptance **58**; browser **26** (Phase 0's ten plus Phase 1's sixteen). The
+seeded demonstration ends at 10 active sources, 105 evidence objects, one open quarantine case,
+and a replay share of 100 % by object and by bytes.
+
+**Twenty-five product defects were found and fixed during implementation**, listed with their
+reasons in [PHASE1_REPORT.md](PHASE1_REPORT.md) §5. The substantive ones were about honesty rather
+than crashes: coverage bucketed by record time instead of the publisher's own time (which hid the
+planted gap behind a healthy-looking average), health that could read healthy while completeness
+was unknown, freshness contaminated by framing parents, and fixtures that presented reconstructed
+days as verified figures. Two design tensions were resolved explicitly rather than papered over: a
+bounded declared **target set** reconciles Gate-2.2 C6 with §5 step 8e's OBS+EVD atomicity, and
+unconfirmed rights now block live acquisition only, not replay.
+
+**Closing state.** EXC-P1-001 (heuristic-only quarantine scanning) and EXC-P1-002 (local-volume
+evidence vault) move from `proposed` to `open` per PHASE1_PLAN §14. The connector coverage register
+is unchanged by implementation and says so: one source class substantially covered, four partially,
+fifteen not implemented, and **C-013 architectural extensibility designed for but not demonstrated**.
+
+**Operational note.** The C14 inertness suite compares the whole governed state before and after,
+so it requires an otherwise-idle database; a locally running API fails it legitimately, because its
+outbox publisher issues a capability on every poll tick. The suite now says so in its own header.
+
+---
+
+
+## PHASE 0 ACCEPTANCE-RECORD RECONCILIATION — the current status of everything above
+
+Several statements in this log were true when written and false afterwards, and were never
+retracted: **"C19 is the next gate and has not been implemented"**, **"no part of C19 has been
+started"**, and the C19 review packet's **"NOT MERGED · NOT SIGNED · NOT PUBLISHED."** Each of them
+sits inside a dated record and remains accurate *as history*. **None of them is current status.**
+
+What is actually true at `a792cd9a33ad8e16e12fc16037541d56a7506417`:
+
+* C19 was implemented and merged in PR #21 (`82e90858`, 2026-09-01T16:41:53Z) and corrected in
+  PR #25 (`e35996483a6b827603e04cac4d52101d27ca5269`).
+* **Three** Rekor publications existed during the recorded observation window (2026-09-02T12:00Z–
+  16:33Z) — log indices `2678296492`, `2681035221` and `2684653822` — each signing its own commit
+  and none of them signing any later one. The anchor publishes on every successful push to `main`,
+  so later merges add further entries; that extends the series, it does not falsify these three.
+* **Merged pull requests through #27 have zero submitted GitHub reviews; PR #28 is open, unmerged
+  and also has zero.** The first publication reached the public transparency log with **no
+  submitted GitHub review and no formal independent acceptance or sign-off** — which is not the
+  same as "no review ever happened": external correction reviews did occur earlier in Phase 0
+  (Gate-2.1 at `2deded44`, the bounded independent review that closed C16 at `d63318e0`, and the
+  C18.1.x series), and they are preserved above. The Rekor entry is permanent.
+* Phase 1 implementation (PR #28) was opened before this reconciliation was performed. PR #28 is
+  unmerged and frozen.
+
+The reconciled chronology, the evidence (content-addressed Git objects and the append-only Rekor
+record, kept separate from externally hosted GitHub Actions evidence with its retention and re-run
+limits), the process exception PEX-P0-001, the proposed tag text and the separation between
+self-verification and what an independent reviewer must still do are in
+**[PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md)**.
+
+**Status: READY FOR POST-MERGE INDEPENDENT ACCEPTANCE REVIEW — NOT FORMALLY CLOSED.**
+

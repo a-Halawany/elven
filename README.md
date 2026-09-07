@@ -1,4 +1,14 @@
-# THE EYE — Progress Log
+# THE EYE
+
+A governed intelligence platform built layer by layer under its Product Constitution (Volume 0):
+a governance spine, a world-observation layer with source contracts and evidence custody, an
+intelligence layer with human-reviewed extraction, an enterprise memory and knowledge graph,
+prediction and scenario intelligence, digital twins and simulation. Every write is a governed
+operation with a policy decision and an audit record; every derived object cites the exact
+evidence versions it rests on.
+
+This file is the entry point. **[PROGRESS.md](PROGRESS.md) is the authoritative status record**; the
+table below is the same table, kept identical, so a reader of either sees the current state.
 
 ## Current phase status — verified 2026-09-07 against `main` and the open implementation branches
 
@@ -74,48 +84,31 @@ branch protection; the required checks are enforced by the workflow verdicts and
   [PROGRESS_ARCHIVE_2026-08.md](PROGRESS_ARCHIVE_2026-08.md). Nothing was edited or dropped; each
   section keeps its dates and its own superseded-by markers.
 
-## Milestone log
+## Where things are
 
-| M | Status | Evidence |
-|---|---|---|
-| M1 Scaffold | **DONE 2026-08-03** (commit `dbb2e31`) | contracts 24 tests + tokens 3 tests green; golden audit-hash fixture frozen; boundaries clean (42 modules); API boots, `/healthz` + `/readyz` (db:true, telemetry-only classified); web builds; Compose (postgres:18+redis:8) healthy; migration 0001 applied (roles + schemas + append-only guard); CI with SBOM/audit/gitleaks/Trivy/license inventory. Deviation: API default port 3401 (3001 occupied locally). Risks: none new. Next: M2. |
-| M2 Identity+tenancy | **DONE 2026-08-04** (commits `c619776`, `bc70bd6`) | Migrations 0002 (principals/credentials/sessions/roles/bindings/break-glass, tenants/domains/lifecycle-events, RLS fail-closed, SECURITY DEFINER auth lookups); login/refresh/verify with continuous session re-check; audited one-shot bootstrap on PLATFORM partition; governed tenant/domain creation; scope resolution from authenticated principal + trusted routing only. Tests: scope unit suite; RLS isolation integration suite (5 tests incl. cross-tenant INSERT rejection). |
-| M3 Policy engine | **DONE 2026-08-04** (commit `bc70bd6`) | Envelope guard (validate before payload + digest check); EYE-XXX-NNN catalog wired; PDP 4-value decisions + enforced obligations (mask executed as sanitized projection); indeterminate→deny; C3+ fail-closed (no human-gate runtime); POL records with exception/expiry/revocation + input digest; PEP + RLS dual enforcement. Tests: 8 PDP decision-table cases. |
-| M4 Audit ledger | **DONE 2026-08-04** (commit `bc70bd6`) | Partitioned chains; audit_chain_heads allocator (dedicated role, advance/commit SECURITY DEFINER pair, rebuild-from-ledger incl. RLS-context fix migration 0005); domain-separated SHA-256(JCS) + frozen golden fixtures; generated typed columns from canonical bytes; pre-incident seals; tamper→freeze+incident+no-reseal; sanitized rate-bounded security intake. Tests: 7 integration (privilege boundary incl. superuser-trigger block, 16-writer gap-free concurrency, rollback no-gap, allocator rebuild, tamper freeze). Smoke: end-to-end login→tenant→domain→principal→audit query (obligations applied)→denials→verify ok. Risks: EXC-P0-001 unchanged (shared failure domain, honest statement stands). Next: M5. |
-| M5 Canonical objects | **DONE 2026-08-04** (commit `78d696b`) | Migration 0006 (typed 40-field header, four-axis temporal, DB CHECKs incl. minimum provenance, append-only, RLS, outbox, schema registry); create/correct/known-at/history; outbox → BullMQ post-commit. Tests: +2 integration (DB-level immutability, provenance CHECK). |
-| M6 WS-19 shell | **DONE 2026-08-04** (commit `bf3a62f`) | Token-driven UI (light+dark, logical CSS/RTL-safe, 3-channel truth badges); login/tenants/principals/objects/audit pages; review-step creation; receipts from authoritative responses only; browser-verified end-to-end (chain verify: intact, head matches). |
-| M7 Acceptance | **DONE 2026-08-04** | 21-test acceptance suite green (15 criteria + §7.2 request paths); wired into CI; demo script `scripts/demo.sh`; Phase Report published. Deviations documented in [PHASE0_REPORT.md](PHASE0_REPORT.md) §5. |
+| Need | Go to |
+|---|---|
+| The current state of every phase, the blockers and the merge order | [PROGRESS.md](PROGRESS.md) (this table, plus the milestone log and the document authority model) |
+| A phase's plan, report and product handoff | `PHASE<n>_*.md` at the repository root; Phase 4 and 5 documents are on their branches until merged (see the table) |
+| Architecture decisions and exceptions | [DECISIONS.md](DECISIONS.md), [EXCEPTIONS.md](EXCEPTIONS.md) |
+| The Phase 0 acceptance record and its process exception | [PHASE0_ACCEPTANCE_RECONCILIATION.md](PHASE0_ACCEPTANCE_RECONCILIATION.md) |
+| Source connector coverage against the constitutional source universe | [L1_CONNECTOR_COVERAGE.md](L1_CONNECTOR_COVERAGE.md) |
+| Scanner dispositions and the supply-chain gate | [docs/SCANNER_DISPOSITIONS.md](docs/SCANNER_DISPOSITIONS.md); C15 maintenance on [#39](https://github.com/a-Halawany/elven/pull/39) |
+| The historical build narratives (Gate-2.x, C17/C18 provenance, Phase 1 record) | [PROGRESS_ARCHIVE_2026-08.md](PROGRESS_ARCHIVE_2026-08.md) |
+| The constitutional volumes (0–10) | `docs/` |
 
-Agents are introduced progressively with the layers they serve; the agent/workload principal model exists from Phase 0.
+## Repository layout
 
-## Document authority model
+* `apps/api` — the NestJS API: governed pipeline, ports (SECURITY DEFINER), capabilities, modules per layer (`observation`, `intelligence`, `graph`, `prediction`, `twin`); migrations in `apps/api/migrations` (forward-only, digest-ledgered).
+* `apps/web` — the Next.js operator workspace (Observation, Intelligence, Graph, Prediction, Twins).
+* `packages/contracts`, `packages/tokens` — the canonical header, envelope and error contracts; the design tokens.
+* `scripts/` — the demonstration (acts I–V), the gate and maintenance scripts; `fixtures/` — the frozen replay sets.
+* `e2e/` — browser regressions; `evidence/` — gate evidence produced by running the frozen source.
 
-Volume 0 (Constitution, highest) → Volume 3 (canonical system architecture) → Volume 4 (engineering contracts) → Volumes 5–7 (AI / infrastructure / data domains) → Volume 8 (product requirements) → Volume 9 (UI/UX requirements). Volumes 1–2 are explanatory/executive presentation layers and do not override normative architecture or engineering specifications. Volume 10 is investor/diligence material, not an engineering authority.
+## How status is maintained
 
-## Document review log
-
-| Volume | Read | Notes |
-|---|---|---|
-| Volume 0 — Product Constitution v1.0 | 2026-08-02, full | 52 invariants C-001…C-052; frozen baseline |
-| Volume 1 — Executive Vision Book v1.0 | 2026-08-02 | Explanatory narrative; inherits V0 |
-| Volume 2 — Technical Presentation v1.1 | 2026-08-02, full (50 slides) | Explanatory presentation layer; no normative override |
-| **Volume 3 — Technical Architecture v1.0** | **2026-08-03, full (122 pp.)** | Canonical architecture: ten layers, 94 components (Lx-Cyy), 50 interfaces, 24 canonical object codes, ADR-0001…0020, control planes, contract envelope, four-axis temporal model |
-| Volume 4 — Engineering Specification v1.0 | 2026-08-02, full (195 pp.) | ~380 ES requirements; envelope field dictionary; EYE-XXX-NNN error catalog; SLOs; test suites |
-| Volume 5 — AI Architecture v1.0 | 2026-08-02, full (199 pp.) | 360 AI requirements; model gateway; agent contracts; 24 AI-ADRs |
-| Volume 6 — Infrastructure Architecture v1.0 | 2026-08-02, full (193 pp.) | 432 IA requirements; 24 IADRs; manifests; no technology mandates |
-| Volume 7 — Data Platform v1.0 | 2026-08-02, full (195 pp.) | 432 DP requirements; 40-field canonical header (App. E); 24 DADRs |
-| Volume 8 — PRD v1.0 | 2026-08-02, full (209 pp.) | 432 PR requirements; 24 personas; 108 capabilities; no internal release phasing |
-| Volume 9 — UI/UX Design System v1.0 | 2026-08-02, full (195 pp.) | 432 UX requirements; token registry; 112 components; WCAG 2.2 AA release-blocking |
-| Volume 10 — Investor Package v1.0 | 2026-08-03, full (164 pp.) | Investor/diligence material (at ~/Downloads); no dates, no stack, no delivery constraints; defers to Volumes 0–9; Appendix J defines six technical proof tracks |
-| Master Build Prompt | 2026-08-02 | Build protocol; phase roadmap superseded by the corrected roadmap above where they differ (P4/P5 layer grouping, progressive agents) |
-
-Key findings: **no volume mandates a specific technology** (verified by exhaustive search across Vols 2–7, 9, 10); constraints are semantic — four-axis temporal truth, append-only versioning, non-destructive correction, audit-on-commit-path, fail-closed ABAC with obligations, explicit tenant propagation, deployment semantic parity. Volume 3 explicitly names the governed outbox pattern and prohibits deferring cross-cutting controls to a later phase.
-
-
-## Archive
-
-The dated narratives that preceded this record — the invariant-remediation gate, Gate-2, Gate-2.1,
-Gate-2.2 and its C17/C18 provenance series, the Phase 1 implementation record and the Phase 0
-acceptance-record reconciliation summary — are preserved verbatim in
-[PROGRESS_ARCHIVE_2026-08.md](PROGRESS_ARCHIVE_2026-08.md). They are history, not current status;
-where a statement in them is no longer true, the table above is the correction.
+The table is verified against `main` and the open implementation branches by reading the PR heads
+and the merge commits, not from memory. A phase moves to MERGED only on its merge commit; a phase is
+IMPLEMENTED — UNMERGED from the moment its branch is complete and stays so until its PR merges, with
+the blocker named. Closed reviews are recorded in the phase report at the exact code SHA. This
+record does not restate the constitutional criteria and does not reopen closed reviews.
