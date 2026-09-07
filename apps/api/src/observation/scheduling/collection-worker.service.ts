@@ -19,8 +19,9 @@
  *     transient fault; an unexpected exception is recorded and rethrown so BullMQ's
  *     bounded retry applies.
  *
- * AUTHORITY. The listing and the attempt record run under ctx.issue_schedule — the
- * bounded machine capability of migration 0038 (mode schedule, class scheduler, one
+ * AUTHORITY. The listing and the attempt record run under
+ * observation.issue_schedule_capability — the bounded machine capability of migrations
+ * 0038/0039 (mode schedule, class scheduler, one
  * action) on the eye_commit pool. No human principal, no domain business authority,
  * no evidence read. The run itself acts as the agent, exactly as an operator-triggered
  * run does.
@@ -92,7 +93,7 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
    */
   async reconcile(reason: string): Promise<ReconcileReport> {
     const rows = await this.commitDb.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule(${reason}, 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability(${reason}, 60)`.execute(tx);
       return (await sql<ReconcileRow>`select * from observation.schedules_to_reconcile()`.execute(tx)).rows;
     });
     const report: ReconcileReport = { eligible: rows.length, scheduled: [], workers: [] };
@@ -147,7 +148,7 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
   ): Promise<void> {
     const schedulerId = `obs:${p.tenantId}:${p.domainId}:src:${p.sourceId}`;
     await this.commitDb.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule(${'record scheduled attempt'}, 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability(${'record scheduled attempt'}, 60)`.execute(tx);
       await sql`select observation.record_scheduled_attempt(
         ${newId()}::uuid, ${p.tenantId}::uuid, ${p.domainId}::uuid, ${p.sourceId}::uuid, ${p.contractVersion},
         ${schedulerId}, ${jobId}, ${startedAt}, ${new Date()}, ${outcome}, ${runId}::uuid, ${reason},

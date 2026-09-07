@@ -41,10 +41,13 @@ binding, any change to contract cadences or budgets.
 ## 2. Design
 
 * **Machine context, not system authority.** Migration 0011 removed `ctx.issue_system`; machine
-  paths carry one bounded capability each (`issue_publish`, `issue_verify`, …). Migration 0038 adds
-  `ctx.issue_schedule(reason)` — mode `schedule`, operation class `scheduler`, action
-  `observation.schedule.reconcile` — granted to `eye_commit`, and two ports that assert exactly that
-  capability: `observation.schedules_to_reconcile()` (the eligible entries with their agent, no
+  paths carry one bounded capability each (`issue_publish`, `issue_verify`, …). Migrations 0038/0039
+  add `observation.issue_schedule_capability(reason)` — mode `schedule`, operation class `scheduler`,
+  action `observation.schedule.reconcile` — granted to `eye_commit`, and two ports that assert
+  exactly that capability (0039 moves the minter from `ctx` into the observation schema: Gate-2.2
+  C14 discovers every port of the Phase 0 schemas and the upgrade check re-runs that suite at 0021,
+  where a later port cannot have a coverage entry; the scheduler is an observation component and
+  its minter belongs with its ports): `observation.schedules_to_reconcile()` (the eligible entries with their agent, no
   evidence, no contract body beyond connector kind and budgets) and
   `observation.record_scheduled_attempt(…)`. Neither port serves any other context.
 * **A schedule is an intention; an attempt is a fact.** `observation.scheduled_attempts` (RLS like

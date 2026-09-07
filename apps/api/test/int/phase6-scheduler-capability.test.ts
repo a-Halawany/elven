@@ -1,6 +1,9 @@
 /**
- * The scheduler's capability (migration 0038) — the C14 scenario file for
- * `ctx.issue_schedule` and the two ports that assert it. Mode `schedule`, class
+ * The scheduler's capability (migrations 0038/0039) — the scenario file for
+ * `observation.issue_schedule_capability` and the two ports that assert it. It lives
+ * in the observation schema, outside the Phase 0 governed schemas C14 discovers, so
+ * the post-C18 upgrade check (which re-runs the Phase 0 suite at 0021) is untouched;
+ * this file is a phase suite and is excluded from that run by name. Mode `schedule`, class
  * `scheduler`, one action; granted to eye_commit and nothing else. What is proven:
  *
  *   wrong role      — eye_app cannot mint it (grant boundary);
@@ -22,9 +25,9 @@ const code = (e: unknown): string => String((e as { code?: string }).code ?? '')
 beforeAll(() => { commit = commitDb(); app = appDb(); su = superDb(); });
 afterAll(async () => { await Promise.all([commit, app, su].map((d) => d.destroy())); });
 
-describe('ctx.issue_schedule and the scheduler ports', () => {
+describe('observation.issue_schedule_capability and the scheduler ports', () => {
   it('wrong role: eye_app cannot mint the schedule capability', async () => {
-    await expect(sql`select ctx.issue_schedule('probe', 60)`.execute(app)).rejects.toSatisfy((e) => code(e) === '42501');
+    await expect(sql`select observation.issue_schedule_capability('probe', 60)`.execute(app)).rejects.toSatisfy((e) => code(e) === '42501');
   });
 
   it('no capability: eye_commit without the context is refused by both ports', async () => {
@@ -34,13 +37,13 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
   });
 
   it('a reason is required and the ttl is bounded', async () => {
-    await expect(sql`select ctx.issue_schedule('', 60)`.execute(commit)).rejects.toSatisfy((e) => code(e) === '42501');
-    await expect(sql`select ctx.issue_schedule('probe', 100000)`.execute(commit)).rejects.toSatisfy((e) => code(e) === '42501');
+    await expect(sql`select observation.issue_schedule_capability('', 60)`.execute(commit)).rejects.toSatisfy((e) => code(e) === '42501');
+    await expect(sql`select observation.issue_schedule_capability('probe', 100000)`.execute(commit)).rejects.toSatisfy((e) => code(e) === '42501');
   });
 
   it('wrong mode: a schedule context cannot drive an observation business port', async () => {
     await expect(commit.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule('probe', 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx);
       await sql`select observation.upsert_scheduler_entry(gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1,
         'obs:x', 'obs:x:collection', 60, 5, 'scheduled')`.execute(tx);
     })).rejects.toSatisfy((e) => code(e) === '42501');
@@ -48,7 +51,7 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
 
   it('wrong target: an attempt without a scope is refused', async () => {
     await expect(commit.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule('probe', 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx);
       await sql`select observation.record_scheduled_attempt(gen_random_uuid(), null, null, gen_random_uuid(), 1,
         'obs:x', 'job', now(), now(), 'refused', null, 'probe', 0, 0, 0)`.execute(tx);
     })).rejects.toSatisfy((e) => code(e) === '23514');
@@ -56,7 +59,7 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
 
   it('right capability: the listing returns only eligible entries, and an attempt is recorded', async () => {
     const listed = await commit.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule('probe', 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx);
       return (await sql<{ source_id: string; contract_version: number }>`select source_id, contract_version from observation.schedules_to_reconcile()`.execute(tx)).rows;
     });
     // every listed row is scheduled, on an ACTIVE, LIVE, CONFIRMED contract with an active agent — checked as the superuser
@@ -77,7 +80,7 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
     expect(listed.length).toBe(eligible);
     const id = (await sql<{ id: string }>`select gen_random_uuid()::text as id`.execute(su)).rows[0]?.id as string;
     await commit.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule('probe', 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx);
       await sql`select observation.record_scheduled_attempt(${id}::uuid, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1,
         'obs:x', 'job', now(), now(), 'refused', null, 'probe: no run opened', 0, 0, 0)`.execute(tx);
     });
@@ -85,7 +88,7 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
     expect(row?.outcome).toBe('refused'); expect(row?.run_id).toBeNull();
     // the record's own invariant: a run id iff a run was opened
     await expect(commit.transaction().execute(async (tx) => {
-      await sql`select ctx.issue_schedule('probe', 60)`.execute(tx);
+      await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx);
       await sql`select observation.record_scheduled_attempt(gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1,
         'obs:x', 'job', now(), now(), 'finished', null, null, 1, 0, 0)`.execute(tx);
     })).rejects.toSatisfy((e) => code(e) === '23514');
@@ -93,7 +96,7 @@ describe('ctx.issue_schedule and the scheduler ports', () => {
   });
 
   it('stale: the capability does not outlive its transaction', async () => {
-    await commit.transaction().execute(async (tx) => { await sql`select ctx.issue_schedule('probe', 60)`.execute(tx); });
+    await commit.transaction().execute(async (tx) => { await sql`select observation.issue_schedule_capability('probe', 60)`.execute(tx); });
     await expect(sql`select * from observation.schedules_to_reconcile()`.execute(commit)).rejects.toSatisfy((e) => code(e) === '42501');
   });
 });
