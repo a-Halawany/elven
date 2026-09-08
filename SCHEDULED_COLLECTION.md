@@ -200,3 +200,34 @@ prevented either. Migrations 0038–0040 untouched; no migration was needed.
 | R1 | A 304 can confirm the wrong evidence | **Reproduced**: A admitted with ETag A and checkpointed; B admitted with ETag B but the checkpoint append crashed (F28), so B is held while the checkpoint still names A; the publisher back on A answered 304 to `If-None-Match: A` — and the run confirmed **B**, the newest held. | The connector's revalidation record now carries the **validators the request sent**; the lifecycle looks the held evidence up **by that validator** in its retained transport headers (`evidenceByValidator`: the ETag sent as If-None-Match, else the Last-Modified sent as If-Modified-Since), establishes its availability as before, and records the confirmation with the validator named. No evidence carries the validator, or the request carried none → recorded unbound, confirming nothing. Verified: the 304 to A confirms **A** while B is held; A withdrawn → unbound (`availability: withdrawn`); checkpoint back in step → a 304 to B confirms B. |
 | R2 | Session infrastructure failures became refusals | **Reproduced**: a simulated SQLSTATE 08006 while opening the agent session (the session service double-rejected once on the real worker → orchestrator path) was recorded `refused`, no run, not retried. | `runAsAgent` returns "no run" only for the typed `AgentGrantRefused`; every other session-opening error propagates. The lifecycle's pre-start catch likewise rethrows **infrastructure** faults (PostgreSQL classes 08/53/57/58/XX, socket errors) and keeps reporting governance answers as failed, unopened runs. The worker records the propagated error `faulted` (with the run id when one was opened) and rethrows for BullMQ's bounded retry. Verified: the 08006 attempt reads `faulted`, `run_id: null`; the retry on the same job opened a session and **finished** (`attemptsMade ≥ 2`); the revoked-agent control still reads `refused`, no run, `attemptsMade 1`; the F07 case still reads `faulted` with its run. |
 
+## 6. Closure record — the functional correction review of PR #44
+
+The independent functional correction review of PR #44 is **closed at
+`e0d690605d0070393392049ae34c4ec4e54b2828`** (reviewed 2026-09-08; base `6086de48`, PR #43). R1 and
+R2 are corrected; fifteen independent checks of the candidate's services passed, including the
+retained controls (available and unavailable held evidence, framed-parent custody, replay excluded
+from live confirmation, complete attempt counts, independent last success, Redis unknown versus
+verified absence, the 42501 refusal control, and F07's run association). No further functional
+correction is requested within the five frozen objectives (§1). The closure authorizes no merge and
+waives no gate.
+
+**Evidence classes, kept distinct.**
+
+| Class | What it establishes | Source |
+|---|---|---|
+| Independent service verification | The candidate's TypeScript executed with explicit pipeline, capability/database, vault, network and Redis doubles: 15 checks passed; the validator query inspected as SQL, not executed against PostgreSQL; header construction substituted while actual OBS/EVD payloads were retained. Claims no real-database, real-Redis, HTTP-controller or browser run. | the reviewer |
+| Database/Redis harness | `phase6-scheduled-corrections` 17/17 (R1 the persisted A/B/F28 sequence; R2 a session-service rejection injected into the real worker path with retry and recovery — controlled fault evidence, not a naturally observed outage); `phase6-scheduled-collection` 7/7; int:all 686/686 in a quiet batch. | this record, §3.2, §5, §5.1 |
+| Browser | the Sources check passed against the demonstration deployment on the candidate's build. | §3.3, §5 |
+| CI at the candidate | run 34215479759: build-test success, browser-regression success, C15 supply-chain failure, patched-image recheck skipped, FINAL C16/C17 skipped behind C15; C19 lifecycle run 34215479695 success. No fresh image scan; no assertion about current patched-image availability. | GitHub |
+
+**Preserved with their stated uncertainty.** Two integration batches and one unit batch that
+overlapped an API rebuild showed failures (`phase5-twins` ×3 twice; five hermetic gate controls
+once) that pass in isolation and in the quiet batch; causation is not established and no new gate
+is introduced for them.
+
+**Standing.** PR #44 stays open and unmerged behind C15 and the full required FINAL C16/C17 chain,
+in the recorded merge order (#39 → #36 → #38 → #40 → #41 → #43 → #44). Phase 4, Phase 5 and #43
+reviews remain closed. Cadences, budgets, source decisions, credentials, zero purchases, PortWatch
+replay, the Comtrade deferral and the deferred CorrectionApplied consumer are unchanged; the
+permission email has not been sent.
+
