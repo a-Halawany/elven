@@ -24,7 +24,7 @@ import { AgentSessionService } from '../../src/observation/agents/agent-session.
 import { ObservationCapability } from '../../src/observation/observation.capabilities.js';
 import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
 import type { EgressResult } from '../../src/observation/connectors/http-client.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { UploadConnector } from '../../src/observation/connectors/upload.connector.js';
 import { seedPhase1Domain, fixtureContract, inCommitContext, type Phase1Fixture } from './phase1-helpers.js';
 
@@ -153,6 +153,28 @@ export class Phase4Harness {
     }
     return { ...this.manager, principalId: id,
       bindings: roles.map((roleCode) => ({ roleCode, scope: 'DOMAIN' as const, tenantId: this.fx.tenantId, domainId: this.fx.domainId })) };
+  }
+
+  /**
+   * A DOMAIN principal with the given roles AND a session of its own, opened through
+   * the real identity port — so the principal the database binds (public.eye_principal())
+   * is this principal, not the manager whose session `principalWith` reuses. Phase 6
+   * ports that compare the acting principal to a named human need this.
+   */
+  async humanWithSession(roles: string[], label: string): Promise<AuthenticatedPrincipal> {
+    const p = await this.principalWith(roles, label);
+    const identityDb = this.app.get<Db>(IDENTITY_DB);
+    const sessionId = uuidv7();
+    const familyId = uuidv7();
+    const contextKey = randomBytes(32).toString('base64url');
+    const refresh = `${uuidv7()}.${randomBytes(24).toString('base64url')}`;
+    const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
+    await identityDb.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_identity_op('identity.session.create', ${p.principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
+      await sql`select identity.session_open(${sessionId}::uuid, ${p.principalId}::uuid, 'password', ${sha256(refresh)}, ${sha256(contextKey)}, ${new Date(Date.now() + 3600_000)}, ${familyId}::uuid)`.execute(tx);
+      await sql`select audit.commit_identity_event(${p.principalId}::uuid, ${sessionId}::uuid, 'identity.login', 'identity.session.create', 'success', 'OK', ${uuidv7()}::uuid, '{"fixture":true}'::jsonb)`.execute(tx);
+    });
+    return { ...p, sessionId, contextKey };
   }
 
   /** The live contract with a declared period-range backfill. */

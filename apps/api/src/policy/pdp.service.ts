@@ -452,6 +452,61 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
 
+  // ───────────────────────── Phase 6: decision packages (P6-M1) ─────────────────────────
+  //   * READ is broad: a package is for the people who decide, approve, watch and
+  //     account for it. The bounded agents read what they compose from.
+  //   * A package is declared, versioned, optioned, termed, chosen, proposed and
+  //     withdrawn by its OWNER — seven separate governed writes, every one ≤ C2. An
+  //     approver, an authority or an executive holds none of them. The decision agent
+  //     holds exactly ONE write: an option card into a DRAFT (decision.package.option).
+  //   * Dissent is a human's own act: approvers, authorities, executives and owners.
+  //   * No rule here reaches C3: the exact-action commit rule arrives with 0042.
+  {
+    actionPrefix: 'decision.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+      { role: 'decision_agent', atScope: 'DOMAIN' },
+      { role: 'briefing_agent', atScope: 'DOMAIN' },
+      { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.option',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'decision_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.dissent',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
   // ───────────────────────── Phase 5: simulations ─────────────────────────
   //   * A run is opened, completed and reproduced by a simulation operator or a
   //     twin owner; READ is broad. Nothing here declares or grounds a twin.
