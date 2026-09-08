@@ -57,6 +57,10 @@ export interface DecisionReads {
   readCommitments(): any;
   readRoleBindings(): any;
   readReplays(): any;
+  readOutcomes(): any;
+  readBreaches(): any;
+  readElements(): any;
+  readReconciliations(): any;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
@@ -117,12 +121,24 @@ export interface ReplayWrites extends DecisionReads {
   recordReplay(a: { replayId: string; tenantId: string; domainId: string; packageId: string; version: number; asOf: string; contentDigest: string; headerDigest: string;
                     reader: string; purpose: string; unavailable: unknown[]; summary: Record<string, unknown>; eventId: string; correlationId: string }): Promise<void>;
 }
+export interface MonitorWrites extends DecisionReads {
+  evaluateConditions(a: { tenantId: string; domainId: string; packageId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+export interface OutcomeWrites extends DecisionReads {
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  recordOutcome(a: { outcomeId: string; tenantId: string; domainId: string; packageId: string; criterionKey: string; twinId: string; twinVersion: number; elementKey: string; reconciliationId: string | null;
+                     title: string; statement: string; headerDigest: string; actor: string; eventId: string; correlationId: string }):
+    Promise<{ outcome_id: string; met: boolean; observed_value: unknown; target: string; comparator: string; simulated: unknown; reconciliation_id: string | null }>;
+}
+export interface CloseWrites extends DecisionReads {
+  closePackage(a: { tenantId: string; domainId: string; packageId: string; lessons: string; actor: string; eventId: string; correlationId: string }): Promise<{ state: string; outcomes_recorded: number; criteria: number }>;
+}
 export interface WithdrawWrites extends DecisionReads {
   withdrawPackage(a: { packageId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites {
+class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -141,6 +157,25 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readCommitments(): any { return this.from('decision.commitments'); }
   readRoleBindings(): any { return this.from('identity.role_bindings'); }
   readReplays(): any { return this.from('decision.replays'); }
+  readOutcomes(): any { return this.from('decision.outcomes'); }
+  readBreaches(): any { return this.from('decision.condition_breaches'); }
+  readElements(): any { return this.from('twin.state_elements'); }
+  readReconciliations(): any { return this.from('twin.reconciliations'); }
+
+  async evaluateConditions(a: { tenantId: string; domainId: string; packageId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.evaluate_conditions(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('evaluate_conditions returned no row'); return r;
+  }
+  async recordOutcome(a: Parameters<OutcomeWrites['recordOutcome']>[0]) {
+    const rows = await this.call<{ r: { outcome_id: string; met: boolean; observed_value: unknown; target: string; comparator: string; simulated: unknown; reconciliation_id: string | null } }>(sql`select decision.record_outcome(
+      ${a.outcomeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.criterionKey}, ${a.twinId}::uuid, ${a.twinVersion}::int, ${a.elementKey}, ${a.reconciliationId}::uuid,
+      ${a.title}, ${a.statement}, ${a.headerDigest}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('record_outcome returned no row'); return r;
+  }
+  async closePackage(a: Parameters<CloseWrites['closePackage']>[0]) {
+    const rows = await this.call<{ r: { state: string; outcomes_recorded: number; criteria: number } }>(sql`select decision.close_package(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.lessons}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('close_package returned no row'); return r;
+  }
 
   async replayLayers(a: { packageId: string; version: number; asOf: string | null }): Promise<Record<string, unknown>> {
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.replay_layers(${a.packageId}::uuid, ${a.version}::int, ${a.asOf}::timestamptz) as r`);
@@ -265,4 +300,7 @@ export const DecisionCapability = {
   approve(tx: Tx, action: string): ApproveWrites { return new DecisionCapabilityImpl(tx, action); },
   commit(tx: Tx, action: string): CommitWrites { return new DecisionCapabilityImpl(tx, action); },
   replay(tx: Tx, action: string): ReplayWrites { return new DecisionCapabilityImpl(tx, action); },
+  monitor(tx: Tx, action: string): MonitorWrites { return new DecisionCapabilityImpl(tx, action); },
+  outcome(tx: Tx, action: string): OutcomeWrites { return new DecisionCapabilityImpl(tx, action); },
+  close(tx: Tx, action: string): CloseWrites { return new DecisionCapabilityImpl(tx, action); },
 };

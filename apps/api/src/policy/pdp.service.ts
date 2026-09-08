@@ -560,6 +560,26 @@ const BUNDLE_V1: Rule[] = [
     maxConsequence: 'C2',
   },
   {
+    actionPrefix: 'decision.monitor',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.outcome',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.close',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
     actionPrefix: 'decision.replay',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },

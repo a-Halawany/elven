@@ -10,11 +10,12 @@ import { DecisionController } from './decision.controller.js';
 import { PackageService } from './packages/package.service.js';
 import { ApprovalService } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
+import { MonitoringService } from './monitoring/monitoring.service.js';
 
 @Module({
   imports: [PipelineModule],
   controllers: [DecisionController],
-  providers: [PackageService, ApprovalService, ReplayService],
-  exports: [PackageService, ApprovalService, ReplayService],
+  providers: [PackageService, ApprovalService, ReplayService, MonitoringService],
+  exports: [PackageService, ApprovalService, ReplayService, MonitoringService],
 })
 export class DecisionModule {}

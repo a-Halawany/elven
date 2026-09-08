@@ -14,6 +14,7 @@ import { DecisionCapability } from './decision.capabilities.js';
 import { PackageService, validateOptionIntake, validatePackageIntake, validateTermsIntake } from './packages/package.service.js';
 import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
+import { MonitoringService, validateOutcomeIntake } from './monitoring/monitoring.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -38,7 +39,7 @@ const versionOf = (v: string, correlationId: string): number => {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/decisions')
 export class DecisionController {
-  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService, private readonly replays: ReplayService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService, private readonly replays: ReplayService, private readonly monitoring: MonitoringService) {}
 
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
@@ -261,6 +262,51 @@ export class DecisionController {
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId),
       DecisionCapability.read, async (cap) => cap.readReplays().selectAll().where('package_id' as never, '=', packageId as never).orderBy('replayed_at' as never).execute());
     return { replays: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── P6-M5: monitoring, outcomes, closure ─────────────────────────
+
+  @Post('/:packageId/monitor')
+  async monitor(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.monitor', 'DPK', packageId), DecisionCapability.monitor,
+      async (cap, scope) => {
+        const r = await this.monitoring.evaluate(cap, scope, packageId, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(r['version'] ?? 0), outboxEvent: null };
+      });
+    return { monitoring: out.result, receipt: receipt(out) };
+  }
+
+  /** The OUT: the second bounded write into the strategy graph, under decision.outcome, declared before the capability is minted. */
+  @Post('/:packageId/outcomes')
+  async outcome(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateOutcomeIntake((body.payload ?? {}) as never, envelope.correlation_id);
+    const outcomeId = newId();
+    const out = await this.pipeline.write(envelope, principal, { ...this.route(tenantId, domainId, 'decision.outcome', 'OUT', outcomeId), writableTargets: [outcomeId] }, DecisionCapability.outcome,
+      async (cap, scope) => {
+        const r = await this.monitoring.recordOutcome(cap, scope, packageId, intake, principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, outcomeId);
+        return { result: r, targetType: 'OUT', targetId: outcomeId, targetVersion: '1', outboxEvent: null };
+      });
+    return { outcome: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/:packageId/close')
+  async close(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Body() body: { payload?: { lessons?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.close', 'DPK', packageId), DecisionCapability.close,
+      async (cap, scope) => {
+        const r = await this.monitoring.close(cap, scope, packageId, String(body.payload?.lessons ?? ''), principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
+      });
+    return { closure: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/:packageId/outcomes/list')
+  async listOutcomes(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId), DecisionCapability.read, async (cap) => this.monitoring.outcomes(cap, packageId));
+    return { ...out.result, receipt: receipt(out) };
   }
 
   @Post('/list')

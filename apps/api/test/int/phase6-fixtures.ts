@@ -30,6 +30,8 @@ export interface DecisionWorld {
   approverAuthority: AuthenticatedPrincipal;
   /** A principal of kind 'agent' (no session): the target of "an agent is never a member / an approver" probes. */
   machinePrincipalId: string;
+  /** The corridor scenario: a downside branch on the transit indicator, owned by the twin owner. */
+  scenarioId: string; branchId: string; forecastId: string; seriesKey: string;
   twinId: string; v1: number; controlId: string; rerouteId: string; airId: string; control2Id: string;
   objectiveId: string; decisionId: string; indicatorId: string; entityId: string;
   /** An ASU the package may cite: 'the corridor stays open'. */
@@ -102,8 +104,18 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
                  seasonalityDays: 7, attribution: 'Source: fixture statistics.', description: 'synthetic daily transits with a disruption episode' } });
   const ind = await prediction.defineIndicator(h.req(twinOwner, 'prediction.indicator.define', 'IND', null), T, D,
     { payload: { seriesKey, description: 'corridor collapse: transits below 40 for five days', comparator: '<', threshold: 40, consecutiveDays: 5, owner: twinOwner.principalId } }) as { indicator: { indicatorId: string } };
+  const f = await prediction.issueForecast(h.req(twinOwner, 'prediction.forecast.issue', 'FCT', null), T, D,
+    { payload: { seriesKey, horizon: '30d', knownAt: new Date().toISOString(), observedThrough: '2021-02-15', assumptions: [asu.strategy.objectId], label: 'short history' } }) as { forecast: { forecastId: string } };
+  const scn = await prediction.declareScenario(h.req(twinOwner, 'prediction.scenario.declare', 'SCN', null), T, D,
+    { payload: { title: 'Bab el-Mandeb over the next 30 days', statement: 'the corridor stays open, or collapses', forecastId: f.forecast.forecastId, owner: twinOwner.principalId, reviewCadence: 'weekly',
+                 branches: [
+                   { name: 'Baseline', kind: 'baseline', statement: 'as forecast', owner: twinOwner.principalId, consequence: 'keep the booked routing', responseWindowHours: 72 },
+                   { name: 'Corridor collapse', kind: 'downside', statement: 'below 40 for five days', indicatorId: ind.indicator.indicatorId, owner: twinOwner.principalId, consequence: 'rebook the shipment now', responseWindowHours: 48 },
+                 ] } }) as { scenario: { scenarioId: string; branches: Array<{ branchId: string; kind: string }> } };
+  const branchId = scn.scenario.branches.find((b) => b.kind === 'downside')?.branchId as string;
   return { twins, graph, prediction, decisions, exec, twinOwner, operator, owner, approver, approver2, authority, authority2, executive, agent, authorApprover, approverAuthority, machinePrincipalId,
-           twinId, v1, controlId, rerouteId, airId, control2Id, objectiveId, decisionId, indicatorId: ind.indicator.indicatorId, entityId, assumptionId: asu.strategy.objectId, uploadSourceId, evd, records };
+           twinId, v1, controlId, rerouteId, airId, control2Id, objectiveId, decisionId, indicatorId: ind.indicator.indicatorId, entityId, assumptionId: asu.strategy.objectId, uploadSourceId, evd, records,
+           scenarioId: scn.scenario.scenarioId, branchId, forecastId: f.forecast.forecastId, seriesKey };
 }
 
 /** The calls a suite makes against the decision controller, as the named principal. */
@@ -167,6 +179,11 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
     const cm = await commit(p.pkg, p.v, p.digest, w.authority);
     return { ...p, approvalId: a.approval.approvalId, commitmentId: cm.commitment.commitmentId };
   };
+  // monitoring, outcomes, closure
+  const monitor = (pkg: string, as = w.owner) => dc.monitor(h.req(as, 'decision.monitor', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ monitoring: { state: string; new_breaches: number; breaches: Array<Record<string, unknown>>; review_overdue: boolean; review_overdue_recorded_now: boolean } }>;
+  const outcome = (pkg: string, payload: Record<string, unknown>, as = w.owner) => dc.outcome(h.req(as, 'decision.outcome', 'OUT', null, 'decision'), T(), D(), pkg, { payload }) as Promise<{ outcome: { outcomeId: string; met: boolean; observedValue: unknown; target: string; reconciliationId: string | null; simulated: unknown } }>;
+  const close = (pkg: string, lessons: string, as = w.owner) => dc.close(h.req(as, 'decision.close', 'DPK', pkg, 'decision'), T(), D(), pkg, { payload: { lessons } }) as Promise<{ closure: { state: string; outcomesRecorded: number; criteria: number } }>;
+  const outcomes = (pkg: string, as = w.owner) => dc.listOutcomes(h.req(as, 'decision.read', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ outcomes: Array<Record<string, unknown>>; breaches: Array<Record<string, unknown>> }>;
   // rooms and briefings
   const ec = w.exec;
   const openRoom = (payload: Record<string, unknown>, as = w.owner) => ec.openRoom(h.req(as, 'room.open', 'ROOM', null, 'decision'), T(), D(), { payload }) as Promise<{ room: { roomId: string; nextReviewAt: string } }>;
@@ -179,5 +196,5 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const getBriefing = (id: string, as = w.executive) => ec.getBriefing(h.req(as, 'briefing.read', 'BRF', id, 'briefing'), T(), D(), id) as Promise<{ briefing: Record<string, unknown> }>;
   const listBriefings = (roomId: string | null, as = w.executive) => ec.listBriefings(h.req(as, 'briefing.read', 'BRF', null, 'briefing'), T(), D(), { payload: { roomId } }) as Promise<{ briefings: Array<Record<string, unknown>> }>;
   return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed,
-           openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings };
+           openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings, monitor, outcome, close, outcomes };
 }
