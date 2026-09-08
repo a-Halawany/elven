@@ -88,6 +88,13 @@ export interface ObservationReads {
    * response is compared against.
    */
   latestEvidenceByPollKeys(a: { sourceId: string; pollKeys: string[] }): Promise<Array<HeldEvidenceRow & { poll_key: string }>>;
+  /**
+   * The held evidence for a poll key WHOSE RETAINED TRANSPORT HEADERS carry the given
+   * validator — the ETag sent as If-None-Match, or the Last-Modified sent as
+   * If-Modified-Since when no ETag was sent. A 304 confirms exactly the representation
+   * the validator names, which is not necessarily the newest held.
+   */
+  evidenceByValidator(a: { sourceId: string; pollKey: string; etag: string | null; lastModified: string | null }): Promise<HeldEvidenceRow | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScheduledAttempts(): any;
   rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
@@ -340,6 +347,32 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
         join lateral (select * from objects.canonical_objects e
                        where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
                        order by e.object_version desc limit 1) e on true`);
+  }
+
+  async evidenceByValidator(a: { sourceId: string; pollKey: string; etag: string | null; lastModified: string | null }): Promise<HeldEvidenceRow | null> {
+    if (a.etag === null && a.lastModified === null) return null;
+    const rows = await this.call<HeldEvidenceRow>(sql`
+      with obs as (
+        select o.object_id, o.payload ->> 'item_key' as item_key
+          from objects.canonical_objects o
+         where o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and o.payload ->> 'item_key' not like '%@backfill:%'
+           and (o.payload ->> 'item_key' = ${a.pollKey} or regexp_replace(o.payload ->> 'item_key', '@[^#]*', '') = ${a.pollKey})
+           and (case when ${a.etag}::text is not null
+                     then o.payload #>> '{transport,retained_headers,etag}' = ${a.etag}::text
+                     else o.payload #>> '{transport,retained_headers,last-modified}' = ${a.lastModified}::text end)
+         order by o.recorded_at desc, o.object_version desc limit 1)
+      select obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at, e.lifecycle_state,
+             e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
+             exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+    return rows[0] ?? null;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

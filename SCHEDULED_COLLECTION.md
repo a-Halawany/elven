@@ -189,3 +189,14 @@ Migration 0040 is the only persistent change; 0038 and 0039 are untouched.
 
 **Verification at the corrected candidate.** `phase6-scheduled-corrections` 15/15 (baseline at `761584a6`: 12 failed of 15 — the reproductions; 3 passed: the two setups and the replay case, the last for the wrong reason recorded above); `phase6-scheduled-collection` 7/7; `phase1-fault-injection` 44/44 and `phase5-twins` back to green once confirmation was scoped to live acquisition; the wider regression and CI are in the disposition.
 
+### 5.1 Residuals of the review at `7f69638f` — R1 (finding 3) and R2 (finding 5)
+
+Both reproduced through the harness before any change (the two new cases of
+`phase6-scheduled-corrections.test.ts`, 2 failed of 17 at `7f69638f`); no downstream guard
+prevented either. Migrations 0038–0040 untouched; no migration was needed.
+
+| # | Residual | Baseline at `7f69638f` (harness) | Correction |
+|---|---|---|---|
+| R1 | A 304 can confirm the wrong evidence | **Reproduced**: A admitted with ETag A and checkpointed; B admitted with ETag B but the checkpoint append crashed (F28), so B is held while the checkpoint still names A; the publisher back on A answered 304 to `If-None-Match: A` — and the run confirmed **B**, the newest held. | The connector's revalidation record now carries the **validators the request sent**; the lifecycle looks the held evidence up **by that validator** in its retained transport headers (`evidenceByValidator`: the ETag sent as If-None-Match, else the Last-Modified sent as If-Modified-Since), establishes its availability as before, and records the confirmation with the validator named. No evidence carries the validator, or the request carried none → recorded unbound, confirming nothing. Verified: the 304 to A confirms **A** while B is held; A withdrawn → unbound (`availability: withdrawn`); checkpoint back in step → a 304 to B confirms B. |
+| R2 | Session infrastructure failures became refusals | **Reproduced**: a simulated SQLSTATE 08006 while opening the agent session (the session service double-rejected once on the real worker → orchestrator path) was recorded `refused`, no run, not retried. | `runAsAgent` returns "no run" only for the typed `AgentGrantRefused`; every other session-opening error propagates. The lifecycle's pre-start catch likewise rethrows **infrastructure** faults (PostgreSQL classes 08/53/57/58/XX, socket errors) and keeps reporting governance answers as failed, unopened runs. The worker records the propagated error `faulted` (with the run id when one was opened) and rethrows for BullMQ's bounded retry. Verified: the 08006 attempt reads `faulted`, `run_id: null`; the retry on the same job opened a session and **finished** (`attemptsMade ≥ 2`); the revoked-agent control still reads `refused`, no run, `attemptsMade 1`; the F07 case still reads `faulted` with its run. |
+

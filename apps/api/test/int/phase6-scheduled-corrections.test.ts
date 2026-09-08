@@ -39,6 +39,7 @@ import { COMMIT_DB } from '../../src/shared/shared.module.js';
 import type { Db } from '../../src/shared/db.js';
 import type { EyeConfig } from '../../src/config/config.js';
 import * as fault from '../../src/observation/fault-injection.js';
+import { vi } from 'vitest';
 import { Phase4Harness, SERIES_START, BASE, sdmxWindow } from './phase4-helpers.js';
 import type { ObservationController } from '../../src/observation/observation.controller.js';
 import type { EgressResult } from '../../src/observation/connectors/http-client.js';
@@ -293,6 +294,63 @@ describe('3b · a live HTTP 304 is a confirmation only when bound to available h
   }, 180_000);
 });
 
+describe('R1 · a 304 confirms the representation its validator names, not the newest held', () => {
+  it('held A (ETag A, checkpointed) then B (ETag B, checkpoint lost to f28); the publisher returns to A and answers 304 to If-None-Match: A → A is confirmed, never B', async () => {
+    // A, checkpointed
+    pub.body = () => JSON.stringify({ dataSets: [{ rep: 'A' }] });
+    pub.headers = { etag: '"rep-A"' };
+    const rA = await h.runOnce(connector());
+    expect(rA.state, rA.reason).toBe('finished');
+    const heldA = (await evidenceFor(POLL_KEY))[0] as Evd;
+    expect((await h.checkpoint())?.[BASE]).toEqual({ etag: '"rep-A"' });
+    // B, admitted but the checkpoint append crashes: B is held, the checkpoint still names A
+    pub.body = () => JSON.stringify({ dataSets: [{ rep: 'B' }] });
+    pub.headers = { etag: '"rep-B"' };
+    fault.arm(['f28.before_checkpoint_append'], 'test');
+    const rB = await h.runOnce(connector());
+    fault.disarm();
+    expect(rB.state).toBe('failed');
+    expect(rB.admitted).toBe(1);
+    const heldB = (await evidenceFor(POLL_KEY))[0] as Evd;
+    expect(heldB.object_id).not.toBe(heldA.object_id);
+    expect((await h.checkpoint())?.[BASE]).toEqual({ etag: '"rep-A"' });
+    // the publisher is back on A: the conditional request carries If-None-Match: A and is answered 304
+    let sawIfNoneMatch: string | null = null;
+    const egress304 = async (req: { url: string; headers: Record<string, string> }): Promise<EgressResult> => {
+      if (new URL(req.url).searchParams.get('startPeriod') === null) { sawIfNoneMatch = req.headers['if-none-match'] ?? null; if (sawIfNoneMatch === '"rep-A"') return { status: 304, headers: {}, body: Buffer.alloc(0), finalUrlRedacted: req.url.split('?')[0] as string, hops: [], tlsVerified: true, originAllowlisted: true, pinnedAddress: '203.0.113.9', retryAfterSeconds: null }; }
+      return egress(req);
+    };
+    const r = await h.runOnce(new RestConnector({ egress: egress304 }));
+    expect(r.state, r.reason).toBe('finished');
+    expect(sawIfNoneMatch).toBe('"rep-A"');
+    const ev = await runEvents(r.runId);
+    const rv = ev.filter((e) => e.event === 'item.noop' && e.details['revalidated'] === 'http-304' && e.details['poll_key'] === POLL_KEY);
+    expect(rv.length).toBe(1);
+    expect(rv[0]?.details['bound'], 'a 304 to If-None-Match: A was left unbound although A is held and available').toBe(true);
+    expect(rv[0]?.details['evd_object_id'], 'a 304 to If-None-Match: A confirmed the newest held representation B').toBe(heldA.object_id);
+    expect(rv[0]?.details['validator']).toEqual({ etag: '"rep-A"' });
+    // control: the validator names a representation that is no longer available → unbound, no confirmation
+    await withdraw([heldA.object_id], 'phase 6 residual: A withdrawn before its 304');
+    const r2 = await h.runOnce(new RestConnector({ egress: egress304 }));
+    expect(r2.state, r2.reason).toBe('finished');
+    const rv2 = (await runEvents(r2.runId)).filter((e) => e.event === 'item.noop' && e.details['revalidated'] === 'http-304' && e.details['poll_key'] === POLL_KEY);
+    expect(rv2[0]?.details['bound']).toBe(false);
+    expect(rv2[0]?.details['availability']).toBe('withdrawn');
+    // control: with the checkpoint back in step (B re-observed), a 304 to If-None-Match: B confirms B
+    pub.headers = { etag: '"rep-B"' };
+    const rB2 = await h.runOnce(connector());
+    expect(rB2.state, rB2.reason).toBe('finished');
+    expect((await h.checkpoint())?.[BASE]).toEqual({ etag: '"rep-B"' });
+    const egress304B = async (req: { url: string; headers: Record<string, string> }): Promise<EgressResult> => (new URL(req.url).searchParams.get('startPeriod') === null && req.headers['if-none-match'] === '"rep-B"')
+      ? { status: 304, headers: {}, body: Buffer.alloc(0), finalUrlRedacted: req.url.split('?')[0] as string, hops: [], tlsVerified: true, originAllowlisted: true, pinnedAddress: '203.0.113.9', retryAfterSeconds: null } : egress(req);
+    const r3 = await h.runOnce(new RestConnector({ egress: egress304B }));
+    const rv3 = (await runEvents(r3.runId)).filter((e) => e.event === 'item.noop' && e.details['revalidated'] === 'http-304' && e.details['poll_key'] === POLL_KEY);
+    expect(rv3[0]?.details['bound']).toBe(true);
+    expect(rv3[0]?.details['evd_object_id']).toBe((await evidenceFor(POLL_KEY)).find((e) => e.lifecycle_state !== 'withdrawn')?.object_id);
+    pub.headers = {};
+  }, 240_000);
+});
+
 describe('2 · framed responses keep their parent · 3c · confirmations never override publisher time', () => {
   const framedBody = (bv: number) => JSON.stringify({ features: [
     { attributes: { id: 'a', at: '2024-01-05T00:00:00Z', v: 1 } },
@@ -410,6 +468,28 @@ describe('5 · an execution fault after run.started is a FAULT with its run, not
     let done: Attempt | undefined;
     while (Date.now() < until2) { done = (await attempts()).find((a) => a.job_id === faulted?.job_id && a.outcome === 'finished'); if (done) break; await new Promise((r) => setTimeout(r, 500)); }
     expect(done, 'the retried job did not finish').toBeDefined();
+  }, 180_000);
+
+  it('R2 · an INFRASTRUCTURE failure while opening the agent session is a FAULT (retried, recovered), not a refusal', async () => {
+    const infra = Object.assign(new Error('connection terminated unexpectedly'), { code: '08006' });
+    const spy = vi.spyOn(h.sessions, 'openRunSession').mockRejectedValueOnce(infra);
+    const n0 = (await attempts()).length;
+    await scheduler.promoteDelayedForTests(h.fx.tenantId, h.fx.domainId);
+    const until = Date.now() + 60_000;
+    let rows: Attempt[] = [];
+    while (Date.now() < until) { rows = await attempts(); if (rows.length >= n0 + 1) break; await new Promise((r) => setTimeout(r, 400)); }
+    const first = rows.find((a) => a.reason?.includes('connection terminated'));
+    expect(first, `no attempt recorded the infrastructure failure; worker: ${JSON.stringify(worker.lastFailureSeen())}`).toBeDefined();
+    expect(first?.outcome, 'a database connection failure was recorded as a governance refusal').toBe('faulted');
+    expect(first?.run_id).toBeNull();
+    // bounded retry: the next attempt on the same job opens a session normally and finishes
+    const until2 = Date.now() + 60_000;
+    let done: Attempt | undefined;
+    while (Date.now() < until2) { done = (await attempts()).find((a) => a.job_id === first?.job_id && a.outcome === 'finished'); if (done) break; await new Promise((r) => setTimeout(r, 500)); }
+    expect(done, 'the job was not retried after the infrastructure fault').toBeDefined();
+    const job = await scheduler.jobStateForTests(h.fx.tenantId, h.fx.domainId, first?.job_id as string);
+    expect(job?.attemptsMade).toBeGreaterThanOrEqual(2);
+    spy.mockRestore();
   }, 180_000);
 
   it('a genuine refusal (agent revoked) is still recorded refused without a run and is not retried', async () => {

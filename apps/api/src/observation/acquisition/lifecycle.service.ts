@@ -212,7 +212,11 @@ export class AcquisitionLifecycle {
       );
     } catch (e) {
       // Nothing was persisted: the transaction carried POL, AUD and run.started
-      // together, so there is no half-started run to reconcile.
+      // together, so there is no half-started run to reconcile. A GOVERNANCE answer
+      // (a refused grant, a contract no longer active) is reported as a failed, unopened
+      // run; an INFRASTRUCTURE fault (a lost connection, an exhausted server) is not an
+      // answer at all and propagates, so a scheduled caller records a fault and retries.
+      if (isInfrastructureFault(e)) throw e;
       return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e), opened: false };
     }
     req.onOpened?.(runId);
@@ -324,23 +328,33 @@ export class AcquisitionLifecycle {
        * not-modified answer: audited, but confirming nothing.
        */
       for (const rv of live ? output.revalidated ?? [] : []) {
-        const held = priorByPoll.get(rv.pollKey) ?? (await this.loadPriorByPollKeys(req, tenantId, domainId, [rv.pollKey])).get(rv.pollKey) ?? null;
+        // A 304 confirms EXACTLY the representation whose validator the request carried —
+        // the ETag sent as If-None-Match, else the Last-Modified sent as If-Modified-Since —
+        // which is not necessarily the newest held (a checkpoint that lags what was admitted
+        // sends an older validator). The held evidence is therefore looked up BY THAT
+        // VALIDATOR in its retained transport headers; when none carries it, or the
+        // request carried none, the answer is recorded unbound and confirms nothing.
+        const validator = { etag: rv.validators?.etag ?? null, lastModified: rv.validators?.etag !== undefined ? null : rv.validators?.lastModified ?? null };
+        const held = await this.loadHeldByValidator(req, tenantId, domainId, rv.pollKey, validator);
         const availability = held === null ? null : await this.availabilityOf(scope, held);
+        const sent = { ...(rv.validators?.etag !== undefined ? { etag: rv.validators.etag } : {}), ...(rv.validators?.lastModified !== undefined ? { last_modified: rv.validators.lastModified } : {}) };
         if (held !== null && availability === 'verified') {
           await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
-            item_key: null, poll_key: rv.pollKey, unchanged: true, bound: true, revalidated: 'http-304',
+            item_key: null, poll_key: rv.pollKey, unchanged: true, bound: true, revalidated: 'http-304', validator: sent,
             evd_object_id: held.evdObjectId, evd_version: held.objectVersion, digest: held.contentDigest, bytes: 0,
-            availability, reason: 'the publisher answered not-modified to a conditional request; the held evidence is available and intact',
+            availability, reason: 'the publisher answered not-modified to the validator of this held evidence, which is available and intact',
           });
           noop += 1;
         } else {
           // Recorded on the run as a no-op that confirms NOTHING (`unchanged: false`,
           // `bound: false`): audited, counted by nobody as freshness.
           await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
-            item_key: null, poll_key: rv.pollKey, endpoint: rv.endpoint, status: rv.status, revalidated: 'http-304',
+            item_key: null, poll_key: rv.pollKey, endpoint: rv.endpoint, status: rv.status, revalidated: 'http-304', validator: sent,
             unchanged: false, bound: false,
             held_evd_object_id: held?.evdObjectId ?? null, availability: availability ?? 'none-held',
-            reason: held === null ? 'not-modified with nothing held for this poll: no confirmation' : `not-modified, but the held evidence is ${availability}: no confirmation`,
+            reason: Object.keys(sent).length === 0 ? 'not-modified to a request that carried no validator: no confirmation'
+              : held === null ? 'not-modified, but no held evidence carries the validator the publisher confirmed: no confirmation'
+              : `not-modified to the validator of held evidence that is ${availability}: no confirmation`,
           });
         }
       }
@@ -1067,6 +1081,20 @@ export class AcquisitionLifecycle {
     }
   }
 
+  private async loadHeldByValidator(
+    req: RunRequest, tenantId: string, domainId: string, pollKey: string, validator: { etag: string | null; lastModified: string | null },
+  ): Promise<PriorEvidence | null> {
+    if (validator.etag === null && validator.lastModified === null) return null;
+    const got = await this.pipeline.consequentialRead(
+      this.envelope(req, 'observation.read.evidence', 'EVD', null, tenantId, domainId),
+      req.principal,
+      this.route('observation.read.evidence', tenantId, domainId, 'EVD', null),
+      ObservationCapability.read,
+      async (cap) => cap.evidenceByValidator({ sourceId: req.sourceId, pollKey, etag: validator.etag, lastModified: validator.lastModified }),
+    );
+    return got.result === null ? null : toPrior(got.result);
+  }
+
   private async loadPriorByPollKeys(
     req: RunRequest, tenantId: string, domainId: string, pollKeys: string[],
   ): Promise<Map<string, PriorEvidence>> {
@@ -1205,6 +1233,21 @@ function hostsOf(endpoints: string[]): string[] {
     try { out.add(new URL(e).hostname.toLowerCase()); } catch { /* contract validation reported it */ }
   }
   return [...out];
+}
+
+/**
+ * An infrastructure fault, as opposed to a governance answer: PostgreSQL connection
+ * (08), resource (53), operator-intervention (57), system (58) and internal (XX)
+ * classes, and the socket errors underneath them. A fault injected by the test
+ * profile is a simulated crash, not infrastructure, and keeps its own path.
+ */
+export function isInfrastructureFault(e: unknown): boolean {
+  if (e instanceof fault.InjectedFault) return false;
+  const code = String((e as { code?: unknown })?.code ?? '');
+  if (/^(08|53|57|58|XX)/.test(code)) return true;
+  if (/^(ECONN|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN)/.test(code)) return true;
+  const message = e instanceof Error ? e.message : '';
+  return /connection terminated|connection refused|terminating connection|timeout exceeded when trying to connect/i.test(message);
 }
 
 function describe(e: unknown): string {

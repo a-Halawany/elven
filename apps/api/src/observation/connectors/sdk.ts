@@ -175,7 +175,11 @@ export interface AcquisitionOutput {
    * of the held evidence for that poll key — if, and only if, that evidence is still
    * available — and otherwise records an unbound not-modified answer.
    */
-  revalidated?: Array<{ pollKey: string; endpoint: string; status: number }>;
+  revalidated?: Array<{
+    pollKey: string; endpoint: string; status: number;
+    /** The validators the conditional request carried — what the publisher's 304 actually confirms. */
+    validators: { etag?: string; lastModified?: string };
+  }>;
 }
 
 export interface AcquisitionContext {

@@ -93,7 +93,7 @@ export class RestConnector implements Connector {
       nextCheckpoint['backfill'] = progress;
     }
 
-    const revalidated: Array<{ pollKey: string; endpoint: string; status: number }> = [];
+    const revalidated: NonNullable<AcquisitionOutput['revalidated']> = [];
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
       requestsMade += 1;
@@ -142,7 +142,10 @@ export class RestConnector implements Connector {
           // Nothing new, and no bytes. Not an item — but a LIVE answer that what is held
           // is still current; the lifecycle binds it to the held evidence if that is
           // still available, and records it as unbound otherwise.
-          revalidated.push({ pollKey: safeUrl(endpoint), endpoint: res.finalUrlRedacted, status: 304 });
+          revalidated.push({
+            pollKey: safeUrl(endpoint), endpoint: res.finalUrlRedacted, status: 304,
+            validators: { ...(cp?.etag !== undefined ? { etag: cp.etag } : {}), ...(cp?.lastModified !== undefined ? { lastModified: cp.lastModified } : {}) },
+          });
           continue;
         }
         if (res.status < 200 || res.status >= 300) {

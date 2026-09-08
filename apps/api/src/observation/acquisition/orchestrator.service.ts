@@ -29,7 +29,7 @@ import { PrincipalsService } from '../../identity/principals.service.js';
 import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites, type ObservationReads, type RegistryWrites } from '../observation.capabilities.js';
 import { AcquisitionLifecycle, type RunOutcome } from './lifecycle.service.js';
-import { AgentSessionService } from '../agents/agent-session.service.js';
+import { AgentGrantRefused, AgentSessionService } from '../agents/agent-session.service.js';
 import { AgentsService, agentDisplayName, agentLoginName } from '../agents/agents.service.js';
 import { SchedulerService, queueNameFor, schedulerIdFor, type CollectionJobPayload } from '../scheduling/scheduler.service.js';
 import { QuarantineService } from '../quarantine/quarantine.service.js';
@@ -229,10 +229,13 @@ export class CollectionOrchestrator {
         correlationId: a.correlationId,
       });
     } catch (e) {
-      return {
-        runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0,
-        reason: e instanceof Error ? e.message : 'agent grant refused',
-      };
+      // A TYPED governance refusal — the grant is not valid for this run — is the
+      // answer "no run"; anything else (a lost database connection, an exhausted pool)
+      // is an infrastructure fault and propagates to the caller's fault path.
+      if (e instanceof AgentGrantRefused) {
+        return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: e.message, opened: false };
+      }
+      throw e;
     }
     return this.lifecycle.run({
       sourceId: a.sourceId, contractVersion: a.contractVersion,
