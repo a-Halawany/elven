@@ -151,6 +151,16 @@ export class PipelineService {
       await this.recordDenial(envelope, principal, route, ctx, policyInput, policyResult);
       throw deny(policyResult.decision === 'deny' ? 'EYE_AUT_001' : 'EYE_AUT_002', envelope.correlation_id, policyResult.reason);
     }
+    // Phase 6 human gate (EYE-WFL-002): an obligation the PEP discharges BEFORE any
+    // capability is minted. A workload, an agent, a system or bootstrap principal —
+    // whatever roles it holds — is not a named human and cannot pass it.
+    if (policyResult.obligations.some((o) => o.type === 'human_gate')
+        && !(principal.kind === 'human' && (principal.assurance === 'password' || principal.assurance === 'break_glass'))) {
+      const gated: PolicyResult = { ...policyResult, decision: 'deny', obligations: [],
+        reason: `human gate: ${route.action} requires a named human principal at session assurance (principal kind ${principal.kind}, assurance ${principal.assurance})` };
+      await this.recordDenial(envelope, principal, route, ctx, policyInput, gated);
+      throw new HttpException(errorBody('EYE_WFL_002', envelope.correlation_id, gated.reason), 403);
+    }
 
     const polId = newId();
     try {

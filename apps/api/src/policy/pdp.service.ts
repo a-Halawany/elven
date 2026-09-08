@@ -15,7 +15,8 @@ export type Decision = 'allow' | 'deny' | 'indeterminate' | 'allow_with_obligati
 
 export type Obligation =
   | { type: 'audit_access' }                 // evidence the access itself (consequential reads)
-  | { type: 'mask_secret_metadata' };        // audit viewer must project sanitized columns only
+  | { type: 'mask_secret_metadata' }         // audit viewer must project sanitized columns only
+  | { type: 'human_gate' };                  // the PEP admits only a named human principal at session assurance (Phase 6)
 
 export interface PolicyInput {
   principal: Pick<AuthenticatedPrincipal, 'principalId' | 'kind' | 'assurance' | 'bindings'>;
@@ -42,10 +43,14 @@ export interface PolicyResult {
 
 interface Rule {
   actionPrefix: string;
+  /** Phase 6: match the action EXACTLY, not by prefix — the one C3 rule must cover one action and nothing near it. */
+  exact?: boolean;
   requiredAnyRole: Array<{ role: string; atScope: Scope }>;
   obligations?: Obligation[];
   requiresPurpose?: boolean;
   maxConsequence?: ConsequenceClass;
+  /** Phase 6: the action is meaningless below this class (a commitment is C3 or it is not a commitment). */
+  minConsequence?: ConsequenceClass;
 }
 
 /** bundle-v1 — RBAC rules in the ABAC model. Order matters: first match wins. */
@@ -450,6 +455,29 @@ const BUNDLE_V1: Rule[] = [
     actionPrefix: 'twin.ground',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
     requiresPurpose: true,
+  },
+
+  // ───────────────────────── Phase 6: the authority contract (P6-M2) ─────────────────────────
+  //   * decision.commit is the ONE action above C2 in this bundle. It matches EXACTLY
+  //     (no prefix), only a decision_authority at the domain holds it, it carries the
+  //     human_gate obligation (the PEP refuses any non-human principal), and C4 is
+  //     denied: nothing in The Eye executes on the world.
+  //   * decision.approve is a named human's signature: decision_approver only, C2.
+  {
+    actionPrefix: 'decision.commit',
+    exact: true,
+    requiredAnyRole: [{ role: 'decision_authority', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    minConsequence: 'C3',
+    maxConsequence: 'C3',
+  },
+  {
+    actionPrefix: 'decision.approve',
+    requiredAnyRole: [{ role: 'decision_approver', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
   },
 
   // ───────────────────────── Phase 6: decision packages (P6-M1) ─────────────────────────
@@ -872,7 +900,7 @@ export class PdpService {
       };
     }
 
-    const rule = BUNDLE_V1.find((r) => input.action.startsWith(r.actionPrefix));
+    const rule = BUNDLE_V1.find((r) => (r.exact === true ? input.action === r.actionPrefix : input.action.startsWith(r.actionPrefix)));
     if (!rule) {
       // Unknown action: cannot be safely resolved → indeterminate (deny at PEP).
       return { ...base, decision: 'indeterminate', obligations: [], reason: `no rule covers action "${input.action}"` };
@@ -887,6 +915,16 @@ export class PdpService {
           decision: 'deny',
           obligations: [],
           reason: `consequence class ${input.consequenceClass} exceeds ${rule.maxConsequence}; human-gate runtime not available in Phase 0 (fail closed)`,
+        };
+      }
+    }
+    if (rule.minConsequence !== undefined) {
+      if (CONSEQ_ORDER.indexOf(input.consequenceClass) < CONSEQ_ORDER.indexOf(rule.minConsequence)) {
+        return {
+          ...base,
+          decision: 'deny',
+          obligations: [],
+          reason: `consequence class ${input.consequenceClass} is below ${rule.minConsequence}; ${rule.actionPrefix} is a ${rule.minConsequence} action or nothing`,
         };
       }
     }

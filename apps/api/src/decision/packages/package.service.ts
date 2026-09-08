@@ -312,13 +312,22 @@ export class PackageService {
     const dissent = (await cap.readDissent().selectAll().where('package_id' as never, '=', packageId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readEvents().selectAll().where('package_id' as never, '=', packageId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     const dec = (await cap.readStrategy().selectAll().where('strategy_object_id' as never, '=', String(p['decision_object_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const approvals = (await cap.readApprovals().selectAll().where('package_id' as never, '=', packageId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
+    const commitment = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const now = Date.now();
     return {
       ...p, decision: dec ?? null,
       versions: versions.map((v) => ({
         ...v, observed_through: dayOf(v['observed_through']),
         options: options.filter((o) => Number(o['version']) === Number(v['version'])),
         dissent: dissent.filter((d) => Number(d['version']) === Number(v['version'])),
+        approvals: approvals.filter((a) => Number(a['version']) === Number(v['version'])).map((a) => ({
+          ...a,
+          /* Derived for the reader; the port recounts for itself. */
+          live: a['decision'] === 'approve' && a['revoked_at'] === null && new Date(String(a['expires_at'])).getTime() > now && a['version_digest'] === v['version_digest'],
+        })),
       })),
+      commitment: commitment ?? null,
       events,
     };
   }

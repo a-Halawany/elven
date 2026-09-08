@@ -172,10 +172,10 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0041: decision_owner, decision_approver, decision_authority, executive, decision_agent, briefing_agent, reporting_agent
   'identity.roles': 18,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
-  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK
-  'objects.schema_registry': 21,
-  // one ledger line per migration applied above the ceiling (0022–0041)
-  'public.schema_migrations': 20,
+  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR
+  'objects.schema_registry': 22,
+  // one ledger line per migration applied above the ceiling (0022–0042)
+  'public.schema_migrations': 21,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

@@ -12,6 +12,7 @@ import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { DecisionCapability } from './decision.capabilities.js';
 import { PackageService, validateOptionIntake, validatePackageIntake, validateTermsIntake } from './packages/package.service.js';
+import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -36,7 +37,7 @@ const versionOf = (v: string, correlationId: string): number => {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/decisions')
 export class DecisionController {
-  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService) {}
 
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
@@ -171,6 +172,65 @@ export class DecisionController {
         return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
       });
     return { package: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── P6-M2: approvals and the exact C3 commit ─────────────────────────
+
+  @Post('/:packageId/versions/:version/approve')
+  async approve(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const intake = validateApprovalIntake((body.payload ?? {}) as never, envelope.correlation_id);
+    const approvalId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal, { ...this.route(tenantId, domainId, 'decision.approve', 'APR', approvalId), writableTargets: [approvalId] }, DecisionCapability.approve,
+      async (cap, scope) => {
+        const r = await this.approvals.approve(cap, scope, packageId, v, intake, principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, approvalId);
+        return { result: r, targetType: 'APR', targetId: approvalId, targetVersion: '1', outboxEvent: null };
+      });
+    return { approval: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/:packageId/approvals/:approvalId/revoke')
+  async revoke(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('approvalId') approvalId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'decision.approve.revoke', 'APR', approvalId), DecisionCapability.approve,
+      async (cap, scope) => {
+        const r = await this.approvals.revoke(cap, scope, approvalId, String(body.payload?.reason ?? ''), envelope.correlation_id);
+        return { result: { ...r, packageId }, targetType: 'APR', targetId: approvalId, targetVersion: '1', outboxEvent: null };
+      });
+    return { revocation: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * THE COMMIT. The route PINS consequence class C3 — the envelope does not choose it —
+   * and declares the CMT it will write. The policy rule is exact; the PEP discharges
+   * the human gate; the port verifies the class and the bound action in the context.
+   */
+  @Post('/:packageId/versions/:version/commit')
+  async commit(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: { versionDigest?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const commitmentId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { ...this.route(tenantId, domainId, 'decision.commit', 'CMT', commitmentId), consequenceClass: 'C3', writableTargets: [commitmentId] },
+      DecisionCapability.commit,
+      async (cap, scope) => {
+        const r = await this.approvals.commit(cap, scope, packageId, v, String(body.payload?.versionDigest ?? ''), principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, commitmentId);
+        return { result: r, targetType: 'CMT', targetId: commitmentId, targetVersion: '1', outboxEvent: null };
+      });
+    return { commitment: out.result, receipt: receipt(out) };
   }
 
   @Post('/list')

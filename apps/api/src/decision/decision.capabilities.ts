@@ -53,6 +53,10 @@ export interface DecisionReads {
   readIndicators(): any;
   readWarnings(): any;
   readBranches(): any;
+  readApprovals(): any;
+  readCommitments(): any;
+  readRoleBindings(): any;
+  liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   versionDigest(a: { packageId: string; version: number }): Promise<string>;
@@ -92,12 +96,25 @@ export interface ProposeWrites extends DecisionReads {
                       syntheticState: boolean; controls: unknown; dependencies: Array<{ kind: string; id: string; key: string }>;
                       actor: string; eventId: string; correlationId: string }): Promise<{ version_digest: string; baseline_run_id: string | null }>;
 }
+export interface ApproveWrites extends DecisionReads {
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  recordApproval(a: { approvalId: string; tenantId: string; domainId: string; packageId: string; version: number; approver: string; decision: 'approve' | 'reject';
+                      versionDigest: string; rationale: string; conditions: unknown[]; headerDigest: string; eventId: string; correlationId: string }):
+    Promise<{ state: string; live_approvals: number; quorum: number; expires_at: string; eligible_by: string }>;
+  revokeApproval(a: { approvalId: string; tenantId: string; domainId: string; reason: string; eventId: string; correlationId: string }): Promise<{ state: string; live_approvals: number; quorum: number }>;
+}
+export interface CommitWrites extends DecisionReads {
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  commitPackage(a: { commitmentId: string; tenantId: string; domainId: string; packageId: string; version: number; committer: string; versionDigest: string; headerDigest: string;
+                     title: string; statement: string; eventId: string; correlationId: string }):
+    Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string }>;
+}
 export interface WithdrawWrites extends DecisionReads {
   withdrawPackage(a: { packageId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites {
+class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -112,6 +129,13 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readIndicators(): any { return this.from('prediction.indicators_current'); }
   readWarnings(): any { return this.from('prediction.warnings_current'); }
   readBranches(): any { return this.from('prediction.branches_current'); }
+  readApprovals(): any { return this.from('decision.approvals'); }
+  readCommitments(): any { return this.from('decision.commitments'); }
+  readRoleBindings(): any { return this.from('identity.role_bindings'); }
+
+  async liveApprovals(a: { packageId: string; version: number }) {
+    return this.call<{ approval_id: string; approver_principal_id: string }>(sql`select approval_id::text, approver_principal_id::text from decision.live_approvals(${a.packageId}::uuid, ${a.version}::int)`);
+  }
 
   async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
     const rows = await this.call<CitedObjectRow>(sql`
@@ -179,6 +203,29 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
     if (r === undefined) throw new Error('proposal returned no row');
     return r;
   }
+  async recordApproval(a: Parameters<ApproveWrites['recordApproval']>[0]) {
+    const rows = await this.call<{ r: { state: string; live_approvals: number; quorum: number; expires_at: string; eligible_by: string } }>(sql`select decision.record_approval(
+      ${a.approvalId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.approver}::uuid, ${a.decision}, ${a.versionDigest},
+      ${a.rationale}, ${JSON.stringify(a.conditions)}::jsonb, ${a.headerDigest}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r;
+    if (r === undefined) throw new Error('approval returned no row');
+    return r;
+  }
+  async revokeApproval(a: Parameters<ApproveWrites['revokeApproval']>[0]) {
+    const rows = await this.call<{ r: { state: string; live_approvals: number; quorum: number } }>(sql`select decision.revoke_approval(
+      ${a.approvalId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r;
+    if (r === undefined) throw new Error('revocation returned no row');
+    return r;
+  }
+  async commitPackage(a: Parameters<CommitWrites['commitPackage']>[0]) {
+    const rows = await this.call<{ r: { commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string } }>(sql`select decision.commit_package(
+      ${a.commitmentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.committer}::uuid, ${a.versionDigest}, ${a.headerDigest},
+      ${a.title}, ${a.statement}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r;
+    if (r === undefined) throw new Error('commitment returned no row');
+    return r;
+  }
   async withdrawPackage(a: Parameters<WithdrawWrites['withdrawPackage']>[0]): Promise<void> {
     await this.call(sql`select decision.withdraw_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
@@ -195,4 +242,6 @@ export const DecisionCapability = {
   dissent(tx: Tx, action: string): DissentWrites { return new DecisionCapabilityImpl(tx, action); },
   propose(tx: Tx, action: string): ProposeWrites { return new DecisionCapabilityImpl(tx, action); },
   withdraw(tx: Tx, action: string): WithdrawWrites { return new DecisionCapabilityImpl(tx, action); },
+  approve(tx: Tx, action: string): ApproveWrites { return new DecisionCapabilityImpl(tx, action); },
+  commit(tx: Tx, action: string): CommitWrites { return new DecisionCapabilityImpl(tx, action); },
 };
