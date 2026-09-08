@@ -69,6 +69,9 @@ export function schedulerIdFor(tenantId: string, domainId: string, sourceId: str
  * in a queue name; '.' is accepted, and no scope identifier contains either
  * character, so the mapping is injective and scope-preserving.
  */
+/** How long a readiness lookup waits for Redis before answering UNKNOWN. */
+const LOOKUP_TIMEOUT_MS = 3_000;
+
 export function redisName(logical: string): string {
   return logical.replaceAll(':', '.');
 }
@@ -78,8 +81,11 @@ export interface ScheduleRuntime {
   scheduler_enabled: boolean;
   /** A worker for this domain's queue runs in THIS process. */
   worker_running: boolean;
-  /** The Redis job scheduler for this source, if one is materialized. */
-  redis_scheduler: { present: boolean; every_seconds: number | null; next_at: string | null };
+  /**
+   * The Redis job scheduler for this source: PRESENT, verified ABSENT, or UNKNOWN when
+   * the lookup itself failed or timed out — a failed lookup is not evidence of absence.
+   */
+  redis_scheduler: { state: 'present' | 'absent' | 'unknown' | 'disabled'; present: boolean; every_seconds: number | null; next_at: string | null; error: string | null };
   /** The Redis-facing names, for the operator who looks at Redis. */
   redis_names: { queue: string; scheduler: string };
 }
@@ -192,26 +198,29 @@ export class SchedulerService implements OnModuleDestroy {
     const base: ScheduleRuntime = {
       scheduler_enabled: this.enabled,
       worker_running: this.workers.has(names.queue),
-      redis_scheduler: { present: false, every_seconds: null, next_at: null },
+      redis_scheduler: { state: this.enabled ? 'unknown' : 'disabled', present: false, every_seconds: null, next_at: null, error: null },
       redis_names: names,
     };
     if (!this.enabled) return base;
     try {
-      const s = await this.queue(tenantId, domainId).getJobScheduler(names.scheduler);
-      if (s === undefined || s === null) return base;
+      const lookup = this.queue(tenantId, domainId).getJobScheduler(names.scheduler);
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`redis lookup timed out after ${LOOKUP_TIMEOUT_MS} ms`)), LOOKUP_TIMEOUT_MS).unref());
+      const s = await Promise.race([lookup, timeout]);
+      if (s === undefined || s === null) return { ...base, redis_scheduler: { ...base.redis_scheduler, state: 'absent' } };
       const every = (s as { every?: number | string }).every;
       const next = (s as { next?: number }).next;
       return {
         ...base,
         redis_scheduler: {
-          present: true,
+          state: 'present', present: true, error: null,
           every_seconds: every === undefined ? null : Math.round(Number(every) / 1000),
           next_at: next === undefined || next === null ? null : new Date(Number(next)).toISOString(),
         },
       };
     } catch (e) {
-      this.log.warn(`redis scheduler lookup failed: ${(e as Error).message.slice(0, 120)}`);
-      return base;
+      const message = (e as Error).message.slice(0, 160);
+      this.log.warn(`redis scheduler lookup failed: ${message}`);
+      return { ...base, redis_scheduler: { ...base.redis_scheduler, state: 'unknown', error: message } };
     }
   }
 

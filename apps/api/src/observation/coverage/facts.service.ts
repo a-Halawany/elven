@@ -72,13 +72,16 @@ export class CoverageFactsService {
       .limit(200)
       .execute()) as Array<{ run_id: string; state: string; started_at: Date; finished_at: Date | null }>;
 
-    // Confirmations: polls that returned exactly the bytes already held. Each is an
-    // observation of the source being current, recorded on the run, storing nothing.
+    // Confirmations: LIVE polls that returned exactly the bytes already held, or a live
+    // not-modified answer bound to available held evidence. Each is an observation of
+    // the source being current, recorded on the run, storing nothing. A REPLAYED set is
+    // a frozen fixture and confirms nothing about the publisher today.
     const confirmed = (await cap
       .readRunEvents()
       .select(['occurred_at' as never])
       .where('source_id' as never, '=', sourceId as never)
       .where('event' as never, '=', 'item.noop' as never)
+      .where('acquisition_mode' as never, '=', 'live' as never)
       .where(sql`details ->> 'unchanged'` as never, '=', 'true' as never)
       .orderBy('occurred_at' as never, 'desc')
       .limit(1)
@@ -161,7 +164,12 @@ export class CoverageFactsService {
       bucketsCovered,
       bucketsExpected,
       lastAdmittedAt: newest !== null ? newest.at.toISOString() : null,
+      lastConfirmedAt: lastConfirmedAt !== null ? lastConfirmedAt.toISOString() : null,
+      // When the source's items carry the PUBLISHER's time, freshness stays on it: a
+      // confirmation says the newest published item is still the newest, and cannot
+      // make it newer. Only a source without publisher time is dated by observation.
       lastObservedAt: (() => {
+        if (anyItemCarriesPublisherTime) return newest !== null ? newest.at.toISOString() : null;
         const a = newest !== null ? newest.at.getTime() : null;
         const c = lastConfirmedAt !== null ? lastConfirmedAt.getTime() : null;
         if (a === null && c === null) return null;

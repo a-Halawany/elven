@@ -169,6 +169,13 @@ export interface AcquisitionOutput {
   requestsMade: number;
   /** A raw parent payload preserved as its own EVD when the connector frames items out of it. */
   parent?: AcquiredItem | null;
+  /**
+   * Polls the publisher answered NOT MODIFIED (HTTP 304) to a conditional request.
+   * No bytes moved and no item exists; the lifecycle turns each into a confirmation
+   * of the held evidence for that poll key — if, and only if, that evidence is still
+   * available — and otherwise records an unbound not-modified answer.
+   */
+  revalidated?: Array<{ pollKey: string; endpoint: string; status: number }>;
 }
 
 export interface AcquisitionContext {

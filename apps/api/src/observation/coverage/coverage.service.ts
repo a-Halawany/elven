@@ -91,8 +91,10 @@ export interface ObservedFacts {
   bucketsExpected: number | null;
   /** Latest admitted item's OBSERVATION time, or null if the source has none. */
   lastAdmittedAt: string | null;
-  /** The last time the source was seen current: an admission, or a poll confirmed unchanged. Freshness measures this. */
+  /** The last time the source was seen current: an admission, or — for a source without publisher time — a LIVE poll confirmed unchanged. Freshness measures this. */
   lastObservedAt?: string | null;
+  /** The last LIVE confirmation (identical bytes, or a bound not-modified answer), whatever freshness is measured on. */
+  lastConfirmedAt?: string | null;
   /** Latest SUCCESSFUL run, whether or not it produced an item. */
   lastSuccessfulRunAt: string | null;
   /** Latest FAILED run. */

@@ -30,7 +30,7 @@ import type { Db } from '../../shared/db.js';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService, type RouteInfo } from '../../pipeline/pipeline.service.js';
-import { ObservationCapability, type AcquisitionWrites } from '../observation.capabilities.js';
+import { ObservationCapability, type AcquisitionWrites , type HeldEvidenceRow } from '../observation.capabilities.js';
 import { VaultService, VaultIntegrityError } from '../vault/vault.service.js';
 import { inspectContent } from '../connectors/content-controls.js';
 import { redactValue } from '../connectors/redaction.js';
@@ -50,6 +50,8 @@ export interface RunRequest {
   purposeId: string;
   /** Who or what opened the run: an operator (with the principal) or the scheduler (with the job). Recorded on run.started. */
   trigger?: { kind: 'scheduler' | 'operator'; by?: string; jobId?: string };
+  /** Called the moment run.started is COMMITTED, so a caller that meets an execution fault later still knows which run it belongs to. */
+  onOpened?: (runId: string) => void;
 }
 
 /** What the admission transaction actually committed for one item. */
@@ -68,10 +70,14 @@ export interface RunOutcome {
   opened?: boolean;
 }
 
-/** The latest evidence held for a deterministic item key — what a re-run compares against. */
+/** The latest evidence held for an item or poll key — what a re-run compares against — and what must be true before it is reused. */
 interface PriorEvidence {
   evdObjectId: string; objectVersion: number; contentDigest: string; obsObjectId: string;
+  lifecycleState: string; manifestId: string | null; locator: string | null; vault: string | null;
+  manifestPresent: boolean; tombstoned: boolean;
 }
+/** Availability of held evidence, established before reuse: verified, or the reason it cannot be reused. */
+type Availability = 'verified' | 'withdrawn' | 'governed-deleted' | 'no-manifest' | 'integrity';
 
 interface ContractRow {
   source_id: string;
@@ -157,6 +163,7 @@ export class AcquisitionLifecycle {
       return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: 'no such source contract version', opened: false };
     }
     const { tenant_id: tenantId, domain_id: domainId } = contract;
+    const scope = { tenantId, domainId };
     fault.at('f03.after_scope_resolution');
     fault.at('f04.after_pdp_decision');
 
@@ -208,6 +215,7 @@ export class AcquisitionLifecycle {
       // together, so there is no half-started run to reconcile.
       return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e), opened: false };
     }
+    req.onOpened?.(runId);
     fault.at('f07.after_run_start_commit');
 
     let admitted = 0;
@@ -261,8 +269,15 @@ export class AcquisitionLifecycle {
        * poll key are an audited confirmation — freshness-bearing, storing nothing
        * twice — never a second copy (SCHEDULED_COLLECTION.md §1.3).
        */
-      const priorByPoll = await this.loadPriorByPollKeys(
-        req, tenantId, domainId, [...new Set(queue.filter((i) => i.deterministic !== true && i.pollKey !== undefined).map((i) => i.pollKey as string))]);
+      //
+      // LIVE ONLY. A replayed set is a frozen fixture: Phase 1's rule stands for it —
+      // identical bytes retrieved again are a new observation (§5.12) — and a replay
+      // confirms nothing about the publisher today (SCHEDULED_COLLECTION.md §5, 3).
+      const live = contract.acquisition_mode === 'live';
+      const priorByPoll = live
+        ? await this.loadPriorByPollKeys(
+            req, tenantId, domainId, [...new Set(queue.filter((i) => i.deterministic !== true && i.pollKey !== undefined).map((i) => i.pollKey as string))])
+        : new Map<string, PriorEvidence>();
       /*
        * A QUARANTINED WINDOW IS NOT A COLLECTED WINDOW. The checkpoint the run
        * commits must not carry the backfill cursor past a window whose bytes were
@@ -289,13 +304,44 @@ export class AcquisitionLifecycle {
           admitted += 1;
           bytesStored += item.bytes.byteLength;
           parentEvdByKey.set(item.itemKey, result.evdObjectId);
+        } else if (result.kind === 'noop') {
+          // A parent confirmed unchanged is STILL the parent: a child that has to be
+          // admitted under it (its own evidence gone) links to the held parent's evidence.
+          if (result.evdObjectId !== undefined) parentEvdByKey.set(item.itemKey, result.evdObjectId);
+          noop += 1;
         } else if (result.kind === 'quarantined') {
           quarantined += 1;
           if (item.backfillCursor !== undefined && (rollbackTo === null || earlier(item.backfillCursor, rollbackTo))) {
             rollbackTo = item.backfillCursor;
           }
-        } else {
+        }
+      }
+
+      /*
+       * NOT MODIFIED (HTTP 304): the publisher said what is held is still current, and
+       * sent nothing. That is a live confirmation of the held evidence — when the held
+       * evidence is still available and intact. Otherwise it is recorded as an unbound
+       * not-modified answer: audited, but confirming nothing.
+       */
+      for (const rv of live ? output.revalidated ?? [] : []) {
+        const held = priorByPoll.get(rv.pollKey) ?? (await this.loadPriorByPollKeys(req, tenantId, domainId, [rv.pollKey])).get(rv.pollKey) ?? null;
+        const availability = held === null ? null : await this.availabilityOf(scope, held);
+        if (held !== null && availability === 'verified') {
+          await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
+            item_key: null, poll_key: rv.pollKey, unchanged: true, bound: true, revalidated: 'http-304',
+            evd_object_id: held.evdObjectId, evd_version: held.objectVersion, digest: held.contentDigest, bytes: 0,
+            availability, reason: 'the publisher answered not-modified to a conditional request; the held evidence is available and intact',
+          });
           noop += 1;
+        } else {
+          // Recorded on the run as a no-op that confirms NOTHING (`unchanged: false`,
+          // `bound: false`): audited, counted by nobody as freshness.
+          await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
+            item_key: null, poll_key: rv.pollKey, endpoint: rv.endpoint, status: rv.status, revalidated: 'http-304',
+            unchanged: false, bound: false,
+            held_evd_object_id: held?.evdObjectId ?? null, availability: availability ?? 'none-held',
+            reason: held === null ? 'not-modified with nothing held for this poll: no confirmation' : `not-modified, but the held evidence is ${availability}: no confirmation`,
+          });
         }
       }
 
@@ -379,13 +425,30 @@ export class AcquisitionLifecycle {
     prior: PriorEvidence | null = null,
     /** What is already held for what this forward poll polled (its poll key), if anything. */
     heldForPoll: PriorEvidence | null = null,
-  ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop' }> {
+  ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop'; evdObjectId?: string }> {
     const tenantId = contract.tenant_id;
     const domainId = contract.domain_id;
     const scope = { tenantId, domainId };
 
     // ── steps 5 + 6: store the exact original bytes, fsync, re-read, compare ──
     const stored = await this.vault.store('quarantine', scope, item.bytes);
+
+    /*
+     * BEFORE ANYTHING HELD IS REUSED, ITS AVAILABILITY IS ESTABLISHED. Held evidence
+     * whose latest version is withdrawn, whose bytes were governed-deleted, whose
+     * manifest is gone, or whose bytes no longer verify is NOT something a poll can be
+     * "confirmed" against: the incoming bytes are admitted as NEW evidence, the run
+     * says what it could not reuse, and the deletion or withdrawal stands untouched.
+     */
+    let heldUnavailable: { evdObjectId: string; objectVersion: number; reason: Availability } | null = null;
+    if (prior !== null) {
+      const a = await this.availabilityOf(scope, prior);
+      if (a !== 'verified') { heldUnavailable = { evdObjectId: prior.evdObjectId, objectVersion: prior.objectVersion, reason: a }; prior = null; }
+    }
+    if (heldForPoll !== null) {
+      const a = await this.availabilityOf(scope, heldForPoll);
+      if (a !== 'verified') { heldUnavailable = heldUnavailable ?? { evdObjectId: heldForPoll.evdObjectId, objectVersion: heldForPoll.objectVersion, reason: a }; heldForPoll = null; }
+    }
 
     /*
      * A WINDOW ALREADY HELD, BYTE FOR BYTE, IS NOT NEW EVIDENCE.
@@ -399,11 +462,11 @@ export class AcquisitionLifecycle {
     if (prior !== null && prior.contentDigest === stored.contentDigest) {
       await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
         item_key: item.itemKey, evd_object_id: prior.evdObjectId, evd_version: prior.objectVersion,
-        digest: stored.contentDigest,
+        digest: stored.contentDigest, availability: 'verified',
         reason: 'identical bytes for a window already held; a backfill re-run admits nothing twice',
       });
       await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
-      return { kind: 'noop' };
+      return { kind: 'noop', evdObjectId: prior.evdObjectId };
     }
 
     /*
@@ -418,11 +481,11 @@ export class AcquisitionLifecycle {
       await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
         item_key: item.itemKey, poll_key: item.pollKey ?? null, unchanged: true,
         evd_object_id: heldForPoll.evdObjectId, evd_version: heldForPoll.objectVersion,
-        digest: stored.contentDigest, bytes: item.bytes.byteLength,
+        digest: stored.contentDigest, bytes: item.bytes.byteLength, availability: 'verified',
         reason: 'identical bytes to the evidence already held for this poll; confirmed, not stored again',
       });
       await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
-      return { kind: 'noop' };
+      return { kind: 'noop', evdObjectId: heldForPoll.evdObjectId };
     }
     const changedFrom = heldForPoll !== null && heldForPoll.contentDigest !== stored.contentDigest ? heldForPoll : null;
 
@@ -591,9 +654,10 @@ export class AcquisitionLifecycle {
           connector: req.connector.name, connectorVersion: req.connector.version,
           acquisitionMode: contract.acquisition_mode,
           event: revisionOf === null ? 'item.admitted' : 'item.revised',
-          details: { item_key: item.itemKey, evd_object_id: evdObjectId, digest: candidate.contentDigest,
+          details: { item_key: item.itemKey, poll_key: item.pollKey ?? null, evd_object_id: evdObjectId, digest: candidate.contentDigest,
                      ...(revisionOf === null ? {} : { evd_version: evdVersion, prior_digest: revisionOf.contentDigest }),
-                     ...(changedFrom === null ? {} : { changed_from: { evd_object_id: changedFrom.evdObjectId, evd_version: changedFrom.objectVersion, digest: changedFrom.contentDigest } }) },
+                     ...(changedFrom === null ? {} : { changed_from: { evd_object_id: changedFrom.evdObjectId, evd_version: changedFrom.objectVersion, digest: changedFrom.contentDigest } }),
+                     ...(heldUnavailable === null ? {} : { held_unavailable: heldUnavailable }) },
           correlationId: req.correlationId,
         });
         await cap.markAttemptOutcome({
@@ -981,13 +1045,26 @@ export class AcquisitionLifecycle {
       ObservationCapability.read,
       async (cap) => cap.latestEvidenceByItemKeys({ sourceId: req.sourceId, itemKeys }),
     );
-    for (const r of got.result) {
-      out.set(r.item_key, {
-        evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
-        contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
-      });
-    }
+    for (const r of got.result) out.set(r.item_key, toPrior(r));
     return out;
+  }
+
+  /**
+   * Is held evidence still something a poll may be confirmed against? Its latest
+   * version not withdrawn; its manifest present and not governed-deleted; its bytes in
+   * the vault verifying against the recorded digest. Established here, by reading —
+   * never assumed from metadata.
+   */
+  private async availabilityOf(scope: { tenantId: string; domainId: string }, held: PriorEvidence): Promise<Availability> {
+    if (held.lifecycleState === 'withdrawn') return 'withdrawn';
+    if (held.tombstoned) return 'governed-deleted';
+    if (!held.manifestPresent || held.manifestId === null || held.locator === null || held.vault === null) return 'no-manifest';
+    try {
+      await this.vault.read(held.vault as 'evidence' | 'quarantine', scope, held.locator, held.contentDigest);
+      return 'verified';
+    } catch {
+      return 'integrity';
+    }
   }
 
   private async loadPriorByPollKeys(
@@ -1002,12 +1079,7 @@ export class AcquisitionLifecycle {
       ObservationCapability.read,
       async (cap) => cap.latestEvidenceByPollKeys({ sourceId: req.sourceId, pollKeys }),
     );
-    for (const r of got.result) {
-      out.set(r.poll_key, {
-        evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
-        contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
-      });
-    }
+    for (const r of got.result) out.set(r.poll_key, toPrior(r));
     return out;
   }
 
@@ -1146,3 +1218,12 @@ function describe(e: unknown): string {
 
 /** SHA-256 of the JCS form of `{}` — the digest of an empty governed payload. */
 const EMPTY_PAYLOAD_DIGEST = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a';
+
+function toPrior(r: HeldEvidenceRow): PriorEvidence {
+  return {
+    evdObjectId: r.evd_object_id, objectVersion: Number(r.object_version),
+    contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
+    lifecycleState: r.lifecycle_state, manifestId: r.manifest_id, locator: r.locator, vault: r.vault,
+    manifestPresent: r.manifest_present === true, tombstoned: r.tombstoned === true,
+  };
+}

@@ -52,10 +52,10 @@ export interface SourceReadiness {
   reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null; scheduler_enabled: boolean;
   automatic: {
     schedule_entry: { status: string; cadence_seconds: number; scheduler_id: string } | null;
-    runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_scheduler: { present: boolean; every_seconds: number | null; next_at: string | null }; redis_names: { queue: string; scheduler: string } };
+    runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_scheduler: { state: 'present' | 'absent' | 'unknown' | 'disabled'; present: boolean; every_seconds: number | null; next_at: string | null; error: string | null }; redis_names: { queue: string; scheduler: string } };
     last_attempt: ScheduledAttempt | null;
     last_success: ScheduledAttempt | null;
-    attempts: { finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number };
+    attempts: { scope: 'all'; total: number; finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number; faulted: number };
   };
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;

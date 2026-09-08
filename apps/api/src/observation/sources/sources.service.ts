@@ -43,7 +43,8 @@ export interface SourceReadiness {
     runtime: ScheduleRuntime;
     last_attempt: ScheduledAttempt | null;
     last_success: ScheduledAttempt | null;
-    attempts: { finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number };
+    /** Counts over ALL recorded attempts for this contract version (`scope: 'all'`), never a window. */
+    attempts: { scope: 'all'; total: number; finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number; faulted: number };
   };
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;
@@ -278,18 +279,28 @@ export class SourcesService {
         .where('object_type' as never, '=', 'EVD' as never)
         .where('provenance_ref' as never, 'like', `SRC:${sourceId}@%` as never)
         .executeTakeFirst()) as { n: string | number } | undefined;
-      const attemptsRaw = (await cap.readScheduledAttempts().selectAll()
+      // The last attempt and the last SUCCESS are looked up independently — a success
+      // behind any number of failures is still the last success — and the counts cover
+      // every attempt, grouped in the database, never the newest N.
+      const attemptQuery = () => cap.readScheduledAttempts().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never);
+      const lastAttemptRaw = (await attemptQuery().orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const lastSuccessRaw = (await attemptQuery().where('outcome' as never, '=', 'finished' as never).orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const grouped = (await cap.readScheduledAttempts().select(['outcome' as never, sql<string>`count(*)`.as('n') as never])
         .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
-        .orderBy('started_at' as never, 'desc').limit(50).execute()) as Array<Record<string, unknown>>;
+        .groupBy('outcome' as never).execute()) as Array<{ outcome: string; n: string | number }>;
       const attempt = (a: Record<string, unknown>): ScheduledAttempt => ({
         attempt_id: String(a['attempt_id']), job_id: String(a['job_id']), outcome: String(a['outcome']),
         run_id: (a['run_id'] as string | null) ?? null, reason: (a['reason'] as string | null) ?? null,
         started_at: new Date(String(a['started_at'])).toISOString(), finished_at: new Date(String(a['finished_at'])).toISOString(),
         admitted: Number(a['items_admitted'] ?? 0), noop: Number(a['items_noop'] ?? 0), quarantined: Number(a['items_quarantined'] ?? 0),
       });
-      const attempts = attemptsRaw.map(attempt);
-      const counts = { finished: 0, failed: 0, cancelled: 0, budget_exceeded: 0, refused: 0 };
-      for (const a of attempts) if (a.outcome in counts) counts[a.outcome as keyof typeof counts] += 1;
+      const counts: SourceReadiness['automatic']['attempts'] = { scope: 'all', total: 0, finished: 0, failed: 0, cancelled: 0, budget_exceeded: 0, refused: 0, faulted: 0 };
+      for (const g of grouped) {
+        const n = Number(g.n); counts.total += n;
+        const key = g.outcome as keyof typeof counts;
+        if (key !== 'scope' && key !== 'total' && key in counts) counts[key] = (counts[key] as number) + n;
+      }
       const runtime = await this.scheduler.describe(String(s.tenant_id), String(s.domain_id), sourceId);
       const contract = ((s.contract ?? {}) as unknown) as Record<string, unknown>;
       const so = (contract['security_and_operations'] ?? {}) as Record<string, unknown>;
@@ -323,8 +334,8 @@ export class SourcesService {
         automatic: {
           schedule_entry: schedule === undefined ? null : { status: String(schedule['status']), cadence_seconds: Number(schedule['cadence_seconds']), scheduler_id: String(schedule['scheduler_id']) },
           runtime,
-          last_attempt: attempts[0] ?? null,
-          last_success: attempts.find((a) => a.outcome === 'finished') ?? null,
+          last_attempt: lastAttemptRaw === undefined ? null : attempt(lastAttemptRaw),
+          last_success: lastSuccessRaw === undefined ? null : attempt(lastSuccessRaw),
           attempts: counts,
         },
         last_run: lastRun === undefined ? null : { run_id: String(lastRun['run_id']), state: String(lastRun['state']), mode: String(lastRun['acquisition_mode']),

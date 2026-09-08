@@ -15,9 +15,10 @@
  *     (CollectionOrchestrator.handleScheduledJob → agent session from the registry →
  *     AcquisitionLifecycle.run with its own re-verification), and RECORDS the attempt:
  *     finished / failed / cancelled / budget_exceeded when a run was opened, refused
- *     when it was not. A refusal is not retried — it is a governance answer, not a
- *     transient fault; an unexpected exception is recorded and rethrown so BullMQ's
- *     bounded retry applies.
+ *     when it was not, FAULTED when an exception escaped the governed path (with the
+ *     opened run's id when run.started had been committed). A refusal is not retried —
+ *     it is a governance answer, not a transient fault; a fault is recorded and rethrown
+ *     so BullMQ's bounded retry applies.
  *
  * AUTHORITY. The listing and the attempt record run under
  * observation.issue_schedule_capability — the bounded machine capability of migrations
@@ -118,12 +119,17 @@ export class CollectionWorkerService implements OnApplicationBootstrap {
   /** One job: run through the governed path, then record the attempt whatever happened. */
   private async handle(payload: CollectionJobPayload, jobId: string): Promise<void> {
     const startedAt = new Date();
+    let openedRunId: string | null = null;
     let outcome: { state: string; runId: string; admitted: number; noop: number; quarantined: number; reason?: string; opened?: boolean };
     try {
-      outcome = await this.orchestrator.handleScheduledJob(payload, jobId);
+      outcome = await this.orchestrator.handleScheduledJob(payload, jobId, (runId) => { openedRunId = runId; });
     } catch (e) {
+      // An EXECUTION FAULT — an exception that escaped the governed path — is not a
+      // governance refusal. It is recorded as `faulted`, with the run it belongs to when
+      // run.started had already been committed, and rethrown so BullMQ's bounded retry
+      // applies (a refusal, by contrast, returns normally and is never retried).
       this.note('scheduled job', e);
-      await this.record(payload, jobId, startedAt, 'refused', null, `unexpected: ${(e as Error).message}`, 0, 0, 0).catch((re) => this.note('record attempt', re));
+      await this.record(payload, jobId, startedAt, 'faulted', openedRunId, `fault: ${(e as Error).message}`, 0, 0, 0).catch((re) => this.note('record attempt', re));
       throw e;
     }
     // A run is OPENED only when run.started was persisted; a refusal before that has no run, whatever id was allocated.

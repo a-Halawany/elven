@@ -182,7 +182,7 @@ export class CollectionOrchestrator {
    * tampered with, or whose agent was revoked while it sat in the queue, is
    * refused at execution rather than at enqueue.
    */
-  async handleScheduledJob(payload: CollectionJobPayload, jobId = 'unknown'): Promise<RunOutcome> {
+  async handleScheduledJob(payload: CollectionJobPayload, jobId = 'unknown', onOpened?: (runId: string) => void): Promise<RunOutcome> {
     return this.runAsAgent({
       tenantId: payload.tenantId, domainId: payload.domainId,
       sourceId: payload.sourceId, contractVersion: payload.contractVersion,
@@ -192,6 +192,7 @@ export class CollectionOrchestrator {
       correlationId: newId(), purposeId: 'observation',
       files: [],
       trigger: { kind: 'scheduler', jobId },
+      ...(onOpened === undefined ? {} : { onOpened }),
     });
   }
 
@@ -206,6 +207,7 @@ export class CollectionOrchestrator {
     agentId: string; agentVersion: string; codeDigest: string; connectorKind: string;
     correlationId: string; purposeId: string; files: UploadedFile[];
     trigger: { kind: 'scheduler' | 'operator'; by?: string; jobId?: string };
+    onOpened?: (runId: string) => void;
   }): Promise<RunOutcome> {
     let connector: Connector;
     try {
@@ -237,6 +239,7 @@ export class CollectionOrchestrator {
       agentId: a.agentId, agentVersion: a.agentVersion,
       connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
       trigger: a.trigger,
+      ...(a.onOpened === undefined ? {} : { onOpened: a.onOpened }),
     });
   }
 

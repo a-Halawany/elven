@@ -44,7 +44,9 @@ function AutomaticCell({ a, mode, lifecycle }: { a: SourceWithReadiness['readine
       </div>
       <div style={muted}>
         {rt.scheduler_enabled ? (rt.worker_running ? 'worker running here' : 'scheduler on · no worker here') : 'scheduler off in this deployment'}
-        {rt.redis_scheduler.present ? ` · next fire ${fmt(rt.redis_scheduler.next_at)}` : ' · not materialized in Redis'}
+        {rt.redis_scheduler.state === 'present' ? ` · next fire ${fmt(rt.redis_scheduler.next_at)}`
+          : rt.redis_scheduler.state === 'absent' ? ' · not materialized in Redis'
+          : rt.redis_scheduler.state === 'unknown' ? ' · Redis lookup failed: scheduler state unknown' : ''}
       </div>
       <div style={muted}>
         {last === null
@@ -53,7 +55,7 @@ function AutomaticCell({ a, mode, lifecycle }: { a: SourceWithReadiness['readine
               <span style={{ color: last.outcome === 'finished' ? 'var(--eye-color-success)' : 'var(--eye-color-critical)', fontWeight: 600 }}>{last.outcome.toUpperCase()}</span>
               {` ${fmt(last.finished_at)} · ${last.admitted} admitted · ${last.noop} unchanged`}
               {last.reason ? ` · ${last.reason}` : ''}
-              {` · ${a.attempts.finished} ok / ${a.attempts.failed + a.attempts.cancelled + a.attempts.budget_exceeded} failed / ${a.attempts.refused} refused`}
+              {` · all ${a.attempts.total} attempts: ${a.attempts.finished} ok / ${a.attempts.failed + a.attempts.cancelled + a.attempts.budget_exceeded} failed / ${a.attempts.faulted} faulted / ${a.attempts.refused} refused`}
             </>}
       </div>
     </div>

@@ -93,6 +93,7 @@ export class RestConnector implements Connector {
       nextCheckpoint['backfill'] = progress;
     }
 
+    const revalidated: Array<{ pollKey: string; endpoint: string; status: number }> = [];
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
       requestsMade += 1;
@@ -138,7 +139,10 @@ export class RestConnector implements Connector {
       try {
         const res = await this.egress({ url: endpoint, headers: conditional, policy: binding.egress });
         if (res.status === 304) {
-          // Nothing new. Not an error, not an item, and not a freshness failure.
+          // Nothing new, and no bytes. Not an item — but a LIVE answer that what is held
+          // is still current; the lifecycle binds it to the held evidence if that is
+          // still available, and records it as unbound otherwise.
+          revalidated.push({ pollKey: safeUrl(endpoint), endpoint: res.finalUrlRedacted, status: 304 });
           continue;
         }
         if (res.status < 200 || res.status >= 300) {
@@ -182,6 +186,7 @@ export class RestConnector implements Connector {
     return {
       items: [...parents, ...items],
       checkpoint: nextCheckpoint, bytesTransferred, requestsMade,
+      ...(revalidated.length > 0 ? { revalidated } : {}),
     };
   }
 
@@ -444,6 +449,10 @@ function frame(parent: AcquiredItem, expected: {
       transport: { ...parent.transport, methodRef: JSON_ARRAY_METHOD_REF },
       parentItemKey: parent.itemKey,
       fragment: { byteStart, byteEnd, methodRef: JSON_ARRAY_METHOD_REF },
+      // The child's stable identity across polls: its parent's poll key plus its own
+      // key. Without it an unchanged child is admitted again every time its parent
+      // is confirmed, parentless.
+      ...(parent.pollKey !== undefined ? { pollKey: `${parent.pollKey}#${expected.itemPath}:${key}` } : {}),
     });
   }
   return out.length > 0 ? out : null;
