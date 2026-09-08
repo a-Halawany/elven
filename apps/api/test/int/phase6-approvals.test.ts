@@ -208,7 +208,11 @@ describe('P6-M2 · F3 — the exact C3 commit', () => {
   it('after commitment nothing reopens: no new version, no dissent, no revocation, no withdrawal, no second commit', async () => {
     expect(await message(c.open(P1.pkg))).toMatch(/a committed decision is not re-opened/);
     expect(await message(c.dissent(P1.pkg, P1.v, { position: 'late', rationale: 'Dissent after commitment is recorded nowhere here.' }))).toMatch(/dissent is recorded before commitment/);
-    expect(await message(c.revoke(P1.pkg, approvalId, 'too late'))).toMatch(/is committed; an approval is not withdrawn/);
+    // a revocation after commitment is recorded — it is observed history for the replay — and changes nothing
+    const late = await c.revoke(P1.pkg, approvalId, 'I would not approve this today');
+    expect(late.revocation.state).toBe('committed');
+    expect(await versionState(P1.pkg, P1.v)).toBe('committed');
+    expect((await sql<{ r: string | null }>`select revoked_reason r from decision.approvals where approval_id = ${approvalId}::uuid`.execute(h.su)).rows[0]?.r).toBe('I would not approve this today');
     expect(await message(c.withdraw(P1.pkg, 'changed my mind'))).toMatch(/a committed decision is not withdrawn/);
     expect(await message(c.commit(P1.pkg, P1.v, P1.digest, w.authority2))).toMatch(/already committed/);
     await expect(sql`delete from decision.commitments where package_id = ${P1.pkg}::uuid`.execute(h.su)).rejects.toThrow(/append-only|prohibited/i);

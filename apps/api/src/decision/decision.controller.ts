@@ -13,6 +13,7 @@ import type { EyeRequest } from '../pipeline/http.js';
 import { DecisionCapability } from './decision.capabilities.js';
 import { PackageService, validateOptionIntake, validatePackageIntake, validateTermsIntake } from './packages/package.service.js';
 import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
+import { ReplayService } from './replay/replay.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -37,7 +38,7 @@ const versionOf = (v: string, correlationId: string): number => {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/decisions')
 export class DecisionController {
-  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService, private readonly replays: ReplayService) {}
 
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
@@ -231,6 +232,35 @@ export class DecisionController {
         return { result: r, targetType: 'CMT', targetId: commitmentId, targetVersion: '1', outboxEvent: null };
       });
     return { commitment: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── P6-M3: replay ─────────────────────────
+
+  /** A replay is a governed WRITE: it records what it reconstructed, for whom, when, and what was unavailable then. */
+  @Post('/:packageId/versions/:version/replay')
+  async replay(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: { asOf?: string | null } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const asOf = typeof body.payload?.asOf === 'string' && !Number.isNaN(new Date(body.payload.asOf).getTime()) ? new Date(body.payload.asOf).toISOString() : null;
+    const replayId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal, { ...this.route(tenantId, domainId, 'decision.replay', 'RPL', replayId), writableTargets: [replayId] }, DecisionCapability.replay,
+      async (cap, scope) => {
+        const r = await this.replays.replay(cap, scope, packageId, v, asOf, principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, replayId);
+        return { result: r, targetType: 'RPL', targetId: replayId, targetVersion: '1', outboxEvent: null };
+      });
+    return { replay: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/:packageId/replays/list')
+  async listReplays(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId),
+      DecisionCapability.read, async (cap) => cap.readReplays().selectAll().where('package_id' as never, '=', packageId as never).orderBy('replayed_at' as never).execute());
+    return { replays: out.result, receipt: receipt(out) };
   }
 
   @Post('/list')

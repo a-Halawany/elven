@@ -29,6 +29,9 @@ export interface DecisionWorld {
   approverAuthority: AuthenticatedPrincipal;
   twinId: string; v1: number; controlId: string; rerouteId: string; airId: string; control2Id: string;
   objectiveId: string; decisionId: string; indicatorId: string; entityId: string;
+  /** An ASU the package may cite: 'the corridor stays open'. */
+  assumptionId: string;
+  uploadSourceId: string;
   evd: { id: string; version: number };
   records: { inv: { id: string; version: number }; ship: { id: string; version: number }; terms: { id: string; version: number } };
 }
@@ -83,6 +86,9 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
   const dec = await graph.declare(h.req(twinOwner, 'graph.strategy.declare', 'DEC', null, 'graph'), T, D, { payload: { objectType: 'DEC', title: 'Routing of SYN-SHIP-4472', statement: 'reroute, air-bridge, draw down, or wait',
     restsOn: [{ kind: 'strategy', id: objectiveId, rationale: 'the decision serves the objective' }] } }) as { strategy: { objectId: string } };
   const decisionId = dec.strategy.objectId;
+  const asu = await graph.declare(h.req(twinOwner, 'graph.strategy.declare', 'ASU', null, 'graph'), T, D, { payload: { objectType: 'ASU', title: 'The corridor stays open', statement: 'transits through Bab el-Mandeb continue at their seasonal level',
+    restsOn: [{ kind: 'entity', id: entityId, rationale: 'the assumption is about this strait' }] } }) as { strategy: { objectId: string } };
+  const uploadSourceId = await h.uploadSource();
   const seriesKey = `fixture:${sv.sourceKey}:value`;
   await prediction.registerSeries(h.req(twinOwner, 'prediction.series.register', 'SER', null), T, D,
     { payload: { seriesKey, sourceKey: sv.sourceKey, parserRef: 'sdmx-json-observations@1', valueField: 'OBS_VALUE', unit: 'transits/day',
@@ -90,7 +96,7 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
   const ind = await prediction.defineIndicator(h.req(twinOwner, 'prediction.indicator.define', 'IND', null), T, D,
     { payload: { seriesKey, description: 'corridor collapse: transits below 40 for five days', comparator: '<', threshold: 40, consecutiveDays: 5, owner: twinOwner.principalId } }) as { indicator: { indicatorId: string } };
   return { twins, graph, prediction, decisions, twinOwner, operator, owner, approver, approver2, authority, authority2, executive, agent, authorApprover, approverAuthority,
-           twinId, v1, controlId, rerouteId, airId, control2Id, objectiveId, decisionId, indicatorId: ind.indicator.indicatorId, entityId, evd, records };
+           twinId, v1, controlId, rerouteId, airId, control2Id, objectiveId, decisionId, indicatorId: ind.indicator.indicatorId, entityId, assumptionId: asu.strategy.objectId, uploadSourceId, evd, records };
 }
 
 /** The calls a suite makes against the decision controller, as the named principal. */
@@ -139,11 +145,20 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
     await choice(pkg, v, validChoice({ action_owner: as.principalId, ...(over.choice ?? {}) }), as);
     return { pkg, v };
   };
+  const replay = (pkg: string, v: number, payload: Record<string, unknown> = {}, as = w.executive) => dc.replay(h.req(as, 'decision.replay', 'RPL', null, 'decision'), T(), D(), pkg, String(v), { payload }) as Promise<{ replay: { replayId: string; contentDigest: string; asOf: string; cutoffs: Record<string, unknown>; layers: Record<string, unknown>; excluded: unknown[]; unavailable: unknown[]; invocation: Record<string, unknown> } }>;
+  const replays = (pkg: string, as = w.executive) => dc.listReplays(h.req(as, 'decision.read', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ replays: Array<Record<string, unknown>> }>;
   /** A proposed version, with its digest. */
   const proposed = async (over: Parameters<typeof fullDraft>[0] = {}): Promise<{ pkg: string; v: number; digest: string }> => {
     const { pkg, v } = await fullDraft(over);
     const r = await propose(pkg, v, over.as ?? w.owner);
     return { pkg, v, digest: r.proposal.versionDigest };
   };
-  return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, validTerms, validChoice, fullDraft, proposed };
+  /** A committed version: proposed, approved by the named approver, committed by the authority. */
+  const committed = async (over: Parameters<typeof fullDraft>[0] = {}): Promise<{ pkg: string; v: number; digest: string; approvalId: string; commitmentId: string }> => {
+    const p = await proposed(over);
+    const a = await approve(p.pkg, p.v, { decision: 'approve', versionDigest: p.digest, rationale: 'The reroute keeps the line running; the premium is acceptable.' }, w.approver);
+    const cm = await commit(p.pkg, p.v, p.digest, w.authority);
+    return { ...p, approvalId: a.approval.approvalId, commitmentId: cm.commitment.commitmentId };
+  };
+  return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed };
 }

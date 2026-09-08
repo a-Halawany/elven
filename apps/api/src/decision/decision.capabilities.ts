@@ -56,6 +56,7 @@ export interface DecisionReads {
   readApprovals(): any;
   readCommitments(): any;
   readRoleBindings(): any;
+  readReplays(): any;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
@@ -109,12 +110,19 @@ export interface CommitWrites extends DecisionReads {
                      title: string; statement: string; eventId: string; correlationId: string }):
     Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string }>;
 }
+export interface ReplayWrites extends DecisionReads {
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /** The five layers under the version's cut-offs and the bound upper as_of — computed in the database, under the caller's own read authority. */
+  replayLayers(a: { packageId: string; version: number; asOf: string | null }): Promise<Record<string, unknown>>;
+  recordReplay(a: { replayId: string; tenantId: string; domainId: string; packageId: string; version: number; asOf: string; contentDigest: string; headerDigest: string;
+                    reader: string; purpose: string; unavailable: unknown[]; summary: Record<string, unknown>; eventId: string; correlationId: string }): Promise<void>;
+}
 export interface WithdrawWrites extends DecisionReads {
   withdrawPackage(a: { packageId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites {
+class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -132,6 +140,18 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readApprovals(): any { return this.from('decision.approvals'); }
   readCommitments(): any { return this.from('decision.commitments'); }
   readRoleBindings(): any { return this.from('identity.role_bindings'); }
+  readReplays(): any { return this.from('decision.replays'); }
+
+  async replayLayers(a: { packageId: string; version: number; asOf: string | null }): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.replay_layers(${a.packageId}::uuid, ${a.version}::int, ${a.asOf}::timestamptz) as r`);
+    const r = rows[0]?.r;
+    if (r === undefined) throw new Error('replay returned no row');
+    return r;
+  }
+  async recordReplay(a: Parameters<ReplayWrites['recordReplay']>[0]): Promise<void> {
+    await this.call(sql`select decision.record_replay(${a.replayId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.asOf}::timestamptz,
+      ${a.contentDigest}, ${a.headerDigest}, ${a.reader}::uuid, ${a.purpose}, ${JSON.stringify(a.unavailable)}::jsonb, ${JSON.stringify(a.summary)}::jsonb, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
 
   async liveApprovals(a: { packageId: string; version: number }) {
     return this.call<{ approval_id: string; approver_principal_id: string }>(sql`select approval_id::text, approver_principal_id::text from decision.live_approvals(${a.packageId}::uuid, ${a.version}::int)`);
@@ -244,4 +264,5 @@ export const DecisionCapability = {
   withdraw(tx: Tx, action: string): WithdrawWrites { return new DecisionCapabilityImpl(tx, action); },
   approve(tx: Tx, action: string): ApproveWrites { return new DecisionCapabilityImpl(tx, action); },
   commit(tx: Tx, action: string): CommitWrites { return new DecisionCapabilityImpl(tx, action); },
+  replay(tx: Tx, action: string): ReplayWrites { return new DecisionCapabilityImpl(tx, action); },
 };

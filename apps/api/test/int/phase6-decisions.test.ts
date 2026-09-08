@@ -70,7 +70,7 @@ describe('P6-M1 · a package binds to a DEC a strategy owner declared; it never 
     expect(String(row['decision_object_id'])).toBe(decisionId);
     expect((await sql<{ e: string }>`select event e from decision.package_events where package_id = ${packageId}::uuid`.execute(h.su)).rows.map((x) => x.e)).toEqual(['package.declared']);
     // nothing was written into the strategy graph
-    expect((await sql<{ n: string }>`select count(*)::text n from graph.strategy_current where tenant_id = ${T()}::uuid`.execute(h.su)).rows[0]?.n).toBe('2');
+    expect((await sql<{ n: string }>`select count(*)::text n from graph.strategy_current where tenant_id = ${T()}::uuid`.execute(h.su)).rows[0]?.n).toBe('3');
   });
 
   it('a consequence class above C2 is refused before any port runs — no rule here reaches C3', async () => {
