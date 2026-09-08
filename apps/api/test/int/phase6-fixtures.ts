@@ -16,10 +16,11 @@ import type { TwinController } from '../../src/twin/twin.controller.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { PredictionController } from '../../src/prediction/prediction.controller.js';
 import type { DecisionController } from '../../src/decision/decision.controller.js';
+import type { ExecutiveController } from '../../src/executive/executive.controller.js';
 import { RECORD_FILES, completeElements } from './phase5-fixtures.js';
 
 export interface DecisionWorld {
-  twins: TwinController; graph: GraphController; prediction: PredictionController; decisions: DecisionController;
+  twins: TwinController; graph: GraphController; prediction: PredictionController; decisions: DecisionController; exec: ExecutiveController;
   twinOwner: AuthenticatedPrincipal; operator: AuthenticatedPrincipal;
   owner: AuthenticatedPrincipal; approver: AuthenticatedPrincipal; approver2: AuthenticatedPrincipal; authority: AuthenticatedPrincipal; authority2: AuthenticatedPrincipal;
   executive: AuthenticatedPrincipal; agent: AuthenticatedPrincipal;
@@ -27,6 +28,8 @@ export interface DecisionWorld {
   authorApprover: AuthenticatedPrincipal;
   /** A human who is both an approver and an authority: the approver-cannot-commit probe. */
   approverAuthority: AuthenticatedPrincipal;
+  /** A principal of kind 'agent' (no session): the target of "an agent is never a member / an approver" probes. */
+  machinePrincipalId: string;
   twinId: string; v1: number; controlId: string; rerouteId: string; airId: string; control2Id: string;
   objectiveId: string; decisionId: string; indicatorId: string; entityId: string;
   /** An ASU the package may cite: 'the corridor stays open'. */
@@ -44,7 +47,8 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
   const { GraphController: Gc } = await import('../../src/graph/graph.controller.js');
   const { PredictionController: Pc } = await import('../../src/prediction/prediction.controller.js');
   const { DecisionController: Dc } = await import('../../src/decision/decision.controller.js');
-  const twins = h.app.get(Tc); const graph = h.app.get(Gc); const prediction = h.app.get(Pc); const decisions = h.app.get(Dc);
+  const { ExecutiveController: Ec } = await import('../../src/executive/executive.controller.js');
+  const twins = h.app.get(Tc); const graph = h.app.get(Gc); const prediction = h.app.get(Pc); const decisions = h.app.get(Dc); const exec = h.app.get(Ec);
   const T = h.fx.tenantId; const D = h.fx.domainId;
   const twinOwner = await h.principalWith(['twin_owner', 'forecast_owner', 'strategy_owner'], 'twin-owner');
   const operator = await h.principalWith(['simulation_operator'], 'sim-operator');
@@ -57,6 +61,9 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
   const agent = await h.humanWithSession(['decision_agent'], 'decision-agent');
   const authorApprover = await h.humanWithSession(['decision_owner', 'decision_approver'], 'author-approver');
   const approverAuthority = await h.humanWithSession(['decision_approver', 'decision_authority'], 'approver-authority');
+  const machinePrincipalId = uuidv7();
+  await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
+            values (${machinePrincipalId}::uuid, 'agent', 'DOMAIN', ${T}::uuid, ${D}::uuid, ${`fixture-machine-${machinePrincipalId.slice(-8)}`}, ${`fx-mach-${machinePrincipalId.slice(-8)}`}, 'active')`.execute(h.su);
   const sv = await h.newVersion({ from: SERIES_START, to: SERIES_END, windowDays: 366 });
   const r = await h.runOnce(new RestConnector({ egress: syntheticEgress().egress }));
   expect(r.state, r.reason).toBe('finished');
@@ -95,7 +102,7 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
                  seasonalityDays: 7, attribution: 'Source: fixture statistics.', description: 'synthetic daily transits with a disruption episode' } });
   const ind = await prediction.defineIndicator(h.req(twinOwner, 'prediction.indicator.define', 'IND', null), T, D,
     { payload: { seriesKey, description: 'corridor collapse: transits below 40 for five days', comparator: '<', threshold: 40, consecutiveDays: 5, owner: twinOwner.principalId } }) as { indicator: { indicatorId: string } };
-  return { twins, graph, prediction, decisions, twinOwner, operator, owner, approver, approver2, authority, authority2, executive, agent, authorApprover, approverAuthority,
+  return { twins, graph, prediction, decisions, exec, twinOwner, operator, owner, approver, approver2, authority, authority2, executive, agent, authorApprover, approverAuthority, machinePrincipalId,
            twinId, v1, controlId, rerouteId, airId, control2Id, objectiveId, decisionId, indicatorId: ind.indicator.indicatorId, entityId, assumptionId: asu.strategy.objectId, uploadSourceId, evd, records };
 }
 
@@ -160,5 +167,17 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
     const cm = await commit(p.pkg, p.v, p.digest, w.authority);
     return { ...p, approvalId: a.approval.approvalId, commitmentId: cm.commitment.commitmentId };
   };
-  return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed };
+  // rooms and briefings
+  const ec = w.exec;
+  const openRoom = (payload: Record<string, unknown>, as = w.owner) => ec.openRoom(h.req(as, 'room.open', 'ROOM', null, 'decision'), T(), D(), { payload }) as Promise<{ room: { roomId: string; nextReviewAt: string } }>;
+  const membership = (roomId: string, payload: Record<string, unknown>, as = w.owner) => ec.membership(h.req(as, 'room.membership', 'ROOM', roomId, 'decision'), T(), D(), roomId, { payload: payload as never });
+  const cadence = (roomId: string, payload: Record<string, unknown>, as = w.owner) => ec.cadence(h.req(as, 'room.cadence', 'ROOM', roomId, 'decision'), T(), D(), roomId, { payload: payload as never }) as Promise<{ cadence: { nextReviewAt: string; reviewEveryDays: number } }>;
+  const review = (roomId: string, note: string, as = w.owner) => ec.review(h.req(as, 'decision.review', 'ROOM', roomId, 'decision'), T(), D(), roomId, { payload: { note } }) as Promise<{ review: { reviewedAt: string; nextReviewAt: string; wasOverdue: boolean } }>;
+  const getRoom = (roomId: string, as = w.owner) => ec.getRoom(h.req(as, 'room.read', 'ROOM', roomId, 'decision'), T(), D(), roomId) as Promise<{ room: Record<string, unknown> & { members: Array<Record<string, unknown>>; briefings: unknown[]; events: Array<Record<string, unknown>> } }>;
+  const listRooms = (as = w.owner) => ec.listRooms(h.req(as, 'room.read', 'ROOM', null, 'decision'), T(), D()) as Promise<{ rooms: Array<Record<string, unknown>> }>;
+  const compose = (payload: Record<string, unknown>, as = w.executive) => ec.compose(h.req(as, 'briefing.compose', 'BRF', null, 'briefing'), T(), D(), { payload }) as Promise<{ briefing: { briefingId: string; contentDigest: string; watermark: Record<string, unknown>; items: Array<Record<string, unknown>>; windows: Array<Record<string, unknown>>; sourceStates: Array<Record<string, unknown>>; sources: string[]; degraded: boolean; narrative: string | null; narrativeCites: string[]; composedVia: string } }>;
+  const getBriefing = (id: string, as = w.executive) => ec.getBriefing(h.req(as, 'briefing.read', 'BRF', id, 'briefing'), T(), D(), id) as Promise<{ briefing: Record<string, unknown> }>;
+  const listBriefings = (roomId: string | null, as = w.executive) => ec.listBriefings(h.req(as, 'briefing.read', 'BRF', null, 'briefing'), T(), D(), { payload: { roomId } }) as Promise<{ briefings: Array<Record<string, unknown>> }>;
+  return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed,
+           openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings };
 }

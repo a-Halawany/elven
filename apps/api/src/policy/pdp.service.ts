@@ -480,6 +480,55 @@ const BUNDLE_V1: Rule[] = [
     maxConsequence: 'C2',
   },
 
+  // ───────────────────────── Phase 6: rooms and briefings (P6-M4) ─────────────────────────
+  //   * A room is the owner's (and an executive may open one for a package they own);
+  //     membership and cadence are the owner's governed writes; a review is a member's act.
+  //   * A briefing is composed by an executive, a decision owner, or the briefing agent
+  //     (its one write); every reader role reads briefings, under room membership at read time.
+  {
+    actionPrefix: 'room.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'room.',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.review',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'briefing.compose',
+    requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'briefing.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
   // ───────────────────────── Phase 6: decision packages (P6-M1) ─────────────────────────
   //   * READ is broad: a package is for the people who decide, approve, watch and
   //     account for it. The bounded agents read what they compose from.

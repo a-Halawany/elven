@@ -14,6 +14,7 @@ import { GraphModule } from './graph/graph.module.js';
 import { PredictionModule } from './prediction/prediction.module.js';
 import { TwinModule } from './twin/twin.module.js';
 import { DecisionModule } from './decision/decision.module.js';
+import { ExecutiveModule } from './executive/executive.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { DecisionModule } from './decision/decision.module.js';
     PredictionModule,
     TwinModule,
     DecisionModule,
+    ExecutiveModule,
   ],
 })
 export class AppModule {}
