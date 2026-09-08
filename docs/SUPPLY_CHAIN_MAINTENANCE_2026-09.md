@@ -17,12 +17,17 @@ database after the last green run:
 | `postgres@sha256:9a8afca5…` (`postgres:18-alpine`, Alpine 3.24.1) | `libuuid` | 2.42.1-r0 | 2.42.3-r0 (CVE-2026-78408: 2.42.3-r1) |
 | `redis@sha256:978f0e01…` (`redis:8-alpine`, Alpine 3.23.5) | `setpriv` | 2.41.4-r0 | 2.41.6-r0 (CVE-2026-78408: 2.41.6-r1) |
 
-## 2. What the registry offers (scanned 2026-09-06, trivy 0.73.0, linux/amd64)
+## 2. What the registry offers (scanned 2026-09-06 and re-verified 2026-09-08, trivy 0.73.0, linux/amd64)
+
+> **Latest verified check: 2026-09-08 13:21 UTC** (run 34231435056 on this branch, and the same
+> script locally). Result: **no patched official image available**. The index digests below are
+> the ones the tags resolved to on that date; the affected packages are unchanged since 2026-09-06.
+> "No patched image available" in this record refers to that check, not to any earlier one.
 
 | Tag | Index digest today | util-linux | OpenSSL | c-ares |
 |---|---|---|---|---|
-| `postgres:18-alpine` | `sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2` | `libuuid` **2.42.1-r0 — affected** | 3.5.7-r0 (SCX-0006/7 class) | 1.34.8 — the SCX-0001 finding is gone in this build |
-| `redis:8-alpine` | `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576` | `setpriv` **2.41.4-r0 — affected** | 3.5.7-r0 (SCX-0008/9 class) | — |
+| `postgres:18-alpine` (unchanged 2026-09-08) | `sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2` | `libuuid` **2.42.1-r0 — affected** | 3.5.7-r0 (SCX-0006/7 class) | 1.34.8 — the SCX-0001 finding is gone in this build |
+| `redis:8-alpine` (unchanged 2026-09-08) | `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576` | `setpriv` **2.41.4-r0 — affected** | 3.5.7-r0 (SCX-0008/9 class) | — |
 | `postgres:18-alpine3.22`, `postgres:18-alpine3.23`, `postgres:18.1-alpine`, `redis:8-alpine3.22`, `redis:8.4-alpine` | (2026-09-05 scans) | affected in every variant | affected | — |
 
 Every published Postgres 18 and Redis 8 image variant ships util-linux below the Alpine fix.
@@ -76,6 +81,8 @@ so far in exactly these places:
 | Where | Trigger | Commit | Result |
 |---|---|---|---|
 | `C15 patched-image recheck` on this branch | `workflow_dispatch --ref maintenance/c15-image-recheck-2026-09` (read-only: `contents: read`, asserted by `assert-readonly-workflow.mjs`) | `8cc6d25a3a706cea202f84962af7285d6a025fc6` | run `34029030389`, success — `[util-linux/postgres] AFFECTED: libuuid 2.42.1-r0`, `[util-linux/redis] AFFECTED: setpriv 2.41.4-r0`, OpenSSL still affected in both; "no patched official image yet" |
+| `C15 patched-image recheck` on this branch | `workflow_dispatch --ref maintenance/c15-image-recheck-2026-09` (read-only) | `70c34083a1ad9844fdea206e7d6929920efac19b` | run `34231435056`, **2026-09-08 13:21 UTC**, success — same digests as 2026-09-06 (`postgres:18-alpine` → `d3e1620b…`, `redis:8-alpine` → `becdda6c…`); `[util-linux/postgres] AFFECTED: libuuid 2.42.1-r0` (7 rows), `[util-linux/redis] AFFECTED: setpriv 2.41.4-r0` (6 rows), OpenSSL 3.5.7-r0 still affected in both (CVE-2026-14456); "no patched official image yet" |
+| local read-only recheck, this branch | `node scripts/gate/check-patched-images.mjs` (trivy 0.73.0, linux/amd64, live registry) | `70c34083` | **2026-09-08 13:21 UTC**, identical verdict to run 34231435056 above |
 | `ci.yml` required job, this branch | push / pull_request | `8cc6d25a…` | the recheck step now runs **after a failed C15 gate** (`if: always() && env.C15_OUT != ''`); before this commit a red gate skipped it, so the runs inspected on PR #38 and PR #39 never executed the recheck |
 
 **Remaining limitation, stated:** until merge, no scheduled run watches util-linux. The
@@ -86,4 +93,11 @@ PR #38's branch does not carry the `ci.yml` change: its inspected run (340297148
 gate and SKIPPED the recheck, exactly as before. The step executes there only once this PR is
 merged and PR #38 is rebased onto it. After merge the schedule picks it up on the next day's run with no further
 change. C15 stays blocking; no waiver is added.
+
+## 7. Recheck log
+
+| Date (UTC) | Method | Pinned digests (compose, `conformance.manifest.json`) | Registry digests | Affected packages | Result |
+|---|---|---|---|---|---|
+| 2026-09-06 | run 34029030389 (dispatch) + local scan | `postgres@sha256:9a8afca5…`, `redis@sha256:978f0e01…` | `d3e1620b…`, `becdda6c…` | util-linux `libuuid` 2.42.1-r0 / `setpriv` 2.41.4-r0 (CVE-2026-53612, -53613, -53614, -76642, -78408, -78409, -78410); OpenSSL 3.5.7-r0 (CVE-2026-14456) | no patched image; no re-pin; no waiver |
+| **2026-09-08 13:21** | run **34231435056** (dispatch, `70c34083`) + local `check-patched-images.mjs` | unchanged | unchanged: `d3e1620b…`, `becdda6c…` | unchanged (7 rows postgres, 6 rows redis; OpenSSL 2 rows each) | **no patched image available as of this check**; no re-pin possible; no waiver; C15 remains red on the pins and blocks every merge in the recorded order |
 
