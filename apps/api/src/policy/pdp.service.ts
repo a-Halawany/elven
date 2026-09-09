@@ -82,6 +82,14 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
       { role: 'collection_agent', atScope: 'DOMAIN' },
+      // Phase 6 — the seven decision roles resolve their own scope like every other (the Decisions shell found it, as the Graph shell did for Phase 3).
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+      { role: 'decision_agent', atScope: 'DOMAIN' },
+      { role: 'briefing_agent', atScope: 'DOMAIN' },
+      { role: 'reporting_agent', atScope: 'DOMAIN' },
       /*
        * EVERY DOMAIN ROLE, INCLUDING THE ONES LATER PHASES ADDED.
        *

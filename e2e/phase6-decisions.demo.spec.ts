@@ -47,7 +47,7 @@ test.describe.serial('Phase 6 — Decisions and Briefings screens', () => {
     await expect(detail.getByText('SYNTHETIC').first()).toBeVisible();
     await expect(detail.getByText(/status quo \(do nothing\)/)).toBeVisible();
     await expect(detail.getByText(/UNSIMULATED/).first()).toBeVisible();
-    await expect(detail.getByText(/38 days below safety stock/)).toBeVisible();
+    await expect(detail.getByText(/38 days below safety stock/).first()).toBeVisible();
     await expect(detail.getByText(/■ COMMITTED/)).toBeVisible();
     await expect(detail.getByText(/decision\.commit/)).toBeVisible();
     await expect(detail.getByText(/OUTCOME NOT MET|OUTCOME MET/)).toBeVisible();
