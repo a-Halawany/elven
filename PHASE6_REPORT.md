@@ -417,7 +417,30 @@ reached the elapsed case's admission inside 80 ms, which the harness now accepts
 
 ### 12.4 CI at the exact head
 
-CI_RESULT_2
+Three heads carry this pass; each is reported for itself.
+
+- **`c93d190`** (the residual corrections and the register): run 34387275430 — `browser-regression`
+  **success**; `build-test` **failure** at the integration step on one case only,
+  `phase6-residual-corrections > R7 elapsed`: the runner reached the composition's admission inside
+  the 80 ms budget and the reviewed code then marked the run stopped after the committed write — the
+  R7b consequence in its other form, corrected in the next head (a finished last unit stays
+  `finished`; the case accepts either path); `supply-chain` **failure at C15** with the FINAL C16/C17
+  steps skipped; run 34387275344 — `C19 lifecycle`: the macOS job failed once on its "deliberate
+  evasion is outside the claimed boundary" probe (nothing in this branch touches C19; the probe
+  asserts a documented boundary) and **succeeded on re-run** with every job green.
+- **`038fa9f`** (the C15 dependency remediation, the C17 inventory move, the run-outcome correction):
+  run 34389478503 — `browser-regression` **success**; `build-test`: unit, acceptance and the whole
+  integration suite **passed**, then the C18 dual-path gate refused to start on a dirty worktree —
+  `apps/web/next-env.d.ts`, which next 16.3.3 regenerates with one more type import during the web
+  build; the regenerated file is committed in the head that follows; `supply-chain` **failure at
+  C15 on the image findings alone** — `pnpm-audit-human`, `pnpm-audit-json`, `trivy-fs`,
+  `trivy-fs-json`, both gitleaks steps and both image scans report `[ok]`, and the thirteen
+  UNGOVERNED rows are the util-linux CVEs in the pinned postgres and redis images (register §4,
+  R-3); run 34389478506 — `C19 lifecycle` **success**.
+- The docs head that carries this section and the regenerated type file is reported in the PR
+  body with its own run ids.
+
+No waiver, no bypass: C15 and FINAL C16/C17 stay blocking.
 
 ### 12.5 What remains (not closed)
 
