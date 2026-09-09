@@ -100,6 +100,7 @@ describe('P6-M3 · F5 — the replay reconstructs five layers under exact cut-of
     const dec = L.decided;
     expect((dec['version'] as Record<string, unknown>)['version_digest']).toBe(P.digest);
     expect((dec['dissent'] as unknown[]).length).toBe(1);
+    expect(dec['prior_dissent']).toEqual([]);
     expect((dec['approvals'] as Array<Record<string, unknown>>).map((a) => a['approval_id'])).toEqual([P.approvalId]);
     expect((dec['approvals'] as Array<Record<string, unknown>>)[0]?.['revoked_before_decision']).toBe(false);
     expect((dec['commitment'] as Record<string, unknown>)['commitment_id']).toBe(P.commitmentId);

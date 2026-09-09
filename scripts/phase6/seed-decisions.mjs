@@ -37,24 +37,21 @@ const X = `/v1/tenants/${T}/domains/${D}`;
 
 /* ── 1. the personas ─────────────────────────────────────────────────────── */
 console.log('\n1. the personas — two new synthetic humans, created by the platform administrator');
-const principals = await call(`/v1/tenants/${T}/principals/list`, { scope: 'TENANT', tenantId: T, action: 'identity.principal.list', objectType: 'PRN', principalId: `principal:${admin.principalId}`, purposeId: 'platform.administration', sideEffect: 'none' }, {}, admin.token);
-const existing = principals.ok ? (principals.body.principals ?? []) : [];
+// Principal listing is not granted to the administrator (the Phase 1 seed falls back the same way): create, and on 409 log in — a
+// login name is a person, so a persona is reused only when its own credential opens its session.
 async function ensureHuman(loginName, displayName, roleCode) {
-  const found = existing.find((p) => p.login_name === loginName || p.loginName === loginName);
-  if (found) {
-    const name = found.display_name ?? found.displayName;
-    if (name !== displayName) { bad(`login ${loginName} already belongs to "${name}" — a different persona; refusing to reuse it`); process.exit(1); }
-    ok(`${displayName} present (${roleCode})`); return found.id ?? found.principalId;
-  }
   const r = await call(`/v1/tenants/${T}/principals`, { scope: 'TENANT', tenantId: T, action: 'identity.principal.create', objectType: 'PRN', principalId: `principal:${admin.principalId}`, purposeId: 'platform.administration' },
     { kind: 'human', displayName, loginName, password: OPERATOR_PASSWORD, roleCode, domainId: D }, admin.token);
   if (r.ok) { ok(`${displayName} created (${roleCode})`); return r.body.principal?.principalId; }
-  bad(`could not create ${displayName}: ${r.status} ${r.body?.message ?? ''}`); return null;
+  if (r.status !== 409) { bad(`could not create ${displayName}: ${r.status} ${r.body?.message ?? ''}`); return null; }
+  const s = await login(loginName, OPERATOR_PASSWORD);
+  if (s === null) { bad(`${loginName} exists but does not open a session with the demonstration credential — a different persona; refusing to reuse it`); return null; }
+  ok(`${displayName} present (${roleCode})`); return s.principalId;
 }
 const ownerId = await ensureHuman('l.brandt', 'L. Brandt — decision owner', 'decision_owner');
 const approverId = await ensureHuman('s.okafor', 'S. Okafor — executive approver', 'decision_approver');
-const dvorakId = existing.find((p) => (p.login_name ?? p.loginName) === 'm.dvorak')?.id ?? existing.find((p) => (p.login_name ?? p.loginName) === 'm.dvorak')?.principalId ?? null;
-const nakamuraId = existing.find((p) => (p.login_name ?? p.loginName) === 't.nakamura')?.id ?? existing.find((p) => (p.login_name ?? p.loginName) === 't.nakamura')?.principalId ?? null;
+const dvorakId = (await login('m.dvorak', OPERATOR_PASSWORD))?.principalId ?? null;
+const nakamuraId = (await login('t.nakamura', OPERATOR_PASSWORD))?.principalId ?? null;
 if (!ownerId || !approverId || !dvorakId || !nakamuraId) { bad('personas missing (run acts I–V first)'); process.exit(1); }
 // The second roles: the administrator's act through the database controller (disclosed above).
 {
@@ -265,15 +262,15 @@ if (committedVersion === null) {
 
 /* ── 7. the room and the briefing ────────────────────────────────────────── */
 console.log('\n7. the room — members, weekly cadence — and the briefing the agent composes');
-const roomsList = await call(`${X}/rooms/list`, dec(owner, { action: 'room.read', objectType: 'ROOM', sideEffect: 'none' }), {}, owner.token);
+const roomsList = await call(`${X}/rooms/list`, dec(owner, { action: 'room.read', objectType: 'DRM', sideEffect: 'none' }), {}, owner.token);
 let room = (roomsList.body.rooms ?? []).find((r) => r.package_id === PKG);
 if (!room) {
-  const r = await call(`${X}/rooms/open`, dec(owner, { action: 'room.open', objectType: 'ROOM' }), { packageId: PKG, title: TITLE, reviewEveryDays: 7 }, owner.token);
+  const r = await call(`${X}/rooms/open`, dec(owner, { action: 'room.open', objectType: 'DRM' }), { packageId: PKG, title: TITLE, reviewEveryDays: 7 }, owner.token);
   if (!r.ok) { bad(`room refused (${r.status}) ${r.body?.message ?? ''}`); process.exit(1); }
   room = { room_id: r.body.room.roomId };
   ok(`room opened ${room.room_id.slice(0, 8)}… — weekly review, next ${String(r.body.room.nextReviewAt).slice(0, 10)}`);
   for (const [pid, role, who] of [[approverId, 'approver', 'S. Okafor'], [dvorakId, 'observer', 'M. Dvořák'], [nakamuraId, 'observer', 'T. Nakamura']]) {
-    const m = await call(`${X}/rooms/${room.room_id}/membership`, dec(owner, { action: 'room.membership', objectType: 'ROOM', objectId: room.room_id }), { principal: pid, role, op: 'add' }, owner.token);
+    const m = await call(`${X}/rooms/${room.room_id}/membership`, dec(owner, { action: 'room.membership', objectType: 'DRM', objectId: room.room_id }), { principal: pid, role, op: 'add' }, owner.token);
     if (!m.ok) bad(`membership ${who} refused (${m.status}) ${m.body?.message ?? ''}`); else ok(`${who} added as ${role}`);
   }
 } else ok(`room present ${room.room_id.slice(0, 8)}…`);
@@ -363,7 +360,7 @@ const r2 = await call(`${X}/decisions/${PKG}/versions/${committedVersion}/replay
 if (!r1.ok || !r2.ok) bad(`replay refused (${r1.status}/${r2.status}) ${r1.body?.message ?? r2.body?.message ?? ''}`);
 else {
   const a = r1.body.replay; const b = r2.body.replay;
-  ok(`known: ${a.summary.known} evidence version(s) through ${a.cutoffs.observed_through} read at ${String(a.cutoffs.known_at).slice(0, 19)}; believed: ${a.summary.assumptions} assumption(s), ${a.summary.branches} branch state(s); tested: ${a.summary.runs} run(s), ${a.summary.reproductions} pre-decision verdict(s); decided: ${a.summary.dissent} dissent, ${a.summary.approvals} approval(s), commitment at ${a.layers.decided.commitment.op_class}`);
+  ok(`known: ${a.summary.known} evidence version(s) through ${a.cutoffs.observed_through} read at ${String(a.cutoffs.known_at).slice(0, 19)}; believed: ${a.summary.assumptions} assumption(s), ${a.summary.branches} branch state(s); tested: ${a.summary.runs} run(s), ${a.summary.reproductions} pre-decision verdict(s); decided: ${a.summary.dissent} dissent on this version and ${a.summary.prior_dissent ?? 0} on earlier versions, ${a.summary.approvals} approval(s), commitment at ${a.layers.decided.commitment.op_class}`);
   const obs = Object.entries(a.layers.observed).filter(([, v]) => v.length > 0).map(([k, v]) => `${k}: ${v.length}`).join(', ');
   ok(`observed (after the decision, at or before as_of): ${obs || 'nothing'}; excluded from the earlier layers: ${a.summary.excluded}; unavailable now: ${a.summary.unavailable}`);
   if (a.contentDigest === b.contentDigest && a.invocation.reader !== b.invocation.reader) ok(`S. Okafor's and M. Dvořák's replays carry the same content digest ${a.contentDigest.slice(0, 16)}… and different invocation records`);

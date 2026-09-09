@@ -154,10 +154,10 @@ export default function DecisionsPage() {
                   <DefinitionRow term="Monitoring">{v.monitoring_conditions.map((m, i) => <span key={i}>{String(m['kind'])}{m['every_days'] ? ` every ${String(m['every_days'])} days` : ''} → owner <Mono>{short(m['owner'])}</Mono>; </span>)}</DefinitionRow>
                 </dl>
               )}
-              <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Dissent</h4>
-              {v.dissent.length === 0 ? <Empty>No dissent recorded.</Empty> : v.dissent.map((d) => (
-                <p key={d.dissent_id} style={{ fontSize: 'var(--eye-type-label-sm)' }}><strong>{d.position}</strong> — {d.rationale} <span style={{ color: 'var(--eye-color-ink-muted)' }}>(principal {short(d.principal_id)}, {fmtInstant(d.recorded_at)})</span></p>
-              ))}
+              <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Dissent (every version of this package — never removed by approval or by a change of choice)</h4>
+              {open.versions.every((x) => x.dissent.length === 0) ? <Empty>No dissent recorded.</Empty> : open.versions.flatMap((x) => x.dissent.map((d) => (
+                <p key={d.dissent_id} style={{ fontSize: 'var(--eye-type-label-sm)' }}><strong>{d.position}</strong> — {d.rationale} <span style={{ color: 'var(--eye-color-ink-muted)' }}>(on v{x.version}, principal {short(d.principal_id)}, {fmtInstant(d.recorded_at)})</span></p>
+              )))}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Approvals</h4>
               {v.approvals.length === 0 ? <Empty>No approval recorded.</Empty> : (
                 <table className="eye-table" style={tableStyle}>
@@ -212,7 +212,7 @@ export default function DecisionsPage() {
                       {(replay.layers.believed['forecasts'] ?? []).map((f) => <span key={String(f['id'])}>forecast {String(f['id']).slice(0, 8)}… <strong>{String(f['validation_state'] ?? f['truth_state'])}</strong>; </span>)}
                     </DefinitionRow>
                     <DefinitionRow term="Tested">{(replay.layers.tested['runs'] ?? []).length} run(s) with their digests · {(replay.layers.tested['reproductions'] ?? []).length} reproduction verdict(s) before the decision · twin version(s) {(replay.layers.tested['twin_versions'] ?? []).map((t) => `${String(t['twin_id']).slice(0, 8)}…@${String(t['version'])} (${String(t['verification_at_decided_at'])})`).join(', ')}</DefinitionRow>
-                    <DefinitionRow term="Decided">version digest <Mono>{String((replay.layers.decided['version'] as Record<string, unknown>)?.['version_digest'] ?? '').slice(0, 16)}…</Mono> · {((replay.layers.decided['dissent'] as unknown[]) ?? []).length} dissent · {((replay.layers.decided['approvals'] as unknown[]) ?? []).length} approval(s) · commitment at class <Mono>{String((replay.layers.decided['commitment'] as Record<string, unknown>)?.['op_class'])}</Mono> · policy decision <Mono>{short((replay.layers.decided['policy'] as Record<string, unknown> | null)?.['policy_decision_id'])}</Mono> · audit seq <Mono>{String((replay.layers.decided['audit'] as Record<string, unknown> | null)?.['audit_seq'] ?? '—')}</Mono></DefinitionRow>
+                    <DefinitionRow term="Decided">version digest <Mono>{String((replay.layers.decided['version'] as Record<string, unknown>)?.['version_digest'] ?? '').slice(0, 16)}…</Mono> · {((replay.layers.decided['dissent'] as unknown[]) ?? []).length} dissent on this version, {((replay.layers.decided['prior_dissent'] as unknown[]) ?? []).length} on earlier versions · {((replay.layers.decided['approvals'] as unknown[]) ?? []).length} approval(s) · commitment at class <Mono>{String((replay.layers.decided['commitment'] as Record<string, unknown>)?.['op_class'])}</Mono> · policy decision <Mono>{short((replay.layers.decided['policy'] as Record<string, unknown> | null)?.['policy_decision_id'])}</Mono> · audit seq <Mono>{String((replay.layers.decided['audit'] as Record<string, unknown> | null)?.['audit_seq'] ?? '—')}</Mono></DefinitionRow>
                     <DefinitionRow term="Observed (after the decision)">{Object.entries(replay.layers.observed).filter(([, arr]) => arr.length > 0).map(([k, arr]) => `${k}: ${arr.length}`).join(' · ') || 'nothing yet'}</DefinitionRow>
                   </dl>
                 </section>

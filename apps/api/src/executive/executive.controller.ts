@@ -42,10 +42,10 @@ export class ExecutiveController {
     const p = body.payload ?? {};
     if (typeof p.packageId !== 'string') throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'packageId is required'), 422);
     const roomId = newId();
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.open', 'ROOM', roomId), ExecutiveCapability.room,
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.open', 'DRM', roomId), ExecutiveCapability.room,
       async (cap, scope) => {
         const r = await this.rooms.open(cap, scope, { packageId: p.packageId as string, title: String(p.title ?? ''), reviewEveryDays: Number(p.reviewEveryDays ?? 7) }, principal.principalId, envelope.correlation_id, roomId);
-        return { result: r, targetType: 'ROOM', targetId: roomId, targetVersion: '1', outboxEvent: null };
+        return { result: r, targetType: 'DRM', targetId: roomId, targetVersion: '1', outboxEvent: null };
       });
     return { room: out.result, receipt: receipt(out) };
   }
@@ -54,10 +54,10 @@ export class ExecutiveController {
   async membership(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('roomId') roomId: string, @Body() body: { payload?: { principal?: string; role?: string; op?: 'add' | 'remove' } }) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.membership', 'ROOM', roomId), ExecutiveCapability.room,
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.membership', 'DRM', roomId), ExecutiveCapability.room,
       async (cap, scope) => {
         const r = await this.rooms.membership(cap, scope, roomId, { principal: String(p.principal ?? ''), role: String(p.role ?? 'observer'), op: p.op === 'remove' ? 'remove' : 'add' }, principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'ROOM', targetId: roomId, targetVersion: '1', outboxEvent: null };
+        return { result: r, targetType: 'DRM', targetId: roomId, targetVersion: '1', outboxEvent: null };
       });
     return { membership: out.result, receipt: receipt(out) };
   }
@@ -66,10 +66,10 @@ export class ExecutiveController {
   async cadence(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('roomId') roomId: string, @Body() body: { payload?: { reviewEveryDays?: number; nextReviewAt?: string | null } }) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.cadence', 'ROOM', roomId), ExecutiveCapability.room,
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'room.cadence', 'DRM', roomId), ExecutiveCapability.room,
       async (cap, scope) => {
         const r = await this.rooms.cadence(cap, scope, roomId, { everyDays: Number(p.reviewEveryDays ?? 7), nextReviewAt: typeof p.nextReviewAt === 'string' ? instant(p.nextReviewAt, new Date().toISOString()) : null }, principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'ROOM', targetId: roomId, targetVersion: '1', outboxEvent: null };
+        return { result: r, targetType: 'DRM', targetId: roomId, targetVersion: '1', outboxEvent: null };
       });
     return { cadence: out.result, receipt: receipt(out) };
   }
@@ -77,10 +77,10 @@ export class ExecutiveController {
   @Post('/rooms/:roomId/review')
   async review(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('roomId') roomId: string, @Body() body: { payload?: { note?: string } }) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.review', 'ROOM', roomId), ExecutiveCapability.room,
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.review', 'DRM', roomId), ExecutiveCapability.room,
       async (cap, scope) => {
         const r = await this.rooms.review(cap, scope, roomId, String(body.payload?.note ?? ''), principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'ROOM', targetId: roomId, targetVersion: '1', outboxEvent: null };
+        return { result: r, targetType: 'DRM', targetId: roomId, targetVersion: '1', outboxEvent: null };
       });
     return { review: out.result, receipt: receipt(out) };
   }
@@ -88,14 +88,14 @@ export class ExecutiveController {
   @Post('/rooms/list')
   async listRooms(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'room.read', 'ROOM', null), ExecutiveCapability.read, async (cap) => this.rooms.list(cap, principal.principalId));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'room.read', 'DRM', null), ExecutiveCapability.read, async (cap) => this.rooms.list(cap, principal.principalId));
     return { rooms: out.result, receipt: receipt(out) };
   }
 
   @Post('/rooms/:roomId/get')
   async getRoom(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('roomId') roomId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'room.read', 'ROOM', roomId), ExecutiveCapability.read, async (cap) => this.rooms.get(cap, roomId, principal.principalId, envelope.correlation_id));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'room.read', 'DRM', roomId), ExecutiveCapability.read, async (cap) => this.rooms.get(cap, roomId, principal.principalId, envelope.correlation_id));
     return { room: out.result, receipt: receipt(out) };
   }
 
@@ -184,13 +184,13 @@ export class ExecutiveController {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     if (typeof p.roomId !== 'string' || typeof p.agentId !== 'string') throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'roomId and agentId are required'), 422);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'agent.trigger', 'ROOM', p.roomId), ExecutiveCapability.read,
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'agent.trigger', 'DRM', p.roomId), ExecutiveCapability.read,
       async (cap) => {
         const room = (await cap.readRooms().selectAll().where('room_id' as never, '=', p.roomId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
         if (room === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no such room'), 404);
         const cadence = Number(p.cadenceSeconds ?? Number(room['review_every_days']) * 86_400);
         const r = await this.worker.scheduleRoom(tenantId, domainId, p.roomId as string, p.agentId as string, cadence);
-        return { result: { ...r, roomId: p.roomId, agentId: p.agentId, scheduler_enabled: this.worker !== undefined }, targetType: 'ROOM', targetId: p.roomId as string, targetVersion: '1', outboxEvent: null };
+        return { result: { ...r, roomId: p.roomId, agentId: p.agentId, scheduler_enabled: this.worker !== undefined }, targetType: 'DRM', targetId: p.roomId as string, targetVersion: '1', outboxEvent: null };
       });
     return { schedule: out.result, receipt: receipt(out) };
   }

@@ -196,7 +196,7 @@ export class AgentsService {
   // ───────────────────────── the briefing agent ─────────────────────────
   private async brief(p: AuthenticatedPrincipal, T: string, D: string, roomId: string | null, task: 'briefing' | 'monitor', budget: Record<string, number>, spent: Record<string, unknown>, _refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
     if (roomId === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the briefing task names a room'), 422);
-    const room = await this.pipeline.consequentialRead(this.env(p, T, D, 'room.read', 'ROOM', roomId, correlationId), p, this.route(T, D, 'room.read', 'ROOM', roomId), ExecutiveCapability.read,
+    const room = await this.pipeline.consequentialRead(this.env(p, T, D, 'room.read', 'DRM', roomId, correlationId), p, this.route(T, D, 'room.read', 'DRM', roomId), ExecutiveCapability.read,
       async (cap) => (await cap.readRooms().selectAll().where('room_id' as never, '=', roomId as never).executeTakeFirst()) as Record<string, unknown> | undefined);
     spent['reads'] = Number(spent['reads']) + 1;
     if (room.result === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no such room'), 404);
