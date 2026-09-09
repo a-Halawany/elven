@@ -389,6 +389,32 @@ The demonstration's Act VI records were admitted under 0041–0047/0048 and keep
 their choice (no `twin_id`/`period`): `record_outcome` keeps the 0048 rules for such choices. New
 records on the same deployment are admitted under 0049.
 
+### 12.3a The maintenance commit after the correction pass (dependencies and the C17 inventory)
+
+The residual review asked that every current C15 finding be addressed, not only the images. On the
+corrected head the dependency findings were remediated as their own commit (`FULL_PRODUCT_DELIVERY_REGISTER.md`
+§4.1): `next` 16.3.3, `sharp` 0.35.4 and `multer` 2.3.0 as exact reviewed overrides, `vitest` 4.1.11,
+and — because the sharp fix ships libvips 8.18.6 — the C17 bundled native stack moved from
+`@img/sharp-libvips-linux-x64` 1.3.2 to 1.3.3 with its contract, legal-file table, manifest, vendored
+texts and source-offer record (thirteen re-versioned libraries; only libffi's licence text changed
+upstream). One product change rides with it: a run that completes its last unit inside the deadline
+is `finished`; a stopped label was never written after a committed admission again (the CI runner
+reached the elapsed case's admission inside 80 ms, which the harness now accepts on either path).
+
+| Check (class) at the maintenance head | Result |
+|---|---|
+| `pnpm audit --audit-level high` on the remediated closure | no known vulnerabilities (the two moderate vitest advisories were remediated too) |
+| `trivy fs` (HIGH,CRITICAL, no ignore file) | 0 findings in `pnpm-lock.yaml` |
+| C17 licence gate, local (`licence-obligations.mjs`) | PASS — 203 production / 320 development classified, 0 unresolved; bundled stack 29 components, 9 source offers |
+| C17 gate unit files (`c17-bundled-stack`, `c17-host-independence`, `c17-licence-governance`, `c17-evidence-package`) | 4 files, 147 passed |
+| **Harness** — `phase6-residual-corrections` | 19/19 |
+| **Harness** — `test:int:all` | 43 files, 783 passed |
+| **Unit** (`pnpm test`) | 39 files, 2136 passed; hermetic meta 9 passed |
+| Post-C18 upgrade check | PASS — virgin database through 0049 (49 files), digests match, 297/297 and 274/274 |
+| Web build; boundaries; gitleaks | clean; no violations (476 modules); no leaks |
+| **Browser** — Phase 6 spec on the deployment restarted from this build | 3/3; the Phase 4/5 spec stays 11/12 (ECB) |
+| Base images | today's registry digests of `postgres:18-alpine` and `redis:8-alpine` still carry util-linux 2.42.1-r0 / 2.41.4-r0 (trivy 0.73.0, local); resource request R-3 in the register |
+
 ### 12.4 CI at the exact head
 
 CI_RESULT_2

@@ -75,14 +75,23 @@ State at head `9aaf0311` (run 34343317671, job 102438951209, artifact `supply-ch
 | CVE-2026-77037, -77078, -82333 (HIGH) — multer DoS | `@nestjs/platform-express@11.1.28` → `multer@2.2.0` | `multer@2.3.0` | upstream `@nestjs/platform-express` still declares `multer@2.2.0` through `12.0.1`; remediable by a governed override (§4.1) |
 | CVE-2026-53612/53613/53614/76642/78408/78409/78410 (HIGH) — util-linux (`libuuid`, `setpriv`) | pinned `postgres@sha256:9a8afca…` (alpine 3.24.1, util-linux 2.42.1-r0) and `redis@sha256:978f0e0…` (alpine 3.23.5, util-linux 2.41.4-r0) | Alpine `2.42.3-r1` / `2.41.6-r1` | **not remediable by re-pinning today**: the registry's current `postgres:18-alpine` (`sha256:d3e1620b…`) and `redis:8-alpine` (`sha256:becdda6c…`) still carry the same versions (scanned locally with trivy 0.73.0 on 2026-09-09, evidence in the PR #46 record). Two ways forward, both needing a resource: (a) the official images are rebuilt against the patched packages — nothing to do but recheck; (b) derived images (`FROM <pin>` + `apk upgrade util-linux`) published to a registry the gate can resolve by digest. **Resource request R-3:** a container registry namespace and a push credential for (b), or the decision to wait for (a). No waiver, no weakened assertion, no `.trivyignore`. |
 
-### 4.1 Dependency remediation (maintenance track)
+### 4.1 Dependency remediation (maintenance track) — DONE at the head this register is committed with
 
-Planned as its own commit on `phase6-decisions` after the correction pass, verified by the same
-checks (unit, `test:int:all`, upgrade check, web build, browser specs) and the hosted C15 job:
-`next` 16.2.12 → 16.3.3 (React 19.2.8 stays within its peer range); `sharp` pinned to 0.35.4
-through a pnpm override on the optional dependency; `multer` pinned to 2.3.0 through a pnpm override
-(the Nest packages still declare 2.2.0). Overrides are governed dispositions recorded here, not
-suppressions. If C15 stays red after this, only the image findings remain (§4, R-3).
+Applied as its own commit on `phase6-decisions` after the residual correction pass, verified by the
+same checks and the hosted C15 job:
+
+| Change | Reviewed decision |
+|---|---|
+| `next` 16.2.12 → 16.3.3 (`apps/web`) | the first version carrying both RCE fixes; React 19.2.8 stays within its peer range |
+| `sharp` override `'>=0.35.0'` → exact `0.35.4` (`pnpm-workspace.yaml`) | the first version carrying the libheif fix; a range is not a reviewed decision |
+| `multer` override exact `2.3.0` (`pnpm-workspace.yaml`) | the first version carrying all three DoS fixes; `@nestjs/platform-express` still declares 2.2.0 through 12.0.1 |
+| `vitest` 4.1.10 → 4.1.11 (all four workspaces) | GHSA-82fw-gwwq-j7x9 (moderate, development only); the audit receipt is exactly clean |
+| C17 bundled native stack: `@img/sharp-libvips-linux-x64` 1.3.2 → 1.3.3 | the sharp fix ships libvips 8.18.6 with 13 re-versioned bundled libraries; the code-owned contract, the legal-file table, the manifest (`scripts/gate/bundled-components.json`, re-pinned by digest), the vendored texts (`vendor/sharp-libvips/1.3.3/legal`, libffi's 2026 text re-fetched at v3.8.0, the rest byte-identical) and the source-offer record (build recipe v1.3.3 at commit `6e5971d3…`) were moved together; no disposition was added or weakened |
+
+Local receipts on the remediated closure: `pnpm audit --audit-level high` — no known vulnerabilities;
+`trivy fs` (HIGH,CRITICAL, no ignore file) — 0 findings in `pnpm-lock.yaml`; the C17 licence gate —
+PASS (203 production / 320 development components classified, 0 unresolved). What C15 still names
+after this is the image finding of §4 alone (R-3).
 
 ## 5. Atomic requirements audit (Volumes 0–10)
 

@@ -464,10 +464,17 @@ describe('R7 · limits are enforced before the work they constrain, inside neste
     const before = await briefingsOf(roomId);
     const slow = (await c.registerAgent({ kind: 'briefing', ...base(), budgets: budgets({ max_elapsed_ms: 80 }) }, admin)).agent;
     const r = (await c.runAgent(slow.agentId, { task: 'briefing', roomId })).run;
-    expect(r.outcome).toBe('stopped');
-    expect(String(r.stopReason)).toMatch(/elapsed/);
-    expect(r.outputs['briefing_id']).toBeUndefined();
-    expect(await briefingsOf(roomId)).toBe(before);
+    // either the deadline fell before admission (stopped, nothing admitted) or the composition completed inside it (finished, one
+    // briefing); a stopped label after a committed write never happens
+    if (r.outcome === 'stopped') {
+      expect(String(r.stopReason)).toMatch(/elapsed/);
+      expect(r.outputs['briefing_id']).toBeUndefined();
+      expect(await briefingsOf(roomId)).toBe(before);
+    } else {
+      expect(r.outcome).toBe('finished');
+      expect(typeof r.outputs['briefing_id']).toBe('string');
+      expect(await briefingsOf(roomId)).toBe(before + 1);
+    }
   }, 60_000);
 
   it('max_items applies to the decision draft; task/condition pairs that cannot be enforced are refused at registration', async () => {

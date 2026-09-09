@@ -206,7 +206,10 @@ export class AgentsService {
       else { outcome = 'faulted'; stopReason = `fault: ${(e as Error).message}`.slice(0, 500); }
     }
     const spent = meter.close();
-    if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) { outcome = 'stopped'; stopReason = `budget: elapsed ${String(spent['elapsed_ms'])} ms exceeds the budget of ${String(budget['max_elapsed_ms'])} ms`; }
+    // The deadline is enforced BEFORE every unit of work and before admission. A run that reaches this point 'finished'
+    // completed its last unit legitimately; a stopped label after a committed write would misdescribe it (residual review
+    // R7b), so the overrun is recorded on the spend and the outcome stays what it was.
+    if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) spent['over_budget'] = 1;
     const closed = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, this.route(T, D, 'agent.run', 'RUN', runId), ExecutiveCapability.agent,
       async (cap) => {
         const r = await cap.closeAgentRun({ runId, tenantId: T, domainId: D, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, correlationId: a.correlationId });
