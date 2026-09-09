@@ -188,8 +188,13 @@ Phase 3's Graph shell had found).
 | gitleaks over the branch's commits | no leaks |
 | Web typecheck and build | clean; `/decisions`, `/decisions/briefings` |
 
-CI at the candidate is reported on the PR once the run ids exist; the FINAL C16/C17 steps stay
-skipped behind the independently red C15 and are reported separately from the runnable green checks.
+**CI at the candidate `f702c532`** (reported apart from the local checks above): run
+34323205261 — `build-test` **success**, `browser-regression` **success**, `supply-chain` **failure at
+C15** (the tracked pinned-runner gate; independent of this branch, red since the util-linux CVEs of
+#39) with the FINAL C16/C17 steps **skipped** behind it (patched-image recheck, target-resolved
+closure, manifests, licence inventory, CycloneDX validation, evidence archive); run 34323205274 —
+`C19 lifecycle` **success** (lifecycle on ubuntu and macOS, foreign-checkout pinning, delivery-chain
+dry run). The runnable checks are green; the FINAL steps are not run, not passed.
 
 ## 9. An incident during M7, recorded plainly
 
