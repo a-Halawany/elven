@@ -20,7 +20,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
-import { assertClearance, assertPurpose } from '../clearance.js';
+import { assertClearance, assertPurpose, clearanceOf, covers } from '../clearance.js';
 import type {
   ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, TermsWrites, VersionWrites, WithdrawWrites,
 } from '../decision.capabilities.js';
@@ -288,10 +288,28 @@ export class PackageService {
     return { packageId };
   }
 
-  async list(cap: DecisionReads): Promise<Array<Record<string, unknown>>> {
+  /**
+   * The list is governed like the detail view (residual review R4): a package the reader's clearance in this
+   * domain does not cover, or whose admitted purpose is not the reader's, is not listed. Drafts that were never
+   * proposed carry no admitted record yet and are listed under their folded controls alone.
+   */
+  async list(cap: DecisionReads, reader: AuthenticatedPrincipal | null = null, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Array<Record<string, unknown>>> {
     const packages = (await cap.readPackages().selectAll().orderBy('declared_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
     const versions = (await cap.readVersions().selectAll().orderBy('version' as never).execute()) as Array<Record<string, unknown>>;
-    return packages.map((p) => ({ ...p, versions: versions.filter((v) => String(v['package_id']) === String(p['package_id'])).map((v) => ({ ...v, observed_through: dayOf(v['observed_through']) })) }));
+    let allowed = packages;
+    if (reader !== null && target !== null) {
+      const clearance = clearanceOf(reader, target);
+      const ids = packages.map((p) => String(p['package_id']));
+      const admitted = ids.length === 0 ? [] : (await cap.readCanonicalObjects().select(['object_id', 'purpose_scope'] as never).where('object_type' as never, '=', 'DPK' as never)
+        .where('object_id' as never, 'in', ids as never).execute()) as Array<{ object_id: string; purpose_scope: string | null }>;
+      const purposeOf = new Map(admitted.map((a) => [String(a.object_id), a.purpose_scope]));
+      allowed = packages.filter((p) => {
+        if (!covers(clearance, String((p['controls'] as Record<string, unknown> | null)?.['classification'] ?? 'internal'))) return false;
+        const admittedFor = purposeOf.get(String(p['package_id'])) ?? null;
+        return purpose === null || admittedFor === null || admittedFor === purpose;
+      });
+    }
+    return allowed.map((p) => ({ ...p, versions: versions.filter((v) => String(v['package_id']) === String(p['package_id'])).map((v) => ({ ...v, observed_through: dayOf(v['observed_through']) })) }));
   }
 
   /**
@@ -300,11 +318,11 @@ export class PackageService {
    * package was proposed for; an approval's standing is the port's own recount, never a
    * local re-derivation.
    */
-  async get(cap: DecisionReads, packageId: string, reader: AuthenticatedPrincipal | null = null, purpose: string | null = null, correlationId: string = newId()): Promise<Record<string, unknown> | undefined> {
+  async get(cap: DecisionReads, packageId: string, reader: AuthenticatedPrincipal | null = null, purpose: string | null = null, correlationId: string = newId(), target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Record<string, unknown> | undefined> {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined) return undefined;
     if (reader !== null) {
-      assertClearance(reader, String((p['controls'] as Record<string, unknown> | null)?.['classification'] ?? 'internal'), 'package', correlationId);
+      assertClearance(reader, target ?? { tenantId: String(p['tenant_id']), domainId: String(p['domain_id']) }, String((p['controls'] as Record<string, unknown> | null)?.['classification'] ?? 'internal'), 'package', correlationId);
       if (purpose !== null && p['current_version'] !== null && p['current_version'] !== undefined) {
         const dpk = (await cap.readCanonicalObjects().select(['purpose_scope' as never]).where('object_type' as never, '=', 'DPK' as never).where('object_id' as never, '=', packageId as never)
           .orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as { purpose_scope: string | null } | undefined;

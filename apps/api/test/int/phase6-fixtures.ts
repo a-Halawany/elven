@@ -149,7 +149,7 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const validChoice = (over: Record<string, unknown> = {}) => ({
     option_key: 'reroute', rationale: 'The reroute is the only option that keeps the line running without the air-bridge premium.',
     decision_deadline: '2024-01-19', accepted_trade_offs: ['+14 days of transit', '+48,100 reroute cost'], action_owner: w.owner.principalId,
-    outcome_criteria: [{ key: 'line_stop_days', quantity: 'line stop days over the horizon', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: 'twin:outcome.line_stop_days:SYN-LINE-A1' }],
+    outcome_criteria: [{ key: 'line_stop_days', quantity: 'line stop days over the horizon', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: 'twin:outcome.line_stop_days:SYN-LINE-A1', twin_id: w.twinId, period: { from: '2024-01-11', to: '2024-04-10' } }],
     ...over,
   });
   /** A full draft on a fresh package: two options on the common control, terms, the choice. */

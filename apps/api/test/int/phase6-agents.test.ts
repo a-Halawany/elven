@@ -163,7 +163,7 @@ describe('P6-M6 · F7 — the briefing agent composes within its budget; a budge
     const before = (await sql<{ n: string }>`select count(*)::text n from executive.briefings where room_id = ${roomId}::uuid`.execute(h.su)).rows[0]?.n;
     const r = (await c.runAgent(tight.agent.agentId, { task: 'briefing', roomId })).run;
     expect(r.outcome).toBe('stopped');
-    expect(String(r.stopReason)).toMatch(/remaining budget/);
+    expect(String(r.stopReason)).toMatch(/read budget of 3 reached before/);
     expect(r.escalatedTo).toBe(w.executive.principalId);
     expect((await sql<{ n: string }>`select count(*)::text n from executive.briefings where room_id = ${roomId}::uuid`.execute(h.su)).rows[0]?.n).toBe(before);
     const ev = (await sql<{ d: Record<string, unknown> }>`select details d from executive.room_events where room_id = ${roomId}::uuid and event = 'agent.escalated' order by occurred_at desc limit 1`.execute(h.su)).rows[0]?.d;

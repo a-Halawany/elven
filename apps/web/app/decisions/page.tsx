@@ -150,7 +150,7 @@ export default function DecisionsPage() {
                   <DefinitionRow term="The choice">option <Mono>{v.choice.option_key}</Mono> — “{v.choice.rationale}”</DefinitionRow>
                   <DefinitionRow term="Deadline · action owner">{v.choice.decision_deadline} · principal <Mono>{short(v.choice.action_owner)}</Mono></DefinitionRow>
                   <DefinitionRow term="Accepted trade-offs">{v.choice.accepted_trade_offs.join('; ') || 'none stated'}</DefinitionRow>
-                  <DefinitionRow term="Outcome criteria">{v.choice.outcome_criteria.map((k) => `${k.quantity} ${k.comparator} ${k.target} ${k.unit} by ${k.by} (observed on ${k.observed_on})`).join('; ')}</DefinitionRow>
+                  <DefinitionRow term="Outcome criteria">{v.choice.outcome_criteria.map((k) => `${k.quantity} ${k.comparator} ${k.target} ${k.unit} by ${k.by} (observed on ${k.observed_on}${k.twin_id ? ` of twin ${k.twin_id.slice(0, 8)}…` : ''}${k.period ? `, ${k.period.from} to ${k.period.to}` : ''})`).join('; ')}</DefinitionRow>
                   <DefinitionRow term="Monitoring">{v.monitoring_conditions.map((m, i) => <span key={i}>{String(m['kind'])}{m['every_days'] ? ` every ${String(m['every_days'])} days` : ''} → owner <Mono>{short(m['owner'])}</Mono>; </span>)}</DefinitionRow>
                 </dl>
               )}

@@ -313,7 +313,7 @@ export class DecisionController {
   async list(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', null),
-      DecisionCapability.read, async (cap) => this.packages.list(cap));
+      DecisionCapability.read, async (cap, scope) => this.packages.list(cap, principal, envelope.purpose_id ?? null, { tenantId: scope.tenantId, domainId: scope.domainId }));
     return { packages: out.result, receipt: receipt(out) };
   }
 
@@ -321,7 +321,7 @@ export class DecisionController {
   async get(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId),
-      DecisionCapability.read, async (cap) => this.packages.get(cap, packageId, principal, envelope.purpose_id ?? null, envelope.correlation_id));
+      DecisionCapability.read, async (cap, scope) => this.packages.get(cap, packageId, principal, envelope.purpose_id ?? null, envelope.correlation_id, { tenantId: scope.tenantId, domainId: scope.domainId }));
     if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized package matches'), 404);
     return { package: out.result, receipt: receipt(out) };
   }

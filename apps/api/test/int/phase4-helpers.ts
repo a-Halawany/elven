@@ -141,10 +141,10 @@ export class Phase4Harness {
   }
 
   /** A DOMAIN principal with the given roles, created as fixture scaffolding. */
-  async principalWith(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN'): Promise<AuthenticatedPrincipal> {
+  async principalWith(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN', inDomain?: string): Promise<AuthenticatedPrincipal> {
     const id = uuidv7();
     const run = id.slice(-8);
-    const domainId = scope === 'DOMAIN' ? this.fx.domainId : null;
+    const domainId = scope === 'DOMAIN' ? (inDomain ?? this.fx.domainId) : null;
     await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
               values (${id}::uuid, 'human', ${scope}, ${this.fx.tenantId}::uuid, ${domainId}::uuid,
                       ${`fixture-${label}-${run}`}, ${`fx-${label.slice(0, 4)}-${run}`}, 'active')`.execute(this.su);
@@ -162,8 +162,16 @@ export class Phase4Harness {
    * is this principal, not the manager whose session `principalWith` reuses. Phase 6
    * ports that compare the acting principal to a named human need this.
    */
-  async humanWithSession(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN'): Promise<AuthenticatedPrincipal> {
-    const p = await this.principalWith(roles, label, scope);
+  async humanWithSession(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN',
+                         opts: { domainId?: string; extraBindings?: Array<{ roleCode: string; domainId: string }> } = {}): Promise<AuthenticatedPrincipal> {
+    // Every binding is written BEFORE the session opens: Phase 0 bumps the principal's revocation epoch on any binding change.
+    const p = await this.principalWith(roles, label, scope, opts.domainId);
+    const bindings = [...p.bindings];
+    for (const b of opts.extraBindings ?? []) {
+      await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
+                values (${uuidv7()}::uuid, ${p.principalId}::uuid, ${b.roleCode}, 'DOMAIN', ${this.fx.tenantId}::uuid, ${b.domainId}::uuid)`.execute(this.su);
+      bindings.push({ roleCode: b.roleCode, scope: 'DOMAIN', tenantId: this.fx.tenantId, domainId: b.domainId });
+    }
     const identityDb = this.app.get<Db>(IDENTITY_DB);
     const sessionId = uuidv7();
     const familyId = uuidv7();
@@ -175,7 +183,7 @@ export class Phase4Harness {
       await sql`select identity.session_open(${sessionId}::uuid, ${p.principalId}::uuid, 'password', ${sha256(refresh)}, ${sha256(contextKey)}, ${new Date(Date.now() + 3600_000)}, ${familyId}::uuid)`.execute(tx);
       await sql`select audit.commit_identity_event(${p.principalId}::uuid, ${sessionId}::uuid, 'identity.login', 'identity.session.create', 'success', 'OK', ${uuidv7()}::uuid, '{"fixture":true}'::jsonb)`.execute(tx);
     });
-    return { ...p, sessionId, contextKey };
+    return { ...p, bindings, sessionId, contextKey };
   }
 
   /** The live contract with a declared period-range backfill. */

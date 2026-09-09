@@ -190,7 +190,9 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.replay_layers(${a.packageId}::uuid, ${a.version}::int, ${a.asOf}::timestamptz) as r`);
     const r = rows[0]?.r;
     if (r === undefined) throw new Error('replay returned no row');
-    return r;
+    // every contributor of the reconstruction, layer by layer, with the controls its canonical record carries (0049)
+    const contributors = await this.call<{ c: unknown[] }>(sql`select decision.replay_contributors(${JSON.stringify(r['content'])}::jsonb) as c`);
+    return { ...r, contributors: contributors[0]?.c ?? [] };
   }
   async recordReplay(a: Parameters<ReplayWrites['recordReplay']>[0]): Promise<void> {
     await this.call(sql`select decision.record_replay(${a.replayId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.asOf}::timestamptz,

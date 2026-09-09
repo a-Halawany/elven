@@ -14,7 +14,7 @@ export interface Option {
   uncertainty: { method?: string; citations?: number; synthetic_inputs?: number; unvalidated_runs?: number; outside_envelope_runs?: number; truth_states?: string[]; basis?: Array<Record<string, unknown>> };
   second_order: unknown[]; risks: unknown[]; opportunities: unknown[]; reversibility: string | null; synthetic_state: boolean; version: number;
 }
-export interface Choice { option_key: string; rationale: string; decision_deadline: string; accepted_trade_offs: string[]; action_owner: string; outcome_criteria: Array<{ key: string; quantity: string; unit: string; target: number; comparator: string; by: string; observed_on: string }> }
+export interface Choice { option_key: string; rationale: string; decision_deadline: string; accepted_trade_offs: string[]; action_owner: string; outcome_criteria: Array<{ key: string; quantity: string; unit: string; target: number; comparator: string; by: string; observed_on: string; twin_id?: string; period?: { from: string; to: string } }> }
 export interface Approval { approval_id: string; approver_principal_id: string; decision: 'approve' | 'reject'; version_digest: string; rationale: string; eligible_by: string; expires_at: string; revoked_at: string | null; revoked_reason: string | null; recorded_at: string; live: boolean }
 export interface Dissent { dissent_id: string; principal_id: string; position: string; rationale: string; citation: Citation | null; recorded_at: string }
 export interface PackageVersion {

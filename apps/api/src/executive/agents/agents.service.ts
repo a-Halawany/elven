@@ -42,6 +42,8 @@ const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
+/** Which agent kinds enforce each condition in their task (registration refuses any other pairing, here and at the port). */
+export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing'], on_degraded: ['briefing'] });
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
@@ -57,6 +59,9 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
   for (const s of stops) {
     const sc = (s !== null && typeof s === 'object' ? s : {}) as Record<string, unknown>;
     if (!SUPPORTED_STOP_CONDITIONS.includes(sc['kind'] as never)) bad(`stop condition ${JSON.stringify(sc['kind'] ?? s)} is not one this runtime supports (${SUPPORTED_STOP_CONDITIONS.join(', ')})`);
+    // an accepted condition is one this agent kind's task ENFORCES: max_items on the decision draft and the briefing, on_degraded on the briefing
+    const enforcedBy = STOP_CONDITION_KINDS[sc['kind'] as string] ?? [];
+    if (!enforcedBy.includes(m.kind as AgentKind)) bad(`stop condition ${String(sc['kind'])} is not enforced by a ${m.kind} agent's task (enforced by: ${enforcedBy.join(', ')}); an unenforced control is not accepted`);
     if (sc['kind'] === 'max_items' && (!Number.isInteger(sc['value']) || Number(sc['value']) < 0)) bad('stop condition max_items names a non-negative integer value');
   }
   return { kind: m.kind as AgentKind, version: m.version as string, codeDigest: m.codeDigest as string, ownerPrincipalId: m.ownerPrincipalId as string, escalationPrincipalId: m.escalationPrincipalId as string,
@@ -83,6 +88,8 @@ class Meter {
     this.spent['reads'] = (this.spent['reads'] as number) + 1;
   }
   remainingReads(): number { return Math.max(0, Number(this.budget['max_reads'] ?? 0) - (this.spent['reads'] as number)); }
+  /** The instant the elapsed budget runs out (epoch ms): propagated into nested work so it is checked before reads and before admission. */
+  deadline(): number { return this.started + Number(this.budget['max_elapsed_ms'] ?? 0); }
   close(): Record<string, number> { this.spent['elapsed_ms'] = this.elapsed(); return { ...this.spent }; }
 }
 
@@ -123,11 +130,11 @@ export class AgentsService {
   }
 
   /** The registry and the recent runs; a run's outputs are withheld from a reader whose clearance does not cover the package they concern. */
-  async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | null = null) {
+  async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | null = null, target: { tenantId: string | null; domainId: string | null } | null = null) {
     const agents = (await cap.readAgents().selectAll().orderBy('created_at' as never).execute()) as Array<Record<string, unknown>>;
     const runs = (await cap.readAgentRuns().selectAll().orderBy('started_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>;
-    if (reader === null) return { agents, runs };
-    const clearance = clearanceOf(reader);
+    if (reader === null || target === null) return { agents, runs };
+    const clearance = clearanceOf(reader, target);
     const classificationOf = new Map<string, string>();
     const packageIds = [...new Set(runs.map((r) => r['package_id']).filter((x): x is string => typeof x === 'string'))];
     const roomIds = [...new Set(runs.map((r) => r['room_id']).filter((x): x is string => typeof x === 'string'))];
@@ -140,12 +147,22 @@ export class AgentsService {
       const pkgs = (await cap.readPackages().select(['package_id', 'controls'] as never).where('package_id' as never, 'in', [...new Set(packageIds)] as never).execute()) as Array<{ package_id: string; controls: Record<string, unknown> | null }>;
       for (const p of pkgs) classificationOf.set(p.package_id, String(p.controls?.['classification'] ?? 'internal'));
     }
+    // a run's room: a stored output is read by the room's members (residual review R4d), whatever the reader's role
+    const membership = new Map<string, boolean>();
+    for (const rid of roomIds) membership.set(rid, await cap.isMember({ roomId: rid, principal: reader.principalId }));
+    const roomOfPackage = new Map<string, string>();
+    if (packageIds.length > 0) {
+      const rooms = (await cap.readRooms().select(['room_id', 'package_id'] as never).where('package_id' as never, 'in', [...new Set(packageIds)] as never).execute()) as Array<{ room_id: string; package_id: string }>;
+      for (const r of rooms) { roomOfPackage.set(r.package_id, r.room_id); if (!membership.has(r.room_id)) membership.set(r.room_id, await cap.isMember({ roomId: r.room_id, principal: reader.principalId })); }
+    }
     const redacted = runs.map((run) => {
       const pid = typeof run['package_id'] === 'string' ? run['package_id'] : (typeof run['package_id_of_room'] === 'string' ? run['package_id_of_room'] : null);
       const classification = pid === null ? 'internal' : (classificationOf.get(pid) ?? 'restricted');
+      const roomId = typeof run['room_id'] === 'string' ? run['room_id'] : (pid === null ? null : (roomOfPackage.get(pid) ?? null));
       const { package_id_of_room: _drop, ...rest } = run;
-      if (covers(clearance, classification)) return rest;
-      return { ...rest, outputs: { withheld: `the run's package is classified ${classification}; the reader's clearance is ${clearance}` } };
+      if (!covers(clearance, classification)) return { ...rest, outputs: { withheld: `the run's package is classified ${classification}; the reader's clearance in this domain is ${clearance}` } };
+      if (roomId !== null && membership.get(roomId) !== true) return { ...rest, outputs: { withheld: 'the run belongs to a room the reader is not a member of' } };
+      return rest;
     });
     return { agents, runs: redacted };
   }
@@ -178,7 +195,7 @@ export class AgentsService {
     let outcome: 'finished' | 'stopped' | 'refused' | 'faulted' = 'finished'; let stopReason: string | null = null; let outputs: Record<string, unknown> = {};
     const identity = { agent_id: a.agentId, agent_kind: registration.agent_kind, agent_version: registration.agent_version, code_digest: registration.code_digest, method: METHOD_OF[registration.agent_kind as AgentKind], principal_id: principal.principalId };
     try {
-      if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, meter, refusals, a.correlationId, identity);
+      if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, meter, stops, refusals, a.correlationId, identity);
       else if (a.task === 'briefing' || a.task === 'monitor') outputs = await this.brief(principal, T, D, a.roomId, a.task, meter, stops, a.correlationId, identity);
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
@@ -199,7 +216,7 @@ export class AgentsService {
   }
 
   // ───────────────────────── the decision agent ─────────────────────────
-  private async draft(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, version: number | null, meter: Meter, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
+  private async draft(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, version: number | null, meter: Meter, stops: Array<Record<string, unknown>>, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
     if (packageId === null || version === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the draft task names a package and a draft version'), 422);
     meter.read('the completed runs and the draft\'s options');
     const read = await this.pipeline.consequentialRead(this.env(p, T, D, 'decision.read', 'DPK', packageId, correlationId), p, this.route(T, D, 'decision.read', 'DPK', packageId), DecisionCapability.read, async (cap) => {
@@ -219,8 +236,11 @@ export class AgentsService {
       });
     }
     const drafted: string[] = [];
-    for (const card of cards) {
-      if (read.result.existing.has(card.key)) continue;
+    // the registered stop condition applies to THIS task too (residual review R7c): checked before any card is written
+    const toWrite = cards.filter((card) => !read.result.existing.has(card.key));
+    const maxItems = stops.filter((s) => s['kind'] === 'max_items').map((s) => Number(s['value'])).reduce<number | null>((acc, v) => (acc === null ? v : Math.min(acc, v)), null);
+    if (maxItems !== null && toWrite.length > maxItems) throw new StopCondition(`stop condition max_items: the draft would write ${toWrite.length} option cards, the agent stops at ${maxItems}`);
+    for (const card of toWrite) {
       meter.tick();
       await this.pipeline.write(this.env(p, T, D, 'decision.package.draft', 'DPK', packageId, correlationId), p, this.route(T, D, 'decision.package.draft', 'DPK', packageId), DecisionCapability.option,
         async (cap, scope) => {
@@ -263,13 +283,12 @@ export class AgentsService {
     meter.tick();
     const briefingId = newId();
     const maxItems = stops.filter((s) => s['kind'] === 'max_items').map((s) => Number(s['value'])).reduce<number | null>((acc, v) => (acc === null ? v : Math.min(acc, v)), null);
-    const limits: CompositionLimits = { maxReads: meter.remainingReads(), maxItems, stopOnDegraded: stops.some((s) => s['kind'] === 'on_degraded') };
+    const limits: CompositionLimits = { maxReads: meter.remainingReads(), maxItems, stopOnDegraded: stops.some((s) => s['kind'] === 'on_degraded'), reserve: (what) => meter.read(what), deadline: meter.deadline() };
     const out = await this.pipeline.write(this.env(p, T, D, 'briefing.compose', 'BRF', briefingId, correlationId), p, { ...this.route(T, D, 'briefing.compose', 'BRF', briefingId), writableTargets: [briefingId] }, ExecutiveCapability.briefing,
       async (cap, scope: ScopeContext) => {
         const r = await this.briefings.compose(cap, scope, { roomId, knownAt: new Date().toISOString(), priorBriefingId: undefined, narrative: null, narrativeCites: [] }, p.principalId, 'agent', String(identity['agent_id']), 'briefing', correlationId, briefingId, limits);
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
-    for (let i = 0; i < out.result.sources.length; i += 1) meter.spent['reads'] = (meter.spent['reads'] as number) + 1;
     return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, monitoring, marked: 'agent-produced', agent: identity };
   }
 
@@ -277,20 +296,36 @@ export class AgentsService {
   private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, meter: Meter, correlationId: string, identity: Record<string, unknown>) {
     if (packageId === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the report task names a package'), 422);
     meter.read('the package and its records');
-    const out = await this.pipeline.consequentialRead(this.env(p, T, D, 'report.render', 'DPK', packageId, correlationId), p, this.route(T, D, 'report.render', 'DPK', packageId), DecisionCapability.read,
-      async (cap) => renderReport(cap, packageId, String(budget['clearance'] ?? 'internal'), identity, correlationId));
+    // the report is rendered under the purpose the package was admitted for; an agent is no room member — its stored output is read by the members (list)
+    const out = await this.pipeline.consequentialRead(this.env(p, T, D, 'report.render', 'DPK', packageId, correlationId, 'decision'), p, this.route(T, D, 'report.render', 'DPK', packageId), DecisionCapability.read,
+      async (cap) => renderReport(cap, packageId, String(budget['clearance'] ?? 'internal'), identity, correlationId, { purpose: 'decision', member: null }));
     if (out.result.refused === true) return { package_id: packageId, refused: true, reason: out.result.reason, marked: 'agent-produced', agent: identity };
     return { package_id: packageId, report: out.result, marked: 'agent-produced', agent: identity };
   }
 }
 
 /** A report from stored records: attribution, classification and truth states intact; refused when the reader's clearance does not cover the package's classification. */
-export async function renderReport(cap: ReturnType<typeof DecisionCapability.read>, packageId: string, clearance: string, renderedBy: Record<string, unknown>, correlationId: string): Promise<Record<string, unknown> & { refused?: boolean; reason?: string }> {
+export async function renderReport(cap: ReturnType<typeof DecisionCapability.read>, packageId: string, clearance: string, renderedBy: Record<string, unknown>, correlationId: string,
+                                   authority: { purpose: string | null; member: string | null } = { purpose: null, member: null }): Promise<Record<string, unknown> & { refused?: boolean; reason?: string }> {
   const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
   if (p === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package matches'), 404);
   const classification = String((p['controls'] as Record<string, unknown> | null)?.['classification'] ?? 'internal');
   if ((CLEARANCE_RANK[classification] ?? 3) > (CLEARANCE_RANK[clearance] ?? 0)) {
     return { refused: true, reason: `the package is classified ${classification}; the reader's clearance is ${clearance}; the export is refused` };
+  }
+  // the export is governed like the detail view (residual review R4c): the admitted purpose, and the room's membership for a human reader
+  if (authority.purpose !== null && p['current_version'] !== null && p['current_version'] !== undefined) {
+    const dpk = (await cap.readCanonicalObjects().select(['purpose_scope' as never]).where('object_type' as never, '=', 'DPK' as never).where('object_id' as never, '=', packageId as never)
+      .orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as { purpose_scope: string | null } | undefined;
+    if (dpk?.purpose_scope !== undefined && dpk.purpose_scope !== null && dpk.purpose_scope !== authority.purpose) {
+      return { refused: true, reason: `a report is rendered under the purpose the package was admitted for (${dpk.purpose_scope}); this render states ${authority.purpose}` };
+    }
+  }
+  if (authority.member !== null) {
+    const room = (await cap.readRooms().select(['room_id' as never]).where('package_id' as never, '=', packageId as never).executeTakeFirst()) as { room_id: string } | undefined;
+    if (room !== undefined && !(await cap.isMember({ roomId: room.room_id, principal: authority.member }))) {
+      return { refused: true, reason: 'a report of a package with a room is rendered for the room\'s members; the reader is not a member' };
+    }
   }
   const version = p['current_version'] === null ? null : Number(p['current_version']);
   const v = version === null ? undefined : (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;

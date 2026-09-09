@@ -319,13 +319,19 @@ describe('4 · read-time authorization: membership, purpose, clearance and avail
     roomId = (await c.openRoom({ packageId: P.pkg, title: 'Authorization room', reviewEveryDays: 7 })).room.roomId;
     await c.membership(roomId, { principal: w.executive.principalId, role: 'observer', op: 'add' });
     await c.membership(roomId, { principal: analyst.principalId, role: 'observer', op: 'add' });
+    // an open response window contributes its warning's controls whatever its age (0049, R3a), and an acknowledgement is an item of the
+    // interval it falls in: the fixture's warnings rest on the confidential contract version, so they are acknowledged BEFORE the prior is
+    // composed — the briefing since the prior then holds the review alone and folds internal
+    for (const wr of (await sql<{ id: string }>`select warning_id::text id from prediction.warnings_current where domain_id = ${D()}::uuid and state = 'raised'`.execute(h.su)).rows) {
+      await w.prediction.acknowledgeWarning(h.req(w.twinOwner, 'prediction.warning.acknowledge', 'WRN', wr.id), T(), D(), wr.id, { payload: { note: 'Acknowledged for the authorization probe.' } });
+    }
+    await sleep(30);
     // the briefing over everything so far cites the confidential evidence (item 3's fixture) and folds to confidential
     const all = (await c.compose({ roomId, knownAt: await dbNow(), priorBriefingId: null })).briefing;
     allId = all.briefingId; allDigest = all.contentDigest;
     await sleep(30);
     await c.review(roomId, 'Reviewed for the authorization probe.', w.executive);
     await sleep(30);
-    // the briefing since it: the review alone, folding to the package's internal classification — what an analyst member may read
     const b = (await c.compose({ roomId, knownAt: await dbNow(), priorBriefingId: allId })).briefing;
     briefingId = b.briefingId; digest = b.contentDigest;
     expect((await objectRow(briefingId))['classification']).toBe('internal');
@@ -561,8 +567,8 @@ describe('6 · outcome binding: the approved criterion names the element, the de
 
   it('a legitimate reconciliation of a different same-unit output of the chosen run records THAT criterion and not the other', async () => {
     const S = await c.committed({ choice: { outcome_criteria: [
-      { key: 'line_stop_days', quantity: 'line stop days over the horizon', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: `twin:${KEY}` },
-      { key: 'days_below_safety_stock', quantity: 'days below safety stock over the horizon', unit: 'days', target: 10, comparator: '<=', by: '2024-04-10', observed_on: `twin:${OTHER}` },
+      { key: 'line_stop_days', quantity: 'line stop days over the horizon', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: `twin:${KEY}`, twin_id: w.twinId, period: { from: '2024-01-11', to: '2024-04-10' } },
+      { key: 'days_below_safety_stock', quantity: 'days below safety stock over the horizon', unit: 'days', target: 10, comparator: '<=', by: '2024-04-10', observed_on: `twin:${OTHER}`, twin_id: w.twinId, period: { from: '2024-01-11', to: '2024-04-10' } },
     ] } });
     await sleep(30);
     const run = (await sql<{ o: Record<string, unknown> }>`select outputs o from simulation.runs_current where run_id = ${w.rerouteId}::uuid`.execute(h.su)).rows[0]?.o as Record<string, unknown>;

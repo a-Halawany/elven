@@ -34,9 +34,10 @@ export class ReplayService {
     if (p['decided_at'] === null || p['decided_at'] === undefined || Number(p['committed_version']) !== version) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${version} is ${String(v['state'])}, not committed; a replay reconstructs what a decision was taken with`), 409);
     }
-    // the reader's authority now
+    // the reader's authority now — against the version first, against the complete reconstruction below
     const vc = versionControls(v);
-    assertClearance(reader, vc.classification, 'decision', correlationId);
+    const target = { tenantId: ctx.tenantId, domainId: ctx.domainId };
+    assertClearance(reader, target, vc.classification, 'decision', correlationId);
     const dpk = (await cap.readCanonicalObjects().select(['purpose_scope' as never]).where('object_type' as never, '=', 'DPK' as never).where('object_id' as never, '=', packageId as never)
       .where('object_version' as never, '=', String(version) as never).executeTakeFirst()) as { purpose_scope: string | null } | undefined;
     assertPurpose(purpose, dpk?.purpose_scope ?? null, 'decision replay', correlationId);
@@ -54,12 +55,15 @@ export class ReplayService {
     const commitment = (content['decided'] as Record<string, unknown>)['commitment'] as Record<string, unknown>;
     const invocation = { reader: `principal:${reader.principalId}`, purpose, replayed_at: replayedAt, as_of: cutoffs['as_of'], unavailable };
     const payload = { package_id: packageId, version, cutoffs, content_digest: contentDigest, content, invocation };
-    // the controls: the version's fold, and those of the evidence the known layer replays
-    const known = (content['known'] as Array<Record<string, unknown>>) ?? [];
+    // the controls: the version's fold and EVERY contributor the reconstruction shows, layer by layer (0049: decision.replay_contributors),
+    // each with the controls its canonical record carries; an unresolved contributor fails closed
+    const contributors = ((r['contributors'] as Array<Record<string, unknown>>) ?? []);
     const controls = foldControls(unfoldProfiles([
       { synthetic_state: vc.synthetic_state, classification: vc.classification, rights_profile: vc.rights_profile, residency_profile: vc.residency_profile, retention_profile: vc.retention_profile, access_policy_ref: vc.access_policy_ref },
-      ...known.map((k): ControlInput => ({ synthetic_state: k['synthetic_state'], classification: k['classification'], rights_profile: k['rights_profile'] ?? null })),
+      ...contributors.map((k): ControlInput => ({ synthetic_state: k['synthetic_state'], classification: k['classification'], rights_profile: k['rights_profile'] ?? null, residency_profile: k['residency_profile'] ?? null, retention_profile: k['retention_profile'] ?? null, access_policy_ref: k['access_policy_ref'] ?? null })),
     ]));
+    // the reader's clearance covers the COMPLETE replay (residual review R4e) — refused before anything is admitted
+    assertClearance(reader, target, controls.classification, 'replay', correlationId);
     const header: CanonicalHeader = {
       object_id: replayId, object_type: 'RPL', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: '1', lifecycle_state: 'active', owning_component: 'CP-DEC-01', accountable_owner: `principal:${reader.principalId}`,
@@ -78,6 +82,6 @@ export class ReplayService {
     await cap.admitObject(header, payload, headerDigest);
     await cap.recordReplay({ replayId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, asOf: String(cutoffs['as_of']), contentDigest, headerDigest, reader: reader.principalId, purpose, unavailable, summary, eventId: newId(), correlationId });
     return { replayId, packageId, version, contentDigest, headerDigest, asOf: cutoffs['as_of'], cutoffs, layers: { known: content['known'], believed: content['believed'], tested: content['tested'], decided: content['decided'], observed: content['observed'] },
-             excluded: content['excluded'], unavailable, summary, invocation };
+             excluded: content['excluded'], unavailable, summary, invocation, contributors, controls };
   }
 }

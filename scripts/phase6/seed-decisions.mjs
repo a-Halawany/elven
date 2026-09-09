@@ -160,7 +160,7 @@ const terms = {
 };
 const choiceFor = (key, rationale) => ({
   option_key: key, rationale, decision_deadline: '2024-01-19', accepted_trade_offs: ['38 days below safety stock', '+48,100 EUR reroute cost'], action_owner: nakamuraId,
-  outcome_criteria: [{ key: 'line_stop_days', quantity: 'line-stop days at SYN-LINE-A1 over the decision window', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: 'twin:outcome.line_stop_days:SYN-LINE-A1' }],
+  outcome_criteria: [{ key: 'line_stop_days', quantity: 'line-stop days at SYN-LINE-A1 over the decision window', unit: 'days', target: 0, comparator: '<=', by: '2024-04-10', observed_on: 'twin:outcome.line_stop_days:SYN-LINE-A1', twin_id: twin.twin_id, period: { from: '2024-01-11', to: '2024-04-10' } }],
 });
 let committedVersion = pkg.committed_version ?? null;
 if (committedVersion === null) {

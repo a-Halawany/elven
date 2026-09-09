@@ -323,3 +323,89 @@ passed; no waiver, no bypass.
   agent's refused proposal is its contract, not a stop).
 - This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
   browser case stays failed until verified.
+
+## 12. The residual review at `9aaf0311` — six paths reproduced at the harness, then corrected (review still OPEN)
+
+The independent correction review of 9 September 2026 kept the functional review open with six
+residual requirement groups (R2–R7 of the original review). Codex's evidence was 28 service/PDP
+probes with explicit doubles (13 expectations failing, 15 controls passing) and SQL inspection;
+none of it executed PostgreSQL, Redis, HTTP or a browser. This pass reproduced each residual through
+the real database, controller, identity and Redis harness BEFORE changing product code
+(`test/int/phase6-residual-corrections.test.ts`, 19 cases with positive controls), corrected them
+with one forward migration, `0049_phase6_residual_corrections` (0041–0048 untouched), and the
+services, and kept the suite as the regression. Evidence classes stay apart (§12.3).
+
+### 12.1 Reproduction before, correction after
+
+Against the reviewed head (services at `9aaf0311`, migrations through 0048) **19 of 19 cases failed
+on the assertion naming the consequence** — 18 in one run, and the elapsed-deadline case in a second
+run once its budget let the composition start (§12.2). Against the corrected head **19 of 19 pass**;
+the earlier corrections suite (25 cases) and the whole Phase 6 set pass with it.
+
+| Path | Consequence reproduced (the failing assertion before) | Correction (0049 + services) |
+|---|---|---|
+| R2 carried options | a carry into a version with an earlier `observed_through` or `known_at` copied a 16 January citation unexamined (open succeeded); an option row placed in a draft outside the port was proposed | `decision.derive_option` is the ONE derivation (identity, digest, both cut-offs, the run's own cut-offs, uncertainty, controls, synthetic state); `set_option` calls it; `open_version` re-derives every carried option under the RECEIVING version's cut-offs and refuses the carry that cannot enter them; `propose_version` revalidates every option before the digest |
+| R3 inherited restrictions | an older warning whose window was still open was shown without being a source or contributing its controls; the replay named no contributors and its RPL ignored the observed layer | a window's warning is a cited source and its WRN controls enter the fold whatever its age; `decision.replay_contributors` names every contributor of every layer (known EVD, believed CLM/FCT/ASU/WRN, tested SIM, the decided DPK, observed later versions, OUT and WRN) with the controls its canonical record carries; the RPL folds them all; an unresolved contributor fails closed |
+| R4 read authorization | a tenant-scoped analyst who owned decisions in another domain read a confidential briefing here; the package list returned a package the detail view refused; a report rendered under the wrong purpose and for a non-member; a same-domain executive outside a room read a stored agent output; planner metadata and runs were process-wide; availability ignored governed deletion and run/warning sources | `clearanceOf(principal, target)` counts only bindings that reach the target context (the PDP's own rule); the package list is filtered by clearance and admitted purpose; `renderReport` checks the admitted purpose and (for a human) the room's membership; stored outputs are withheld from non-members; the planner's reconciliation and recent runs are scoped by tenant and domain; availability reports governed-deleted blobs (`observation.blob_tombstones`), unreadable runs and warnings, with counts of what was checked |
+| R5 historical truth | a later contract version and a later-completed attempt changed an earlier briefing's digest; a binding revoked after the cut-off removed an approval that stood then | source states use the contract versions ACTIVE AT `known_at` from `observation.source_contract_events`, and attempts by the instant their outcome became known (`finished_at`); `decision.approver_eligibility_as_of` / `live_approvals_as_of` reconstruct eligibility at the cut-off (binding created by then, not revoked by then) |
+| R6 outcome binding | a choice accepted criteria without a twin or an interval; an all-unsimulated decision recorded an outcome from an unrelated twin; a one-day aggregate satisfied a horizon criterion | `set_choice` requires `twin_id` (a twin of the domain) and `period {from, to}` (ending by `by`) on every criterion — both inside the signed choice; `record_outcome` binds the twin to the criterion's, and the observation's period must cover the criterion's interval; choices admitted before 0049 keep the 0048 rules |
+| R7 agent limits | composition fetched evidence before comparing its source count to the allowance; an 80 ms budget admitted a BRF and only then marked the run stopped; a decision agent with `max_items` wrote both cards; a reporting agent accepted `max_items` | the meter is propagated INTO composition: a read unit is reserved before every query family and the deadline checked with it and again before admission; the decision draft applies `max_items` before writing; registration accepts a condition only for the kinds whose task enforces it (`max_items`: decision, briefing; `on_degraded`: briefing) — service and port |
+
+### 12.2 Refutations and guards found at the boundary
+
+- **R4b, partial.** Phase 0's binding trigger refuses a DOMAIN principal any binding outside its
+  home domain, so the review's construction (a domain analyst holding `decision_owner` elsewhere)
+  cannot exist for a domain principal. It CAN for a tenant-scoped person holding domain bindings in
+  several domains — that path was reproduced and is what `clearanceOf(principal, target)` corrects.
+- **R7b, partial.** With a 3 ms budget the outer meter refuses the composition before it starts (no
+  briefing admitted) — a guard the review's probe bypassed. The consequence begins inside the
+  composition: with 80 ms the reviewed head admitted the BRF and marked the run stopped afterwards
+  (reproduced); the deadline is now checked inside composition and before admission on either path.
+- **R6b, one sub-case.** An aggregate whose window ended two months before the version's world
+  cut-off is refused by the twin's own health rule (`stale`) before the period check runs — a guard,
+  recorded; the one-day and late-start windows reach the period check and are refused by it.
+- **R7 elapsed, deterministic form.** The harness has no controlled clock; the case names the budget
+  (80 ms here) that lets the room read and the evaluation pass and the composition overrun. The
+  corrected expectation — no briefing admitted, the run stopped — holds on either path.
+
+### 12.3 The other checks (separate evidence classes)
+
+| Check (class) | Result at the corrected head |
+|---|---|
+| **Harness** — `phase6-residual-corrections` (database, controller, identity path, real Redis; a second domain of the tenant through the tenancy route) | reviewed head: **19/19 fail** on the naming assertion (18 in one run; the elapsed case in a second run with an 80 ms budget); corrected head: **19/19 pass** |
+| **Harness** — `phase6-review-corrections` (the 25 cases of §11) | 25/25 pass (its authorization fixture now acknowledges the open windows before the prior is composed, because an open window's warning contributes its controls — the corrected behaviour) |
+| **Harness** — the eight Phase 6 suites in one invocation | 97 cases, 93 passed and 4 skipped behind that fixture; after the fixture correction the suite runs 25/25 |
+| **Harness** — `test:int:all`, phases 0–6 (the final regression, one invocation) | **43 files, 783 passed** |
+| **Unit** (`pnpm test`, no database) | 39 files, **2136 passed**; hermetic meta 9 passed |
+| **Web** typecheck and `next build` | clean (the Decisions page shows a criterion's bound twin and interval) |
+| Module boundaries (`pnpm boundaries`) | no violations (476 modules) |
+| gitleaks over the working tree | no leaks |
+| Post-C18 upgrade check (`verify-0022-upgrade.mjs`, virgin database migrated from empty through 0049) | **PASS** — virgin database migrated from empty (49 files), schema digests match exactly, Phase 0 suite 297/297 before and after, Phase 1–2 suites on upgraded data 274/274; the ledger gains the 28th declared line |
+| **Browser** — Phase 6 spec on the rebuilt deployment after 0049 and a restart from the corrected build | 3/3 |
+| **Browser** — Phase 4/5 spec, preserved | 11/12: the ECB retrospective-validation case still fails (publisher unreachable from this machine today); not verified, not waived |
+| **Deployment** (`eye_demo`, historical records kept) | 0049 applied; the API restarted from the corrected build and reconciled 1/1 room briefing cadence at startup; the replay probe after 0049: M. Dvořák (member, purpose `decision`) 201; J. Weber (reader role, not a member) 403 "read by the room's members"; T. Nakamura (member, purpose `research`) 403 "read under the purpose it was admitted for (decision)"; the seed now binds `twin_id` and `period` in its criterion and registers agents with `{ kind: 'on_degraded' }` |
+
+The demonstration's Act VI records were admitted under 0041–0047/0048 and keep their digests and
+their choice (no `twin_id`/`period`): `record_outcome` keeps the 0048 rules for such choices. New
+records on the same deployment are admitted under 0049.
+
+### 12.4 CI at the exact head
+
+CI_RESULT_2
+
+### 12.5 What remains (not closed)
+
+- The atomic requirements audit and the security maintenance track are recorded in
+  `FULL_PRODUCT_DELIVERY_REGISTER.md` (§4, §5, §8): the util-linux findings are not remediable by
+  re-pinning today (the registry's current `postgres:18-alpine` and `redis:8-alpine` carry the same
+  package versions — scanned locally with trivy 0.73.0); the dependency findings (next, sharp,
+  multer) are remediable now and are handled as their own commit after this one.
+- Historical briefings reconstruct contract activity, attempt completion, warning state, review
+  cadence, approvals and eligibility from durable events; a principal's `status` history (active
+  then disabled) is not recorded, so eligibility-as-of assumes the principal's kind and tenant only.
+- Availability now checks evidence, claims, runs and warnings a snapshot cites; branch and package
+  contributors are not availability-checked (they carry no lifecycle of their own).
+- Decision-completeness items from the broader review (conditional approvals, case-bound
+  decision-agent simulation selection) are open in the register, not resolved here.
+- This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
+  browser case stays failed until verified.

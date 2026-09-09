@@ -53,8 +53,13 @@ export interface ExecutiveReads {
   readSchedulerEntries(): any;
   readScheduledAttempts(): any;
   readHealthEvents(): any;
+  readSourceContractEvents(): any;
+  readTombstones(): any;
+  readManifests(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
+  /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
+  liveApprovalsAsOf(a: { packageId: string; version: number; at: string }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string; eligible_by: string }>>;
   now(): Promise<string>;
   workflowOf(a: { packageId: string }): Promise<unknown[]>;
 }
@@ -108,6 +113,9 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readSchedulerEntries(): any { return this.from('observation.scheduler_entries'); }
   readScheduledAttempts(): any { return this.from('observation.scheduled_attempts'); }
   readHealthEvents(): any { return this.from('observation.source_health_events'); }
+  readSourceContractEvents(): any { return this.from('observation.source_contract_events'); }
+  readTombstones(): any { return this.from('observation.blob_tombstones'); }
+  readManifests(): any { return this.from('observation.blob_manifests'); }
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -116,6 +124,10 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   async liveApprovals(a: { packageId: string; version: number }) {
     return this.call<{ approval_id: string; approver_principal_id: string; expires_at: string }>(sql`select la.approval_id::text, la.approver_principal_id::text, decision.iso(a.expires_at) as expires_at
       from decision.live_approvals(${a.packageId}::uuid, ${a.version}::int) la join decision.approvals a on a.approval_id = la.approval_id`);
+  }
+  async liveApprovalsAsOf(a: { packageId: string; version: number; at: string }) {
+    return this.call<{ approval_id: string; approver_principal_id: string; expires_at: string; eligible_by: string }>(sql`select approval_id::text, approver_principal_id::text, decision.iso(expires_at) as expires_at, eligible_by
+      from decision.live_approvals_as_of(${a.packageId}::uuid, ${a.version}::int, ${a.at}::timestamptz)`);
   }
   async now(): Promise<string> {
     const rows = await this.call<{ t: string }>(sql`select decision.iso(clock_timestamp()) as t`);

@@ -53,8 +53,12 @@ export class BudgetExceeded extends Error { constructor(message: string) { super
 /** A registered stop condition met: the composition is abandoned before anything is admitted; the caller records the stop and escalates. */
 export class StopCondition extends Error { constructor(message: string) { super(message); } }
 
-/** What bounds an agent's composition: reads it may still make, items it may carry, whether a degraded source stops it. */
-export interface CompositionLimits { maxReads: number | null; maxItems: number | null; stopOnDegraded: boolean }
+/**
+ * What bounds an agent's composition: `reserve` is called BEFORE every unit of read work (it throws BudgetExceeded
+ * when the run's allowance is spent); `deadline` (epoch ms) is checked before every unit and before admission; the
+ * stop conditions are evaluated before admission. `maxReads` remains the coarse pre-0049 bound for callers without a meter.
+ */
+export interface CompositionLimits { maxReads: number | null; maxItems: number | null; stopOnDegraded: boolean; reserve?: (what: string) => void; deadline?: number }
 
 const hoursBetween = (a: string, b: string): number => Math.round(((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000) * 100) / 100;
 const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warning.raised': 'raised', 'warning.acknowledged': 'acknowledged', 'warning.expired': 'expired', 'warning.closed': 'closed' });
@@ -62,9 +66,21 @@ const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warn
 @Injectable()
 export class BriefingService {
   /** The state of every active source in the domain AS OF known_at, from stored records alone (the shape of the readiness register). */
-  private async sourceStates(cap: ExecutiveReads, knownAt: string): Promise<Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string }>> {
-    const contracts = (await cap.readSourceContracts().selectAll().where('lifecycle_state' as never, '=', 'active' as never).orderBy('source_key' as never).execute()) as Array<Record<string, unknown>>;
+  private async sourceStates(cap: ExecutiveReads, knownAt: string, reserve: (what: string) => void): Promise<Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string }>> {
+    // The contract versions ACTIVE AT known_at, from the contract event history (residual review R5a): a version activated
+    // by then and not superseded, retired or suspended by then (a reactivation by then restores it).
+    reserve('the source contract history');
+    const events = (await cap.readSourceContractEvents().select(['source_id', 'contract_version', 'event', 'occurred_at'] as never).where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).execute()) as Array<{ source_id: string; contract_version: number; event: string; occurred_at: unknown }>;
+    const activeAt = new Map<string, number>();
+    for (const e of events) {
+      const key = `${e.source_id}@${e.contract_version}`;
+      if (e.event === 'contract.activated' || e.event === 'contract.reactivated') activeAt.set(key, Number(e.contract_version));
+      else if (e.event === 'contract.superseded' || e.event === 'contract.retired' || e.event === 'contract.suspended' || e.event === 'contract.rejected') activeAt.delete(key);
+    }
+    const all = (await cap.readSourceContracts().selectAll().orderBy('source_key' as never).execute()) as Array<Record<string, unknown>>;
+    const contracts = all.filter((c) => activeAt.has(`${String(c['source_id'])}@${Number(c['contract_version'])}`));
     const out: Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string }> = [];
+    reserve('the source health verdicts and attempts');
     for (const c of contracts) {
       const sourceId = String(c['source_id']);
       const contract = c['contract'] as Record<string, unknown>;
@@ -74,8 +90,9 @@ export class BriefingService {
       const rights = String(c['rights_state']);
       const health = (await cap.readHealthEvents().select(['new_state' as never]).where('source_id' as never, '=', sourceId as never).where('evaluated_at' as never, '<=', knownAt as never)
         .orderBy('evaluated_at' as never, 'desc').limit(1).executeTakeFirst()) as { new_state: string } | undefined;
-      const lastAttempt = (await cap.readScheduledAttempts().select(['outcome' as never]).where('source_id' as never, '=', sourceId as never).where('started_at' as never, '<=', knownAt as never)
-        .where('outcome' as never, '<>', 'running' as never).orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as { outcome: string } | undefined;
+      // an attempt's outcome is known when it FINISHES (residual review R5b): one still running at known_at is no verdict then
+      const lastAttempt = (await cap.readScheduledAttempts().select(['outcome' as never]).where('source_id' as never, '=', sourceId as never).where('finished_at' as never, '<=', knownAt as never)
+        .orderBy('finished_at' as never, 'desc').limit(1).executeTakeFirst()) as { outcome: string } | undefined;
       let state: SourceState; let reason: string;
       if (c['connector_kind'] === 'upload') { state = 'operator-upload'; reason = 'records the operator uploaded'; }
       else if (credentialRef !== null) { state = 'blocked'; reason = `the contract names credential ${credentialRef}, which this deployment does not bind`; }
@@ -101,10 +118,16 @@ export class BriefingService {
   async compose(cap: BriefingWrites, ctx: ScopeContext, a: { roomId: string | null; knownAt: string; priorBriefingId: string | null | undefined; narrative: string | null; narrativeCites: string[] },
                 composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), limits: CompositionLimits | number | null = null) {
     const lim: CompositionLimits = typeof limits === 'number' ? { maxReads: limits, maxItems: null, stopOnDegraded: false } : (limits ?? { maxReads: null, maxItems: null, stopOnDegraded: false });
+    // every unit of read work is reserved BEFORE it happens; the deadline is checked with it and again before admission (residual review R7)
+    const reserve = (what: string): void => {
+      if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded(`the elapsed budget ran out before ${what}; the composition stops before further work`);
+      if (lim.reserve !== undefined) lim.reserve(what);
+    };
     const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
     const knownAt = new Date(a.knownAt).toISOString();
     let room: Record<string, unknown> | null = null; let pkg: Record<string, unknown> | null = null;
     if (a.roomId !== null) {
+      reserve('the room and its package');
       room = (await cap.readRooms().selectAll().where('room_id' as never, '=', a.roomId as never).executeTakeFirst()) as Record<string, unknown> | undefined ?? null;
       if (room === null) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized room matches'), 404);
       if (via === 'human' && !(await cap.isMember({ roomId: a.roomId, principal: composer }))) throw new HttpException(errorBody('EYE_AUT_001', correlationId, 'a room briefing is composed by a member of the room'), 403);
@@ -112,6 +135,7 @@ export class BriefingService {
     }
     // The prior: bound by id. `undefined` = the room's (or domain's) latest; `null` = none.
     let prior: Record<string, unknown> | null = null;
+    reserve('the prior briefing');
     if (a.priorBriefingId === undefined) {
       let q = cap.readBriefings().selectAll().orderBy('composed_at' as never, 'desc').limit(1);
       q = a.roomId === null ? q.where('room_id' as never, 'is', null) : q.where('room_id' as never, '=', a.roomId as never);
@@ -123,7 +147,7 @@ export class BriefingService {
     // The interval: (prior.known_at, known_at] — what the prior KNEW, not when it was composed.
     const since = prior === null ? null : iso(prior['known_at']);
     const inWindow = (t: unknown): boolean => { const x = iso(t); return (since === null || x > since) && x <= knownAt; };
-    const sourceStates = await this.sourceStates(cap, knownAt);
+    const sourceStates = await this.sourceStates(cap, knownAt, reserve);
     const stateOfSource = (sourceId: string): SourceState => sourceStates.find((s) => s.source_id === sourceId)?.state ?? 'internal';
     const items: BriefingItem[] = [];
     const sources = new Set<string>();
@@ -133,6 +157,7 @@ export class BriefingService {
       sources.add(`${i.kind}:${i.id}${i.version === null ? '' : `@${i.version}`}`);
     };
     // what changed: evidence and claims admitted
+    reserve('the evidence and claims admitted');
     const objs = (await cap.readCanonicalObjects().selectAll().where('object_type' as never, 'in', ['EVD', 'CLM'] as never).where('recorded_at' as never, '<=', knownAt as never)
       .$if(since !== null, (q: { where: (...x: unknown[]) => unknown }) => q.where('recorded_at' as never, '>', since as never)).orderBy('recorded_at' as never).limit(500).execute()) as Array<Record<string, unknown>>;
     for (const o of objs) {
@@ -146,6 +171,7 @@ export class BriefingService {
              details: { lifecycle_state: o['lifecycle_state'], classification: o['classification'], correction_of: o['correction_of'] } });
     }
     // runs completed — the SIM record carries the controls the run inherited from its twin version
+    reserve('the runs completed');
     const runs = (await cap.readRuns().selectAll().where('state' as never, '=', 'completed' as never).where('completed_at' as never, '<=', knownAt as never)
       .$if(since !== null, (q: { where: (...x: unknown[]) => unknown }) => q.where('completed_at' as never, '>', since as never)).orderBy('completed_at' as never).limit(200).execute()) as Array<Record<string, unknown>>;
     for (const r of runs) {
@@ -154,6 +180,7 @@ export class BriefingService {
              source_state: 'internal', source: null, owner: String(r['operator_principal_id']), details: { run_kind: r['run_kind'], control_run_id: r['control_run_id'], outputs_digest: r['outputs_digest'], outside_envelope: r['outside_envelope'] } });
     }
     // branches flipped or closed — the scenario's forecast carries the controls the branch rests on
+    reserve('the branch flips');
     const flips = (await cap.readScenarioEvents().selectAll().where('event' as never, 'in', ['branch.flipped', 'branch.closed'] as never).where('occurred_at' as never, '<=', knownAt as never)
       .$if(since !== null, (q: { where: (...x: unknown[]) => unknown }) => q.where('occurred_at' as never, '>', since as never)).orderBy('occurred_at' as never).limit(200).execute()) as Array<Record<string, unknown>>;
     for (const e of flips) {
@@ -165,6 +192,7 @@ export class BriefingService {
              source_state: 'internal', source: null, owner: b === undefined ? null : String(b['owner_principal_id']), details: { event: e['event'], scenario_id: e['scenario_id'], details: e['details'] } });
     }
     // warnings raised or acknowledged — each with the state it had AS OF known_at, from its own events; the WRN record carries its controls
+    reserve('the warnings and their events');
     const warnings = (await cap.readWarnings().selectAll().where('raised_at' as never, '<=', knownAt as never).orderBy('raised_at' as never).limit(500).execute()) as Array<Record<string, unknown>>;
     const stateAsOf = new Map<string, string>();
     if (warnings.length > 0) {
@@ -184,6 +212,7 @@ export class BriefingService {
         source_state: 'internal', source: null, owner: String(w['acknowledged_by']), details: { acknowledgement: w['acknowledgement'] } });
     }
     // packages moved (the room's, or every package in the domain) — dissent is a package event too, and is shown; the package's fold is inherited
+    reserve('the package events');
     let pe = cap.readPackageEvents().selectAll().where('event' as never, 'not in', ['replay.recorded'] as never).where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).limit(500);
     if (since !== null) pe = pe.where('occurred_at' as never, '>', since as never);
     if (pkg !== null) pe = pe.where('package_id' as never, '=', String(pkg['package_id']) as never);
@@ -202,6 +231,7 @@ export class BriefingService {
     // why it matters: what rests on what changed
     const changedIds = [...new Set(items.filter((i) => ['evidence', 'claim', 'run'].includes(i.kind)).map((i) => i.id))];
     if (changedIds.length > 0) {
+      reserve('what rests on what changed');
       const deps = (await cap.readDependencies().selectAll().where('depends_on_id' as never, 'in', changedIds as never).where('state' as never, '=', 'active' as never).where('created_at' as never, '<=', knownAt as never).execute()) as Array<Record<string, unknown>>;
       for (const i of items) {
         i.matters = deps.filter((d) => String(d['depends_on_id']) === i.id).map((d) => ({ dependent_object_id: String(d['dependent_object_id']), dependent_type: String(d['dependent_type']), rationale: String(d['rationale']) }))
@@ -220,10 +250,16 @@ export class BriefingService {
       if (warningState(w) === 'raised' && w['response_window_closes_at'] !== null) {
         const c = iso(w['response_window_closes_at']);
         windows.push({ kind: 'warning-response', id: String(w['warning_id']), title: String(w['title']), closes_at: c, time_left_seconds: secondsLeft(c), overdue: c < knownAt, owner: String(w['routed_to']) });
+        // a warning shown for its open window is a contributor whatever its age (residual review R3a): its controls enter the fold and it is a cited source
+        if (!sources.has(`warning:${String(w['warning_id'])}`)) {
+          sources.add(`warning:${String(w['warning_id'])}`);
+          controlInputs.push(await this.controlsOfObject(cap, 'WRN', String(w['warning_id']), null));
+        }
       }
     }
     if (room !== null) {
       // the room's next review as of known_at: the last cadence or review recorded by then
+      reserve('the room events');
       const last = (await cap.readRoomEvents().select(['details' as never]).where('room_id' as never, '=', String(room['room_id']) as never)
         .where('event' as never, 'in', ['room.opened', 'cadence.set', 'review.recorded'] as never).where('occurred_at' as never, '<=', knownAt as never)
         .orderBy('occurred_at' as never, 'desc').limit(1).executeTakeFirst()) as { details: Record<string, unknown> } | undefined;
@@ -234,6 +270,7 @@ export class BriefingService {
     let versionAsOf: number | null = null;
     if (pkg !== null) {
       // the version open to approval as of known_at: the latest proposed by then, unless committed, rejected or superseded by then
+      reserve('the package version and its approvals');
       const versions = (await cap.readVersions().selectAll().where('package_id' as never, '=', String(pkg['package_id']) as never).where('proposed_at' as never, '<=', knownAt as never)
         .orderBy('version' as never, 'desc').execute()) as Array<Record<string, unknown>>;
       const v = versions[0];
@@ -243,13 +280,10 @@ export class BriefingService {
           .where('event' as never, 'in', ['package.committed', 'version.rejected', 'package.withdrawn'] as never).where('occurred_at' as never, '<=', knownAt as never).execute()) as Array<{ event: string; details: Record<string, unknown> }>;
         const closed = closing.some((e) => e.event === 'package.withdrawn' || Number(e.details['version']) === versionAsOf);
         if (!closed) {
-          const approvals = (await cap.readApprovals().selectAll().where('package_id' as never, '=', String(pkg['package_id']) as never).where('version' as never, '=', versionAsOf as never)
-            .where('recorded_at' as never, '<=', knownAt as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
-          for (const ap of approvals) {
-            const revokedBy = ap['revoked_at'] !== null && ap['revoked_at'] !== undefined && iso(ap['revoked_at']) <= knownAt;
-            const expires = iso(ap['expires_at']);
-            if (ap['decision'] !== 'approve' || revokedBy || expires <= knownAt || ap['version_digest'] !== v['version_digest']) continue;
-            windows.push({ kind: 'approval-expiry', id: String(ap['approval_id']), title: `approval by principal:${String(ap['approver_principal_id'])} expires`, closes_at: expires, time_left_seconds: secondsLeft(expires), overdue: false, owner: String(ap['approver_principal_id']) });
+          // the approvals that STOOD at known_at — decision, revocation, expiry, digest AND the approver's eligibility reconstructed then (0049)
+          for (const ap of await cap.liveApprovalsAsOf({ packageId: String(pkg['package_id']), version: versionAsOf, at: knownAt })) {
+            const expires = iso(ap.expires_at);
+            windows.push({ kind: 'approval-expiry', id: ap.approval_id, title: `approval by principal:${ap.approver_principal_id} expires`, closes_at: expires, time_left_seconds: secondsLeft(expires), overdue: false, owner: ap.approver_principal_id });
           }
           const choice = v['choice'] as Record<string, unknown> | null;
           if (choice !== null && typeof choice['decision_deadline'] === 'string') {
@@ -267,7 +301,8 @@ export class BriefingService {
     for (const s of sourceStates) sources.add(`SRC:${s.source_id}@${s.contract_version}`);
     const sourceList = [...sources].sort();
     // the agent's bounds, checked before anything is admitted
-    if (lim.maxReads !== null && sourceList.length > lim.maxReads) throw new BudgetExceeded(`the briefing would read ${sourceList.length} source records; the agent's remaining budget is ${lim.maxReads}`);
+    if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded('the elapsed budget ran out before admission; the composition is abandoned');
+    if (lim.reserve === undefined && lim.maxReads !== null && sourceList.length > lim.maxReads) throw new BudgetExceeded(`the briefing would read ${sourceList.length} source records; the agent's remaining budget is ${lim.maxReads}`);
     if (lim.maxItems !== null && items.length > lim.maxItems) throw new StopCondition(`stop condition max_items: the briefing would carry ${items.length} items, the agent stops at ${lim.maxItems}`);
     if (lim.stopOnDegraded && degraded) throw new StopCondition('stop condition on_degraded: a source the briefing rests on is degraded or blocked');
     const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded };
@@ -303,6 +338,7 @@ export class BriefingService {
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);
+    if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded('the elapsed budget ran out before admission; the composition is abandoned');
     await cap.admitObject(header, payload, headerDigest);
     await cap.composeBriefing({ briefingId, tenantId, domainId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), composer, via, agentId, knownAt, prior: watermark.prior_briefing_id,
       watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId });
@@ -317,14 +353,31 @@ export class BriefingService {
   }
 
   /** Availability NOW of the sources a stored snapshot cites — apart from the content, which keeps its digest. */
-  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; unavailable: Array<Record<string, unknown>> }> {
+  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>> }> {
     const unavailable: Array<Record<string, unknown>> = [];
+    const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0 };
     for (const s of (b['sources'] as string[]) ?? []) {
+      // runs and warnings: readable now, or listed (residual review R4)
+      const rm = /^run:([0-9a-f-]{36})@\d+$/i.exec(s);
+      if (rm !== null) {
+        checked.runs += 1;
+        const run = (await cap.readRuns().select(['run_id', 'state'] as never).where('run_id' as never, '=', rm[1] as never).executeTakeFirst()) as { state: string } | undefined;
+        if (run === undefined) unavailable.push({ kind: 'run', id: rm[1], version: 1, reason: 'not accessible to the reader or not recorded' });
+        continue;
+      }
+      const wm = /^warning(?:-acknowledged)?:([0-9a-f-]{36})$/i.exec(s);
+      if (wm !== null) {
+        checked.warnings += 1;
+        const wr = (await cap.readWarnings().select(['warning_id'] as never).where('warning_id' as never, '=', wm[1] as never).executeTakeFirst()) as { warning_id: string } | undefined;
+        if (wr === undefined) unavailable.push({ kind: 'warning', id: wm[1], version: null, reason: 'not accessible to the reader or not recorded' });
+        continue;
+      }
       const m = /^(evidence|claim):([0-9a-f-]{36})@(\d+)$/i.exec(s);
       if (m === null) continue;
+      if (m[1] === 'evidence') checked.evidence += 1; else checked.claims += 1;
       const objectType = m[1] === 'evidence' ? 'EVD' : 'CLM'; const id = m[2] as string; const version = Number(m[3]);
-      const rows = (await cap.readCanonicalObjects().select(['object_version', 'lifecycle_state', 'classification', 'withdrawal_reason'] as never).where('object_type' as never, '=', objectType as never).where('object_id' as never, '=', id as never)
-        .orderBy('object_version' as never).execute()) as Array<{ object_version: number; lifecycle_state: string; classification: string; withdrawal_reason: string | null }>;
+      const rows = (await cap.readCanonicalObjects().select(['object_version', 'lifecycle_state', 'classification', 'withdrawal_reason', 'payload'] as never).where('object_type' as never, '=', objectType as never).where('object_id' as never, '=', id as never)
+        .orderBy('object_version' as never).execute()) as Array<{ object_version: number; lifecycle_state: string; classification: string; withdrawal_reason: string | null; payload: Record<string, unknown> | null }>;
       const cited = rows.find((r) => Number(r.object_version) === version);
       if (cited === undefined) { unavailable.push({ kind: m[1], id, version, reason: 'not accessible to the reader or not recorded' }); continue; }
       const later = rows.find((r) => Number(r.object_version) > version && r.lifecycle_state === 'withdrawn');
@@ -332,9 +385,15 @@ export class BriefingService {
         unavailable.push({ kind: m[1], id, version, reason: 'withdrawn', by_version: later === undefined ? version : Number(later.object_version), withdrawal_reason: (later ?? cited).withdrawal_reason ?? null });
         continue;
       }
+      // a governed deletion of the bytes is a tombstone on the blob manifest, not a canonical lifecycle state
+      const manifestId = typeof cited.payload?.['manifest_id'] === 'string' ? String(cited.payload['manifest_id']) : null;
+      if (manifestId !== null) {
+        const t = (await cap.readTombstones().select(['tombstoned_at', 'reason'] as never).where('manifest_id' as never, '=', manifestId as never).executeTakeFirst()) as { tombstoned_at: unknown; reason: string } | undefined;
+        if (t !== undefined) { unavailable.push({ kind: m[1], id, version, reason: 'governed-deleted', at: iso(t.tombstoned_at), tombstone_reason: t.reason }); continue; }
+      }
       if (!covers(clearance, cited.classification)) unavailable.push({ kind: m[1], id, version, reason: `classified ${cited.classification}, above the reader's clearance ${clearance}` });
     }
-    return { checked_at: new Date().toISOString(), unavailable };
+    return { checked_at: new Date().toISOString(), checked, unavailable };
   }
 
   /**
@@ -343,7 +402,7 @@ export class BriefingService {
    * reader's clearance covers its classification. The historical content is returned unchanged;
    * availability now is reported beside it.
    */
-  async get(cap: ExecutiveReads, briefingId: string, reader: AuthenticatedPrincipal | string, correlationId: string, purpose: string | null = null): Promise<Record<string, unknown>> {
+  async get(cap: ExecutiveReads, briefingId: string, reader: AuthenticatedPrincipal | string, correlationId: string, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Record<string, unknown>> {
     const readerId = typeof reader === 'string' ? reader : reader.principalId;
     const b = (await cap.readBriefings().selectAll().where('briefing_id' as never, '=', briefingId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (b === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized briefing matches'), 404);
@@ -352,14 +411,14 @@ export class BriefingService {
     }
     const admitted = await this.admitted(cap, briefingId);
     if (purpose !== null) assertPurpose(purpose, admitted.purpose_scope, 'briefing', correlationId);
-    const clearance = typeof reader === 'string' ? 'restricted' : assertClearance(reader, admitted.classification, 'briefing', correlationId);
+    const clearance = typeof reader === 'string' ? 'restricted' : assertClearance(reader, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) }, admitted.classification, 'briefing', correlationId);
     const availability = await this.availability(cap, b, clearance);
     return { ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability };
   }
 
-  async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, roomId: string | null, purpose: string | null = null): Promise<Array<Record<string, unknown>>> {
+  async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, roomId: string | null, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Array<Record<string, unknown>>> {
     const readerId = typeof reader === 'string' ? reader : reader.principalId;
-    const clearance = typeof reader === 'string' ? 'restricted' : clearanceOf(reader);
+    const clearance = typeof reader === 'string' ? 'restricted' : (target === null ? 'internal' : clearanceOf(reader, target));
     let q = cap.readBriefings().select(['briefing_id', 'room_id', 'package_id', 'composed_by', 'composed_via', 'agent_id', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded', 'composed_at', 'controls'] as never).orderBy('composed_at' as never, 'desc').limit(200);
     if (roomId !== null) q = q.where('room_id' as never, '=', roomId as never);
     const rows = (await q.execute()) as Array<Record<string, unknown>>;
