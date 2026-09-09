@@ -276,7 +276,8 @@ if (!room) {
 } else ok(`room present ${room.room_id.slice(0, 8)}…`);
 const ROOM = room.room_id;
 if (briefingAgent) {
-  const run = await call(`${X}/agents/decision/${briefingAgent}/run`, dec(owner, { action: 'agent.trigger', objectType: 'AGT', objectId: briefingAgent }), { task: 'briefing', roomId: ROOM }, owner.token);
+  // the trigger states the purpose the briefing is produced for: the run's outputs are returned to the operator under that purpose (0050, R4c)
+  const run = await call(`${X}/agents/decision/${briefingAgent}/run`, brf(owner, { action: 'agent.trigger', objectType: 'AGT', objectId: briefingAgent }), { task: 'briefing', roomId: ROOM }, owner.token);
   if (!run.ok) bad(`briefing agent run refused (${run.status}) ${run.body?.message ?? ''}`);
   else {
     const r = run.body.run;

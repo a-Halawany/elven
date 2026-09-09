@@ -91,7 +91,48 @@ same checks and the hosted C15 job:
 Local receipts on the remediated closure: `pnpm audit --audit-level high` — no known vulnerabilities;
 `trivy fs` (HIGH,CRITICAL, no ignore file) — 0 findings in `pnpm-lock.yaml`; the C17 licence gate —
 PASS (203 production / 320 development components classified, 0 unresolved). What C15 still names
-after this is the image finding of §4 alone (R-3).
+after this is the image finding of §4 alone (R-3). Confirmed by the hosted gate at `07edd9dc` (run
+34390716808): every dependency, secret and filesystem step `[ok]`; 13 UNGOVERNED util-linux rows.
+
+### 4.2 The image findings — a local patched-image candidate exists (prepared and scanned; not published, not pinned)
+
+R-3 is split as the review asked: preparation needs no registry access and is DONE; publishing is a
+proposal for the owner. Recipes: `infra/images/candidates/{postgres-18-alpine,redis-8-alpine}.Dockerfile`
+with `README.md`; evidence: `infra/images/candidates/evidence/` (scans, SBOM and package deltas, build logs,
+reproducibility record, redacted compatibility log). Nothing was pushed, logged in, committed to a
+registry or referenced by the compose file or the gate.
+
+| Item | postgres candidate | redis candidate |
+|---|---|---|
+| Base | `postgres@sha256:9a8afca5…` (postgres:18-alpine, Alpine 3.24.1) | `redis@sha256:978f0e01…` (redis:8-alpine, Alpine 3.23.5) |
+| Fixed package verified in the branch index | `libuuid` 2.42.1-r0 → **2.42.3-r1** (v3.24/main; index `v3.24.1-530-gfb317804d78`) — the only util-linux subpackage in the base | `setpriv` 2.41.4-r0 → **2.41.6-r1** (v3.23/main; index `v3.23.5-194-g67c786fbc92`) — the only util-linux subpackage in the base |
+| Recipe | `FROM <pinned digest>` + one `RUN apk add --no-cache libuuid=2.42.3-r1` with an installed-version assertion (apk-tools 3.0.6 rejects `apk upgrade pkg=version`) | same shape with `setpriv=2.41.6-r1` |
+| Local image | `eye-cand-postgres:18-alpine-util-linux` = `sha256:e7f664f7307a4bad72661c0ce0354f99903f814962c29819e069c4abaacf9b11`; one new layer, +155,395 bytes; config (USER, ENTRYPOINT, CMD, ENV, EXPOSE, VOLUME) identical to the base | `eye-cand-redis:8-alpine-util-linux` = `sha256:2c26668e3f65bb26ea3edd97bbb0f2add85d7c040db96ce687f764a8a74e8542`; +128,815 bytes; config identical |
+| trivy 0.73.0, DB 2026-09-09, HIGH/CRITICAL, no ignore file | base 32 → candidate 25: **all seven util-linux advisories gone** (CVE-2026-53612/53613/53614/76642/78408/78409/78410); nothing new; 0 secrets, 0 misconfigurations | base 8 → candidate 2: **all six setpriv advisories gone** (the base never reported -78409 against setpriv); nothing new; 0 secrets, 0 misconfigurations |
+| What remains in the scan (all governed by existing dispositions SCX-0001…0009 in `scripts/gate/scanner-exclusions.json`; unchanged by this candidate) | `c-ares` 1.34.6-r0 (CVE-2026-33630), `libcrypto3`/`libssl3` 3.5.7-r0 (CVE-2026-14456), 22 Go-stdlib advisories in `/usr/local/bin/gosu` | `libcrypto3`/`libssl3` 3.5.7-r0 (CVE-2026-14456) |
+| SBOM / licence delta (CycloneDX) | exactly one component changed; BSD-3-Clause unchanged | exactly one component changed; GPL-2.0-or-later unchanged |
+| Compatibility | PostgreSQL 18.4 starts; `uuid-ossp` and `gen_random_uuid()` work (links the patched `libuuid.so.1`); runs as uid 70 with the base's data-directory ownership; a data directory initialised by the BASE is read by the candidate | Redis 8.10.0 starts; the entrypoint drops privileges through the patched `setpriv`; a `dump.rdb` written by the base loads in the candidate |
+| Reproducibility | recipe-reproducible, NOT bit-identical: rebuilds differ only in apk-stamped mtimes and `/var/log/apk.log`; the package payload, `installed` db and `world` are byte-identical across builds; Alpine offers no dated index snapshot, so the version assertion makes drift fail loudly. A bit-identical variant needs BuildKit `rewrite-timestamp` + `SOURCE_DATE_EPOCH` and a normalised `apk.log` | same |
+| Architecture | arm64 primary; a `linux/amd64` variant (the platform the gate scans) built and scanned with the identical finding set | same |
+
+**Two further upgrades are available on both branches and deliberately NOT in the candidates** (they are
+governed findings, not current gate failures): `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0 (CVE-2026-14456)
+and, on postgres, `c-ares` 1.34.6-r0 → 1.34.8-r0. Adding them is one line each in the same recipe; the
+decision whether a derived image should also carry them (and retire SCX dispositions) is the owner's.
+`gosu` needs a newer official postgres build.
+
+**Proposed publishing path (a proposal, not a record of approval):** GHCR under the repository owner's
+namespace, `ghcr.io/a-halawany/elven/postgres:18-alpine-util-linux-<date>` and `…/redis:8-alpine-util-linux-<date>`,
+published by a repository-associated Actions workflow (`infra/images/publish-candidates.yml`, to be added)
+with a job-scoped `GITHUB_TOKEN` granted `packages: write` — GitHub's documented path
+(https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry,
+https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images); no personal token,
+nothing pasted or committed. Access actually needed: (1) the owner's decision to publish; (2) the
+repository's package settings allowing Actions to write packages (an organisation policy may block it —
+verified on the first run, not assumed); (3) after publication, the digest is re-pinned in
+`docker-compose.yml` and `scripts/gate/scanner-exclusions.json` through the governed maintenance path,
+the C15 patched-image recheck runs against the real digest, and the full FINAL C16/C17 chain runs before
+any merge. No waiver, no `.trivyignore`, no weakened assertion.
 
 ## 5. Atomic requirements audit (Volumes 0–10)
 
@@ -123,6 +164,6 @@ Rows are never removed; a satisfied row keeps its evidence pointer.
 
 - **R-1** the referenced register file `The_Eye_Full_Product_Delivery_Register_2026-09-09.md` (reconciliation).
 - **R-2** Volumes 0, 3, 4, 5, 7, 8, 9 as files (the atomic audit, §5).
-- **R-3** a container registry namespace + push credential, or the decision to wait for rebuilt official images (the util-linux findings, §4).
+- **R-3 (revised, §4.2)** the owner's decision to publish the prepared candidates to GHCR from a repository-associated workflow (no personal token), and confirmation that the repository's package settings allow Actions to write packages; or the decision to wait for rebuilt official images.
 
 No email is sent, no source activated and nothing purchased by this register.

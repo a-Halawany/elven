@@ -663,11 +663,18 @@ describe('7 · agent operation: cold start and restart on the scheduler before a
     const row = (await sql<{ outcome: string; spent: Record<string, unknown>; stop_reason: string }>`select outcome, spent, stop_reason from executive.agent_runs where run_id = ${r.runId}::uuid`.execute(h.su)).rows[0];
     expect(row?.outcome).toBe('stopped');
     expect(Number(row?.spent['reads'])).toBe(0);
-    // the control: a budget that covers the read finishes with the read metered
-    const okAgent = (await c.registerAgent({ kind: 'reporting', ...base(), budgets: budgets({ max_reads: 1 }) }, admin)).agent;
+    // the control: a budget that covers the render finishes with every query family metered — the package, its admitted purpose,
+    // the version, the options, the dissent, the approvals and the decision (0050: the renderer is metered family by family, R7c)
+    const okAgent = (await c.registerAgent({ kind: 'reporting', ...base(), budgets: budgets({ max_reads: 8 }) }, admin)).agent;
     const ok = (await c.runAgent(okAgent.agentId, { task: 'report', packageId: P.pkg })).run;
     expect(ok.outcome).toBe('finished');
-    expect(Number(ok.spent['reads'])).toBe(1);
+    expect(Number(ok.spent['reads'])).toBe(7);
+    // a budget short of the render stops at the family it cannot afford, with no report
+    const short = (await c.registerAgent({ kind: 'reporting', ...base(), budgets: budgets({ max_reads: 3 }) }, admin)).agent;
+    const cut = (await c.runAgent(short.agentId, { task: 'report', packageId: P.pkg })).run;
+    expect(cut.outcome).toBe('stopped');
+    expect(Number(cut.spent['reads'])).toBe(3);
+    expect(cut.outputs['report']).toBeUndefined();
   });
 
   it('the decision agent and the briefing agent meter every read before it happens: max_reads=0 stops with reads=0 and no draft; the monitor task stops before its evaluation', async () => {

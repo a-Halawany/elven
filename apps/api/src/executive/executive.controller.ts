@@ -119,7 +119,9 @@ export class ExecutiveController {
           roomId: typeof p.roomId === 'string' ? p.roomId : null, knownAt: instant(p.knownAt, new Date().toISOString()),
           priorBriefingId: p.priorBriefingId === undefined ? undefined : (typeof p.priorBriefingId === 'string' ? p.priorBriefingId : null),
           narrative: typeof p.narrative === 'string' ? p.narrative : null, narrativeCites: Array.isArray(p.narrativeCites) ? p.narrativeCites.filter((x): x is string => typeof x === 'string') : [],
-        }, principal.principalId, via, agentId, envelope.purpose_id ?? 'briefing', envelope.correlation_id, briefingId);
+        }, principal.principalId, via, agentId, envelope.purpose_id ?? 'briefing', envelope.correlation_id, briefingId, null,
+        // the composition is returned to the composer: a human reads it under the clearance the target context gives (residual review R4a)
+        via === 'human' ? clearanceOf(principal, { tenantId: scope.tenantId, domainId: scope.domainId }) : null);
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
     return { briefing: out.result, receipt: receipt(out) };
@@ -159,7 +161,7 @@ export class ExecutiveController {
   @Post('/agents/decision/list')
   async listAgents(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'agent.read', 'AGT', null), ExecutiveCapability.read, async (cap, scope) => this.agents.list(cap, principal, { tenantId: scope.tenantId, domainId: scope.domainId }));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'agent.read', 'AGT', null), ExecutiveCapability.read, async (cap, scope) => this.agents.list(cap, principal, { tenantId: scope.tenantId, domainId: scope.domainId }, envelope.purpose_id ?? null));
     return { ...out.result, planner: { reconciliation: this.worker.lastReconciliation(tenantId, domainId), recent_runs: this.worker.recentRuns(tenantId, domainId) }, receipt: receipt(out) };
   }
 
@@ -175,7 +177,14 @@ export class ExecutiveController {
       async () => ({ result: { agentId, task, triggeredBy: principal.principalId }, targetType: 'AGT', targetId: agentId, targetVersion: '1', outboxEvent: null }));
     const run = await this.agents.run({ agentId, tenantId, domainId, task, trigger: { kind: 'operator', principalId: principal.principalId, ref: trigger.policyDecisionId },
       roomId: typeof p.roomId === 'string' ? p.roomId : null, packageId: typeof p.packageId === 'string' ? p.packageId : null, version: Number.isInteger(p.version) ? (p.version as number) : null, correlationId: envelope.correlation_id });
-    return { run, receipt: receipt(trigger) };
+    // The agent finished its own authorized work; the OPERATOR receives the run's metadata and only the outputs the operator may read —
+    // the same decision as the stored-output list (residual review R4c), recorded as the operator's governed read of the run.
+    const seen = await this.pipeline.consequentialRead({ ...envelope, action: 'agent.read', object_type: 'RUN', object_id: run.runId, message_id: newId(), side_effect_class: 'none', consequence_class: 'C1' } as typeof envelope, principal, this.route(tenantId, domainId, 'agent.read', 'RUN', run.runId), ExecutiveCapability.read,
+      async (cap, scope) => this.agents.redactRun(cap, { run_id: run.runId, agent_id: run.agentId, task, outcome: run.outcome, spent: run.spent, stop_reason: run.stopReason, refusals: run.refusals, outputs: run.outputs, escalated_to: run.escalatedTo,
+                                                        package_id: typeof p.packageId === 'string' ? p.packageId : null, room_id: typeof p.roomId === 'string' ? p.roomId : null },
+                                                  principal, envelope.purpose_id ?? null, { tenantId: scope.tenantId, domainId: scope.domainId }));
+    const r = seen.result;
+    return { run: { runId: run.runId, agentId: run.agentId, outcome: run.outcome, spent: run.spent, stopReason: run.stopReason, refusals: run.refusals, outputs: r['outputs'] as Record<string, unknown>, escalatedTo: run.escalatedTo }, receipt: receipt(trigger) };
   }
 
   /** The planner: bind a room's review cadence to the scheduler with the domain's active briefing agent. */

@@ -273,21 +273,22 @@ export class Phase4Harness {
 
   /* ───────────── Phase 5 · uploaded records through the real file path ───────────── */
 
-  private uploadSourceId: string | null = null;
+  private readonly uploadSourceIds = new Map<string, string>();
 
   /**
    * An UPLOAD source (the demonstration's NORDWERK shape), registered through the real
    * route, approved by the other operator, activated, with an upload agent registered
    * for the operator-upload connector — once per harness.
    */
-  async uploadSource(): Promise<string> {
-    if (this.uploadSourceId !== null) return this.uploadSourceId;
+  async uploadSource(ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'): Promise<string> {
+    const known = this.uploadSourceIds.get(ceiling);
+    if (known !== undefined) return known;
     const { ObservationController } = await import('../../src/observation/observation.controller.js');
     const controller = this.app.get(ObservationController);
-    const sourceKey = `fixture-uploads-${uuidv7().slice(-8)}`;
+    const sourceKey = `fixture-uploads-${ceiling === 'internal' ? '' : `${ceiling}-`}${uuidv7().slice(-8)}`;
     const r = await controller.registerSource(
       this.req(this.registrar, 'observation.source.register', 'SRC', null, 'observation'), this.fx.tenantId, this.fx.domainId,
-      { payload: { contract: uploadContract(sourceKey) } }) as { source: { sourceId: string } };
+      { payload: { contract: uploadContract(sourceKey, ceiling) } }) as { source: { sourceId: string } };
     const sourceId = r.source.sourceId;
     await this.pipeline.write(
       this.env(this.manager, 'observation.source.approve', 'SRC', sourceId), this.manager,
@@ -324,7 +325,7 @@ export class Phase4Harness {
           ${JSON.stringify({ maxRequestsPerRun: 25, maxBytesPerRun: 33554432, maxConcurrency: 1, timeoutMs: 60000, maxRetries: 0 })}::jsonb,
           ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);
       });
-    this.uploadSourceId = sourceId;
+    this.uploadSourceIds.set(ceiling, sourceId);
     return sourceId;
   }
 
@@ -333,9 +334,9 @@ export class Phase4Harness {
    * and return the EVIDENCE objects the run admitted for them, found by the item key the
    * connector derives from the filename and the bytes — never by a name someone typed.
    */
-  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>):
+  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>, ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'):
     Promise<Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }>> {
-    const sourceId = await this.uploadSource();
+    const sourceId = await this.uploadSource(ceiling);
     const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
     const controller = this.app.get(UploadController);
     await controller.upload(this.req(this.registrar, 'observation.run.trigger', 'RUN', null, 'observation'), this.fx.tenantId, this.fx.domainId,
@@ -358,7 +359,7 @@ export class Phase4Harness {
 }
 
 /** The demonstration's NORDWERK-shaped upload contract, under a fixture key. */
-function uploadContract(sourceKey: string): Record<string, unknown> {
+function uploadContract(sourceKey: string, ceiling: string = 'internal'): Record<string, unknown> {
   return {
     source_key: sourceKey,
     name: 'Fixture uploaded records (SYNTHETIC)',
@@ -372,7 +373,7 @@ function uploadContract(sourceKey: string): Record<string, unknown> {
     authority_and_rights: {
       owner: 'observation.operations', steward: 'fixture', authority: 'Internal records (synthetic)', legal_basis: 'Internal synthetic data created for tests',
       rights_state: 'confirmed', licence: 'internal', permitted_use: ['internal analysis'], robots_policy: 'not applicable', purposes: ['observation'],
-      classification_ceiling: 'internal', residency: 'EU', retention: '24 months', deletion_obligation: 'none',
+      classification_ceiling: ceiling, residency: 'EU', retention: '24 months', deletion_obligation: 'none',
     },
     security_and_operations: {
       credential_ref: null,

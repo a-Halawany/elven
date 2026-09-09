@@ -259,10 +259,10 @@ describe('R4 · read authorization is evaluated against the target context, on e
     const run = (await c.runAgent(briefingAgent.agentId, { task: 'briefing', roomId })).run;
     expect(run.outcome).toBe('finished');
     const outsider = await h.humanWithSession(['executive'], 'outside-executive');
-    const listed = (await c.listAgents(outsider)).runs.find((r) => r['run_id'] === run.runId) as Record<string, unknown>;
+    const listed = (await c.listAgents(outsider, 'briefing')).runs.find((r) => r['run_id'] === run.runId) as Record<string, unknown>;
     expect(listed).toBeDefined();
     expect((listed['outputs'] as Record<string, unknown>)['withheld']).toBeDefined();
-    const member = (await c.listAgents(w.executive)).runs.find((r) => r['run_id'] === run.runId) as Record<string, unknown>;
+    const member = (await c.listAgents(w.executive, 'briefing')).runs.find((r) => r['run_id'] === run.runId) as Record<string, unknown>;
     expect((member['outputs'] as Record<string, unknown>)['briefing_id']).toBeDefined();
   }, 120_000);
 

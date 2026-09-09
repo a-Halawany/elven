@@ -458,3 +458,91 @@ No waiver, no bypass: C15 and FINAL C16/C17 stay blocking.
   decision-agent simulation selection) are open in the register, not resolved here.
 - This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
   browser case stays failed until verified.
+
+## 13. The review at `07edd9dc` — five residual paths reproduced at the harness, then corrected (review still OPEN)
+
+The independent review of PR #46 at `07edd9dc` (`audit/reviews/The_Eye_PR46_Review_07edd9dc_and_Next_Steps.txt`)
+preserved the corrections of §11 and §12 (21 passing preservation checks in its own service/PDP
+harness with doubles, and R2's carried-option correction accepted by SQL inspection) and named five
+residual paths. Its evidence is service-with-doubles and SQL inspection; every consequence below was
+established here at the real database/controller/identity/Redis harness before any change, in
+`apps/api/test/int/phase6-residual-corrections-2.test.ts` (10 cases, each with its positive control),
+and the same cases are the regression afterwards. One forward migration,
+`0050_phase6_residual_corrections_2.sql` (0041–0049 untouched), and the services correct them.
+
+### 13.1 Reproduction before, correction after
+
+Against the reviewed tree (services at `07edd9dc`, migrations through 0049) **8 of 10 cases failed on
+the assertion naming the consequence**; the two that passed before any change are recorded in §13.2.
+Against the corrected tree **10 of 10 pass**.
+
+| Path | Consequence reproduced at the harness (the failing assertion before) | Correction (0050 + services) |
+|---|---|---|
+| R7c the reporting agent's nested renderer | with a 1 ms elapsed budget the outer reservation passed and the renderer then ran its seven query families after the deadline: the run closed `finished`, `over_budget: 1`, with the full report in its outputs | the agent's meter goes INTO `renderReport`: a read is reserved before every query family (the package, its admitted purpose, the membership, the version, the options, the dissent, the approvals, the decision), so nothing starts after the deadline; the run stops, records the family it stopped before, escalates, and carries no report; a read budget short of the render stops at the family it cannot afford |
+| R6b a superset aggregate period | an all-unsimulated choice bound to March (2024-03-11..04-10, cost ≤ 100); a complete, admitted observation over the quarter (01-11..04-10, cost 150) ending at the twin's cut-off and the criterion's `by` passed every upstream guard and was recorded as March's outcome (`met: false`) | `record_outcome` requires the observation's period to BE the criterion's interval (`valid_from = from AND valid_to = to`); a shorter or a longer period is refused with both periods named; no derivation from a superset is attempted; choices admitted before 0049 keep the 0048 rules |
+| R4a the composition response | a member executive (confidential) composed a room briefing whose fold was restricted (restricted evidence in the window): the BRF was admitted and its full content returned to the executive, while the stored BRF refused that same reader | `BriefingService.compose` receives the human composer's clearance in the target context and refuses BEFORE admission when it does not cover the fold, returning the classification alone; the stored snapshot is governed by the same rule; an agent's composition is not a human response (its outward paths are R4b/R4c) |
+| R4b stored agent outputs under purpose | a reporting agent's stored report was listed in full to a room member under the purpose `research` | every run output carries `provenance` (`purpose`, `package_id`, `room_id`, `classification`, `contributors`); the list applies ONE content-read decision per run (`AgentsService.redactRun`): clearance in the target context, the purpose the output was produced for, current room membership — withheld outputs carry the reason and the provenance, nothing else; runs closed before provenance existed are judged from the package they name |
+| R4c the operator's trigger response | an executive (confidential) refused the restricted package's direct report could trigger a reporting agent cleared for restricted work and received the full report in the run response; a non-member owner received a room's report the same way | the controller records the operator's governed read of the run (`agent.read` on the RUN) and returns the run's metadata with the outputs `redactRun` admits for THAT operator; the agent's own work, its stored output and the scheduled path are unchanged |
+| R3c reconciliation contributors | a reconciliation of the chosen run against a later RESTRICTED observation appeared in the observed layer of a replay read by an internal analyst and by a confidential executive; the RPL folded below restricted; neither side of the reconciliation was a contributor | `decision.replay_contributors` names, for every reconciliation the observed layer shows, both twin versions (exact `from_version`/`against_version`), the run the simulated side cites and the evidence/claims the observed side cites, each with the controls its canonical record carries; a reconciliation whose record cannot be found is an unresolved contributor (fails closed); the reader's clearance is asserted against the complete fold before anything is admitted |
+| R5c historical rights | a rights withdrawal recorded AFTER a briefing's cut-off turned that briefing's source from `live` to `blocked` and changed its content digest on recomposition | source states as of `known_at` reconstruct the reuse rights from the recorded rights events (the registration and every rights update by then); `unknown` when the record cannot establish them (blocked); a contract active at the prior's cut-off and suspended by `known_at` is listed blocked with the withdrawal named, so a withdrawal inside the interval is represented there; the withdrawal is enforced NOW on the stored snapshot's availability (`kind: 'source'`, rights withdrawn) apart from the unchanged content; a later confirmation rewrites nothing |
+
+### 13.2 Passing before any change, and fixture findings
+
+- **R3, the as-of control.** A replay with `as_of` just before the reconciliation was recorded shows no
+  reconciliation and folds no restriction from it — true on the reviewed head too (a positive control,
+  not a reproduction). Note: `decided_at` serialised to the millisecond is BEFORE the decision's own
+  microsecond instant, so an as-of "at the decision" is refused by the port; the control uses the instant
+  before the reconciliation.
+- **R5, the interval case in its first form** passed vacuously on the reviewed head: a contract suspended
+  by the withdrawal was simply absent from the source states at the later cut-off. The corrected form
+  composes since the prior and requires the source to be listed and blocked; that form fails on the
+  reviewed head for the same reason as R5c and passes on the corrected tree.
+- **The tenant administrator cannot compose.** `briefing.compose` is the executive's, the owner's or the
+  briefing agent's; the covering composer of the positive controls is the tenant administrator holding
+  the domain's `executive` role as an extra DOMAIN binding (the borrowing path §12.2 records).
+- **Restricted evidence** enters the harness through a second upload source registered under a
+  `restricted` classification ceiling (`Phase4Harness.upload(files, 'restricted')`, a helper extension);
+  the TWN admitted from it folds to restricted, which is what the R3 and R4 paths need.
+- **The 1 ms report budget** is deterministic in effect: the meter's first reservation is made at its
+  first instant; every later query family lies beyond the deadline. When the millisecond turns before the
+  first reservation the outer guard refuses (the path already in place); the case repeats the run in
+  that event and asserts the corrected outcome on the run that reached the renderer.
+- **The pass-1 control of §11 (a report is one metered read)** now expects seven metered families
+  and adds a short-budget stop; that is the corrected behaviour, recorded as a change to a control of
+  this branch's own suite, not to a frozen criterion.
+- **Fixtures whose purpose now matters.** `runAgent` in `phase6-fixtures.ts` states `briefing` for a
+  briefing task and `decision` otherwise; `listAgents` takes the purpose; the demo seed triggers the
+  briefing agent under `briefing`. The web client does not trigger agent runs.
+
+### 13.3 The other checks (separate evidence classes)
+
+| Check (class) | Result at the corrected tree |
+|---|---|
+| **Harness** — `phase6-residual-corrections-2` (database, controller, identity path, real Redis; a second upload source under a restricted ceiling) | reviewed tree: **8/10 fail** on the naming assertion (`residual2-before-2`); with 0050 applied and the SERVICES still at `07edd9dc`: the two SQL-side paths (R6, R3) pass and the four service-side paths (R7, R4a/b/c, R5 both forms) still fail (`residual2-before-3-services-at-07edd9dc`); corrected tree: **10/10 pass** (`residual2-after-3`) |
+| **Harness** — `phase6-review-corrections` (§11) and `phase6-agents` | 34/34 (the §11 read-budget control adjusted to the metered render, §13.2) |
+| **Harness** — the Phase 6 suites in one invocation | 12 files, 138 cases: 137 passed, 1 failed on the §11 control BEFORE its adjustment; the adjusted control passes |
+| **Harness** — `test:int:all`, phases 0–6 (the final regression, one invocation) | **44 files, 793 passed** |
+| **Unit** (`pnpm test`, no database) | on the dirty working tree two gate probes fail as before (§11: `hermetic-isolation`, `receipt-contract` read the tree's own digests); UNIT_3 |
+| **Web** typecheck and `next build` | clean |
+| Module boundaries (`pnpm boundaries`) | no violations (476 modules) |
+| gitleaks over the working tree | no leaks (77.6 MB scanned) |
+| Post-C18 upgrade check (`verify-0022-upgrade.mjs`, virgin database migrated from empty through 0050) | **PASS** — 50 files, schema digests match exactly (`b842b795f3502102…`), Phase 1–2 suites on upgraded data 274/274; the ledger gains its 29th declared line |
+| **Deployment** (`eye_demo`, historical records kept) | 0050 applied; the API restarted from the corrected build reconciled 4/4 persisted schedules and 1/1 room briefing cadence at startup; the replay probe after 0050: M. Dvořák (member, purpose `decision`) 201; H. Weber (reader role, not a member) 403; T. Nakamura (member, purpose `research`) 403; the demo seed (act VI) re-ran with the briefing agent triggered under `briefing`: 0 problems, the outcome, the reconciliation and the replay unchanged in digest |
+| **Browser** — Phase 6 spec on the restarted deployment after 0050 (web served from the rebuilt bundle) | **3/3** (decisions, replay, briefings) |
+| **Browser** — Phase 4/5 spec, preserved | **1 failed, 12 not run**: the spec's first case counts the ECB retrospective validation on the overview (`1 validated retrospective`), which this deployment cannot produce while the publisher is unreachable; the describe is serial, so the other twelve cases do not run behind it. This is what every run of this session shows (`browser-phase4`, `-2`, `-3`, and this one); §11/§12 and the PR body reported the case as one failure among twelve passes, which the recorded outputs do not support — corrected here. Not verified, not waived. |
+
+### 13.4 CI at the exact head
+
+CI_RESULT_3
+
+### 13.5 What remains (not closed)
+
+- The full-product audit and the security maintenance track are recorded in
+  `FULL_PRODUCT_DELIVERY_REGISTER.md` (§4–§6, §8) and `audit/`.
+- An interval aggregate is established by an observation over exactly that interval; deriving one from
+  finer-grained cited observations under a declared aggregation rule is not implemented (register §6).
+- An agent's composition folds under the agent's own registration; the agent's clearance is applied to
+  its report (§11) and to what leaves the run (R4b/R4c), not to the briefing it composes for the room's
+  members (which the stored-read rule governs).
+- This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
+  browser case stays failed until verified.

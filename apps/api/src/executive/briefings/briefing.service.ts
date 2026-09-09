@@ -65,43 +65,71 @@ const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warn
 
 @Injectable()
 export class BriefingService {
-  /** The state of every active source in the domain AS OF known_at, from stored records alone (the shape of the readiness register). */
-  private async sourceStates(cap: ExecutiveReads, knownAt: string, reserve: (what: string) => void): Promise<Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string }>> {
-    // The contract versions ACTIVE AT known_at, from the contract event history (residual review R5a): a version activated
-    // by then and not superseded, retired or suspended by then (a reactivation by then restores it).
+  /**
+   * The state of every source of the domain AS OF known_at, from stored records alone (the shape of the readiness
+   * register): the contract versions active at known_at — and, for a windowed briefing, those active at the prior
+   * cut-off that have since been suspended, superseded or retired, so a withdrawal INSIDE the interval is represented
+   * there — with the reuse rights each had THEN, reconstructed from the recorded rights events (the registration and
+   * every rights update), never from the current projection (residual review R5c). Where the record cannot establish
+   * the rights at known_at, the state is `unknown` and the source is blocked.
+   */
+  private async sourceStates(cap: ExecutiveReads, knownAt: string, since: string | null, reserve: (what: string) => void): Promise<Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string; rights_state: string }>> {
     reserve('the source contract history');
-    const events = (await cap.readSourceContractEvents().select(['source_id', 'contract_version', 'event', 'occurred_at'] as never).where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).execute()) as Array<{ source_id: string; contract_version: number; event: string; occurred_at: unknown }>;
-    const activeAt = new Map<string, number>();
+    const events = (await cap.readSourceContractEvents().select(['source_id', 'contract_version', 'event', 'occurred_at', 'details'] as never).where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).orderBy('event_id' as never).execute()) as Array<{ source_id: string; contract_version: number; event: string; occurred_at: unknown; details: Record<string, unknown> | null }>;
+    const activeAt = (t: string): Map<string, { event: string; at: string }> => {
+      const active = new Map<string, { event: string; at: string }>();
+      for (const e of events) {
+        const at = iso(e.occurred_at);
+        if (at > t) break;
+        const key = `${e.source_id}@${e.contract_version}`;
+        if (e.event === 'contract.activated' || e.event === 'contract.reactivated') active.set(key, { event: e.event, at });
+        else if (e.event === 'contract.superseded' || e.event === 'contract.retired' || e.event === 'contract.suspended' || e.event === 'contract.rejected') active.delete(key);
+      }
+      return active;
+    };
+    const activeNow = activeAt(knownAt);
+    const activeThen = since === null ? new Map<string, { event: string; at: string }>() : activeAt(since);
+    // the rights each version had at known_at: the latest recorded rights state by then (registration or rights update)
+    const rightsAt = new Map<string, { state: string; at: string }>();
+    const closedAt = new Map<string, { event: string; at: string }>();
     for (const e of events) {
       const key = `${e.source_id}@${e.contract_version}`;
-      if (e.event === 'contract.activated' || e.event === 'contract.reactivated') activeAt.set(key, Number(e.contract_version));
-      else if (e.event === 'contract.superseded' || e.event === 'contract.retired' || e.event === 'contract.suspended' || e.event === 'contract.rejected') activeAt.delete(key);
+      const rs = e.details?.['rights_state'];
+      if (typeof rs === 'string' && (e.event === 'contract.registered' || e.details?.['kind'] === 'rights_update')) rightsAt.set(key, { state: rs, at: iso(e.occurred_at) });
+      if (e.event === 'contract.superseded' || e.event === 'contract.retired' || e.event === 'contract.suspended' || e.event === 'contract.rejected') closedAt.set(key, { event: e.event, at: iso(e.occurred_at) });
     }
     const all = (await cap.readSourceContracts().selectAll().orderBy('source_key' as never).execute()) as Array<Record<string, unknown>>;
-    const contracts = all.filter((c) => activeAt.has(`${String(c['source_id'])}@${Number(c['contract_version'])}`));
-    const out: Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string }> = [];
+    const contracts = all.filter((c) => activeNow.has(`${String(c['source_id'])}@${Number(c['contract_version'])}`) || activeThen.has(`${String(c['source_id'])}@${Number(c['contract_version'])}`));
+    const out: Array<{ source_id: string; contract_version: number; source_key: string; name: string; acquisition_mode: string; data_origin: string; state: SourceState; reason: string; rights_state: string }> = [];
     reserve('the source health verdicts and attempts');
     for (const c of contracts) {
       const sourceId = String(c['source_id']);
+      const key = `${sourceId}@${Number(c['contract_version'])}`;
       const contract = c['contract'] as Record<string, unknown>;
       const so = (contract['security_and_operations'] ?? {}) as Record<string, unknown>;
       const credentialRef = typeof so['credential_ref'] === 'string' ? so['credential_ref'] : null;
       const mode = String(c['acquisition_mode']);
-      const rights = String(c['rights_state']);
+      const rights = rightsAt.get(key)?.state ?? 'unknown';
       const health = (await cap.readHealthEvents().select(['new_state' as never]).where('source_id' as never, '=', sourceId as never).where('evaluated_at' as never, '<=', knownAt as never)
         .orderBy('evaluated_at' as never, 'desc').limit(1).executeTakeFirst()) as { new_state: string } | undefined;
       // an attempt's outcome is known when it FINISHES (residual review R5b): one still running at known_at is no verdict then
       const lastAttempt = (await cap.readScheduledAttempts().select(['outcome' as never]).where('source_id' as never, '=', sourceId as never).where('finished_at' as never, '<=', knownAt as never)
         .orderBy('finished_at' as never, 'desc').limit(1).executeTakeFirst()) as { outcome: string } | undefined;
       let state: SourceState; let reason: string;
-      if (c['connector_kind'] === 'upload') { state = 'operator-upload'; reason = 'records the operator uploaded'; }
+      const closed = activeNow.has(key) ? undefined : closedAt.get(key);
+      if (closed !== undefined) {
+        state = 'blocked';
+        reason = rights === 'withdrawn' ? `reuse rights were withdrawn at ${rightsAt.get(key)?.at ?? closed.at} (the contract was ${closed.event.replace('contract.', '')} then)` : `the contract was ${closed.event.replace('contract.', '')} at ${closed.at}`;
+      }
+      else if (c['connector_kind'] === 'upload') { state = 'operator-upload'; reason = 'records the operator uploaded'; }
       else if (credentialRef !== null) { state = 'blocked'; reason = `the contract names credential ${credentialRef}, which this deployment does not bind`; }
-      else if (rights !== 'confirmed') { state = 'blocked'; reason = `reuse rights are ${rights}`; }
+      else if (rights === 'unknown') { state = 'blocked'; reason = 'the reuse rights at known_at cannot be established from the recorded rights events'; }
+      else if (rights !== 'confirmed') { state = 'blocked'; reason = `reuse rights were ${rights} as of known_at (recorded at ${rightsAt.get(key)?.at ?? 'an unknown time'})`; }
       else if (health !== undefined && ['degraded', 'failed', 'suspended'].includes(health.new_state)) { state = 'degraded'; reason = `the latest health verdict recorded by known_at is ${health.new_state}`; }
       else if (lastAttempt !== undefined && ['failed', 'faulted', 'budget_exceeded'].includes(lastAttempt.outcome)) { state = 'degraded'; reason = `the latest scheduled attempt by known_at ${lastAttempt.outcome}`; }
       else if (mode === 'live') { state = 'live'; reason = 'live collection under the source\'s cadence'; }
       else { state = 'replayed'; reason = 'replayed from the recorded bytes; not a live observation'; }
-      out.push({ source_id: sourceId, contract_version: Number(c['contract_version']), source_key: String(c['source_key']), name: String(c['name']), acquisition_mode: mode, data_origin: String(c['data_origin']), state, reason });
+      out.push({ source_id: sourceId, contract_version: Number(c['contract_version']), source_key: String(c['source_key']), name: String(c['name']), acquisition_mode: mode, data_origin: String(c['data_origin']), state, reason, rights_state: rights });
     }
     return out.sort((a, b) => (a.source_key < b.source_key ? -1 : a.source_key > b.source_key ? 1 : a.contract_version - b.contract_version));
   }
@@ -116,7 +144,9 @@ export class BriefingService {
   }
 
   async compose(cap: BriefingWrites, ctx: ScopeContext, a: { roomId: string | null; knownAt: string; priorBriefingId: string | null | undefined; narrative: string | null; narrativeCites: string[] },
-                composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), limits: CompositionLimits | number | null = null) {
+                composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), limits: CompositionLimits | number | null = null,
+                /** The composer's clearance in the target context, for a HUMAN composer: the response is a read of the fold, refused before admission when it is not covered (residual review R4a). */
+                composerClearance: string | null = null) {
     const lim: CompositionLimits = typeof limits === 'number' ? { maxReads: limits, maxItems: null, stopOnDegraded: false } : (limits ?? { maxReads: null, maxItems: null, stopOnDegraded: false });
     // every unit of read work is reserved BEFORE it happens; the deadline is checked with it and again before admission (residual review R7)
     const reserve = (what: string): void => {
@@ -147,7 +177,7 @@ export class BriefingService {
     // The interval: (prior.known_at, known_at] — what the prior KNEW, not when it was composed.
     const since = prior === null ? null : iso(prior['known_at']);
     const inWindow = (t: unknown): boolean => { const x = iso(t); return (since === null || x > since) && x <= knownAt; };
-    const sourceStates = await this.sourceStates(cap, knownAt, reserve);
+    const sourceStates = await this.sourceStates(cap, knownAt, since, reserve);
     const stateOfSource = (sourceId: string): SourceState => sourceStates.find((s) => s.source_id === sourceId)?.state ?? 'internal';
     const items: BriefingItem[] = [];
     const sources = new Set<string>();
@@ -321,6 +351,11 @@ export class BriefingService {
       controlInputs.push({ ...pc, synthetic_state: pkg['synthetic_state'] === true || pc.synthetic_state === true, classification: typeof pc.classification === 'string' ? pc.classification : 'internal' });
     }
     const controls: Controls = controlInputs.length === 0 ? foldControls([{ synthetic_state: false, classification: 'internal' }]) : foldControls(controlInputs);
+    // the composer RECEIVES the composition: a human whose clearance does not cover the fold is refused here, before anything is
+    // admitted, and learns the classification alone — no item, title or value (residual review R4a)
+    if (composerClearance !== null && !covers(composerClearance, controls.classification)) {
+      denyRead(correlationId, `the briefing folds to ${controls.classification}; the composer's clearance in this domain is ${composerClearance}; nothing is admitted or returned`);
+    }
     const now = new Date().toISOString();
     const payload = { ...content, content_digest: digest, narrative, narrative_cites: cites, composed_via: via, agent_id: agentId };
     const header: CanonicalHeader = {
@@ -355,8 +390,18 @@ export class BriefingService {
   /** Availability NOW of the sources a stored snapshot cites — apart from the content, which keeps its digest. */
   private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>> }> {
     const unavailable: Array<Record<string, unknown>> = [];
-    const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0 };
+    const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0, sources: 0 };
     for (const s of (b['sources'] as string[]) ?? []) {
+      // a source contract the snapshot rested on: its reuse rights and lifecycle NOW (residual review R5c) — the content keeps what they were then
+      const sm = /^SRC:([0-9a-f-]{36})@(\d+)$/i.exec(s);
+      if (sm !== null) {
+        checked.sources += 1;
+        const row = (await cap.readSourceContracts().select(['rights_state', 'lifecycle_state'] as never).where('source_id' as never, '=', sm[1] as never).where('contract_version' as never, '=', Number(sm[2]) as never).executeTakeFirst()) as { rights_state: string; lifecycle_state: string } | undefined;
+        if (row === undefined) unavailable.push({ kind: 'source', id: sm[1], version: Number(sm[2]), reason: 'not accessible to the reader or not recorded' });
+        else if (row.rights_state === 'withdrawn') unavailable.push({ kind: 'source', id: sm[1], version: Number(sm[2]), reason: 'reuse rights withdrawn now; what the snapshot rested on may not be used further', lifecycle_state: row.lifecycle_state });
+        else if (row.lifecycle_state === 'suspended' || row.lifecycle_state === 'retired') unavailable.push({ kind: 'source', id: sm[1], version: Number(sm[2]), reason: `the contract is ${row.lifecycle_state} now`, lifecycle_state: row.lifecycle_state });
+        continue;
+      }
       // runs and warnings: readable now, or listed (residual review R4)
       const rm = /^run:([0-9a-f-]{36})@\d+$/i.exec(s);
       if (rm !== null) {
