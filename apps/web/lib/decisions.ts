@@ -41,7 +41,7 @@ export interface BriefingItem { item_id: string; kind: string; id: string; title
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
 export interface Briefing {
   briefing_id: string; room_id: string | null; package_id: string | null; composed_by: string; composed_via: 'human' | 'agent'; agent_id: string | null; known_at: string; prior_briefing_id: string | null;
-  watermark: { prior_briefing_id: string | null; prior_composed_at: string | null; known_at: string }; sources: string[]; items: BriefingItem[]; windows: BriefingWindow[];
+  watermark: { prior_briefing_id: string | null; prior_known_at?: string | null; prior_composed_at: string | null; known_at: string }; sources: string[]; items: BriefingItem[]; windows: BriefingWindow[];
   source_states: Array<{ source_key: string; name: string; acquisition_mode: string; state: string; reason: string }>; degraded: boolean; narrative: string | null; narrative_cites: string[]; content_digest: string; composed_at: string;
 }
 

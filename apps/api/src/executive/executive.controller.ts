@@ -12,6 +12,7 @@ import { ExecutiveCapability } from './executive.capabilities.js';
 import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
 import { AgentsService, renderReport, validateRegisterAgent, type AgentTask } from './agents/agents.service.js';
+import { clearanceOf } from '../decision/clearance.js';
 import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
 
@@ -128,14 +129,14 @@ export class ExecutiveController {
   async listBriefings(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { roomId?: string | null } }) {
     const { envelope, principal } = ctx(req);
     const roomId = typeof body.payload?.roomId === 'string' ? body.payload.roomId : null;
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'briefing.read', 'BRF', null), ExecutiveCapability.read, async (cap) => this.briefings.list(cap, principal.principalId, roomId));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'briefing.read', 'BRF', null), ExecutiveCapability.read, async (cap) => this.briefings.list(cap, principal, roomId, envelope.purpose_id ?? null));
     return { briefings: out.result, receipt: receipt(out) };
   }
 
   @Post('/briefings/:briefingId/get')
   async getBriefing(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('briefingId') briefingId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'briefing.read', 'BRF', briefingId), ExecutiveCapability.read, async (cap) => this.briefings.get(cap, briefingId, principal.principalId, envelope.correlation_id));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'briefing.read', 'BRF', briefingId), ExecutiveCapability.read, async (cap) => this.briefings.get(cap, briefingId, principal, envelope.correlation_id, envelope.purpose_id ?? null));
     return { briefing: out.result, receipt: receipt(out) };
   }
 
@@ -158,7 +159,7 @@ export class ExecutiveController {
   @Post('/agents/decision/list')
   async listAgents(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'agent.read', 'AGT', null), ExecutiveCapability.read, async (cap) => this.agents.list(cap));
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'agent.read', 'AGT', null), ExecutiveCapability.read, async (cap) => this.agents.list(cap, principal));
     return { ...out.result, planner: { reconciliation: this.worker.lastReconciliation(), recent_runs: this.worker.recentRuns() }, receipt: receipt(out) };
   }
 
@@ -172,7 +173,6 @@ export class ExecutiveController {
     if (!['draft', 'briefing', 'report', 'monitor'].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report or monitor'), 422);
     const trigger = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'agent.trigger', 'AGT', agentId), ExecutiveCapability.read,
       async () => ({ result: { agentId, task, triggeredBy: principal.principalId }, targetType: 'AGT', targetId: agentId, targetVersion: '1', outboxEvent: null }));
-    this.agents.setSystemReader(principal);
     const run = await this.agents.run({ agentId, tenantId, domainId, task, trigger: { kind: 'operator', principalId: principal.principalId, ref: trigger.policyDecisionId },
       roomId: typeof p.roomId === 'string' ? p.roomId : null, packageId: typeof p.packageId === 'string' ? p.packageId : null, version: Number.isInteger(p.version) ? (p.version as number) : null, correlationId: envelope.correlation_id });
     return { run, receipt: receipt(trigger) };
@@ -198,7 +198,7 @@ export class ExecutiveController {
   @Post('/reports/:packageId/render')
   async report(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
     const { envelope, principal } = ctx(req);
-    const clearance = principal.bindings.some((b) => ['tenant_admin', 'platform_admin', 'auditor', 'executive', 'decision_owner', 'decision_authority'].includes(b.roleCode)) ? 'confidential' : 'internal';
+    const clearance = clearanceOf(principal);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'report.render', 'DPK', packageId), DecisionCapability.read,
       async (cap) => renderReport(cap, packageId, clearance, { principal_id: principal.principalId, method: 'report-render@1.0.0', via: 'human' }, envelope.correlation_id));
     if (out.result.refused === true) throw new HttpException(errorBody('EYE_AUT_001', envelope.correlation_id, out.result.reason), 403);

@@ -13,6 +13,12 @@
  *                    not cover.
  * Every run is opened and closed by the agent under its own session, with its trigger;
  * every output carries the agent's identity, version and method. Nothing learns.
+ *
+ * Review of PR #46, item 7: the registration is read by the session port under the
+ * identity-operation capability — no human's cached principal is borrowed, so a scheduled
+ * tick runs on a cold process and after a restart. Every budget is checked BEFORE the work
+ * it bounds (reads, elapsed time) on every task, the registered stop conditions are
+ * evaluated before anything is admitted, and every stop is recorded and escalated.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -24,8 +30,9 @@ import { PrincipalsService } from '../../identity/principals.service.js';
 import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { DecisionCapability } from '../../decision/decision.capabilities.js';
 import { PackageService, type OptionIntake } from '../../decision/packages/package.service.js';
+import { clearanceOf, covers } from '../../decision/clearance.js';
 import { ExecutiveCapability, type AgentWrites, type ExecutiveReads } from '../executive.capabilities.js';
-import { BriefingService, BudgetExceeded } from '../briefings/briefing.service.js';
+import { BriefingService, BudgetExceeded, StopCondition, type CompositionLimits } from '../briefings/briefing.service.js';
 import { DecisionAgentGrantRefused, DecisionAgentSessionService } from './agent-session.service.js';
 
 export type AgentKind = 'decision' | 'briefing' | 'reporting';
@@ -33,6 +40,8 @@ export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor';
 const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent' };
 const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0' };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
+/** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
+export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
@@ -43,12 +52,39 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
+  for (const k of ['max_reads', 'max_gateway_calls', 'max_elapsed_ms']) if (Number((b as Record<string, unknown>)[k]) < 0) bad(`budget ${k} is a non-negative integer`);
+  const stops = Array.isArray(m.stopConditions) ? m.stopConditions : [];
+  for (const s of stops) {
+    const sc = (s !== null && typeof s === 'object' ? s : {}) as Record<string, unknown>;
+    if (!SUPPORTED_STOP_CONDITIONS.includes(sc['kind'] as never)) bad(`stop condition ${JSON.stringify(sc['kind'] ?? s)} is not one this runtime supports (${SUPPORTED_STOP_CONDITIONS.join(', ')})`);
+    if (sc['kind'] === 'max_items' && (!Number.isInteger(sc['value']) || Number(sc['value']) < 0)) bad('stop condition max_items names a non-negative integer value');
+  }
   return { kind: m.kind as AgentKind, version: m.version as string, codeDigest: m.codeDigest as string, ownerPrincipalId: m.ownerPrincipalId as string, escalationPrincipalId: m.escalationPrincipalId as string,
-           budgets: { clearance: 'internal', ...(b as Record<string, unknown>) }, stopConditions: Array.isArray(m.stopConditions) ? m.stopConditions : [] };
+           budgets: { clearance: 'internal', ...(b as Record<string, unknown>) }, stopConditions: stops };
 }
 
 export interface Refusal { action: string; code: string; reason: string; at: string }
 export interface RunOutcome { runId: string; agentId: string; outcome: string; spent: Record<string, unknown>; stopReason: string | null; refusals: Refusal[]; outputs: Record<string, unknown>; escalatedTo: string | null }
+
+/** The run's meter: every budget is checked BEFORE the unit of work it bounds, never after. */
+class Meter {
+  readonly spent: Record<string, number> = { reads: 0, gateway_calls: 0, elapsed_ms: 0 };
+  constructor(private readonly budget: Record<string, number>, private readonly started: number) {}
+  private elapsed(): number { return Date.now() - this.started; }
+  /** Refuse further work when the elapsed budget is exhausted. */
+  tick(): void {
+    this.spent['elapsed_ms'] = this.elapsed();
+    if (this.elapsed() >= Number(this.budget['max_elapsed_ms'] ?? 0)) throw new BudgetExceeded(`elapsed ${this.elapsed()} ms reaches the budget of ${String(this.budget['max_elapsed_ms'])} ms; the run stops before further work`);
+  }
+  /** Reserve one read: refused before the read happens when the budget would be exceeded. */
+  read(what: string): void {
+    this.tick();
+    if (this.spent['reads'] as number >= Number(this.budget['max_reads'] ?? 0)) throw new BudgetExceeded(`read budget of ${String(this.budget['max_reads'])} reached before ${what}; ${String(this.spent['reads'])} read(s) spent`);
+    this.spent['reads'] = (this.spent['reads'] as number) + 1;
+  }
+  remainingReads(): number { return Math.max(0, Number(this.budget['max_reads'] ?? 0) - (this.spent['reads'] as number)); }
+  close(): Record<string, number> { this.spent['elapsed_ms'] = this.elapsed(); return { ...this.spent }; }
+}
 
 @Injectable()
 export class AgentsService {
@@ -86,10 +122,32 @@ export class AgentsService {
     return { agent: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
-  async list(cap: ExecutiveReads) {
+  /** The registry and the recent runs; a run's outputs are withheld from a reader whose clearance does not cover the package they concern. */
+  async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | null = null) {
     const agents = (await cap.readAgents().selectAll().orderBy('created_at' as never).execute()) as Array<Record<string, unknown>>;
     const runs = (await cap.readAgentRuns().selectAll().orderBy('started_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>;
-    return { agents, runs };
+    if (reader === null) return { agents, runs };
+    const clearance = clearanceOf(reader);
+    const classificationOf = new Map<string, string>();
+    const packageIds = [...new Set(runs.map((r) => r['package_id']).filter((x): x is string => typeof x === 'string'))];
+    const roomIds = [...new Set(runs.map((r) => r['room_id']).filter((x): x is string => typeof x === 'string'))];
+    if (roomIds.length > 0) {
+      const rooms = (await cap.readRooms().select(['room_id', 'package_id'] as never).where('room_id' as never, 'in', roomIds as never).execute()) as Array<{ room_id: string; package_id: string }>;
+      for (const r of rooms) packageIds.push(r.package_id);
+      for (const run of runs) if (typeof run['room_id'] === 'string' && run['package_id'] === null) run['package_id_of_room'] = rooms.find((x) => x.room_id === run['room_id'])?.package_id ?? null;
+    }
+    if (packageIds.length > 0) {
+      const pkgs = (await cap.readPackages().select(['package_id', 'controls'] as never).where('package_id' as never, 'in', [...new Set(packageIds)] as never).execute()) as Array<{ package_id: string; controls: Record<string, unknown> | null }>;
+      for (const p of pkgs) classificationOf.set(p.package_id, String(p.controls?.['classification'] ?? 'internal'));
+    }
+    const redacted = runs.map((run) => {
+      const pid = typeof run['package_id'] === 'string' ? run['package_id'] : (typeof run['package_id_of_room'] === 'string' ? run['package_id_of_room'] : null);
+      const classification = pid === null ? 'internal' : (classificationOf.get(pid) ?? 'restricted');
+      const { package_id_of_room: _drop, ...rest } = run;
+      if (covers(clearance, classification)) return rest;
+      return { ...rest, outputs: { withheld: `the run's package is classified ${classification}; the reader's clearance is ${clearance}` } };
+    });
+    return { agents, runs: redacted };
   }
 
   /**
@@ -100,13 +158,9 @@ export class AgentsService {
   async run(a: { agentId: string; tenantId: string; domainId: string; task: AgentTask; trigger: { kind: 'operator' | 'scheduler'; principalId: string | null; ref: string | null };
                  roomId: string | null; packageId: string | null; version: number | null; correlationId: string }): Promise<RunOutcome> {
     const T = a.tenantId; const D = a.domainId;
-    const reg = await this.pipeline.consequentialRead(this.env({ principalId: '00000000-0000-0000-0000-000000000000' } as AuthenticatedPrincipal, T, D, 'agent.read', 'AGT', a.agentId, a.correlationId), await this.systemReader(), this.route(T, D, 'agent.read', 'AGT', a.agentId), ExecutiveCapability.read,
-      async (cap) => (await cap.readAgents().selectAll().where('agent_id' as never, '=', a.agentId as never).executeTakeFirst()) as Record<string, unknown> | undefined).catch(() => ({ result: undefined }));
-    const agent = reg.result;
-    if (agent === undefined) throw new HttpException(errorBody('EYE_STA_001', a.correlationId, 'no such agent in this domain'), 404);
-    let principal: AuthenticatedPrincipal;
+    let principal: AuthenticatedPrincipal; let registration: Awaited<ReturnType<DecisionAgentSessionService['openRunSession']>>['registration'];
     try {
-      principal = await this.sessions.openRunSession({ agentId: a.agentId, tenantId: T, domainId: D, agentVersion: String(agent['agent_version']), codeDigest: String(agent['code_digest']), correlationId: a.correlationId });
+      ({ principal, registration } = await this.sessions.openRunSession({ agentId: a.agentId, tenantId: T, domainId: D, correlationId: a.correlationId }));
     } catch (e) {
       if (e instanceof DecisionAgentGrantRefused) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, e.message), 403);
       throw e;
@@ -118,23 +172,24 @@ export class AgentsService {
         return { result: r, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
       });
     const budget = opened.result.budget as Record<string, number>;
-    const started = Date.now();
+    const stops = (opened.result.stop_conditions ?? []) as Array<Record<string, unknown>>;
+    const meter = new Meter(budget, Date.now());
     const refusals: Refusal[] = [];
-    const spent: Record<string, unknown> = { reads: 0, gateway_calls: 0, elapsed_ms: 0 };
     let outcome: 'finished' | 'stopped' | 'refused' | 'faulted' = 'finished'; let stopReason: string | null = null; let outputs: Record<string, unknown> = {};
-    const identity = { agent_id: a.agentId, agent_kind: agent['agent_kind'], agent_version: agent['agent_version'], code_digest: agent['code_digest'], method: METHOD_OF[agent['agent_kind'] as AgentKind], principal_id: principal.principalId };
+    const identity = { agent_id: a.agentId, agent_kind: registration.agent_kind, agent_version: registration.agent_version, code_digest: registration.code_digest, method: METHOD_OF[registration.agent_kind as AgentKind], principal_id: principal.principalId };
     try {
-      if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, budget, spent, refusals, a.correlationId, identity);
-      else if (a.task === 'briefing' || a.task === 'monitor') outputs = await this.brief(principal, T, D, a.roomId, a.task, budget, spent, refusals, a.correlationId, identity);
-      else outputs = await this.report(principal, T, D, a.packageId, budget, refusals, a.correlationId, identity);
+      if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, meter, refusals, a.correlationId, identity);
+      else if (a.task === 'briefing' || a.task === 'monitor') outputs = await this.brief(principal, T, D, a.roomId, a.task, meter, stops, a.correlationId, identity);
+      else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {
-      if (e instanceof BudgetExceeded) { outcome = 'stopped'; stopReason = e.message; }
+      if (e instanceof BudgetExceeded) { outcome = 'stopped'; stopReason = `budget: ${e.message}`; }
+      else if (e instanceof StopCondition) { outcome = 'stopped'; stopReason = e.message; }
       else if (e instanceof HttpException && e.getStatus() === 403) { outcome = 'refused'; stopReason = String((e.getResponse() as { message?: string }).message ?? 'refused'); refusals.push({ action: a.task, code: String((e.getResponse() as { code?: string }).code ?? 'EYE-AUT-001'), reason: stopReason, at: new Date().toISOString() }); }
       else { outcome = 'faulted'; stopReason = `fault: ${(e as Error).message}`.slice(0, 500); }
     }
-    spent['elapsed_ms'] = Date.now() - started;
-    if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) { outcome = 'stopped'; stopReason = `elapsed ${String(spent['elapsed_ms'])} ms exceeds the budget of ${String(budget['max_elapsed_ms'])} ms`; }
+    const spent = meter.close();
+    if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) { outcome = 'stopped'; stopReason = `budget: elapsed ${String(spent['elapsed_ms'])} ms exceeds the budget of ${String(budget['max_elapsed_ms'])} ms`; }
     const closed = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, this.route(T, D, 'agent.run', 'RUN', runId), ExecutiveCapability.agent,
       async (cap) => {
         const r = await cap.closeAgentRun({ runId, tenantId: T, domainId: D, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, correlationId: a.correlationId });
@@ -143,24 +198,15 @@ export class AgentsService {
     return { runId, agentId: a.agentId, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, escalatedTo: closed.result.escalated_to ?? null };
   }
 
-  /** A system reader for the registry lookup before the agent's session exists: the registry row is read by the pipeline's own read path. */
-  private systemReaderCache: AuthenticatedPrincipal | null = null;
-  setSystemReader(p: AuthenticatedPrincipal): void { this.systemReaderCache = p; }
-  private async systemReader(): Promise<AuthenticatedPrincipal> {
-    if (this.systemReaderCache === null) throw new HttpException(errorBody('EYE_STA_001', newId(), 'no reader to look the agent up with'), 409);
-    return this.systemReaderCache;
-  }
-
   // ───────────────────────── the decision agent ─────────────────────────
-  private async draft(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, version: number | null, budget: Record<string, number>, spent: Record<string, unknown>, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
+  private async draft(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, version: number | null, meter: Meter, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
     if (packageId === null || version === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the draft task names a package and a draft version'), 422);
+    meter.read('the completed runs and the draft\'s options');
     const read = await this.pipeline.consequentialRead(this.env(p, T, D, 'decision.read', 'DPK', packageId, correlationId), p, this.route(T, D, 'decision.read', 'DPK', packageId), DecisionCapability.read, async (cap) => {
       const runs = (await cap.readRuns().selectAll().where('state' as never, '=', 'completed' as never).orderBy('completed_at' as never).limit(200).execute()) as Array<Record<string, unknown>>;
       const existing = (await cap.readOptions().select(['key' as never]).where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).execute()) as Array<{ key: string }>;
       return { runs, existing: new Set(existing.map((o) => o.key)) };
     });
-    spent['reads'] = Number(spent['reads']) + 1;
-    if (Number(spent['reads']) > Number(budget['max_reads'])) throw new BudgetExceeded(`reads ${String(spent['reads'])} exceed the budget of ${String(budget['max_reads'])}`);
     // the option cards: the first control with interventions on it is the common baseline; each intervention is a card
     const controls = read.result.runs.filter((r) => r['run_kind'] === 'control');
     const picked = controls.map((c) => ({ c, interventions: read.result.runs.filter((r) => r['run_kind'] === 'intervention' && String(r['control_run_id']) === String(c['run_id'])) })).filter((x) => x.interventions.length > 0)[0];
@@ -175,6 +221,7 @@ export class AgentsService {
     const drafted: string[] = [];
     for (const card of cards) {
       if (read.result.existing.has(card.key)) continue;
+      meter.tick();
       await this.pipeline.write(this.env(p, T, D, 'decision.package.draft', 'DPK', packageId, correlationId), p, this.route(T, D, 'decision.package.draft', 'DPK', packageId), DecisionCapability.option,
         async (cap, scope) => {
           const r = await this.packages.setOption(cap, scope, packageId, version, card, p.principalId, correlationId);
@@ -194,14 +241,15 @@ export class AgentsService {
   }
 
   // ───────────────────────── the briefing agent ─────────────────────────
-  private async brief(p: AuthenticatedPrincipal, T: string, D: string, roomId: string | null, task: 'briefing' | 'monitor', budget: Record<string, number>, spent: Record<string, unknown>, _refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
+  private async brief(p: AuthenticatedPrincipal, T: string, D: string, roomId: string | null, task: 'briefing' | 'monitor', meter: Meter, stops: Array<Record<string, unknown>>, correlationId: string, identity: Record<string, unknown>) {
     if (roomId === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the briefing task names a room'), 422);
+    meter.read('the room');
     const room = await this.pipeline.consequentialRead(this.env(p, T, D, 'room.read', 'DRM', roomId, correlationId), p, this.route(T, D, 'room.read', 'DRM', roomId), ExecutiveCapability.read,
       async (cap) => (await cap.readRooms().selectAll().where('room_id' as never, '=', roomId as never).executeTakeFirst()) as Record<string, unknown> | undefined);
-    spent['reads'] = Number(spent['reads']) + 1;
     if (room.result === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no such room'), 404);
     const packageId = String(room.result['package_id']);
-    // the room's conditions first (a committed package), then the briefing
+    // the room's conditions first (a committed package), then the briefing — the evaluation reads the package's conditions and is metered as a read
+    meter.read('the package\'s monitoring conditions');
     let monitoring: Record<string, unknown> | null = null;
     try {
       const m = await this.pipeline.write(this.env(p, T, D, 'decision.monitor', 'DPK', packageId, correlationId), p, this.route(T, D, 'decision.monitor', 'DPK', packageId), DecisionCapability.monitor,
@@ -211,22 +259,24 @@ export class AgentsService {
       // a package that is not committed is not monitored: that is a state, not a fault
       if (!(e instanceof Error && /watched after commitment/.test(e.message))) throw e;
     }
-    spent['reads'] = Number(spent['reads']) + 1;
     if (task === 'monitor') return { room_id: roomId, package_id: packageId, monitoring, marked: 'agent-produced', agent: identity };
+    meter.tick();
     const briefingId = newId();
-    const maxReads = Math.max(0, Number(budget['max_reads']) - Number(spent['reads']));
+    const maxItems = stops.filter((s) => s['kind'] === 'max_items').map((s) => Number(s['value'])).reduce<number | null>((acc, v) => (acc === null ? v : Math.min(acc, v)), null);
+    const limits: CompositionLimits = { maxReads: meter.remainingReads(), maxItems, stopOnDegraded: stops.some((s) => s['kind'] === 'on_degraded') };
     const out = await this.pipeline.write(this.env(p, T, D, 'briefing.compose', 'BRF', briefingId, correlationId), p, { ...this.route(T, D, 'briefing.compose', 'BRF', briefingId), writableTargets: [briefingId] }, ExecutiveCapability.briefing,
       async (cap, scope: ScopeContext) => {
-        const r = await this.briefings.compose(cap, scope, { roomId, knownAt: new Date().toISOString(), priorBriefingId: undefined, narrative: null, narrativeCites: [] }, p.principalId, 'agent', String(identity['agent_id']), 'briefing', correlationId, briefingId, maxReads);
+        const r = await this.briefings.compose(cap, scope, { roomId, knownAt: new Date().toISOString(), priorBriefingId: undefined, narrative: null, narrativeCites: [] }, p.principalId, 'agent', String(identity['agent_id']), 'briefing', correlationId, briefingId, limits);
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
-    spent['reads'] = Number(spent['reads']) + out.result.sources.length;
+    for (let i = 0; i < out.result.sources.length; i += 1) meter.spent['reads'] = (meter.spent['reads'] as number) + 1;
     return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, monitoring, marked: 'agent-produced', agent: identity };
   }
 
   // ───────────────────────── the reporting agent ─────────────────────────
-  private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, _refusals: Refusal[], correlationId: string, identity: Record<string, unknown>) {
+  private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, meter: Meter, correlationId: string, identity: Record<string, unknown>) {
     if (packageId === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the report task names a package'), 422);
+    meter.read('the package and its records');
     const out = await this.pipeline.consequentialRead(this.env(p, T, D, 'report.render', 'DPK', packageId, correlationId), p, this.route(T, D, 'report.render', 'DPK', packageId), DecisionCapability.read,
       async (cap) => renderReport(cap, packageId, String(budget['clearance'] ?? 'internal'), identity, correlationId));
     if (out.result.refused === true) return { package_id: packageId, refused: true, reason: out.result.reason, marked: 'agent-produced', agent: identity };

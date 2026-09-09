@@ -12,6 +12,9 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { CloseWrites, DecisionReads, MonitorWrites, OutcomeWrites } from '../decision.capabilities.js';
+import { foldControls, type ControlInput } from '../../prediction/controls.js';
+import { unfoldProfiles } from '../packages/package.service.js';
+import { versionControls } from '../approvals/approval.service.js';
 
 const bad = (correlationId: string, msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +56,13 @@ export class MonitoringService {
     const title = `Outcome: ${String(criterion['quantity'])} — ${String(value)} ${String(criterion['unit'])} (target ${cmp} ${target}${met === null ? '' : met ? ', met' : ', not met'})`;
     const statement = `${String(criterion['quantity'])} observed as ${String(value)} ${String(criterion['unit'])} on twin ${intake.twinId} version ${intake.twinVersion} element ${intake.elementKey}; the approved choice ${String(choice['option_key'])} targeted ${cmp} ${target} ${String(criterion['unit'])} by ${String(criterion['by'])}.${intake.note === null ? '' : ` ${intake.note}`}`;
     const now = new Date().toISOString();
+    // the OUT inherits the controls of the observed element it cites and of the version it closes the loop on (review of PR #46, item 3)
+    const vc = versionControls(v);
+    const ec = (element['controls'] ?? {}) as ControlInput;
+    const controls = foldControls(unfoldProfiles([
+      { synthetic_state: vc.synthetic_state, classification: vc.classification, rights_profile: vc.rights_profile, residency_profile: vc.residency_profile, retention_profile: vc.retention_profile, access_policy_ref: vc.access_policy_ref },
+      { ...ec, synthetic_state: element['synthetic_state'] === true || ec.synthetic_state === true, classification: typeof ec.classification === 'string' ? ec.classification : 'internal' },
+    ]));
     const payload = {
       strategy_kind: 'outcome', title, statement, status: 'active', horizon: String(criterion['by']), owner: `principal:${actor}`, parent_objective_id: null,
       verification: { state: 'not_applicable', reason: null, at: null },
@@ -68,11 +78,11 @@ export class MonitoringService {
       owning_component: 'CP-DEC-01', accountable_owner: `principal:${actor}`,
       source_object_ids: [`DPK:${packageId}@${version}`, `CMT:${String(commitment['commitment_id'])}@1`, `TWN:${intake.twinId}@${intake.twinVersion}`],
       event_time: typeof criterion['by'] === 'string' ? `${String(criterion['by']).slice(0, 10)}T00:00:00.000Z` : null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'day', source_clock_quality: 'trusted', truth_state: 'observed', synthetic_state: element['synthetic_state'] === true, confidence: null, uncertainty: null,
+      time_precision: 'day', source_clock_quality: 'trusted', truth_state: 'observed', synthetic_state: controls.synthetic_state, confidence: null, uncertainty: null,
       evidence_refs: ((element['citations'] as Array<{ kind: string; id: string; version?: number }>) ?? []).filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version ?? 1}`),
       provenance_ref: `principal:${actor}`, method_ref: 'decision-outcome@1.0.0', contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${actor}`],
-      classification: 'internal', purpose_scope: purposeId, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: { met, reconciled: rec !== undefined }, freshness_state: null, schema_ref: 'OUT@v1', ontology_ref: null,
+      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
+      quality_profile: null, quality_state: { met, reconciled: rec !== undefined, controls_inputs: controls.inputs }, freshness_state: null, schema_ref: 'OUT@v1', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const check = validateHeader(header);

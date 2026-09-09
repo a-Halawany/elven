@@ -87,7 +87,7 @@ describe('P6-M4 · F4 — briefings: what changed, why it matters, who owns it, 
     const r = (await c.compose({ roomId, knownAt: k1, priorBriefingId: null })).briefing;
     b1 = r.briefingId; d1 = r.contentDigest;
     expect(d1).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.watermark).toEqual({ prior_briefing_id: null, prior_composed_at: null, known_at: k1 });
+    expect(r.watermark).toEqual({ prior_briefing_id: null, prior_known_at: null, prior_composed_at: null, known_at: k1 });
     const kinds = new Set(r.items.map((i) => String(i['kind'])));
     expect([...kinds]).toEqual(expect.arrayContaining(['evidence', 'run', 'package']));
     expect(r.items.filter((i) => i['kind'] === 'run').length).toBe(4);
@@ -144,7 +144,7 @@ describe('P6-M4 · F4 — briefings: what changed, why it matters, who owns it, 
     const r3b = (await c.compose({ roomId, knownAt: k3, priorBriefingId: r2.briefingId }, w.owner)).briefing;
     expect(r3b.contentDigest).toBe(r3.contentDigest);
     // a prior from another room / a prior composed after known_at / a watermark that lies — refused at the port
-    expect(await message(c.compose({ roomId, knownAt: k1, priorBriefingId: r3.briefingId }))).toMatch(/composed after this briefing's known_at/);
+    expect(await message(c.compose({ roomId, knownAt: k1, priorBriefingId: r3.briefingId }))).toMatch(/known_at .* is after this briefing's known_at/);
     expect(await status(c.compose({ roomId, knownAt: k3, priorBriefingId: uuidv7() }))).toBe(404);
     const obj = (await sql<{ s: string }>`select supersedes s from objects.canonical_objects where object_id = ${r3.briefingId}::uuid`.execute(h.su)).rows[0];
     expect(obj?.s).toBe(`BRF:${r2.briefingId}@1`);

@@ -36,14 +36,10 @@ export class AgentWorkerService implements OnApplicationBootstrap {
 
   /** Every open room in a domain with an active briefing agent: one scheduler at the room's review cadence. */
   async reconcile(reason: string): Promise<BriefingReconcileReport> {
+    // Under the schedule capability (no tenant) every RLS table hides its rows: the eligible rooms are read by the port that asserts that capability (0048).
     const rows = await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability(${reason}, 60)`.execute(tx);
-      return (await sql<{ tenant_id: string; domain_id: string; room_id: string; agent_id: string; review_every_days: number }>`
-        select r.tenant_id::text, r.domain_id::text, r.room_id::text, a.agent_id::text, r.review_every_days
-          from executive.rooms_current r
-          join decision.packages_current p on p.package_id = r.package_id and p.state not in ('closed', 'withdrawn', 'rejected')
-          join lateral (select agent_id from executive.agents x where x.tenant_id = r.tenant_id and x.domain_id = r.domain_id and x.agent_kind = 'briefing' and x.status = 'active' order by created_at desc limit 1) a on true
-         order by r.opened_at`.execute(tx)).rows;
+      return (await sql<{ tenant_id: string; domain_id: string; room_id: string; agent_id: string; review_every_days: number }>`select * from executive.briefings_to_reconcile()`.execute(tx)).rows;
     });
     const report: BriefingReconcileReport = { eligible: rows.length, scheduled: [], failures: [] };
     for (const r of rows) {

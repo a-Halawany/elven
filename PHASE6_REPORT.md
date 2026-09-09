@@ -222,3 +222,55 @@ stands as recorded at its commits; it no longer exists on this machine.
 - A refused commit rolls its transaction back, so the refusal is the PDP denial and audit record,
   not a package event.
 - Room object code `DRM` (envelope codes are three letters).
+
+## 11. The review of PR #46 at `09abd095` — reproduced at the harness, then corrected (NOT recorded as closed)
+
+Codex's review executed the services and the PDP with doubles and inspected the SQL without executing
+it: fifteen correctness expectations failed, seven controls passed. This pass reproduced every
+database consequence through the existing database, controller, identity and Redis harness BEFORE
+changing anything (`test/int/phase6-review-corrections.test.ts`, 25 cases, one per consequence with
+its positive control), then corrected them with one forward migration, `0048_phase6_review_corrections`
+(0041–0047 untouched), and the services. The suite is kept as the regression. Evidence classes stay
+apart: §11.1 is the harness before and after, §11.2 the refutations found at the boundary, §11.3
+the other checks, §11.4 CI at the exact head, §11.5 what remains.
+
+### 11.1 Reproduction before, correction after
+
+Against the reviewed head (migrations through 0047, services at `09abd095`) the suite ran twice:
+first 7 of 7 cases of items 1–2 failed as expected and the fixtures of items 3–7 needed two
+corrections of their own (recorded in §11.2); then **25 of 25 failed**, each on the assertion that
+names the consequence. Against the corrected head **25 of 25 pass**.
+
+| # | Consequence reproduced (the failing assertion before) | Correction (0048 + services) |
+|---|---|---|
+| 1 | `decision.live_approvals` counted a role-based approval after the approver's `decision_approver` binding was revoked (`'1'` where `'0'` was expected); `holds_role` said `true` for a revoked `decision_authority` binding; the package's displayed standing said `live` | `approver_eligibility` and `holds_role` read only bindings with `revoked_at IS NULL`; the package view marks `live` from the port's own recount, never a local re-derivation; the web says "the approver is no longer eligible" |
+| 2 | `set_option` accepted an EVD recorded after the version's `known_at`, an EVD whose event fell after `observed_through`, a foreign digest, a citation naming a record of another type, a run on a twin version opened after `known_at`; it stored the caller's `{"made_up": true}` uncertainty and `public` controls | `set_option` is dropped and recreated (returns jsonb): each citation must be a recorded object of its kind at the version and digest recorded, by `known_at` and `observed_through`; a cited run must be completed and rest on inputs (its twin version's `known_at`/`observed_through`) that obey the cut-offs — it may complete after `known_at`; uncertainty (method `derived-at-port@2`, the run's `sensitivity.factors` and relative, `outside_envelope`, `validation_status`, `inherited_validation`, the twin's validation), controls (`decision.fold_controls`) and synthetic state are derived by the port; the service returns what the port derived |
+| 3 | APR and CMT headers carried `internal`/null over a version folded to `confidential` with a licence; RPL carried null rights; a briefing over a warning-only interval folded to `internal`/`false` | APR and CMT inherit the version's fold; RPL folds the version and the known layer; OUT folds the observed element and the version; BRF folds every item — EVD/CLM, the SIM record of each run, the WRN record of each warning, the scenario's FCT for a flip, the package's fold for its events — and the room's package |
+| 4 | a domain analyst member read a room briefing under purpose `research`; read a briefing folded to `confidential`; listed it; read the confidential package; a non-member analyst replayed a package with a room | `decision/clearance.ts`: clearance from role bindings (administrators/auditor restricted; executive, owner, authority, domain admin confidential; others internal); briefing get/list, replay and package get require membership where a room exists, the purpose the record was admitted for (its header's `purpose_scope`) and a covering clearance; briefing get returns `availability.unavailable` (withdrawn, deleted, not accessible, above clearance) beside the unchanged content; agent run outputs are withheld from readers whose clearance does not cover the run's package |
+| 5 | a warning raised after a briefing's `known_at` was one of its windows; a later acknowledgement, health verdict and review changed the earlier digest; the next briefing used the prior's `composed_at` and skipped a review recorded after the prior's `known_at`; the replay's observed warning changed state after an acknowledgement | warnings, their state (from `prediction.warning_events`), the room's next review (from `room_events`), the approvals that stood and the version open to approval (from `package_events`), source health and attempts are all read AS OF `known_at`; the interval is `(prior.known_at, known_at]` with `prior_known_at` in the watermark and checked by `compose_briefing`; `replay_layers` reads warning state and OUT status as of `as_of` (`decision.warning_state_as_of`, `decision.strategy_status_as_of`), the OUT's title from its immutable canonical record |
+| 6 | `record_outcome` accepted a same-unit travel-days element for the line-stop criterion, an element on another twin, a period ending after the criterion's date, an observation known before the decision | `set_choice` requires `observed_on = twin:<element key>`; `record_outcome` binds the element to the criterion's `observed_on`, the twin to the twins the version's options ran on, the period (`valid_to` ≤ `by`), and the chronology (the twin version's `known_at` and the cited evidence's `recorded_at` after `decided_at`); a legitimate reconciliation of a different same-unit output records that other criterion and no other |
+| 7 | no scheduler-triggered run closed on a cold process (`systemReaderCache` empty → 409); the startup reconciliation scheduled nothing; a reporting agent with `max_reads=0` finished with a full report and `reads=0`; the decision agent read before checking; the monitor task evaluated beyond its budget; elapsed exhaustion was checked after the work; a stop condition `when_the_moon_is_full` was accepted | `executive.decision_agent_run_open` reads the registration itself under the identity-operation capability and returns it (no reader is borrowed; `setSystemReader` is gone); `executive.briefings_to_reconcile()` asserts the schedule capability the worker already holds, because under it every RLS table hid the rooms; a `Meter` checks reads and elapsed time BEFORE each unit of work on every task; `max_items` and `on_degraded` are the supported stop conditions, validated at registration (service and port), evaluated before admission, recorded and escalated |
+
+### 11.2 Refutations and fixture findings at the boundary
+
+- **Item 1, partial refutation.** Phase 0's boundary bumps a principal's revocation epoch on any
+  change to their role bindings, so the revoked person's own sessions are refused at once
+  (`authority epoch changed`): a revoked authority cannot commit even before 0048 (the harness
+  shows 403 at the pipeline; the port's `holds_role` is exercised directly and now says `false`).
+  What the boundary did NOT prevent — and 0048 corrects — is the revoked approver's earlier approval
+  still counting when another authority commits.
+- **Item 3, OUT synthetic flag**: as Codex noted, it worked; no defect was invented. The OUT now also
+  folds the element's and the version's rights, residency, retention and access policy.
+- **Fixture findings, recorded plainly**: the first reproduction run stalled after item 1 because the
+  fixture revoked and restored a shared approver's binding, and the epoch bump invalidated that
+  approver's session for the rest of the file — the probes now use principals of their own; the
+  item 6 fixture named a record locator absent from its CSV. Both are fixture corrections, not
+  product ones.
+- **A defect the review did not name**: the planner's startup reconciliation could never schedule a
+  room. It read `executive.rooms_current` under the schedule capability, which carries no tenant, so
+  FORCE-RLS hid every row; the 9/9 of `phase6-agents` had scheduled through a human's `/schedule` call.
+  `executive.briefings_to_reconcile()` (0048) is the port the worker reads through now; COLD START and
+  RESTART in the suite prove a scheduler-triggered run finishing with no human trigger in the process.
+
+### 11.3 The other checks (separate evidence classes)
+

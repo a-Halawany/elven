@@ -44,6 +44,9 @@ export interface ExecutiveReads {
   readScenarioEvents(): any;
   readBranches(): any;
   readWarnings(): any;
+  readWarningEvents(): any;
+  readScenarios(): any;
+  readOptions(): any;
   readDependencies(): any;
   readStrategy(): any;
   readSourceContracts(): any;
@@ -96,6 +99,9 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readScenarioEvents(): any { return this.from('prediction.scenario_events'); }
   readBranches(): any { return this.from('prediction.branches_current'); }
   readWarnings(): any { return this.from('prediction.warnings_current'); }
+  readWarningEvents(): any { return this.from('prediction.warning_events'); }
+  readScenarios(): any { return this.from('prediction.scenarios_current'); }
+  readOptions(): any { return this.from('decision.options'); }
   readDependencies(): any { return this.from('graph.dependencies'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
   readSourceContracts(): any { return this.from('observation.source_contracts_current'); }

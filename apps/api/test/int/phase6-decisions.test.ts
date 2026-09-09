@@ -115,7 +115,7 @@ describe('P6-M1 · F1 — options cite completed runs by exact version and diges
     expect(r.option.simulated).toBe(true);
     expect(r.option.syntheticState).toBe(true);
     const u = r.option.uncertainty as { method: string; citations: number; synthetic_inputs: number; unvalidated_runs: number; outside_envelope_runs: number; truth_states: string[]; basis: Array<Record<string, unknown>> };
-    expect(u.method).toBe('derived-from-citations@1');
+    expect(u.method).toBe('derived-at-port@2');
     expect(u.citations).toBe(2);
     expect(u.synthetic_inputs).toBeGreaterThanOrEqual(1);
     expect(u.unvalidated_runs).toBe(1);

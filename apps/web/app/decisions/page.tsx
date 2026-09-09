@@ -164,7 +164,7 @@ export default function DecisionsPage() {
                   <thead><tr><Th>Approver</Th><Th>Decision</Th><Th>Standing</Th><Th>Expires</Th><Th>Recorded</Th></tr></thead>
                   <tbody>{v.approvals.map((a) => (
                     <tr key={a.approval_id}><Td mono>{short(a.approver_principal_id)}</Td><Td>{a.decision}</Td>
-                      <Td>{a.revoked_at ? `REVOKED — ${a.revoked_reason ?? ''}` : a.live ? '● live' : 'not counted (expired or another digest)'}</Td>
+                      <Td>{a.revoked_at ? `REVOKED — ${a.revoked_reason ?? ''}` : a.live ? '● live' : 'not counted (expired, another digest, or the approver is no longer eligible)'}</Td>
                       <Td mono>{fmtInstant(a.expires_at)}</Td><Td mono>{fmtInstant(a.recorded_at)}</Td></tr>
                   ))}</tbody>
                 </table>

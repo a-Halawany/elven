@@ -28,6 +28,14 @@ export function validateApprovalIntake(m: Partial<ApprovalIntake>, correlationId
   return { decision: m.decision as ApprovalIntake['decision'], versionDigest: m.versionDigest as string, rationale: m.rationale as string, conditions: Array.isArray(m.conditions) ? m.conditions : [] };
 }
 
+/** The controls a derived record inherits from the version it rests on (review of PR #46, item 3). */
+export function versionControls(v: Record<string, unknown>): { classification: string; rights_profile: string | null; residency_profile: string | null; retention_profile: string | null; access_policy_ref: string | null; synthetic_state: boolean } {
+  const c = (v['controls'] ?? {}) as Record<string, unknown>;
+  const str = (x: unknown): string | null => (typeof x === 'string' && x.length > 0 ? x : null);
+  return { classification: typeof c['classification'] === 'string' ? c['classification'] : 'internal', rights_profile: str(c['rights_profile']), residency_profile: str(c['residency_profile']),
+           retention_profile: str(c['retention_profile']), access_policy_ref: str(c['access_policy_ref']), synthetic_state: v['synthetic_state'] === true || c['synthetic_state'] === true };
+}
+
 const dayOf = (v: unknown): string | null => (v === null || v === undefined ? null : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)));
 
 @Injectable()
@@ -40,15 +48,16 @@ export class ApprovalService {
     if (!['proposed', 'under_review', 'approved'].includes(String(pv['state']))) state(correlationId, `version ${version} is ${String(pv['state'])}; only a proposed version is approved`);
     if (pv['version_digest'] !== intake.versionDigest) state(correlationId, `the digest approved is not the digest of version ${version}; an approval signs what was read`);
     const now = new Date().toISOString();
+    const inherited = versionControls(pv);
     const payload = { package_id: packageId, version, version_digest: intake.versionDigest, approver: `principal:${approver}`, decision: intake.decision, rationale: intake.rationale, conditions: intake.conditions };
     const header: CanonicalHeader = {
       object_id: approvalId, object_type: 'APR', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: '1', lifecycle_state: 'active', owning_component: 'CP-DEC-01', accountable_owner: `principal:${approver}`,
       source_object_ids: [`DPK:${packageId}@${version}`], event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: false, confidence: null, uncertainty: null,
+      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: inherited.synthetic_state, confidence: null, uncertainty: null,
       evidence_refs: [], provenance_ref: `principal:${approver}`, method_ref: 'human-approval@1.0.0', contradiction_refs: [], corroboration_refs: [],
-      human_refs: [`principal:${approver}`], classification: 'internal', purpose_scope: purposeId, rights_profile: null, residency_profile: null, retention_profile: null,
-      access_policy_ref: null, quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'APR@v1', ontology_ref: null,
+      human_refs: [`principal:${approver}`], classification: inherited.classification, purpose_scope: purposeId, rights_profile: inherited.rights_profile, residency_profile: inherited.residency_profile, retention_profile: inherited.retention_profile,
+      access_policy_ref: inherited.access_policy_ref, quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'APR@v1', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const check = validateHeader(header);
@@ -83,6 +92,7 @@ export class ApprovalService {
     const title = `Commit: ${String(pkg['title'])} — ${String((option as Record<string, unknown>)['title'])}`;
     const statement = `${String(choice['rationale'])} Deadline ${String(choice['decision_deadline'])}; action owner principal:${String(choice['action_owner'])}; accepted trade-offs: ${(choice['accepted_trade_offs'] as unknown[]).map(String).join('; ') || 'none stated'}.`;
     const now = new Date().toISOString();
+    const inherited = versionControls(pv);
     const runs = ((option as Record<string, unknown>)['consequences'] as Array<{ kind: string; id: string; version: number }>).filter((c) => c.kind === 'run');
     const payload = {
       strategy_kind: 'commitment', title, statement, status: 'active', horizon: String(choice['decision_deadline']), owner: `principal:${committer}`, parent_objective_id: null,
@@ -105,7 +115,7 @@ export class ApprovalService {
       truth_state: 'asserted', synthetic_state: pv['synthetic_state'] === true, confidence: null, uncertainty: null,
       evidence_refs: [`strategy:${String(pkg['decision_object_id'])}`], provenance_ref: `principal:${committer}`, method_ref: 'decision-commit@1.0.0',
       contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${committer}`, ...live.map((a) => `principal:${a.approver_principal_id}`)])],
-      classification: 'internal', purpose_scope: purposeId, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
+      classification: inherited.classification, purpose_scope: purposeId, rights_profile: inherited.rights_profile, residency_profile: inherited.residency_profile, retention_profile: inherited.retention_profile, access_policy_ref: inherited.access_policy_ref,
       quality_profile: null, quality_state: { completeness: 'complete', verification: 'committed', op_class: 'C3' }, freshness_state: null, schema_ref: 'CMT@v1', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };

@@ -19,6 +19,8 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
+import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
+import { assertClearance, assertPurpose } from '../clearance.js';
 import type {
   ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, TermsWrites, VersionWrites, WithdrawWrites,
 } from '../decision.capabilities.js';
@@ -88,6 +90,20 @@ export function validateTermsIntake(m: Partial<TermsIntake>, correlationId: stri
   };
 }
 
+/** A fold of folds: a joined profile ('a; b') is split back into its values so the next fold does not repeat them. */
+export function unfoldProfiles(inputs: ControlInput[]): ControlInput[] {
+  const out: ControlInput[] = [];
+  for (const i of inputs) {
+    const split = (v: unknown): string[] => (typeof v === 'string' ? v.split('; ').filter((x) => x.length > 0) : []);
+    const rights = split(i.rights_profile); const residency = split(i.residency_profile); const retention = split(i.retention_profile); const access = split(i.access_policy_ref);
+    const n = Math.max(1, rights.length, residency.length, retention.length, access.length);
+    for (let k = 0; k < n; k += 1) {
+      out.push({ synthetic_state: i.synthetic_state, classification: i.classification, rights_profile: rights[k] ?? null, residency_profile: residency[k] ?? null, retention_profile: retention[k] ?? null, access_policy_ref: access[k] ?? null });
+    }
+  }
+  return out;
+}
+
 const instantOf = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const dayOf = (v: unknown): string | null => (v === null || v === undefined ? null : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)));
 
@@ -136,53 +152,27 @@ export class PackageService {
     return { citations, rows, runs };
   }
 
-  /** What the cited objects say about themselves — never what the caller says. */
-  private deriveUncertainty(citations: Citation[], rows: CitedObjectRow[], runs: Array<Record<string, unknown>>): Record<string, unknown> {
-    const basis = citations.map((c, i) => {
-      const r = rows[i] as CitedObjectRow;
-      const run = c.kind === 'run' ? runs.find((x) => String(x['run_id']) === c.id) : undefined;
-      const sens = run === undefined ? null : (run['sensitivity'] as { outside_envelope?: boolean; factors?: unknown[] } | null);
-      return {
-        kind: c.kind, id: c.id, version: c.version, truth_state: r.truth_state, synthetic_state: r.synthetic_state, lifecycle_state: r.lifecycle_state,
-        quality_state: r.quality_state,
-        ...(run === undefined ? {} : {
-          run_kind: run['run_kind'], validation_status: run['validation_status'] ?? null,
-          outside_envelope: run['outside_envelope'] === true || sens?.outside_envelope === true,
-          sensitivity_factors: Array.isArray(sens?.factors) ? sens.factors.length : 0,
-          known_at: run['known_at'] === undefined ? null : instantOf(run['known_at']), observed_through: dayOf(run['observed_through']),
-        }),
-      };
-    });
-    const runBasis = basis.filter((b) => b.kind === 'run');
-    return {
-      method: 'derived-from-citations@1',
-      citations: basis.length,
-      synthetic_inputs: basis.filter((b) => b.synthetic_state === true).length,
-      unvalidated_runs: runBasis.filter((b) => b['validation_status'] !== 'validated' && b['validation_status'] !== 'validated_retrospective').length,
-      outside_envelope_runs: runBasis.filter((b) => b['outside_envelope'] === true).length,
-      truth_states: [...new Set(basis.map((b) => b.truth_state))].sort(),
-      basis,
-    };
-  }
-
-  async setOption(cap: OptionWrites, ctx: ScopeContext, packageId: string, version: number, intake: OptionIntake, actor: string, correlationId: string): Promise<{ optionId: string; key: string; simulated: boolean; uncertainty: Record<string, unknown>; syntheticState: boolean }> {
+  /**
+   * The option. Citations are resolved here under the caller's read authority so a refusal
+   * is answered before the port is called; the PORT binds them again — identity, digest,
+   * both cut-offs, the run's own cut-offs — and DERIVES the uncertainty, controls and
+   * synthetic state from the cited records (review of PR #46, item 2). What the caller
+   * sends as uncertainty or controls is never consulted; what the port derived is returned.
+   */
+  async setOption(cap: OptionWrites, ctx: ScopeContext, packageId: string, version: number, intake: OptionIntake, actor: string, correlationId: string): Promise<{ optionId: string; key: string; simulated: boolean; uncertainty: Record<string, unknown>; syntheticState: boolean; controls: Record<string, unknown> }> {
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package version matches'), 404);
     if (v['state'] !== 'draft') throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${version} is ${String(v['state'])} and immutable; open a new version`), 409);
-    const { citations, rows, runs } = await this.resolveCitations(cap, intake.consequences, correlationId, intake.key);
+    const { citations } = await this.resolveCitations(cap, intake.consequences, correlationId, intake.key);
     const simulated = citations.some((c) => c.kind === 'run');
     if (!simulated && intake.unsimulatedReason === null) bad(correlationId, `${intake.key}: no consequence cites a completed run; say why the option is unsimulated (unsimulatedReason)`);
-    const uncertainty = this.deriveUncertainty(citations, rows, runs);
-    const controls: Controls = rows.length === 0 ? foldControls([{ synthetic_state: false, classification: 'internal' }]) : foldControls(rows.map((r): ControlInput => ({
-      synthetic_state: r.synthetic_state, classification: r.classification, rights_profile: r.rights_profile, residency_profile: r.residency_profile, retention_profile: r.retention_profile, access_policy_ref: r.access_policy_ref })));
-    const syntheticState = rows.some((r) => r.synthetic_state === true);
     const optionId = newId();
-    await cap.setOption({
+    const derived = await cap.setOption({
       optionId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, key: intake.key, title: intake.title, kind: intake.kind,
-      consequences: citations, simulated, unsimulatedReason: simulated ? null : intake.unsimulatedReason, uncertainty, secondOrder: intake.secondOrder, risks: intake.risks,
-      opportunities: intake.opportunities, reversibility: intake.reversibility, syntheticState, controls, actor, eventId: newId(), correlationId,
+      consequences: citations, simulated, unsimulatedReason: simulated ? null : intake.unsimulatedReason, uncertainty: {}, secondOrder: intake.secondOrder, risks: intake.risks,
+      opportunities: intake.opportunities, reversibility: intake.reversibility, syntheticState: false, controls: {}, actor, eventId: newId(), correlationId,
     });
-    return { optionId, key: intake.key, simulated, uncertainty, syntheticState };
+    return { optionId, key: intake.key, simulated: derived.simulated, uncertainty: derived.uncertainty, syntheticState: derived.synthetic_state, controls: derived.controls };
   }
 
   async setTerms(cap: TermsWrites, ctx: ScopeContext, packageId: string, version: number, intake: TermsIntake, actor: string, correlationId: string): Promise<{ packageId: string; version: number }> {
@@ -239,7 +229,7 @@ export class PackageService {
     // The version's baseline is bound by the port before the digest is computed; digest what it will bind.
     const citations: Citation[] = options.flatMap((o) => o['consequences'] as Citation[]);
     const controlInputs = options.map((o) => o['controls'] as ControlInput).filter((c) => c !== null && typeof c === 'object' && Object.keys(c).length > 0);
-    const controls: Controls = controlInputs.length === 0 ? foldControls([{ synthetic_state: false, classification: 'internal' }]) : foldControls(controlInputs);
+    const controls: Controls = controlInputs.length === 0 ? foldControls([{ synthetic_state: false, classification: 'internal' }]) : foldControls(unfoldProfiles(controlInputs));
     const syntheticState = options.some((o) => o['synthetic_state'] === true);
     const dependencies = new Map<string, { kind: string; id: string; key: string }>();
     for (const o of options) for (const c of o['consequences'] as Citation[]) {
@@ -304,9 +294,23 @@ export class PackageService {
     return packages.map((p) => ({ ...p, versions: versions.filter((v) => String(v['package_id']) === String(p['package_id'])).map((v) => ({ ...v, observed_through: dayOf(v['observed_through']) })) }));
   }
 
-  async get(cap: DecisionReads, packageId: string): Promise<Record<string, unknown> | undefined> {
+  /**
+   * Retrieval under the reader's authority NOW (review of PR #46, items 1 and 4): the reader's
+   * clearance covers the package's folded classification and their purpose is the one the
+   * package was proposed for; an approval's standing is the port's own recount, never a
+   * local re-derivation.
+   */
+  async get(cap: DecisionReads, packageId: string, reader: AuthenticatedPrincipal | null = null, purpose: string | null = null, correlationId: string = newId()): Promise<Record<string, unknown> | undefined> {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined) return undefined;
+    if (reader !== null) {
+      assertClearance(reader, String((p['controls'] as Record<string, unknown> | null)?.['classification'] ?? 'internal'), 'package', correlationId);
+      if (purpose !== null && p['current_version'] !== null && p['current_version'] !== undefined) {
+        const dpk = (await cap.readCanonicalObjects().select(['purpose_scope' as never]).where('object_type' as never, '=', 'DPK' as never).where('object_id' as never, '=', packageId as never)
+          .orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as { purpose_scope: string | null } | undefined;
+        assertPurpose(purpose, dpk?.purpose_scope ?? null, 'package', correlationId);
+      }
+    }
     const versions = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).orderBy('version' as never).execute()) as Array<Record<string, unknown>>;
     const options = (await cap.readOptions().selectAll().where('package_id' as never, '=', packageId as never).orderBy('key' as never).execute()) as Array<Record<string, unknown>>;
     const dissent = (await cap.readDissent().selectAll().where('package_id' as never, '=', packageId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
@@ -314,7 +318,11 @@ export class PackageService {
     const dec = (await cap.readStrategy().selectAll().where('strategy_object_id' as never, '=', String(p['decision_object_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const approvals = (await cap.readApprovals().selectAll().where('package_id' as never, '=', packageId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
     const commitment = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
-    const now = Date.now();
+    const live = new Set<string>();
+    for (const v of versions) {
+      if (!['proposed', 'under_review', 'approved', 'committed'].includes(String(v['state']))) continue;
+      for (const a of await cap.liveApprovals({ packageId, version: Number(v['version']) })) live.add(a.approval_id);
+    }
     return {
       ...p, decision: dec ?? null,
       versions: versions.map((v) => ({
@@ -323,8 +331,8 @@ export class PackageService {
         dissent: dissent.filter((d) => Number(d['version']) === Number(v['version'])),
         approvals: approvals.filter((a) => Number(a['version']) === Number(v['version'])).map((a) => ({
           ...a,
-          /* Derived for the reader; the port recounts for itself. */
-          live: a['decision'] === 'approve' && a['revoked_at'] === null && new Date(String(a['expires_at'])).getTime() > now && a['version_digest'] === v['version_digest'],
+          /* The port's own recount: decision, revocation, expiry, digest AND the approver's eligibility now. */
+          live: live.has(String(a['approval_id'])),
         })),
       })),
       commitment: commitment ?? null,

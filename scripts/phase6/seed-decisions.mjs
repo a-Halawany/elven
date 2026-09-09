@@ -125,7 +125,7 @@ async function ensureAgent(kind) {
   const found = agents.find((a) => a.agent_kind === kind && a.status === 'active');
   if (found) { ok(`${kind} agent present ${found.agent_id.slice(0, 8)}…`); return found.agent_id; }
   const r = await call(`${X}/agents/decision/register`, adm({ action: 'agent.register', objectType: 'AGT' }),
-    { kind, version: '1.0.0', codeDigest: CODE_DIGEST, ownerPrincipalId: ownerId, escalationPrincipalId: approverId, budgets: { max_reads: 400, max_gateway_calls: 0, max_elapsed_ms: 120000 }, stopConditions: ['budget', 'degraded input beyond threshold'] }, admin.token);
+    { kind, version: '1.0.0', codeDigest: CODE_DIGEST, ownerPrincipalId: ownerId, escalationPrincipalId: approverId, budgets: { max_reads: 400, max_gateway_calls: 0, max_elapsed_ms: 120000 }, stopConditions: [{ kind: 'on_degraded' }] }, admin.token);
   if (!r.ok) { bad(`${kind} agent refused (${r.status}) ${r.body?.message ?? ''}`); return null; }
   ok(`${kind} agent registered ${r.body.agent.agentId.slice(0, 8)}… as principal ${r.body.agent.principalId.slice(0, 8)}… (${r.body.agent.role})`);
   return r.body.agent.agentId;

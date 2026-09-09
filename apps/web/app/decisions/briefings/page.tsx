@@ -90,7 +90,7 @@ export default function BriefingsPage() {
             <section aria-labelledby="brf-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
               <h3 id="brf-h" style={{ fontSize: 'var(--eye-type-heading-3)', marginBlockStart: 0 }}>Briefing {fmtInstant(briefing.composed_at)} — composed by {briefing.composed_via === 'agent' ? <strong>the briefing agent (agent-produced)</strong> : 'a person'}</h3>
               <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
-                baseline: {briefing.watermark.prior_briefing_id ? <>since the briefing of <Mono>{fmtInstant(briefing.watermark.prior_composed_at)}</Mono></> : 'no prior briefing'} · read under <Mono>{fmtInstant(briefing.known_at)}</Mono> · content digest <Mono>{briefing.content_digest.slice(0, 16)}…</Mono>
+                baseline: {briefing.watermark.prior_briefing_id ? <>since what the prior briefing knew at <Mono>{fmtInstant(briefing.watermark.prior_known_at ?? briefing.watermark.prior_composed_at)}</Mono></> : 'no prior briefing'} · read under <Mono>{fmtInstant(briefing.known_at)}</Mono> · content digest <Mono>{briefing.content_digest.slice(0, 16)}…</Mono>
                 {briefing.degraded ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>DEGRADED OR BLOCKED SOURCES INSIDE</strong></> : null}
               </p>
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Sources</h4>

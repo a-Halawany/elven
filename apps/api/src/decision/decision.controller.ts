@@ -250,7 +250,7 @@ export class DecisionController {
     const out = await this.pipeline.write(
       envelope, principal, { ...this.route(tenantId, domainId, 'decision.replay', 'RPL', replayId), writableTargets: [replayId] }, DecisionCapability.replay,
       async (cap, scope) => {
-        const r = await this.replays.replay(cap, scope, packageId, v, asOf, principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, replayId);
+        const r = await this.replays.replay(cap, scope, packageId, v, asOf, principal, envelope.purpose_id ?? 'decision', envelope.correlation_id, replayId);
         return { result: r, targetType: 'RPL', targetId: replayId, targetVersion: '1', outboxEvent: null };
       });
     return { replay: out.result, receipt: receipt(out) };
@@ -321,7 +321,7 @@ export class DecisionController {
   async get(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId),
-      DecisionCapability.read, async (cap) => this.packages.get(cap, packageId));
+      DecisionCapability.read, async (cap) => this.packages.get(cap, packageId, principal, envelope.purpose_id ?? null, envelope.correlation_id));
     if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized package matches'), 404);
     return { package: out.result, receipt: receipt(out) };
   }

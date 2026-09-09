@@ -61,6 +61,9 @@ export interface DecisionReads {
   readBreaches(): any;
   readElements(): any;
   readReconciliations(): any;
+  readCanonicalObjects(): any;
+  readRooms(): any;
+  isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
@@ -81,7 +84,7 @@ export interface OptionWrites extends DecisionReads {
   setOption(a: { optionId: string; tenantId: string; domainId: string; packageId: string; version: number; key: string; title: string; kind: 'intervention' | 'status_quo';
                  consequences: Citation[]; simulated: boolean; unsimulatedReason: string | null; uncertainty: Record<string, unknown>;
                  secondOrder: unknown[]; risks: unknown[]; opportunities: unknown[]; reversibility: string | null; syntheticState: boolean; controls: unknown;
-                 actor: string; eventId: string; correlationId: string }): Promise<void>;
+                 actor: string; eventId: string; correlationId: string }): Promise<{ uncertainty: Record<string, unknown>; controls: Record<string, unknown>; synthetic_state: boolean; simulated: boolean }>;
 }
 export interface TermsWrites extends DecisionReads {
   setTerms(a: { tenantId: string; domainId: string; packageId: string; version: number; objectives: string[]; constraints: unknown[];
@@ -161,6 +164,12 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readBreaches(): any { return this.from('decision.condition_breaches'); }
   readElements(): any { return this.from('twin.state_elements'); }
   readReconciliations(): any { return this.from('twin.reconciliations'); }
+  readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
+  readRooms(): any { return this.from('executive.rooms_current'); }
+  async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
+    const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
+    return rows[0]?.m === true;
+  }
 
   async evaluateConditions(a: { tenantId: string; domainId: string; packageId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>> {
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.evaluate_conditions(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
@@ -223,11 +232,12 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
       ${a.knownAt}::timestamptz, ${a.observedThrough}::date, ${a.carryFrom}::int, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as v`);
     return Number(rows[0]?.v);
   }
-  async setOption(a: Parameters<OptionWrites['setOption']>[0]): Promise<void> {
-    await this.call(sql`select decision.set_option(${a.optionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int,
+  async setOption(a: Parameters<OptionWrites['setOption']>[0]) {
+    const rows = await this.call<{ r: { uncertainty: Record<string, unknown>; controls: Record<string, unknown>; synthetic_state: boolean; simulated: boolean } }>(sql`select decision.set_option(${a.optionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int,
       ${a.key}, ${a.title}, ${a.kind}, ${JSON.stringify(a.consequences)}::jsonb, ${a.simulated}, ${a.unsimulatedReason}, ${JSON.stringify(a.uncertainty)}::jsonb,
       ${JSON.stringify(a.secondOrder)}::jsonb, ${JSON.stringify(a.risks)}::jsonb, ${JSON.stringify(a.opportunities)}::jsonb, ${a.reversibility},
-      ${a.syntheticState}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.syntheticState}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('set_option returned no row'); return r;
   }
   async setTerms(a: Parameters<TermsWrites['setTerms']>[0]): Promise<void> {
     await this.call(sql`select decision.set_terms(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int,

@@ -69,16 +69,20 @@ describe('P6-M6 · F7 — agents are registered principals of kind agent, with a
     expect(await status(c.listAgents(w.operator))).toBe(403);
   });
 
-  it('the agent session is the registry\'s: a revoked agent, a mismatched digest or a foreign domain open no session', async () => {
+  it('the agent session is the registry\'s: the port reads the registration itself (0048); an unknown agent, a foreign domain or a revoked agent open no session', async () => {
     const sessions = h.app.get(DecisionAgentSessionService);
-    const ok = await sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: D(), agentVersion: '1.0.0', codeDigest: DIGEST, correlationId: uuidv7() });
-    expect(ok.principalId).toBe(decisionAgent.principalId);
-    expect(ok.kind).toBe('agent');
-    await expect(sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: D(), agentVersion: '1.0.0', codeDigest: 'b'.repeat(64), correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
-    await expect(sessions.openRunSession({ agentId: uuidv7(), tenantId: T(), domainId: D(), agentVersion: '1.0.0', codeDigest: DIGEST, correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
+    const ok = await sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: D(), correlationId: uuidv7() });
+    expect(ok.principal.principalId).toBe(decisionAgent.principalId);
+    expect(ok.principal.kind).toBe('agent');
+    // the run is bound to the registration the PORT read — version and digest come from the registry, never from the caller
+    expect(ok.registration.code_digest).toBe(DIGEST);
+    expect(ok.registration.agent_version).toBe('1.0.0');
+    expect(ok.registration.agent_kind).toBe('decision');
+    await expect(sessions.openRunSession({ agentId: uuidv7(), tenantId: T(), domainId: D(), correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
+    await expect(sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: uuidv7(), correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
     const probe = await c.registerAgent({ kind: 'reporting', version: '1.0.0', codeDigest: DIGEST, ownerPrincipalId: w.owner.principalId, escalationPrincipalId: w.executive.principalId, budgets: budgets() }, admin);
     await c.revokeAgent(probe.agent.agentId, 'probe', admin);
-    await expect(sessions.openRunSession({ agentId: probe.agent.agentId, tenantId: T(), domainId: D(), agentVersion: '1.0.0', codeDigest: DIGEST, correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
+    await expect(sessions.openRunSession({ agentId: probe.agent.agentId, tenantId: T(), domainId: D(), correlationId: uuidv7() })).rejects.toThrow(/not valid for this run/);
   });
 });
 
@@ -116,7 +120,7 @@ describe('P6-M6 · F7 — the decision agent drafts and can decide nothing', () 
 
   it('approve, dissent and commit are refused at the PDP with no grant — and at the port by principal kind even when the API is bypassed', async () => {
     const sessions = h.app.get(DecisionAgentSessionService);
-    const agent = await sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: D(), agentVersion: '1.0.0', codeDigest: DIGEST, correlationId: uuidv7() });
+    const agent = (await sessions.openRunSession({ agentId: decisionAgent.agentId, tenantId: T(), domainId: D(), correlationId: uuidv7() })).principal;
     const q = await c.proposed();
     expect(await status(c.approve(q.pkg, q.v, { decision: 'approve', versionDigest: q.digest, rationale: 'an agent approving' }, agent))).toBe(403);
     expect(await status(c.dissent(q.pkg, q.v, { position: 'against', rationale: 'an agent dissenting on a decision' }, agent))).toBe(403);
@@ -147,7 +151,7 @@ describe('P6-M6 · F7 — the briefing agent composes within its budget; a budge
     expect(b['agent_id']).toBe(briefingAgent.agentId);
     expect(b['composed_by']).toBe(briefingAgent.principalId);
     const obj = (await sql<{ m: string; h: string[] }>`select method_ref m, human_refs h from objects.canonical_objects where object_id = ${String(r.outputs['briefing_id'])}::uuid`.execute(h.su)).rows[0];
-    expect(obj?.m).toBe(`briefing-composer@1.0.0/agent:${briefingAgent.agentId}`);
+    expect(obj?.m).toBe(`briefing-composer@1.1.0/agent:${briefingAgent.agentId}`);
     expect(obj?.h).toEqual([`principal:${w.owner.principalId}`]);
     // a member reads it under their own authority; an outsider does not, whatever the agent could read
     expect(await status(c.getBriefing(String(r.outputs['briefing_id']), w.executive))).toBe('ok');
