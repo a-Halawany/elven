@@ -274,3 +274,52 @@ names the consequence. Against the corrected head **25 of 25 pass**.
 
 ### 11.3 The other checks (separate evidence classes)
 
+| Check (class) | Result at the corrected head |
+|---|---|
+| **Harness** — `phase6-review-corrections` (database, controller, identity path, real Redis) | reviewed head: 25/25 fail on the naming assertion (`evidence` of the two runs kept beside this report's git history); corrected head: **25/25 pass** |
+| **Harness** — Phase 6 suites in one invocation (`phase6-review-corrections`, `decisions`, `approvals`, `replay`, `briefings`, `monitoring`, `agents`) | 7 files, 78 cases: 75 passed and 3 in `phase6-agents` that named the OLD session shape (the port now returns the registration; the composer's method is `briefing-composer@1.1.0`) — adapted and re-run: **`phase6-agents` 9/9** |
+| **Harness** — `test:int:all`, phases 0–6 (the final regression, one invocation) | **42 files, 764 passed** |
+| **Unit** (`pnpm test`, no database) | 39 files: 2135 passed and 1 failed in `test/gate/source-anchored-reconstruction.test.ts` — the C16 frozen-verifier probe computes the checkout's source digest and the working tree was dirty at that instant ("C15 scanned a DIFFERENT candidate … 943 files / 115319773B vs 115320778B"); re-run on the committed tree `8f05497`: **75/75 passed**. Hermetic meta unchanged. |
+| **Web** typecheck and `next build` | clean (`/decisions`, `/decisions/briefings`) |
+| Module boundaries (`pnpm boundaries`) | no violations (476 modules) |
+| gitleaks over the working tree | no leaks |
+| Post-C18 upgrade check (`verify-0022-upgrade.mjs`, virgin database migrated from empty through 0048) | **PASS** — virgin database migrated from empty (48 files), schema digests match exactly, Phase 0 suite 297/297 before and after, Phase 1–2 suites on upgraded data 274/274; the ledger gains the 27th declared line |
+| **Browser** — Phase 6 spec on the rebuilt deployment after 0048 and a restart (`evidence/phase6-browser`, refreshed) | 3/3 (decisions, replay with its five layers, briefings) |
+| **Browser** — Phase 4/5 spec, preserved | 11/12: the ECB retrospective-validation case still fails — the ECB publisher has answered nothing from this machine today (§7.2); not verified, not waived |
+| **Deployment** (`eye_demo`, historical records kept; the API restarted from the corrected build) | the fresh process reconciled **1/1** room briefing cadence at startup and a **scheduler-triggered** run finished at 10:43:00 UTC with no human trigger (before 0048 the startup reconciliation saw no room); a replay of the Act VI package: M. Dvořák (member, purpose `decision`) 201; J. Weber (reader role, not a member) 403 "read by the room's members"; T. Nakamura (member, purpose `research`) 403 "read under the purpose it was admitted for (decision)" |
+
+The demonstration's records are historical: the Act VI package, its APR/CMT/RPL/OUT/BRF records
+and its agent registrations were admitted under 0041–0047 and keep their digests; new records on
+the same deployment are admitted under 0048. The seed now registers agents with the supported stop
+condition `{ kind: 'on_degraded' }` (its earlier free-text conditions were never evaluated).
+
+### 11.4 CI at the exact head
+
+At the code head `8f05497` (this section and the PR body were committed after it — the head CI
+is reported in the PR body for the exact final SHA): run 34342116138 — `build-test` **success**
+(unit + `test:int:all` on the tracked runner), `browser-regression` **success**, `supply-chain`
+**failure at C15** (the tracked pinned-runner gate, red since the util-linux CVEs of #39,
+independent of this branch) with the FINAL C16/C17 steps **skipped** behind it (patched-image
+recheck, target-resolved closure, manifests, licence inventory, CycloneDX validation, evidence
+archive); run 34342116203 — `C19 lifecycle` **success** (ubuntu and macOS, foreign-checkout
+pinning, delivery-chain dry run). The runnable checks are green; the FINAL steps are not run, not
+passed; no waiver, no bypass.
+
+### 11.5 What remains (not closed)
+
+- The approver-expiry windows of a HISTORICAL briefing count approvals as they stood at `known_at`
+  by decision, revocation, expiry and digest; the approver's ELIGIBILITY at that past instant is not
+  reconstructed (role bindings carry no history beyond `revoked_at`), so a binding revoked after
+  `known_at` still shows the approval standing then — correct — while one revoked before `known_at`
+  is judged by the port's current recount only at composition under a current `known_at`.
+- Source states in a historical briefing use the contracts active NOW with the health verdicts and
+  attempts recorded by `known_at`; a contract superseded since is not reconstructed.
+- A stored briefing's `availability.unavailable` covers evidence and claims it cites (withdrawn,
+  deleted, not readable, above the reader's clearance); runs and warnings are not availability-checked.
+- Clearance is derived from role bindings (administrators and the auditor restricted; executives,
+  owners, authorities and domain administrators confidential; every other reader internal); the
+  plan names no finer model, and none was invented.
+- Stop conditions are `max_items` and `on_degraded`; `on_refusal` is not implemented (the decision
+  agent's refused proposal is its contract, not a stop).
+- This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
+  browser case stays failed until verified.
