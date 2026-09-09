@@ -6,12 +6,15 @@ agreed product**. A requirement stays open — `missing`, `partial`, `blocked`, 
 `branch-only` — until it is satisfied with evidence of the class it needs; a phase review closing
 does not close a requirement, and no completion percentage is claimed here.
 
-**Provenance of this file.** The independent residual review of PR #46 (9 September 2026) refers to
-`The_Eye_Full_Product_Delivery_Register_2026-09-09.md`. That file is not present in this repository,
-in the owner's Downloads folder, or anywhere else on this machine (searched 2026-09-09). This
-document is opened in its place from the repository's own records (`PROGRESS.md`, the phase reports,
-the review closures) and is the register from now on. **Resource request R-1:** the referenced
-register file, if it exists, so its rows can be reconciled into this one rather than re-derived.
+**Provenance of this file.** The owner's full delivery register of 9 September 2026
+(`The_Eye_Full_Product_Delivery_Register_2026-09-09.md`) reached this repository with the review at
+`07edd9dc` and is preserved verbatim at `audit/The_Eye_Full_Product_Delivery_Register_2026-09-09.md`
+(sha256 `2bb24dfc…`), together with the two review texts under `audit/reviews/`. That file carries the
+mandate, the 220 historical requirement-family snapshots (an audit seed, never a denominator), the
+delivery packages R0/P1–P7-F, the completion rules and the resource rules; this file is the current-status
+record reconciled to it: every family keeps its identifier and its historical snapshot there, and §5
+maps each family to the atomic rows that fall under it. Where the two disagree, the owner's register
+states the obligation and this file states the evidence. Resource request R-1 is resolved.
 
 ## 1. Status vocabulary
 
@@ -26,28 +29,24 @@ register file, if it exists, so its rows can be reconciled into this one rather 
 
 ## 2. The source documents
 
-The atomic audit (§5) maps every numbered requirement of every volume to code, UI, API, integration
-and operational evidence. It needs the volumes themselves. On this machine only two are present as
-files; the others were read in full on 2026-08-02/03 (the review log in `PROGRESS.md`) but their
-requirement text is not in the repository.
+All eleven volumes are in the repository at `docs/` (the review pinned their blob identities at
+`07edd9dc`; each was re-verified by blob id and size before extraction — see `audit/AUDIT_METHOD.md`).
+Volume 2 has no text layer; its 50 slides were transcribed from rendered images. Resource request R-2
+is resolved.
 
-| Volume | Requirements | Local copy | Atomic audit |
+| Volume | Requirements | Blob at `07edd9dc` | Atomic audit (§5) |
 |---|---|---|---|
-| 0 — Product Constitution v1.0 | 52 invariants C-001…C-052 | not on this machine | not started |
-| 1 — Executive Vision Book v1.0 | explanatory | not on this machine | not applicable (inherits V0) |
-| 2 — Technical Presentation v1.1 | explanatory | not on this machine | not applicable |
-| 3 — Technical Architecture v1.0 | 94 components, 50 interfaces, 24 object codes, ADR-0001…0020 | not on this machine | not started |
-| 4 — Engineering Specification v1.0 | ~380 ES requirements | not on this machine | not started |
-| 5 — AI Architecture v1.0 | 360 AI requirements, 24 AI-ADRs | not on this machine | not started |
-| 6 — Infrastructure Architecture v1.0 | 432 IA requirements, 24 IADRs | `~/Downloads/The_Eye_Volume_6_Infrastructure_Architecture_v1.0 elvin .pdf` | not started |
-| 7 — Data Platform v1.0 | 432 DP requirements, 24 DADRs | not on this machine | not started |
-| 8 — PRD v1.0 | 432 PR requirements, 24 personas, 108 capabilities | not on this machine | not started |
-| 9 — UI/UX Design System v1.0 | 432 UX requirements, 112 components, WCAG 2.2 AA | not on this machine | not started |
-| 10 — Investor Package v1.0 | six technical proof tracks (Appendix J) | `~/Downloads/The_Eye_Volume_10_Investor_Package_v1.0 elvin.pdf` | not started |
-
-**Resource request R-2:** Volumes 0, 3, 4, 5, 7, 8 and 9 as files (PDF or text), so the atomic audit
-can cite requirement identifiers verbatim. Without them the audit cannot begin honestly; it will not
-be reconstructed from memory.
+| 0 — Product Constitution v1.0 | 52 invariants C-001…C-052 + chapter contracts | `f0790670…` | `audit/requirements/v00-v01.csv` |
+| 1 — Executive Vision Book v1.0 | explanatory; normative commitments per chapter | `cb6de42b…` | `audit/requirements/v00-v01.csv` |
+| 2 — Technical Presentation v1.1 | 50 slides, the controlled technical baseline | `62925dd0…` | `audit/requirements/v02.csv` |
+| 3 — Technical Architecture v1.0 | 92 components, 50 interfaces, 24 object codes, ADR-0001…0020 | `dab24084…` | `audit/requirements/v03.csv` |
+| 4 — Engineering Specification v1.0 | 410 ES, SLO-001…022, TS-01…20, EYE error codes | `08efeffb…` | `audit/requirements/v04.csv` |
+| 5 — AI Architecture v1.0 | 360 AI, AI-ADR-001…024, AG/MC/TC/EM/AR catalogues | `cc97ed45…` | `audit/requirements/v05.csv` |
+| 6 — Infrastructure Architecture v1.0 | 432 IA, IADR-001…024, 16 catalogues | `9a33d822…` | `audit/requirements/v06.csv` |
+| 7 — Data Platform v1.0 | 432 DP, DADR-001…024, 18 catalogues | `81a6cc01…` | `audit/requirements/v07.csv` |
+| 8 — PRD v1.0 | 432 PR, 108 capabilities, 72 AT, 24 personas/journeys | `d1a704b1…` | `audit/requirements/v08.csv` |
+| 9 — UI/UX Design System v1.0 | 432 UX, 112 components, 48 patterns, UX-ADR-001…024 | `657c9509…` | `audit/requirements/v09.csv` |
+| 10 — Investor Package v1.0 | 240 IR, six proof tracks, claim-control appendices | `152de591…` | `audit/requirements/v10.csv` |
 
 ## 3. Delivery by layer (the coarse view — not a completion measure)
 
@@ -134,13 +133,81 @@ verified on the first run, not assumed); (3) after publication, the digest is re
 the C15 patched-image recheck runs against the real digest, and the full FINAL C16/C17 chain runs before
 any merge. No waiver, no `.trivyignore`, no weakened assertion.
 
-## 5. Atomic requirements audit (Volumes 0–10)
+## 5. Atomic requirements audit (Volumes 0–10) — STARTED; first complete pass recorded
 
-Not started: it needs the volumes (R-2). Its shape, so it can begin the day they arrive: one row per
-requirement identifier (C-nnn, ES-nnn, AI-nnn, IA-nnn, DP-nnn, PR-nnn, UX-nnn, the Volume 3
-components/interfaces/ADRs, the Volume 10 proof tracks), columns `code`, `UI`, `API`, `integration
-evidence`, `operational evidence`, `status`, `evidence pointer`. The status vocabulary of §1 applies.
-Rows are never removed; a satisfied row keeps its evidence pointer.
+The register is `audit/requirements/vNN.csv`, one row per requirement identifier (and one tracking row
+`Vnn-T-nnn` per normative clause without an identifier), with the fields the owner's register requires:
+identity (id, volume, chapter, page, the clause verbatim), the family seed, capability area,
+implementation status, verification status with its evidence class, release status, phase origin
+(`phase0`…`phase6`, `phase7` as the master build prompt scheduled it, or `omission` for an obligation no
+phase scheduled), the owning delivery package, evidence pointers, remaining work and notes. The method,
+its limits and the extraction record are in `audit/AUDIT_METHOD.md`; `audit/SUMMARY.md` is generated
+by `node audit/summarise.mjs` and is the only place counts appear. Rows are never removed; a satisfied
+row keeps its evidence pointer. No completion percentage is stated anywhere.
+
+What this first pass is and is not: every identifier of every volume has a row with its clause; the
+statuses come from a code/test/CI survey at this head, so `implemented` means a concrete pointer was
+found and `passed:*` means a named test or job exercises it — an `implemented` + `unverified` row is
+code without evidence of the required class, not a claim. The pass was produced by one auditor per
+volume from the extracted text; figures and tables were read where the text was insufficient (Volume 2
+entirely). It is a first pass: the second pass reconciles duplicates across volumes (the same obligation
+stated in Volumes 0, 3, 4 and 8), verifies the `partial` rows' remaining-work statements against the code
+one by one, and attaches the acceptance unit per row. That second pass is scheduled in §9.
+
+### 5.1 Rows by volume (from `audit/SUMMARY.md`; counts, not a completion measure)
+
+| Volume | Rows | missing | partial | implemented | not-applicable | verified (passed:*) | unverified | branch-only | merged | phase7 | omission | phase0–6 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| V0 | 177 | 22 | 128 | 27 | 16 | 140 | 21 | 43 | 112 | 19 | 28 | 128 |
+| V1 | 47 | 8 | 38 | 1 | 12 | 27 | 8 | 12 | 27 | 8 | 7 | 26 |
+| V2 | 223 | 32 | 90 | 101 | 10 | 173 | 40 | 53 | 138 | 19 | 14 | 180 |
+| V3 | 673 | 172 | 267 | 234 | 20 | 487 | 166 | 250 | 246 | 60 | 112 | 496 |
+| V4 | 538 | 154 | 276 | 108 | 9 | 321 | 208 | 37 | 319 | 129 | 42 | 367 |
+| V5 | 609 | 205 | 280 | 124 | 20 | 346 | 243 | 95 | 308 | 142 | 63 | 403 |
+| V6 | 769 | 498 | 240 | 31 | 2 | 237 | 530 | 32 | 239 | 35 | 461 | 271 |
+| V7 | 794 | 319 | 296 | 179 | 0 | 375 | 419 | 23 | 452 | 250 | 69 | 475 |
+| V8 | 904 | 359 | 488 | 57 | 1 | 382 | 521 | 145 | 400 | 140 | 309 | 454 |
+| V9 | 1089 | 470 | 520 | 99 | 0 | 355 | 734 | 68 | 551 | 94 | 309 | 686 |
+| V10 | 441 | 341 | 98 | 2 | 329 | 99 | 13 | 63 | 37 | 100 | 0 | 12 |
+| **all** | 6264 | 2580 | 2721 | 963 | 419 | 2942 | 2903 | 821 | 2829 | 996 | 1414 | 3498 |
+
+### 5.2 Open rows by delivery package (missing, partial, or implemented without evidence)
+
+| Package | open rows | missing | partial | implemented-unverified | volumes |
+|---|---|---|---|---|---|
+| P1 | 220 | 91 | 129 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P2 | 225 | 50 | 175 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P3 | 339 | 90 | 249 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P4 | 277 | 130 | 147 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P5 | 95 | 6 | 89 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P6 | 265 | 86 | 179 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
+| P7-A | 334 | 165 | 169 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
+| P7-B | 251 | 114 | 137 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P7-C | 95 | 51 | 44 | 0 | V0 V1 V10 V2 V3 V4 V7 V8 V9 |
+| P7-D | 1648 | 917 | 731 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P7-E | 855 | 311 | 540 | 4 | V0 V1 V10 V2 V3 V5 V8 V9 |
+| P7-F | 644 | 561 | 82 | 1 | V0 V1 V10 V3 V4 V6 V7 V8 V9 |
+| R0 | 49 | 6 | 43 | 0 | V0 V1 V10 V3 V5 V6 V8 |
+| done | 68 | 2 | 7 | 59 | V2 V4 V5 V6 V7 V9 |
+
+### 5.3 Reconciliation with the owner's 220 families
+
+Every family of the owner's register maps to atomic rows by chapter (`family_seed`): 220 families, 0 without a row. The per-family table is in `audit/SUMMARY.md` §"Historical family seeds → atomic rows"; the families' historical snapshots stay in the owner's file untouched. The 220 count is the seed; the 6264 atomic rows are the working denominator of nothing — each row is closed on its own evidence.
+
+### 5.4 The missing capabilities the auditors ranked first (one line each; the rows carry the detail)
+
+- **Deployment profiles and production trust (P7-D):** one local Docker Compose profile only; no SaaS/private-cloud/on-premise packaging or parity fixtures; no HA, backup/PITR/restore, DR, KMS, TLS, SSO/MFA, sandboxing, SLOs, metrics or traces; no application image, IaC or rollback (V3, V4, V6, V8, V10).
+- **Agent runtime (P7-A):** no planner/supervisor/workflow runtime, task graphs, checkpoints, tool sandbox or capability-grant catalogue; three bounded decision-side agents and the collection agents exist (V2, V4, V5, V8, V9).
+- **Governed learning and fitness (P7-B):** no evaluation→approval→release→rollback pipeline, drift or slice evaluation, model registry for prediction; lessons are free text (V0 C-044, V4, V5).
+- **Marketplaces and domain packages (P7-C):** no signed packages, admission, catalogue or revocation; no domain packs (V0 C-046, V8, V10).
+- **Source universe (P1):** connector families upload/RSS/REST only (1 of 20 Volume 0 source classes substantially covered); no credential binding, CDC, streams/IoT, collection plans or watchlists (V0 C-013, V7, V8).
+- **Intelligence (P2):** no document/media parsing or OCR, multilingual extraction, contradiction detection, hosted-provider adapters, routing or fallback (V5, V8).
+- **Memory and graph (P3):** no embeddings or hybrid retrieval, no ontology governance (`ontology_ref` always null), no export/exit path, retention and legal hold stored but never enforced (V0 C-016, V4, V7).
+- **Prediction (P4):** no weak-signal, risk or opportunity products; three branch kinds (no disruption/user); no severity, dedup or escalation on warnings; two model families (V0, V4, V8).
+- **Decisions and Executive OS (P6):** conditional approvals stored but not evaluated; case-bound agent simulation selection; Strategic Health Score, priorities/attention routing and notification transport absent; VOI/second-order nominal (V0 C-034, V4, V8, V9).
+- **UX (P7-E):** no Arabic catalogue/locale negotiation, mobile/offline profile, dialogs/tabs/command palette, charts, notifications, theming controls, accessibility certification; Executive OS, risk/opportunity and agent workspaces absent (V9).
+- **Commercial (P7-F):** no entitlements, licensing, metering, onboarding, product-baseline registry or traceability service (V8, V10).
+
 
 ## 6. Decision-completeness items (open, from the broader review)
 
@@ -162,8 +229,33 @@ Rows are never removed; a satisfied row keeps its evidence pointer.
 
 ## 8. Resource requests (specific, each tied to the next concrete task)
 
-- **R-1** the referenced register file `The_Eye_Full_Product_Delivery_Register_2026-09-09.md` (reconciliation).
-- **R-2** Volumes 0, 3, 4, 5, 7, 8, 9 as files (the atomic audit, §5).
+- **R-1 — resolved**: the owner's register is preserved at `audit/The_Eye_Full_Product_Delivery_Register_2026-09-09.md` and reconciled in §5.
+- **R-2 — resolved**: all eleven volumes are in `docs/` at `07edd9dc`; the audit's first pass is complete (§5).
+- **R-4 (new, for step S4 of §9)** the owner's decisions on the ambiguities the auditors flagged: the truth-state vocabulary of migration 0006 versus Volume 0 Appendix A; the CAP-* capability ids Volume 9 cites but Volume 8 defines; whether the PR `-004` parity and `-006` acceptance rows are judged per deployment profile now or after P7-D.
+- **R-5 (new, for step S5)** representative domain data and accountable experts, and source permissions, per the resource register in the owner's file — requested per row when its implementation starts, not before.
 - **R-3 (revised, §4.2)** the owner's decision to publish the prepared candidates to GHCR from a repository-associated workflow (no personal token), and confirmation that the repository's package settings allow Actions to write packages; or the decision to wait for rebuilt official images.
+
+## 9. Integrated delivery schedule (one sequence, dependencies stated, no phase-complete claims)
+
+The schedule below turns the owner's packages into an ordered plan against the atomic register. Each
+step names its entry condition, its work (with the register rows it closes, by package), its exit
+evidence and what it must not do. Effort figures are deliberately absent: they need the second audit
+pass (§5) and actual resources; the order and the dependencies are what this schedule fixes.
+
+| Step | Entry condition | Work (package · rows) | Exit evidence | Dependencies / holds |
+|---|---|---|---|---|
+| S0 · Correction review of PR #46 to closure | now | the reviewer's next pass at `561dd3c`+ (this pass reproduced and corrected R3–R7 at the harness); any further path handled the same way (reproduce at the real harness, forward migration, controls preserved) | the review recorded closed by the reviewer, not by the author | none |
+| S1 · Release maintenance to green (R0) | S0 | the util-linux image candidates published and re-pinned (§4.2) through the governed maintenance path; the C15 patched-image recheck against the real digests; FINAL C16/C17 chain; the C19 lifecycle/anchor chain; unit gate probes on the committed tree; the timing-dependent tests fixed without weakening (done for the 80 ms case) | one exact head where every required check executed and passed | the owner's publishing decision (R-3); no waiver |
+| S2 · Protect the development data (R0 · P7-D rows on backup/restore) | parallel with S1 | backup and restore of the local vault, the degraded journal, `eye`/`eye_demo`; a demonstrated coherent restore; isolated test/demo environments so verification never shares a working tree or database with a build | a restore drill recorded with digests before/after | none; unblocks every later environment change |
+| S3 · Integrate the reviewed branches in order | S1, S2 | #39 → #36 → #38 → #40 → #41 → #43 → #44 → #45 → #46, each at its reviewed exact head, each behind C15 and FINAL C16/C17; validate the combined release on `main` (test:int:all, upgrade check from 0001, browser suites) | `main` at one head carrying Phases 0–6 with the full evidence set | S1 green; the recorded merge order is not an authorisation to merge unchecked heads |
+| S4 · Second audit pass and acceptance units (§5) | S3 (can start during S1–S3 for read-only work) | cross-volume duplicate reconciliation; verify every `partial` row's remaining work; attach one acceptance unit per row; resolve the ambiguities the auditors flagged (truth-state vocabulary vs Appendix A; CAP-* ids defined in Volume 8; PR `-004` parity and `-006` acceptance rows) with the owner | `audit/requirements/*.csv` at pass 2, every row with an acceptance unit; owner decisions recorded | owner decisions on ambiguities (resource: product/domain choices) |
+| S5 · Earlier-phase omissions in dependency order (P1 → P2 → P3 → P4 → P5 → P6) | S3, S4 | the `omission` rows of each package, in this order: P1 source universe (connector families beyond upload/RSS/REST; credential binding; rights/purpose lifecycle; collection plans and watchlists), P2 intelligence (document/media parsing, OCR, multilingual extraction, contradiction detection, provider adapters with routing/fallback, bounded inference), P3 memory (embeddings and hybrid retrieval, ontology governance, export/exit, lawful lifecycle incl. retention and legal hold), P4 prediction (weak signals, risk/opportunity products, disruption and user branches, coherence constraints, severity/dedup/escalation of warnings, model registry), P5 twins (further twin families, scenario element kind, queued simulation execution), P6 decisions (conditional approvals, case-bound agent simulation selection, Strategic Health Score, priorities/attention routing, notification transport, planning, second-order/VOI engines) | per row: harness evidence at the real boundary, browser evidence where the row is a screen, CI; the `CorrectionApplied` consumer designed and delivered as its own governed implementation | representative data and domain experts for validation rows (resource register); source permissions for new source families (holds stay until the owner lifts them) |
+| S6 · Phase 7 portfolio (P7-A … P7-F) | S5 for the parts that depend on stable P1–P6; P7-D infrastructure work starts with S2 | P7-A planner/supervisor/workflow runtime with task graphs, checkpoints, sandboxed tools, hard budgets; P7-B governed learning (benchmarks, calibration/drift/safety evaluations, promotion, canary, rollback); P7-C signed marketplaces; P7-D three deployment profiles, IAM/SSO/MFA, KMS, TLS, HA/PITR/DR, observability planes, error budgets, capacity, rollback; P7-E complete UX (workspaces, accessibility certification, localisation incl. Arabic, mobile/offline, theming); P7-F entitlements/metering, onboarding, export/exit, support, analytics | profile-specific acceptance evidence for the exact release on each supported profile | deployment infrastructure, compute/model access and engineering capacity (resource register) |
+| S7 · Full-product acceptance | S5, S6 | every row of every volume at `implemented` with evidence of its class on the released artefact; the eleven-volume trace in the product itself (Volume 8 PR-01/PR-08/PR-72) | the register with no open row, or each open row carrying an owner, a dependency and a date | — |
+
+Rules that bind every step: forward-only migrations; corrections reproduced at the real harness before a
+change; no waiver of C15/C16/C17/C18/C19; no source activation, credential use, purchase or permission
+email without the owner's instruction; PortWatch and Comtrade holds unchanged until revisited
+deliberately; evidence classes kept apart in every report.
 
 No email is sent, no source activated and nothing purchased by this register.

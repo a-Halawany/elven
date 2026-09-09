@@ -522,7 +522,7 @@ Against the corrected tree **10 of 10 pass**.
 | **Harness** — `phase6-review-corrections` (§11) and `phase6-agents` | 34/34 (the §11 read-budget control adjusted to the metered render, §13.2) |
 | **Harness** — the Phase 6 suites in one invocation | 12 files, 138 cases: 137 passed, 1 failed on the §11 control BEFORE its adjustment; the adjusted control passes |
 | **Harness** — `test:int:all`, phases 0–6 (the final regression, one invocation) | **44 files, 793 passed** |
-| **Unit** (`pnpm test`, no database) | on the dirty working tree two gate probes fail as before (§11: `hermetic-isolation`, `receipt-contract` read the tree's own digests); UNIT_3 |
+| **Unit** (`pnpm test`, no database) | on the committed tree `561dd3c`: 2135/2136 and, re-run while the audit workers loaded the machine, 2132/2136 — the failures are C15 runner probes (`c15-runner-behaviour`, `hermetic-isolation`, `receipt-contract`) that spawn the gate runner with staged scanners and differ from run to run; each of those files passes when run alone (`unit-c15-probe`, `unit-gate-probes-alone`: 22/22), and the CI unit step at the same head passed. Recorded as load-sensitive local probes, not as a defect of this pass; the hosted result is the one that counts (§13.4) |
 | **Web** typecheck and `next build` | clean |
 | Module boundaries (`pnpm boundaries`) | no violations (476 modules) |
 | gitleaks over the working tree | no leaks (77.6 MB scanned) |
@@ -533,7 +533,21 @@ Against the corrected tree **10 of 10 pass**.
 
 ### 13.4 CI at the exact head
 
-CI_RESULT_3
+The correction head is **`561dd3cc`** (the code, the tests, migration 0050, the image candidates,
+this section's first form); the docs head that carries the audit register follows it and is reported
+in the PR body with its own run ids.
+
+- **`561dd3c`**: run 34400217194 — `build-test` **success** (unit and gate suites, acceptance, the
+  whole integration suite, the post-C18 upgrade check and the C18 dual-path gate); `browser-regression`
+  **success**; `supply-chain` **failure at C15 on the image findings alone** — `pnpm-audit-human`,
+  `pnpm-audit-json`, `gitleaks-worktree`, `gitleaks-history`, `trivy-fs`, `trivy-fs-json`, both image
+  scans `[ok]`; the thirteen UNGOVERNED rows are the util-linux CVEs in the pinned postgres and redis
+  images (`libuuid` 2.42.1-r0, `setpriv` 2.41.4-r0), for which the patched candidates of register §4.2
+  exist locally and await the owner's publishing decision; FINAL C16/C17 skipped behind C15. Run
+  34400217205 — `C19 lifecycle` **success** (both lifecycle jobs, delivery-chain-dry,
+  foreign-checkout-pinning).
+
+No waiver, no bypass: C15 and FINAL C16/C17 stay blocking.
 
 ### 13.5 What remains (not closed)
 
