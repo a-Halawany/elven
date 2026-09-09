@@ -5,14 +5,20 @@
  */
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
+import { IdentityModule } from '../identity/identity.module.js';
+import { ObservationModule } from '../observation/observation.module.js';
+import { DecisionModule } from '../decision/decision.module.js';
+import { AgentsService } from './agents/agents.service.js';
+import { AgentWorkerService } from './agents/agent-worker.service.js';
+import { DecisionAgentSessionService } from './agents/agent-session.service.js';
 import { ExecutiveController } from './executive.controller.js';
 import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
 
 @Module({
-  imports: [PipelineModule],
+  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule],
   controllers: [ExecutiveController],
-  providers: [RoomService, BriefingService],
-  exports: [RoomService, BriefingService],
+  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService],
+  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService],
 })
 export class ExecutiveModule {}

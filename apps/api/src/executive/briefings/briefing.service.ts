@@ -37,6 +37,9 @@ export interface BriefingItem {
 }
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
 
+/** A budget hit: the composition is abandoned before anything is admitted; the caller records the stop and escalates. */
+export class BudgetExceeded extends Error { constructor(message: string) { super(message); } }
+
 const hoursBetween = (a: string, b: string): number => Math.round(((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000) * 100) / 100;
 
 @Injectable()
@@ -68,7 +71,7 @@ export class BriefingService {
   }
 
   async compose(cap: BriefingWrites, ctx: ScopeContext, a: { roomId: string | null; knownAt: string; priorBriefingId: string | null | undefined; narrative: string | null; narrativeCites: string[] },
-                composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId()) {
+                composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), maxReads: number | null = null) {
     const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
     const knownAt = new Date(a.knownAt).toISOString();
     let room: Record<string, unknown> | null = null; let pkg: Record<string, unknown> | null = null;
@@ -196,6 +199,7 @@ export class BriefingService {
     if (pkg !== null) sources.add(`DPK:${String(pkg['package_id'])}@${String(pkg['current_version'] ?? 0)}`);
     for (const s of sourceStates) sources.add(`SRC:${s.source_id}@${s.contract_version}`);
     const sourceList = [...sources].sort();
+    if (maxReads !== null && sourceList.length > maxReads) throw new BudgetExceeded(`the briefing would read ${sourceList.length} source records; the agent's remaining budget is ${maxReads}`);
     const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded };
     const digest = contentDigest(content);
     // the narrative: labelled, cites only included items, outside the content digest

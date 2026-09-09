@@ -184,6 +184,14 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const outcome = (pkg: string, payload: Record<string, unknown>, as = w.owner) => dc.outcome(h.req(as, 'decision.outcome', 'OUT', null, 'decision'), T(), D(), pkg, { payload }) as Promise<{ outcome: { outcomeId: string; met: boolean; observedValue: unknown; target: string; reconciliationId: string | null; simulated: unknown } }>;
   const close = (pkg: string, lessons: string, as = w.owner) => dc.close(h.req(as, 'decision.close', 'DPK', pkg, 'decision'), T(), D(), pkg, { payload: { lessons } }) as Promise<{ closure: { state: string; outcomesRecorded: number; criteria: number } }>;
   const outcomes = (pkg: string, as = w.owner) => dc.listOutcomes(h.req(as, 'decision.read', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ outcomes: Array<Record<string, unknown>>; breaches: Array<Record<string, unknown>> }>;
+  // agents
+  const registerAgent = (payload: Record<string, unknown>, as: AuthenticatedPrincipal) => w.exec.registerAgent(h.req(as, 'agent.register', 'AGT', null, 'platform.administration'), T(), D(), { payload }) as Promise<{ agent: { agentId: string; principalId: string; kind: string; role: string } }>;
+  const revokeAgent = (agentId: string, reason: string, as: AuthenticatedPrincipal) => w.exec.revokeAgent(h.req(as, 'agent.revoke', 'AGT', agentId, 'platform.administration'), T(), D(), agentId, { payload: { reason } });
+  const listAgents = (as = w.executive) => w.exec.listAgents(h.req(as, 'agent.read', 'AGT', null, 'decision'), T(), D()) as Promise<{ agents: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>>; planner: Record<string, unknown> }>;
+  const runAgent = (agentId: string, payload: Record<string, unknown>, as = w.owner) => w.exec.runAgent(h.req(as, 'agent.trigger', 'AGT', agentId, 'decision'), T(), D(), agentId, { payload: payload as never }) as Promise<{ run: { runId: string; outcome: string; spent: Record<string, unknown>; stopReason: string | null; refusals: Array<Record<string, unknown>>; outputs: Record<string, unknown>; escalatedTo: string | null } }>;
+  const scheduleRoom = (payload: Record<string, unknown>, as = w.owner) => w.exec.scheduleRoom(h.req(as, 'agent.trigger', 'ROOM', null, 'decision'), T(), D(), { payload: payload as never }) as Promise<{ schedule: Record<string, unknown> }>;
+  const report = (pkg: string, as = w.executive) => w.exec.report(h.req(as, 'report.render', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ report: Record<string, unknown> }>;
+  const workflow = (pkg: string, as = w.executive) => w.exec.workflow(h.req(as, 'decision.read', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ workflow: Array<Record<string, unknown>> }>;
   // rooms and briefings
   const ec = w.exec;
   const openRoom = (payload: Record<string, unknown>, as = w.owner) => ec.openRoom(h.req(as, 'room.open', 'ROOM', null, 'decision'), T(), D(), { payload }) as Promise<{ room: { roomId: string; nextReviewAt: string } }>;
@@ -196,5 +204,6 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const getBriefing = (id: string, as = w.executive) => ec.getBriefing(h.req(as, 'briefing.read', 'BRF', id, 'briefing'), T(), D(), id) as Promise<{ briefing: Record<string, unknown> }>;
   const listBriefings = (roomId: string | null, as = w.executive) => ec.listBriefings(h.req(as, 'briefing.read', 'BRF', null, 'briefing'), T(), D(), { payload: { roomId } }) as Promise<{ briefings: Array<Record<string, unknown>> }>;
   return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed,
-           openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings, monitor, outcome, close, outcomes };
+           openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings, monitor, outcome, close, outcomes,
+           registerAgent, revokeAgent, listAgents, runAgent, scheduleRoom, report, workflow };
 }

@@ -32,6 +32,7 @@ export interface ExecutiveReads {
   readRoomEvents(): any;
   readBriefings(): any;
   readAgents(): any;
+  readAgentRuns(): any;
   readPackages(): any;
   readVersions(): any;
   readDissent(): any;
@@ -52,6 +53,13 @@ export interface ExecutiveReads {
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   now(): Promise<string>;
+  workflowOf(a: { packageId: string }): Promise<unknown[]>;
+}
+export interface AgentWrites extends ExecutiveReads {
+  registerAgent(a: { agentId: string; tenantId: string; domainId: string; principalId: string; kind: string; version: string; codeDigest: string; owner: string; escalation: string; budgets: unknown; stopConditions: unknown[]; actor: string; correlationId: string }): Promise<{ agent_id: string; principal_id: string; kind: string }>;
+  revokeAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
+  openAgentRun(a: { runId: string; tenantId: string; domainId: string; agentId: string; task: string; triggerKind: string; triggerPrincipal: string | null; triggerRef: string | null; roomId: string | null; packageId: string | null; correlationId: string }): Promise<{ run_id: string; budget: unknown; stop_conditions: unknown[]; escalation_principal_id: string }>;
+  closeAgentRun(a: { runId: string; tenantId: string; domainId: string; outcome: string; spent: unknown; stopReason: string | null; refusals: unknown[]; outputs: unknown; correlationId: string }): Promise<{ run_id: string; outcome: string; escalated_to: string | null }>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -69,13 +77,14 @@ export interface BriefingWrites extends ExecutiveReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites {
+class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
   readRoomEvents(): any { return this.from('executive.room_events'); }
   readBriefings(): any { return this.from('executive.briefings'); }
   readAgents(): any { return this.from('executive.agents'); }
+  readAgentRuns(): any { return this.from('executive.agent_runs'); }
   readPackages(): any { return this.from('decision.packages_current'); }
   readVersions(): any { return this.from('decision.package_versions'); }
   readDissent(): any { return this.from('decision.dissent'); }
@@ -105,6 +114,26 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   async now(): Promise<string> {
     const rows = await this.call<{ t: string }>(sql`select decision.iso(clock_timestamp()) as t`);
     return String(rows[0]?.t);
+  }
+  async workflowOf(a: { packageId: string }): Promise<unknown[]> {
+    const rows = await this.call<{ w: unknown[] }>(sql`select executive.workflow_of(${a.packageId}::uuid) as w`);
+    return (rows[0]?.w ?? []) as unknown[];
+  }
+  async registerAgent(a: Parameters<AgentWrites['registerAgent']>[0]) {
+    const rows = await this.call<{ r: { agent_id: string; principal_id: string; kind: string } }>(sql`select executive.register_agent(${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.principalId}::uuid, ${a.kind}, ${a.version}, ${a.codeDigest},
+      ${a.owner}::uuid, ${a.escalation}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${JSON.stringify(a.stopConditions)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('register_agent returned no row'); return r;
+  }
+  async revokeAgent(a: Parameters<AgentWrites['revokeAgent']>[0]): Promise<void> {
+    await this.call(sql`select executive.revoke_agent(${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async openAgentRun(a: Parameters<AgentWrites['openAgentRun']>[0]) {
+    const rows = await this.call<{ r: { run_id: string; budget: unknown; stop_conditions: unknown[]; escalation_principal_id: string } }>(sql`select executive.open_agent_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.agentId}::uuid, ${a.task}, ${a.triggerKind}, ${a.triggerPrincipal}::uuid, ${a.triggerRef}, ${a.roomId}::uuid, ${a.packageId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('open_agent_run returned no row'); return r;
+  }
+  async closeAgentRun(a: Parameters<AgentWrites['closeAgentRun']>[0]) {
+    const rows = await this.call<{ r: { run_id: string; outcome: string; escalated_to: string | null } }>(sql`select executive.close_agent_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.outcome}, ${JSON.stringify(a.spent)}::jsonb, ${a.stopReason}, ${JSON.stringify(a.refusals)}::jsonb, ${JSON.stringify(a.outputs)}::jsonb, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('close_agent_run returned no row'); return r;
   }
 
   async openRoom(a: Parameters<RoomWrites['openRoom']>[0]) {
@@ -140,4 +169,5 @@ export const ExecutiveCapability = {
   read(tx: Tx, action: string): ExecutiveReads { return new ExecutiveCapabilityImpl(tx, action); },
   room(tx: Tx, action: string): RoomWrites { return new ExecutiveCapabilityImpl(tx, action); },
   briefing(tx: Tx, action: string): BriefingWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  agent(tx: Tx, action: string): AgentWrites { return new ExecutiveCapabilityImpl(tx, action); },
 };

@@ -54,6 +54,14 @@ export interface CollectionJobPayload {
 
 export type CollectionJobHandler = (payload: CollectionJobPayload, jobId: string) => Promise<void>;
 
+/** Phase 6: a room's briefing cadence — its own job kind on its own queue, never mixed with collection. */
+export interface BriefingJobPayload {
+  tenantId: string; domainId: string; roomId: string; agentId: string; correlationId: string;
+}
+export type BriefingJobHandler = (payload: BriefingJobPayload, jobId: string) => Promise<void>;
+export function briefingQueueNameFor(tenantId: string, domainId: string): string { return `exec:${tenantId}:${domainId}:briefing`; }
+export function briefingSchedulerIdFor(tenantId: string, domainId: string, roomId: string): string { return `exec:${tenantId}:${domainId}:room:${roomId}`; }
+
 /** The STORED, logical queue name (scope-prefixed with ':'; see migration 0022). */
 export function queueNameFor(tenantId: string, domainId: string): string {
   return `obs:${tenantId}:${domainId}:collection`;
@@ -96,6 +104,7 @@ export class SchedulerService implements OnModuleDestroy {
   private readonly queues = new Map<string, Queue>();
   private readonly workers = new Map<string, Worker>();
   private handler: CollectionJobHandler | null = null;
+  private briefingHandler: BriefingJobHandler | null = null;
 
   constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
 
@@ -109,8 +118,8 @@ export class SchedulerService implements OnModuleDestroy {
     };
   }
 
-  private queue(tenantId: string, domainId: string): Queue {
-    const name = redisName(queueNameFor(tenantId, domainId));
+  private queue(tenantId: string, domainId: string): Queue { return this.queueNamed(redisName(queueNameFor(tenantId, domainId))); }
+  private queueNamed(name: string): Queue {
     let q = this.queues.get(name);
     if (q === undefined) {
       q = new Queue(name, { connection: this.connection() });
@@ -170,6 +179,65 @@ export class SchedulerService implements OnModuleDestroy {
       await this.queue(tenantId, domainId).removeJobScheduler(redisName(schedulerId)).catch(() => undefined);
     }
     return schedulerId;
+  }
+
+  // ───────────────────────── Phase 6: room briefing cadence ─────────────────────────
+  registerBriefingHandler(handler: BriefingJobHandler): void { this.briefingHandler = handler; }
+
+  async scheduleBriefing(tenantId: string, domainId: string, payload: BriefingJobPayload, cadenceSeconds: number): Promise<{ schedulerId: string; queueName: string; cadenceSeconds: number }> {
+    const applied = Math.max(cadenceSeconds, this.cfg['eye.scheduler.min_interval_seconds']);
+    const schedulerId = briefingSchedulerIdFor(tenantId, domainId, payload.roomId);
+    const queueName = briefingQueueNameFor(tenantId, domainId);
+    if (this.enabled) {
+      await this.queueNamed(redisName(queueName)).upsertJobScheduler(redisName(schedulerId), { every: applied * 1000 },
+        { name: 'briefing', data: payload, opts: { attempts: 1, removeOnComplete: 200, removeOnFail: 100 } });
+      this.ensureBriefingWorker(tenantId, domainId);
+    }
+    return { schedulerId, queueName, cadenceSeconds: applied };
+  }
+
+  async unscheduleBriefing(tenantId: string, domainId: string, roomId: string): Promise<string> {
+    const schedulerId = briefingSchedulerIdFor(tenantId, domainId, roomId);
+    if (this.enabled) await this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId))).removeJobScheduler(redisName(schedulerId)).catch(() => undefined);
+    return schedulerId;
+  }
+
+  async enqueueBriefingOnce(tenantId: string, domainId: string, payload: BriefingJobPayload): Promise<string | null> {
+    if (!this.enabled) return null;
+    const job = await this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId))).add('briefing', payload, { attempts: 1, removeOnComplete: 200, removeOnFail: 100 });
+    this.ensureBriefingWorker(tenantId, domainId);
+    return job.id ?? null;
+  }
+
+  private ensureBriefingWorker(tenantId: string, domainId: string): void {
+    if (this.briefingHandler !== null) this.startBriefingWorker(tenantId, domainId, this.briefingHandler);
+  }
+
+  startBriefingWorker(tenantId: string, domainId: string, handler: BriefingJobHandler): void {
+    if (!this.enabled) return;
+    const name = redisName(briefingQueueNameFor(tenantId, domainId));
+    if (this.workers.has(name)) return;
+    const worker = new Worker(name, async (job: Job<BriefingJobPayload>) => {
+      const payload = job.data;
+      if (payload.tenantId !== tenantId || payload.domainId !== domainId) throw new Error('job payload scope does not match the queue it was delivered on');
+      await handler(payload, job.id ?? 'unknown');
+    }, { connection: this.connection(), concurrency: 1 });
+    worker.on('failed', (job, err) => { this.log.warn(`briefing job ${job?.id ?? '?'} failed: ${err.message.slice(0, 200)}`); });
+    this.workers.set(name, worker);
+    this.log.log(`briefing worker started for ${name}`);
+  }
+
+  /** Test-only: promote the delayed briefing ticks of a domain. */
+  async promoteDelayedBriefingsForTests(tenantId: string, domainId: string): Promise<number> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('promoteDelayedBriefingsForTests is available only in the test runtime');
+    const q = this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId)));
+    const delayed = await q.getDelayed();
+    for (const j of delayed) await j.promote().catch(() => undefined);
+    return delayed.length;
+  }
+  async obliterateBriefingsForTests(tenantId: string, domainId: string): Promise<void> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliterateBriefingsForTests is available only in the test runtime');
+    await this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId))).obliterate({ force: true }).catch(() => undefined);
   }
 
   /** Enqueue one immediate collection — the operator's "collect now". */

@@ -529,6 +529,62 @@ const BUNDLE_V1: Rule[] = [
     maxConsequence: 'C2',
   },
 
+  // ───────────────────────── Phase 6: the bounded agents (P6-M6) ─────────────────────────
+  //   * Registration and revocation are the platform / domain administrator's; the trigger
+  //     of a run is an owner's or an executive's act; the run's own bookkeeping is the
+  //     agent's, under its own session; the decision agent's ONE write is a draft option.
+  {
+    // Registration creates the agent's principal on the identity authority: the tenant or platform administrator's act.
+    actionPrefix: 'agent.register',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.revoke',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.trigger',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.run',
+    requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'report.render',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.draft',
+    requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
   // ───────────────────────── Phase 6: decision packages (P6-M1) ─────────────────────────
   //   * READ is broad: a package is for the people who decide, approve, watch and
   //     account for it. The bounded agents read what they compose from.

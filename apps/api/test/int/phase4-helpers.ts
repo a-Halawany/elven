@@ -141,18 +141,19 @@ export class Phase4Harness {
   }
 
   /** A DOMAIN principal with the given roles, created as fixture scaffolding. */
-  async principalWith(roles: string[], label: string): Promise<AuthenticatedPrincipal> {
+  async principalWith(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN'): Promise<AuthenticatedPrincipal> {
     const id = uuidv7();
     const run = id.slice(-8);
+    const domainId = scope === 'DOMAIN' ? this.fx.domainId : null;
     await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
-              values (${id}::uuid, 'human', 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid,
+              values (${id}::uuid, 'human', ${scope}, ${this.fx.tenantId}::uuid, ${domainId}::uuid,
                       ${`fixture-${label}-${run}`}, ${`fx-${label.slice(0, 4)}-${run}`}, 'active')`.execute(this.su);
     for (const role of roles) {
       await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
-                values (${uuidv7()}::uuid, ${id}::uuid, ${role}, 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid)`.execute(this.su);
+                values (${uuidv7()}::uuid, ${id}::uuid, ${role}, ${scope}, ${this.fx.tenantId}::uuid, ${domainId}::uuid)`.execute(this.su);
     }
-    return { ...this.manager, principalId: id,
-      bindings: roles.map((roleCode) => ({ roleCode, scope: 'DOMAIN' as const, tenantId: this.fx.tenantId, domainId: this.fx.domainId })) };
+    return { ...this.manager, principalId: id, homeScope: scope, homeDomainId: domainId,
+      bindings: roles.map((roleCode) => ({ roleCode, scope, tenantId: this.fx.tenantId, domainId })) };
   }
 
   /**
@@ -161,8 +162,8 @@ export class Phase4Harness {
    * is this principal, not the manager whose session `principalWith` reuses. Phase 6
    * ports that compare the acting principal to a named human need this.
    */
-  async humanWithSession(roles: string[], label: string): Promise<AuthenticatedPrincipal> {
-    const p = await this.principalWith(roles, label);
+  async humanWithSession(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN'): Promise<AuthenticatedPrincipal> {
+    const p = await this.principalWith(roles, label, scope);
     const identityDb = this.app.get<Db>(IDENTITY_DB);
     const sessionId = uuidv7();
     const familyId = uuidv7();
