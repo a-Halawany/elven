@@ -21,7 +21,10 @@ Rule applied: a documentary source row may be verified by the `document` evidenc
 | AU-GOV-0301 | V4:V04-T-002 | (ii) documentary | not-applicable | Precedence rule between volumes (V0 → V3 → V4), observed by convention in DECISIONS.md. |
 | AU-GOV-0347 | V5:V05-T-001 | (ii) documentary | not-applicable | Interpretation rule for reading Volume 5. Statement repaired: the modal words had been stripped. Its conformance-scope sentence is carried by AU-GOV-0440. |
 
-Result: 8 → open (document class), 4 → documentary. No unit with `mandatory=yes` and `status=not-applicable` remains.
+Result: **7 → open (document class), 5 → documentary**. No unit with `mandatory=yes` and `status=not-applicable`
+remains. (This line read "8 → open, 4 → documentary" until 2026-09-10; the CSVs and the per-unit table above always
+said 7/5 — AU-GOV-0076, 0077, 0080, 0083, 0088, 0175 and 0202 are the open obligations, AU-GOV-0089, 0090, 0299,
+0301 and 0347 the documentary rules. The prose was corrected to the data, never the data to the prose.)
 
 ## 2. Truncated, glued and conflated statements
 

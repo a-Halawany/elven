@@ -595,7 +595,7 @@ and the owner's directions were carried out on the branch heads `54d8ecc`, `b302
 **T1 — audit accounting and traceability.** S7 is in the accounting: `audit/summarise-units.mjs` counts a mandatory
 unit as unfinished unless it is verified on every profile it applies to — 3,535 unfinished = 3,196 in status open
 + 339 verified on the local profile only while applying to all profiles; the twelve mandatory/not-applicable units
-were reconciled one by one (eight are document-class obligations now open, four are authoring rules and
+were reconciled one by one (**seven** are document-class obligations now open, **five** are authoring rules and
 documentary; `audit/UNIT_REPAIRS.md`); 78 truncated or conflated units repaired and 3 split; 59 local statuses that
 named only a module set back to open; source references are page-aware spans (`vNN.txt:page n:Lstart-Lend`, 217
 fallbacks marked `page-mismatch` for CP-6); bare migration references resolve, so `ES-24-004` and 14 more rows are

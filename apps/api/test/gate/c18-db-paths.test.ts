@@ -34,6 +34,7 @@ import {
   bindSeedSpec, cleanExecution, deriveStepIdentitiesFromSlots, expectedRunLines, INVENTORY_HELPER_WS,
   encodeAttestation,
   verifyInventoryEntries, verifyMigrationRun,
+  DOCKER_RUN_LABEL, PG_ENTRYPOINT, PG_SECRET_PATH, SECRET_SINK, SECRET_TMPFS,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-contract.mjs';
 import {
@@ -424,6 +425,104 @@ describe('C18.1.2 — the command ledger is closed, position-bound and stream-bo
       commands: [], receiptA: null, receiptB: receipt('b') as never,
       images: { postgres: 'p', redis: 'r' }, rawText: () => null,
     }).join('\n')).toMatch(/cannot bind/);
+  });
+
+  // C18.1.12 — THE SECRET HANDOFF BINDS ONE ARGV PER LEDGER SHAPE.
+  //
+  // The producer records an image-user lookup for EVERY image and then hands the secret over as root.
+  // A root image (empty Config.User) therefore records the lookup with empty output and the same
+  // nine-argument exec as a non-root image; only the sink string differs, and for a null owner it is
+  // byte-identical to the legacy sink. An earlier verifier treated the empty lookup as a defect and
+  // then demanded the legacy seven-argument exec, so an image that runs as root — every OFFICIAL
+  // postgres/redis image, which is what the governed return to official images restores — failed the
+  // gate twice over on a shape its own producer emits. These three cases pin one argv per shape.
+  describe('C18.1.12 — the image-user lookup binds the sink argv for root, non-root and historical ledgers', () => {
+    const RES = (tag: 'a' | 'b') => ({
+      path: tag === 'a' ? 'path-a-upgraded' : 'path-b-virgin',
+      gate_resource_id: 'f'.repeat(32), container_id: 'c'.repeat(12),
+      container_name: `c18-${tag}-01234567-pg`, redis_container_id: 'd'.repeat(12),
+      redis_container: `c18-${tag}-01234567-redis`, database: `eye_${tag}_01234567`,
+      port: 5001, redis_port: 6001, postgres_image: 'p', redis_image: 'r', credential_digests: {},
+    });
+    const cmd = (label: string, argv: string[], over: Record<string, unknown> = {}) => ({
+      id: label, label, argv, cwd: '.', env: {}, timeout_ms: 1000, exit: 0, signal: null,
+      stdin_bytes: 0, stdin_class: null, stdout_bytes: 0, stdout_sha256: '', stderr_bytes: 0,
+      stderr_sha256: '', exit_bytes: 0, exit_sha256: '', ...over,
+    });
+    /** The producer's prefix: the container start, then (optionally) the lookup, then the sink. */
+    const prefix = (shape: 'root' | 'named' | 'historical') => {
+      const r = RES('a');
+      const run = cmd('a-pg-run', ['docker', 'run', '-d', '--name', r.container_name,
+        '--label', `${DOCKER_RUN_LABEL}=${r.gate_resource_id}`, '--tmpfs', SECRET_TMPFS,
+        '-e', 'POSTGRES_USER=eye', '-e', `POSTGRES_PASSWORD_FILE=${PG_SECRET_PATH}`,
+        '-e', `POSTGRES_DB=${r.database}`, '-p', '127.0.0.1:0:5432', 'p', 'sh', '-c', PG_ENTRYPOINT],
+      { stdout_bytes: 12 });
+      const secretOver = { stdin_bytes: 24, stdin_class: '<REDACTED:a:EYE_DB_PASSWORD>' };
+      if (shape === 'historical') {
+        return [run, cmd('a-pg-secret', ['docker', 'exec', '-i', r.container_name, 'sh', '-c',
+          SECRET_SINK(PG_SECRET_PATH)], secretOver)];
+      }
+      const user = shape === 'named' ? 'postgres' : '';
+      return [
+        run,
+        cmd('a-pg-user', ['docker', 'image', 'inspect', '--format', '{{.Config.User}}', 'p']),
+        cmd('a-pg-secret', ['docker', 'exec', '-u', '0', '-i', r.container_name, 'sh', '-c',
+          SECRET_SINK(PG_SECRET_PATH, user === '' ? null : user)], secretOver),
+      ];
+    };
+    const run = (shape: 'root' | 'named' | 'historical', userStdout: string) => verifyCommandGraph({
+      commands: prefix(shape) as never, receiptA: RES('a') as never, receiptB: RES('b') as never,
+      images: { postgres: 'p', redis: 'r' },
+      // Only the container id and the lookup's stdout are read from the raw streams here; the walk
+      // ends at the redis container, which these bounded prefixes deliberately do not carry.
+      rawText: (c: { label: string }, stream: string) => {
+        if (stream !== 'stdout') return null;
+        if (c.label === 'a-pg-run') return `${'c'.repeat(12)}\n`;
+        if (c.label === 'a-pg-user') return userStdout;
+        return null;
+      },
+    }).join('\n');
+    // The shape errors this pins: the lookup's own verdicts, and any argv arity/position complaint
+    // about the lookup or the sink. The bounded prefix carries no credential digests, so the
+    // placeholder-vs-receipt check complains about the stdin class; that is not a shape error and is
+    // asserted separately below.
+    const HANDOFF = /(a-pg-user|a-pg-secret)' argv|no declared user|unexpected user/;
+
+    it('a ROOT image: the lookup is recorded empty and the sink is the root exec with the ownerless sink', () => {
+      const problems = run('root', '\n');
+      expect(problems).not.toMatch(HANDOFF);
+      // the walk still ends where the bounded prefix ends, and that is the only complaint
+      expect(problems).toMatch(/expected 'a-redis-run' at position 4 but the ledger ended/);
+    });
+
+    it('a NON-ROOT image: the lookup names the user and the sink chowns the tmpfs to it', () => {
+      const problems = run('named', 'postgres\n');
+      expect(problems).not.toMatch(HANDOFF);
+      expect(problems).toMatch(/expected 'a-redis-run' at position 4 but the ledger ended/);
+    });
+
+    it('a HISTORICAL ledger with no lookup keeps the legacy seven-argument exec', () => {
+      const problems = run('historical', '');
+      expect(problems).not.toMatch(HANDOFF);
+      expect(problems).toMatch(/expected 'a-redis-run' at position 3 but the ledger ended/);
+    });
+
+    it('a lookup reporting an unexpected user is still refused', () => {
+      expect(run('named', 'not a user!\n')).toMatch(/reported an unexpected user/);
+    });
+
+    it('every shape still binds the stdin class to the path\'s credential digests', () => {
+      // the bounded prefix carries no digests, so this check must fire in all three shapes: the
+      // handoff's class binding is never relaxed by the argv branch above
+      for (const shape of ['root', 'named', 'historical'] as const) {
+        expect(run(shape, shape === 'named' ? 'postgres\n' : '\n')).toMatch(/a-pg-secret' stdin class/);
+      }
+    });
+
+    it('the ownerless sink is byte-identical to the legacy sink, so the root shape chowns nothing', () => {
+      expect(SECRET_SINK(PG_SECRET_PATH, null)).toBe(SECRET_SINK(PG_SECRET_PATH));
+      expect(SECRET_SINK(PG_SECRET_PATH, 'postgres')).toContain('chown postgres');
+    });
   });
 });
 
