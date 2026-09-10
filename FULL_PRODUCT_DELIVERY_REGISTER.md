@@ -59,7 +59,7 @@ is resolved.
 | Phase 4 — L4 Prediction | `delivered` (review closed at `843e2ccb`) | `main` | harness, browser 11/12, CI | ECB retrospective validation case unverified |
 | Phase 5 — L5 Digital Twins & Simulation | `delivered` (review closed at `48f43bed`; follow-ups #43 at `91263061`) | `main` | harness, browser, CI | — |
 | Scheduled collection (#44) | `branch-only` (review closed at `e0d69060`) | `scheduling/automatic-collection-2026-09` | harness, Redis, CI | merge gated (C15) |
-| Phase 6 — L9 Decision Intelligence & Executive OS (#46) | `branch-only`, review **open** | `phase6-decisions` | harness (25 + 19 review cases), browser 3/3, deployment, CI (runnable jobs) | the residual review's six paths corrected at 0049 (PHASE6_REPORT.md §12); merge gated (C15); §6 open items |
+| Phase 6 — L9 Decision Intelligence & Executive OS (#46) | `branch-only`; the bounded correction review **closed at `2e83945`** (PHASE6_REPORT.md §13.6) | `phase6-decisions` | harness (25 + 19 + 10 review cases), browser 3/3, deployment, CI (build-test, browser, C19 green; C15 red) | merge gated (C15, FINAL C16/C17); Phase 6 completeness is NOT established by the closure — §6 items and the P6 rows of the audit stay open |
 
 Merge order recorded: #39 → #36 → #38 → #40 → #41 → #43 → #44 → #45 → #46, each behind C15 and FINAL C16/C17.
 
@@ -114,7 +114,28 @@ registry or referenced by the compose file or the gate.
 | Reproducibility | recipe-reproducible, NOT bit-identical: rebuilds differ only in apk-stamped mtimes and `/var/log/apk.log`; the package payload, `installed` db and `world` are byte-identical across builds; Alpine offers no dated index snapshot, so the version assertion makes drift fail loudly. A bit-identical variant needs BuildKit `rewrite-timestamp` + `SOURCE_DATE_EPOCH` and a normalised `apk.log` | same |
 | Architecture | arm64 primary; a `linux/amd64` variant (the platform the gate scans) built and scanned with the identical finding set | same |
 
-**Two further upgrades are available on both branches and deliberately NOT in the candidates** (they are
+**Candidate v2 (2026-09-10) adds the OpenSSL and c-ares fixes** (`infra/images/candidates/v2/`, evidence
+`infra/images/candidates/evidence/v2/`, facts for approval in `infra/images/candidates/v2/PUBLICATION.md`):
+`libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0 on both images and `c-ares` 1.34.6-r0 → 1.34.8-r0 on postgres,
+each verified in the live branch indexes on both architectures and pulling nothing else. Scans
+(trivy 0.73.0, no ignore file, `vuln,secret,misconfig`): postgres base 32 → v1 25 → **v2 22** (only the
+22 Go-stdlib rows in the byte-identical `gosu` binary remain, governed by SCX-0002…0005 whose
+NOT_AFFECTED analysis carries over to the identical binary but whose `image` field must be re-issued
+for a new digest, while SCX-0001/0006–0009 would match nothing and must be retired under the governed
+process); redis base 8 → v1 2 → **v2 0**; nothing new; SBOM delta exactly the upgraded components,
+licences unchanged; TLS 1.3 through the patched libssl verified with a mounted certificate; base-written
+data read by v2; reproducible up to apk timestamps. **v3 adds an explicit non-root `USER`**: the gate's raw
+`trivy-fs` step is blocking and trivy's DS-0002 fails any Dockerfile without one, so the recipe runs the
+service user from the first instruction (both upstream images document this); its compatibility drill on
+base-initialised volumes is recorded in `infra/images/candidates/evidence/v3/` (postgres 28/29 checks with the one
+"failure" an annotated probe of the wrong cluster; redis 19/19; the limit case — a data directory not owned by the
+service user — needs one start with `--user root`, documented). With v3 the gate-form filesystem scan of the whole
+tree exits 0; the v1 recipe files that tripped DS-0002 are removed from the tree (their evidence and recipe text
+stay under `infra/images/candidates/`). The operator-facing differences (default exec user; redis loses the
+setpriv capability bounding, mitigable by compose `cap_drop`/`no-new-privileges`) are in the README. The earlier
+note below is kept as history.
+
+**Earlier note (v1): two further upgrades are available on both branches and deliberately NOT in the candidates** (they are
 governed findings, not current gate failures): `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0 (CVE-2026-14456)
 and, on postgres, `c-ares` 1.34.6-r0 → 1.34.8-r0. Adding them is one line each in the same recipe; the
 decision whether a derived image should also carry them (and retire SCX dispositions) is the owner's.
@@ -154,41 +175,76 @@ entirely). It is a first pass: the second pass reconciles duplicates across volu
 stated in Volumes 0, 3, 4 and 8), verifies the `partial` rows' remaining-work statements against the code
 one by one, and attaches the acceptance unit per row. That second pass is scheduled in §9.
 
-### 5.1 Rows by volume (from `audit/SUMMARY.md`; counts, not a completion measure)
+### 5.1 Rows by volume (from `audit/SUMMARY.md`, after the second pass; counts, not a completion measure)
 
-| Volume | Rows | missing | partial | implemented | not-applicable | verified (passed:*) | unverified | branch-only | merged | phase7 | omission | phase0–6 |
+| Volume | Rows | missing | partial | implemented | not-applicable (impl) | verified (passed:*) | unverified | branch-only | merged | phase7 | omission | phase0–6 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| V0 | 177 | 22 | 128 | 27 | 16 | 140 | 21 | 43 | 112 | 19 | 28 | 128 |
-| V1 | 47 | 8 | 38 | 1 | 12 | 27 | 8 | 12 | 27 | 8 | 7 | 26 |
-| V2 | 223 | 32 | 90 | 101 | 10 | 173 | 40 | 53 | 138 | 19 | 14 | 180 |
-| V3 | 673 | 172 | 267 | 234 | 20 | 487 | 166 | 250 | 246 | 60 | 112 | 496 |
-| V4 | 538 | 154 | 276 | 108 | 9 | 321 | 208 | 37 | 319 | 129 | 42 | 367 |
-| V5 | 609 | 205 | 280 | 124 | 20 | 346 | 243 | 95 | 308 | 142 | 63 | 403 |
-| V6 | 769 | 498 | 240 | 31 | 2 | 237 | 530 | 32 | 239 | 35 | 461 | 271 |
-| V7 | 794 | 319 | 296 | 179 | 0 | 375 | 419 | 23 | 452 | 250 | 69 | 475 |
-| V8 | 904 | 359 | 488 | 57 | 1 | 382 | 521 | 145 | 400 | 140 | 309 | 454 |
-| V9 | 1089 | 470 | 520 | 99 | 0 | 355 | 734 | 68 | 551 | 94 | 309 | 686 |
-| V10 | 441 | 341 | 98 | 2 | 329 | 99 | 13 | 63 | 37 | 100 | 0 | 12 |
-| **all** | 6264 | 2580 | 2721 | 963 | 419 | 2942 | 2903 | 821 | 2829 | 996 | 1414 | 3498 |
+| V0 | 177 | 22 | 128 | 26 | 1 | 71 | 90 | 96 | 55 | 19 | 28 | 128 |
+| V1 | 47 | 8 | 38 | 0 | 1 | 9 | 26 | 16 | 12 | 8 | 7 | 26 |
+| V2 | 223 | 32 | 90 | 91 | 10 | 155 | 58 | 128 | 54 | 19 | 14 | 180 |
+| V3 | 673 | 168 | 275 | 223 | 7 | 305 | 345 | 279 | 226 | 70 | 98 | 498 |
+| V4 | 538 | 154 | 276 | 105 | 3 | 316 | 213 | 122 | 262 | 129 | 42 | 367 |
+| V5 | 609 | 204 | 280 | 122 | 3 | 300 | 289 | 223 | 180 | 142 | 63 | 403 |
+| V6 | 769 | 497 | 240 | 31 | 1 | 158 | 609 | 55 | 204 | 35 | 461 | 271 |
+| V7 | 794 | 319 | 296 | 179 | 0 | 358 | 436 | 220 | 253 | 250 | 69 | 475 |
+| V8 | 904 | 359 | 488 | 57 | 0 | 357 | 546 | 305 | 240 | 140 | 309 | 454 |
+| V9 | 1089 | 470 | 520 | 99 | 0 | 342 | 747 | 195 | 416 | 94 | 309 | 686 |
+| V10 | 441 | 341 | 98 | 2 | 0 | 95 | 17 | 82 | 18 | 100 | 0 | 12 |
+| **all** | 6264 | 2574 | 2729 | 935 | 26 | 2466 | 3376 | 1721 | 1920 | 1006 | 1400 | 3500 |
 
 ### 5.2 Open rows by delivery package (missing, partial, or implemented without evidence)
 
 | Package | open rows | missing | partial | implemented-unverified | volumes |
 |---|---|---|---|---|---|
-| P1 | 220 | 91 | 129 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
-| P2 | 225 | 50 | 175 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
-| P3 | 339 | 90 | 249 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
-| P4 | 277 | 130 | 147 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
-| P5 | 95 | 6 | 89 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
-| P6 | 265 | 86 | 179 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
-| P7-A | 334 | 165 | 169 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
-| P7-B | 251 | 114 | 137 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
-| P7-C | 95 | 51 | 44 | 0 | V0 V1 V10 V2 V3 V4 V7 V8 V9 |
-| P7-D | 1648 | 917 | 731 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
-| P7-E | 855 | 311 | 540 | 4 | V0 V1 V10 V2 V3 V5 V8 V9 |
-| P7-F | 644 | 561 | 82 | 1 | V0 V1 V10 V3 V4 V6 V7 V8 V9 |
-| R0 | 49 | 6 | 43 | 0 | V0 V1 V10 V3 V5 V6 V8 |
-| done | 68 | 2 | 7 | 59 | V2 V4 V5 V6 V7 V9 |
+| P1 | 223 | 90 | 129 | 4 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P2 | 232 | 54 | 174 | 4 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P3 | 351 | 82 | 249 | 20 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P4 | 278 | 127 | 147 | 4 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P5 | 123 | 13 | 98 | 12 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 |
+| P6 | 268 | 83 | 184 | 1 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
+| P7-A | 315 | 167 | 148 | 0 | V0 V1 V10 V2 V3 V4 V5 V6 V8 V9 |
+| P7-B | 255 | 118 | 134 | 3 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P7-C | 97 | 53 | 44 | 0 | V0 V1 V10 V2 V3 V4 V7 V8 V9 |
+| P7-D | 1684 | 919 | 752 | 13 | V0 V1 V10 V2 V3 V4 V5 V6 V7 V8 V9 |
+| P7-E | 901 | 312 | 542 | 47 | V0 V1 V10 V2 V3 V5 V8 V9 |
+| P7-F | 647 | 551 | 93 | 3 | V0 V1 V10 V3 V4 V6 V7 V8 V9 |
+| R0 | 42 | 5 | 35 | 2 | V0 V1 V10 V3 V5 V6 V8 |
+
+### 5.2a Acceptance units (from `audit/acceptance-units/`, generated by `audit/summarise-units.mjs`)
+
+Units: 3878. Source rows referenced: 6260 (6260 resolve to register rows of 6264). Mandatory units not yet verified for every applicable profile: 3129. Problems: 0.
+
+| Status | units |
+|---|---|
+| not-applicable | 239 |
+| open | 3238 |
+| verified:local | 401 |
+
+| Package | open mandatory units |
+|---|---|
+| P1 | 120 |
+| P2 | 118 |
+| P3 | 138 |
+| P4 | 90 |
+| P5 | 37 |
+| P6 | 170 |
+| P7-A | 121 |
+| P7-B | 126 |
+| P7-C | 39 |
+| P7-D | 1199 |
+| P7-E | 742 |
+| P7-F | 208 |
+| R0 | 21 |
+
+| Profiles | units |
+|---|---|
+| all | 3564 |
+| n/a | 314 |
+
+Reading the unit table: 3,878 units decompose the 6,264 rows (6,260 referenced; the four unreferenced rows are
+recorded in `audit/AUDIT_METHOD.md`). 401 units are `verified:local` — a named case exercises them on the local
+profile, which is the only profile that exists; none is `done`, because every one of them applies to all agreed
+profiles (S7 rule). 3,129 mandatory units are open. The counts say what is owed, not what fraction is delivered.
 
 ### 5.3 Reconciliation with the owner's 220 families
 
@@ -218,12 +274,14 @@ Every family of the owner's register maps to atomic rows by chapter (`family_see
 | Historical approver eligibility in briefings | `delivered` at 0049 (`decision.live_approvals_as_of`) — `branch-only` | — |
 | Historical contract state in briefings | `delivered` at 0049 (contract event history) — `branch-only` | — |
 | Model Gateway narrative | `partial` | the narrative contract exists (labelled, cites items, outside the digest); no gateway call |
+| Scenario branch kinds (Volume 0 ch. 14: "shall support baseline, upside, downside, disruption, stress, adversarial, counterfactual, and user-defined scenarios"; C-022) | `missing` for five of eight kinds | migration 0029 admits `baseline`, `upside`, `downside` only — non-conforming; a forward migration and the scenario service must admit all eight with their coherence rules (P4); family V00-F022 names all eight |
+| Truth-state and lifecycle vocabularies (`audit/CROSS_REFERENCES.md` §1, TSM-1/LSM-1) | `partial` | stored values stay; add the `predicted` and `approved` aliases to `TRUTH_STATE_COMPAT` (code), admit lifecycle `retired` by forward migration; Volume 9 Appendix B lacks a label for `extracted` (a Volume 9 amendment, not code) |
 
 ## 7. Operations items (open)
 
 | Item | Status | Note |
 |---|---|---|
-| Durable deployment recovery (the `.eye-local` loss of 2026-09-09; vault and journal backup/restore) | `partial` | `.gitignore` guards the symlink; the demonstration was rebuilt virgin; no backup/restore procedure for the local vault and degraded journal exists |
+| Durable deployment recovery (the `.eye-local` loss of 2026-09-09; vault and journal backup/restore) | `partial` — coherent backup/restore DEMONSTRATED on the local profile (2026-09-10), not yet on any other profile and not encrypted at rest | `scripts/ops/backup.sh` (one bundle: both database dumps with `pg_dump -Fc`, role globals, the vault and journal tars, a byte copy of the configuration, a manifest with every digest, migration ledger, object and audit-chain heads and image digests) and `scripts/ops/restore.sh --into-isolated` (a NEW container from the same pinned digest on a new volume, restore, then 36 coherence checks: ledger, counts, the audit chain re-computed with the contracts' own hash over every unfrozen partition, every live evidence blob of the demonstration present with its recorded sha256, a second API instance serving a governed read from the restored state). Drill record `docs/ops/evidence/restore-drill-20260910T075051Z.md`; runbook `docs/ops/BACKUP_RESTORE.md` (RPO = the backup interval; RTO measured 16 s to a proven governed read). Limitations recorded: the harness database `eye` was never a coherent evidence store (per-test vault roots); the bundle holds secret material unencrypted and must not leave the host; the journal directories were empty during the drill; the live volume was never touched |
 | ECB live backfill (`activate-ecb.mjs`) | `blocked` | the publisher's data API timed out from this machine on every attempt on 2026-09-09; no waiver |
 | PortWatch / UN Comtrade | `blocked` (holds) | permission request pending / key untouched — unchanged by decision |
 
@@ -231,9 +289,46 @@ Every family of the owner's register maps to atomic rows by chapter (`family_see
 
 - **R-1 — resolved**: the owner's register is preserved at `audit/The_Eye_Full_Product_Delivery_Register_2026-09-09.md` and reconciled in §5.
 - **R-2 — resolved**: all eleven volumes are in `docs/` at `07edd9dc`; the audit's first pass is complete (§5).
-- **R-4 (new, for step S4 of §9)** the owner's decisions on the ambiguities the auditors flagged: the truth-state vocabulary of migration 0006 versus Volume 0 Appendix A; the CAP-* capability ids Volume 9 cites but Volume 8 defines; whether the PR `-004` parity and `-006` acceptance rows are judged per deployment profile now or after P7-D.
+- **R-4 — resolved to four genuine choices** (`audit/CROSS_REFERENCES.md`, exact clauses quoted, versioned mappings TSM-1/LSM-1/CAP): the truth-state vocabulary needs NO owner decision (an 18-row mapping; two compat aliases to add in code, one lifecycle value `retired` by forward migration); the CAP ids resolve by Volume 8 Appendix A (71 defined, 18 aliases); the `-004`/`-006` rows are judged per agreed profile, scheduled with P7-D, never passed on a local demonstration. The choices that remain the owner's, each with a recommendation: (1) the warning severity scale and its derivation (no volume defines one; recommended: four levels derived from consequence class by a versioned rule); (2) three or five acceptance legs per profile row (SaaS/private/on-premises, or also disconnected and air-gapped; recommended: three, with disconnected/air-gapped carried by their own rows); (3) SLO baseline values as floors or with per-profile variance (recommended: floors for semantics-bearing SLOs, declared variance for latency/availability); (4) four Volume 9 capability ids without a Volume 8 definition (recommended: alias by subject; fold CAP-PD-11 into AU-08 + DL-12 rather than add a 109th capability).
 - **R-5 (new, for step S5)** representative domain data and accountable experts, and source permissions, per the resource register in the owner's file — requested per row when its implementation starts, not before.
-- **R-3 (revised, §4.2)** the owner's decision to publish the prepared candidates to GHCR from a repository-associated workflow (no personal token), and confirmation that the repository's package settings allow Actions to write packages; or the decision to wait for rebuilt official images.
+- **R-3 — publication approval requested, with the exact facts** (`infra/images/candidates/v2/PUBLICATION.md`; workflow `.github/workflows/publish-derived-images.yml`, manual dispatch only):
+  - *Artefacts:* `ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910` and `ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910`, built by the workflow from `infra/images/candidates/v2/{postgres-18-alpine,redis-8-alpine}.Dockerfile` at the commit the run names; the immutable reference is the digest the push reports, and only that is pinned afterwards. Recipe: the pinned upstream digest + one apk transaction (postgres: libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0; redis: setpriv 2.41.6-r1, libcrypto3/libssl3 3.5.8-r0) + `USER postgres`/`USER redis`.
+  - *Platforms:* `linux/amd64` (required; the gate scans it; ≈156 MiB compressed for both) — and, recommended, `linux/arm64` for the local profile on Apple silicon (+≈155 MiB).
+  - *Visibility:* the recommendation is **public** (the images contain only upstream open-source software; public packages are free; the CI gate and local development pull anonymously). Private would count against the account's Packages quota (Free plan figures per GitHub's billing documentation: 500 MB storage, 1 GB/month transfer — verify on the billing page), require `packages: read` plus a `docker login` in the `supply-chain` job, and a personal token for every developer.
+  - *Permissions:* the workflow runs with `contents: read` and `packages: write` on the job-scoped `GITHUB_TOKEN`; no personal token; `id-token: write` only if signing is added later. New GHCR packages under a personal account are private by default and unlinked; the first run creates them, after which the owner links each package to the repository and sets the visibility (checks listed in PUBLICATION.md §7). If the account or organisation policy blocks Actions from writing packages, the run fails at login and the exact setting is reported — no personal token is asked for unless that failure demonstrates the need.
+  - *Cost:* none for public packages; nothing else is purchased.
+  - *After approval:* run the workflow with the approval reference; verify the registry and platform digests and the raw scan/SBOM of what was pushed; re-issue SCX-0002…0005 for the new `image` and retire SCX-0001/0006–0009 under the governed disposition process; re-pin `docker-compose.yml`, `conformance.manifest.json` and the scanner targets; run the C15 patched-image recheck and the full FINAL C16/C17 chain before any merge. Every stacked PR is re-checked; no commit hash is transplanted.
+  - *What the owner decides:* publish (recommended, public, both platforms) — or wait for rebuilt official images. Until then the candidates stay local and nothing is pinned.
+
+## 8a. Current delivery checkpoint (the review closed at `2e83945`; three tracks running together)
+
+The owner's revised register (`audit/The_Eye_Full_Product_Delivery_Register_2026-09-09_rev2.md`, sha256
+`3a8287aa…`) records the closure and sets the checkpoint: (1) the audit's second pass — acceptance units,
+lossless source spans, duplicate mappings, corrected release states, resolvable evidence, the `done`
+rows reassigned, extraction and transcription artefacts persisted (`audit/extraction/`); (2) coherent
+backup/restore demonstrated before further destructive environment work (`scripts/ops/`,
+`docs/ops/BACKUP_RESTORE.md`); (3) the final derived-image candidate with the compatible OpenSSL and
+c-ares fixes, a repository publication workflow, exact names/visibility/platforms/permissions/cost, and
+the owner's approval requested only after preparation. CI wording at this checkpoint: the final unmatched
+set is 13 image rows; the raw `trivy-fs` step reports FAIL (the candidate Dockerfiles' `DS-0002`, §4.2)
+while `trivy-fs-json` reports ok; the checkout is the synthetic merge `a9444570`. Browser: Phase 6 3/3;
+Phase 4/5 one ECB-dependent failure and twelve not run.
+
+## 8b. The next delivery checkpoint — acceptance units, dependencies, exit evidence
+
+The checkpoint is "S1 green, S2 done, S4 complete" (schedule §9). Its units, each with the evidence that closes it:
+
+| Unit | Depends on | Exit evidence |
+|---|---|---|
+| CP-1 · Derived images published and pinned | the owner's R-3 approval; package settings verified at the first run | registry digests recorded by the workflow artefact; raw scan and SBOM of the pushed digests; the three pins updated in one reviewed commit; SCX records re-issued/retired under the governed process; C15 patched-image recheck green |
+| CP-2 · C15 green at one exact head | CP-1 | `supply-chain` job: every raw step ok (including `trivy-fs`), 0 UNGOVERNED rows, FINAL C16/C17 executed and green, the manifests asserting FINAL mode at the head's SHA |
+| CP-3 · C19 chain and FINAL evidence archive at that head | CP-2 | C19 lifecycle and anchor runs green; the evidence archive verified by `package-c17-evidence.mjs verify` |
+| CP-4 · Coherent recovery adopted | none (done locally 2026-09-10) | the runbook in `docs/ops/`; the drill record; a second drill after the next migration or credential rotation; bundle encryption at rest before any bundle leaves the host (open) |
+| CP-5 · Isolated verification environments | CP-4 | every verification run (harness, browser, upgrade check) on an environment restored from a bundle, never on a shared working tree or the live databases; recorded per run |
+| CP-6 · Audit second pass complete | none (read-only) | acceptance units for every capability group (`audit/acceptance-units/`), every `partial` row's remaining work verified against the code, the owner's four choices (R-4) recorded, `audit/SUMMARY.md` regenerated; no completion percentage |
+| CP-7 · Integrated baseline on `main` (S3) | CP-2, CP-3, CP-5 | the reviewed branches merged in the recorded order, each at its reviewed head with the full chain green; `test:int:all`, the upgrade check from 0001 and the browser suites on `main` |
+
+Holds unchanged throughout: no waiver, no unchecked merge, no source activation, credential use, purchase or email.
 
 ## 9. Integrated delivery schedule (one sequence, dependencies stated, no phase-complete claims)
 
@@ -251,7 +346,7 @@ pass (§5) and actual resources; the order and the dependencies are what this sc
 | S4 · Second audit pass and acceptance units (§5) | S3 (can start during S1–S3 for read-only work) | cross-volume duplicate reconciliation; verify every `partial` row's remaining work; attach one acceptance unit per row; resolve the ambiguities the auditors flagged (truth-state vocabulary vs Appendix A; CAP-* ids defined in Volume 8; PR `-004` parity and `-006` acceptance rows) with the owner | `audit/requirements/*.csv` at pass 2, every row with an acceptance unit; owner decisions recorded | owner decisions on ambiguities (resource: product/domain choices) |
 | S5 · Earlier-phase omissions in dependency order (P1 → P2 → P3 → P4 → P5 → P6) | S3, S4 | the `omission` rows of each package, in this order: P1 source universe (connector families beyond upload/RSS/REST; credential binding; rights/purpose lifecycle; collection plans and watchlists), P2 intelligence (document/media parsing, OCR, multilingual extraction, contradiction detection, provider adapters with routing/fallback, bounded inference), P3 memory (embeddings and hybrid retrieval, ontology governance, export/exit, lawful lifecycle incl. retention and legal hold), P4 prediction (weak signals, risk/opportunity products, disruption and user branches, coherence constraints, severity/dedup/escalation of warnings, model registry), P5 twins (further twin families, scenario element kind, queued simulation execution), P6 decisions (conditional approvals, case-bound agent simulation selection, Strategic Health Score, priorities/attention routing, notification transport, planning, second-order/VOI engines) | per row: harness evidence at the real boundary, browser evidence where the row is a screen, CI; the `CorrectionApplied` consumer designed and delivered as its own governed implementation | representative data and domain experts for validation rows (resource register); source permissions for new source families (holds stay until the owner lifts them) |
 | S6 · Phase 7 portfolio (P7-A … P7-F) | S5 for the parts that depend on stable P1–P6; P7-D infrastructure work starts with S2 | P7-A planner/supervisor/workflow runtime with task graphs, checkpoints, sandboxed tools, hard budgets; P7-B governed learning (benchmarks, calibration/drift/safety evaluations, promotion, canary, rollback); P7-C signed marketplaces; P7-D three deployment profiles, IAM/SSO/MFA, KMS, TLS, HA/PITR/DR, observability planes, error budgets, capacity, rollback; P7-E complete UX (workspaces, accessibility certification, localisation incl. Arabic, mobile/offline, theming); P7-F entitlements/metering, onboarding, export/exit, support, analytics | profile-specific acceptance evidence for the exact release on each supported profile | deployment infrastructure, compute/model access and engineering capacity (resource register) |
-| S7 · Full-product acceptance | S5, S6 | every row of every volume at `implemented` with evidence of its class on the released artefact; the eleven-volume trace in the product itself (Volume 8 PR-01/PR-08/PR-72) | the register with no open row, or each open row carrying an owner, a dependency and a date | — |
+| S7 · Full-product acceptance | S5, S6 | nothing new: the state in which no mandatory acceptance unit remains open | **Full-product acceptance requires every applicable mandatory acceptance unit to be implemented and verified on the applicable released artefact and on every agreed deployment profile, with its required integrations and operational evidence. An open, partial, unverified, failed or blocked mandatory unit prevents acceptance. An owner, a dependency and a date schedule unfinished work; they do not close it. Explanatory and non-applicable source rows carry a documented applicability rationale, never a fabricated test.** | — |
 
 Rules that bind every step: forward-only migrations; corrections reproduced at the real harness before a
 change; no waiver of C15/C16/C17/C18/C19; no source activation, credential use, purchase or permission

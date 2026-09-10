@@ -1,0 +1,764 @@
+# The Eye — PR #46 correction closure and delivery direction
+
+Reviewed 9 September 2026. Repository: a-Halawany/elven.
+Candidate: 2e839458361b2accc457f5ae1b53d7a2263780ce.
+Correction code: 561dd3c; following audit/documentation commit: 2e83945.
+PR: https://github.com/a-Halawany/elven/pull/46
+
+## Decision
+
+The bounded Phase 6 functional correction review closes at the candidate above. The remaining R3–R7 paths identified at 07edd9dc are addressed on the evidence below; earlier corrected paths retain their controls. No additional functional correction is requested within this review's scope.
+
+PR #46 remains unmerged. This closure establishes neither full Phase 6 product completeness nor release readiness. Conditional approvals, case-bound agent selection and the other full-product omissions remain delivery work in the register. C15 and the unexecuted FINAL C16/C17 chain still block release integration.
+
+The next work is release maintenance, coherent recovery, and acceptance-level reconciliation of the eleven-volume inventory. Progress those tracks together. A missing requirement does not become complete because a phase review has closed.
+
+## Evidence and limits
+
+Independent execution: 27 focused checks, 27 passed. Nine actual candidate TypeScript/PDP files were loaded with imports/decorators removed. The query, session, pipeline, admission/header-validation and digest operations are explicit doubles; the clock is controlled. One of the 27 checks consumes the contributor shape derived from SQL inspection. It is not execution of the SQL function. Eleven Git blobs covering these sources, the controller and migration 0050 were verified against the exact candidate tree.
+
+The probe fixture was adapted to the corrected contracts: rights history now includes registration rights, human composition supplies the clearance that the controller computes, the stored-output list receives the request purpose, and the operator-response experiment invokes the shared redactor now wired by the controller. Testing an obsolete internal call without those arguments would not reproduce the product's current route.
+
+Separately inspected: migration 0050, controller wiring, the new ten-case database/controller harness suite and its positive controls, and the recorded CI job results. I did not independently run PostgreSQL, Redis, the HTTP server, browser suites, the upgrade harness, Docker builds or Trivy. Claude's reported real-boundary and deployment results remain attributed to Claude.
+
+Claude reports 793 full-integration cases, ten new residual cases, upgrade through 0050, and Phase 6 browser 3/3. These are different evidence classes from the 27 independent service checks. The corrected Phase 4/5 browser record is one failing ECB-dependent first case and twelve not run; the former 11/12 claim is not carried forward.
+
+## Correction disposition
+
+| Path | Current behavior | Review evidence |
+|---|---|---|
+| R7 nested report meter | The meter is passed into renderReport and reserves a read before each family. After the first read consumes the elapsed budget, no further family starts and no report is returned. In-budget reporting still completes. | Executed actual service and renderer with controlled time; inspected real-harness negative and positive cases. |
+| R6 outcome interval | record_outcome refuses missing valid_to first; for a choice binding a period, valid_from and valid_to must equal that interval. The quarter-for-month aggregate is refused; earlier unit, twin and chronology checks remain. | SQL inspection, plus inspection of Claude's real-database regression and exact-period control. No independent database claim. |
+| R4a composition response | The controller passes the composer's scoped clearance; composition refuses an uncovered contributor fold before canonical admission. | Executed service with actual clearance/PDP and inspected controller wiring. |
+| R4b stored outputs | Output provenance records purpose and classification; list passes the envelope purpose into the shared read decision. A decision report is withheld for research. | Executed list and renderer, with purpose/clearance/membership controls; inspected provenance and database harness. |
+| R4c trigger response | After the agent's authorized work, a separate governed operator read invokes the same output redactor. An agent's clearance does not transfer to the triggering human. | Executed run and redactor with doubles; inspected route/envelope wiring and positive controls. Controller/HTTP not independently executed. |
+| R3 reconciliation contributors | replay_contributors includes both exact twin versions and their cited records. An unresolved reconciliation contributes an unresolved marker. Replay folds these sources and enforces reader clearance. | SQL inspection plus service check consuming that contributor shape; restricted reader refusal and covering-reader control. |
+| R5 historical rights | Source rights are reconstructed from recorded events at the cutoff. A later withdrawal does not rewrite the historical digest; current availability is separate. A withdrawal inside the reporting interval can be represented. | Executed historical digest check and earlier source-state controls; inspected interval and current-availability code and harness. |
+
+## CI record
+
+The workflow for this candidate is run 34414834786:
+https://github.com/a-Halawany/elven/actions/runs/34414834786
+
+build-test and browser-regression succeeded; the C19 lifecycle run 34414834782 succeeded. The supply-chain job 102677298061 failed. Its final reconciliation lists 13 unmatched image findings for libuuid/setpriv, covering seven advisory IDs. FINAL C16/C17 did not execute.
+
+The supply-chain checkout was GitHub's synthetic PR merge a94445703fb9e0616413dd8e125fcbecc687b8bd, combining candidate 2e83945 with base c5460465aa3c9a551d15ee5f565c8986dd509a55. Keep that distinction in release evidence.
+
+One reporting correction remains: the raw log contains '[FAIL] trivy-fs' and '[ok] trivy-fs-json'. The final unmatched findings are the 13 image rows, but 'every filesystem step reports ok' is not literally supported. Preserve the raw-step result alongside the governed final verdict; this is not a newly demonstrated product defect or a request for a new gate.
+
+## Delivery audit: useful inventory, second pass required
+
+The ten CSVs contain exactly 6,264 rows, with no duplicate (volume, id) pair. Every one of the 220 historical family IDs is represented; none is missing or unknown in that mapping. These checks establish inventory structure, not exhaustive semantic coverage of all eleven volumes.
+
+| Volume file | Rows |
+|---|---:|
+| v00-v01.csv | 224 |
+| v02.csv | 223 |
+| v03.csv | 673 |
+| v04.csv | 538 |
+| v05.csv | 609 |
+| v06.csv | 769 |
+| v07.csv | 794 |
+| v08.csv | 904 |
+| v09.csv | 1,089 |
+| v10.csv | 441 |
+
+The CSVs label 2,580 rows missing, 2,721 partial and 963 implemented. Those are provisional author-assigned statuses, not independently established completion counts. A source identifier or a truncated clause may contain several acceptance obligations. Do not use 6,264 as a verified atomic denominator or calculate a completion percentage from it.
+
+Concrete reconciliation work:
+
+1. package='done' includes 59 implemented-but-unverified rows and seven partial rows. The latter include DP-19-006 (consolidated conformance), DP-23-005 (generic unfit handling) and DP-23-006 (custody/export exercises). Assign real completion work and acceptance evidence. The two other 'done/missing' rows are normative-language conventions: classify those accurately as documentary/non-applicable behavior rather than inventing feature work.
+2. Eight 'implemented' rows have empty evidence; all eight are already verification='not-applicable'. Normalize explanatory rows so they cannot inflate delivered behavior. Do not mistake a quotation or business assumption for implemented functionality.
+3. Correct branch/release attribution and evidence paths. For example V3/L1-C01 is marked merged but cites branch-only migration 0028 and the non-existent path 'migrations/0022_observation.sql'. Actual pointers and exact revisions must resolve. The audit method acknowledges additional Phase 4/5 'merged' labels requiring correction.
+4. Retain full clauses or lossless source spans; the method caps excerpts at 400 characters. Decompose compound obligations into acceptance units, link equivalent units across volumes, and preserve each source's conditions. Reuse evidence where it actually demonstrates the same requirement; chapter/module names alone are insufficient for 'passed'.
+5. Persist extraction/generation scripts, source-hash inventory, and the Volume 2 transcription/page references. The method says these currently live only in a session scratchpad. The CSVs alone do not make the audit reproducible.
+
+These tasks complete the planned second pass. They do not reopen the closed correction scope or justify starting the product over.
+
+## Required schedule correction
+
+S7 currently permits exit with 'no open row, or each open row carrying an owner, a dependency and a date'. The second alternative contradicts the owner's 100% mandate. Replace it with:
+
+Full-product acceptance requires every applicable mandatory acceptance unit to be implemented, verified on the applicable released artifact and supported deployment profile, with all required integrations and operational evidence. Open, partial, unverified, failed or blocked mandatory units prevent full-product acceptance. Owner/dependency/date information schedules unfinished work; it does not close it. Explanatory and non-applicable source rows require a documented applicability rationale, not fabricated product tests.
+
+S4 can proceed during release maintenance and recovery. S2 coherent backup/restore should begin before further disruptive environment work. S3 integrates reviewed candidates only when the relevant release chain passes. Completion of S3 establishes an integrated baseline; the remaining earlier-phase omissions and Phase 7 portfolio still have to be delivered.
+
+For R4 ambiguities, first produce exact conflicting clauses and a proposed compatibility mapping. Apply the controlled documents' authority order. Preserve historical truth-state data through versioned mappings and forward changes; do not silently rename stored values. Resolve CAP identifiers by their authoritative definitions and explicit cross-references. Profile-specific parity and acceptance remain required for every agreed profile; they can be scheduled with P7-D, but cannot be marked passed on a local-only demonstration. Ask the owner only about a genuine unresolved product choice, with its concrete effects.
+
+## Image maintenance and R3
+
+The committed scan text supports the targeted improvement: PostgreSQL loses seven util-linux advisory IDs; Redis loses six, with no new advisory ID in either compared scan. The recorded finding-row totals are 32 to 25 and eight to two respectively. This review inspected and compared the dated text; it did not independently build or scan images.
+
+These are candidates for the util-linux issue, not vulnerability-free images. The candidate README explicitly retains OpenSSL (libcrypto3/libssl3 3.5.7-r0, fixed 3.5.8-r0 identified), PostgreSQL c-ares and the gosu standard-library findings. Package/SBOM delta excerpts show one changed component per current candidate. The supplied startup and base-data compatibility record is useful, but the actual published artifacts still require their own platform/digest-bound verification.
+
+Recommendation: proceed with the derived-image maintenance path rather than making full-product delivery depend indefinitely on an official rebuild. Before the publication candidate is finalized, verify and include compatible already-available OpenSSL fixes and assess c-ares. Review the remaining gosu dispositions on the actual new artifact; neither copy approvals blindly nor invent a blanket zero-scanner-findings requirement that ignores a justified NOT_AFFECTED determination.
+
+Prepare the repository workflow in .github/workflows/, with exact image names, visibility, platform targets, Dockerfiles, source revision, scoped permissions, raw scan/SBOM provenance and expected package access. Repository-associated GITHUB_TOKEN publishing is documented by GitHub; a personal token is not inherently required. Package permission and visibility must be checked, not inferred from the owner's approval. Keep the recheck workflow read-only.
+
+GitHub primary documentation:
+https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images
+https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+
+The owner has not authorized publication in this conversation. Prepare the final artifacts and workflow before requesting that permission. Continue the audit and recovery tracks meanwhile. Once authorized, publish, verify registry and platform digests, reconcile old SCX evidence under the governed approval process, then re-pin and execute the full required chain. Do not transplant commit hashes or assume an image-only update makes every stacked PR green.
+
+No repository change, comment, workflow dispatch, publication, merge, source activation, credential use, purchase or email was performed by this review. PortWatch, Comtrade and the existing source/budget holds remain as recorded. The deferred CorrectionApplied consumer stays a planned full-product deliverable.
+
+## Prompt to send Claude
+
+Record Codex's bounded Phase 6 correction review as closed at 2e839458361b2accc457f5ae1b53d7a2263780ce. Preserve the distinction between Codex's 27 passing service/double checks and SQL inspection, your real-database/Redis evidence, browser results and CI. Keep PR #46 unmerged behind C15 and the full release chain. Carry remaining full-product work in the register.
+
+Proceed on three tracks:
+
+1. Fix S7: full-product acceptance has zero open mandatory acceptance units. An owner and date do not satisfy an unfinished requirement. Complete the second audit pass now: full source clauses, acceptance units, duplicate mappings, correct release states and resolvable evidence. Reassign the 59 unverified and seven partial rows under 'done'; handle documentary/non-applicable rows honestly. Persist extraction scripts and Volume 2 transcription evidence.
+2. Start coherent backup/restore and isolated verification environments now. Demonstrate restoration of database, vault, journal and configuration together before further destructive environment work. Continue from the existing implementation.
+3. Prepare the final derived-image maintenance candidate and repository publication workflow. Verify compatible OpenSSL and c-ares updates identified in the candidate notes; retain evidence-based handling of the remaining findings. Specify GHCR names, visibility, platforms, permissions and any cost. Do all preparation first, then ask me for publication approval. Do not ask for a personal token unless a demonstrated permission limitation requires it. Keep other work moving while publication approval is pending.
+
+Correct the CI wording: the final unmatched set is 13 image rows, but the raw trivy-fs step reports FAIL while trivy-fs-json reports ok. Preserve the browser result as one ECB-dependent failure and twelve not run; no skipped case is a pass.
+
+Resolve technical cross-references using the volumes' authority order and versioned compatibility mappings. Bring me only genuine remaining product choices with exact clauses and a recommendation. Give the next delivery checkpoint its acceptance units, dependencies and evidence. Preserve all source, credential, purchase and email holds; no waiver or unchecked merge.
+
+
+
+APPENDIX A — INDEPENDENT EXECUTABLE SERVICE PROBES
+
+// Independent residual review of 2e839458361b2accc457f5ae1b53d7a2263780ce.
+// Actual candidate TypeScript, with imports/decorators removed for Node execution.
+// Query, pipeline, canonical admission, session and database ports are explicit doubles.
+// SQL is inspected separately. No PostgreSQL, Redis, HTTP or browser claim.
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const { stripTypeScriptTypes } = require('node:module');
+const { createHash, randomUUID } = require('node:crypto');
+let NOW = Date.parse('2026-09-09T12:00:00.000Z');
+class Clock extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return NOW; } }
+class HttpException extends Error {
+  constructor(body, status) { super(body.message ?? JSON.stringify(body)); this.body = body; this.status = status; }
+  getStatus() { return this.status; } getResponse() { return this.body; }
+}
+function stable(v) { if (Array.isArray(v)) return v.map(stable); if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])); return v; }
+const digest = v => createHash('sha256').update(JSON.stringify(stable(v))).digest('hex');
+const base = { Date: Clock, Error, console, Buffer, HttpException, newId: randomUUID,
+  errorBody: (code, correlationId, message) => ({ code, correlationId, message }),
+  contentDigest: digest, canonicalHeaderDigest: (h, p) => digest([h,p]), validateHeader: () => ({ ok: true }) };
+function load(rel, names, extras = {}) {
+  const file = path.join(__dirname, 'apps/api/src', rel);
+  const source = fs.readFileSync(file, 'utf8').replace(/^import[\s\S]*?;\s*$/gm, '').replace(/@(Injectable|Inject)\([^)]*\)/g, '').replace(/^export\s+/gm, '');
+  const context = { ...base, ...extras };
+  vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }) + '\nglobalThis.loaded={' + names.join(',') + '};', context, { filename: file });
+  return context.loaded;
+}
+const { foldControls } = load('prediction/controls.ts', ['foldControls']);
+const clearance = load('decision/clearance.ts', ['assertClearance','assertPurpose','clearanceOf','covers','denyRead']);
+const { PackageService, unfoldProfiles } = load('decision/packages/package.service.ts', ['PackageService','unfoldProfiles'], { foldControls, ...clearance });
+const { ApprovalService, versionControls } = load('decision/approvals/approval.service.ts', ['ApprovalService','versionControls'], {foldControls,unfoldProfiles});
+const { ReplayService } = load('decision/replay/replay.service.ts', ['ReplayService'], {foldControls,unfoldProfiles,versionControls,...clearance});
+const { MonitoringService } = load('decision/monitoring/monitoring.service.ts', ['MonitoringService'], {foldControls,unfoldProfiles,versionControls});
+const { BriefingService, BudgetExceeded, StopCondition } = load('executive/briefings/briefing.service.ts', ['BriefingService','BudgetExceeded','StopCondition'], { foldControls,...clearance });
+const { AgentsService, renderReport, validateRegisterAgent } = load('executive/agents/agents.service.ts', ['AgentsService','renderReport','validateRegisterAgent'], {
+  BudgetExceeded, StopCondition, ...clearance, DecisionAgentGrantRefused: class extends Error {}, DecisionCapability: {}, ExecutiveCapability: {}, PrincipalsCapability: {} });
+const { PdpService } = load('policy/pdp.service.ts', ['PdpService']);
+
+// General query double: actual service chooses predicates, ordering and limits.
+function query(rows, stats = {}, table='') {
+  const filters = [], orders = []; let max = Infinity;
+  const select = () => rows.filter(r => filters.every(f => f(r))).sort((a,b) => {
+    for (const [k,d] of orders) { if(a[k]<b[k]) return d==='desc'?1:-1; if(a[k]>b[k]) return d==='desc'?-1:1; } return 0;
+  }).slice(0,max);
+  return { selectAll(){return this;}, select(){return this;}, $if(c,f){return c?f(this):this;},
+    where(k,op,v){
+      const f = { '=': r=>r[k]!=null && v!=null && String(r[k])===String(v), 'is': r=>r[k]===v, '<>': r=>r[k]!==v, '<': r=>r[k]<v, '>=': r=>r[k]>=v, '<=': r=>r[k]<=v, '>': r=>r[k]>v,
+        'in': r=>v.includes(r[k]), 'not in': r=>!v.includes(r[k]) }[op];
+      if(!f) throw Error('Unsupported predicate '+op); filters.push(f); return this;
+    }, orderBy(k,d='asc'){orders.push([k,d]);return this;},limit(n){max=n;return this;},
+    async execute(){stats.queries++; stats.trace.push(table); stats.timedTrace.push({table,at:NOW}); const out=select(); stats.readRows.push(...out.map(r=>({table,id:r.object_id??r.package_id??r.source_id??null}))); if(stats.onRead)stats.onRead(table,out); return out;},async executeTakeFirst(){return (await this.execute())[0];}
+  };
+}
+const id = n => '00000000-0000-4000-8000-' + String(n).padStart(12,'0');
+const ctx = { scope:'DOMAIN',tenantId:id(1),domainId:id(2) }, reader=id(3), packageId=id(4), twinId=id(5), corr=id(6), known='2024-01-17T23:59:59.000Z';
+const restricted = { synthetic_state:true, classification:'restricted', rights_profile:'internal-use-only',residency_profile:'EU',retention_profile:'24 months',access_policy_ref:'need-to-know', inputs:1 };
+const choice = { option_key:'reroute',rationale:'Move cargo around the Cape.',decision_deadline:'2024-01-25',action_owner:reader,accepted_trade_offs:['longer transit'],outcome_criteria:[{key:'line-stop',quantity:'line-stop days',unit:'days',target:5,comparator:'<=',by:'2024-04-10',observed_on:'twin:outcome.line_stop_days'}] };
+const pkg = { tenant_id:ctx.tenantId,domain_id:ctx.domainId,package_id:packageId,decision_object_id:id(7),title:'Restricted corridor choice',statement:'Review fixture',current_version:1,committed_version:1,decided_at:'2024-01-20T12:00:00.000Z',state:'committed',owner_principal_id:reader,controls:restricted,synthetic_state:true };
+const version = { package_id:packageId,version:1,state:'approved',version_digest:'a'.repeat(64),known_at:known,observed_through:'2024-01-17',controls:restricted,synthetic_state:true,objectives:[id(8)],choice,monitoring_conditions:[] };
+const opt = { package_id:packageId,version:1,key:'reroute',title:'Reroute',kind:'intervention',consequences:[],uncertainty:{},synthetic_state:true };
+function fixture(overrides={}) {
+  const tables={Packages:[structuredClone(pkg)],Versions:[structuredClone(version)],Options:[structuredClone(opt)],Dissent:[],Approvals:[],Commitments:[{package_id:packageId,commitment_id:id(9)}],...overrides};
+  const state={headers:[],writes:[],queries:0,trace:[],timedTrace:[],readRows:[]}; const cap={};
+  for(const name of ['Packages','Versions','Options','Dissent','Events','Approvals','Commitments','Strategy','Elements','Reconciliations','Rooms','Members','RoomEvents','Briefings','Agents','AgentRuns','PackageEvents','CanonicalObjects','Runs','Twins','ScenarioEvents','Branches','Warnings','WarningEvents','Scenarios','Dependencies','SourceContracts','SchedulerEntries','ScheduledAttempts','HealthEvents','SourceContractEvents','Tombstones']) cap['read'+name]=()=>query(tables[name]??[],state,name);
+  cap.admitObject=async(h,p)=>{state.headers.push({header:h,payload:p});return{contentDigest:digest(p)};};
+  cap.isMember=async()=>true; cap.liveApprovalsAsOf=async()=>[]; cap.liveApprovals=async()=>[{approval_id:id(10),approver_principal_id:id(11)}];
+  cap.composeBriefing=async a=>{state.writes.push(a);return{};};
+  cap.setOption=async a=>{state.writes.push(a);return{};};
+  cap.recordApproval=async()=>({state:'approved',live_approvals:1,quorum:1});
+  cap.commitPackage=async a=>({commitment_id:a.commitmentId,approvals:1,op_class:'C3',decided_at:pkg.decided_at});
+  return {cap,state,tables};
+}
+const optionsIntake = c => ({key:'status-quo',title:'Do nothing',kind:'status_quo',consequences:[c],unsimulatedReason:'A cited observation, no simulation',secondOrder:[],risks:[],opportunities:[],reversibility:null});
+const rows = {object_id:id(20),object_version:1,content_digest:'b'.repeat(64),recorded_at:'2024-01-16T00:00:00.000Z',event_time:'2024-01-16T00:00:00.000Z',lifecycle_state:'active',truth_state:'observed',quality_state:{},...restricted};
+const results=[]; let facts={};
+async function test(name,kind,fn){ facts={}; NOW=Date.parse('2026-09-09T12:00:00.000Z'); try{await fn();results.push({name,kind,status:'pass',facts});}catch(e){results.push({name,kind,status:'fail',message:e.message,actual:e.actual,expected:e.expected,facts});}}
+const bfArgs={roomId:null,knownAt:known,priorBriefingId:null,narrative:null,narrativeCites:[]};
+const compose=(f,a=bfArgs)=>new BriefingService().compose(f.cap,ctx,a,reader,'human',null,'review',corr,id(30));
+const human=(role='domain_analyst', extra=[])=>({principalId:reader,kind:'human',homeScope:'TENANT',tenantId:ctx.tenantId,domainId:null,assurance:'password',bindings:[{roleCode:role,scope:role==='auditor'?'TENANT':'DOMAIN',tenantId:ctx.tenantId,domainId:role==='auditor'?null:ctx.domainId},...extra]});
+const internal={synthetic_state:false,classification:'internal',rights_profile:null,residency_profile:null,retention_profile:null,access_policy_ref:null};
+const internalFixture=(over={})=>fixture({Packages:[{...pkg,controls:internal,synthetic_state:false}],Versions:[{...version,controls:internal,synthetic_state:false}],...over});
+const warning={warning_id:id(40),title:'Restricted replay warning',raised_at:'2024-01-16T10:00:00.000Z',state:'raised',routed_to:reader,consequence:'Private line exposure',response_window_closes_at:'2024-01-25T00:00:00.000Z',acknowledged_at:null,synthetic_state:true,controls:restricted,timing:'replay'};
+const wh={object_type:'WRN',object_id:warning.warning_id,object_version:1,...restricted};
+const bf={tenant_id:ctx.tenantId,domain_id:ctx.domainId,briefing_id:id(30),room_id:id(35),known_at:known,composed_at:known,controls:restricted,items:[{details:{private:'restricted'}}],sources:[]};
+const bh={object_type:'BRF',object_id:bf.briefing_id,object_version:1,purpose_scope:'briefing',...restricted};
+const dpk={...internal,object_type:'DPK',object_id:packageId,object_version:1,purpose_scope:'decision'};
+function pdp(p,action,objectType,purpose='briefing'){
+  return new PdpService().evaluate({principal:p,delegationId:null,action,objectType,objectId:id(30),purposeId:purpose,context:ctx,consequenceClass:'C1',environment:{deployment:'local-dev',clockQuality:'trusted'}});
+}
+function replayFixture(over={}, observed={}, knownRows=[]){
+ const f=internalFixture({Versions:[{...version,controls:internal,synthetic_state:false,monitoring_conditions:[{kind:'indicator',indicator_id:id(41)}]}],CanonicalObjects:[dpk,wh],...over});
+ f.cap.replayLayers=async()=>({content:{package_id:packageId,version:1,believed:{claims:[],forecasts:[],assumptions:[],warnings:[]},tested:{runs:[]},cutoffs:{as_of:'2024-01-22T00:00:00.000Z'},known:knownRows,decided:{commitment:{commitment_id:id(9)}},observed,excluded:[]},content_digest:'c'.repeat(64),unavailable:[],summary:{},contributors:[]});
+ f.cap.recordReplay=async()=>{};return f;
+}
+function agentFixture({task='report',maxReads=100,maxElapsed=30000,stops=[],over={},packages=new PackageService()}={}){
+ const agentId=id(50), principal={principalId:id(51),kind:'agent',assurance:'agent_grant',bindings:[]};
+ const f=internalFixture(over),calls=[];
+ const pipeline={consequentialRead:async(...a)=>{calls.push({kind:'read',action:a[2].action,principal:a[1].principalId});return{result:await a.at(-1)(f.cap,ctx)};},write:async(...a)=>{calls.push({kind:'write',action:a[2].action}); if(a[2].action==='decision.package.propose')throw new HttpException({code:'EYE_AUT_001',message:'agent cannot propose'},403);return a.at(-1)(f.cap,ctx);}};
+ f.cap.openAgentRun=async()=>({budget:{max_reads:maxReads,max_gateway_calls:0,max_elapsed_ms:maxElapsed,clearance:'restricted'},stop_conditions:stops,escalation_principal_id:reader});
+ f.cap.closeAgentRun=async a=>{f.state.closed=a;return{escalated_to:a.outcome==='stopped'?reader:null};};
+ f.cap.evaluateConditions=async()=>({checked:0});
+ const sessions={openRunSession:async()=>({principal,registration:{agent_kind:task==='draft'?'decision':task==='briefing'?'briefing':'reporting',agent_version:'1.0.0',code_digest:'d'.repeat(64)}})};
+ const svc=new AgentsService(pipeline,{},sessions,packages,new BriefingService());
+ const a={agentId,tenantId:ctx.tenantId,domainId:ctx.domainId,task,trigger:{kind:'scheduler',principalId:null,ref:'natural-tick'},roomId:task==='briefing'?id(35):null,packageId,version:1,correlationId:corr};
+ return{f,svc,a,calls};
+}
+const room={room_id:id(35),package_id:packageId,title:'Corridor room',owner_principal_id:reader,next_review_at:'2024-01-24T00:00:00.000Z',review_every_days:7};
+async function rejects403(fn){ await assert.rejects(fn,e=>e.getStatus?.()===403); }
+function contributedReplay(over={}, observed={}, contributors=[]){const f=replayFixture(over,observed);const old=f.cap.replayLayers;f.cap.replayLayers=async()=>({...await old(),contributors});return f;}
+async function main(){
+ await test('C01 APR still inherits restrictions','control',async()=>{const f=fixture();await new ApprovalService().approve(f.cap,ctx,packageId,1,{decision:'approve',versionDigest:version.version_digest,rationale:'Reviewed',conditions:[]},reader,'review',corr,id(31));assert.equal(f.state.headers[0].header.classification,'restricted');assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);});
+ await test('C02 CMT still inherits restrictions','control',async()=>{const f=fixture({Packages:[{...pkg,committed_version:null}]});await new ApprovalService().commit(f.cap,ctx,packageId,1,version.version_digest,reader,'review',corr,id(32));assert.equal(f.state.headers[0].header.residency_profile,'EU');assert.equal(f.state.headers[0].header.classification,'restricted');});
+ await test('C03 RPL still inherits version restrictions','control',async()=>{const f=contributedReplay({Versions:[version],Packages:[pkg]});await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);});
+ await test('C04 Older open warning window now retains controls','corrected',async()=>{const f=fixture({Warnings:[{...warning,raised_at:'2024-01-14T00:00:00.000Z'}],CanonicalObjects:[wh],Briefings:[{briefing_id:id(46),room_id:null,known_at:'2024-01-15T23:59:59.000Z',composed_at:'2024-01-16T00:00:00.000Z'}]});const r=await compose(f,{...bfArgs,priorBriefingId:id(46)});assert.equal(r.windows.length,1);assert.equal(r.controls.classification,'restricted');assert.ok(r.sources.includes('warning:'+warning.warning_id));});
+ const wrnContributor={object_type:'WRN',id:warning.warning_id,version:1,...restricted};
+ await test('C05 Observed warning contributor now enters replay fold','corrected',async()=>{const f=contributedReplay({}, {warnings:[warning]},[wrnContributor]);const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));assert.equal(r.controls.classification,'restricted');assert.equal(r.controls.rights_profile,restricted.rights_profile);});
+ await test('C06 Observed warning contributor denies internal reader','corrected',async()=>{const f=contributedReplay({}, {warnings:[warning]},[wrnContributor]);await rejects403(()=>new ReplayService().replay(f.cap,ctx,packageId,1,null,human(),'decision',corr,id(33)));assert.equal(f.state.headers.length,0);});
+ await test('C07 Restricted BRF detail denies internal reader','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human(),corr,'briefing',ctx));});
+ await test('C08 BRF wrong-purpose detail remains refused','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'research',ctx));});
+ await test('C09 BRF nonmember detail remains refused','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});f.cap.isMember=async()=>false;await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'briefing',ctx));});
+ await test('C10 Tenant principal cannot borrow a different domains clearance','corrected',async()=>{const p=human('domain_analyst',[{roleCode:'decision_owner',scope:'DOMAIN',tenantId:ctx.tenantId,domainId:id(99)}]);const f=fixture({Briefings:[{...bf,controls:{...restricted,classification:'confidential'}}],CanonicalObjects:[{...bh,classification:'confidential'}]});assert.ok(pdp(p,'briefing.read','BRF').decision.startsWith('allow'));assert.equal(clearance.clearanceOf(p,ctx),'internal');await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,p,corr,'briefing',ctx));});
+ await test('C11 Authorized package list now filters denied package','corrected',async()=>{const f=fixture({CanonicalObjects:[dpk]});const p=human();await rejects403(()=>new PackageService().get(f.cap,packageId,p,'decision',corr,ctx));assert.equal((await new PackageService().list(f.cap,p,'decision',ctx)).length,0);});
+ await test('C12 Human report now refuses wrong purpose','corrected',async()=>{const f=internalFixture({CanonicalObjects:[dpk]});const p=human('executive');const r=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'research',member:reader});assert.equal(r.refused,true);});
+ await test('C13 Human report now refuses nonmember','corrected',async()=>{const f=internalFixture({CanonicalObjects:[dpk],Rooms:[room]});f.cap.isMember=async()=>false;const r=await renderReport(f.cap,packageId,'restricted',{principal_id:reader},corr,{purpose:'decision',member:reader});assert.equal(r.refused,true);});
+ await test('C14 Agent output list now withholds from nonmember','corrected',async()=>{const f=internalFixture({Rooms:[room],AgentRuns:[{run_id:id(60),room_id:room.room_id,package_id:packageId,started_at:known,outputs:{report:{private:'room-only decision'}}}]});f.cap.isMember=async()=>false;const r=await new AgentsService().list(f.cap,human('executive'),ctx);assert.ok(r.runs[0].outputs.withheld);});
+ await test('C15 BRF availability now detects a blob tombstone','corrected',async()=>{const f=fixture({Briefings:[{...bf,sources:[`evidence:${rows.object_id}@1`]}],CanonicalObjects:[bh,{...rows,object_type:'EVD',payload:{manifest_id:id(64)}}],Tombstones:[{manifest_id:id(64),tombstoned_at:'2024-01-21T00:00:00.000Z',reason:'retention swept'}]});const r=await new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'briefing',ctx);facts={availability:r.availability};assert.equal(r.availability.unavailable[0].reason,'governed-deleted');});
+ const source={source_id:id(70),contract_version:1,source_key:'fixture-live',name:'Fixture live',acquisition_mode:'live',data_origin:'live',rights_state:'confirmed',connector_kind:'rest',contract:{security_and_operations:{}},lifecycle_state:'active'};
+ const registered={source_id:source.source_id,contract_version:1,event_id:id(71),event:'contract.registered',occurred_at:'2024-01-09T00:00:00.000Z',details:{rights_state:'confirmed'}};
+ const se={event_id:id(72),source_id:source.source_id,contract_version:1,event:'contract.activated',occurred_at:'2024-01-10T00:00:00.000Z'};
+ await test('C16 Later source version does not replace historical source','corrected',async()=>{const f=fixture({SourceContracts:[source],SourceContractEvents:[registered,se]});const a=await compose(f);f.tables.SourceContracts.push({...source,contract_version:2});f.tables.SourceContractEvents.push({...se,event:'contract.superseded',occurred_at:'2024-01-20T00:00:00.000Z'},{...se,contract_version:2,occurred_at:'2024-01-20T00:00:01.000Z'});const b=await compose(f);assert.equal(a.contentDigest,b.contentDigest);assert.equal(b.sourceStates[0].contract_version,1);});
+ await test('C17 Attempt finishing later does not change historical source health','corrected',async()=>{const f=fixture({SourceContracts:[source],SourceContractEvents:[registered,se],ScheduledAttempts:[]});const a=await compose(f);f.tables.ScheduledAttempts.push({source_id:source.source_id,started_at:'2024-01-17T10:00:00.000Z',finished_at:'2024-01-19T00:00:00.000Z',outcome:'failed'});const b=await compose(f);assert.equal(a.contentDigest,b.contentDigest);assert.equal(b.sourceStates[0].state,'live');});
+ await test('R5 Later rights withdrawal must not rewrite historical source state','residual',async()=>{const f=fixture({SourceContracts:[{...source}],SourceContractEvents:[registered,se]});const a=await compose(f);f.tables.SourceContracts[0].rights_state='withdrawn';f.tables.SourceContracts[0].lifecycle_state='suspended';f.tables.SourceContractEvents.push({...se,event:'contract.suspended',occurred_at:'2024-01-20T00:00:00.000Z',details:{kind:'rights_update',rights_state:'withdrawn',evidence:'withdrawal received'}});const b=await compose(f);facts={before:a.sourceStates,after:b.sourceStates,knownAt:known,withdrawalRecordedAt:'2024-01-20T00:00:00.000Z',digestBefore:a.contentDigest,digestAfter:b.contentDigest};assert.equal(a.contentDigest,b.contentDigest,'same historical briefing changed because sourceStates reads rights_state from the current projection');});
+ await test('C18 Composition meter refuses before unbudgeted reads','corrected',async()=>{const f=fixture();await assert.rejects(()=>new BriefingService().compose(f.cap,ctx,bfArgs,reader,'agent',id(50),'briefing',corr,id(30),{maxReads:0,maxItems:null,stopOnDegraded:false,reserve:()=>{throw new BudgetExceeded('no reads remain');},deadline:NOW+1000}),e=>e instanceof BudgetExceeded);assert.equal(f.state.queries,0);assert.equal(f.state.headers.length,0);});
+ await test('C19 Composition clock stops before new work or admission','corrected',async()=>{const f=fixture();const deadline=NOW+100;f.state.onRead=(table)=>{if(table==='SourceContracts')NOW+=101;};await assert.rejects(()=>new BriefingService().compose(f.cap,ctx,bfArgs,reader,'agent',id(50),'briefing',corr,id(30),{maxReads:100,maxItems:null,stopOnDegraded:false,reserve:()=>{},deadline}),e=>e instanceof BudgetExceeded);assert.equal(f.state.headers.length,0);assert.equal(f.state.timedTrace.filter(x=>x.at>=deadline).length,0);});
+ await test('C20 Unsupported stop-kind pair is refused at service registration','corrected',async()=>{assert.throws(()=>validateRegisterAgent({kind:'reporting',version:'1.0.0',codeDigest:'d'.repeat(64),ownerPrincipalId:reader,escalationPrincipalId:reader,budgets:{max_reads:10,max_gateway_calls:0,max_elapsed_ms:1000},stopConditions:[{kind:'max_items',value:1}]},corr),e=>e.getStatus?.()===422);});
+ await test('C21 In-budget reporting still completes','control',async()=>{const {f,svc,a}=agentFixture({over:{CanonicalObjects:[dpk]}});const r=await svc.run(a);assert.equal(r.outcome,'finished');assert.equal(r.outputs.report.package.package_id,packageId);});
+ // Remaining authority paths: actual PDP and services, without claiming the controller or PostgreSQL ran.
+ await test('R4a Composition response must not lend a restricted briefing to a confidential executive','residual',async()=>{const p=human('executive');const f=internalFixture({Rooms:[room],Warnings:[warning],CanonicalObjects:[dpk,wh]});assert.ok(pdp(p,'briefing.compose','BRF','briefing').decision.startsWith('allow'));assert.equal(clearance.clearanceOf(p,ctx),'confidential');let out;try{out=await new BriefingService().compose(f.cap,ctx,{...bfArgs,roomId:room.room_id},reader,'human',null,'briefing',corr,id(30),null,clearance.clearanceOf(p,ctx));}catch(e){if(e.getStatus?.()===403){assert.equal(f.state.headers.length,0);facts={refusedBeforeAdmission:true};return;}throw e;}facts={pdp:'allow',readerClearance:clearance.clearanceOf(p,ctx),returnedClassification:out.controls.classification,returnedWarnings:out.items.filter(x=>x.kind==='warning'),admitted:f.state.headers.length};assert.equal(out.items.some(x=>x.id===warning.warning_id),false,'composition returned the restricted warning to the confidential composer');});
+ await test('R4b Stored agent report must enforce its admitted decision purpose','residual',async()=>{const p=human('executive');const f=internalFixture({CanonicalObjects:[dpk],Rooms:[room],AgentRuns:[{run_id:id(60),room_id:room.room_id,package_id:packageId,started_at:known,outputs:{report:{package:{package_id:packageId},version:{choice}}}}]});assert.ok(pdp(p,'agent.read','AGT','research').decision.startsWith('allow'));const denied=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'research',member:reader});assert.equal(denied.refused,true);const r=await new AgentsService().list(f.cap,p,ctx,'research');facts={directReportRefused:denied.reason,requestPurpose:'research',storedReportReturned:r.runs[0].outputs};assert.ok(r.runs[0].outputs.withheld,'same decision report disclosed through the agent-output list despite incompatible purpose');});
+ await test('R4c Operator trigger response must not return an agents higher-clearance report','residual',async()=>{const p=human('executive');assert.ok(pdp(p,'agent.trigger','AGT','research').decision.startsWith('allow'));const {f,svc,a}=agentFixture({over:{Packages:[pkg],Versions:[version],CanonicalObjects:[dpk],Rooms:[room]}});a.trigger={kind:'operator',principalId:reader,ref:'governed-trigger'};const direct=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'decision',member:reader});assert.equal(direct.refused,true);const raw=await svc.run(a);const r=await svc.redactRun(f.cap,{...raw,package_id:packageId,room_id:room.room_id},p,'decision',ctx);facts={directReportRefused:direct.reason,operatorClearance:clearance.clearanceOf(p,ctx),runOutcome:r.outcome,outputs:r.outputs};assert.ok(r.outputs.withheld);assert.equal(Boolean(r.outputs.report?.version?.choice),false);});
+ await test('R7 Reporting must not start further reads after elapsed budget','residual',async()=>{const {f,svc,a}=agentFixture({maxElapsed:100,over:{CanonicalObjects:[dpk]}});const deadline=NOW+100;f.state.onRead=(table)=>{if(table==='Packages')NOW+=101;};const r=await svc.run(a);const late=f.state.timedTrace.filter(x=>x.at>=deadline);facts={outcome:r.outcome,spent:r.spent,lateQueries:late.map(x=>x.table),reportReturned:Boolean(r.outputs.report)};assert.equal(late.length,0);assert.equal(r.outcome,'stopped');assert.equal(Boolean(r.outputs.report),false);});
+ // SQL execution is not claimed: feed the newly inspected contributor shape into the actual service.
+ await test('R3 Replay containing a restricted later reconciliation must fold that contributor','sql-shaped-service',async()=>{const rc={reconciliation_id:id(80),twin_id:twinId,key:'outcome.total_cost',from_version:1,from_kind:'simulated',from_value:900,against_version:2,against_value:1700,difference:{numeric:800},note:'restricted supplier settlement',recorded_at:'2024-01-21T00:00:00.000Z'};const f=contributedReplay({}, {reconciliations:[rc]},[{object_type:'DPK',id:packageId,version:1,...internal},{object_type:'SIM',id:id(81),version:1,...internal},{object_type:'TWN',id:twinId,version:2,...restricted}]);const priorLayers=f.cap.replayLayers;f.cap.replayLayers=async()=>{const x=await priorLayers();x.content.tested.runs=[{run_id:id(81)}];return x;};f.tables.CanonicalObjects.push({object_type:'SIM',object_id:id(81),object_version:1,...internal},{object_type:'TWN',object_id:twinId,object_version:2,...restricted});await rejects403(()=>new ReplayService().replay(f.cap,ctx,packageId,1,null,human(),'decision',corr,id(33)));assert.equal(f.state.headers.length,0);const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));facts={classification:r.controls.classification,contributorKinds:r.contributors.map(c=>c.object_type)};assert.equal(r.controls.classification,'restricted');assert.equal(r.layers.observed.reconciliations[0].against_value,1700);});
+ const summary={head:'2e839458361b2accc457f5ae1b53d7a2263780ce',evidence:'Actual candidate TypeScript/PDP with controlled clock, query, pipeline, session and admission doubles; SQL-shaped-service case explicitly assumes the inspected contributor result. No real database, HTTP, Redis or browser execution.',total:results.length,passed:results.filter(x=>x.status==='pass').length,failed:results.filter(x=>x.status==='fail').length,results};
+ fs.writeFileSync(path.join(__dirname,'closure-probe-results.json'),JSON.stringify(summary,null,2));
+ for(const r of results)console.log(`${r.status.toUpperCase()} ${r.name}${r.status==='fail'?' — '+r.message:''}`);
+ console.log(JSON.stringify({total:summary.total,passed:summary.passed,failed:summary.failed}));
+ process.exitCode=summary.failed?1:0;
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
+
+
+
+APPENDIX B — PROBE RESULTS
+
+{
+  "head": "2e839458361b2accc457f5ae1b53d7a2263780ce",
+  "evidence": "Actual candidate TypeScript/PDP with controlled clock, query, pipeline, session and admission doubles; SQL-shaped-service case explicitly assumes the inspected contributor result. No real database, HTTP, Redis or browser execution.",
+  "total": 27,
+  "passed": 27,
+  "failed": 0,
+  "results": [
+    {
+      "name": "C01 APR still inherits restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C02 CMT still inherits restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C03 RPL still inherits version restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C04 Older open warning window now retains controls",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C05 Observed warning contributor now enters replay fold",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C06 Observed warning contributor denies internal reader",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C07 Restricted BRF detail denies internal reader",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C08 BRF wrong-purpose detail remains refused",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C09 BRF nonmember detail remains refused",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C10 Tenant principal cannot borrow a different domains clearance",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C11 Authorized package list now filters denied package",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C12 Human report now refuses wrong purpose",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C13 Human report now refuses nonmember",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C14 Agent output list now withholds from nonmember",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C15 BRF availability now detects a blob tombstone",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {
+        "availability": {
+          "checked_at": "2026-09-09T12:00:00.000Z",
+          "checked": {
+            "evidence": 1,
+            "claims": 0,
+            "runs": 0,
+            "warnings": 0,
+            "sources": 0
+          },
+          "unavailable": [
+            {
+              "kind": "evidence",
+              "id": "00000000-0000-4000-8000-000000000020",
+              "version": 1,
+              "reason": "governed-deleted",
+              "at": "2024-01-21T00:00:00.000Z",
+              "tombstone_reason": "retention swept"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "C16 Later source version does not replace historical source",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C17 Attempt finishing later does not change historical source health",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R5 Later rights withdrawal must not rewrite historical source state",
+      "kind": "residual",
+      "status": "pass",
+      "facts": {
+        "before": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000070",
+            "contract_version": 1,
+            "source_key": "fixture-live",
+            "name": "Fixture live",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence",
+            "rights_state": "confirmed"
+          }
+        ],
+        "after": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000070",
+            "contract_version": 1,
+            "source_key": "fixture-live",
+            "name": "Fixture live",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence",
+            "rights_state": "confirmed"
+          }
+        ],
+        "knownAt": "2024-01-17T23:59:59.000Z",
+        "withdrawalRecordedAt": "2024-01-20T00:00:00.000Z",
+        "digestBefore": "9c3acee8af9da129113fe95644d9d20700346701634acaadeeaed06abbc0c7d8",
+        "digestAfter": "9c3acee8af9da129113fe95644d9d20700346701634acaadeeaed06abbc0c7d8"
+      }
+    },
+    {
+      "name": "C18 Composition meter refuses before unbudgeted reads",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C19 Composition clock stops before new work or admission",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C20 Unsupported stop-kind pair is refused at service registration",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C21 In-budget reporting still completes",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R4a Composition response must not lend a restricted briefing to a confidential executive",
+      "kind": "residual",
+      "status": "pass",
+      "facts": {
+        "refusedBeforeAdmission": true
+      }
+    },
+    {
+      "name": "R4b Stored agent report must enforce its admitted decision purpose",
+      "kind": "residual",
+      "status": "pass",
+      "facts": {
+        "directReportRefused": "a report is rendered under the purpose the package was admitted for (decision); this render states research",
+        "requestPurpose": "research",
+        "storedReportReturned": {
+          "withheld": "the output was produced for the purpose decision; this read states research"
+        }
+      }
+    },
+    {
+      "name": "R4c Operator trigger response must not return an agents higher-clearance report",
+      "kind": "residual",
+      "status": "pass",
+      "facts": {
+        "directReportRefused": "the package is classified restricted; the reader's clearance is confidential; the export is refused",
+        "operatorClearance": "confidential",
+        "runOutcome": "finished",
+        "outputs": {
+          "withheld": "the output is classified restricted; the reader's clearance in this domain is confidential",
+          "provenance": {
+            "purpose": "decision",
+            "package_id": "00000000-0000-4000-8000-000000000004",
+            "room_id": "00000000-0000-4000-8000-000000000035",
+            "classification": "restricted"
+          }
+        }
+      }
+    },
+    {
+      "name": "R7 Reporting must not start further reads after elapsed budget",
+      "kind": "residual",
+      "status": "pass",
+      "facts": {
+        "outcome": "stopped",
+        "spent": {
+          "reads": 1,
+          "gateway_calls": 0,
+          "elapsed_ms": 101
+        },
+        "lateQueries": [],
+        "reportReturned": false
+      }
+    },
+    {
+      "name": "R3 Replay containing a restricted later reconciliation must fold that contributor",
+      "kind": "sql-shaped-service",
+      "status": "pass",
+      "facts": {
+        "classification": "restricted",
+        "contributorKinds": [
+          "DPK",
+          "SIM",
+          "TWN"
+        ]
+      }
+    }
+  ]
+}
+
+
+APPENDIX C — VERIFIED SOURCE IDENTITIES
+
+{
+  "head": "2e839458361b2accc457f5ae1b53d7a2263780ce",
+  "files": [
+    {
+      "path": "apps/api/src/prediction/controls.ts",
+      "sha": "f642ff02c151ee04db288a08b3ba5c56b6ee89ba"
+    },
+    {
+      "path": "apps/api/src/decision/clearance.ts",
+      "sha": "c0a90dc3d80823a71e30cf9e16436d00079d4b17"
+    },
+    {
+      "path": "apps/api/src/decision/packages/package.service.ts",
+      "sha": "75af421914f8c9abd0fca77b63b8318ae58dbfd5"
+    },
+    {
+      "path": "apps/api/src/decision/approvals/approval.service.ts",
+      "sha": "45fdac345c0fc80d71605cd815e14890dcdd7d93"
+    },
+    {
+      "path": "apps/api/src/decision/replay/replay.service.ts",
+      "sha": "b8ffc5fe99d0a2aaa03263b10a38b88eff419bfa"
+    },
+    {
+      "path": "apps/api/src/decision/monitoring/monitoring.service.ts",
+      "sha": "7e0f8082c7cf94e3129d12483472b4ecce9219c3"
+    },
+    {
+      "path": "apps/api/src/executive/briefings/briefing.service.ts",
+      "sha": "2667c6907feea4c90e5c8a6425b67374309cdd41"
+    },
+    {
+      "path": "apps/api/src/executive/agents/agents.service.ts",
+      "sha": "177cf196db363d4aaf940e22c573f4e5ff054da7"
+    },
+    {
+      "path": "apps/api/src/policy/pdp.service.ts",
+      "sha": "880cb7294e7876cfc9558590e4d032a91b2ec75e"
+    },
+    {
+      "path": "apps/api/src/executive/executive.controller.ts",
+      "sha": "dccd465fef177cd933a7ac47a7a86a7d9cb58e9f"
+    },
+    {
+      "path": "apps/api/migrations/0050_phase6_residual_corrections_2.sql",
+      "sha": "9829b6d530725eddd019ac61af19d6e1e569bf7b"
+    }
+  ]
+}
+
+
+
+APPENDIX D — CSV STRUCTURAL INSPECTION
+
+{
+  "total": 6264,
+  "files": [
+    {
+      "file": "v00-v01.csv",
+      "rows": 224
+    },
+    {
+      "file": "v02.csv",
+      "rows": 223
+    },
+    {
+      "file": "v03.csv",
+      "rows": 673
+    },
+    {
+      "file": "v04.csv",
+      "rows": 538
+    },
+    {
+      "file": "v05.csv",
+      "rows": 609
+    },
+    {
+      "file": "v06.csv",
+      "rows": 769
+    },
+    {
+      "file": "v07.csv",
+      "rows": 794
+    },
+    {
+      "file": "v08.csv",
+      "rows": 904
+    },
+    {
+      "file": "v09.csv",
+      "rows": 1089
+    },
+    {
+      "file": "v10.csv",
+      "rows": 441
+    }
+  ],
+  "duplicate_volume_ids": [],
+  "implementation": {
+    "partial": 2721,
+    "implemented": 963,
+    "missing": 2580
+  },
+  "verification": {
+    "not-applicable": 419,
+    "passed:harness": 2302,
+    "passed:ci": 219,
+    "passed:browser": 391,
+    "unverified": 2903,
+    "passed:harness+browser": 22,
+    "passed:harness+ci": 5,
+    "passed:ci+browser": 3
+  },
+  "release": {
+    "branch-only": 821,
+    "merged": 2829,
+    "none": 2614
+  },
+  "done_package": {
+    "implemented / passed:harness": 576,
+    "implemented / passed:browser": 34,
+    "implemented / not-applicable": 25,
+    "implemented / unverified": 59,
+    "implemented / passed:ci": 46,
+    "missing / not-applicable": 2,
+    "partial / passed:harness": 5,
+    "partial / passed:ci": 2
+  },
+  "blank_clauses": 0,
+  "blank_evidence_implemented": 8
+}
+
+
+APPENDIX E — RECORDED SCAN COMPARISON
+
+{
+  "postgres": {
+    "base_distinct_advisories": 31,
+    "candidate_distinct_advisories": 24,
+    "removed": [
+      "CVE-2026-53612",
+      "CVE-2026-53613",
+      "CVE-2026-53614",
+      "CVE-2026-76642",
+      "CVE-2026-78408",
+      "CVE-2026-78409",
+      "CVE-2026-78410"
+    ],
+    "introduced": [],
+    "remaining": [
+      "CVE-2025-61726",
+      "CVE-2025-61729",
+      "CVE-2025-68121",
+      "CVE-2026-14456",
+      "CVE-2026-25679",
+      "CVE-2026-27145",
+      "CVE-2026-32280",
+      "CVE-2026-32281",
+      "CVE-2026-32283",
+      "CVE-2026-33630",
+      "CVE-2026-33811",
+      "CVE-2026-33814",
+      "CVE-2026-33818",
+      "CVE-2026-39820",
+      "CVE-2026-39821",
+      "CVE-2026-39822",
+      "CVE-2026-39836",
+      "CVE-2026-42499",
+      "CVE-2026-42504",
+      "CVE-2026-56853",
+      "CVE-2026-56858",
+      "CVE-2026-56859",
+      "CVE-2026-56860",
+      "CVE-2026-56862"
+    ]
+  },
+  "redis": {
+    "base_distinct_advisories": 7,
+    "candidate_distinct_advisories": 1,
+    "removed": [
+      "CVE-2026-53612",
+      "CVE-2026-53613",
+      "CVE-2026-53614",
+      "CVE-2026-76642",
+      "CVE-2026-78408",
+      "CVE-2026-78410"
+    ],
+    "introduced": [],
+    "remaining": [
+      "CVE-2026-14456"
+    ]
+  }
+}
+
+
+APPENDIX F — CI CHECKOUT AND FINAL UNMATCHED SET
+
+{
+  "head": "2e839458361b2accc457f5ae1b53d7a2263780ce",
+  "mergeRef": "a94445703fb9e0616413dd8e125fcbecc687b8bd",
+  "runId": 34414834786,
+  "blockingUnmatched": [
+    "2026-09-09T23:00:11.7527361Z   UNGOVERNED image finding: CVE-2026-53612 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7529640Z   UNGOVERNED image finding: CVE-2026-53612 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+    "2026-09-09T23:00:11.7531410Z   UNGOVERNED image finding: CVE-2026-53613 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7533139Z   UNGOVERNED image finding: CVE-2026-53613 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+    "2026-09-09T23:00:11.7534733Z   UNGOVERNED image finding: CVE-2026-53614 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7535996Z   UNGOVERNED image finding: CVE-2026-53614 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+    "2026-09-09T23:00:11.7537357Z   UNGOVERNED image finding: CVE-2026-76642 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7538644Z   UNGOVERNED image finding: CVE-2026-76642 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+    "2026-09-09T23:00:11.7539933Z   UNGOVERNED image finding: CVE-2026-78408 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7541203Z   UNGOVERNED image finding: CVE-2026-78408 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
+    "2026-09-09T23:00:11.7542668Z   UNGOVERNED image finding: CVE-2026-78409 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7544179Z   UNGOVERNED image finding: CVE-2026-78410 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "2026-09-09T23:00:11.7545542Z   UNGOVERNED image finding: CVE-2026-78410 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241"
+  ],
+  "rawFsFailure": true,
+  "structuredFsSuccess": true,
+  "finalChain": "FINAL C16/C17 skipped"
+}

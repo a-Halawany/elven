@@ -1,0 +1,82 @@
+== redis v2 reproducibility (two builds of the same Dockerfile, --no-cache --pull=false, host arch linux/arm64)
+eye-cand2-redis:8-alpine-maint  Id=sha256:180109ff191ec15103496d9f8515db45b2b446e1bf8bbc078c05b3ae51dcb075  Created=2026-09-10T07:42:28.765393092Z  layers=8  lastLayer=sha256:fb1beb160e72c44e560adc58a1929fabac5ceab89c0517592e158c3d9e195525
+eye-cand2-redis:rebuild2  Id=sha256:2bde3988e2aae6b3a10de671fc44d3d1e1c265d57deb24f32df5772e4a865edc  Created=2026-09-10T07:46:24.14046384Z  layers=8  lastLayer=sha256:501ebfd315efab3b81ec9565cc587174b4827662497d3e97011826ca6e5d38cd
+-- new-layer file list (path, content sha256[0:16], mtime, size): build1 31 entries, rebuild2 31 entries
+-- full diff (build1 < > rebuild2):
+1c1
+< ./bin	dir	mtime=1789026148
+---
+> ./bin	dir	mtime=1789026384
+3,6c3,6
+< ./etc	dir	mtime=1789026146
+< ./etc/apk	dir	mtime=1789026148
+< ./etc/apk/world	sha=d3a4f71ecfe2d556	mtime=1789026148	size=167
+< ./etc/ssl	dir	mtime=1789026148
+---
+> ./etc	dir	mtime=1789026382
+> ./etc/apk	dir	mtime=1789026384
+> ./etc/apk/world	sha=d3a4f71ecfe2d556	mtime=1789026384	size=167
+> ./etc/ssl	dir	mtime=1789026383
+13,14c13,14
+< ./lib/apk/db	dir	mtime=1789026148
+< ./lib/apk/db/installed	sha=59ad5eac8760b7be	mtime=1789026148	size=44494
+---
+> ./lib/apk/db	dir	mtime=1789026384
+> ./lib/apk/db/installed	sha=59ad5eac8760b7be	mtime=1789026384	size=44494
+16,17c16,17
+< ./lib/apk/db/scripts.tar.gz	sha=c3181072b43b7964	mtime=1789026148	size=1915
+< ./lib/apk/db/triggers	sha=160ada91a83cff96	mtime=1789026148	size=95
+---
+> ./lib/apk/db/scripts.tar.gz	sha=c3181072b43b7964	mtime=1789026384	size=1915
+> ./lib/apk/db/triggers	sha=160ada91a83cff96	mtime=1789026384	size=95
+19,20c19,20
+< ./usr/lib	dir	mtime=1789026148
+< ./usr/lib/engines-3	dir	mtime=1789026148
+---
+> ./usr/lib	dir	mtime=1789026384
+> ./usr/lib/engines-3	dir	mtime=1789026383
+27c27
+< ./usr/lib/ossl-modules	dir	mtime=1789026148
+---
+> ./usr/lib/ossl-modules	dir	mtime=1789026383
+31c31
+< ./var/log/apk.log	sha=237e735e87a29d90	mtime=1789026148	size=14923
+---
+> ./var/log/apk.log	sha=fb2af906c7a0819d	mtime=1789026384	size=14923
+-- diff ignoring mtimes:
+31c31
+< ./var/log/apk.log	sha=237e735e87a29d90	size=14923
+---
+> ./var/log/apk.log	sha=fb2af906c7a0819d	size=14923
+-- build1 new-layer listing (for the record):
+./bin	dir	mtime=1789026148
+./bin/setpriv	sha=011dcd248a15629e	mtime=1788613735	size=67392
+./etc	dir	mtime=1789026146
+./etc/apk	dir	mtime=1789026148
+./etc/apk/world	sha=d3a4f71ecfe2d556	mtime=1789026148	size=167
+./etc/ssl	dir	mtime=1789026148
+./etc/ssl/ct_log_list.cnf	sha=f1c1803d13d1d0b7	mtime=1787691610	size=412
+./etc/ssl/ct_log_list.cnf.dist	sha=f1c1803d13d1d0b7	mtime=1787691610	size=412
+./etc/ssl/openssl.cnf	sha=a65a2cb9f4ee8ffd	mtime=1787691610	size=12411
+./etc/ssl/openssl.cnf.dist	sha=a65a2cb9f4ee8ffd	mtime=1787691610	size=12411
+./lib	dir	mtime=1782067893
+./lib/apk	dir	mtime=1782067893
+./lib/apk/db	dir	mtime=1789026148
+./lib/apk/db/installed	sha=59ad5eac8760b7be	mtime=1789026148	size=44494
+./lib/apk/db/lock	sha=e3b0c44298fc1c14	mtime=1785441269	size=0
+./lib/apk/db/scripts.tar.gz	sha=c3181072b43b7964	mtime=1789026148	size=1915
+./lib/apk/db/triggers	sha=160ada91a83cff96	mtime=1789026148	size=95
+./usr	dir	mtime=1785441829
+./usr/lib	dir	mtime=1789026148
+./usr/lib/engines-3	dir	mtime=1789026148
+./usr/lib/engines-3/afalg.so	sha=f36cc2c46d424cd3	mtime=1787691610	size=67680
+./usr/lib/engines-3/capi.so	sha=7891a5d69534db2e	mtime=1787691610	size=67168
+./usr/lib/engines-3/loader_attic.so	sha=ddb4b7852dc1eeb2	mtime=1787691610	size=67952
+./usr/lib/engines-3/padlock.so	sha=8f2723eb7e7c4002	mtime=1787691610	size=67168
+./usr/lib/libcrypto.so.3	sha=7194d7b43079b969	mtime=1787691610	size=4533144
+./usr/lib/libssl.so.3	sha=ce137b01b092c85d	mtime=1787691610	size=868240
+./usr/lib/ossl-modules	dir	mtime=1789026148
+./usr/lib/ossl-modules/legacy.so	sha=19e822f42dddaa30	mtime=1787691610	size=133008
+./var	dir	mtime=1782067893
+./var/log	dir	mtime=1785441269
+./var/log/apk.log	sha=237e735e87a29d90	mtime=1789026148	size=14923

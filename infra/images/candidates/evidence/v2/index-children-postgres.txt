@@ -1,0 +1,5 @@
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+  Annotations: 
+    org.opencontainers.image.created:         2026-07-07T17:43:40Z
+    org.opencontainers.image.revision:        4f9ced003ba58a854656ba150d146243d27ae3ac

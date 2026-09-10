@@ -560,3 +560,28 @@ No waiver, no bypass: C15 and FINAL C16/C17 stay blocking.
   members (which the stored-read rule governs).
 - This review is **not** recorded as closed; C15 and FINAL C16/C17 stay blocking; the ECB-dependent
   browser case stays failed until verified.
+
+### 13.6 Closure of the bounded correction review (recorded)
+
+Codex's bounded Phase 6 functional correction review is **closed at
+`2e839458361b2accc457f5ae1b53d7a2263780ce`** (`audit/reviews/The_Eye_PR46_Closure_2e83945_and_Delivery_Next_Steps.txt`,
+sha256 `f4f2ac7f…`). The evidence classes stay distinct: Codex's 27 independent service/PDP checks with
+explicit doubles and a controlled clock (27/27 passed; one check consumes the contributor shape from SQL
+inspection, not SQL execution; eleven blobs verified against the candidate tree; no PostgreSQL, Redis,
+HTTP, browser, Docker or Trivy execution claimed) — apart from this branch's real-database/controller/Redis
+harness (§13.1, §13.3), the browser results (Phase 6 3/3; Phase 4/5 one ECB-dependent failure and twelve
+not run — no skipped case is a pass) and the hosted CI (§13.4).
+
+Two corrections to §13.4's wording, from the raw log of run 34414834786: the supply-chain checkout is
+GitHub's synthetic merge `a9444570` of `2e83945` onto `c5460465`; and the raw `trivy-fs` step reports
+**FAIL** while `trivy-fs-json` reports ok — the final governed reconciliation names the 13 image rows, but
+"every filesystem step ok" is not supported. The raw failure is this pass's own: the candidate Dockerfiles
+committed at `561dd3c` under `infra/images/candidates/` trip trivy's `DS-0002` (no explicit non-root
+`USER`), and that step is blocking in the gate. It is handled in the maintenance track (register §4.2): the recipe now declares the
+non-root service user (candidate v3) and the v1 files are removed; the gate-form filesystem scan of the tree exits
+0 locally. Not waived.
+
+The closure establishes neither Phase 6 product completeness nor release readiness: conditional
+approvals, case-bound agent selection and the other omissions stay in the register's packages; PR #46
+stays unmerged behind C15 and the unexecuted FINAL C16/C17 chain. Nothing in the closed scope is
+reopened without a concrete new consequence.

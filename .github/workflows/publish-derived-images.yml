@@ -1,0 +1,136 @@
+# Publish the derived (patched) service images to GHCR — MANUAL, owner-approved runs only.
+#
+# What this does, and only this: builds the two derived-image recipes committed under
+# infra/images/candidates/v2/ from the EXACT pinned base digests, for the platforms requested,
+# pushes them to the repository owner's GHCR namespace, records the pushed digests, and attaches the
+# raw scan (trivy, pinned by scripts/gate/scanner-pins.json) and CycloneDX SBOM of what was pushed.
+# It does not re-pin docker-compose.yml, conformance.manifest.json or the scanner dispositions: that
+# is a separate, reviewed change after the digests exist (register §4.2, FULL_PRODUCT_DELIVERY_REGISTER.md).
+#
+# Authority: the owner's explicit approval to publish (not recorded by this file). Trigger:
+# workflow_dispatch only — never on push, never on a schedule. Credentials: the job-scoped
+# GITHUB_TOKEN with `packages: write` (GitHub-documented path for repository-associated publishing:
+# https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images); no personal
+# token, no secret of any other kind. Third-party actions: none beyond the repository's pinned
+# actions/checkout; the build and push use the runner's docker CLI (buildx).
+#
+# Package access is CHECKED at run time, not presumed: the login step fails closed if the token
+# cannot write packages, and a first publication of a package name must be linked to this repository
+# in the package settings for later runs (see PUBLICATION.md).
+name: publish-derived-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Which recipe to publish'
+        required: true
+        type: choice
+        options: [postgres, redis, both]
+      platforms:
+        description: 'Platforms (the gate scans linux/amd64; arm64 is for local development)'
+        required: true
+        type: choice
+        options: ['linux/amd64', 'linux/amd64,linux/arm64']
+      date_tag:
+        description: 'Maintenance date tag, YYYYMMDD (the immutable reference is the pushed digest)'
+        required: true
+        type: string
+      approval_ref:
+        description: 'Reference to the owner approval that authorises this publication (issue/comment URL or text)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-derived-images
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      NAMESPACE: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Refuse to run without an approval reference and a well-formed date tag
+        run: |
+          set -euo pipefail
+          [[ -n "${{ inputs.approval_ref }}" ]] || { echo '::error::approval_ref is required'; exit 1; }
+          [[ "${{ inputs.date_tag }}" =~ ^20[0-9]{6}$ ]] || { echo '::error::date_tag must be YYYYMMDD'; exit 1; }
+          test -f infra/images/candidates/v2/postgres-18-alpine.Dockerfile
+          test -f infra/images/candidates/v2/redis-8-alpine.Dockerfile
+
+      - name: Log in to GHCR with the job-scoped token (fails closed without packages:write)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Set up buildx
+        run: docker buildx create --use --name eye-publish
+
+      - name: Install the PINNED scanner (same pins and digest checks as the C15 gate)
+        timeout-minutes: 25
+        run: |
+          bash scripts/gate/install-scanners.sh trivy
+          trivy --version | head -1
+
+      - name: Build, push and record each requested image
+        id: publish
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/derived-images
+          OWNER_LC="$(echo "$NAMESPACE" | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')"
+          publish_one() {
+            local name="$1" file="$2"
+            local ref="$REGISTRY/$OWNER_LC/$REPO_LC/$name"
+            local tag="$ref:${name}-maint-${{ inputs.date_tag }}"
+            echo "== $tag from $file at ${{ github.sha }} (platforms ${{ inputs.platforms }})"
+            docker buildx build --no-cache --pull=false \
+              --platform "${{ inputs.platforms }}" \
+              --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+              --label "org.opencontainers.image.revision=${{ github.sha }}" \
+              --label "org.opencontainers.image.description=The Eye derived service image (util-linux/OpenSSL/c-ares maintenance over the pinned upstream digest); recipe $file" \
+              --provenance=false --sbom=false \
+              -f "$file" -t "$tag" --push infra/images/candidates/v2
+            local digest
+            digest="$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+            echo "$tag@$digest"
+            printf '%s\n' "$tag@$digest" >> evidence/derived-images/pushed.txt
+            docker buildx imagetools inspect "$tag" > "evidence/derived-images/$name.manifest.txt"
+            # what was pushed is what is scanned: pull the amd64 child by digest and scan it with the pinned trivy
+            trivy image --platform linux/amd64 --scanners vuln,secret --severity HIGH,CRITICAL --ignorefile /dev/null --no-progress \
+              --format json "$ref@$digest" > "evidence/derived-images/$name.trivy.json"
+            trivy image --platform linux/amd64 --format cyclonedx "$ref@$digest" > "evidence/derived-images/$name.sbom.cdx.json"
+          }
+          case "${{ inputs.image }}" in
+            postgres) publish_one postgres infra/images/candidates/v2/postgres-18-alpine.Dockerfile ;;
+            redis)    publish_one redis    infra/images/candidates/v2/redis-8-alpine.Dockerfile ;;
+            both)     publish_one postgres infra/images/candidates/v2/postgres-18-alpine.Dockerfile
+                      publish_one redis    infra/images/candidates/v2/redis-8-alpine.Dockerfile ;;
+          esac
+          {
+            echo "revision=${{ github.sha }}"
+            echo "approval_ref=${{ inputs.approval_ref }}"
+            echo "platforms=${{ inputs.platforms }}"
+            echo "actor=${{ github.actor }}"
+            echo "run=${{ github.run_id }}"
+          } > evidence/derived-images/RUN.txt
+          sha256sum evidence/derived-images/* > evidence/derived-images/SHA256SUMS
+
+      - name: Upload the publication evidence (pushed digests, manifests, raw scan, SBOM)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: derived-images-${{ inputs.date_tag }}-${{ github.run_id }}
+          path: evidence/derived-images
+          if-no-files-found: error
+          retention-days: 90

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = join(here, 'requirements');
 const HEADER = 'id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes';
+const HEADER2 = HEADER + ',source_ref,evidence_scope';
 
 function parseCsv(text) {
   const rows = []; let row = []; let field = ''; let q = false;
@@ -32,13 +33,13 @@ function parseCsv(text) {
   return rows;
 }
 
-const cols = HEADER.split(',');
 const all = [];
 const problems = [];
 for (const f of readdirSync(dir).filter((x) => x.endsWith('.csv')).sort()) {
   const rows = parseCsv(readFileSync(join(dir, f), 'utf8'));
   const head = rows.shift();
-  if (head.join(',') !== HEADER) problems.push(`${f}: header differs: ${head.join(',')}`);
+  if (head.join(',') !== HEADER && head.join(',') !== HEADER2) problems.push(`${f}: header differs: ${head.join(',')}`);
+  const cols = head;
   for (const r of rows) {
     if (r.length === 1 && r[0].trim() === '') continue;
     if (r.length !== cols.length) { problems.push(`${f}: row with ${r.length} fields: ${r[0]}`); continue; }
@@ -57,17 +58,17 @@ if (problems.length > 0) { md.push(''); md.push('## CSV problems'); for (const p
 md.push('');
 md.push('## By volume');
 md.push('');
-md.push('| Volume | Rows | missing | partial | implemented | not-applicable | verified (passed:*) | unverified | branch-only | merged | phase7 | omission | phase0–6 |');
+md.push('| Volume | Rows | missing | partial | implemented | not-applicable (impl) | verified (passed:*) | unverified | branch-only | merged | phase7 | omission | phase0–6 |');
 md.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
 const n = (items, key, val) => items.filter((r) => r[key] === val).length;
 const nPrefix = (items, key, pre) => items.filter((r) => r[key].startsWith(pre)).length;
 const phase06 = (items) => items.filter((r) => /^phase[0-6]$/.test(r.phase_origin)).length;
 for (const v of volumes) {
   const rs = all.filter((r) => r.volume === v);
-  md.push(`| ${v} | ${rs.length} | ${n(rs, 'impl_status', 'missing')} | ${n(rs, 'impl_status', 'partial')} | ${n(rs, 'impl_status', 'implemented')} | ${n(rs, 'verif_status', 'not-applicable')} | ${nPrefix(rs, 'verif_status', 'passed')} | ${n(rs, 'verif_status', 'unverified')} | ${n(rs, 'release_status', 'branch-only')} | ${n(rs, 'release_status', 'merged')} | ${n(rs, 'phase_origin', 'phase7')} | ${n(rs, 'phase_origin', 'omission')} | ${phase06(rs)} |`);
+  md.push(`| ${v} | ${rs.length} | ${n(rs, 'impl_status', 'missing')} | ${n(rs, 'impl_status', 'partial')} | ${n(rs, 'impl_status', 'implemented')} | ${n(rs, 'impl_status', 'not-applicable')} | ${nPrefix(rs, 'verif_status', 'passed')} | ${n(rs, 'verif_status', 'unverified')} | ${n(rs, 'release_status', 'branch-only')} | ${n(rs, 'release_status', 'merged')} | ${n(rs, 'phase_origin', 'phase7')} | ${n(rs, 'phase_origin', 'omission')} | ${phase06(rs)} |`);
 }
 const rsAll = all;
-md.push(`| **all** | ${rsAll.length} | ${n(rsAll, 'impl_status', 'missing')} | ${n(rsAll, 'impl_status', 'partial')} | ${n(rsAll, 'impl_status', 'implemented')} | ${n(rsAll, 'verif_status', 'not-applicable')} | ${nPrefix(rsAll, 'verif_status', 'passed')} | ${n(rsAll, 'verif_status', 'unverified')} | ${n(rsAll, 'release_status', 'branch-only')} | ${n(rsAll, 'release_status', 'merged')} | ${n(rsAll, 'phase_origin', 'phase7')} | ${n(rsAll, 'phase_origin', 'omission')} | ${phase06(rsAll)} |`);
+md.push(`| **all** | ${rsAll.length} | ${n(rsAll, 'impl_status', 'missing')} | ${n(rsAll, 'impl_status', 'partial')} | ${n(rsAll, 'impl_status', 'implemented')} | ${n(rsAll, 'impl_status', 'not-applicable')} | ${nPrefix(rsAll, 'verif_status', 'passed')} | ${n(rsAll, 'verif_status', 'unverified')} | ${n(rsAll, 'release_status', 'branch-only')} | ${n(rsAll, 'release_status', 'merged')} | ${n(rsAll, 'phase_origin', 'phase7')} | ${n(rsAll, 'phase_origin', 'omission')} | ${phase06(rsAll)} |`);
 md.push('');
 md.push('## By delivery package (open rows only: missing or partial, or implemented but unverified)');
 md.push('');
