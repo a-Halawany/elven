@@ -96,9 +96,8 @@ to — a local-only demonstration never verifies a `profiles = all` unit.
 - Acceptance units are a first decomposition by capability group (`audit/acceptance-units/`); their
   `verified:*` statuses are inherited from row evidence and are to be re-checked case by case as each
   package's work starts.
-- Four data-platform rows (V4 ES-24-005, V7 DADR-017, DADR-021, DPD-03) were not referenced by the
-  group-a decomposition and were given one unit each (AU-DP-9001…9004) in the reconciliation; every
-  register row is now referenced by at least one acceptance unit.
+- Every register row is referenced by at least one acceptance unit (the group-a file was regenerated
+  once to cover four data-platform rows its first version had missed).
 - The 220 historical families are mapped by chapter (`family_seed`); `audit/SUMMARY.md` lists the
   families with no atomic row yet so none is lost.
 - Volume 2's transcription was made from images and may carry minor wording differences from the slides.
