@@ -263,6 +263,8 @@ export function verifyCommandGraph({
   let pos = 0;
   let dead = false;
   const structural = (msg) => { problems.push(msg); dead = true; };
+  /** The next recorded command WITHOUT consuming it (null when the ledger ended or the walk is dead). */
+  const peek = () => (dead ? null : (commands[pos] !== undefined && typeof commands[pos] === 'object' && commands[pos] !== null ? commands[pos] : null));
   const next = (label) => {
     if (dead) return null;
     const c = commands[pos];
@@ -437,6 +439,21 @@ export function verifyCommandGraph({
     return c;
   };
 
+  /** The recorded image-user lookup, when the ledger carries one: `docker image inspect --format {{.Config.User}}`,
+   *  read-only, empty environment, and its stdout is the declared user the secret sink hands the tmpfs to. */
+  const imageUserStep = (letter, kind, image) => {
+    const label = `${letter}-${kind}-user`;
+    const c = peek();
+    if (c === null || c.label !== label) return null;
+    const u = next(label);
+    mustSucceed(u); emptyEnv(u);
+    matchArgv(u, ['docker', 'image', 'inspect', '--format', '{{.Config.User}}', image]);
+    noCredentialArgv(u);
+    const out = (stdoutOf(u) ?? '').trim();
+    if (out === '') { problems.push(`'${label}' reported no declared user; a root image records no lookup`); return null; }
+    if (!/^[A-Za-z0-9._:-]{1,64}$/.test(out)) { problems.push(`'${label}' reported an unexpected user ${JSON.stringify(out)}`); return null; }
+    return out;
+  };
   const walkInstance = (letter, r) => {
     const pg = next(`${letter}-pg-run`);
     mustSucceed(pg); emptyEnv(pg);
@@ -453,9 +470,15 @@ export function verifyCommandGraph({
     }
     // The secret arrives over STDIN. Its argv names only a path, its environment is empty, and the
     // ledger records that a secret of some length was delivered — never the value.
+    // An image that declares a non-root USER (the derived service images do) is preceded by ONE recorded lookup of
+    // that user, and the sink then runs as root and hands the tmpfs to that user: the argv names a path and a uid,
+    // never a value. A ledger without the lookup is the root-image shape and keeps its original argv.
+    const pgUser = imageUserStep(letter, 'pg', images.postgres);
     const pgSecret = next(`${letter}-pg-secret`);
     mustSucceed(pgSecret); emptyEnv(pgSecret);
-    matchArgv(pgSecret, ['docker', 'exec', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)]);
+    matchArgv(pgSecret, pgUser === null
+      ? ['docker', 'exec', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)]
+      : ['docker', 'exec', '-u', '0', '-i', r.container_name, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH, pgUser)]);
     noCredentialArgv(pgSecret);
     deliveredSecret(pgSecret, letter, r, 'EYE_DB_PASSWORD');
 
@@ -470,9 +493,12 @@ export function verifyCommandGraph({
     if (rd !== null && rdOut !== null && rdOut.trim() !== r.redis_container_id) {
       problems.push(`'${rd.label}' raw container id does not match the ${r.path} isolation receipt`);
     }
+    const rdUser = imageUserStep(letter, 'redis', images.redis);
     const rdSecret = next(`${letter}-redis-secret`);
     mustSucceed(rdSecret); emptyEnv(rdSecret);
-    matchArgv(rdSecret, ['docker', 'exec', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)]);
+    matchArgv(rdSecret, rdUser === null
+      ? ['docker', 'exec', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)]
+      : ['docker', 'exec', '-u', '0', '-i', r.redis_container, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH, rdUser)]);
     noCredentialArgv(rdSecret);
     deliveredSecret(rdSecret, letter, r, 'EYE_REDIS_PASSWORD');
     for (const [inner, container, portField] of [['5432', r.container_name, 'port'], ['6379', r.redis_container, 'redis_port']]) {
