@@ -29,21 +29,33 @@ were derived from, and the records that governed their findings, are recorded in
 | Configured reference | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` | `ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15` |
 | Human tag (informational) | `ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910` | `ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910` |
 | Reference kind | OCI image **index**, 2 children, both runnable platforms, no attestation manifests | same |
-| Resolved platform | `linux/amd64` | `linux/amd64` |
-| Scanned child manifest | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` | `sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432` |
-| Other child (not scanned by the gate) | `linux/arm64` `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` | `linux/arm64` `sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc` |
+| Resolved platforms | `linux/amd64` **and** `linux/arm64` — the gate scans BOTH children (see §3.7) | same |
+| Scanned child manifest, `linux/amd64` | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` | `sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432` |
+| Scanned child manifest, `linux/arm64` | `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` | `sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc` |
 | Index integrity check | SHA-256 of the raw returned index manifest is verified to equal the digest in the configured reference **before** any child digest is trusted (verified 2026-09-10 by anonymous fetch: 647 bytes each, digests equal) | same |
 | Derived from (official index) | `postgres:18-alpine` `sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` (Alpine 3.24.1) | `redis:8-alpine` `sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241` (Alpine 3.23.5) |
 | Packages changed by the derivation | `libuuid` 2.42.1-r0 → 2.42.3-r1; `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0; `c-ares` 1.34.6-r0 → 1.34.8-r0; `USER postgres` | `setpriv` 2.41.4-r0 → 2.41.6-r1; `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0; `USER redis` |
-| HIGH/CRITICAL findings on the scanned child | **22**, all Go-stdlib rows in `usr/local/bin/gosu` (unchanged binary), governed by SCX-0002…0005; OS packages: **0** | **0** |
+| HIGH/CRITICAL findings, `linux/amd64` child | **22**, all Go-stdlib rows in `usr/local/bin/gosu`, governed by SCX-0002…0005; OS packages: **0** | **0** |
+| HIGH/CRITICAL findings, `linux/arm64` child | **22**, all Go-stdlib rows in `usr/local/bin/gosu`, governed by SCX-0010…0011 (§3.7); OS packages: **0** | **0** |
 
-The `linux/amd64` child is the one that matters: CI runs on `ubuntu-latest` and the C16
-target descriptor resolves `linux/x64/glibc`. A scanner given no `--platform` follows the
-host, so an arm64 workstation would examine a different child with different layers and
-different findings. Every disposition below is therefore scoped to `linux/amd64` and cannot
-govern a finding on any other platform. (The `linux/arm64` children were scanned by the
-publisher with the same scanner and carry the identical 22-row `gosu` set and 0 OS findings —
-`infra/images/published/20260910/postgres-arm64.trivy.txt` — but that scan is not the gate's.)
+**Why both children are scanned, corrected 2026-09-10.** `linux/amd64` is the primary
+deployment platform: CI runs on `ubuntu-latest` and the C16 target descriptor resolves
+`linux/x64/glibc`. A scanner given no `--platform` follows the host, so the platform is named
+explicitly and never inferred. But the `linux/arm64` child is not hypothetical — it is what the
+local restore drill actually runs on an Apple-silicon workstation — and it is a **different
+artifact**: different layers, and a different `gosu` binary (`3a8ef022…`, 1,830,424 bytes,
+aarch64 ELF, against amd64's `52c8749d…`, 1,769,900 bytes). A disposition scoped to `linux/amd64`
+cannot govern it, and until 2026-09-10 the gate could not have enforced one that tried: it
+scanned a single child, so a correct arm64 record matched nothing and was failed as UNUSED —
+indistinguishable from a rotten one.
+
+The gate therefore scans **both** children of each configured index and reconciles each
+platform's findings against the records that name that platform. Every rule is unchanged and
+applies to each platform separately: an unmatched finding fails, a record that matched nothing
+fails as stale, and — new — a record naming a platform the run did not scan fails too, so an
+unscanned platform cannot become a place to park a disposition beyond review. The dispositions
+below are scoped to `linux/amd64`; the `linux/arm64` records are **SCX-0010 and SCX-0011 in
+§3.7**, and they rest on analysis performed on the arm64 artifact itself.
 
 ## 2. Scanner and database identity
 
@@ -64,6 +76,10 @@ Twenty-two findings across the two `linux/amd64` children — twenty-two on post
 `gosu` binary, and none on redis — governed by four records (SCX-0002…0005), every one of them
 **re-issued on 2026-09-10** for the derived image. The five records that governed findings of the
 official images and now match nothing (SCX-0001, SCX-0006…0009) are retired in §3.6.
+
+**§3.1–§3.6 are the `linux/amd64` children only.** The `linux/arm64` children are a separate
+artifact with a separate finding set and separate records; they are §3.7. Nothing in §3.1–§3.6
+governs, or may be read as governing, a finding on `linux/arm64`.
 
 **What a re-issue is, and is not.** A record is scoped to an exact image digest. The image digest
 changed, so each surviving record was re-approved for the new scope on 2026-09-10 (`approved_on`
@@ -322,7 +338,7 @@ not cover reflection or dynamic dispatch, so the operational controls still appl
 
 **Current reconciliation.** See §3.5.
 
-### 3.5 Current reconciliation (2026-09-10)
+### 3.5 Current reconciliation, `linux/amd64` (2026-09-10)
 
 The postgres image scan reports **22** findings and the redis image **0**, governed as:
 
@@ -333,7 +349,9 @@ The postgres image scan reports **22** findings and the redis image **0**, gover
 | SCX-0004 | postgres | NOT_AFFECTED | 1 — `stdlib` HIGH in `usr/local/bin/gosu` |
 | SCX-0005 | postgres | NOT_AFFECTED | 6 — `stdlib` HIGH in `usr/local/bin/gosu` |
 
-14 + 1 + 1 + 6 = 22, with 0 unmatched and 0 unused. Redis is clean again, and the postgres OS
+14 + 1 + 1 + 6 = 22 on this platform, with 0 unmatched and 0 unused. The `linux/arm64` half of
+the same run is reconciled in §3.7; the run total is 44 findings across 6 records. Redis is clean
+again, and the postgres OS
 package set is clean for the first time since the util-linux advisories entered the scanner
 database on 2026-09-06 (those seven HIGH findings — CVE-2026-53612, -53613, -53614, -76642,
 -78408, -78409, -78410 against `libuuid` — were never governed by a record; the gate stayed red on
@@ -362,6 +380,148 @@ The reason each of these was accepted rather than remediated was the same: no of
 `postgres:18-alpine` or `redis:8-alpine` build carried the fixed package. That reason has been
 replaced, not refuted — the derived images are a TEMPORARY route (§5), and the official images are
 still watched for the day they carry the fixes themselves.
+
+### 3.7 `linux/arm64` — the second child, analysed on its own artifact (2026-09-10)
+
+**What this section is.** SCX-0002…0005 scope themselves to `linux/amd64` and §1 says in terms
+that they cannot govern another platform. The `linux/arm64` child of the same index is a
+different artifact with its own 22 findings and its own binary, and the local restore drill runs
+it. This section governs it, from analysis performed **on it** — not carried across from the
+amd64 analysis.
+
+| Item | postgres | redis |
+|---|---|---|
+| Configured reference (what the gate matches on) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` | `ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15` |
+| Scanned child manifest | `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` | `sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc` |
+| Image config architecture reported by the scanner | `arm64` | `arm64` |
+| OS | alpine 3.24.1, 53 packages analysed | alpine 3.23.5, 22 packages analysed |
+| OS-package HIGH/CRITICAL findings | **0** | **0** |
+| Go-binary target | `usr/local/bin/gosu`, 4 packages (`github.com/tianon/gosu` v1.19.0 root, `stdlib` v1.24.6 direct, `github.com/moby/sys/user` v0.1.0, `golang.org/x/sys` v0.1.0) | none |
+| HIGH/CRITICAL findings | **22** — 21 HIGH + 1 CRITICAL, every one `stdlib` `v1.24.6` in `usr/local/bin/gosu` | **0** at every severity |
+
+The record fields the gate compares are therefore, for all 22 rows: `image` = the configured
+**index** reference above (the gate reconciles against the reference from `docker-compose.yml`,
+not the child digest — both children carry the same one, which is why `scan_platform` is what
+separates them), `scan_platform` `linux/arm64`, `package_name` `stdlib`, `package_purl`
+`pkg:golang/stdlib@v1.24.6`, `installed_version` `v1.24.6`, `result_target` `usr/local/bin/gosu`.
+
+**The PURL carries no `arch` qualifier.** Trivy emits `arch=` on *apk* packages; these are
+`gobinary` rows, and the arm64 PURL is `pkg:golang/stdlib@v1.24.6` — byte-for-byte the amd64
+one. The finding sets are also identical row for row (advisory, severity, package, PURL,
+installed version, result target) between the two children, verified by scanning both with the
+same pinned scanner on 2026-09-10. That identity is a **result**, not the reason for these
+records: the artifacts differ, so the platforms are governed separately even where they agree.
+
+**The binary, measured on this artifact.** `/usr/local/bin/gosu` was extracted from the published
+arm64 child (`docker create --platform linux/arm64` from `…@sha256:d3dd485b…`, `docker cp`, the
+container removed) and measured directly:
+
+| Property | Value |
+|---|---|
+| sha256 | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` |
+| Size | 1,830,424 bytes |
+| Format | ELF 64-bit LSB executable, ARM aarch64, statically linked, not stripped |
+| Go toolchain (build info) | `go1.24.6` |
+| Module / version | `github.com/tianon/gosu` `v1.19.0` |
+| Build settings | `-buildmode=exe`, `-compiler=gc`, `-trimpath=true`, `CGO_ENABLED=0`, `GOARCH=arm64` |
+
+This is the digest `infra/images/candidates/evidence/v2/gosu-verification.txt` already records
+for the arm64 candidate and base, re-measured here inside the **published** child. It is a
+different file from the amd64 binary `52c8749d…` (1,769,900 bytes), which is the whole point.
+
+**No symbol analysis was performed on this artifact, and none is claimed.** `govulncheck` is not
+available on this host and neither is a Go toolchain to obtain it from, so no binary-mode
+reachability analysis of `3a8ef022…` exists. The amd64 analysis
+(`docs/evidence/govulncheck-gosu-b6a16ed0.*`) was run against `52c8749d…`; a call-graph result
+for one compiled binary is not a result for a different one, and copying it across would be the
+same substitution this document refuses everywhere else. **Every arm64 record is therefore
+`RISK_ACCEPTED`, not `NOT_AFFECTED`** — including the eight advisories whose amd64 counterparts
+are NOT_AFFECTED under SCX-0004 and SCX-0005. The acceptance rests on the operational argument
+those records also carry, which *is* artifact-independent: `gosu` runs once at container start to
+drop root privileges and exits; it is neither a long-lived process nor a network listener, and
+the affected surfaces (`net/http`, `net/mail`, `crypto/tls`, `crypto/x509` DoS classes) are not
+exercised by that use. When a Go toolchain and `govulncheck` are available, running the analysis
+on `3a8ef022…` is what would let these advisories be reclassified — on evidence, in a new record.
+
+**Recorded, not governed: severities below the gate's filter.** The gate blocks at
+`HIGH,CRITICAL`, and these records cover exactly that. An all-severity pass of the same arm64
+child on 2026-09-10 additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN row in `gosu`, and 10
+UNKNOWN-severity `libcurl` rows on the OS (CVE-2026-13608, -18924, -19931, -80229, -80230,
+-80231, -80255, -80256, -82208, -82209). They are outside the governed severity scope and are
+written down here so the difference between "no finding" and "no finding at this severity" is on
+the record. The arm64 redis child reports **zero** rows at every severity.
+
+#### SCX-0010 — Go standard library in the arm64 `gosu` (HIGH set)
+
+| Field | Value |
+|---|---|
+| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-33818`, `CVE-2026-39820`, `CVE-2026-39821`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504`, `CVE-2026-56853`, `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862` (21) |
+| Severity | HIGH |
+| Classification | **RISK_ACCEPTED** (no arm64 reachability analysis exists) |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scan platform | `linux/arm64` |
+| Scanned child | `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Analysed binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` (aarch64, 1,830,424 bytes) |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved / reviewed | 2026-09-10 (first approval for this platform) |
+| Expires | 2026-11-05 — the same date as the rest of the set, deliberately not later |
+
+**Why one record for all 21.** They share a platform, a package, a PURL, an installed version, a
+result target, a severity, a classification and a single review on one date, so splitting them
+would record a distinction that does not exist. The CRITICAL is held separately (SCX-0011) for
+the reason SCX-0003 exists: a disposition approved for HIGH must never absorb a CRITICAL.
+
+#### SCX-0011 — the single CRITICAL in the arm64 `gosu`
+
+| Field | Value |
+|---|---|
+| Advisory | `CVE-2025-68121` |
+| Severity | **CRITICAL** |
+| Classification | **RISK_ACCEPTED** (no arm64 reachability analysis exists) |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scan platform | `linux/arm64` |
+| Scanned child | `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Analysed binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Approved / reviewed | 2026-09-10 (first approval for this platform) |
+| Expires | 2026-11-05 |
+
+`CVE-2025-68121` is an incorrect-certificate-validation defect in `crypto/tls` during session
+resumption. `gosu` opens no TLS connection: it resolves a user, drops privileges and `exec`s the
+real entrypoint. The acceptance is bounded by §4 exactly as the amd64 CRITICAL is.
+
+**Compensating controls (both records).**
+1. `gosu` runs once at container start; it is neither a long-lived process nor a network listener.
+2. PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).
+3. Phase 0 is a LOCAL-ONLY development profile under `EXC-P0-004`; these dispositions are invalid
+   for any external or customer-data use.
+4. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate;
+   `scripts/gate/check-patched-images.mjs` already checks BOTH platforms and reports when a fixed
+   official image exists on each.
+
+**Limits, stated.** These are acceptances, not exemptions. Nothing here claims the vulnerable
+code is absent from `3a8ef022…`; what is claimed is that the code path is not exercised by the
+one thing `gosu` does, under the Phase 0 exposure bounds of §4. That is a weaker claim than the
+amd64 SCX-0004/0005 make, and it is deliberately weaker, because the analysis that would support
+the stronger one has not been run on this binary.
+
+### 3.8 Current reconciliation, `linux/arm64` (2026-09-10)
+
+| Record | Image | Classification | Findings |
+|---|---|---|---|
+| SCX-0010 | postgres | RISK_ACCEPTED | 21 — `stdlib` HIGH in `usr/local/bin/gosu` |
+| SCX-0011 | postgres | RISK_ACCEPTED | 1 — `stdlib` CRITICAL in `usr/local/bin/gosu` |
+
+21 + 1 = 22 on this platform, with 0 unmatched and 0 unused; redis contributes 0. Across both
+scanned platforms the run reconciles 22 + 22 = **44** findings against **6** records
+(SCX-0002…0005 on `linux/amd64`, SCX-0010…0011 on `linux/arm64`), 0 unmatched, 0 unused, and 0
+records naming a platform the run did not scan.
 
 ## 4. Prohibited exposure
 
@@ -394,6 +554,19 @@ blocking release gate.
   that is the event that must interrupt someone: the service then returns to the official image
   through the digest/disposition/release process (re-pin, re-issue or retire the records that
   name the image, regenerate evidence, FINAL chain), never by an automatic re-pin.
+* **A record governs one platform, and every platform is scanned.** A record names one
+  `scan_platform` and can match only findings from the scan of that child. The gate scans every
+  platform in its tracked list (`SCAN_PLATFORMS` in `scripts/gate/lib/scanner-provenance.mjs`,
+  read by both the runner and the final-manifest verifier) and reconciles each separately, so
+  adding a platform to that list without adding records for what it finds fails the gate as
+  UNGOVERNED, and a record naming a platform that is not in the list fails as out of scope. An
+  arm64 disposition may not be justified by amd64 evidence, or the reverse: SCX-0010 and
+  SCX-0011 exist precisely because SCX-0002…0005 cannot reach the arm64 artifact.
+* **SCX-0010 and SCX-0011 are weaker than their amd64 counterparts on purpose.** Eight advisories
+  are NOT_AFFECTED on `linux/amd64` (SCX-0004, SCX-0005) and only RISK_ACCEPTED on `linux/arm64`,
+  because the govulncheck binary-mode analysis exists for `52c8749d…` and not for `3a8ef022…`.
+  Running that analysis on the arm64 binary is the work that would justify reclassifying them,
+  and it must be recorded as new evidence in a new record, never by editing these.
 * Owner and approver must remain distinct parties; a record cannot approve itself.
 * This document's SHA-256 is bound by every citing record. Editing it — even by one byte —
   invalidates those records until the digest is re-approved.

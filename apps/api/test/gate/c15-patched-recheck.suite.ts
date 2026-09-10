@@ -230,7 +230,9 @@ describe('C15 — a service is FIXED only when every fix is present on both plat
     const v = m.assessService('postgres', { 'linux/amd64': rep(pgOk), 'linux/arm64': rep(pgOk) });
     expect(v.state).toBe('fixed');
     expect(v.tag).toBe('postgres:18-alpine');
-    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005']);
+    // Every record scoped to the derived postgres image, on BOTH scanned platforms — the return
+    // to the official image re-scopes all of them, or the ones left behind fail as unused.
+    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']);
     for (const p of ['linux/amd64', 'linux/arm64']) {
       expect(Object.values(v.platforms[p].fixes).map((f: { state: string }) => f.state)).toEqual(['patched', 'patched', 'patched']);
     }
@@ -359,7 +361,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     // Validating the field only when present left it removable: deleting the one line saying
     // "not for production data, not for Phase 1" produced no finding at all.
     const accepted = doc.records.filter((r: { classification: string }) => r.classification === 'RISK_ACCEPTED').map((r: { id: string }) => r.id);
-    expect(accepted).toEqual(['SCX-0002', 'SCX-0003']);
+    // SCX-0010 and SCX-0011 joined the set on 2026-09-10: the linux/arm64 child is scanned now,
+    // and its 22 findings are RISK_ACCEPTED because no reachability analysis of the arm64 gosu
+    // binary exists — so they, too, must carry a stated scope boundary.
+    expect(accepted).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0010', 'SCX-0011']);
     for (const id of accepted) {
       const cut = JSON.parse(JSON.stringify(doc));
       delete cut.records.find((r: { id: string }) => r.id === id).prohibited_use;
@@ -371,7 +376,14 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const doc = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-exclusions.json'), 'utf8'));
     const compose = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
     const pinned = [...compose.matchAll(/image:\s*(\S+@sha256:[a-f0-9]{64})/g)].map((x) => x[1]);
-    expect(doc.records.map((r: { id: string }) => r.id)).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005']);
+    // SCX-0002..0005 are the re-issue of 2026-09-10 for the derived image's linux/amd64 child.
+    // SCX-0010 and SCX-0011 are the FIRST approval for its linux/arm64 child, which the gate
+    // began scanning the same day; they name the same pinned index reference — a record is
+    // separated from its twin by `scan_platform`, not by a different image.
+    expect(doc.records.map((r: { id: string }) => r.id))
+      .toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']);
+    expect(doc.records.filter((r: { scan_platform: string }) => r.scan_platform === 'linux/arm64')
+      .map((r: { id: string }) => r.id)).toEqual(['SCX-0010', 'SCX-0011']);
     for (const r of doc.records) {
       expect(pinned, `${r.id} must name a pinned image`).toContain(r.image);
       expect(r.expires_on).toBe('2026-11-05');

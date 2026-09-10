@@ -28,21 +28,39 @@ import { join } from 'node:path';
 
 import { assertFinalManifests } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR342Frozen } from './fixtures/assert-final-manifests.r342-frozen.mjs';
-import { buildPassingR34Evidence, editManifest, sha256 } from './helpers/evidence-fixture-r34';
+import {
+  buildPassingR34Evidence, editManifest, replaceBoundInAll, sha256,
+} from './helpers/evidence-fixture-r34';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 
 describe('C16-R3.4.3 receipt semantics', () => {
   let root: string;
   let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-r343-'));
     built = buildPassingR34Evidence(root, REPO);
+    legacy = buildPassingR34Evidence(join(root, 'legacy'), REPO, { platforms: ['linux/amd64'] });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
+
+  /**
+   * THE SAME EVIDENCE, TWICE.
+   *
+   * The gate scans every child in the tracked `SCAN_PLATFORMS` list, so `built` is the
+   * live-shaped package: one `trivy-image-<i>` per (platform, image) pair. The frozen verifier
+   * below is a byte copy written when the gate scanned a single child, and it is never edited —
+   * so it cannot validate that shape, and pointing it at `built` would make every control fail
+   * for a reason that has nothing to do with the mutation under test. `legacy` is the same
+   * package built for `['linux/amd64']` alone: the shape that verifier was written for. Every
+   * mutation is applied to BOTH, so the two verifiers really are shown the same thing.
+   */
   const c15 = () => built.c15Dir;
+  /** Every copy a mutation must land in. */
+  const c15Dirs = () => [built.c15Dir, legacy.c15Dir];
 
   const check = () => assertFinalManifests({
     c15Dir: c15(), c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
@@ -51,7 +69,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
   const frozen = () => {
     try {
       return assertR342Frozen({
-        c15Dir: c15(), c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+        c15Dir: legacy.c15Dir, c16Dir: legacy.c16Dir, expectedSha: legacy.expectedSha, root: REPO,
       }) as string[];
     } catch (e) {
       return [`THREW: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`];
@@ -64,23 +82,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
    * so a control that leaves one stale would be caught by digest arithmetic and would prove
    * nothing about semantics.
    */
-  const replace = (rel: string, text: string) => {
-    writeFileSync(join(c15(), rel), text);
-    const bytes = readFileSync(join(c15(), rel));
-    const digest = sha256(bytes);
-    editManifest(c15(), 'supply-chain-manifest.json', (m) => {
-      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
-      if (a !== undefined) { a.bytes = bytes.length; a.sha256 = digest; }
-      for (const s of [...m.steps, ...m.trivy_cache_acquisition.steps]) {
-        for (const stream of ['stdout', 'stderr']) {
-          if (s[`${stream}_file`] === rel) {
-            s[`${stream}_bytes`] = bytes.length;
-            s[`${stream}_sha256`] = digest;
-          }
-        }
-      }
-    });
-  };
+  const replace = (rel: string, text: string) => replaceBoundInAll(c15Dirs(), rel, text);
 
   /** Rewrite one JSON artifact through a mutator, rebinding it. */
   const editRaw = (rel: string, mutate: (doc: any) => void) => {

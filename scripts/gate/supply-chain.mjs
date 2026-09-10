@@ -36,6 +36,7 @@ import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveImageIndex, platformPinnedRef, scannerBinaries, classifyStepPolicies,
+  SCAN_PLATFORMS as SCAN_PLATFORMS_SOURCE,
 } from './lib/scanner-provenance.mjs';
 import {
   acquire, capture, enforce, fingerprint, frozenCacheArgs, loadPins, cachePaths,
@@ -71,6 +72,30 @@ function safeGit(args) {
  * index child so a scan is never silently host-dependent.
  */
 const SCAN_PLATFORM = 'linux/amd64';
+
+/**
+ * EVERY platform child this gate scans, in scan order — read from tracked source rather than
+ * declared twice, so the runner and the final verifier cannot disagree about what a passing
+ * run examined.
+ *
+ * 2026-09-10: `linux/arm64` was added. The configured references are OCI indexes with an
+ * amd64 AND an arm64 child; the arm64 child has its own layers and its own `gosu` binary
+ * (sha256 3a8ef022… against amd64's 52c8749d…), so it has its own findings. Scanning one
+ * child and treating a disposition written for it as governing the other is the substitution
+ * this gate exists to refuse — and until now an honest arm64 record could not even be written,
+ * because a record for an unscanned platform matched nothing and was failed as UNUSED.
+ * Reconciliation is now per platform (see lib/scanner-exclusions.mjs): each platform's
+ * findings are matched only by records naming that platform, unmatched and unused still fail
+ * for each platform separately, and a record naming a platform this run did NOT scan fails
+ * too, so nothing can be parked out of the gate's sight.
+ */
+const SCAN_PLATFORMS = [...SCAN_PLATFORMS_SOURCE];
+if (SCAN_PLATFORMS[0] !== SCAN_PLATFORM) {
+  throw new Error(
+    `the primary scan platform is '${SCAN_PLATFORM}' but tracked source lists ` +
+    `'${SCAN_PLATFORMS[0]}' first; these must agree, and neither may be changed to make a run pass`,
+  );
+}
 
 /** PINNED TOOLCHAIN. Update deliberately — never to make a run pass. */
 const PINNED_TOOLS = {
@@ -489,7 +514,10 @@ async function main(parsed) {
     started_at: startedAt,
     mode: finalMode ? 'final' : 'preliminary',
     outcome: 'INCOMPLETE',
+    // The PRIMARY deployment platform, kept as a scalar because every existing reader of this
+    // manifest asks that question; `scan_platforms` is the complete set actually scanned.
     scan_platform: SCAN_PLATFORM,
+    scan_platforms: [...SCAN_PLATFORMS],
     trivy_cache_dir: cacheDir,
     steps,
     failures,
@@ -846,22 +874,35 @@ async function main(parsed) {
     finish(1);
   }
 
-  const imageResolutions = images.map((image, index) => {
-    const resolution = ADAPTER.resolveImage(image, SCAN_PLATFORM);
+  // ── ONE RESOLUTION PER (PLATFORM, IMAGE), PLATFORM-MAJOR ──────────────────────
+  // The order is the step order: every image on SCAN_PLATFORMS[0], then every image on
+  // SCAN_PLATFORMS[1]. Keeping the primary platform first is what preserves the meaning of
+  // `trivy-image-0` and `trivy-image-1` in every receipt, control and frozen fixture that
+  // already names them.
+  const imagePlatformPairs = SCAN_PLATFORMS.flatMap(
+    (platform) => images.map((image, imageIndex) => ({ platform, image, imageIndex })),
+  );
+
+  const imageResolutions = imagePlatformPairs.map(({ platform, image, imageIndex }) => {
+    const resolution = ADAPTER.resolveImage(image, platform);
     // C16-R3.4.1 §A1: WRITE AND BIND THE RAW INDEX BYTES. Without them a verifier can only
     // re-read the producer's own summary of the index, so replacing the child digest, the
     // scan reference and the argv together was self-consistent and accepted. With the bytes
     // shipped, the child is derived independently and the summary is checked against it.
-    const indexFile = `oci-index-${index}.json`;
+    //
+    // ONE file per IMAGE, not per scan: the index bytes are the same document whichever
+    // child is being selected from them, and shipping a second identical copy under a second
+    // name would invite the two to disagree.
+    const indexFile = `oci-index-${imageIndex}.json`;
     if (typeof resolution.index_raw_bytes === 'string') {
       writeFileSync(join(outDir, indexFile), resolution.index_raw_bytes);
     }
     const scanRef = platformPinnedRef(image, resolution);
-    console.log(`  ${image}`);
+    console.log(`  ${image} [${platform}]`);
     if (!resolution.resolved) console.log(`    UNRESOLVED: ${resolution.error}`);
     else if (resolution.kind === 'index') {
       console.log(`    index with ${resolution.child_count} children (${resolution.runnable_platform_count} runnable)`);
-      console.log(`    ${SCAN_PLATFORM} child: ${resolution.target_digest ?? 'ABSENT'}`);
+      console.log(`    ${platform} child: ${resolution.target_digest ?? 'ABSENT'}`);
     } else console.log('    single-platform manifest; the pinned digest is the image');
     // The raw index bytes must hash to the digest in the configured reference. Without
     // this, a substituted index could hand us any child digest and the gate would scan
@@ -874,6 +915,10 @@ async function main(parsed) {
     }
     return {
       pinned_ref: image,
+      // The platform this entry resolved for. Both children are addressed by the SAME
+      // configured reference, so without it nothing in the manifest says which child a
+      // resolution — or the scan built from it — was about.
+      scan_platform: platform,
       scan_ref: scanRef,
       pinned_digest: pinnedDigest,
       raw_index_file: indexFile,
@@ -900,7 +945,7 @@ async function main(parsed) {
   if (unresolvable.length > 0) {
     for (const r of unresolvable) {
       failures.push(
-        `${r.pinned_ref}: cannot resolve a ${SCAN_PLATFORM} child manifest ` +
+        `${r.pinned_ref}: cannot resolve a ${r.scan_platform} child manifest ` +
         `(${r.resolution.error ?? 'platform absent from the index'})`,
       );
     }
@@ -915,17 +960,17 @@ async function main(parsed) {
     const rec = run(steps, outDir, sourceSha, `trivy-image-${i}`, [
       // R3.4.4: the scanner set is DECLARED rather than left to the tool's default, so the
       // argv contract and the stderr receipt can both be checked against it.
-      TRIVY, 'image', '--platform', SCAN_PLATFORM, '--scanners', 'vuln,secret',
+      TRIVY, 'image', '--platform', r.scan_platform, '--scanners', 'vuln,secret',
       '--severity', 'HIGH,CRITICAL',
       '--ignorefile', '/dev/null', ...FROZEN, '--no-progress', '--format', 'json', r.scan_ref,
     ], {
       description:
-        `trivy scan of the ${SCAN_PLATFORM} child manifest ${r.resolution.target_digest} ` +
+        `trivy scan of the ${r.scan_platform} child manifest ${r.resolution.target_digest} ` +
         `resolved from digest-pinned index ${r.pinned_ref}, with NO suppression`,
       tool: 'trivy', toolVersion: versions.trivy.actual, policy: 'blocking',
       coverage: {
         severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured',
-        platform: SCAN_PLATFORM, scanners: 'vuln,secret',
+        platform: r.scan_platform, scanners: 'vuln,secret',
       },
       env: trivyEnv,
     });
@@ -948,26 +993,43 @@ async function main(parsed) {
     }
     try {
       const text = readFileSync(join(outDir, `${rec.id}.stdout.txt`), 'utf8');
-      allFindings.push(...findingsFromTrivyJson(text, r.pinned_ref));
+      allFindings.push(...findingsFromTrivyJson(text, r.pinned_ref, r.scan_platform));
     } catch (e) {
       failures.push(`${rec.id}: could not parse the trivy JSON report (${e instanceof Error ? e.message.slice(0, 120) : e})`);
     }
   });
   if (failures.length > 0) finish(1);
 
+  // PER-PLATFORM RECONCILIATION. One call, because the rules are unchanged: every finding of
+  // every scanned platform must be matched by a record naming THAT platform, and every record
+  // must have matched something. What is new is that a record is compared against the platform
+  // of the finding rather than a single run-wide constant, and that a record naming a platform
+  // this run did not scan is called out for what it is instead of being mislabelled stale.
   const disposition = reconcileFindings(exclusionDoc, allFindings, {
-    scanPlatform: SCAN_PLATFORM, fatalIndices: recordValidation.fatalIndices,
+    scanPlatform: SCAN_PLATFORM, scanPlatforms: SCAN_PLATFORMS,
+    fatalIndices: recordValidation.fatalIndices,
   });
   state.image_finding_reconciliation = disposition;
   writeFileSync(join(outDir, 'image-findings.json'), `${JSON.stringify(allFindings, null, 2)}\n`);
-  console.log(`  findings ${disposition.total_findings}, governed ${disposition.matched.length} record(s), ` +
+  console.log(`  findings ${disposition.total_findings} across ${SCAN_PLATFORMS.join(' + ')}, ` +
+    `governed ${disposition.matched.length} record(s), ` +
     `unmatched ${disposition.unmatched.length}, unused ${disposition.unused_records.length}`);
+  for (const platform of SCAN_PLATFORMS) {
+    const n = allFindings.filter((f) => f.scan_platform === platform).length;
+    console.log(`    ${platform}: ${n} finding(s)`);
+  }
 
   for (const f of disposition.unmatched) {
     failures.push(`UNGOVERNED image finding: ${f}`);
   }
   for (const id of disposition.unused_records) {
     failures.push(`UNUSED scan disposition '${id}': it matched no finding, so it is stale`);
+  }
+  // A record for a platform this run never scanned was never given the chance to match. Saying
+  // "stale" would be false, and saying nothing would make an unscanned platform a place to park
+  // a disposition beyond review — so it fails on its own terms.
+  for (const p of disposition.unscanned_platform_records ?? []) {
+    failures.push(`OUT-OF-SCOPE scan disposition: ${p}`);
   }
   for (const s of disposition.stale_advisory_ids) {
     failures.push(`STALE advisory id in a disposition (matched nothing): ${s}`);

@@ -5,15 +5,15 @@
  * R3.4.2 shipped a control that ran ONE representative gate invocation under shims for curl,
  * wget, docker, skopeo and crane — trivy and gitleaks were not poisoned at all — and a separate
  * control that spawned the suite under that same partial set. Neither established the claim
- * that was made for them: that the entire 44-test behavioural suite passes with every external
+ * that was made for them: that the entire behavioural suite passes with every external
  * tool, scanners included, replaced by a refusing stub.
  *
  * This control makes exactly that claim and proves it by execution:
  *   1. it runs `c15-runner-behaviour.test.ts` in a child vitest whose PATH is poisoned for
  *      curl, wget, docker, skopeo, crane, trivy AND gitleaks;
- *   2. it asserts the child reports 44 passed and 0 failed — not "at least", exactly, so a
+ *   2. it asserts the child reports EXPECTED_TESTS passed and 0 failed — not "at least", exactly, so a
  *      suite that silently shrinks fails here;
- *   3. it asserts the marker log is EMPTY, so nothing in those 44 tests reached a live tool;
+ *   3. it asserts the marker log is EMPTY, so nothing in those tests reached a live tool;
  *   4. it invokes each of the seven shims separately, proving every one is armed and exits 97 —
  *      without which "the log is empty" would be indistinguishable from "the stubs do nothing".
  *
@@ -32,8 +32,14 @@ const SUITE = 'test/gate/c15-runner-behaviour.test.ts';
 /** Every external tool the gate could possibly reach for. */
 const POISONED_TOOLS = ['curl', 'wget', 'docker', 'skopeo', 'crane', 'trivy', 'gitleaks'] as const;
 
-/** The behavioural suite's exact size, asserted rather than bounded. */
-const EXPECTED_TESTS = 44;
+/**
+ * The behavioural suite's exact size, asserted rather than bounded.
+ *
+ * 45 since 2026-09-10: the gate scans both platform children of each configured index, and the
+ * new control proves that a disposition naming a platform the run did NOT scan fails as
+ * out-of-scope rather than being mislabelled stale.
+ */
+const EXPECTED_TESTS = 45;
 
 describe('C16-R3.4.3 §E — the entire behavioural suite runs with every external tool poisoned', () => {
   let markers: string;
@@ -81,7 +87,7 @@ describe('C16-R3.4.3 §E — the entire behavioural suite runs with every extern
     // eslint-disable-next-line no-control-regex
     const output = `${child.stdout}${child.stderr}`.replace(/\[[0-9;]*m/g, '');
     expect(child.status, `child vitest exited ${child.status}:\n${output.slice(-4000)}`).toBe(0);
-    // vitest prints `Tests  44 passed (44)`; a run with failures prints a `failed` term too.
+    // vitest prints `Tests  N passed (N)`; a run with failures prints a `failed` term too.
     const summary = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed\s+\((\d+)\)/.exec(output);
     expect(summary, `no test summary in child output:\n${output.slice(-4000)}`).not.toBeNull();
     const [, failed, passed, total] = summary as RegExpExecArray;

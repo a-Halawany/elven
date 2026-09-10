@@ -14,7 +14,8 @@
  * inversion, because the good news is what has to interrupt someone — and names the official index
  * and its children, so the return can be done through the governed process: re-pin
  * docker-compose.yml and conformance.manifest.json, re-issue or retire the SCX records that name the
- * derived image (SCX-0002..0005 today), regenerate evidence, run the FINAL chain. An indeterminate
+ * derived image (SCX-0002..0005 on linux/amd64 and SCX-0010..0011 on linux/arm64 today), regenerate
+ * evidence, run the FINAL chain. An indeterminate
  * check also fails: "could not check" must not read like "nothing to do".
  *
  * Usage: check-patched-images.mjs [--trivy <path>] [--cache <dir>]
@@ -154,4 +155,4 @@ if (fixed.length > 0) {
 }
 say('\nc15-recheck: no compatible fixed official image yet for any service; the derived images '
   + '(ghcr.io/a-halawany/elven/postgres, ghcr.io/a-halawany/elven/redis) remain the pinned route, '
-  + 'and SCX-0002..0005 remain scoped to the derived postgres image.');
+  + 'and SCX-0002..0005 (linux/amd64) and SCX-0010..0011 (linux/arm64) remain scoped to the derived postgres image.');

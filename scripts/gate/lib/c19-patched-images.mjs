@@ -109,8 +109,13 @@ export const SERVICES = Object.freeze({
     tag: 'postgres:18-alpine',
     pinned: 'ghcr.io/a-halawany/elven/postgres',
     fixes: Object.freeze([OPENSSL_FIX, UTIL_LINUX_POSTGRES_FIX, C_ARES_FIX]),
-    /** The governed records that name the derived image and must be re-reviewed on the return. */
-    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005']),
+    /**
+     * The governed records that name the derived image and must be re-reviewed on the return.
+     * SCX-0002..0005 govern its linux/amd64 child; SCX-0010 and SCX-0011 govern the linux/arm64
+     * child, which the gate began scanning on 2026-09-10. Returning to the official image
+     * re-scopes ALL of them, on both platforms, or the ones left behind fail as unused.
+     */
+    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']),
   }),
   redis: Object.freeze({
     tag: 'redis:8-alpine',

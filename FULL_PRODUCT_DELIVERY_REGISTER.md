@@ -114,6 +114,20 @@ registry or referenced by the compose file or the gate.
 | Reproducibility | recipe-reproducible, NOT bit-identical: rebuilds differ only in apk-stamped mtimes and `/var/log/apk.log`; the package payload, `installed` db and `world` are byte-identical across builds; Alpine offers no dated index snapshot, so the version assertion makes drift fail loudly. A bit-identical variant needs BuildKit `rewrite-timestamp` + `SOURCE_DATE_EPOCH` and a normalised `apk.log` | same |
 | Architecture | arm64 primary; a `linux/amd64` variant (the platform the gate scans) built and scanned with the identical finding set | same |
 
+**Arm64 governance (2026-09-11).** The four re-issued records are `linux/amd64` only, so the PUBLISHED arm64
+postgres child (`sha256:d3dd485b…`, the image the restore drill actually runs) was ungoverned. Its own artefact was
+analysed: the binary extracted from that exact child is `gosu` sha256 `3a8ef022…`, Go `go1.24.6`, `GOARCH=arm64`,
+and its 22 findings are all `stdlib` rows on `usr/local/bin/gosu` (0 of 53 OS packages); the arm64 redis child is
+clean at every severity. **`govulncheck` and a Go toolchain are absent on this host, so no symbol analysis of the
+arm64 binary exists: all 22 are RISK_ACCEPTED under the new SCX-0010 (21 HIGH) and SCX-0011 (1 CRITICAL) — including
+the eight that are NOT_AFFECTED on amd64. The amd64 analysis was NOT carried across**, and the amd64 records keep
+their scope, dates and expiry untouched. Obtaining `govulncheck` for arm64 would let those eight be re-classified on
+their own evidence; until then the honest classification is acceptance. The gate now scans BOTH children of each
+index (`SCAN_PLATFORMS` owned in one place so the runner and the final verifier cannot drift) and reconciles a
+record against the FINDING's platform rather than a run-wide constant — strictly narrower; a record naming a platform
+the run did not scan fails as OUT-OF-SCOPE rather than being silently counted unused. Local gate on the re-pinned
+tree: PASS, 44 findings (22 + 22), 6 records, 0 unmatched, 0 unused, 0 out-of-scope, 0 stale.
+
 **Candidate v2 (2026-09-10) adds the OpenSSL and c-ares fixes** (`infra/images/candidates/v2/`, evidence
 `infra/images/candidates/evidence/v2/`, facts for approval in `infra/images/candidates/v2/PUBLICATION.md`):
 `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0 on both images and `c-ares` 1.34.6-r0 → 1.34.8-r0 on postgres,
