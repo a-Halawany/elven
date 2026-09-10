@@ -912,6 +912,25 @@ const FILESYSTEM_RESULT_SET = Object.freeze([
   Object.freeze({ Target: 'pnpm-lock.yaml', Class: 'lang-pkgs', Type: 'pnpm' }),
 ]);
 
+/**
+ * The filesystem scan's result universe is SOURCE-OWNED: the lockfile, plus one `config/dockerfile`
+ * result for every tracked Dockerfile (trivy's misconfiguration scanner reports each one, findings or
+ * not). A Dockerfile result must carry NO failures and no package or vulnerability arrays: the blocking
+ * step passed at HIGH,CRITICAL, so a genuine receipt reports none. Derived from `git ls-files`, so an
+ * added, removed or renamed Dockerfile changes the expectation with the source, never by hand.
+ */
+function filesystemResultSet(repoRoot) {
+  const set = [...FILESYSTEM_RESULT_SET];
+  let tracked = [];
+  const ls = spawnSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' });
+  if (ls.status !== 0) return set;
+  tracked = String(ls.stdout).split('\0').filter(Boolean);
+  for (const f of tracked.sort()) {
+    if (/(^|\/)Dockerfile$/.test(f) || /\.Dockerfile$/.test(f)) set.push(Object.freeze({ Target: f, Class: 'config', Type: 'dockerfile' }));
+  }
+  return set;
+}
+
 function filesystemCoverageProblems(label, purls, sourceSets) {
   const problems = [];
   if (sourceSets === null) return problems;
@@ -947,7 +966,7 @@ function filesystemResultsProblems(label, results, sourceSets) {
   const seen = results.map((r) => (r === null || typeof r !== 'object'
     ? '(not an object)'
     : `${r.Target} [${r.Class}/${r.Type}]`));
-  const want = FILESYSTEM_RESULT_SET.map((e) => `${e.Target} [${e.Class}/${e.Type}]`);
+  const want = filesystemResultSet(sourceSets?.repoRoot ?? process.cwd()).map((e) => `${e.Target} [${e.Class}/${e.Type}]`);
   if (seen.length !== want.length || [...seen].sort().join(' | ') !== [...want].sort().join(' | ')) {
     problems.push(
       `C15 ${label} Results is ${JSON.stringify(seen)}, but the source contract derives exactly `
@@ -959,6 +978,15 @@ function filesystemResultsProblems(label, results, sourceSets) {
   let purls = new Set();
   for (const [i, r] of results.entries()) {
     const at = `Results[${i}]`;
+    if (r.Class === 'config' && r.Type === 'dockerfile') {
+      const ms = r.MisconfSummary ?? null;
+      if (ms === null || typeof ms !== 'object') problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) carries no MisconfSummary`);
+      else if (Number(ms.Failures) !== 0 || Number(ms.Exceptions ?? 0) !== 0) problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) reports ${ms.Failures} failure(s) and ${ms.Exceptions ?? 0} exception(s); the blocking scan passed, so a genuine receipt reports none`);
+      for (const k of ['Misconfigurations', 'Vulnerabilities', 'Packages', 'Secrets', 'Licenses']) {
+        if (Array.isArray(r[k]) && r[k].length > 0) problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) carries ${r[k].length} ${k}; a passing Dockerfile receipt carries none`);
+      }
+      continue;
+    }
     const contract = contractFor(r.Class, r.Type);
     if (contract === null) {
       problems.push(`C15 ${label} ${at} has no result contract for (${r.Class}, ${r.Type})`);

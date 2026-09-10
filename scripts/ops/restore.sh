@@ -13,6 +13,12 @@
 #                                           eye-restore-redis  redis from the bundle's recorded redis pin, host port
 #                                                              127.0.0.1:56379 (empty: the runbook's claim that Redis is
 #                                                              rebuilt from the database)
+#                                           both containers are started with the PROCESS PROTECTIONS the compose
+#                                           services declare (user / cap_drop / security_opt, recorded in the bundle
+#                                           at backup time; an older bundle falls back to the current compose file),
+#                                           passed as --user / --cap-drop / --security-opt the way compose would,
+#                                           and /proc/1/status (Uid, Gid, CapBnd, CapEff, NoNewPrivs) is observed
+#                                           and checked against the declaration
 #                                           EYE_RESTORE_ROOT, or $HOME/eye-restore/<ts>: vault, journal and config copy
 #                                           a second API from apps/api/dist/main.js on :3402 against the restored eye_demo,
 #                                           scheduler DISABLED, /readyz and one governed read proved
@@ -165,18 +171,33 @@ step "image identity: the bundle's recorded pins (by compose service identity)"
 PG_DIGEST="$(jq -r '.images.postgres.compose_pin // empty' "$MANIFEST")"
 REDIS_DIGEST="$(jq -r '.images.redis.compose_pin // empty' "$MANIFEST")"
 [[ -n "$PG_DIGEST" && -n "$REDIS_DIGEST" ]] || die "the manifest does not record both compose pins (images.postgres.compose_pin, images.redis.compose_pin)"
-[[ "$(jq -r '.images.postgres.pin_matches // .images.postgres.pin_digest_matches' "$MANIFEST")" == "true" ]] || die "the manifest records that the source container's image did not match the compose pin at backup time (images.postgres.pin_matches=false)"
-image_resolves() { # image_resolves <reference@sha256:…>  -> the local image's repo digests must contain the reference's digest
+# The pin is the deployment's declared image. A source container that was still
+# running an older image at backup time (not yet recreated after a re-pin) is
+# reported, not refused: the restore starts from the pin, and the restored
+# server's major version is checked against the dump's source server below.
+for svc in postgres redis; do
+  if [[ "$(jq -r --arg s "$svc" '.images[$s] | if (.pin_digest_matches == true) or (.pin_matches == true) then "true" else "false" end' "$MANIFEST")" != "true" ]]; then
+    say "  REPORT: at backup time the source container $(jq -r --arg s "$svc" '.images[$s].container' "$MANIFEST") ran $(jq -r --arg s "$svc" '.images[$s].repo_digests | join(" ")' "$MANIFEST") — not the compose pin; the restore starts from the pin (the deployment's declared image)"
+  fi
+done
+IMAGE_LOCAL_JSON=""
+image_resolves() { # image_resolves <reference@sha256:…>  -> the local image's repo digests must contain the reference's digest; sets IMAGE_LOCAL_JSON
   local ref="$1" d id digests
   d="${ref#*@}"
+  IMAGE_LOCAL_JSON=""
   [[ "$ref" == *@sha256:* ]] || { say "  $ref is not pinned by digest"; return 1; }
   id="$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null)" || { say "  $ref is not present locally (no pull is attempted by this script)"; return 1; }
-  digests="$(docker image inspect --format '{{join .RepoDigests ","}}' "$id")"
+  # RepoDigests are read through jq: the `{{join .RepoDigests}}` template fails on some
+  # multi-platform references under Docker 28.5 (wrong type for value), the JSON does not.
+  IMAGE_LOCAL_JSON="$(docker image inspect "$id" | jq -c '.[0] | {id:.Id, repo_digests:(.RepoDigests // []), image_user:(.Config.User // ""), architecture:.Architecture, os:.Os, created:.Created}')"
+  digests="$(jq -r '.repo_digests | join(",")' <<<"$IMAGE_LOCAL_JSON")"
   echo ",$digests," | grep -q "@$d," || { say "  $ref resolved to $id whose repo digests ($digests) do not carry $d"; return 1; }
-  say "  $ref -> local image $id (repo digests carry $d)"
+  say "  $ref -> local image $id (repo digests carry $d; image USER '$(jq -r .image_user <<<"$IMAGE_LOCAL_JSON")', $(jq -r '.os + "/" + .architecture' <<<"$IMAGE_LOCAL_JSON"), created $(jq -r .created <<<"$IMAGE_LOCAL_JSON"))"
 }
 image_resolves "$PG_DIGEST" || die "the bundle's postgres pin does not resolve locally by digest"
+PG_LOCAL="$IMAGE_LOCAL_JSON"
 image_resolves "$REDIS_DIGEST" || die "the bundle's redis pin does not resolve locally by digest"
+REDIS_LOCAL="$IMAGE_LOCAL_JSON"
 SRC_HEAD="$(jq -r '.bundle.git_head' "$MANIFEST")"
 if SRC_COMPOSE="$(git -C "$REPO" show "$SRC_HEAD:docker-compose.yml" 2>/dev/null)"; then
   SRC_JSON="$(printf '%s\n' "$SRC_COMPOSE" | node "$REPO/scripts/ops/compose-services.mjs" - "$REPO")" || die "the source revision's docker-compose.yml could not be parsed"
@@ -190,6 +211,7 @@ if SRC_COMPOSE="$(git -C "$REPO" show "$SRC_HEAD:docker-compose.yml" 2>/dev/null
 else
   say "  note: source revision $(cut -c1-12 <<<"$SRC_HEAD") is not in this clone; the bundle pins cannot be compared with its compose file"
 fi
+CUR_JSON=""
 if [[ -f "$COMPOSE_FILE" ]]; then
   CUR_JSON="$(node "$REPO/scripts/ops/compose-services.mjs" "$COMPOSE_FILE")" || die "docker-compose.yml could not be parsed"
   CUR_PG="$(jq -r --arg s "$PG_SERVICE" '.services[$s].image // empty' <<<"$CUR_JSON")"
@@ -203,6 +225,82 @@ fi
 say "  restore root: $RROOT"
 say "  postgres: $PG_DIGEST"
 say "  redis:    $REDIS_DIGEST"
+
+# ------------------------------------------------- process protections
+# The compose services' user / cap_drop / security_opt are the deployment's
+# configuration. They are taken from the bundle (recorded by backup.sh next to
+# the pin); a bundle that predates that record falls back to the current compose
+# file. They are passed to `docker run` exactly as compose would apply them, and
+# /proc/1/status of each started container is observed and checked below.
+step "process protections for the isolated containers (compose user / cap_drop / security_opt)"
+proto_json() { # proto_json <service> -> {user, cap_drop, security_opt, source}
+  local svc="$1" j=""
+  j="$(jq -c --arg s "$svc" '.compose.services[$s] // {} | select(has("user") or has("cap_drop") or has("security_opt"))
+        | {user:(.user // null), cap_drop:(.cap_drop // []), security_opt:(.security_opt // []), source:("bundle (compose.services." + $s + " at backup time)")}' "$MANIFEST")"
+  if [[ -z "$j" && -n "$CUR_JSON" ]]; then
+    j="$(jq -c --arg s "$svc" '.services[$s] // {} | {user:(.user // null), cap_drop:(.cap_drop // []), security_opt:(.security_opt // []), source:"current docker-compose.yml (the bundle predates the recorded protections)"}' <<<"$CUR_JSON")"
+  fi
+  [[ -n "$j" ]] || j='{"user":null,"cap_drop":[],"security_opt":[],"source":"none declared"}'
+  printf '%s\n' "$j"
+}
+proto_flags() { # proto_flags <proto-json> -> one docker run flag/value per line (empty when nothing is declared)
+  jq -r '[ (if .user then ["--user", .user] else [] end),
+           ((.cap_drop // []) | map(["--cap-drop", .]) | add // []),
+           ((.security_opt // []) | map(["--security-opt", .]) | add // []) ] | add | .[]' <<<"$1"
+}
+PG_PROTO="$(proto_json "$PG_SERVICE")"; REDIS_PROTO="$(proto_json "$REDIS_SERVICE")"
+PG_FLAGS=(); REDIS_FLAGS=()
+while IFS= read -r l; do [[ -n "$l" ]] && PG_FLAGS[${#PG_FLAGS[@]}]="$l"; done <<<"$(proto_flags "$PG_PROTO")"
+while IFS= read -r l; do [[ -n "$l" ]] && REDIS_FLAGS[${#REDIS_FLAGS[@]}]="$l"; done <<<"$(proto_flags "$REDIS_PROTO")"
+say "  $PG_SERVICE: user=$(jq -r '.user // "(none)"' <<<"$PG_PROTO") cap_drop=$(jq -c .cap_drop <<<"$PG_PROTO") security_opt=$(jq -c .security_opt <<<"$PG_PROTO")  (from: $(jq -r .source <<<"$PG_PROTO"))"
+say "    docker run flags: ${PG_FLAGS[*]+${PG_FLAGS[*]}}"
+say "  $REDIS_SERVICE: user=$(jq -r '.user // "(none)"' <<<"$REDIS_PROTO") cap_drop=$(jq -c .cap_drop <<<"$REDIS_PROTO") security_opt=$(jq -c .security_opt <<<"$REDIS_PROTO")  (from: $(jq -r .source <<<"$REDIS_PROTO"))"
+say "    docker run flags: ${REDIS_FLAGS[*]+${REDIS_FLAGS[*]}}"
+if [[ "$(jq -r '(.compose.services.postgres // {}) | has("user")' "$MANIFEST")" == "true" ]]; then
+  for svc in postgres redis; do
+    if [[ "$(jq -r --arg s "$svc" '.images[$s].running_protections_match // "unknown"' "$MANIFEST")" == "false" ]]; then
+      say "  REPORT: at backup time the source container $(jq -r --arg s "$svc" '.images[$s].container' "$MANIFEST") did not carry the declared protections (running: $(jq -c --arg s "$svc" '.images[$s].running_protections' "$MANIFEST")); the isolated container applies the declaration"
+    fi
+  done
+fi
+
+# proc_status <container> <pid>  -> "Name: x;Uid: a b c d;Gid: …;CapPrm: …;CapEff: …;CapBnd: …;NoNewPrivs: n;Seccomp: n" (read inside the container)
+proc_status() {
+  docker exec "$1" sh -c "tr '\t' ' ' < /proc/$2/status | grep -E '^(Name|Uid|Gid|CapPrm|CapEff|CapBnd|NoNewPrivs|Seccomp):' | sed -E 's/ +/ /g' | tr '\n' ';' | sed 's/;\$//'" 2>/dev/null || echo "unreadable"
+}
+first_child_pid() { # the first process whose parent is PID 1 (postgres: a backend); empty when none
+  docker exec "$1" sh -c 'for f in /proc/[0-9]*/status; do if grep -qE "^PPid:[[:space:]]+1$" "$f" 2>/dev/null; then basename "$(dirname "$f")"; break; fi; done' 2>/dev/null || true
+}
+field() { printf '%s' "$1" | tr ';' '\n' | grep -E "^$2:" | sed -E "s/^$2: *//"; }
+observe_protections() { # observe_protections <service> <container-name> <container-id> <proto-json>  -> sets OBSERVED_JSON, runs the checks
+  local svc="$1" name="$2" cid="$3" proto="$4" hc p1 child c1 uid gid capbnd capeff nnp wu wg
+  hc="$(docker inspect "$cid" | jq -c '.[0] | {user:(.Config.User // ""), cap_drop:(.HostConfig.CapDrop // []), security_opt:(.HostConfig.SecurityOpt // [])}')"
+  p1="$(proc_status "$name" 1)"
+  child="$(first_child_pid "$name")"
+  c1=""; [[ -n "$child" ]] && c1="$(proc_status "$name" "$child")"
+  say "  HostConfig: $hc"
+  say "  PID 1:      $p1"
+  [[ -n "$c1" ]] && say "  child $child: $c1"
+  uid="$(field "$p1" Uid | awk '{print $1}')"; gid="$(field "$p1" Gid | awk '{print $1}')"
+  capbnd="$(field "$p1" CapBnd)"; capeff="$(field "$p1" CapEff)"; nnp="$(field "$p1" NoNewPrivs)"
+  if [[ "$(jq -r '.user // empty' <<<"$proto")" != "" ]]; then
+    wu="$(jq -r '.user | split(":") | .[0]' <<<"$proto")"; wg="$(jq -r '.user | split(":") | .[1] // ""' <<<"$proto")"
+    check "$([[ "$uid" == "$wu" && ( -z "$wg" || "$gid" == "$wg" ) ]] && echo true || echo false)" "$svc: PID 1 runs as uid $uid gid $gid (declared user $(jq -r .user <<<"$proto"))"
+  else
+    say "  $svc: no user declared; PID 1 runs as uid $uid gid $gid (report only)"
+  fi
+  if [[ "$(jq -r '.cap_drop | index("ALL") != null' <<<"$proto")" == "true" ]]; then
+    check "$([[ "$capbnd" == "0000000000000000" && "$capeff" == "0000000000000000" ]] && echo true || echo false)" "$svc: PID 1 CapBnd $capbnd CapEff $capeff (cap_drop ALL declared: both must be 0)"
+  else
+    say "  $svc: cap_drop ALL not declared; PID 1 CapBnd $capbnd CapEff $capeff (report only)"
+  fi
+  if [[ "$(jq -r '.security_opt | index("no-new-privileges:true") != null' <<<"$proto")" == "true" ]]; then
+    check "$([[ "$nnp" == "1" ]] && echo true || echo false)" "$svc: PID 1 NoNewPrivs $nnp (no-new-privileges:true declared: must be 1)"
+  else
+    say "  $svc: no-new-privileges not declared; PID 1 NoNewPrivs $nnp (report only)"
+  fi
+  OBSERVED_JSON="$(jq -cn --argjson hc "$hc" --arg p1 "$p1" --arg child "$child" --arg c1 "$c1" '{host_config:$hc, pid1_status:$p1, first_child_pid:($child|if .=="" then null else . end), first_child_status:($c1|if .=="" then null else . end)}')"
+}
 
 
 # ------------------------------------------------------- config copy
@@ -219,21 +317,29 @@ say "  keys=$(grep -c '^[A-Z0-9_]*=' "$RROOT/config/env") (values never displaye
 
 T0=$(now_s)
 # ---------------------------------------------------------- postgres
-step "$PG_NAME from the bundle's pin $PG_DIGEST"
+step "$PG_NAME from the bundle's pin $PG_DIGEST (with the declared process protections)"
 docker volume create "$PG_VOLUME" >/dev/null
 ops_run_record volume "$PG_VOLUME" "$PG_VOLUME"
-CID="$(POSTGRES_PASSWORD="$EYE_DB_PASSWORD" docker run -d --name "$PG_NAME" \
+PG_CID="$(POSTGRES_PASSWORD="$EYE_DB_PASSWORD" docker run -d --name "$PG_NAME" \
+  ${PG_FLAGS[@]+"${PG_FLAGS[@]}"} \
   -p "127.0.0.1:$PG_PORT:5432" -v "$PG_VOLUME:/var/lib/postgresql" \
   -e POSTGRES_USER="$PG_SUPERUSER" -e POSTGRES_PASSWORD -e POSTGRES_DB=postgres \
   "$PG_DIGEST")"
+CID="$PG_CID"
 ops_run_record container "$CID" "$PG_NAME"
-say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json; image in use: $(docker inspect --format '{{.Config.Image}}' "$CID")"
+say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json; image in use: $(docker inspect --format '{{.Config.Image}}' "$CID") (image id $(docker inspect --format '{{.Image}}' "$CID"))"
 for _ in $(seq 1 60); do
   docker exec "$PG_NAME" pg_isready -U "$PG_SUPERUSER" -d postgres -q 2>/dev/null && break; sleep 1
 done
-docker exec "$PG_NAME" pg_isready -U "$PG_SUPERUSER" -d postgres -q || die "$PG_NAME did not become ready"
+docker exec "$PG_NAME" pg_isready -U "$PG_SUPERUSER" -d postgres -q || { say "  container log (last 20 lines):"; docker logs --tail 20 "$PG_NAME" 2>&1 | sed 's/^/    /'; die "$PG_NAME did not become ready"; }
 rpsq() { docker exec -e PGPASSWORD "$PG_NAME" psql -U "$PG_SUPERUSER" -d "$1" -v ON_ERROR_STOP=1 -X -A -t -c "$2"; }
 say "  ready: $(rpsq postgres 'select version()' | cut -d, -f1)"
+RV="$(rpsq postgres 'show server_version')"
+SV="$(jq -r '.database_facts.before_dump | to_entries[0].value.server_version // empty' "$MANIFEST")"
+check "$([[ -n "$SV" && "${RV%%.*}" == "${SV%%.*}" ]] && echo true || echo false)" "restored server major ${RV%%.*} equals the dump's source server major (source $SV, restored $RV)"
+step "process protections observed in $PG_NAME (/proc/1/status inside the container)"
+observe_protections "$PG_SERVICE" "$PG_NAME" "$PG_CID" "$PG_PROTO"
+PG_OBSERVED="$OBSERVED_JSON"
 
 step "pg/globals.sql (roles; the superuser already exists in the fresh cluster — that one error is expected)"
 docker exec -i -e PGPASSWORD "$PG_NAME" psql -U "$PG_SUPERUSER" -d postgres -X -q < "$BUNDLE/pg/globals.sql" > "$RROOT/work/globals.log" 2>&1 || true
@@ -400,15 +506,19 @@ done
 T_VERIFY=$(( $(now_s) - T0 - T_RESTORE ))
 
 # ------------------------------------------------------------ second API
-step "$REDIS_NAME from the bundle's pin $REDIS_DIGEST (empty — no Redis state is restored)"
+step "$REDIS_NAME from the bundle's pin $REDIS_DIGEST (empty — no Redis state is restored; with the declared process protections)"
 # The password reaches the container only as docker environment (never on a command line).
 export REDIS_PASSWORD="$EYE_REDIS_PASSWORD"
-CID="$(docker run -d --name "$REDIS_NAME" -p "127.0.0.1:$REDIS_PORT:6379" -e REDIS_PASSWORD \
+REDIS_CID="$(docker run -d --name "$REDIS_NAME" ${REDIS_FLAGS[@]+"${REDIS_FLAGS[@]}"} -p "127.0.0.1:$REDIS_PORT:6379" -e REDIS_PASSWORD \
   "$REDIS_DIGEST" sh -c 'exec redis-server --requirepass "$REDIS_PASSWORD"')"
+CID="$REDIS_CID"
 ops_run_record container "$CID" "$REDIS_NAME"
-say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json"
+say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json; image in use: $(docker inspect --format '{{.Config.Image}}' "$CID") (image id $(docker inspect --format '{{.Image}}' "$CID"))"
 for _ in $(seq 1 30); do docker exec -e REDIS_PASSWORD "$REDIS_NAME" sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null' | grep -q PONG && break; sleep 1; done
 say "  keys in the fresh redis: $(docker exec -e REDIS_PASSWORD "$REDIS_NAME" sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning dbsize 2>/dev/null')"
+step "process protections observed in $REDIS_NAME (/proc/1/status inside the container)"
+observe_protections "$REDIS_SERVICE" "$REDIS_NAME" "$REDIS_CID" "$REDIS_PROTO"
+REDIS_OBSERVED="$OBSERVED_JSON"
 
 step "second API: apps/api/dist/main.js on :$API_PORT against $API_DB@127.0.0.1:$PG_PORT, vault+journal under $RROOT, scheduler disabled"
 API_PID=$(cd "$REPO/apps/api" && {
@@ -472,6 +582,11 @@ say "  verification: ${T_VERIFY}s   total including second API and probe: ${T_TO
 say "  checks: $PASS passed, $FAIL failed"
 jq -n --arg b "$BUNDLE" --arg r "$RROOT" --argjson pass "$PASS" --argjson fail "$FAIL" \
   --argjson tr "$T_RESTORE" --argjson tv "$T_VERIFY" --argjson tt "$T_TOTAL" --arg pg "$PG_DIGEST" --arg redis "$REDIS_DIGEST" \
-  '{bundle:$b, restore_root:$r, run_manifest:($r+"/RUN.json"), images_used:{postgres:$pg, redis:$redis}, checks:{passed:$pass, failed:$fail}, seconds:{restore:$tr, verify:$tv, total:$tt}}' > "$RROOT/RESTORE_REPORT.json"
+  --argjson pgl "$PG_LOCAL" --argjson rdl "$REDIS_LOCAL" --argjson pgp "$PG_PROTO" --argjson rdp "$REDIS_PROTO" \
+  --argjson pgo "$PG_OBSERVED" --argjson rdo "$REDIS_OBSERVED" --arg pgc "$PG_CID" --arg rdc "$REDIS_CID" \
+  '{bundle:$b, restore_root:$r, run_manifest:($r+"/RUN.json"), images_used:{postgres:$pg, redis:$redis},
+    image_identity:{postgres:{pin:$pg, container:$pgc, local_image:$pgl, protections_declared:$pgp, protections_observed:$pgo},
+                    redis:{pin:$redis, container:$rdc, local_image:$rdl, protections_declared:$rdp, protections_observed:$rdo}},
+    checks:{passed:$pass, failed:$fail}, seconds:{restore:$tr, verify:$tv, total:$tt}}' > "$RROOT/RESTORE_REPORT.json"
 [[ "$FAIL" -eq 0 ]] || die "$FAIL verification check(s) failed — see above"
 say "  RESTORE VERIFIED"

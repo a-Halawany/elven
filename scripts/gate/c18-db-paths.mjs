@@ -315,6 +315,12 @@ function startInstance(ev, letter, images, cleanup) {
    * The run label is applied AT CREATION, never added afterwards: a resource that is only adopted
    * after the fact is unowned for the window in between, which is exactly when a crash strands it.
    */
+  const imageUser = (evd, id, image) => {
+    const r = evd.run(id, ['docker', 'image', 'inspect', '--format', '{{.Config.User}}', image]);
+    const u = r.stdout.trim();
+    if (u !== '' && !/^[A-Za-z0-9._:-]{1,64}$/.test(u)) throw new Error(`image ${image} declares an unexpected USER ${JSON.stringify(u)}`);
+    return u === '' ? null : u;
+  };
   const pgRun = ev.run(`${letter}-pg-run`, ['docker', 'run', '-d', '--name', inst.container,
     '--label', `${DOCKER_RUN_LABEL}=${resourceId}`,
     '--tmpfs', SECRET_TMPFS, '-e', 'POSTGRES_USER=eye',
@@ -323,7 +329,10 @@ function startInstance(ev, letter, images, cleanup) {
     'sh', '-c', PG_ENTRYPOINT]);
   inst.containerId = pgRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.container);
-  ev.run(`${letter}-pg-secret`, ['docker', 'exec', '-i', inst.container, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH)],
+  // The pinned images declare a non-root USER: the sink runs as root and hands the secret to that user (C19: the
+  // value still travels over STDIN only; argv names the path and a uid).
+  const pgUser = imageUser(ev, `${letter}-pg-user`, images.postgres);
+  ev.run(`${letter}-pg-secret`, ['docker', 'exec', '-u', '0', '-i', inst.container, 'sh', '-c', SECRET_SINK(PG_SECRET_PATH, pgUser)],
     { input: passwords.EYE_DB_PASSWORD, inputClass: placeholder(letter, 'EYE_DB_PASSWORD') });
 
   const redisRun = ev.run(`${letter}-redis-run`, ['docker', 'run', '-d', '--name', inst.redisContainer,
@@ -332,7 +341,8 @@ function startInstance(ev, letter, images, cleanup) {
     'sh', '-c', REDIS_ENTRYPOINT]);
   inst.redisContainerId = redisRun.rawStdout.trim().slice(0, 64);
   cleanup.containers.push(inst.redisContainer);
-  ev.run(`${letter}-redis-secret`, ['docker', 'exec', '-i', inst.redisContainer, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH)],
+  const redisUser = imageUser(ev, `${letter}-redis-user`, images.redis);
+  ev.run(`${letter}-redis-secret`, ['docker', 'exec', '-u', '0', '-i', inst.redisContainer, 'sh', '-c', SECRET_SINK(REDIS_SECRET_PATH, redisUser)],
     { input: `requirepass ${passwords.EYE_REDIS_PASSWORD}\n`,
       inputClass: placeholder(letter, 'EYE_REDIS_PASSWORD') });
   const portOf = (container, inner) => {

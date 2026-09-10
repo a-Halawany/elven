@@ -11,7 +11,9 @@
 #   journal.tar                     the degraded-audit journals (demo + dev default dir)
 #   config/env                      a byte copy of .eye-local/env, mode 0600
 #   MANIFEST.json                   sha256 of every file, git HEAD, per-database counts and audit heads,
-#                                   the compose pins of BOTH services (by service identity) and the image digests
+#                                   the compose pins of BOTH services (by service identity), their declared
+#                                   process protections (user / cap_drop / security_opt), the image digests
+#                                   and the protections the running containers actually carry
 #   RUN.json                        the run manifest: every directory this run created (cleanup is bound to it)
 #
 # DESTINATION GUARDS (scripts/ops/lib/guards.sh) run FIRST, before the credential
@@ -198,7 +200,9 @@ step "vault.tar ($VAULT_REL, paths relative to the repository root)"
 [[ -d "$REPO/$VAULT_REL/evidence" && -d "$REPO/$VAULT_REL/quarantine" ]] || die "$VAULT_REL is missing one of its two roots"
 tar -C "$REPO" -cf "$B/vault.tar" "$VAULT_REL"
 VAULT_FILES=$(find "$REPO/$VAULT_REL" -type f | wc -l | tr -d ' ')
-VAULT_BYTES=$(find "$REPO/$VAULT_REL" -type f -print0 | xargs -0 wc -c 2>/dev/null | awk 'END{print $1}')
+# summed per file: `wc -c` prints one "total" line PER BATCH once the file list exceeds one argv, so the
+# last line alone under-reports (observed with 7,717 vault files on 2026-09-10)
+VAULT_BYTES=$(find "$REPO/$VAULT_REL" -type f -exec wc -c {} + 2>/dev/null | awk '$NF != "total" { s += $1 } END { print s + 0 }')
 say "  vault.tar  $(size "$B/vault.tar") bytes  files=$VAULT_FILES payload_bytes=${VAULT_BYTES:-0}"
 
 step "journal.tar (degraded-audit journals)"
@@ -234,24 +238,43 @@ say "  config/env  $(size "$B/config/env") bytes  keys=$(grep -c '^[A-Z0-9_]*=' 
 # (services.postgres.image, services.redis.image), whatever registry or path the
 # reference carries; both pins are recorded so that restore can start its
 # isolated container from the bundle's own recorded pin.
-step "image pins (by compose service identity) and the running containers' digests"
-img_json() { # img_json <service> <container> <compose-pin>
-  local svc="$1" c="$2" pin="$3" id digests
+step "image pins and process protections (by compose service identity) and what the running containers carry"
+# The declared protections (compose user / cap_drop / security_opt) are the
+# deployment's configuration and are recorded next to the pin; the running
+# container's HostConfig is recorded as observed so that a container that has not
+# yet been recreated after a re-pin or a protection change is visible as such.
+img_json() { # img_json <service> <container> <compose-service-json>
+  local svc="$1" c="$2" sj="$3" id digests hc
   id="$(docker inspect --format '{{.Image}}' "$c")"
-  digests="$(docker image inspect --format '{{join .RepoDigests ","}}' "$id")"
-  jq -cn --arg svc "$svc" --arg c "$c" --arg id "$id" --arg d "$digests" --arg pin "$pin" '
-    ($pin | split("@") | .[1] // "") as $pindigest
-    | {service:$svc, container:$c, image_id:$id, repo_digests:($d|split(",")), compose_pin:$pin,
+  digests="$(docker image inspect "$id" | jq -c '.[0].RepoDigests // []')"
+  # the user is in Config.User (compose `user:` / docker run --user); cap_drop and security_opt in HostConfig
+  hc="$(docker inspect "$c" | jq -c '.[0] | {user:(.Config.User // ""), cap_drop:(.HostConfig.CapDrop // []), security_opt:(.HostConfig.SecurityOpt // [])}')"
+  jq -cn --arg svc "$svc" --arg c "$c" --arg id "$id" --argjson d "$digests" --argjson sj "$sj" --argjson hc "$hc" '
+    ($sj.image // "") as $pin | ($pin | split("@") | .[1] // "") as $pindigest
+    | {user:$sj.user, cap_drop:($sj.cap_drop // []), security_opt:($sj.security_opt // [])} as $declared
+    | {service:$svc, container:$c, image_id:$id, repo_digests:$d, compose_pin:$pin,
        compose_pin_digest:$pindigest,
-       pin_matches:(($d|split(","))|index($pin)!=null),
-       pin_digest_matches:(($d|split(",")|map(split("@")|.[1] // "")|index($pindigest))!=null)}'
+       pin_matches:($d|index($pin)!=null),
+       pin_digest_matches:(($d|map(split("@")|.[1] // "")|index($pindigest))!=null),
+       compose_protections:$declared,
+       running_protections:$hc,
+       running_protections_match:(($hc.user == ($declared.user // "")) and (($hc.cap_drop|sort) == ($declared.cap_drop|sort)) and (($hc.security_opt|sort) == ($declared.security_opt|sort)))}'
 }
-PG_IMG="$(img_json "$PG_SERVICE" "$PG_CONTAINER" "$PG_PIN")"
-REDIS_IMG="$(img_json "$REDIS_SERVICE" "$REDIS_CONTAINER" "$REDIS_PIN")"
-say "  $PG_SERVICE: pin $PG_PIN"
-say "    running: $(jq -r '.repo_digests|join(" ")' <<<"$PG_IMG")  pin_matches=$(jq -r '.pin_matches' <<<"$PG_IMG") pin_digest_matches=$(jq -r '.pin_digest_matches' <<<"$PG_IMG")"
-say "  $REDIS_SERVICE: pin $REDIS_PIN"
-say "    running: $(jq -r '.repo_digests|join(" ")' <<<"$REDIS_IMG")  pin_matches=$(jq -r '.pin_matches' <<<"$REDIS_IMG") pin_digest_matches=$(jq -r '.pin_digest_matches' <<<"$REDIS_IMG")"
+PG_SVC_JSON="$(jq -c --arg s "$PG_SERVICE" '.services[$s]' <<<"$COMPOSE_JSON")"
+REDIS_SVC_JSON="$(jq -c --arg s "$REDIS_SERVICE" '.services[$s]' <<<"$COMPOSE_JSON")"
+PG_IMG="$(img_json "$PG_SERVICE" "$PG_CONTAINER" "$PG_SVC_JSON")"
+REDIS_IMG="$(img_json "$REDIS_SERVICE" "$REDIS_CONTAINER" "$REDIS_SVC_JSON")"
+img_say() { # img_say <service> <img-json>
+  say "  $1: pin $(jq -r '.compose_pin' <<<"$2")"
+  say "    declared protections: user=$(jq -r '.compose_protections.user // "(none)"' <<<"$2") cap_drop=$(jq -c '.compose_protections.cap_drop' <<<"$2") security_opt=$(jq -c '.compose_protections.security_opt' <<<"$2")"
+  say "    running: $(jq -r '.repo_digests|join(" ")' <<<"$2")  pin_matches=$(jq -r '.pin_matches' <<<"$2") pin_digest_matches=$(jq -r '.pin_digest_matches' <<<"$2")"
+  say "    running protections: user=$(jq -r '.running_protections.user | if . == "" then "(none)" else . end' <<<"$2") cap_drop=$(jq -c '.running_protections.cap_drop' <<<"$2") security_opt=$(jq -c '.running_protections.security_opt' <<<"$2")  match_declared=$(jq -r '.running_protections_match' <<<"$2")"
+  if [[ "$(jq -r '.pin_digest_matches' <<<"$2")" != "true" ]]; then
+    say "    NOTE: the running container does not carry the pinned digest (it has not been recreated since the re-pin); the pin above is what a restore starts from"
+  fi
+}
+img_say "$PG_SERVICE" "$PG_IMG"
+img_say "$REDIS_SERVICE" "$REDIS_IMG"
 
 # --------------------------------------------------------------- manifest
 step "MANIFEST.json"
@@ -281,7 +304,8 @@ jq -n \
     files: $files,
     database_facts: {before_dump:$before, after_dump:$after, changed_during_dump_window:$drift},
     compose: {file:"docker-compose.yml", sha256:$csha, unmodified_in_worktree:$cclean,
-              services:{($pgsvc):{image:$pg.compose_pin}, ($rsvc):{image:$redis.compose_pin}}},
+              services:{($pgsvc):({image:$pg.compose_pin} + $pg.compose_protections),
+                        ($rsvc):({image:$redis.compose_pin} + $redis.compose_protections)}},
     images: {postgres:$pg, redis:$redis},
     vault: {root:$vault, files:$vfiles, payload_bytes:$vbytes},
     journal: $journal,

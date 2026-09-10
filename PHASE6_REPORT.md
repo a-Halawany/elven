@@ -585,3 +585,57 @@ The closure establishes neither Phase 6 product completeness nor release readine
 approvals, case-bound agent selection and the other omissions stay in the register's packages; PR #46
 stays unmerged behind C15 and the unexecuted FINAL C16/C17 chain. Nothing in the closed scope is
 reopened without a concrete new consequence.
+
+## 14. The checkpoint after the three-track review at `59a2459` (2026-09-10)
+
+The reviewer's four bounded follow-ups (`audit/reviews/The_Eye_59a2459_Three_Track_Review_and_Claude_Prompt.md`)
+and the owner's directions were carried out on the branch heads `54d8ecc`, `b30242f`, `c9d3d68`; the closure of
+§13.6 and every earlier closed finding are untouched. No broad correction review was started.
+
+**T1 — audit accounting and traceability.** S7 is in the accounting: `audit/summarise-units.mjs` counts a mandatory
+unit as unfinished unless it is verified on every profile it applies to — 3,535 unfinished = 3,196 in status open
++ 339 verified on the local profile only while applying to all profiles; the twelve mandatory/not-applicable units
+were reconciled one by one (eight are document-class obligations now open, four are authoring rules and
+documentary; `audit/UNIT_REPAIRS.md`); 78 truncated or conflated units repaired and 3 split; 59 local statuses that
+named only a module set back to open; source references are page-aware spans (`vNN.txt:page n:Lstart-Lend`, 217
+fallbacks marked `page-mismatch` for CP-6); bare migration references resolve, so `ES-24-004` and 14 more rows are
+`branch-only`. All 6,264 rows, 220 families, original ids and historical snapshots are kept.
+
+**T2 — recovery isolation.** `scripts/ops/lib/guards.sh`: physical canonical paths, refusal of destinations inside
+or aliasing the worktree, `.eye-local`, the bundle or any bind mount, refusal of symlinked ancestors, fresh
+`mkdir` destinations validated before any chmod/copy/extraction, and teardown bound to a run manifest;
+`scripts/ops/test-guards.sh` 35/35 (the reviewer's two probes refused); image identity read by Compose service
+from the YAML and both pins recorded in the bundle; second drill 37/37 (`docs/ops/evidence/restore-drill-20260910T161412Z.md`).
+DRILL_PUBLISHED
+
+**T3 — the temporary publisher, and the publication.** `publish-derived-images.yml` rebuilt: `push` trigger on
+`publish/derived-images/**` (the bootstrap needs nothing on `main`), inputs from the committed control file
+`infra/images/candidates/v2/PUBLISH.json` through environment variables with strict patterns, the run bound to the
+approved source revision by recipe-blob comparison, native builds on `ubuntu-latest` and `ubuntu-24.04-arm` pushed
+by digest and combined into one index, scans and SBOMs of BOTH children from the pinned scanner, receipts uploaded
+on every path, package visibility and anonymous readability verified after the push. Run 34502081248 published
+`ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910@sha256:69a974ae…` (amd64 `bc90ce6b…`, arm64 `d3dd485b…`)
+and `…/redis:8-alpine-maint-20260910@sha256:1ad0ff24…` (amd64 `0c0a48dd…`, arm64 `c11d75ca…`), both public and
+repository-linked; postgres scans 22 gosu rows on each platform, redis 0. Re-pinned in `docker-compose.yml` and
+`conformance.manifest.json`; SCX-0002…0005 re-issued for the new artefact (gosu byte-identical on each platform,
+original analysis dates and the 2026-11-05 expiry unchanged); SCX-0001/0006–0009 retired (fixed in the derived
+images); `docs/SCANNER_DISPOSITIONS.md` rewritten and re-bound; the recheck re-purposed to detect a compatible fixed
+OFFICIAL image per service on both platforms (report only; today: both official tags still affected). Local C15
+gate on the re-pinned tree: PASS, 22 findings, 0 unmatched, 0 unused. Test and fixture adaptations to the new
+artefacts (re-recorded trace streams, the receipt controls moved to the gosu result, the redis controls back to
+their original `closesFalsePass` shape because redis is clean) are listed in the PR body.
+CI_C9D3D68
+
+**T4 — Redis protections.** With `USER redis` the upstream setpriv path does not run; `docker-compose.yml` now sets
+`user`, `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` on both services (`user:` is required: the
+bases' entrypoints decide the privilege drop by capability and fail under `cap_drop` alone). Measured on the v3 images
+and the bases (`infra/images/candidates/evidence/v3/process-protections.txt`, 37/37): redis CapBnd=0, CapEff=0,
+NoNewPrivs=1 (equal to the base); postgres all masks 0, NoNewPrivs=1 (stricter than the base); no capability added
+back. The live containers are recreated at the next governed recreation.
+
+**Product choices (decided by the owner).** Recorded in register §8 with their conditions; the eight scenario kinds
+are P4 completion work. **PortWatch:** permission granted (owner-reported; grant text pending), rights confirmed,
+`imf-portwatch-ports` v3 live on the daily layer (2,804 rows admitted; the master-layer declaration of every earlier
+PortWatch contract is recorded as a finding), chokepoints and an operator/scheduler run-serialisation defect routed
+to P1 (`SOURCE_INTEGRATION_STATUS.md` §9). UN Comtrade deferred, key untouched. The `CorrectionApplied` consumer
+remains required work.

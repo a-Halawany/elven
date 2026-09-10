@@ -50,12 +50,20 @@ services:
   postgres:
     image: $PG_GHCR # postgres:18-alpine-maint
     container_name: eye-postgres
+    user: "70:70"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     volumes:
       - eye-pgdata:/var/lib/postgresql
       - $T/bind-host:/mnt/bind
   redis:
     image: $REDIS_GHCR # redis:8-alpine-maint
     container_name: eye-redis
+    user: "999:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 volumes:
   eye-pgdata:
 EOF
@@ -137,12 +145,18 @@ probe "the bind-mount host path is discovered from the service's volumes" ok \
   "$([[ "$(jq -r '.bind_mounts[0]' <<<"$CJ")" == "$T/bind-host" ]] && echo "ok: $T/bind-host" || echo "bad: $(jq -c .bind_mounts <<<"$CJ")")"
 probe "the old textual predicate would NOT have matched the GHCR pin (the reviewer's finding, reproduced)" ok \
   "$(grep -qE '^[[:space:]]*image:[[:space:]]*postgres@' "$SR/docker-compose.yml" && echo "bad: matched" || echo "ok: no match for 'image: postgres@'; the service parse returns $GOT_PG")"
+probe "the process protections are read by service (postgres: user, cap_drop as a flow list, security_opt)" ok \
+  "$([[ "$(jq -c '.services.postgres | [.user, .cap_drop, .security_opt]' <<<"$CJ")" == '["70:70",["ALL"],["no-new-privileges:true"]]' ]] && echo "ok: $(jq -c '.services.postgres | {user, cap_drop, security_opt}' <<<"$CJ")" || echo "bad: $(jq -c '.services.postgres' <<<"$CJ")")"
+probe "the process protections are read by service (redis: block lists)" ok \
+  "$([[ "$(jq -c '.services.redis | [.user, .cap_drop, .security_opt]' <<<"$CJ")" == '["999:1000",["ALL"],["no-new-privileges:true"]]' ]] && echo "ok: $(jq -c '.services.redis | {user, cap_drop, security_opt}' <<<"$CJ")" || echo "bad: $(jq -c '.services.redis' <<<"$CJ")")"
 CJ_STDIN="$(node "$HERE/compose-services.mjs" - "$SR" < "$SR/docker-compose.yml")"
 probe "the parser reads a compose file from stdin (how restore reads the source revision's file)" ok \
   "$([[ "$(jq -r '.services.postgres.image' <<<"$CJ_STDIN")" == "$PG_GHCR" ]] && echo "ok: same reference from stdin" || echo "bad")"
 CJ_REAL="$(node "$HERE/compose-services.mjs" "$REPO/docker-compose.yml")"
 probe "the real docker-compose.yml is read by service identity (read-only)" ok \
   "$([[ "$(jq -r '.services.postgres.image' <<<"$CJ_REAL")" == *@sha256:* && "$(jq -r '.services.redis.image' <<<"$CJ_REAL")" == *@sha256:* ]] && echo "ok: postgres=$(jq -r '.services.postgres.image' <<<"$CJ_REAL" | cut -c1-40)… redis=$(jq -r '.services.redis.image' <<<"$CJ_REAL" | cut -c1-37)…" || echo "bad")"
+probe "the real docker-compose.yml declares process protections for both services (read-only; what restore applies to its isolated containers)" ok \
+  "$([[ -n "$(jq -r '.services.postgres.user // empty' <<<"$CJ_REAL")" && -n "$(jq -r '.services.redis.user // empty' <<<"$CJ_REAL")" && "$(jq -r '.services.postgres.cap_drop | index("ALL") != null' <<<"$CJ_REAL")" == "true" && "$(jq -r '.services.redis.security_opt | index("no-new-privileges:true") != null' <<<"$CJ_REAL")" == "true" ]] && echo "ok: postgres user=$(jq -r '.services.postgres.user' <<<"$CJ_REAL") redis user=$(jq -r '.services.redis.user' <<<"$CJ_REAL"), cap_drop ALL and no-new-privileges:true on both" || echo "bad: $(jq -c '.services | map_values({user, cap_drop, security_opt})' <<<"$CJ_REAL")")"
 
 printf '\n== probes: end to end — the real scripts refuse stand-in destinations before touching anything\n'
 # backup.sh with EYE_BACKUP_ROOT set to a symlink (stand-in link -> stand-in dir): refused before .eye-local/env is read

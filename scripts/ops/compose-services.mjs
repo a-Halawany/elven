@@ -4,8 +4,14 @@
 //   node compose-services.mjs <docker-compose.yml | ->  [compose-dir]
 //
 // Prints one JSON object:
-//   { services: { <name>: { image, container_name, bind_mounts: [host paths] } },
+//   { services: { <name>: { image, container_name, user, cap_drop, security_opt, bind_mounts: [host paths] } },
 //     bind_mounts: [every bind-mount host path, absolute] }
+//
+// user / cap_drop / security_opt are the service's PROCESS PROTECTIONS (compose
+// `user:`, `cap_drop:`, `security_opt:`), read so that backup.sh can record the
+// deployment's declared configuration next to the pin and restore.sh can start
+// its isolated containers with the same flags (`--user`, `--cap-drop`,
+// `--security-opt`) compose would apply.
 //
 // The file is parsed as YAML (the repository's `yaml` package) and the `image:`
 // of a service is read from services.<name>.image, whatever registry or path the
@@ -46,6 +52,12 @@ const bindOf = (entry) => {
   return null;
 };
 
+const stringList = (v) => {
+  if (typeof v === 'string') return v.length > 0 ? [v] : [];
+  if (Array.isArray(v)) return v.filter((x) => typeof x === 'string' || typeof x === 'number').map(String);
+  return [];
+};
+
 const out = { services: {}, bind_mounts: [] };
 for (const [name, svc] of Object.entries(services)) {
   const s = svc && typeof svc === 'object' ? svc : {};
@@ -53,6 +65,9 @@ for (const [name, svc] of Object.entries(services)) {
   out.services[name] = {
     image: typeof s.image === 'string' ? s.image : null,
     container_name: typeof s.container_name === 'string' ? s.container_name : null,
+    user: typeof s.user === 'string' || typeof s.user === 'number' ? String(s.user) : null,
+    cap_drop: stringList(s.cap_drop),
+    security_opt: stringList(s.security_opt),
     bind_mounts: binds,
   };
   out.bind_mounts.push(...binds);
