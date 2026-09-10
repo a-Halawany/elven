@@ -161,6 +161,14 @@ jobs:
       # proves preservation + intentional transformation + posture equivalence against the
       # code-owned contract, runs the suite matrix on both paths, and self-verifies the
       # checksummed evidence archive it packaged.
+      # The byte-frozen C18 differential verifiers (apps/api/test/gate/fixtures/c18-legacy-*)
+      # read apps/api/test/gate/docker-compose.yml — a tracked view GENERATED from the live
+      # compose file by scripts/gate/legacy-compose-view.mjs (same digests, the pre-registry
+      # `<service>@sha256:<digest>` spelling those verifiers predate). A stale view would make
+      # every frozen leg judge a different pin than the live one, so it is checked here,
+      # blocking, immediately before the gate that depends on it.
+      - name: C18 legacy compose view is current (blocking)
+        run: node scripts/gate/legacy-compose-view.mjs --check
       - name: C18 dual-path database history gate (tracked runner, blocking)
         id: c18_gate
         timeout-minutes: 25

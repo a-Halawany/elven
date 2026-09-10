@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync,
+  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -40,6 +40,10 @@ import {
   postureSql, snapshotQueryPlan, tableRowsSql, verifyCommandGraph,
   // eslint-disable-next-line import/no-relative-packages
 } from '../../../../scripts/gate/lib/c18-query-plan.mjs';
+import {
+  LEGACY_SERVICES, checkLegacyView, legacyImageMapping, legacyImageRef, renderLegacyView, serviceImages,
+  // eslint-disable-next-line import/no-relative-packages
+} from '../../../../scripts/gate/legacy-compose-view.mjs';
 import { auditRowHash, canonicalHeaderDigest, jcsCanonicalize } from '@eye/contracts';
 // eslint-disable-next-line import/no-relative-packages
 import {
@@ -1723,11 +1727,71 @@ describe('C18.1.2 — the frozen 567a70f differential predecessor is byte-verbat
       }
     },
   );
-  it('the fixture ROOT seam is satisfied by a tracked symlink, not by editing the frozen file', () => {
-    // The 567a70f verifier derives ROOT from its own location and reads docker-compose.yml
-    // from there; the fixture stays byte-verbatim and the path is satisfied by a symlink.
-    const link = join(__dirname, 'docker-compose.yml');
-    expect(readFileSync(link, 'utf8')).toBe(readFileSync(join(REPO, 'docker-compose.yml'), 'utf8'));
+  it('the fixture ROOT seam is satisfied by a tracked GENERATED legacy view, not by editing the frozen file', () => {
+    // Every frozen verifier derives ROOT from its own location and reads docker-compose.yml from
+    // there with `/image:\s*(postgres@sha256:…)/` — the spelling of its era. The live file pins
+    // registry-path references that pattern cannot read, so the seam is a tracked view the
+    // generator renders from the live file (scripts/gate/legacy-compose-view.mjs): the live text
+    // verbatim, plus a header, with each service reference respelled `<service>@sha256:<digest>`.
+    const view = join(__dirname, 'docker-compose.yml');
+    expect(lstatSync(view).isSymbolicLink(), 'the seam is a regular tracked file, not a symlink to the live file').toBe(false);
+    const live = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
+    const text = readFileSync(view, 'utf8');
+    expect(text, 'the tracked view is stale: regenerate with `node scripts/gate/legacy-compose-view.mjs`')
+      .toBe(renderLegacyView(live));
+    expect(checkLegacyView({ liveText: live, viewText: text })).toMatchObject({ ok: true, problems: [] });
+  });
+  it('the legacy view carries EXACTLY the live digests, under the names the frozen readers match', () => {
+    const live = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
+    const text = readFileSync(join(__dirname, 'docker-compose.yml'), 'utf8');
+    const liveImages = serviceImages(live) as Record<string, string>;
+    const mapping = legacyImageMapping(live) as Map<string, string>;
+    expect([...LEGACY_SERVICES]).toEqual(['postgres', 'redis']);
+    for (const service of LEGACY_SERVICES) {
+      // The frozen readers' exact pattern, applied to the view.
+      const frozen = new RegExp(`image:\\s*(${service}@sha256:[0-9a-f]{64})`).exec(text)?.[1];
+      const liveRef = liveImages[service];
+      const liveDigest = /@(sha256:[0-9a-f]{64})$/.exec(liveRef)?.[1];
+      expect(liveDigest).toBeDefined();
+      expect(frozen).toBe(`${service}@${liveDigest}`);
+      expect(mapping.get(liveRef)).toBe(frozen);
+      expect(legacyImageRef(service, liveRef)).toBe(frozen);
+      // The live file itself is NOT readable by the frozen pattern (the reason the view exists)
+      // unless it already carries the legacy spelling, in which case the mapping is the identity.
+      const liveFrozen = new RegExp(`image:\\s*(${service}@sha256:[0-9a-f]{64})`).exec(live)?.[1];
+      if (liveFrozen !== undefined) expect(liveRef).toBe(liveFrozen);
+    }
+    // The mapping only ever renames a registry path away; it never relabels a foreign image.
+    expect(() => legacyImageRef('postgres', 'ghcr.io/x/redis@sha256:' + 'a'.repeat(64))).toThrow(/does not name the postgres image/);
+    expect(() => legacyImageRef('postgres', 'postgres:18-alpine')).toThrow(/not a digest-pinned reference/);
+  });
+  it('`legacy-compose-view.mjs --check` passes on the tracked view and fails on a stale one', () => {
+    const script = join(REPO, 'scripts', 'gate', 'legacy-compose-view.mjs');
+    const current = spawnSync('node', [script, '--check'], { cwd: REPO, encoding: 'utf8' });
+    expect(current.stderr).toBe('');
+    expect(current.status).toBe(0);
+    // A live file whose postgres digest moved on while the view stayed put.
+    const tmp = mkdtempSync(join(tmpdir(), 'c18-legacy-view-'));
+    try {
+      const live = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
+      const drifted = live.replace(/(image:\s*[a-z0-9][a-z0-9._/-]*postgres@sha256:)[0-9a-f]{64}/, `$1${'0'.repeat(64)}`);
+      expect(drifted).not.toBe(live);
+      writeFileSync(join(tmp, 'docker-compose.yml'), drifted);
+      const stale = spawnSync('node', [script, '--check', '--live', join(tmp, 'docker-compose.yml')], { cwd: REPO, encoding: 'utf8' });
+      expect(stale.status).toBe(1);
+      expect(stale.stderr).toMatch(/the legacy view is stale/);
+      // And a missing view is stale too.
+      const missing = spawnSync('node', [script, '--check', '--view', join(tmp, 'absent.yml')], { cwd: REPO, encoding: 'utf8' });
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toMatch(/does not exist/);
+      // Regenerating into the temp location from the drifted live file yields exactly the render.
+      const gen = spawnSync('node', [script, '--live', join(tmp, 'docker-compose.yml'), '--view', join(tmp, 'view.yml')], { cwd: REPO, encoding: 'utf8' });
+      expect(gen.status).toBe(0);
+      expect(readFileSync(join(tmp, 'view.yml'), 'utf8')).toBe(renderLegacyView(drifted));
+      expect(/image:\s*postgres@sha256:0{64}/.test(readFileSync(join(tmp, 'view.yml'), 'utf8'))).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
