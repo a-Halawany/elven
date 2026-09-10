@@ -421,7 +421,7 @@ Why `567a70f` was superseded (stated honestly): its evidence is authentic and LE
 NOT secret-contaminated — but its verifier accepted ten fully-rebound false packages. The exact
 567a70f verifier is frozen BYTE-VERBATIM at `apps/api/test/gate/fixtures/c18-legacy-567a70f/`
 (per-file SHA-256 pinned and cross-checked against `git show 567a70f:…` where history is
-available; its ROOT compose lookup is satisfied by a tracked symlink, never by editing the
+available; its ROOT compose lookup is satisfied by a tracked symlink until 2026-09-10, since then by a GENERATED legacy view of the compose pins (`scripts/gate/legacy-compose-view.mjs`, stale-checked in CI) because the live pins are registry-path references the frozen verifiers cannot read, never by editing the
 frozen file), and the in-gate differentials prove it ACCEPTS each of the ten rebound false
 packages that C18.1.2 rejects for its semantic reason. See `GATE2_2_FINAL_CLOSURE_PLAN.md` §17
 for the full A–E correction record.

@@ -645,7 +645,14 @@ success; `build-test` **failure at the C18 gate**: production and offline verifi
 image-user lookup bound in the query plan, and the differential controls then fail because the byte-frozen legacy
 verifiers read the compose file through a committed symlink with a `postgres@sha256:` pattern that cannot read a
 registry-path pin — handled by a digest-equal legacy view of the compose file and the same translation in the
-suite's downgrade (below). CI_FINAL
+suite's downgrade (below). **At `d4730f2` (run 34515658422): `build-test` success (unit, acceptance, integration, upgrade check, the legacy-view
+check and the C18 gate — 4 stages, 612 + 44 controls), `browser-regression` success, `supply-chain` success (C15
+gate, patched-image recheck, FINAL C16, the FINAL-manifest assertion, licence inventory, C17 validation and
+obligations, C15+C16 packaging); run 34515658380 `C19 lifecycle` success. The only non-success steps are "Package +
+verify the C17 evidence archive" and its upload, `skipped` by the workflow's own `github.event_name != 'pull_request'`
+condition — they execute on the push event after the merge in the recorded order; not waived. The checkout is
+GitHub's synthetic merge of the candidate onto the base. This is the first head of this stack where every required
+job is green; it establishes release maintenance for the stack, not product completeness.**
 
 **T4 — Redis protections.** With `USER redis` the upstream setpriv path does not run; `docker-compose.yml` now sets
 `user`, `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` on both services (`user:` is required: the
