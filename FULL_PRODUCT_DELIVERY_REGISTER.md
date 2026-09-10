@@ -309,8 +309,14 @@ backup/restore demonstrated before further destructive environment work (`script
 `docs/ops/BACKUP_RESTORE.md`); (3) the final derived-image candidate with the compatible OpenSSL and
 c-ares fixes, a repository publication workflow, exact names/visibility/platforms/permissions/cost, and
 the owner's approval requested only after preparation. CI wording at this checkpoint: the final unmatched
-set is 13 image rows; the raw `trivy-fs` step reports FAIL (the candidate Dockerfiles' `DS-0002`, §4.2)
-while `trivy-fs-json` reports ok; the checkout is the synthetic merge `a9444570`. Browser: Phase 6 3/3;
+set is 13 image rows; at `2e83945` the raw `trivy-fs` step reported FAIL (the candidate Dockerfiles' `DS-0002`,
+§4.2 — resolved by v3 and the removal of the v1 files: `trivy-fs` ok at `5f84fe2`); at `5f84fe2` the raw
+`gitleaks-worktree`/`gitleaks-history` steps reported FAIL on ONE false positive — the digest prefix of the public
+OpenSSL engine library `capi.so` in a v2 layer listing, matched because the engine name contains the letters
+`api` — corrected in the working tree (digest column first) and, for the two historical commits that carry the
+old layout, governed by a commit-, file- and literal-pinned allowlist entry in `.gitleaks.toml` with its record
+in the runner, the same form as the three earlier entries; every other rule and match stays in scope. The
+checkout is the synthetic merge of the candidate onto the base. Browser: Phase 6 3/3;
 Phase 4/5 one ECB-dependent failure and twelve not run.
 
 ## 8b. The next delivery checkpoint — acceptance units, dependencies, exit evidence

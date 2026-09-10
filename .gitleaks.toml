@@ -112,3 +112,31 @@ treats it as a secret, and equally never stores it as one.
 """
 regexTarget = "match"
 regexes = ['''token=dG9rZW4tMjAxNw''']
+
+# ── 5. A FILE DIGEST in a container-layer listing, not a credential ──────────
+[[allowlists]]
+description = """
+FALSE POSITIVE, scoped as narrowly as the finding — to ONE rule, ONE file, ONE
+literal and TWO commits.
+
+The derived-image reproducibility evidence lists every file of the rebuilt apk
+layer with a truncated SHA-256 and its mtime. One line read:
+
+  ./usr/lib/engines-3/capi.so   sha=7891a5d69534db2e   mtime=...   size=67168
+
+The generic-api-key rule keys on the letters `api` inside the OpenSSL engine name
+`capi.so`, followed within a few characters by `sha=` and a value-shaped run of hex.
+The value is the digest prefix of a PUBLIC library file shipped by Alpine's openssl
+package (`/usr/lib/engines-3/capi.so`); no credential is involved.
+
+The WORKING TREE was corrected by putting the digest column first (no `=` follows a
+path any more), so this exclusion exists solely for the two historical commits that
+carry the original layout. It is pinned to those commit ids, that file and that
+literal; the same digest appearing anywhere else, and every other rule, remain fully
+in scope. All three conditions must hold (condition = AND).
+"""
+condition = "AND"
+commits = ['''a269debe51dc34023dce87102058dbb5d8129d44''', '''5f84fe20b2e46fcea6a6f5ed1bb692b54e1f2db2''']
+paths = ['''(^|/)infra/images/candidates/evidence/v2/reproducibility-redis\.txt$''']
+regexTarget = "match"
+regexes = ['''capi\.so\tsha=7891a5d69534db2e''']

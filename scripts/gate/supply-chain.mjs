@@ -800,6 +800,11 @@ async function main(parsed) {
       match: 'token=dG9rZW4tMjAxNw',
       reason: 'PUBLISHED URL PARAMETER of the anonymous EU Financial Sanctions Files open-data endpoint, printed in the EU Open Data Portal metadata and the public RSS feed; it authenticates nobody and decodes to the ASCII string "token-2017". PHASE1_PLAN §8.1 URL-query redaction strips it from logs, events and audit metadata regardless of this exclusion',
       condition: 'match must be that exact literal; every other token= value and every other rule stay in scope',
+    }, {
+      scope: 'infra/images/candidates/evidence/v2/reproducibility-redis.txt @ a269debe51dc34023dce87102058dbb5d8129d44 and 5f84fe20b2e46fcea6a6f5ed1bb692b54e1f2db2',
+      match: 'capi.so\tsha=7891a5d69534db2e',
+      reason: 'FILE DIGEST PREFIX of the public OpenSSL engine library /usr/lib/engines-3/capi.so in a container-layer listing, matched because the engine name contains the letters api; not a credential. The working tree was corrected by putting the digest column first, so this covers two historical commits only',
+      condition: 'AND (commit AND file AND match)',
     }],
   };
   const ungoverned = exclusionProofs.filter((p) => p.governed === false);
