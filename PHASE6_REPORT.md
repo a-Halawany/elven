@@ -631,7 +631,21 @@ OFFICIAL image per service on both platforms (report only; today: both official 
 gate on the re-pinned tree: PASS, 22 findings, 0 unmatched, 0 unused. Test and fixture adaptations to the new
 artefacts (re-recorded trace streams, the receipt controls moved to the gosu result, the redis controls back to
 their original `closesFalsePass` shape because redis is clean) are listed in the PR body.
-CI_C9D3D68
+CI after the re-pin: at `c9d3d68` (run 34508540200) **C15 passed for the first time since PR #39**, the patched-image
+recheck passed and FINAL C16 passed; the FINAL-manifest assertion failed on the filesystem-result universe (the two
+Dockerfile `config` results, zero findings, were not in its source-owned set) and the C18 gate failed because its
+secret hand-over wrote into a root-owned tmpfs while the pinned images now run as the service user. Both corrected
+at `ea8edb2` (the verifier derives the set from the tracked Dockerfiles and requires zero failures on them; the C18
+sink runs as root and hands the tmpfs to the image's declared user, the value still over STDIN only): run
+34510452880 — `supply-chain` **success end to end** (C15, recheck, FINAL C16, the manifest assertion, licence
+inventory, C17 validation and obligations, C15+C16 packaging); the "Package + verify the C17 evidence archive" step
+is `skipped` by the workflow's own condition (`github.event_name != 'pull_request'`; it runs on push events, i.e.
+after the merge in the recorded order) — reported, not waived; `browser-regression` success; `C19 lifecycle`
+success; `build-test` **failure at the C18 gate**: production and offline verification pass locally with the
+image-user lookup bound in the query plan, and the differential controls then fail because the byte-frozen legacy
+verifiers read the compose file through a committed symlink with a `postgres@sha256:` pattern that cannot read a
+registry-path pin — handled by a digest-equal legacy view of the compose file and the same translation in the
+suite's downgrade (below). CI_FINAL
 
 **T4 — Redis protections.** With `USER redis` the upstream setpriv path does not run; `docker-compose.yml` now sets
 `user`, `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` on both services (`user:` is required: the
