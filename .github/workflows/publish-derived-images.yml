@@ -111,19 +111,15 @@ jobs:
           test -f "$(node -p "JSON.parse(require('fs').readFileSync(process.env.CONTROL,'utf8')).approval.recorded_in")" || { echo '::error::the approval record path does not exist'; exit 1; }
           echo "approved_source_sha=$APPROVED_SHA head=$GITHUB_SHA"
 
-      - name: Check package write authority (the token's package permission, not only login)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NS: ${{ github.repository_owner }}
+      - name: Authenticate to GHCR (authentication only; write authority is proven by the push itself, readability by the anonymous fetch after publication)
         run: |
           set -euo pipefail
-          # The token must carry the packages scope: listing the caller's container packages requires read:packages;
-          # a 403 here means the repository/organisation policy withholds package access from Actions.
-          code="$(curl -sS -o /tmp/pk.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/users/$NS/packages?package_type=container")"
-          echo "packages list for $NS: HTTP $code"
-          [ "$code" = 200 ] || { echo "::error::the job token cannot read packages for $NS (HTTP $code); publication would not be verifiable"; cat /tmp/pk.json; exit 1; }
+          # The job token is an installation token: GitHub's user-scoped package listing rejects it (HTTP 400), so
+          # package authority cannot be pre-checked through that endpoint. The push in the build jobs is the proof of
+          # write authority; the index job records the package API answer for the pushed packages and proves public
+          # readability with an unauthenticated manifest fetch.
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
-          echo 'login ok (authentication only; write authority is proven by the push in the build jobs)'
+          echo 'login ok'
 
   build:
     name: Build and push by digest (${{ matrix.platform }})
@@ -304,7 +300,7 @@ jobs:
           for pair in "postgres $REF_POSTGRES $TAG_POSTGRES" "redis $REF_REDIS $TAG_REDIS"; do set -- $pair
             pkg="$(echo "$2" | sed -E 's#^ghcr\.io/[^/]+/##')"          # e.g. elven/postgres
             enc="$(printf '%s' "$pkg" | sed 's#/#%2F#g')"
-            code="$(curl -sS -o /tmp/pkg-$1.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/users/$NS/packages/container/$enc")"
+            code="$(curl -sS -o /tmp/pkg-$1.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/users/$NS/packages/container/$enc" || echo 000)"
             vis="$(node -p "try{JSON.parse(require('fs').readFileSync('/tmp/pkg-$1.json','utf8')).visibility}catch(e){'unknown'}")"
             repo_link="$(node -p "try{JSON.parse(require('fs').readFileSync('/tmp/pkg-$1.json','utf8')).repository?.full_name ?? 'none'}catch(e){'unknown'}")"
             # anonymous readability: an unauthenticated token request for pull scope, then the manifest
@@ -312,8 +308,8 @@ jobs:
             mcode="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $anon" -H 'Accept: application/vnd.oci.image.index.v1+json' "https://ghcr.io/v2/$NS/$pkg/manifests/$3")"
             echo "$1: package api HTTP $code visibility=$vis repository=$repo_link anonymous-manifest HTTP $mcode" | tee -a receipts/access.txt
           done
-          if grep -q "anonymous-manifest HTTP 200" receipts/access.txt && ! grep -qv "anonymous-manifest HTTP 200" <(grep -c . receipts/access.txt >/dev/null; grep "anonymous-manifest" receipts/access.txt); then
-            echo 'both packages are publicly readable' | tee -a receipts/access.txt
+          if [ "$(grep -c 'anonymous-manifest HTTP 200' receipts/access.txt)" = 2 ]; then
+            echo 'both packages are publicly readable (anonymous manifest fetch succeeded for each)' | tee -a receipts/access.txt
           else
             echo '::warning::at least one package is NOT anonymously readable — the owner must set the package visibility to public (package settings → Danger Zone → Change visibility) and link it to the repository; the images are pushed and their receipts are uploaded' | tee -a receipts/access.txt
           fi
