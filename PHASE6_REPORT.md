@@ -606,7 +606,14 @@ or aliasing the worktree, `.eye-local`, the bundle or any bind mount, refusal of
 `mkdir` destinations validated before any chmod/copy/extraction, and teardown bound to a run manifest;
 `scripts/ops/test-guards.sh` 35/35 (the reviewer's two probes refused); image identity read by Compose service
 from the YAML and both pins recorded in the bundle; second drill 37/37 (`docs/ops/evidence/restore-drill-20260910T161412Z.md`).
-DRILL_PUBLISHED
+The drill was then repeated against the PUBLISHED digests at `c9d3d68` (`docs/ops/evidence/restore-drill-20260910T173954Z.md`): the
+bundle records the GHCR pins and the compose protections; the isolated containers were started from the pins under
+`--user 70:70 / 999:1000 --cap-drop ALL --security-opt no-new-privileges:true`; `/proc/1/status` in both shows all
+capability masks 0 and NoNewPrivs 1; **44/44 checks**, 22 s to a governed read; the live containers, still on the
+official images without those protections, were reported as divergent and left untouched (their recreation is the
+next recorded operation). Not yet done, kept as CP-4/5 work: bundle encryption at rest, a non-empty degraded-journal
+restore, a consistent capture boundary across database/vault/journal/config, and scheduler reconstitution proven
+with collection enabled.
 
 **T3 — the temporary publisher, and the publication.** `publish-derived-images.yml` rebuilt: `push` trigger on
 `publish/derived-images/**` (the bootstrap needs nothing on `main`), inputs from the committed control file
