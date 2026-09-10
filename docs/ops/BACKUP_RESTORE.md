@@ -126,6 +126,21 @@ The script prints file names, sizes, counts and digests only. It loads
 `docker exec` as environment; it never echoes a value and must never be run
 with `set -x`.
 
+**Since the fourth drill (CP-4/5), the same procedure additionally**: builds the
+API from the committed tree at HEAD with the committed lockfile and records the
+BUILD IDENTITY, carrying the produced artifact as `api-dist.tar` (§16); records a
+CAPTURE BOUNDARY on both sides of the window, and the quiescence note when there
+is one (§19); and SEALS every payload file with AES-256-GCM under
+`EYE_BACKUP_PASSPHRASE`, so what is on disk is `pg/eye.dump.enc`,
+`pg/eye_demo.dump.enc`, `pg/globals.sql.enc`, `vault.tar.enc`, `journal.tar.enc`,
+`config/env.enc` and `api-dist.tar.enc`, with `MANIFEST.json` and `RUN.json` in
+the clear (§17). `backup.sh` refuses to run without the passphrase — after the
+destination guards, before the credential file is read. An isolated source may be
+named with `EYE_BACKUP_SOURCE_ROOT` + `EYE_BACKUP_SOURCE_PG_CONTAINER` +
+`EYE_BACKUP_SOURCE_LABEL`; the override is refused when it names a container
+`docker-compose.yml` declares or a root inside a protected path, so it can only
+ever point AWAY from the live deployment.
+
 ## 5. Restore procedure (isolated)
 
 ```
@@ -187,6 +202,20 @@ scripts/ops/restore.sh <bundle> --into-isolated [--keep]
 
 Overrides: `EYE_RESTORE_PG_PORT`, `EYE_RESTORE_REDIS_PORT`, `EYE_RESTORE_API_PORT`,
 `EYE_RESTORE_ROOT`, `EYE_RESTORE_STRICT_BLOB_DBS` (default `eye_demo`; see §10).
+
+**Since the fourth drill (CP-4/5)** the same procedure additionally: verifies the
+passphrase and every GCM tag before writing anything and opens the payload into
+`<restore root>/plain/` (§17); VERIFIES the application artifact it is about to
+start against the bundle's recorded digest and refuses a divergent one, recording
+a differing target build as a source-to-target upgrade (§16); tests that the
+bundle's `config/env` actually opens every LOGIN role over TCP (§18); RECONCILES
+the capture boundary row by row (§19); replays a restored degraded journal and
+checks `/readyz` reports the degradation it implies (§20 and the drill record
+§3); and finishes with a SCHEDULER phase that restarts the same artifact with
+`EYE_SCHEDULER_ENABLED=true` against the empty isolated Redis (§20). Further
+overrides: `EYE_BACKUP_PASSPHRASE` (required for a sealed bundle),
+`EYE_RESTORE_REALIGN_CREDENTIALS`, `EYE_RESTORE_SCHEDULER_PHASE`,
+`EYE_RESTORE_TICK_SOURCE`, `EYE_RESTORE_REPLAY_ROOT`.
 
 ## 6. Verification performed on the restored environment
 
@@ -553,3 +582,397 @@ Drill record — 2026-09-10, third drill:
   recreation is a separate recorded operation); 0 secret values in any
   transcript.
 
+
+## 16. Application-artifact identity (fourth drill onwards)
+
+Sections 1–15 stand unchanged. What this section adds is the answer to the
+reviewer's CP-4/5 finding: *"the drill reuses `apps/api/dist` because no source
+file is newer than the newest dist file. File timestamps do not prove which
+source and dependencies produced that build, and `restore.sh` starts
+`apps/api/dist/main.js` without verifying a recorded application-artifact
+digest."*
+
+Both halves are now closed. `scripts/ops/build-identity.mjs` is the single place
+that knows what an artifact is.
+
+### 16.1 What the backup builds, and what it records
+
+`backup.sh` builds the API **before anything is dumped**:
+
+```
+git archive <HEAD>  |  tar -x -C <build root>/src      # the COMMITTED tree; the worktree is never built
+pnpm install --frozen-lockfile                         # in that checkout
+pnpm --filter @eye/api... build                        # @eye/api alone cannot compile: it needs packages/contracts
+```
+
+No test suite is run. `MANIFEST.json.build` then carries:
+
+| field | meaning |
+| --- | --- |
+| `git.sha`, `git.head_at_build`, `git.branch` | the revision the artifact is of |
+| `git.worktree_clean`, `git.worktree_changes[]` | whether the checkout had uncommitted work, and exactly which paths. The build is of the COMMITTED tree either way; a dirty worktree is a fact to see, not a reason to build something else |
+| `lockfile.sha256`, `lockfile.frozen` | the committed `pnpm-lock.yaml` the dependencies came from |
+| `toolchain.node`, `toolchain.pnpm`, `platform`, `arch` | what compiled it |
+| `build.started_at_utc`, `build.ended_at_utc`, `build.duration_seconds`, `build.commands[]` | the build window and the three commands, each with its own duration |
+| `dist.digest`, `dist.files`, `dist.bytes` | the artifact's identity |
+| `build.root`, `build.source_root`, `build.dist_path`, `build.node_modules` | where that artifact and its dependency tree live |
+
+**The digest** is `sha256` over sorted `"<sha256 of file>  <relative posix path>"`
+lines, one per file. It depends only on contents and relative paths: not on
+mtimes, not on inode order, not on which directory the tree is in. Two trees with
+the same digest have the same bytes at the same paths. It is reproducible — two
+independent `git archive` + frozen-install + build runs of one SHA produce the
+same digest.
+
+The bundle also **carries the artifact**: `api-dist.tar` (a few MB), sealed like
+every other payload file, so a restore is never left looking for a build. And
+`build_matches_running_dist` records whether the deployment's own
+`apps/api/dist` is that same artifact, with the per-file difference in
+`running-dist-comparison.json` when it is not.
+
+**The build root** (a checkout plus its `node_modules`, ~1.2 GB) lives *beside*
+the bundles, at `${EYE_BACKUP_BUILD_ROOT:-$EYE_BACKUP_ROOT/builds}/<timestamp>`,
+guarded like every other destination and recorded in the run manifest.
+`EYE_BACKUP_PRUNE_BUILD=1` removes the checkout after the artifact is tared,
+keeping only `BUILD_IDENTITY.json` and `DIST_ENTRIES.json`; restore then runs the
+bundle's own `api-dist.tar` against the repository's `node_modules` and reports
+whether the repository's `pnpm-lock.yaml` is the one the artifact was built with.
+`EYE_BACKUP_SKIP_BUILD=1` skips the build entirely and the manifest says so — a
+bundle with no build identity is a bundle a restore cannot bind to an artifact,
+and the restore says exactly that instead of pretending otherwise.
+
+### 16.2 What the restore verifies, and what it refuses
+
+Before it starts anything, `restore.sh`:
+
+1. extracts `api-dist.tar` into `<restore root>/artifact/`, **re-digests it** and
+   compares with `MANIFEST.json.build.dist.digest`. A mismatch is fatal:
+   `REFUSED: the artifact in this bundle does not have the digest the bundle
+   records. Nothing is started.`
+2. chooses the tree it will actually run and says so in the receipt — the build
+   root when it still exists (self-contained: the verified dist **and** the
+   `node_modules` of the frozen-lockfile install), otherwise the bundle's own
+   extracted artifact with the repository's `node_modules` and a reported
+   lockfile comparison;
+3. digests the **target host's** `apps/api/dist` and compares. Equal → recorded
+   as "not an upgrade". Different → recorded as a **source-to-target upgrade**,
+   with both git SHAs and both digests printed, and the restore still runs the
+   BUNDLE's artifact:
+
+   ```
+   SOURCE-TO-TARGET UPGRADE, recorded explicitly:
+     bundle artifact: git <sha>  dist sha256:…
+     target artifact: git <sha>  dist sha256:…
+     the restore runs the BUNDLE'S artifact, verified above. Running the target's build over this
+     data would be an upgrade and must be decided by the operator, not accepted silently here.
+   ```
+
+   Deciding to run the target's build over restored data is an operator act: it
+   is a schema/behaviour change against data captured by a different build, and
+   it belongs with the governed in-place procedure of §7, not inside a drill.
+
+`RESTORE_REPORT.json.application_artifact` records all of it:
+`identified`, `bound_to_bundle`, `digest`, `git_sha`, `started_from`, `cwd`,
+`main`, `target_host.{dist_digest,git_head}` and `source_to_target_upgrade`.
+
+A bundle from before this section (`eye-backup-bundle/1`) is still restorable.
+It records no build identity, and the restore says so plainly rather than
+implying a binding it does not have:
+`REPORT: the restore therefore starts <repo>/apps/api/dist (digest …) as an
+UNIDENTIFIED artifact … The receipt below is not bound to a build.`
+
+## 17. Encryption at rest, and recovering the key
+
+Every bundle is encrypted. `backup.sh` refuses to run without
+`EYE_BACKUP_PASSPHRASE`; `restore.sh` refuses a bundle whose passphrase tag does
+not verify.
+
+### 17.1 What the operator needs to restore
+
+**Two things, and neither is derivable from the other:**
+
+1. **the bundle directory** — `pg/*.dump.enc`, `pg/globals.sql.enc`,
+   `vault.tar.enc`, `journal.tar.enc`, `config/env.enc`, `api-dist.tar.enc`,
+   plus `MANIFEST.json` and `RUN.json` in the clear (neither holds a secret);
+2. **the passphrase the bundle was sealed with**, supplied in the environment as
+   `EYE_BACKUP_PASSPHRASE`.
+
+```
+EYE_BACKUP_PASSPHRASE="$(security find-generic-password -w -s eye-backup)" scripts/ops/backup.sh
+EYE_BACKUP_PASSPHRASE="$(security find-generic-password -w -s eye-backup)" scripts/ops/restore.sh <bundle> --into-isolated
+```
+
+**Where the passphrase must be kept:** in the operator's password store (macOS
+Keychain, a password manager, or an offline sealed record) — somewhere that is
+**not** the machine holding the bundles, and **not** this repository. A bundle
+and its passphrase in the same place is a bundle that is not encrypted in any
+sense that matters. It is never typed on a command line (that would put it in
+`ps`), never written into the bundle, and never logged.
+
+**If the passphrase is lost, the bundle is lost.** There is no recovery path and
+no escrow. The data key exists only wrapped under a key derived from that
+passphrase; nothing in the bundle, in this repository or on the host can produce
+it. Rotating the passphrase means taking a **new** backup under the new one — an
+existing bundle cannot be re-wrapped without the old passphrase.
+
+### 17.2 The scheme, and why it is not `openssl enc`
+
+Checked on the drill host (2026-09-10), and re-checked in each drill's preflight:
+
+```
+openssl: OpenSSL 3.6.4                     openssl enc -aes-256-gcm: "enc: AEAD ciphers not supported"
+age: not installed                         gpg: not installed
+```
+
+`openssl enc` has never supported AEAD ciphers, and neither `age` nor `gpg` is
+installed here. The remaining documented fallback is `openssl enc -aes-256-cbc`
+with a separate HMAC. **It is not used**, and the reason is a hard constraint of
+this path rather than a preference: with a per-bundle *random* key, `openssl enc`
+can only be given that key as `-K <hex>` **on the command line**, where every
+process on the host can read it in `ps`. Node is already a hard requirement of
+both scripts, its crypto is OpenSSL's own libcrypto, and it provides the AEAD
+that the CLI will not — with the key material held only in process memory.
+
+**The limitation, stated:** the encryption is AES-256-GCM through `node:crypto`,
+not through the `openssl` command-line tool. A host without node cannot open
+these bundles with `openssl` alone; `scripts/ops/bundle-crypto.mjs` (or an
+equivalent 40-line AES-256-GCM reader driven from `MANIFEST.json.encryption`) is
+required. The manifest records every parameter needed to write one.
+
+| element | value |
+| --- | --- |
+| passphrase | `EYE_BACKUP_PASSPHRASE`, environment only; never a flag, never defaulted, never printed, never in the bundle |
+| KEK | PBKDF2-HMAC-SHA512(passphrase, salt, 600,000 iterations, 32 bytes); 16-byte salt **per bundle** |
+| verification tag | HMAC-SHA256(KEK, `"eye-backup-bundle/2:verify:" + saltHex`) — checked **before any ciphertext is read**, so a wrong passphrase is a clear refusal, not a confusing decrypt error |
+| DEK | 32 random bytes **per bundle**, in memory only |
+| wrapped DEK | AES-256-GCM(KEK, iv, aad `"eye-backup-bundle/2:dek"`); only the wrapped form is recorded |
+| per file | AES-256-GCM(DEK, per-file iv, **aad = the file's path inside the bundle**) — a ciphertext cannot be moved to another path without the tag failing. iv, tag, ciphertext sha256, plaintext sha256 and plaintext size are recorded |
+
+`bundle-crypto.mjs seal` removes each plaintext once its ciphertext is written,
+and `backup.sh` then proves the seal opens before declaring the bundle complete.
+
+### 17.3 Integrity before extraction
+
+`restore.sh <bundle>` (without `--into-isolated`) verifies the passphrase tag,
+then authenticates every sealed file by its GCM tag and decrypts it **to a null
+sink** to check its plaintext sha256 — **no plaintext is written at all**.
+
+With `--into-isolated`, the payload is opened into `<restore root>/plain/` (0700)
+*after* the restore root exists — never next to the ciphertext, and never inside
+the bundle, which is treated as read-only. Each file is decrypted to a temporary
+path and renamed into place only once GCM has authenticated the whole stream, so
+a tampered file never appears as a readable file. Each decrypted file is then
+re-hashed against `MANIFEST.json` as its own check.
+
+`scripts/ops/test-guards.sh` pins the behaviour on stand-in bundles: sealing
+leaves no plaintext; the manifest carries only KDF parameters, a verification tag
+and the wrapped key; a wrong passphrase is refused before any ciphertext is read;
+an absent passphrase is refused and never defaulted; the right passphrase opens
+byte-for-byte; one flipped ciphertext byte gives `authentication FAILED` **and no
+plaintext is written**.
+
+## 18. Credential recovery is verified, not assumed
+
+The bundle copies `.eye-local/env` faithfully. Until the fourth drill nothing
+checked that the copy **opens** the roles the same bundle restores — and it could
+not be checked by hand either, because the postgres image's `pg_hba.conf`
+**trusts** connections made from inside the container:
+
+```
+local   all   all                         trust
+host    all   all   127.0.0.1/32          trust
+host    all   all   all                   scram-sha-256
+```
+
+so `docker exec psql -U eye_app` succeeds whatever the password is. `restore.sh`
+now connects **over TCP**, where `scram-sha-256` actually applies, once per role:
+
+```
+==> credential recovery: does the bundle's config/env actually OPEN the roles the bundle restores?
+  roles restored from pg/globals.sql that can log in: eye eye_app eye_commit eye_identity eye_publisher eye_recovery eye_verifier
+  roles restored NOLOGIN by design (SET ROLE targets, never authenticated directly): eye_audit_allocator eye_system
+  PASS  every LOGIN role restored from pg/globals.sql is opened by the credentials in the bundle's config/env
+```
+
+Only roles that can log in are tested; a `NOLOGIN` role is reported as such, not
+as a failure. A role with no matching credential in the bundle is reported as
+`no credential for this role in the bundle`.
+
+When roles are refused, the check **stays failed** — it is a property of the
+source deployment — and the finding is printed in full. For a drill that must
+continue past it, `EYE_RESTORE_REALIGN_CREDENTIALS=1` re-applies the bundle's own
+credentials to the **isolated cluster's** roles, names every role it realigned in
+the log and in `RESTORE_REPORT.json.credential_recovery.realignment`, and does
+**not** clear the failed check. It changes nothing outside the isolated cluster.
+
+The governed read (login → evidence list → evidence download with the digest
+re-verified) additionally exercises the **operator** credential, and reports the
+deployment's own error code when it is refused, so
+"the bundle's administrator password is not the stored credential" is
+distinguishable from "the restore is broken".
+
+## 19. The capture boundary, and what restore reconciles
+
+The dumps, the vault tar and the journal tar are separate moments. Two mechanisms
+now cover that, and a bundle records which one it got.
+
+**Recorded boundary (always).** `backup.sh` records a boundary on **both** sides
+of the capture window:
+
+- per database: `pg_snapshot_xmin`/`pg_snapshot_xmax` of `pg_current_snapshot()`
+  (a pure read — `pg_current_xact_id()` would assign a transaction id and
+  therefore *write*), the audit head per partition, the newest blob manifest, and
+  the audit/manifest/scheduler counts;
+- for the vault: a listing digest over sorted `"<size> <path>"` lines.
+
+Stability is judged on what was **admitted**, never on the snapshot markers,
+which advance with every transaction anywhere in the cluster.
+
+**Quiescence (isolated sources only).** When the source can be stopped for the
+window, `EYE_BACKUP_QUIESCE_NOTE="…"` records that it was, and the manifest's
+guarantee reads:
+
+```
+COHERENT WINDOW: the recorded boundary did not move between the first and the last artefact,
+so the dumps, the vault tar and the journal tar describe one state.
+```
+
+Otherwise:
+
+```
+BOUNDED RECONCILIATION: each dump is internally consistent (one pg_dump snapshot per database)
+and the boundary is recorded on both sides; restore enumerates everything admitted after
+boundary_before and reports what falls outside the bundle.
+```
+
+**The live deployment is never quiesced.** For it the guarantee is the bounded
+one, and it is honest: `pg_dump` gives each database one snapshot, and the window
+around the vault and journal is recorded and reconciled rather than assumed away.
+
+**Restore reconciles.** It enumerates every audit event beyond its partition's
+recorded head and every blob manifest newer than the recorded newest one, checks
+each such manifest's bytes in the restored vault, and **names** those that have
+none:
+
+```
+==> capture-boundary reconciliation: what the source admitted after the boundary the bundle records
+  <db>: N audit event(s) and M blob manifest(s) admitted after the boundary; of the live ones
+        X/Y have their bytes in the bundle, Z do not
+  <db>: the following fall OUTSIDE the bundle and must be re-collected or accepted as lost:
+        <manifest id>  <vault>/<locator>  admitted <timestamp>
+```
+
+The same window rule governs the count and chain-head checks. A `pg_dump`
+snapshot is taken at an instant *inside* the window, so a monotonically
+increasing counter can legitimately land between the two recorded edges; that is
+accepted and labelled (`inside the capture window [before, after]`) rather than
+failed, and chain heads are accepted when every head's `next_seq` lies between
+the two edges for its partition — with head *consistency* still proved separately
+by `audit.rebuild_chain_heads() would change 0 unfrozen heads`.
+
+## 20. Scheduler reconstruction with collection ENABLED
+
+§3 argues that Redis holds nothing that cannot be rebuilt. The fourth drill
+proves it with collection **on**, against a **fresh, empty** isolated Redis.
+
+The phase runs at the end of `restore.sh --into-isolated`
+(`EYE_RESTORE_SCHEDULER_PHASE=0` skips it) and does this:
+
+1. checks the isolated Redis was **empty** when it started (`dbsize` = 0
+   immediately after the container came up — nothing Redis-shaped is restored
+   from a bundle);
+2. reads what the DATABASE holds: `observation.scheduler_entries` (all of them),
+   how many are **eligible** by migration 0038's own predicate
+   (`status='scheduled'`, contract `active`, `acquisition_mode='live'`, rights
+   `confirmed`, an active agent for the connector), the row count of
+   `observation.scheduled_attempts`, and the rooms carrying a review cadence;
+3. **pauses** the collection and briefing queues **before** the API starts.
+   BullMQ 6 produces an `every` scheduler's first job with delay 0 — as
+   `SCHEDULED_COLLECTION.md` §3.3 already records — so a reconstruction on an
+   unpaused queue starts collecting the instant the workers come up. Pausing
+   first is what makes the reconstruction observable without executing anything;
+4. starts the **verified artifact** with `EYE_SCHEDULER_ENABLED=true` and checks:
+   every eligible entry present in Redis with the cadence the database stores, no
+   ineligible entry present, the collection worker up, the attempt history intact
+   from the database alone, and the room briefing cadence reconciled from
+   `executive.briefings_to_reconcile()`;
+5. **bounds egress** while everything is still paused: it keeps exactly ONE
+   source's job scheduler and removes every other scheduler **and every job those
+   schedulers had produced**, then verifies no foreign collection job remains;
+6. resumes the **collection** queue only (the briefing queue stays paused; its
+   reconstruction is what was being proved, not its agent) and waits for the
+   attempt row.
+
+**About egress.** A replay/upload source **cannot** be used here:
+`observation.schedules_to_reconcile()` requires `acquisition_mode = 'live'`, so a
+replay-mode contract is never reconstructed into the scheduler at all. The bound
+is therefore a single named live contract, and the receipt states which source
+was kept, which were removed, and what the run actually did — including the case
+where the run is refused by governance before it opens, in which the connector
+never runs and no external request is issued:
+
+```
+EGRESS ACTUALLY MADE: none. The run was REFUSED by governance before it opened (…),
+so the connector never ran and no external request was issued.
+```
+
+`EYE_RESTORE_TICK_SOURCE=<source id>` chooses the kept source explicitly;
+otherwise the eligible source with the shortest cadence is used.
+
+## 21. Fourth drill — CP-4/5 (2026-09-10, 22:38–22:40 UTC)
+
+Full record: `docs/ops/evidence/restore-drill-20260910T223824Z.md`. Guard
+probes: `docs/ops/evidence/guard-probes-20260910T223824Z.txt` (51 probes, 51
+passed). The three earlier drill records and their results (37/37 and 44/44)
+are unchanged.
+
+One run, four stages that build on each other, so that §§16–20 are evidenced
+**together** rather than one at a time:
+
+| # | stage | duration | result |
+| --- | --- | --- | --- |
+| 1 | `backup.sh`, LIVE source → bundle `L` (`20260910T223824Z`) | 18 s (build 7.6 s) | 143,300 KB, sealed, build `sha256:4bb050f7…` of `ef85a128` |
+| 2 | `restore.sh L --into-isolated --keep` → isolated `E1` | 26 s | 56 passed, 1 failed |
+| 3 | `E1` driven into a degraded state by the deployment's own writer | ~35 s | 3 journal records, 3 governed availability incidents |
+| 4 | `backup.sh`, ISOLATED source `E1`, **quiesced** → bundle `D` (`20260910T223914Z`) | 17 s (build 7.2 s) | non-empty `journal.tar`, coherent window |
+| 5 | `E1` torn down through its run manifest | <1 s | 2 containers, 1 volume, by recorded id |
+| 6 | `restore.sh D --into-isolated --keep` → `E2` — **the drill restore** | 29 s | **68 passed, 1 failed** |
+| 7 | governed recovery on `E2` (`reconcile-degraded.js`) + restart | ~25 s | 3 incidents reconciled, `degraded_recovered` written, `/readyz` `ok` after restart |
+| 8–9 | teardown; the live deployment after | <5 s | 0 `eye-restore-*`/`eye-cp45-*` left; `eye-postgres`/`eye-redis` same ids and same `StartedAt` |
+| 10 | `scripts/ops/test-guards.sh` | ~20 s | **51 passed, 0 failed** |
+
+What the drill established, in one line each:
+
+- **Build identity.** The bundle carries and identifies its artifact
+  (`sha256:4bb050f7…`, 367 files, from `ef85a128` with a frozen
+  `pnpm-lock.yaml` `024f2bbc…`, node v24.11.1 / pnpm 11.9.0, built 22:38:25Z →
+  22:38:32Z), the restore re-digests what it is about to start, and the target
+  host's own `apps/api/dist` (`sha256:3feb6d5d…`, rebuilt during the drill by a
+  concurrent session) was recorded as a **source-to-target upgrade** instead of
+  being started silently.
+- **Encryption.** All seven payload files sealed with AES-256-GCM under a
+  per-bundle key wrapped by `EYE_BACKUP_PASSPHRASE`; no plaintext on disk; the
+  passphrase verified before any ciphertext was read; every file re-hashed after
+  decryption inside the restore root.
+- **Degraded journal.** Three real `audit_unavailable` records, written by
+  `AuthController.auditUnavailable` after `identity.auth_lookup(text)` was
+  revoked from `eye_identity` **in the isolated database only** and three
+  well-formed logins were refused `503 EYE-INT-001`; restored, replayed
+  (`/readyz` `degraded`, 6 unreconciled = 3 journal + 3 ledger, same
+  `degradedSince`), reconciled by the governed entrypoint, and `ok` again after a
+  restart.
+- **Coherent capture.** `L` and `D` both came out `capture.stable = true`; `D`
+  additionally quiesced. Restore enumerated everything past the boundary (1
+  pre-existing orphan audit row in `eye`, 0 rows without bytes).
+- **Scheduler.** Redis empty (0 keys) → 5/5 eligible schedules reconstructed from
+  `observation.scheduler_entries` with the stored cadences, 2 correctly not
+  reconstructed (replay-mode), the worker up, 97 attempts intact, the room
+  briefing cadence reconciled, and **exactly one** tick served and recorded
+  (97 → 98) with **no external request issued**.
+
+The single failing check, in both restores, is the governed read: the
+administrator password in `.eye-local/env` is refused `EYE-IDN-002` by the
+`platform-admin` principal restored from the same bundle. The database roles were
+realigned with the file; the application principal was not. See the drill record
+§6 and §8 — it is a repair the deployment needs, not something a backup script
+can supply.

@@ -182,5 +182,72 @@ probe "no container was created or removed by the end-to-end probes" ok "$([[ "$
 probe "no eye-restore-* container or volume exists after the probes" ok \
   "$([[ -z "$(docker ps -a --format '{{.Names}}' | grep '^eye-restore-')$(docker volume ls --format '{{.Name}}' | grep '^eye-restore-')" ]] && echo "ok: none" || echo "bad")"
 
+printf '\n== probes: application-artifact identity (scripts/ops/build-identity.mjs, stand-in trees only)\n'
+# A dist tree stands in for the real one: three files, one of them nested.
+AT="$T/artifact/dist"; mkdir -p "$AT/observation"
+printf 'console.log("main");\n' > "$AT/main.js"
+printf 'module.exports = 1;\n' > "$AT/observation/x.js"
+printf '{"a":1}\n' > "$AT/asset.json"
+D1="$(node "$HERE/build-identity.mjs" digest --dist "$AT" | jq -r .digest)"
+# the SAME bytes at the same relative paths, in a different directory, with different mtimes
+cp -R "$T/artifact" "$T/artifact-elsewhere"; find "$T/artifact-elsewhere" -type f -exec touch -t 200001010000 {} +
+D2="$(node "$HERE/build-identity.mjs" digest --dist "$T/artifact-elsewhere/dist" | jq -r .digest)"
+probe "the dist digest depends only on contents and relative paths (same bytes elsewhere, older mtimes, same digest)" ok \
+  "$([[ "$D1" == "$D2" && "$D1" == sha256:* ]] && echo "ok: $D1" || echo "bad: $D1 vs $D2")"
+# a manifest that records that digest, and a tree that has drifted from it
+jq -n --arg d "$D1" '{format:"eye-build-identity/1", git:{sha:"0000000000000000000000000000000000000000"},
+                      build:{dist_path:"'"$AT"'"}, dist:{digest:$d, files:3, bytes:0}}' > "$T/artifact/BUILD_IDENTITY.json"
+node "$HERE/build-identity.mjs" --verify "$T/artifact/BUILD_IDENTITY.json" --dist "$AT" > "$T/artifact/same.json" 2>&1; SAME_RC=$?
+probe "an unchanged artifact verifies against its recorded digest (exit 0)" ok \
+  "$([[ "$SAME_RC" -eq 0 && "$(jq -r .verdict "$T/artifact/same.json")" == "identical" ]] && echo "ok: identical, exit 0" || echo "bad: rc=$SAME_RC $(cat "$T/artifact/same.json")")"
+printf '// drift\n' >> "$AT/observation/x.js"
+node "$HERE/build-identity.mjs" --verify "$T/artifact/BUILD_IDENTITY.json" --dist "$AT" > "$T/artifact/drift.json" 2>&1; DRIFT_RC=$?
+probe "a DIVERGENT artifact is refused (exit 1) and the changed path is named" ok \
+  "$([[ "$DRIFT_RC" -eq 1 && "$(jq -r .verdict "$T/artifact/drift.json")" == "divergent" ]] && echo "ok: divergent, exit 1, computed $(jq -r .computed_digest "$T/artifact/drift.json")" || echo "bad: rc=$DRIFT_RC $(cat "$T/artifact/drift.json")")"
+
+printf '\n== probes: bundle encryption (scripts/ops/bundle-crypto.mjs, stand-in bundle only)\n'
+CB="$T/crypto-bundle"; mkdir -p "$CB/pg"
+head -c 65536 /dev/urandom > "$CB/pg/a.dump"
+printf 'STANDIN_SECRET=not-a-real-value\n' > "$CB/env"
+PLAIN_SHA="$(ops_sha256 "$CB/env")"
+jq -n '{format:"eye-backup-bundle/2"}' > "$CB/MANIFEST.json"
+SEAL="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" seal --bundle "$CB" --files 'pg/a.dump,env' 2>&1)"; SEAL_RC=$?
+jq --argjson c "$SEAL" '. + {encryption:$c}' "$CB/MANIFEST.json" > "$CB/M.tmp" 2>/dev/null && mv "$CB/M.tmp" "$CB/MANIFEST.json"
+probe "sealing removes the plaintext and leaves only ciphertext in the bundle" ok \
+  "$([[ "$SEAL_RC" -eq 0 && ! -e "$CB/env" && ! -e "$CB/pg/a.dump" && -f "$CB/env.enc" && -f "$CB/pg/a.dump.enc" ]] && echo "ok: env.enc and pg/a.dump.enc present, no plaintext" || echo "bad: rc=$SEAL_RC $(ls -A "$CB" "$CB/pg" | tr '\n' ' ')")"
+probe "the bundle key is nowhere in the bundle: only KDF parameters, a verification tag and the WRAPPED key are recorded" ok \
+  "$([[ "$(jq -r '.encryption.kdf.algorithm' "$CB/MANIFEST.json")" == "PBKDF2-HMAC-SHA512" && "$(jq -r '.encryption | has("data_key")' "$CB/MANIFEST.json")" == "false" && -n "$(jq -r '.encryption.wrapped_data_key.tag_hex' "$CB/MANIFEST.json")" ]] && echo "ok: $(jq -c '.encryption | {cipher, kdf: (.kdf.algorithm + " x" + (.kdf.iterations|tostring)), verification_tag: (.verification_tag_hex[0:16] + "…"), wrapped_key_only: (has("data_key")|not)}' "$CB/MANIFEST.json")" || echo "bad")"
+WRONG="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 2' node "$HERE/bundle-crypto.mjs" verify --bundle "$CB" 2>&1)"; WRONG_RC=$?
+probe "a WRONG passphrase is refused by the verification tag, before any ciphertext is read" refused \
+  "$([[ "$WRONG_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$WRONG" | sed 's/^bundle-crypto: //')" || echo "accepted: $WRONG")" "does not open this bundle"
+NOPASS="$(EYE_BACKUP_PASSPHRASE= node "$HERE/bundle-crypto.mjs" verify --bundle "$CB" 2>&1)"; NOPASS_RC=$?
+probe "an ABSENT passphrase is refused and never defaulted" refused \
+  "$([[ "$NOPASS_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$NOPASS" | sed 's/^bundle-crypto: //')" || echo "accepted")" "EYE_BACKUP_PASSPHRASE is not set"
+OPENED="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$CB" --into "$T/crypto-open" 2>&1)"; OPEN_RC=$?
+probe "the right passphrase opens it, byte for byte" ok \
+  "$([[ "$OPEN_RC" -eq 0 && "$(ops_sha256 "$T/crypto-open/env")" == "$PLAIN_SHA" ]] && echo "ok: env recovered with sha256 $PLAIN_SHA" || echo "bad: rc=$OPEN_RC $OPENED")"
+# one byte flipped in the ciphertext
+printf 'X' | dd of="$CB/pg/a.dump.enc" bs=1 seek=100 conv=notrunc 2>/dev/null
+TAMPER="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$CB" --into "$T/crypto-open-tampered" 2>&1)"; TAMPER_RC=$?
+probe "a TAMPERED ciphertext fails authentication and no plaintext is written for it" refused \
+  "$([[ "$TAMPER_RC" -ne 0 && ! -e "$T/crypto-open-tampered/pg/a.dump" ]] && echo "refused: $(head -1 <<<"$TAMPER" | sed 's/^bundle-crypto: //')" || echo "accepted: rc=$TAMPER_RC")" "authentication FAILED"
+
+printf '\n== probes: the backup source override can only point AWAY from the live deployment\n'
+probe "backup.sh refuses to run without EYE_BACKUP_PASSPHRASE (before anything is read or written)" refused \
+  "$(EYE_BACKUP_PASSPHRASE= EYE_BACKUP_ROOT="$T/fresh" "$HERE/backup.sh" 2>&1 | grep -m1 '^backup: EYE_BACKUP_PASSPHRASE' | sed 's/^backup: /refused: /')" "is not set in the environment"
+mkdir -p "$T/standin-source"
+LIVE_PG_NAME="$(jq -r '.services.postgres.container_name' <<<"$CJ_REAL")"
+probe "backup.sh refuses an EYE_BACKUP_SOURCE_PG_CONTAINER that docker-compose.yml declares ($LIVE_PG_NAME)" refused \
+  "$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' EYE_BACKUP_ROOT="$T/fresh" \
+      EYE_BACKUP_SOURCE_ROOT="$T/standin-source" EYE_BACKUP_SOURCE_PG_CONTAINER="$LIVE_PG_NAME" \
+      EYE_BACKUP_SOURCE_LABEL="stand-in" "$HERE/backup.sh" 2>&1 | grep -m1 'refused:' | sed 's/^backup: //')" "may only point AWAY from the live deployment"
+probe "backup.sh refuses an EYE_BACKUP_SOURCE_ROOT inside the real repository" refused \
+  "$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' EYE_BACKUP_ROOT="$T/fresh" \
+      EYE_BACKUP_SOURCE_ROOT="$REPO/apps" EYE_BACKUP_SOURCE_PG_CONTAINER="eye-cp45-standin" \
+      EYE_BACKUP_SOURCE_LABEL="stand-in" "$HERE/backup.sh" 2>&1 | grep -m1 '^backup: refused' | sed 's/^backup: //')" "protected path $REPO"
+AFTER2="$(docker ps -aq 2>/dev/null | sort | cksum | awk '{print $1}')"
+probe "still no container was created or removed by the new probes" ok \
+  "$([[ "$BEFORE" == "$AFTER2" ]] && echo "ok: docker ps -aq unchanged ($AFTER2)" || echo "bad: $BEFORE -> $AFTER2")"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [[ "$FAIL" -eq 0 ]]

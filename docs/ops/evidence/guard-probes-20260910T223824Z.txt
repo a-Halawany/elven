@@ -1,0 +1,134 @@
+# scripts/ops/test-guards.sh — CP-4/5 drill run, 2026-09-10 22:40 UTC
+# 51 probes: the destination guards, the compose parser, the APPLICATION-ARTIFACT
+# identity (build-identity.mjs) and the BUNDLE ENCRYPTION (bundle-crypto.mjs),
+# all against disposable stand-in directories under mktemp. The real repository,
+# .eye-local, the live containers and the live volumes are never a destination.
+
+STAGE 10 — scripts/ops/test-guards.sh
+========================================================================
+stand-in root: /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x
+host: Darwin 25.5.0, bash 3.2.57(1)-release
+
+protected set of the stand-in repository (physical):
+  /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+  /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/.git
+  /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/.eye-local
+  /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/apps/api/.eye-local
+  /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/bind-host
+
+== probes: containment and symlinks (library functions, stand-in paths only)
+PASS  outside symlink into the stand-in repository is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/outside-link (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/existing-subdir) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  a fresh path beneath that outside symlink is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/outside-link/new-root (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/existing-subdir/new-root) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  a dangling outside symlink whose target would be inside the repository is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/dangling-link-into-repo/new-root (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/not-yet-created/new-root) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  backup root equal to the stand-in repository is refused
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  backup root inside the stand-in repository is refused
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/existing-subdir (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/existing-subdir) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  backup root that is an ANCESTOR of the stand-in repository is refused
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  backup root equal to the stand-in .eye-local is refused
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/.eye-local (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo/.eye-local) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/repo
+PASS  destination inside the compose bind-mount host path is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/bind-host/sub (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/bind-host/sub) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/bind-host
+PASS  a destination that already exists is refused (fresh mkdir required)
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/exists-already already exists (a fresh destination is required)
+PASS  a destination that exists as a file is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/exists-as-file already exists (a fresh destination is required)
+PASS  a destination that exists as a dangling symlink is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/dangling already exists (a fresh destination is required)
+PASS  a nested symlinked ancestor of a fresh destination is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/a/link/new/root: /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/a/link is a symlink (symlinked destinations and symlinked ancestors are not accepted)
+PASS  a symlinked backup root is refused as a root
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/a/link is a symlink
+PASS  a missing backup root is refused (it must already exist)
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/missing-root does not exist (create it first: mkdir -m 700 /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/missing-root)
+PASS  a legitimate fresh destination outside every protected path is accepted
+      accepted: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/fresh/root (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/fresh/root)
+PASS  …and is created with a plain mkdir
+      created: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/fresh/root
+PASS  …and a second run against the same path is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/fresh/root already exists (a fresh destination is required)
+PASS  …the backup root form: an existing, non-symlink directory is accepted as a root
+      ok: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/fresh exists, is a directory and is not a symlink
+PASS  with a symlinked .eye-local, a destination inside its target is refused
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/eye-local-real/new (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/eye-local-real/new) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/eye-local-real
+
+== probes: image lookup by compose service identity (GHCR-pinned stand-in compose file)
+PASS  services.postgres.image is the GHCR reference
+      ok: ghcr.io/a-halawany/elven/postgres@sha256:1111111111111111111111111111111111111111111111111111111111111111
+PASS  services.redis.image is the GHCR reference
+      ok: ghcr.io/a-halawany/elven/redis@sha256:2222222222222222222222222222222222222222222222222222222222222222
+PASS  container_name is read by service
+      ok: eye-postgres
+PASS  the bind-mount host path is discovered from the service's volumes
+      ok: /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/bind-host
+PASS  the old textual predicate would NOT have matched the GHCR pin (the reviewer's finding, reproduced)
+      ok: no match for 'image: postgres@'; the service parse returns ghcr.io/a-halawany/elven/postgres@sha256:1111111111111111111111111111111111111111111111111111111111111111
+PASS  the process protections are read by service (postgres: user, cap_drop as a flow list, security_opt)
+      ok: {"user":"70:70","cap_drop":["ALL"],"security_opt":["no-new-privileges:true"]}
+PASS  the process protections are read by service (redis: block lists)
+      ok: {"user":"999:1000","cap_drop":["ALL"],"security_opt":["no-new-privileges:true"]}
+PASS  the parser reads a compose file from stdin (how restore reads the source revision's file)
+      ok: same reference from stdin
+PASS  the real docker-compose.yml is read by service identity (read-only)
+      ok: postgres=ghcr.io/a-halawany/elven/postgres@sha256… redis=ghcr.io/a-halawany/elven/redis@sha256…
+PASS  the real docker-compose.yml declares process protections for both services (read-only; what restore applies to its isolated containers)
+      ok: postgres user=70:70 redis user=999:1000, cap_drop ALL and no-new-privileges:true on both
+
+== probes: end to end — the real scripts refuse stand-in destinations before touching anything
+PASS  backup.sh refuses a symlinked EYE_BACKUP_ROOT (rc=1)
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/a/link is a symlink
+PASS  backup.sh refuses an EYE_BACKUP_ROOT that does not exist
+      refused: EYE_BACKUP_ROOT /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/no-such-root does not exist (create it first: mkdir -m 700 /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/no-such-root)
+PASS  backup.sh created nothing under the stand-in
+      ok: /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/real-outside is empty
+PASS  restore.sh refuses an EYE_RESTORE_ROOT that already exists (rc=1)
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/restore-exists already exists (a fresh destination is required)
+PASS  restore.sh refuses an EYE_RESTORE_ROOT beneath an outside symlink into the stand-in repository
+      refused: restore root parent /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/outside-link is a symlink
+PASS  restore.sh refuses an EYE_RESTORE_ROOT inside the bundle being restored
+      refused: restore root /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/standin-bundle/root (physical /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/standin-bundle/root) is inside, equal to, or an ancestor of the protected path /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/standin-bundle
+PASS  restore.sh refuses an EYE_RESTORE_ROOT whose parent is a symlink
+      refused: restore root parent /private/var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-guard-probes.MjH29x/a/link is a symlink
+PASS  no container was created or removed by the end-to-end probes
+      ok: docker ps -aq unchanged (1708656073)
+PASS  no eye-restore-* container or volume exists after the probes
+      ok: none
+
+== probes: application-artifact identity (scripts/ops/build-identity.mjs, stand-in trees only)
+PASS  the dist digest depends only on contents and relative paths (same bytes elsewhere, older mtimes, same digest)
+      ok: sha256:7ee087862a67ed96d3f2bc49225837472808bccd90d702519b0752f38a89f277
+PASS  an unchanged artifact verifies against its recorded digest (exit 0)
+      ok: identical, exit 0
+PASS  a DIVERGENT artifact is refused (exit 1) and the changed path is named
+      ok: divergent, exit 1, computed sha256:e63f74e379cfe315063e02fa2bcc6ec5d629fea956e5a36cd05cdff5bcb98709
+
+== probes: bundle encryption (scripts/ops/bundle-crypto.mjs, stand-in bundle only)
+PASS  sealing removes the plaintext and leaves only ciphertext in the bundle
+      ok: env.enc and pg/a.dump.enc present, no plaintext
+PASS  the bundle key is nowhere in the bundle: only KDF parameters, a verification tag and the WRAPPED key are recorded
+      ok: {"cipher":"aes-256-gcm","kdf":"PBKDF2-HMAC-SHA512 x600000","verification_tag":"ec6b763f536c7574…","wrapped_key_only":true}
+PASS  a WRONG passphrase is refused by the verification tag, before any ciphertext is read
+      refused: the passphrase in EYE_BACKUP_PASSPHRASE does not open this bundle (its verification tag does not match).
+PASS  an ABSENT passphrase is refused and never defaulted
+      refused: EYE_BACKUP_PASSPHRASE is not set in the environment.
+PASS  the right passphrase opens it, byte for byte
+      ok: env recovered with sha256 77aee3e60ba75c7e6b70d58d844bc9be68b07fb8f3896d135a58862e06f8e578
+PASS  a TAMPERED ciphertext fails authentication and no plaintext is written for it
+      refused: pg/a.dump: authentication FAILED (Unsupported state or unable to authenticate data) — the bundle is corrupt or was tampered with
+
+== probes: the backup source override can only point AWAY from the live deployment
+PASS  backup.sh refuses to run without EYE_BACKUP_PASSPHRASE (before anything is read or written)
+      refused: EYE_BACKUP_PASSPHRASE is not set in the environment.
+PASS  backup.sh refuses an EYE_BACKUP_SOURCE_PG_CONTAINER that docker-compose.yml declares (eye-postgres)
+      refused: EYE_BACKUP_SOURCE_* names eye-postgres, which docker-compose.yml declares — the source override may only point AWAY from the live deployment
+PASS  backup.sh refuses an EYE_BACKUP_SOURCE_ROOT inside the real repository
+      refused: EYE_BACKUP_SOURCE_ROOT /Users/halawany/work/personal/mohammed/new_project/apps (physical /Users/halawany/work/personal/mohammed/new_project/apps) is inside, equal to, or an ancestor of the protected path /Users/halawany/work/personal/mohammed/new_project
+PASS  still no container was created or removed by the new probes
+      ok: docker ps -aq unchanged (1708656073)
+
+51 passed, 0 failed
+test-guards rc=0
