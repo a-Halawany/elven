@@ -16,21 +16,34 @@ it, and the gate recomputes the digest from these bytes on every run.
 
 ## 1. What was scanned
 
-| Item | Value |
-|---|---|
-| Configured reference | `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` |
-| Reference kind | OCI image **index** (manifest list), 16 children — 8 runnable platforms + 8 buildkit attestations |
-| Resolved platform | `linux/amd64` |
-| Scanned child manifest | `sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b` |
-| Index integrity check | SHA-256 of the raw returned index manifest is verified to equal the digest in the configured reference **before** any child digest is trusted |
-| Upstream tag (informational) | `postgres:18-alpine` |
-| Second pinned image | `redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241` → `linux/amd64` child `sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a` — **2 HIGH findings, governed by SCX-0008 and SCX-0009** |
+**Re-pin of 2026-09-10 (TEMPORARY, owner-approved — `docs/images/DERIVED_IMAGES_APPROVAL.md`).**
+The two configured references are the derived maintenance images published by
+`.github/workflows/publish-derived-images.yml` (run `34502081248`, bound to the approved recipes of
+`59a2459`, receipts under `infra/images/published/20260910/`) from `infra/images/candidates/v2/`:
+the previously pinned official indexes plus the util-linux, OpenSSL and c-ares fixes and an
+explicit non-root `USER`. Sections 1 and 3 describe THESE artefacts; the official images they
+were derived from, and the records that governed their findings, are recorded in §3.6.
+
+| Item | postgres | redis |
+|---|---|---|
+| Configured reference | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` | `ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15` |
+| Human tag (informational) | `ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910` | `ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910` |
+| Reference kind | OCI image **index**, 2 children, both runnable platforms, no attestation manifests | same |
+| Resolved platform | `linux/amd64` | `linux/amd64` |
+| Scanned child manifest | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` | `sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432` |
+| Other child (not scanned by the gate) | `linux/arm64` `sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc` | `linux/arm64` `sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc` |
+| Index integrity check | SHA-256 of the raw returned index manifest is verified to equal the digest in the configured reference **before** any child digest is trusted (verified 2026-09-10 by anonymous fetch: 647 bytes each, digests equal) | same |
+| Derived from (official index) | `postgres:18-alpine` `sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` (Alpine 3.24.1) | `redis:8-alpine` `sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241` (Alpine 3.23.5) |
+| Packages changed by the derivation | `libuuid` 2.42.1-r0 → 2.42.3-r1; `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0; `c-ares` 1.34.6-r0 → 1.34.8-r0; `USER postgres` | `setpriv` 2.41.4-r0 → 2.41.6-r1; `libcrypto3`/`libssl3` 3.5.7-r0 → 3.5.8-r0; `USER redis` |
+| HIGH/CRITICAL findings on the scanned child | **22**, all Go-stdlib rows in `usr/local/bin/gosu` (unchanged binary), governed by SCX-0002…0005; OS packages: **0** | **0** |
 
 The `linux/amd64` child is the one that matters: CI runs on `ubuntu-latest` and the C16
 target descriptor resolves `linux/x64/glibc`. A scanner given no `--platform` follows the
 host, so an arm64 workstation would examine a different child with different layers and
 different findings. Every disposition below is therefore scoped to `linux/amd64` and cannot
-govern a finding on any other platform.
+govern a finding on any other platform. (The `linux/arm64` children were scanned by the
+publisher with the same scanner and carry the identical 22-row `gosu` set and 0 OS findings —
+`infra/images/published/20260910/postgres-arm64.trivy.txt` — but that scan is not the gate's.)
 
 ## 2. Scanner and database identity
 
@@ -40,41 +53,37 @@ govern a finding on any other platform.
 | Executable authentication | The release archive digest **and** the extracted executable digest are verified at install; the runner re-digests the executable it resolves before scanning. Distribution rebuilds (e.g. Homebrew) report the same version with different bytes and are rejected. |
 | Vulnerability DB | `mirror.gcr.io/aquasec/trivy-db:2`, schema version 2, bound by the byte digests of `<cache>/db/metadata.json` and `<cache>/db/trivy.db`. trivy 0.73 publishes no OCI digest for the vuln DB; that upstream limitation is recorded rather than papered over. |
 | Freshness ceiling | 24 hours, computed against the scan timestamp; past-due, negative-age, malformed and absent all fail closed. |
-| Misconfiguration checks bundle | `mirror.gcr.io/aquasec/trivy-checks:2`, OCI digest `sha256:1583562f8b90ed2a071b99f0e5ffff6b57e4ceb6ca3e4796577b4e6a339eb74c`, major version 2 |
+| Misconfiguration checks bundle | `mirror.gcr.io/aquasec/trivy-checks:2`, major version 2; the OCI digest is captured per run in the evidence manifest (`sha256:1583562f8b90ed2a071b99f0e5ffff6b57e4ceb6ca3e4796577b4e6a339eb74c` at the 2026-08-13 run that first produced this document) |
 | Scan mode | `--ignorefile /dev/null` — **no suppression**. The complete finding set is reconciled against the records below; trivy's own ignore mechanism is never relied upon. |
 | Cache discipline | Authoritative scans run `--skip-db-update --skip-check-update` against a captured isolated cache whose byte-level fingerprint is proven unchanged afterwards. |
 | Severity filter | `HIGH,CRITICAL` |
 
 ## 3. Findings and their dispositions
 
-Twenty-seven findings across the two `linux/amd64` children — twenty-five on postgres and two on
-redis — governed by nine records.
+Twenty-two findings across the two `linux/amd64` children — twenty-two on postgres, all in the
+`gosu` binary, and none on redis — governed by four records (SCX-0002…0005), every one of them
+**re-issued on 2026-09-10** for the derived image. The five records that governed findings of the
+official images and now match nothing (SCX-0001, SCX-0006…0009) are retired in §3.6.
 
-### SCX-0001 — c-ares (OS package)
+**What a re-issue is, and is not.** A record is scoped to an exact image digest. The image digest
+changed, so each surviving record was re-approved for the new scope on 2026-09-10 (`approved_on`
+and `reviewed_on` say so — an approval date is a claim about when a human looked at THIS scope,
+and the repository has already corrected one backdated approval, see SCX-0004). What did NOT
+change: the advisories, package, PURL, installed version, severities and result target; the
+evidence and its dates (the govulncheck analysis of 2026-08-14, Go vulnerability database as of
+2026-08-14); and the expiry, 2026-11-05, which is not extended by the re-issue. The basis for
+carrying the analysis over is byte identity: `/usr/local/bin/gosu` in the derived image is the
+same file as in the base on each platform — `linux/amd64`
+`52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` (1,769,900 bytes,
+`1.19 (go1.24.6 on linux/amd64; gc)`), `linux/arm64`
+`3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` — recorded in
+`infra/images/candidates/evidence/v2/gosu-verification.txt` (bound by every record, sha256
+`e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359`) and re-measured on
+2026-09-10 inside the PUBLISHED children (`sha256sum /usr/local/bin/gosu` in
+`ghcr.io/…/postgres@sha256:bc90ce6b…` and `@sha256:d3dd485b…`, same digests, same sizes, same
+toolchain stamp). The unsuppressed scan of the published `linux/amd64` child reports the identical
+22 rows (same advisories, `pkg:golang/stdlib@v1.24.6`, target `usr/local/bin/gosu`).
 
-| Field | Value |
-|---|---|
-| Advisory | `CVE-2026-33630` |
-| Severity | HIGH |
-| Package | `c-ares` |
-| PURL | `pkg:apk/alpine/c-ares@1.34.6-r0?arch=x86_64&distro=3.24.1` |
-| Installed version | `1.34.6-r0` |
-| Result target | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)` |
-| Owner | founding-engineer |
-| Approver | gate-2.2-security-review |
-| Approved | 2026-08-05 |
-| Expires | 2026-11-05 |
-
-**Reason.** `c-ares 1.34.6-r0` is an Alpine OS package inside `postgres:18-alpine`. The fix
-(`1.34.8-r0`) is not present in any published `postgres:18-alpine` build, so there is no
-patched official image to re-pin to. The finding is denial-of-service class against DNS
-resolution.
-
-**Compensating controls.**
-1. PostgreSQL is bound to loopback only — `docker-compose.yml` publishes
-   `127.0.0.1:5432:5432` — so the resolver is not reachable from off-host.
-2. Phase 0 runs a LOCAL-ONLY development profile under `EXC-P0-004`.
-3. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate.
 
 ### SCX-0002 — Go standard library in `gosu` (HIGH set)
 
@@ -86,10 +95,13 @@ resolution.
 | PURL | `pkg:golang/stdlib@v1.24.6` |
 | Installed version | `v1.24.6` |
 | Result target | `usr/local/bin/gosu` |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scanned child | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` (`linux/amd64`) |
 | Owner | founding-engineer |
 | Approver | gate-2.2-security-review |
-| Approved | 2026-08-05 |
-| Expires | 2026-11-05 |
+| Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…` (child `b6a16ed0…`) |
+| Re-issued (approved / reviewed) | 2026-09-10, for the derived image above |
+| Expires | 2026-11-05 (unchanged) |
 
 **Reason.** Go standard-library advisories compiled into the upstream `gosu` 1.19 binary
 shipped by every current official postgres image variant. `gosu` executes once at container
@@ -114,10 +126,13 @@ exists.
 | PURL | `pkg:golang/stdlib@v1.24.6` |
 | Installed version | `v1.24.6` |
 | Result target | `usr/local/bin/gosu` |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scanned child | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` (`linux/amd64`) |
 | Owner | founding-engineer |
 | Approver | gate-2.2-security-review |
-| Approved | 2026-08-05 |
-| Expires | 2026-11-05 |
+| Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…` (child `b6a16ed0…`) |
+| Re-issued (approved / reviewed) | 2026-09-10, for the derived image above |
+| Expires | 2026-11-05 (unchanged) |
 
 **Reason.** The same upstream `gosu` binary, but held as a **separate record on purpose**. A
 disposition approved for HIGH must not silently absorb a CRITICAL that appears later under
@@ -136,18 +151,28 @@ the expiry date.
 | Advisories | `CVE-2026-39821` (1) |
 | Severity | HIGH |
 | Classification | **NOT_AFFECTED — vulnerable_code_not_present** (version-only match) |
-| Image (index) | `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` |
-| Scanned child | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b` |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scanned child | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` |
+| Analysed on (evidence) | `postgres@sha256:9a8afca5…`, child `b6a16ed0…` — the same `gosu` bytes, see the re-issue note below |
 | Platform | `linux/amd64` |
 | Package | `stdlib` |
 | PURL | `pkg:golang/stdlib@v1.24.6` |
 | Installed version | `v1.24.6` |
 | Result target | `usr/local/bin/gosu` |
-| Binary sha256 | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` |
+| Binary sha256 | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` (identical in the base child `b6a16ed0…` and the derived child `bc90ce6b…`) |
 | Owner | founding-engineer |
 | Approver | gate-2.2-security-review |
-| Approved | 2026-08-14 |
-| Expires | 2026-11-05 |
+| Originally approved | 2026-08-14, for `postgres@sha256:9a8afca5…` |
+| Re-issued (approved / reviewed) | 2026-09-10, for the derived image above |
+| Expires | 2026-11-05 (unchanged) |
+
+**Re-issue note, 2026-09-10.** The image reference changed; the analysed binary did not. The
+derived image's recipe (`infra/images/candidates/v2/postgres-18-alpine.Dockerfile`) touches four apk
+packages and the config `USER` and never `/usr/local/bin/gosu`; `infra/images/candidates/evidence/v2/gosu-verification.txt`
+records the binary's sha256, size, mtime and toolchain stamp as identical between the base child
+and the candidate on both platforms, and the same measurement was repeated inside the published
+children on 2026-09-10 (§3, opening). The govulncheck evidence bound below therefore describes the
+binary the gate now scans, and neither its date (2026-08-14) nor the expiry is extended.
 
 **Publication timeline — correcting the R3.4.4 record.** The C16-R3.4.4 amendment stated these
 two advisories were "published upstream after 2026-08-05". **That was false.** Their NVD
@@ -239,23 +264,7 @@ can call; it does not prove unreachability under reflection or dynamic dispatch.
 reflects the Go vulnerability database as of the run date. This record therefore expires with
 the rest of the set on **2026-11-05** and is not extended by its stronger basis.
 
-**Current reconciliation.** The postgres image scan reports **25** findings and the redis image
-reports **2**, for 27 in total, governed as:
-
-| Record | Image | Findings |
-|---|---|---|
-| SCX-0001 | postgres | 1 — `c-ares` |
-| SCX-0002 | postgres | 14 — `stdlib`, risk-accepted |
-| SCX-0003 | postgres | 1 — `stdlib`, CRITICAL |
-| SCX-0004 | postgres | 1 — `stdlib`, NOT_AFFECTED |
-| SCX-0005 | postgres | 6 — `stdlib`, NOT_AFFECTED, approved 2026-08-15 |
-| SCX-0006 | postgres | 1 — `libcrypto3`, CVE-2026-14456 |
-| SCX-0007 | postgres | 1 — `libssl3`, CVE-2026-14456 |
-| SCX-0008 | redis | 1 — `libcrypto3`, CVE-2026-14456 |
-| SCX-0009 | redis | 1 — `libssl3`, CVE-2026-14456 |
-
-25 + 2 = 27, with 0 unmatched and 0 unused. Redis is no longer clean: it acquired two findings
-when CVE-2026-14456 was published, and the summary above says so.
+**Current reconciliation.** See §3.5.
 
 
 
@@ -266,8 +275,9 @@ when CVE-2026-14456 was published, and the summary above says so.
 | Advisories | `CVE-2026-33818`, `CVE-2026-56853`, `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862` (6) |
 | Severity | HIGH |
 | Classification | **NOT_AFFECTED — vulnerable_code_not_present** (version-only match) |
-| Image (index) | `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15` |
-| Scanned child | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b` |
+| Image (index) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7` |
+| Scanned child | `sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a` |
+| Analysed on (evidence) | `postgres@sha256:9a8afca5…`, child `b6a16ed0…` — the same `gosu` bytes (SCX-0004, re-issue note) |
 | Platform | `linux/amd64` |
 | Package | `stdlib` |
 | PURL | `pkg:golang/stdlib@v1.24.6` |
@@ -275,9 +285,9 @@ when CVE-2026-14456 was published, and the summary above says so.
 | Result target | `usr/local/bin/gosu` |
 | Owner | founding-engineer |
 | Approver | gate-2.2-security-review |
-| Approved | 2026-08-15 |
-| Reviewed | 2026-08-15 |
-| Expires | 2026-11-05 |
+| Originally approved / reviewed | 2026-08-15, for `postgres@sha256:9a8afca5…` |
+| Re-issued (approved / reviewed) | 2026-09-10, for the derived image above |
+| Expires | 2026-11-05 (unchanged) |
 
 **Why a separate record.** These six advisories entered the scanner's database on 2026-08-14 and
 were first seen by this project on 2026-08-15. SCX-0004 was created and approved on 2026-08-14
@@ -310,121 +320,48 @@ re-scans monthly as a blocking gate. Reachability analysis is a static over-appr
 not cover reflection or dynamic dispatch, so the operational controls still apply. Expiry is
 **2026-11-05**, no later than the rest of the set.
 
-**Current reconciliation.** 27 findings: SCX-0001 (1) + SCX-0002 (14) + SCX-0003 (1) +
-SCX-0004 (1) + SCX-0005 (6) + SCX-0006 (1) + SCX-0007 (1) + SCX-0008 (1) + SCX-0009 (1) = 27, with
-0 unmatched and 0 unused.
+**Current reconciliation.** See §3.5.
 
+### 3.5 Current reconciliation (2026-09-10)
 
-### SCX-0006 — OpenSSL `libcrypto3` in postgres (QUIC listener DoS)
+The postgres image scan reports **22** findings and the redis image **0**, governed as:
 
-| Field | Value |
-|---|---|
-| Advisory | `CVE-2026-14456` |
-| Severity (scanner) | HIGH |
-| Severity (vendor) | **Low** — OpenSSL's own severity rating for this advisory |
-| CVSS | 7.5 `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H` (Red Hat) — availability only |
-| Package | `libcrypto3` |
-| PURL | `pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.24.1` |
-| Installed version | `3.5.7-r0` |
-| Fixed version | `3.5.8-r0` |
-| Result target | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)` |
-| Owner | founding-engineer |
-| Approver | gate-2.2-security-review |
-| Approved | 2026-09-01 |
-| Expires | 2026-11-05 |
+| Record | Image | Classification | Findings |
+|---|---|---|---|
+| SCX-0002 | postgres | RISK_ACCEPTED | 14 — `stdlib` HIGH in `usr/local/bin/gosu` |
+| SCX-0003 | postgres | RISK_ACCEPTED | 1 — `stdlib` CRITICAL in `usr/local/bin/gosu` |
+| SCX-0004 | postgres | NOT_AFFECTED | 1 — `stdlib` HIGH in `usr/local/bin/gosu` |
+| SCX-0005 | postgres | NOT_AFFECTED | 6 — `stdlib` HIGH in `usr/local/bin/gosu` |
 
-### SCX-0007 — OpenSSL `libssl3` in postgres (QUIC listener DoS)
+14 + 1 + 1 + 6 = 22, with 0 unmatched and 0 unused. Redis is clean again, and the postgres OS
+package set is clean for the first time since the util-linux advisories entered the scanner
+database on 2026-09-06 (those seven HIGH findings — CVE-2026-53612, -53613, -53614, -76642,
+-78408, -78409, -78410 against `libuuid` — were never governed by a record; the gate stayed red on
+them by design until a rebuilt image existed, and the derived image is that rebuild).
 
-| Field | Value |
-|---|---|
-| Advisory | `CVE-2026-14456` |
-| Severity (scanner) | HIGH |
-| Severity (vendor) | **Low** |
-| Package | `libssl3` |
-| PURL | `pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.24.1` |
-| Installed version | `3.5.7-r0` |
-| Fixed version | `3.5.8-r0` |
-| Result target | `postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)` |
-| Owner | founding-engineer |
-| Approver | gate-2.2-security-review |
-| Approved | 2026-09-01 |
-| Expires | 2026-11-05 |
+### 3.6 Retired records (2026-09-10)
 
-### SCX-0008 — OpenSSL `libcrypto3` in redis (QUIC listener DoS)
+The following records governed findings of the previously pinned OFFICIAL images. In the derived
+images pinned on 2026-09-10 those findings no longer exist — the derived image fixes them — so each
+record would match nothing, and the gate rejects a record that matches nothing as stale. They were
+therefore REMOVED from `scripts/gate/scanner-exclusions.json` on 2026-09-10 (their ids are listed
+in that file's `retired_records`); their complete text, evidence and compensating controls remain in
+git history (last present at commit `b30242f`) and in the history of this document. Retiring a
+record deletes no evidence: the scans of the official children (`b6a16ed0…`, `a6a88248…`) are
+unchanged in the delivered evidence packages.
 
-| Field | Value |
-|---|---|
-| Advisory | `CVE-2026-14456` |
-| Severity (scanner) | HIGH |
-| Severity (vendor) | **Low** |
-| Package | `libcrypto3` |
-| PURL | `pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.23.5` |
-| Installed version | `3.5.7-r0` |
-| Fixed version | `3.5.8-r0` |
-| Result target | `redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)` |
-| Owner | founding-engineer |
-| Approver | gate-2.2-security-review |
-| Approved | 2026-09-01 |
-| Expires | 2026-11-05 |
+| Record | Governed (official image, `linux/amd64` child) | Package | Advisory | Fixed in the derived image by | Verified |
+|---|---|---|---|---|---|
+| SCX-0001 | `postgres@sha256:9a8afca5…` / `b6a16ed0…` | `c-ares` 1.34.6-r0 | CVE-2026-33630 (HIGH) | `c-ares` 1.34.8-r0 (`apk add c-ares=1.34.8-r0`) | unsuppressed scan of `bc90ce6b…`: 0 OS-package findings; `c-ares` 1.34.8-r0 installed |
+| SCX-0006 | `postgres@sha256:9a8afca5…` / `b6a16ed0…` | `libcrypto3` 3.5.7-r0 | CVE-2026-14456 (HIGH) | `libcrypto3` 3.5.8-r0 | same scan; `libcrypto3` 3.5.8-r0 installed |
+| SCX-0007 | `postgres@sha256:9a8afca5…` / `b6a16ed0…` | `libssl3` 3.5.7-r0 | CVE-2026-14456 (HIGH) | `libssl3` 3.5.8-r0 | same scan; `libssl3` 3.5.8-r0 installed |
+| SCX-0008 | `redis@sha256:978f0e01…` / `a6a88248…` | `libcrypto3` 3.5.7-r0 | CVE-2026-14456 (HIGH) | `libcrypto3` 3.5.8-r0 | unsuppressed scan of `0c0a48dd…`: 0 findings; `libcrypto3` 3.5.8-r0 installed |
+| SCX-0009 | `redis@sha256:978f0e01…` / `a6a88248…` | `libssl3` 3.5.7-r0 | CVE-2026-14456 (HIGH) | `libssl3` 3.5.8-r0 | same scan; `libssl3` 3.5.8-r0 installed |
 
-### SCX-0009 — OpenSSL `libssl3` in redis (QUIC listener DoS)
-
-| Field | Value |
-|---|---|
-| Advisory | `CVE-2026-14456` |
-| Severity (scanner) | HIGH |
-| Severity (vendor) | **Low** |
-| Package | `libssl3` |
-| PURL | `pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.23.5` |
-| Installed version | `3.5.7-r0` |
-| Fixed version | `3.5.8-r0` |
-| Result target | `redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)` |
-| Owner | founding-engineer |
-| Approver | gate-2.2-security-review |
-| Approved | 2026-09-01 |
-| Expires | 2026-11-05 |
-
-**Classification: `RISK_ACCEPTED`, for all four.**
-
-Not `NOT_AFFECTED`. The affected OpenSSL code is installed in both images. The absence of any QUIC
-server listener is a strong reachability limitation and is recorded below as the primary
-compensating control, but it is not proof that the vulnerable code is absent, and the disposition
-does not claim to be.
-
-**Reason.** The defect is unbounded memory growth in an OpenSSL **QUIC server listener**: when a
-`Listener` SSL object processes valid QUIC Initial packets for unknown destination connection IDs,
-it queues new incoming channels without any limit, so a peer that sends Initial packets faster than
-the application accepts connections can exhaust memory. Reaching it requires the application to
-create a QUIC Listener SSL object.
-
-`3.5.8-r0` carries the fix and Alpine published that package on 2026-08-25, but **no official
-`postgres:18-alpine` or `redis:8-alpine` image has been rebuilt with it.** Re-resolved against live
-registry data on 2026-09-01 with a Trivy database updated the same day:
-
-| Tag | Current official digest | OpenSSL |
-|---|---|---|
-| `postgres:18-alpine` | `sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2` | `3.5.7-r0` |
-| `redis:8-alpine` | `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576` | `3.5.7-r0` |
-
-Re-pinning to those digests would not clear the finding. The Debian-based variants are far worse —
-`postgres:18` carries 109 HIGH/CRITICAL findings and `redis:8` carries 53, both including their own
-OpenSSL findings — so they are not a remediation either. There is therefore no patched official
-image to re-pin to, which is why these are dispositions rather than an upgrade.
-
-**Compensating controls.**
-1. **Neither service runs a QUIC listener.** PostgreSQL serves its wire protocol over TCP and Redis
-   serves RESP over TCP; this repository contains no QUIC configuration for either. The vulnerable
-   entry point is not exercised.
-2. Redis in this profile runs without TLS at all — `docker-compose.yml` starts it with
-   `redis-server --requirepass` and no TLS port.
-3. Both services are bound to loopback only: `127.0.0.1:5432:5432` and `127.0.0.1:6379:6379`.
-4. The advisory is availability-only (`C:N/I:N/A:H`); OpenSSL's own vendor rating is **Low**.
-5. ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate.
-
-**Automatic recheck.** `scripts/gate/check-patched-images.mjs` resolves the current official
-`postgres:18-alpine` and `redis:8-alpine` digests and scans them for this advisory. When a patched
-official digest appears it fails, naming the digest to re-pin to; these four records must then be
-deleted, because the gate rejects a record that matches nothing.
+The reason each of these was accepted rather than remediated was the same: no official
+`postgres:18-alpine` or `redis:8-alpine` build carried the fixed package. That reason has been
+replaced, not refuted — the derived images are a TEMPORARY route (§5), and the official images are
+still watched for the day they carry the fixes themselves.
 
 ## 4. Prohibited exposure
 
@@ -442,12 +379,21 @@ blocking release gate.
 ## 5. Review obligations
 
 * Every record expires **2026-11-05** and is rejected by the gate **on** that date — the comparison
-  is `expires_on <= runDate`, so the record is not in force during its stated expiry day. That
-  expiry IS the mandatory re-review deadline for SCX-0006 to SCX-0009; a separate
-  `mandatory_rereview_by` field was removed because it duplicated `expires_on` and nothing
-  validated it, which made it look like a second control while being none.
+  is `expires_on <= runDate`, so the record is not in force during its stated expiry day. The
+  2026-09-10 re-issue did not move that date: a re-issue changes the image a record is scoped to,
+  not how long its analysis is trusted.
 * ADR-P0-01 requires a monthly re-pin and re-scan; a re-pin that clears a finding must
-  delete the corresponding record, because an unused record fails the gate as stale.
+  delete the corresponding record, because an unused record fails the gate as stale (§3.6 is the
+  first instance).
+* **The derived images are temporary.** `scripts/gate/check-patched-images.mjs`
+  (`.github/workflows/c15-patched-image-recheck.yml`, daily at 07:20 UTC, read-only, and the
+  required CI job) resolves the current official `postgres:18-alpine` and `redis:8-alpine`
+  indexes and scans BOTH `linux/amd64` and `linux/arm64` children for the util-linux, OpenSSL and
+  c-ares fixed versions. It REPORTS — it re-pins nothing and deletes no evidence — and it fails on
+  purpose when a compatible fixed official image exists for a service on both platforms, because
+  that is the event that must interrupt someone: the service then returns to the official image
+  through the digest/disposition/release process (re-pin, re-issue or retire the records that
+  name the image, regenerate evidence, FINAL chain), never by an automatic re-pin.
 * Owner and approver must remain distinct parties; a record cannot approve itself.
 * This document's SHA-256 is bound by every citing record. Editing it — even by one byte —
   invalidates those records until the digest is re-approved.

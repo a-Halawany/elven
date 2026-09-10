@@ -158,21 +158,23 @@ describe('C16-R3.4.3 receipt semantics', () => {
   });
 
   /**
-   * These four use `trivy-image-1` (redis), which USED to carry no tracked dispositions - emptying
-   * it cost nothing arithmetically, which is exactly why R3.4.2 passed it.
+   * These four use `trivy-image-1` (redis), which carries no finding and no tracked disposition -
+   * emptying it costs nothing arithmetically, which is exactly why R3.4.2 passed it, and why each
+   * of these is a reproduced false pass.
    *
-   * It now carries two (SCX-0008, SCX-0009 for CVE-2026-14456), so three of these mutations orphan
-   * records and R3.4.2 catches them on arithmetic. Those assert the structural check is DISTINCT
-   * rather than a reproduced false pass; the fourth leaves the findings intact and is unaffected.
+   * (Between 2026-09-01 and 2026-09-10 redis carried two, SCX-0008/0009 for CVE-2026-14456, and
+   * three of these ran as `structuralCheckIsDistinct` because the mutations orphaned records. The
+   * 2026-09-10 re-pin to the derived image fixed that advisory and retired the records, so the
+   * controls are back to the shape they were first written in.)
    */
   it('rejects an image report with Results: []', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results = []; });
-    structuralCheckIsDistinct(/Results is EMPTY; the image was not analysed/);
+    closesFalsePass(/Results is EMPTY; the image was not analysed/);
   });
 
   it('rejects an image report with Results: [{}]', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results = [{}]; });
-    structuralCheckIsDistinct(/Results\[0\] is an EMPTY object/);
+    closesFalsePass(/Results\[0\] is an EMPTY object/);
   });
 
   it('rejects an image whose os-pkgs result lists no packages', () => {
@@ -186,7 +188,7 @@ describe('C16-R3.4.3 receipt semantics', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       d.Results[0].Target = `elsewhere@sha256:${'c'.repeat(64)} (alpine 3.24.1)`;
     });
-    structuralCheckIsDistinct(/os-pkgs target is .*expected exactly/);
+    closesFalsePass(/os-pkgs target is .*expected exactly/);
   });
 
   // ── §B — the scanner banner is the only proof of coverage ────────────────────

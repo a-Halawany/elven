@@ -161,8 +161,16 @@ const FIXED_MEMBERS = Object.freeze([
 
 function composeImages() {
   const text = readFileSync(join(ROOT, 'docker-compose.yml'), 'utf8');
-  const postgres = /image:\s*(postgres@sha256:[0-9a-f]{64})/.exec(text)?.[1];
-  const redis = /image:\s*(redis@sha256:[0-9a-f]{64})/.exec(text)?.[1];
+  // Read each SERVICE's `image:` by service identity, whatever registry or path the reference
+  // carries (docker.io short names, ghcr.io/<owner>/<repo>/<name>@sha256:…). The previous
+  // textual `image: postgres@` match stopped matching when the compose file was re-pinned to
+  // the derived GHCR images on 2026-09-10 (cf. scripts/ops/compose-services.mjs).
+  const serviceImage = (service) => {
+    const block = new RegExp(`^  ${service}:\\n((?:    .*\\n|\\n)*)`, 'm').exec(text)?.[1] ?? '';
+    return /^\s{4}image:\s*([a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64})\b/m.exec(block)?.[1];
+  };
+  const postgres = serviceImage('postgres');
+  const redis = serviceImage('redis');
   if (!postgres || !redis) throw new Error('docker-compose.yml does not pin postgres/redis images by digest');
   return { postgres, redis };
 }

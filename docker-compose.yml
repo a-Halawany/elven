@@ -3,13 +3,22 @@
 #  - images pinned by IMMUTABLE DIGEST (recorded in conformance.manifest.json;
 #    human-readable tags: postgres:18-alpine / redis:8-alpine — alpine variants
 #    chosen for the clean HIGH/CRITICAL OS baseline, see evidence/supply-chain/)
+#  - 2026-09-10 re-pin (TEMPORARY, owner-approved: docs/images/DERIVED_IMAGES_APPROVAL.md):
+#    the two references below are the derived maintenance images published by
+#    .github/workflows/publish-derived-images.yml (run 34502081248) from the recipes in
+#    infra/images/candidates/v2/ — the previously pinned official indexes
+#    (postgres:18-alpine 9a8afca5…, redis:8-alpine 978f0e01…) plus the util-linux, OpenSSL
+#    and c-ares fixes and an explicit non-root USER. Each service returns to a verified
+#    official image through the digest/disposition/release process once one qualifies on
+#    both platforms (scripts/gate/check-patched-images.mjs watches for it); never by an
+#    automatic re-pin.
 #  - PostgreSQL and Redis bind to LOOPBACK ONLY
 #  - Redis requires authentication (EYE_REDIS_PASSWORD)
 #  - no default operational secrets in executable paths: required env vars fail
 #    the profile fast when unset
 services:
   postgres:
-    image: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 # postgres:18-alpine
+    image: ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 # ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910 (index; derived from postgres:18-alpine 9a8afca5…)
     container_name: eye-postgres
     # Process protections (2026-09-10; infra/images/candidates/README.md "v3", process
     # protections; measured in infra/images/candidates/evidence/v3/process-protections.txt).
@@ -22,6 +31,8 @@ services:
     # entrypoint cannot chmod/chown/gosu and exits 1. The root-only repair steps of the
     # entrypoint (chown of PGDATA) no longer run; eye-pgdata was initialised by this base
     # and is owned by uid 70 (verified), which is the layout verified here.
+    # Since the 2026-09-10 re-pin the pinned image IS the v3 candidate (USER postgres), so the
+    # keys below restate what its config already declares and remain required for the base.
     # NOT applied to the running eye-postgres: it takes effect at the next governed
     # recreation of the container (a recreate is a separate, recorded operation).
     user: "70:70"
@@ -43,7 +54,7 @@ services:
       retries: 10
 
   redis:
-    image: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 # redis:8-alpine
+    image: ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 # ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910 (index; derived from redis:8-alpine 978f0e01…)
     container_name: eye-redis
     # Process protections (2026-09-10; same references as above). The pinned base's
     # entrypoint runs setpriv, which leaves redis-server at uid 999 with CapBnd 0 and
@@ -55,6 +66,8 @@ services:
     # required: with cap_drop alone the base's entrypoint fails its has_cap setuid test,
     # skips setpriv and runs redis-server as uid 0 (measured). There is no redis volume,
     # so the entrypoint's root-only fix_data_dir_perms step is not needed.
+    # Since the 2026-09-10 re-pin the pinned image IS the v3 candidate (USER redis), which never
+    # reaches setpriv: the three keys below are what restore CapBnd 0 / NoNewPrivs 1 for it.
     # NOT applied to the running eye-redis: it takes effect at the next governed
     # recreation of the container.
     user: "999:1000"

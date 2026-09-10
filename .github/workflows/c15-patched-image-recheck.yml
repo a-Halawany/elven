@@ -1,13 +1,18 @@
-# ── Is the accepted risk still justified? ─────────────────────────────────────
+# ── Is there a compatible fixed OFFICIAL image yet? ───────────────────────────
 #
-# SCX-0006..0009 accept residual risk for CVE-2026-14456 for exactly one reason: no official
-# postgres:18-alpine or redis:8-alpine build carries the fixed OpenSSL (3.5.8-r0), even though
-# Alpine published that package on 2026-08-25.
+# Since 2026-09-10 the service images are pinned, TEMPORARILY and by owner approval
+# (docs/images/DERIVED_IMAGES_APPROVAL.md), to derived maintenance builds under
+# ghcr.io/a-halawany/elven/, because no official postgres:18-alpine or redis:8-alpine build carried
+# the util-linux, OpenSSL and c-ares fixes. That route ends the day a compatible fixed official
+# image exists for a service on BOTH linux/amd64 and linux/arm64.
 #
-# That reason can stop being true on any day, without anything in this repository changing. CI
-# catches it on the next push; this catches it on a quiet week when there is no push. It FAILS when
-# a patched image appears, because a disposition that has become unnecessary should interrupt
-# someone rather than wait to be noticed.
+# That can become true on any day, without anything in this repository changing. CI checks on the
+# next push; this checks on a quiet week when there is no push. It resolves the current official
+# index for each service's tag, scans both platform children for the fixed package versions, and
+# REPORTS. It FAILS when a service qualifies — a deliberate inversion, because the good news is what
+# has to interrupt someone — and the return to the official image is then a governed operation
+# (re-pin, re-issue or retire the SCX records that name the derived image, regenerate evidence,
+# FINAL chain). It never re-pins and never deletes evidence.
 #
 # READ-ONLY. No id-token, no contents:write, no packages, no attestations. It resolves public image
 # digests and scans them; it cannot change this repository or sign anything.
@@ -47,12 +52,14 @@ jobs:
       - name: Install the pinned scanners
         run: bash scripts/gate/install-scanners.sh trivy
 
-      - name: Recheck the official images
+      - name: Recheck the official images on both platforms
         run: node scripts/gate/check-patched-images.mjs
 
       - name: Explain a failure
         if: failure()
         run: |
-          echo "::notice::Either a PATCHED official image now exists — re-pin the digests and DELETE"
-          echo "::notice::SCX-0006..0009, which the gate will otherwise reject as unused — or the"
-          echo "::notice::check could not be completed, which is not evidence that the acceptance holds."
+          echo "::notice::Either a COMPATIBLE FIXED OFFICIAL image now exists for a service on both platforms —"
+          echo "::notice::return that service to it through the governed process (re-pin, re-issue or retire the"
+          echo "::notice::SCX records that name the derived image, regenerate evidence, FINAL chain); nothing was"
+          echo "::notice::re-pinned and no evidence was deleted — or the check could not be completed on both"
+          echo "::notice::platforms, which is not evidence that no such image exists."

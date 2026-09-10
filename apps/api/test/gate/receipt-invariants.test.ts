@@ -91,9 +91,10 @@ describe('C16-R3.4.4 receipt invariants', () => {
   /**
    * The mutation no longer reproduces a bypass, because it changes the finding arithmetic.
    *
-   * Both pinned images now carry governed dispositions (CVE-2026-14456, SCX-0006..0009), so a
-   * mutation that adds, drops or re-targets findings on either image is caught by the earlier
-   * verifier's finding-reconciliation arithmetic. That is a genuine improvement; asserting the old
+   * The pinned postgres image carries governed dispositions (SCX-0002..0005 over its 22 gosu
+   * findings) and the pinned redis image reports none, so a mutation that adds, drops or
+   * re-targets findings on either image is caught by the earlier verifier's finding-reconciliation
+   * arithmetic. That is a genuine improvement; asserting the old
    * bypass still exists would be the wrong way to record it.
    *
    * What still needs proving is that the newer STRUCTURAL check is a distinct one - not arithmetic
@@ -208,18 +209,20 @@ describe('C16-R3.4.4 receipt invariants', () => {
   // This and the next control use `trivy-image-1`, the image with NO findings. Mutating a
   // target or duplicating a result on an image that HAS findings also disturbs the finding
   // reconciliation, which R3.4.3 already catches; on an image with none, the arithmetic is
-  // untouched and only the identity invariant can fail. That is the false pass.
+  // untouched and only the identity invariant can fail. That is the false pass. (While redis
+  // carried CVE-2026-14456 these ran as `structuralCheckIsDistinct`; since the 2026-09-10 re-pin
+  // to the derived image redis is clean again and the false pass is reproduced as first written.)
   it('rejects an os-pkgs target that merely STARTS WITH the derived reference', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
       r.Target = `${d.Metadata.Reference}-attacker (alpine 3.23.5)`;
     });
-    structuralCheckIsDistinct(/os-pkgs target is .*expected exactly/);
+    closesFalsePass(/os-pkgs target is .*expected exactly/);
   });
 
   it('rejects a duplicated JSON result', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results.push({ ...d.Results[0] }); });
-    structuralCheckIsDistinct(/repeats the result identity/);
+    closesFalsePass(/repeats the result identity/);
   });
 
   // ── §B7: findings ────────────────────────────────────────────────────────────
@@ -256,10 +259,12 @@ describe('C16-R3.4.4 receipt invariants', () => {
     // The FINDING is left exactly as captured, so the reconciliation arithmetic is identical
     // and R3.4.3 sees nothing wrong. What is removed is the package the finding is about — a
     // result asserting a vulnerability in something it never claimed to have found.
+    // Since the 2026-09-10 re-pin the postgres OS package set carries no finding; the gosu result
+    // does, so the package removed is the one its findings name (`stdlib`, by exact PURL).
     editRaw('trivy-image-0.stdout.txt', (d) => {
-      const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
-      const name = r.Vulnerabilities[0].PkgName;
-      r.Packages = r.Packages.filter((p: any) => p.Name !== name);
+      const r = d.Results.find((x: any) => x.Class === 'lang-pkgs');
+      const purl = r.Vulnerabilities[0].PkgIdentifier.PURL;
+      r.Packages = r.Packages.filter((p: any) => p.Identifier.PURL !== purl);
     });
     closesFalsePass(/reports a vulnerability in .*, which this result does not list/);
   });

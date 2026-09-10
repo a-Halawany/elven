@@ -1,0 +1,12 @@
+Name:      ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15
+           
+Manifests: 
+  Name:      ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432
+  MediaType: application/vnd.oci.image.manifest.v1+json
+  Platform:  linux/amd64
+             
+  Name:      ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910@sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc
+  MediaType: application/vnd.oci.image.manifest.v1+json
+  Platform:  linux/arm64

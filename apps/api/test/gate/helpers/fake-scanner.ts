@@ -5,6 +5,10 @@
  * child's PATH, so `check-patched-images.mjs` resolves and executes them exactly as it would the
  * real tools — and they record their argv, which is how the platform and the digest-resolved
  * reference are proved rather than assumed.
+ *
+ * Since the recheck examines BOTH platform children of an official index, the fake registry is an
+ * index per tag (its digest and its per-platform children) and the fake scanner answers per
+ * `tag|platform`, falling back to a per-tag report.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,8 +18,8 @@ export type PkgSpec = Record<string, string | string[]>;
 export interface ReportSpec {
   /** Installed versions per package. An array plants a duplicate/conflicting inventory. */
   packages?: PkgSpec;
-  /** Advisory rows to include, as `[severity, packageName, installedVersion]`. */
-  vulns?: Array<[string, string, string]>;
+  /** Advisory rows to include, as `[severity, packageName, installedVersion]` (+ optional advisory id). */
+  vulns?: Array<[string, string, string] | [string, string, string, string]>;
   /** Replace the whole document — for malformed and incomplete reports. */
   raw?: unknown;
 }
@@ -33,12 +37,18 @@ export function buildReport(spec: ReportSpec): unknown {
       Class: 'os-pkgs',
       Type: 'alpine',
       Packages,
-      Vulnerabilities: (spec.vulns ?? []).map(([Severity, PkgName, InstalledVersion]) => ({
-        VulnerabilityID: 'CVE-2026-14456', PkgName, InstalledVersion, Severity,
+      Vulnerabilities: (spec.vulns ?? []).map(([Severity, PkgName, InstalledVersion, id]) => ({
+        VulnerabilityID: id ?? 'CVE-2026-14456', PkgName, InstalledVersion, Severity,
         FixedVersion: '3.5.8-r0',
       })),
     }],
   };
+}
+
+/** What the fake registry serves for one tag: the index digest and its runnable children. */
+export interface FakeIndex {
+  digest: string;
+  children: Partial<Record<'linux/amd64' | 'linux/arm64', string>>;
 }
 
 export interface FakeToolchain {
@@ -49,14 +59,14 @@ export interface FakeToolchain {
 }
 
 /**
- * @param digests   tag -> digest the fake `docker` reports; a null value makes it fail.
- * @param reports   tag -> report the fake `trivy` writes; a null value makes it exit nonzero.
+ * @param digests   tag -> the index the fake `docker` reports; a null value makes resolution fail.
+ * @param reports   `tag|platform` (or `tag`) -> report the fake `trivy` writes; null makes it exit nonzero.
  * @param dir       a scratch directory to build in.
  */
 export function fakeToolchain(dir: string, {
   digests, reports, trivyWritesNothing = false,
 }: {
-  digests: Record<string, string | null>;
+  digests: Record<string, FakeIndex | null>;
   reports: Record<string, unknown | null>;
   trivyWritesNothing?: boolean;
 }): FakeToolchain {
@@ -83,14 +93,23 @@ if (${JSON.stringify(tool)} === 'docker') {
   const tag = argv[argv.length - 1];
   const d = digests[tag];
   if (d === null || d === undefined) { process.stderr.write('no such tag\\n'); process.exit(1); }
+  if (argv.includes('--raw')) {
+    const manifests = Object.entries(d.children ?? {}).map(([platform, digest]) => ({
+      mediaType: 'application/vnd.oci.image.manifest.v1+json', digest, size: 2189,
+      platform: { os: platform.split('/')[0], architecture: platform.split('/')[1] },
+    }));
+    process.stdout.write(JSON.stringify({ schemaVersion: 2, mediaType: 'application/vnd.oci.image.index.v1+json', manifests }));
+    process.exit(0);
+  }
   process.stdout.write('Name:      docker.io/library/' + tag + '\\n');
   process.stdout.write('MediaType: application/vnd.oci.image.index.v1+json\\n');
-  process.stdout.write('Digest:    ' + d + '\\n');
+  process.stdout.write('Digest:    ' + d.digest + '\\n');
   process.exit(0);
 }
 const ref = argv[argv.length - 1];
+const platform = argv[argv.indexOf('--platform') + 1];
 const tag = keyFor(ref);
-const report = reports[tag];
+const report = Object.hasOwn(reports, tag + '|' + platform) ? reports[tag + '|' + platform] : reports[tag];
 if (report === null || report === undefined) { process.stderr.write('scan failed\\n'); process.exit(1); }
 const out = argv[argv.indexOf('--output') + 1];
 if (!${JSON.stringify(trivyWritesNothing)}) fs.writeFileSync(out, JSON.stringify(report));

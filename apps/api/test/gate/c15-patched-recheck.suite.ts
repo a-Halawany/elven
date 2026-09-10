@@ -1,10 +1,12 @@
 /**
  * C15 — the patched-image recheck.
  *
- * SCX-0006..0009 accept residual risk for CVE-2026-14456 for exactly one reason: no official image
- * carries the fixed OpenSSL. These controls hold the check that is supposed to notice when that
- * stops being true, and the property that matters most is the one that was wrong first: a severity
- * reclassification must not be read as a fix.
+ * Since 2026-09-10 the service images are pinned, TEMPORARILY and by owner approval, to derived
+ * maintenance builds because no official `postgres:18-alpine` / `redis:8-alpine` build carries the
+ * util-linux, OpenSSL and c-ares fixes. These controls hold the check that is supposed to notice
+ * when that stops being true — on BOTH platforms — and the property that matters most is still the
+ * one that was wrong first: a severity reclassification must not be read as a fix. The recheck
+ * reports; it re-pins nothing and deletes no evidence.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync, mkdtempSync } from 'node:fs';
@@ -12,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildReport, fakeToolchain } from './helpers/fake-scanner';
+import { buildReport, fakeToolchain, type FakeIndex } from './helpers/fake-scanner';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..', '..');
@@ -20,7 +22,8 @@ const LIB = join(REPO, 'scripts', 'gate', 'lib');
 const load = () => import(/* @vite-ignore */ join(LIB, 'c19-patched-images.mjs'));
 
 /** A report shaped like trivy's, with the parts the decision reads. */
-const report = ({ vulns = [], versions = { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0' } } = {}) => ({
+const report = ({ vulns = [], versions = { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0' } }:
+  { vulns?: unknown[]; versions?: Record<string, string> } = {}) => ({
   SchemaVersion: 2,
   ArtifactName: 'postgres@sha256:' + 'a'.repeat(64),
   Results: [{
@@ -48,7 +51,7 @@ describe('C15 — the patched-image recheck decides on versions, not on severity
    * THE DEFECT THIS REPLACES. The first version scanned with `--severity HIGH,CRITICAL` and read
    * "no finding" as "patched". Severity is an advisory database's editorial judgement and it
    * changes; the installed version is a fact about the image. Under the old logic this input
-   * retired four dispositions while the vulnerable code sat exactly where it was.
+   * declared an official image fixed while the vulnerable code sat exactly where it was.
    */
   it('RECLASSIFIED to Low is still AFFECTED, not patched', async () => {
     const m = await load();
@@ -85,6 +88,53 @@ describe('C15 — the patched-image recheck decides on versions, not on severity
     expect(m.assessReport(report({
       vulns: [], versions: { libcrypto3: '3.5.8-r0', libssl3: '3.5.7-r0' },
     })).state).toBe('affected');
+  });
+
+  it('util-linux fixes: revision-aware ranges, one package per image', async () => {
+    const m = await load();
+    const pg = (v: string) => ({ Results: [{ Packages: [{ Name: 'libuuid', Version: v }], Vulnerabilities: [] }] });
+    const rd = (v: string) => ({ Results: [{ Packages: [{ Name: 'setpriv', Version: v }], Vulnerabilities: [] }] });
+    expect(m.assessReport(pg('2.42.1-r0'), m.UTIL_LINUX_POSTGRES_FIX).state).toBe('affected');
+    expect(m.assessReport(pg('2.42.3-r0'), m.UTIL_LINUX_POSTGRES_FIX).state).toBe('affected'); // -r1 needed
+    expect(m.assessReport(pg('2.42.3-r1'), m.UTIL_LINUX_POSTGRES_FIX).state).toBe('patched');
+    expect(m.assessReport(pg('2.42.4-r0'), m.UTIL_LINUX_POSTGRES_FIX).state).toBe('patched');
+    expect(m.assessReport(pg('2.42.3'), m.UTIL_LINUX_POSTGRES_FIX).state).toBe('affected');    // unknown revision fails safe
+    expect(m.assessReport(rd('2.41.4-r0'), m.UTIL_LINUX_REDIS_FIX).state).toBe('affected');
+    expect(m.assessReport(rd('2.41.6-r0'), m.UTIL_LINUX_REDIS_FIX).state).toBe('affected');
+    expect(m.assessReport(rd('2.41.6-r1'), m.UTIL_LINUX_REDIS_FIX).state).toBe('patched');
+    // A report that lists a sibling advisory against a fixed version is a contradiction, not a fix.
+    const stale = { Results: [{ Packages: [{ Name: 'libuuid', Version: '2.42.3-r1' }],
+      Vulnerabilities: [{ VulnerabilityID: 'CVE-2026-78408', PkgName: 'libuuid', InstalledVersion: '2.42.3-r1', Severity: 'HIGH' }] }] };
+    expect(m.assessReport(stale, m.UTIL_LINUX_POSTGRES_FIX).state).toBe('indeterminate');
+    // The OpenSSL spec is unchanged by the revision rule: its ranges name no revision.
+    expect(m.isAffectedVersion('3.5.8-r0')).toBe(false);
+    expect(m.isAffectedVersion('3.5.7-r9')).toBe(true);
+  });
+
+  it('c-ares fix: every version below 1.34.8 is affected, with no lower bound', async () => {
+    const m = await load();
+    const pg = (v: string) => ({ Results: [{ Packages: [{ Name: 'c-ares', Version: v }], Vulnerabilities: [] }] });
+    expect(m.assessReport(pg('1.34.6-r0'), m.C_ARES_FIX).state).toBe('affected');
+    expect(m.assessReport(pg('1.33.0-r0'), m.C_ARES_FIX).state).toBe('affected');
+    expect(m.assessReport(pg('1.34.8-r0'), m.C_ARES_FIX).state).toBe('patched');
+    expect(m.assessReport(pg('1.35.0-r0'), m.C_ARES_FIX).state).toBe('patched');
+  });
+
+  it('the watched set: each service names its official tag, its fixes and the records naming the derived image', async () => {
+    const m = await load();
+    expect(m.PLATFORMS).toEqual(['linux/amd64', 'linux/arm64']);
+    expect(Object.keys(m.SERVICES)).toEqual(['postgres', 'redis']);
+    expect(m.SERVICES.postgres.tag).toBe('postgres:18-alpine');
+    expect(m.SERVICES.redis.tag).toBe('redis:8-alpine');
+    expect(m.SERVICES.postgres.fixes.map((f: { id: string }) => f.id)).toEqual(['openssl', 'util-linux/postgres', 'c-ares']);
+    expect(m.SERVICES.redis.fixes.map((f: { id: string }) => f.id)).toEqual(['openssl', 'util-linux/redis']);
+    // The records the return must re-review are exactly the tracked ones that name the derived image.
+    const doc = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-exclusions.json'), 'utf8'));
+    const naming = doc.records.filter((r: { image: string }) => r.image.startsWith(m.SERVICES.postgres.pinned + '@')).map((r: { id: string }) => r.id);
+    expect(m.SERVICES.postgres.records).toEqual(naming);
+    expect(doc.records.filter((r: { image: string }) => r.image.startsWith(m.SERVICES.redis.pinned + '@')).map((r: { id: string }) => r.id))
+      .toEqual([...m.SERVICES.redis.records]);
+    expect(m.RECHECK_SPECS.map((x: { id: string }) => x.id)).toEqual(['openssl', 'util-linux/postgres', 'util-linux/redis', 'c-ares']);
   });
 
   it('CONTRADICTION: a fixed inventory with a stale advisory row is indeterminate', async () => {
@@ -165,6 +215,67 @@ describe('C15 — the patched-image recheck decides on versions, not on severity
   });
 });
 
+/**
+ * The SERVICE verdict: a compatible fixed official image is one where every watched fix is present
+ * on EVERY platform. One platform is not enough — the derived images ship both, and a return that
+ * fixed amd64 while arm64 regressed would be a downgrade wearing an upgrade's name.
+ */
+describe('C15 — a service is FIXED only when every fix is present on both platforms', () => {
+  const pgOk = { libcrypto3: '3.5.8-r0', libssl3: '3.5.8-r0', libuuid: '2.42.3-r1', 'c-ares': '1.34.8-r0' };
+  const pgOld = { libcrypto3: '3.5.7-r0', libssl3: '3.5.7-r0', libuuid: '2.42.1-r0', 'c-ares': '1.34.6-r0' };
+  const rep = (versions: Record<string, string>) => report({ vulns: [], versions });
+
+  it('fixed on both platforms', async () => {
+    const m = await load();
+    const v = m.assessService('postgres', { 'linux/amd64': rep(pgOk), 'linux/arm64': rep(pgOk) });
+    expect(v.state).toBe('fixed');
+    expect(v.tag).toBe('postgres:18-alpine');
+    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005']);
+    for (const p of ['linux/amd64', 'linux/arm64']) {
+      expect(Object.values(v.platforms[p].fixes).map((f: { state: string }) => f.state)).toEqual(['patched', 'patched', 'patched']);
+    }
+  });
+
+  it('fixed on amd64 only is AFFECTED, not fixed', async () => {
+    const m = await load();
+    const v = m.assessService('postgres', { 'linux/amd64': rep(pgOk), 'linux/arm64': rep(pgOld) });
+    expect(v.state).toBe('affected');
+    expect(v.platforms['linux/arm64'].fixes.openssl.state).toBe('affected');
+  });
+
+  it('one fix short on one platform is AFFECTED', async () => {
+    const m = await load();
+    const v = m.assessService('postgres', {
+      'linux/amd64': rep(pgOk), 'linux/arm64': rep({ ...pgOk, 'c-ares': '1.34.6-r0' }),
+    });
+    expect(v.state).toBe('affected');
+    expect(v.platforms['linux/arm64'].fixes['c-ares'].state).toBe('affected');
+    expect(v.platforms['linux/arm64'].fixes.openssl.state).toBe('patched');
+  });
+
+  it('a missing or unreadable platform is INDETERMINATE, whatever the other platform says', async () => {
+    const m = await load();
+    const absent = m.assessService('postgres', { 'linux/amd64': rep(pgOk) }, { 'linux/arm64': 'the official index has no linux/arm64 child' });
+    expect(absent.state).toBe('indeterminate');
+    expect(absent.platforms['linux/arm64'].error).toMatch(/no linux\/arm64 child/);
+    const broken = m.assessService('postgres', { 'linux/amd64': rep(pgOk), 'linux/arm64': { Results: 'nope' } });
+    expect(broken.state).toBe('indeterminate');
+    // Indeterminate outranks affected: "could not check" never reads like "nothing to do".
+    const mixed = m.assessService('postgres', { 'linux/amd64': rep(pgOld), 'linux/arm64': { Results: 'nope' } });
+    expect(mixed.state).toBe('indeterminate');
+  });
+
+  it('redis watches OpenSSL and setpriv, and names no record', async () => {
+    const m = await load();
+    const rd = (versions: Record<string, string>) => report({ vulns: [], versions });
+    const ok = { libcrypto3: '3.5.8-r0', libssl3: '3.5.8-r0', setpriv: '2.41.6-r1' };
+    expect(m.assessService('redis', { 'linux/amd64': rd(ok), 'linux/arm64': rd(ok) }).state).toBe('fixed');
+    expect(m.assessService('redis', { 'linux/amd64': rd(ok), 'linux/arm64': rd({ ...ok, setpriv: '2.41.6-r0' }) }).state).toBe('affected');
+    expect(m.assessService('redis', { 'linux/amd64': rd(ok), 'linux/arm64': rd(ok) }).records).toEqual([]);
+    expect(() => m.assessService('mysql', {})).toThrow(/unknown service/);
+  });
+});
+
 describe('C15 — the scheduled workflow grants exactly contents: read', () => {
   const load2 = () => import(/* @vite-ignore */
     join(REPO, 'scripts', 'gate', 'assert-readonly-workflow.mjs'));
@@ -213,6 +324,14 @@ describe('C15 — the scheduled workflow grants exactly contents: read', () => {
     // The old shape: a grep for one key.
     expect(text).not.toMatch(/grep -qE .*id-token/);
   });
+
+  it('the workflow only reports: no re-pin, no evidence deletion, no write step', () => {
+    const text = readFileSync(WF, 'utf8');
+    expect(text).toMatch(/schedule:/);
+    expect(text).toMatch(/cron: '20 7 \* \* \*'/);
+    expect(text).not.toMatch(/git (commit|push)|sed -i|docker-compose\.yml|conformance\.manifest\.json|rm -/);
+    expect(text).not.toMatch(/scanner-exclusions\.json/);
+  });
 });
 
 describe('C15 — a disposition is rejected ON its stated expiry date', () => {
@@ -233,16 +352,35 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-exclusions.json'), 'utf8'));
     const run = (d: unknown) => m.validateRecords(d, {
-      runDate: '2026-09-01', root: REPO, isTracked: () => true,
+      runDate: '2026-09-10', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
     // Validating the field only when present left it removable: deleting the one line saying
     // "not for production data, not for Phase 1" produced no finding at all.
-    for (const id of ['SCX-0006', 'SCX-0007', 'SCX-0008', 'SCX-0009']) {
+    const accepted = doc.records.filter((r: { classification: string }) => r.classification === 'RISK_ACCEPTED').map((r: { id: string }) => r.id);
+    expect(accepted).toEqual(['SCX-0002', 'SCX-0003']);
+    for (const id of accepted) {
       const cut = JSON.parse(JSON.stringify(doc));
       delete cut.records.find((r: { id: string }) => r.id === id).prohibited_use;
       expect(run(cut).join('\n'), `${id} must be caught`).toMatch(/must declare prohibited_use/);
+    }
+  });
+
+  it('the re-issued records name the pinned derived image, and the retired ids govern nothing', () => {
+    const doc = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-exclusions.json'), 'utf8'));
+    const compose = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
+    const pinned = [...compose.matchAll(/image:\s*(\S+@sha256:[a-f0-9]{64})/g)].map((x) => x[1]);
+    expect(doc.records.map((r: { id: string }) => r.id)).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005']);
+    for (const r of doc.records) {
+      expect(pinned, `${r.id} must name a pinned image`).toContain(r.image);
+      expect(r.expires_on).toBe('2026-11-05');
+      expect(r.approved_on).toBe('2026-09-10');
+      expect(r.evidence_files.map((e: { path: string }) => e.path)).toContain('infra/images/candidates/evidence/v2/gosu-verification.txt');
+    }
+    expect(doc.retired_records.ids).toEqual(['SCX-0001', 'SCX-0006', 'SCX-0007', 'SCX-0008', 'SCX-0009']);
+    for (const id of doc.retired_records.ids) {
+      expect(doc.records.some((r: { id: string }) => r.id === id), `${id} must not remain a record`).toBe(false);
     }
   });
 
@@ -266,25 +404,34 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
  *
  * Driven as a real subprocess against fake `docker` and `trivy` on its PATH. Source-text assertions
  * cannot show what a program does; these show the exit code, the message and the argv it actually
- * used, which is the only way the platform pin and the digest-resolved reference are proved rather
- * than assumed.
+ * used, which is the only way the platform pins and the digest-resolved references are proved
+ * rather than assumed.
  */
 describe('C15 — the recheck CLI, executed as a subprocess', () => {
   const CLI = join(REPO, 'scripts', 'gate', 'check-patched-images.mjs');
   const PG = 'postgres:18-alpine';
   const RD = 'redis:8-alpine';
-  const PG_DIGEST = `sha256:${'1'.repeat(64)}`;
-  const RD_DIGEST = `sha256:${'2'.repeat(64)}`;
+  const AMD = 'linux/amd64';
+  const ARM = 'linux/arm64';
+  const PG_INDEX: FakeIndex = { digest: `sha256:${'1'.repeat(64)}`, children: { [AMD]: `sha256:${'a'.repeat(64)}`, [ARM]: `sha256:${'b'.repeat(64)}` } };
+  const RD_INDEX: FakeIndex = { digest: `sha256:${'2'.repeat(64)}`, children: { [AMD]: `sha256:${'c'.repeat(64)}`, [ARM]: `sha256:${'d'.repeat(64)}` } };
 
-  const bothAt = (version: string, vulns: Array<[string, string, string]> = []) =>
-    buildReport({ packages: { libcrypto3: version, libssl3: version }, vulns });
+  type V = Array<[string, string, string] | [string, string, string, string]>;
+  /** A postgres report: OpenSSL, libuuid and c-ares at the given versions (defaults: all still affected). */
+  const pg = ({ ssl = '3.5.7-r0', uuid = '2.42.1-r0', cares = '1.34.6-r0', vulns = [] as V } = {}) =>
+    buildReport({ packages: { libcrypto3: ssl, libssl3: ssl, libuuid: uuid, 'c-ares': cares }, vulns });
+  /** A redis report: OpenSSL and setpriv (defaults: still affected). */
+  const rd = ({ ssl = '3.5.7-r0', setpriv = '2.41.4-r0', vulns = [] as V } = {}) =>
+    buildReport({ packages: { libcrypto3: ssl, libssl3: ssl, setpriv }, vulns });
+  const PG_FIXED = { ssl: '3.5.8-r0', uuid: '2.42.3-r1', cares: '1.34.8-r0' };
+  const RD_FIXED = { ssl: '3.5.8-r0', setpriv: '2.41.6-r1' };
 
   const run = (reports: Record<string, unknown | null>, opts: {
-    digests?: Record<string, string | null>; trivyWritesNothing?: boolean;
+    digests?: Record<string, FakeIndex | null>; trivyWritesNothing?: boolean;
   } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'c15fake-'));
     const tc = fakeToolchain(dir, {
-      digests: opts.digests ?? { [PG]: PG_DIGEST, [RD]: RD_DIGEST },
+      digests: opts.digests ?? { [PG]: PG_INDEX, [RD]: RD_INDEX },
       reports,
       trivyWritesNothing: opts.trivyWritesNothing,
     });
@@ -295,56 +442,83 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
     });
     return { ...r, out: `${r.stdout}${r.stderr}`, calls: tc.calls() };
   };
+  const stillAffected = () => ({ [PG]: pg({ vulns: [['HIGH', 'libcrypto3', '3.5.7-r0']] }), [RD]: rd() });
 
-  it('AFFECTED at 3.5.7 — exits 0 and keeps the acceptance justified', () => {
-    const r = run({ [PG]: bothAt('3.5.7-r0', [['HIGH', 'libcrypto3', '3.5.7-r0']]), [RD]: bothAt('3.5.7-r0') });
+  it('AFFECTED everywhere — exits 0, reports every fix on both platforms, names no re-pin', () => {
+    const r = run(stillAffected());
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toMatch(/AFFECTED/);
-    expect(r.out).toMatch(/remain justified/);
+    expect(r.out).toMatch(/no compatible fixed official image yet/);
+    for (const p of [AMD, ARM]) {
+      expect(r.out).toMatch(new RegExp(`\\[openssl\\] ${p} AFFECTED`));
+      expect(r.out).toMatch(new RegExp(`\\[util-linux/postgres\\] ${p} AFFECTED`));
+      expect(r.out).toMatch(new RegExp(`\\[c-ares\\] ${p} AFFECTED`));
+      expect(r.out).toMatch(new RegExp(`\\[util-linux/redis\\] ${p} AFFECTED`));
+    }
+    expect(r.out).toMatch(/postgres: AFFECTED/);
+    expect(r.out).toMatch(/redis: AFFECTED/);
+    expect(r.out).not.toMatch(/COMPATIBLE FIXED OFFICIAL image/);
   }, 120_000);
 
-  it('PATCHED at 3.5.8 — FAILS and names the digest to re-pin to', () => {
-    const r = run({ [PG]: bothAt('3.5.8-r0'), [RD]: bothAt('3.5.8-r0') });
+  it('FIXED on both platforms for postgres alone — FAILS, names the index and children, says it only reports', () => {
+    const r = run({ [PG]: pg(PG_FIXED), [RD]: rd() });
     // The inversion is deliberate: the good news is what has to interrupt someone.
     expect(r.status).not.toBe(0);
-    expect(r.out).toMatch(/a PATCHED official image now exists/);
-    expect(r.out).toContain(PG_DIGEST);
-    expect(r.out).toContain(RD_DIGEST);
-    expect(r.out).toMatch(/DELETE the/);
+    expect(r.out).toMatch(/COMPATIBLE FIXED OFFICIAL image now exists for postgres: postgres:18-alpine -> sha256:1{64}/);
+    expect(r.out).toContain(`linux/amd64 child ${PG_INDEX.children[AMD]}`);
+    expect(r.out).toContain(`linux/arm64 child ${PG_INDEX.children[ARM]}`);
+    expect(r.out).toMatch(/This is a REPORT: nothing was re-pinned and no evidence was deleted/);
+    expect(r.out).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005/);
+    expect(r.out).not.toMatch(/exists for redis/);
+    expect(r.out).toMatch(/redis: AFFECTED/);
   }, 120_000);
 
-  /**
-   * The two classes a single 3.5.8 threshold got wrong: 3.6.x and 4.0.x sort ABOVE it while sitting
-   * squarely inside their own affected ranges.
-   */
-  it('AFFECTED at 3.6.3, PATCHED at 3.6.4', () => {
-    expect(run({ [PG]: bothAt('3.6.3-r0'), [RD]: bothAt('3.6.3-r0') }).status).toBe(0);
-    expect(run({ [PG]: bothAt('3.6.4-r0'), [RD]: bothAt('3.6.4-r0') }).status).not.toBe(0);
+  it('FIXED on amd64 only — still AFFECTED, exits 0: both platforms must qualify', () => {
+    const r = run({ [`${PG}|${AMD}`]: pg(PG_FIXED), [`${PG}|${ARM}`]: pg(), [RD]: rd() });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/\[openssl\] linux\/amd64 PATCHED/);
+    expect(r.out).toMatch(/\[openssl\] linux\/arm64 AFFECTED/);
+    expect(r.out).toMatch(/postgres: AFFECTED/);
+    expect(r.out).not.toMatch(/COMPATIBLE FIXED OFFICIAL image/);
   }, 120_000);
 
-  it('AFFECTED at 4.0.1, PATCHED at 4.0.2', () => {
-    expect(run({ [PG]: bothAt('4.0.1-r0'), [RD]: bothAt('4.0.1-r0') }).status).toBe(0);
-    expect(run({ [PG]: bothAt('4.0.2-r0'), [RD]: bothAt('4.0.2-r0') }).status).not.toBe(0);
-  }, 120_000);
-
-  it('PRE-3.5 is outside every range — the branch predates the QUIC listener', () => {
-    // A single threshold called this "affected" because it sorts below 3.5.8.
-    const r = run({ [PG]: bothAt('3.4.9-r0'), [RD]: bothAt('3.4.9-r0') });
+  it('FIXED for redis alone — FAILS for redis and says no record names its derived image', () => {
+    const r = run({ [PG]: pg(), [RD]: rd(RD_FIXED) });
     expect(r.status).not.toBe(0);
-    expect(r.out).toMatch(/outside every affected range/);
+    expect(r.out).toMatch(/exists for redis: redis:8-alpine -> sha256:2{64}/);
+    expect(r.out).toMatch(/confirm no SCX record names the derived image/);
+    expect(r.out).not.toMatch(/exists for postgres/);
+  }, 120_000);
+
+  it('a platform ABSENT from the official index is indeterminate and fails closed', () => {
+    const r = run({ [PG]: pg(PG_FIXED), [RD]: rd() },
+      { digests: { [PG]: { digest: PG_INDEX.digest, children: { [AMD]: PG_INDEX.children[AMD] } }, [RD]: RD_INDEX } });
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/linux\/arm64: ABSENT from the index/);
+    expect(r.out).toMatch(/could not be checked on both platforms/);
+    expect(r.out).toMatch(/no linux\/arm64 child/);
+    expect(r.out).not.toMatch(/COMPATIBLE FIXED OFFICIAL image/);
+  }, 120_000);
+
+  it('util-linux at the fixed BASE but the wrong REVISION is still AFFECTED', () => {
+    // CVE-2026-78408 is fixed in -r1; 2.42.3-r0 clears its siblings and not it.
+    const r = run({ [PG]: pg({ ...PG_FIXED, uuid: '2.42.3-r0' }), [RD]: rd({ ...RD_FIXED, setpriv: '2.41.6-r0' }) });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/\[util-linux\/postgres\] linux\/amd64 AFFECTED/);
+    expect(r.out).toMatch(/\[util-linux\/redis\] linux\/amd64 AFFECTED/);
+    expect(r.out).toMatch(/\[openssl\] linux\/amd64 PATCHED/);
   }, 120_000);
 
   it('SEVERITY RECLASSIFICATION to Low is still affected', () => {
     const r = run({
-      [PG]: bothAt('3.5.7-r0', [['LOW', 'libcrypto3', '3.5.7-r0'], ['LOW', 'libssl3', '3.5.7-r0']]),
-      [RD]: bothAt('3.5.7-r0', [['LOW', 'libcrypto3', '3.5.7-r0']]),
+      [PG]: pg({ vulns: [['LOW', 'libcrypto3', '3.5.7-r0'], ['LOW', 'libssl3', '3.5.7-r0']] }),
+      [RD]: rd({ vulns: [['LOW', 'libcrypto3', '3.5.7-r0']] }),
     });
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toMatch(/AFFECTED/);
+    expect(r.out).toMatch(/\[openssl\] linux\/amd64 AFFECTED/);
   }, 120_000);
 
   it('ADVISORY DISAPPEARANCE with an unchanged package is still affected', () => {
-    const r = run({ [PG]: bothAt('3.5.7-r0', []), [RD]: bothAt('3.5.7-r0', []) });
+    const r = run({ [PG]: pg(), [RD]: rd() });
     expect(r.status, r.out).toBe(0);
     expect(r.out).toMatch(/no longer listed, but the package was not rebuilt/);
   }, 120_000);
@@ -353,18 +527,18 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
     // Fixed packages plus a stale CVE row previously returned affected, so the CLI exited 0 and the
     // contradiction passed unnoticed.
     const r = run({
-      [PG]: bothAt('3.5.8-r0', [['HIGH', 'libcrypto3', '3.5.7-r0']]),
-      [RD]: bothAt('3.5.7-r0'),
+      [PG]: pg({ ...PG_FIXED, vulns: [['HIGH', 'libcrypto3', '3.5.7-r0']] }),
+      [RD]: rd(),
     });
     expect(r.status, 'a self-contradictory report must fail the job').not.toBe(0);
     expect(r.out).toMatch(/disagrees with itself/);
-    expect(r.out).toMatch(/could not be re-justified/);
+    expect(r.out).toMatch(/could not be checked on both platforms/);
   }, 120_000);
 
   it('DUPLICATE conflicting versions FAIL rather than depend on ordering', () => {
     const r = run({
-      [PG]: buildReport({ packages: { libcrypto3: ['3.5.7-r0', '3.5.8-r0'], libssl3: '3.5.8-r0' } }),
-      [RD]: bothAt('3.5.7-r0'),
+      [PG]: buildReport({ packages: { libcrypto3: ['3.5.7-r0', '3.5.8-r0'], libssl3: '3.5.8-r0', libuuid: '2.42.3-r1', 'c-ares': '1.34.8-r0' } }),
+      [RD]: rd(),
     });
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/more than one installed version/);
@@ -372,53 +546,62 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
 
   it('MALFORMED and INCOMPLETE reports are indeterminate and fail the job', () => {
     for (const raw of [null, 'a string', 42, [], { Results: 'nope' }, {}]) {
-      const r = run({ [PG]: buildReport({ raw }), [RD]: bothAt('3.5.7-r0') });
+      const r = run({ [PG]: buildReport({ raw }), [RD]: rd() });
       expect(r.status, `${JSON.stringify(raw)} must fail`).not.toBe(0);
-      expect(r.out).toMatch(/could not be re-justified/);
+      expect(r.out).toMatch(/could not be checked on both platforms/);
     }
     // A report missing one watched package entirely.
     const partial = run({
-      [PG]: buildReport({ packages: { libcrypto3: '3.5.8-r0' } }), [RD]: bothAt('3.5.7-r0'),
+      [PG]: buildReport({ packages: { libcrypto3: '3.5.8-r0', libuuid: '2.42.3-r1', 'c-ares': '1.34.8-r0' } }), [RD]: rd(),
     });
     expect(partial.status).not.toBe(0);
     expect(partial.out).toMatch(/no installed version for libssl3/);
   }, 300_000);
 
-  it('an UNRESOLVABLE digest or a failed scan fails closed', () => {
-    const noDigest = run({ [PG]: bothAt('3.5.7-r0'), [RD]: bothAt('3.5.7-r0') },
-      { digests: { [PG]: null, [RD]: RD_DIGEST } });
+  it('an UNRESOLVABLE index or a failed scan fails closed', () => {
+    const noDigest = run(stillAffected(), { digests: { [PG]: null, [RD]: RD_INDEX } });
     expect(noDigest.status).not.toBe(0);
-    expect(noDigest.out).toMatch(/digest could not be resolved/);
+    expect(noDigest.out).toMatch(/UNRESOLVED/);
+    expect(noDigest.out).toMatch(/could not be checked on both platforms/);
 
-    const scanFails = run({ [PG]: null, [RD]: bothAt('3.5.7-r0') });
+    const scanFails = run({ [PG]: null, [RD]: rd() });
     expect(scanFails.status).not.toBe(0);
     expect(scanFails.out).toMatch(/the scan failed/);
 
     // Trivy exits 0 but writes no report — "could not check" must not read like "nothing to do".
-    const noFile = run({ [PG]: bothAt('3.5.7-r0'), [RD]: bothAt('3.5.7-r0') },
-      { trivyWritesNothing: true });
+    const noFile = run(stillAffected(), { trivyWritesNothing: true });
     expect(noFile.status).not.toBe(0);
     expect(noFile.out).toMatch(/unreadable/);
   }, 300_000);
 
-  it('scans the EXACT linux/amd64 child of the digest-resolved reference', () => {
-    const r = run({ [PG]: bothAt('3.5.7-r0'), [RD]: bothAt('3.5.7-r0') });
+  it('scans the EXACT platform child of each digest-resolved official index, on both platforms', () => {
+    const r = run(stillAffected());
     const trivy = r.calls.filter((c) => c.tool === 'trivy');
-    expect(trivy.length).toBe(2);
+    // Two services × two platforms.
+    expect(trivy.length).toBe(4);
+    const seen = new Set<string>();
     for (const call of trivy) {
       // The platform is pinned, because a scanner given none follows the host and would examine a
       // different child with different layers.
       expect(call.argv).toContain('--platform');
-      expect(call.argv[call.argv.indexOf('--platform') + 1]).toBe('linux/amd64');
-      // And the reference is the resolved DIGEST, never the moving tag.
+      const platform = call.argv[call.argv.indexOf('--platform') + 1];
+      expect([AMD, ARM]).toContain(platform);
+      // And the reference is the resolved CHILD DIGEST for that platform, never the moving tag.
       const ref = call.argv[call.argv.length - 1];
       expect(ref).toMatch(/@sha256:[0-9a-f]{64}$/);
-      expect([`postgres@${PG_DIGEST}`, `redis@${RD_DIGEST}`]).toContain(ref);
+      expect([
+        `postgres@${PG_INDEX.children[platform as 'linux/amd64']}`,
+        `redis@${RD_INDEX.children[platform as 'linux/amd64']}`,
+      ]).toContain(ref);
+      seen.add(`${ref}|${platform}`);
       // No severity filter: that is what let a reclassification read as a fix.
       expect(call.argv).not.toContain('--severity');
     }
+    expect(seen.size).toBe(4);
     const docker = r.calls.filter((c) => c.tool === 'docker');
-    expect(docker.length).toBe(2);
-    expect(docker[0].argv.slice(0, 3)).toEqual(['buildx', 'imagetools', 'inspect']);
+    // Per tag: the raw index (children) and the formatted listing (the index digest).
+    expect(docker.length).toBe(4);
+    for (const d of docker) expect(d.argv.slice(0, 3)).toEqual(['buildx', 'imagetools', 'inspect']);
+    expect(docker.filter((d) => d.argv.includes('--raw')).length).toBe(2);
   }, 120_000);
 });

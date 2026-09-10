@@ -330,11 +330,14 @@ jobs:
             --trivy-cache "$C15_CACHE" \
             --final \
             --expected-sha "$GITHUB_SHA"
-      # BLOCKING. SCX-0006..0009 accept residual risk for CVE-2026-14456 solely because no official
-      # image carries the fixed OpenSSL. An acceptance must not outlive its own justification because
-      # nobody re-checked, so the check runs here, in the required job, on every run - and it FAILS
-      # when a patched image appears, because the good news is what has to interrupt someone.
-      - name: C15 patched-image recheck (blocking; fails when the acceptance expires in fact)
+      # BLOCKING. The service images are TEMPORARILY pinned to derived maintenance builds
+      # (docs/images/DERIVED_IMAGES_APPROVAL.md) solely because no official postgres:18-alpine or
+      # redis:8-alpine build carries the util-linux, OpenSSL and c-ares fixes. That route must not
+      # outlive its own justification because nobody re-checked, so the check runs here, in the
+      # required job, on every run: it resolves the current official indexes, scans BOTH platform
+      # children, REPORTS, and FAILS when a compatible fixed official image exists for a service —
+      # the good news is what has to interrupt someone. It re-pins nothing and deletes no evidence.
+      - name: C15 patched-image recheck (blocking; fails when a compatible fixed official image exists)
         run: |
           set -euo pipefail
           node scripts/gate/check-patched-images.mjs \

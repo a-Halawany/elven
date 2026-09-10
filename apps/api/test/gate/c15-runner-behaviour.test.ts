@@ -372,14 +372,16 @@ describe('C15 behavioural control — governed scan dispositions', () => {
   }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNGOVERNED finding when a disposition is removed entirely', () => {
-    // Removing the c-ares record leaves its real HIGH finding with no governed
-    // disposition, which must fail rather than pass silently.
+    // Removing the single-advisory NOT_AFFECTED record leaves its real HIGH gosu finding with no
+    // governed disposition, which must fail rather than pass silently. (Until the 2026-09-10 re-pin
+    // this removed SCX-0001, the c-ares record; that finding is fixed in the derived image and the
+    // record is retired, so the control moves to a record that still governs something.)
     const doc = current();
-    doc.records = doc.records.filter((r) => r.id !== 'SCX-0001');
+    doc.records = doc.records.filter((r) => r.id !== 'SCX-0004');
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
-    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2026-33630/);
+    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2026-39821/);
   }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNUSED disposition that matches no finding', () => {
@@ -395,7 +397,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
       package_purl: 'pkg:apk/alpine/left-pad@1.0.0?arch=x86_64&distro=3.24.1',
       installed_version: '1.0.0',
       severities: ['HIGH'],
-      result_target: 'postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)',
+      result_target: 'ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a (alpine 3.24.1)',
     });
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
@@ -716,11 +718,12 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
       scanner_exclusions: { declared: number };
       image_finding_reconciliation: { total_findings: number; unmatched: string[]; unused_records: string[] };
     };
-    // Nine since the CVE-2026-14456 maintenance change added SCX-0006..0009: one record per
-    // package per image target, because a single record spanning both would be a wildcard.
-    // The literal is deliberate: a record appearing or vanishing must fail here until someone
-    // changes this number on purpose.
-    expect(m.scanner_exclusions.declared).toBe(9);
+    // Four since the 2026-09-10 re-pin to the derived maintenance images: SCX-0002..0005, all
+    // re-issued for the derived postgres image (the gosu binary is byte-identical); SCX-0001 and
+    // SCX-0006..0009 governed findings the derived images fix and were retired, because a record
+    // that matches nothing fails the gate. The literal is deliberate: a record appearing or
+    // vanishing must fail here until someone changes this number on purpose.
+    expect(m.scanner_exclusions.declared).toBe(4);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);

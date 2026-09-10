@@ -33,11 +33,26 @@ import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candida
 
 export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
-/** The real linux/amd64 child digests of the two configured indexes. */
-const CHILD_DIGESTS: Record<string, string> = {
-  postgres: 'sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b',
-  redis: 'sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a',
+/**
+ * The real platform children of the two configured indexes (the derived maintenance images pinned
+ * on 2026-09-10; each index has exactly these two runnable children and no attestation manifests).
+ * Keyed by the image name as it appears in docker-compose.yml, before the `@`.
+ */
+const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> = {
+  'ghcr.io/a-halawany/elven/postgres': {
+    amd64: 'sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a',
+    arm64: 'sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc',
+    size: 2189,
+  },
+  'ghcr.io/a-halawany/elven/redis': {
+    amd64: 'sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432',
+    arm64: 'sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc',
+    size: 1809,
+  },
 };
+const CHILD_DIGESTS: Record<string, string> = Object.fromEntries(
+  Object.entries(CHILDREN).map(([name, c]) => [name, c.amd64]),
+);
 
 export type BuiltR34 = {
   c15Dir: string;
@@ -58,11 +73,11 @@ export type BuiltR34 = {
 /**
  * R3.4.4: the image reports are the REAL captured scanner output.
  *
- * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from the
- * delivered C15 evidence - 53 alpine packages and one HIGH finding for postgres, 4 gobinary
- * packages and 15 findings for its gosu binary, 22 alpine packages for redis - with only the
- * verbose advisory prose stripped. Synthesising these would defeat the point: a control that
- * mutates invented data proves nothing about what the verifier does to a real receipt.
+ * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from a real
+ * C15 run against the images pinned on 2026-09-10 - 53 alpine packages and NO OS finding for
+ * postgres, 4 gobinary packages and 22 findings for its gosu binary, 22 alpine packages and no
+ * finding for redis. Synthesising these would defeat the point: a control that mutates invented
+ * data proves nothing about what the verifier does to a real receipt.
  *
  * Only the scan reference is substituted, because it is derived per run from the tracked
  * digest pins rather than fixed in the capture.
@@ -188,13 +203,15 @@ export function buildPassingR34Evidence(
    * The final-manifest verifier re-validates the current tracked records against the evidence
    * package's own run date, and a record approved in the future of that date is correctly refused.
    * R3.4.5 moved this to 2026-08-15 when SCX-0004 was approved 2026-08-14; the CVE-2026-14456
-   * maintenance change adds SCX-0006..0009 approved 2026-09-01, so it moves again.
+   * maintenance change added SCX-0006..0009 approved 2026-09-01; the 2026-09-10 re-pin to the
+   * derived images re-issued SCX-0002..0005 (approved 2026-09-10) and retired the rest, so it
+   * moves again.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-09-01';
+  const runDate = '2026-09-10';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;
@@ -247,18 +264,19 @@ export function buildPassingR34Evidence(
         ref, resolved: true, kind: 'index',
         media_type: 'application/vnd.oci.image.index.v1+json',
         index_raw_sha256: digest.slice('sha256:'.length),
-        child_count: 2, runnable_platform_count: 1,
+        child_count: 2, runnable_platform_count: 2,
         target_digest: CHILD_DIGESTS[name],
+        // Mirrors the raw index bytes copied above: two runnable children, no attestations.
         children: [
           {
-            digest: CHILD_DIGESTS[name],
+            digest: CHILDREN[name].amd64,
             media_type: 'application/vnd.oci.image.manifest.v1+json',
-            os: 'linux', architecture: 'amd64', variant: null, size: 2678, attestation: false,
+            os: 'linux', architecture: 'amd64', variant: null, size: CHILDREN[name].size, attestation: false,
           },
           {
-            digest: `sha256:${'e'.repeat(64)}`,
+            digest: CHILDREN[name].arm64,
             media_type: 'application/vnd.oci.image.manifest.v1+json',
-            os: 'unknown', architecture: 'unknown', variant: null, size: 840, attestation: true,
+            os: 'linux', architecture: 'arm64', variant: null, size: CHILDREN[name].size, attestation: false,
           },
         ],
       },
