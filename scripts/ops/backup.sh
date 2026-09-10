@@ -10,7 +10,16 @@
 #   vault.tar                       .eye-local/vault/{quarantine,evidence}, paths relative to the repo root
 #   journal.tar                     the degraded-audit journals (demo + dev default dir)
 #   config/env                      a byte copy of .eye-local/env, mode 0600
-#   MANIFEST.json                   sha256 of every file, git HEAD, per-database counts and audit heads, image digests
+#   MANIFEST.json                   sha256 of every file, git HEAD, per-database counts and audit heads,
+#                                   the compose pins of BOTH services (by service identity) and the image digests
+#   RUN.json                        the run manifest: every directory this run created (cleanup is bound to it)
+#
+# DESTINATION GUARDS (scripts/ops/lib/guards.sh) run FIRST, before the credential
+# file is read and before any chmod, copy or write: EYE_BACKUP_ROOT must already
+# exist, be a directory, not be a symlink, and its PHYSICAL path (symlinks
+# resolved) must not be inside, equal to, or an ancestor of the repository
+# worktree, .eye-local, apps/api/.eye-local or a compose bind-mount host path.
+# The bundle directory is created fresh (plain mkdir; it must not exist).
 #
 # READ-ONLY AGAINST THE LIVE DEPLOYMENT. This script only runs `docker exec` /
 # `docker inspect` against eye-postgres and reads files; it never stops, restarts
@@ -22,10 +31,12 @@ set -euo pipefail
 set +x
 umask 077
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$(cd -P "$(dirname "$0")/../.." && pwd -P)"
+# shellcheck source=lib/guards.sh
+. "$REPO/scripts/ops/lib/guards.sh"
 ENV_FILE="$REPO/.eye-local/env"
-PG_CONTAINER="eye-postgres"
-REDIS_CONTAINER="eye-redis"
+COMPOSE_FILE="$REPO/docker-compose.yml"
+PG_SERVICE="postgres"; REDIS_SERVICE="redis"
 PG_SUPERUSER="${EYE_DB_MIGRATE_USER:-eye}"
 DATABASES="eye eye_demo"
 VAULT_REL=".eye-local/vault"
@@ -35,15 +46,43 @@ say()  { printf '%s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
 die()  { printf 'backup: %s\n' "$*" >&2; exit 1; }
 now_s() { date -u +%s; }
-sha()  { shasum -a 256 "$1" | awk '{print $1}'; }
+sha()  { ops_sha256 "$1"; }
 size() { wc -c < "$1" | tr -d ' '; }
 
-# ---------------------------------------------------------------- preflight
-step "preflight (read-only against $PG_CONTAINER)"
-[[ -f "$ENV_FILE" ]] || die "$ENV_FILE is missing — nothing to back up coherently (the credentials ARE part of the runtime state)"
-[[ "$(stat -f '%Lp' "$ENV_FILE")" == "600" ]] || die "$ENV_FILE is not mode 0600; refusing to copy a permissive secret file"
+# ------------------------------------------------ destination guards (first)
+step "destination guards (physical paths; before any read of the credential file or any write)"
 command -v docker >/dev/null || die "docker is required"
 command -v jq >/dev/null || die "jq is required"
+command -v node >/dev/null || die "node is required (docker-compose.yml is read by service identity through scripts/ops/compose-services.mjs)"
+[[ -f "$COMPOSE_FILE" ]] || die "$COMPOSE_FILE is missing"
+COMPOSE_JSON="$(node "$REPO/scripts/ops/compose-services.mjs" "$COMPOSE_FILE")" || die "docker-compose.yml could not be parsed"
+PROTECTED="$(ops_protected_paths "$REPO")"
+say "  protected (physical): $(printf '%s' "$PROTECTED" | tr '\n' ' ')"
+BACKUP_ROOT="${EYE_BACKUP_ROOT:-$HOME/eye-backups}"
+V="$(ops_require_existing_dir "EYE_BACKUP_ROOT" "$BACKUP_ROOT")" || die "$V"
+say "  $V"
+# shellcheck disable=SC2086
+V="$(ops_guard_destination "EYE_BACKUP_ROOT" "$BACKUP_ROOT" $PROTECTED)" || die "$V"
+say "  $V"
+BACKUP_ROOT="$(ops_phys "$BACKUP_ROOT")"
+[[ "$(ops_mode "$BACKUP_ROOT")" == "700" ]] || say "  note: $BACKUP_ROOT is mode $(ops_mode "$BACKUP_ROOT"), not 0700 (the bundle itself is created 0700; the root's mode is the operator's)"
+TS="$(date -u +%Y%m%dT%H%M%SZ)"
+B="$BACKUP_ROOT/$TS"
+# shellcheck disable=SC2086
+V="$(ops_guard_destination "bundle" "$B" $PROTECTED)" || die "$V"
+say "  $V"
+
+# ---------------------------------------------------------------- preflight
+step "preflight (read-only against the $PG_SERVICE service's container)"
+PG_CONTAINER="$(jq -r --arg s "$PG_SERVICE" '.services[$s].container_name // empty' <<<"$COMPOSE_JSON")"
+REDIS_CONTAINER="$(jq -r --arg s "$REDIS_SERVICE" '.services[$s].container_name // empty' <<<"$COMPOSE_JSON")"
+[[ -n "$PG_CONTAINER" && -n "$REDIS_CONTAINER" ]] || die "docker-compose.yml does not name container_name for services $PG_SERVICE and $REDIS_SERVICE"
+PG_PIN="$(jq -r --arg s "$PG_SERVICE" '.services[$s].image // empty' <<<"$COMPOSE_JSON")"
+REDIS_PIN="$(jq -r --arg s "$REDIS_SERVICE" '.services[$s].image // empty' <<<"$COMPOSE_JSON")"
+[[ -n "$PG_PIN" && -n "$REDIS_PIN" ]] || die "docker-compose.yml does not pin an image for services $PG_SERVICE and $REDIS_SERVICE"
+say "  services: $PG_SERVICE -> $PG_CONTAINER, $REDIS_SERVICE -> $REDIS_CONTAINER"
+[[ -f "$ENV_FILE" ]] || die "$ENV_FILE is missing — nothing to back up coherently (the credentials ARE part of the runtime state)"
+[[ "$(ops_mode "$ENV_FILE")" == "600" ]] || die "$ENV_FILE is not mode 0600; refusing to copy a permissive secret file"
 docker inspect --format '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null | grep -q true || die "$PG_CONTAINER is not running"
 docker inspect --format '{{.State.Running}}' "$REDIS_CONTAINER" 2>/dev/null | grep -q true || say "note: $REDIS_CONTAINER is not running (Redis holds no durable state; continuing)"
 
@@ -64,16 +103,27 @@ for db in $DATABASES; do
   [[ "$(psq postgres "select count(*) from pg_database where datname='$db'")" == "1" ]] || die "database $db does not exist"
 done
 
-BACKUP_ROOT="${EYE_BACKUP_ROOT:-$HOME/eye-backups}"
-case "$(cd "$(dirname "$BACKUP_ROOT")" 2>/dev/null && pwd)/" in
-  "$REPO/"*) die "EYE_BACKUP_ROOT must be outside the repository ($BACKUP_ROOT)";;
-esac
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
-B="$BACKUP_ROOT/$TS"
-mkdir -p "$B/pg" "$B/config"
-chmod 700 "$BACKUP_ROOT" "$B"
-say "bundle: $B"
-say "repository: $REPO @ $(git -C "$REPO" rev-parse HEAD) ($(git -C "$REPO" branch --show-current))"
+# ------------------------------------------------- bundle directory (fresh)
+step "bundle directory (fresh; cleanup on failure is bound to the run manifest)"
+V="$(ops_mkdir_fresh "bundle" "$B")" || die "$V"
+say "  $V"
+ops_run_init "$B/RUN.json" "backup.sh"
+ops_run_record dir "$B" "bundle"
+chmod 700 "$B"
+cleanup_on_failure() {
+  # Only directories this run created (recorded in RUN.json) are removed; a
+  # partial bundle would otherwise leave a copy of the credentials behind.
+  local d
+  for d in $(ops_run_ids dir | sort -r); do
+    [[ -d "$d" && ! -L "$d" ]] || continue
+    rm -rf "$d"; say "  removed partial $d (recorded in the run manifest)"
+  done
+}
+trap 'rc=$?; if [[ $rc -ne 0 ]]; then step "failure (rc=$rc): removing what this run created"; cleanup_on_failure; fi; exit $rc' EXIT
+mkdir "$B/pg" "$B/config"
+ops_run_record dir "$B/pg" ""; ops_run_record dir "$B/config" ""
+say "  bundle: $B"
+say "  repository: $REPO @ $(git -C "$REPO" rev-parse HEAD) ($(git -C "$REPO" branch --show-current))"
 T0=$(now_s)
 
 # ------------------------------------------------- per-database facts (JSON)
@@ -180,19 +230,28 @@ cmp -s "$ENV_FILE" "$B/config/env" || die "config/env copy does not match the so
 say "  config/env  $(size "$B/config/env") bytes  keys=$(grep -c '^[A-Z0-9_]*=' "$B/config/env")"
 
 # ------------------------------------------------------------------ images
-step "image digests"
-img_json() { # img_json <container> <compose-pin-name>
-  local c="$1" id digests pin
+# The pin of each service is read from docker-compose.yml BY SERVICE IDENTITY
+# (services.postgres.image, services.redis.image), whatever registry or path the
+# reference carries; both pins are recorded so that restore can start its
+# isolated container from the bundle's own recorded pin.
+step "image pins (by compose service identity) and the running containers' digests"
+img_json() { # img_json <service> <container> <compose-pin>
+  local svc="$1" c="$2" pin="$3" id digests
   id="$(docker inspect --format '{{.Image}}' "$c")"
   digests="$(docker image inspect --format '{{join .RepoDigests ","}}' "$id")"
-  pin="$(grep -E "^[[:space:]]*image:[[:space:]]*$2@" "$REPO/docker-compose.yml" | sed -E 's/^[[:space:]]*image:[[:space:]]*([^ ]+).*/\1/' | head -1)"
-  jq -cn --arg c "$c" --arg id "$id" --arg d "$digests" --arg pin "$pin" \
-    '{container:$c, image_id:$id, repo_digests:($d|split(",")), compose_pin:$pin, pin_matches:(($d|split(","))|index($pin)!=null)}'
+  jq -cn --arg svc "$svc" --arg c "$c" --arg id "$id" --arg d "$digests" --arg pin "$pin" '
+    ($pin | split("@") | .[1] // "") as $pindigest
+    | {service:$svc, container:$c, image_id:$id, repo_digests:($d|split(",")), compose_pin:$pin,
+       compose_pin_digest:$pindigest,
+       pin_matches:(($d|split(","))|index($pin)!=null),
+       pin_digest_matches:(($d|split(",")|map(split("@")|.[1] // "")|index($pindigest))!=null)}'
 }
-PG_IMG="$(img_json "$PG_CONTAINER" postgres)"
-REDIS_IMG="$(img_json "$REDIS_CONTAINER" redis)"
-say "  postgres: $(jq -r '.repo_digests[0]' <<<"$PG_IMG") pin_matches=$(jq -r '.pin_matches' <<<"$PG_IMG")"
-say "  redis:    $(jq -r '.repo_digests[0]' <<<"$REDIS_IMG") pin_matches=$(jq -r '.pin_matches' <<<"$REDIS_IMG")"
+PG_IMG="$(img_json "$PG_SERVICE" "$PG_CONTAINER" "$PG_PIN")"
+REDIS_IMG="$(img_json "$REDIS_SERVICE" "$REDIS_CONTAINER" "$REDIS_PIN")"
+say "  $PG_SERVICE: pin $PG_PIN"
+say "    running: $(jq -r '.repo_digests|join(" ")' <<<"$PG_IMG")  pin_matches=$(jq -r '.pin_matches' <<<"$PG_IMG") pin_digest_matches=$(jq -r '.pin_digest_matches' <<<"$PG_IMG")"
+say "  $REDIS_SERVICE: pin $REDIS_PIN"
+say "    running: $(jq -r '.repo_digests|join(" ")' <<<"$REDIS_IMG")  pin_matches=$(jq -r '.pin_matches' <<<"$REDIS_IMG") pin_digest_matches=$(jq -r '.pin_digest_matches' <<<"$REDIS_IMG")"
 
 # --------------------------------------------------------------- manifest
 step "MANIFEST.json"
@@ -202,12 +261,16 @@ for f in pg/eye.dump pg/eye_demo.dump pg/globals.sql vault.tar journal.tar confi
 done
 T1=$(now_s)
 BUNDLE_KB=$(du -sk "$B" | awk '{print $1}')
+GIT_HEAD="$(git -C "$REPO" rev-parse HEAD)"
+COMPOSE_CLEAN=true
+git -C "$REPO" diff --quiet -- docker-compose.yml 2>/dev/null || COMPOSE_CLEAN=false
 jq -n \
   --arg ts "$TS" --arg host "$(hostname)" --arg repo "$REPO" \
-  --arg head "$(git -C "$REPO" rev-parse HEAD)" --arg branch "$(git -C "$REPO" branch --show-current)" \
+  --arg head "$GIT_HEAD" --arg branch "$(git -C "$REPO" branch --show-current)" \
   --argjson duration "$(( T1 - T0 ))" --argjson kb "$BUNDLE_KB" \
   --argjson files "$FILES_JSON" --argjson before "$FACTS_BEFORE" --argjson after "$FACTS_AFTER" --argjson drift "$DRIFT" \
   --argjson pg "$PG_IMG" --argjson redis "$REDIS_IMG" \
+  --arg csha "$(sha "$COMPOSE_FILE")" --argjson cclean "$COMPOSE_CLEAN" --arg pgsvc "$PG_SERVICE" --arg rsvc "$REDIS_SERVICE" \
   --arg vault "$VAULT_REL" --argjson vfiles "$VAULT_FILES" --argjson vbytes "${VAULT_BYTES:-0}" \
   --argjson journal "$JOURNAL_JSON" --arg dbs "$DATABASES" --arg su "$PG_SUPERUSER" \
   '{
@@ -217,6 +280,8 @@ jq -n \
     databases: ($dbs|split(" ")),
     files: $files,
     database_facts: {before_dump:$before, after_dump:$after, changed_during_dump_window:$drift},
+    compose: {file:"docker-compose.yml", sha256:$csha, unmodified_in_worktree:$cclean,
+              services:{($pgsvc):{image:$pg.compose_pin}, ($rsvc):{image:$redis.compose_pin}}},
     images: {postgres:$pg, redis:$redis},
     vault: {root:$vault, files:$vfiles, payload_bytes:$vbytes},
     journal: $journal,
@@ -229,3 +294,4 @@ say ""
 say "bundle complete: $B  ($BUNDLE_KB KB, $(( T1 - T0 ))s)"
 jq -r '.files | to_entries[] | "  \(.key)  sha256=\(.value.sha256)  bytes=\(.value.bytes)"' "$B/MANIFEST.json"
 say "  MANIFEST.json  sha256=$(sha "$B/MANIFEST.json")"
+say "  RUN.json  created: $(jq -r '[.created[] | .kind] | join(",")' "$B/RUN.json")"

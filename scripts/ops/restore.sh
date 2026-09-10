@@ -5,19 +5,32 @@
 #   restore.sh <bundle>                   validate the bundle (every sha256 against MANIFEST.json)
 #                                         and print the in-place procedure; touches nothing else
 #   restore.sh <bundle> --into-isolated   restore into an ISOLATED environment and VERIFY coherence:
-#                                           eye-restore-pg     postgres from the SAME pinned digest as docker-compose.yml,
+#                                           eye-restore-pg     postgres started from the BUNDLE'S RECORDED PIN
+#                                                              (MANIFEST.json images.postgres.compose_pin, read at backup
+#                                                              time from the compose `postgres` service), verified to
+#                                                              resolve locally by digest before it is started;
 #                                                              new volume eye-restore-pgdata, host port 127.0.0.1:55433
-#                                           eye-restore-redis  redis from the pinned digest, host port 127.0.0.1:56379 (empty:
-#                                                              the runbook's claim that Redis is rebuilt from the database)
-#                                           ${EYE_RESTORE_ROOT:-$HOME/eye-restore/<ts>}  vault, journal and config copy
+#                                           eye-restore-redis  redis from the bundle's recorded redis pin, host port
+#                                                              127.0.0.1:56379 (empty: the runbook's claim that Redis is
+#                                                              rebuilt from the database)
+#                                           EYE_RESTORE_ROOT, or $HOME/eye-restore/<ts>: vault, journal and config copy
 #                                           a second API from apps/api/dist/main.js on :3402 against the restored eye_demo,
 #                                           scheduler DISABLED, /readyz and one governed read proved
-#                                         then tears every eye-restore-* resource down (unless --keep)
+#                                         then tears down EXACTLY the resources recorded in the run manifest
+#                                         (<restore root>/RUN.json: container ids, volume, API pid) unless --keep
 #   --keep                                leave the isolated environment running for inspection
+#
+# DESTINATION GUARDS (scripts/ops/lib/guards.sh) run before any chmod, copy, tar
+# extraction or container start: the restore root is created FRESH (plain mkdir;
+# it must not exist; its parent must exist, be a directory and not be a symlink)
+# and its PHYSICAL path (symlinks resolved) must not be inside, equal to, or an
+# ancestor of the repository worktree, .eye-local, apps/api/.eye-local, a compose
+# bind-mount host path, or the bundle being restored. Neither the root nor any
+# ancestor up to its nearest pre-existing directory may be a symlink.
 #
 # THE LIVE DEPLOYMENT IS NEVER TOUCHED: this script never names eye-postgres, eye-redis,
 # their volumes, .eye-local/ or apps/api/.eye-local/ in any command; every resource it creates
-# is prefixed eye-restore-. It refuses a restore root inside the repository.
+# is prefixed eye-restore- and recorded in RUN.json, and only recorded resources are removed.
 #
 # NO SECRET IS EVER PRINTED. config/env is loaded with `set -a; . env; set +a` and its values
 # travel only as process environment (PGPASSWORD, POSTGRES_PASSWORD, REDIS_PASSWORD, the API's
@@ -26,7 +39,11 @@ set -euo pipefail
 set +x
 umask 077
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$(cd -P "$(dirname "$0")/../.." && pwd -P)"
+# shellcheck source=lib/guards.sh
+. "$REPO/scripts/ops/lib/guards.sh"
+COMPOSE_FILE="$REPO/docker-compose.yml"
+PG_SERVICE="postgres"; REDIS_SERVICE="redis"
 PG_NAME="eye-restore-pg"; PG_VOLUME="eye-restore-pgdata"; PG_PORT="${EYE_RESTORE_PG_PORT:-55433}"
 REDIS_NAME="eye-restore-redis"; REDIS_PORT="${EYE_RESTORE_REDIS_PORT:-56379}"
 API_PORT="${EYE_RESTORE_API_PORT:-3402}"
@@ -38,7 +55,7 @@ say()  { printf '%s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
 die()  { printf 'restore: %s\n' "$*" >&2; exit 1; }
 now_s() { date -u +%s; }
-sha()  { shasum -a 256 "$1" | awk '{print $1}'; }
+sha()  { ops_sha256 "$1"; }
 PASS=0; FAIL=0
 check() { # check <ok:true|false> <label>
   if [[ "$1" == "true" ]]; then PASS=$((PASS+1)); say "  PASS  $2"; else FAIL=$((FAIL+1)); say "  FAIL  $2"; fi
@@ -50,12 +67,13 @@ for a in "$@"; do
   case "$a" in
     --into-isolated) ISOLATED=true;;
     --keep) KEEP=true;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0;;
     *) [[ -z "$BUNDLE" ]] || die "unexpected argument: $a"; BUNDLE="$a";;
   esac
 done
 [[ -n "$BUNDLE" ]] || die "usage: restore.sh <bundle> [--into-isolated] [--keep]"
-BUNDLE="$(cd "$BUNDLE" && pwd)"
+[[ -d "$BUNDLE" ]] || die "bundle $BUNDLE is not a directory"
+BUNDLE="$(ops_phys "$BUNDLE")"
 MANIFEST="$BUNDLE/MANIFEST.json"
 [[ -f "$MANIFEST" ]] || die "$MANIFEST is missing"
 command -v docker >/dev/null || die "docker is required"
@@ -89,11 +107,46 @@ EOF
 fi
 
 # ------------------------------------------------- isolation preflight
-step "isolation preflight"
-RROOT_BASE="${EYE_RESTORE_ROOT:-$HOME/eye-restore/$(date -u +%Y%m%dT%H%M%SZ)}"
-mkdir -p "$RROOT_BASE"; RROOT="$(cd "$RROOT_BASE" && pwd)"
-case "$RROOT/" in "$REPO/"*) die "EYE_RESTORE_ROOT must be outside the repository ($RROOT)";; esac
+step "isolation preflight: destination guards (physical paths; before any chmod, copy, extraction or container start)"
+PROTECTED="$(ops_protected_paths "$REPO"; printf '%s\n' "$BUNDLE")"
+say "  protected (physical): $(printf '%s' "$PROTECTED" | tr '\n' ' ')"
+if [[ -n "${EYE_RESTORE_ROOT:-}" ]]; then
+  RROOT="$EYE_RESTORE_ROOT"; RPARENT="$(dirname "$RROOT")"
+else
+  RPARENT="$HOME/eye-restore"; RROOT="$RPARENT/$(date -u +%Y%m%dT%H%M%SZ)"
+fi
+V="$(ops_require_existing_dir "restore root parent" "$RPARENT")" || die "$V"
+say "  $V"
+# shellcheck disable=SC2086
+V="$(ops_guard_destination "restore root" "$RROOT" $PROTECTED)" || die "$V"
+say "  $V"
+V="$(ops_mkdir_fresh "restore root" "$RROOT")" || die "$V"
+say "  $V"
+RROOT="$(ops_phys "$RROOT")"
+ops_run_init "$RROOT/RUN.json" "restore.sh"
+ops_run_record dir "$RROOT" "restore root"
 chmod 700 "$RROOT"
+API_PID=""
+teardown() {
+  # Bound to the run manifest: only the process, containers and volume this run
+  # recorded are stopped or removed; nothing is matched by name pattern.
+  local id
+  if [[ -n "$API_PID" ]] && kill -0 "$API_PID" 2>/dev/null; then kill "$API_PID" 2>/dev/null || true; wait "$API_PID" 2>/dev/null || true; fi
+  if [[ "$KEEP" == "true" ]]; then
+    say "  --keep: the resources recorded in $RROOT/RUN.json are left in place: $(jq -r '[.created[] | select(.kind=="container" or .kind=="volume") | .detail] | join(", ")' "$RROOT/RUN.json")"
+    return
+  fi
+  for id in $(ops_run_ids container); do
+    docker rm -f "$id" >/dev/null 2>&1 && say "  removed container $id ($(jq -r --arg i "$id" '.created[] | select(.id==$i) | .detail' "$RROOT/RUN.json"))" || say "  container $id was already gone"
+  done
+  for id in $(ops_run_ids volume); do
+    docker volume rm "$id" >/dev/null 2>&1 && say "  removed volume $id" || say "  volume $id was already gone"
+  done
+  say "  restore root $RROOT (RUN.json, RESTORE_REPORT.json, api.log, work files, config copy) and the bundle are kept"
+}
+trap 'rc=$?; step "teardown (bound to $RROOT/RUN.json)"; teardown; exit $rc' EXIT
+
+step "isolation preflight: names, ports, build output"
 for n in "$PG_NAME" "$REDIS_NAME"; do
   ! docker ps -a --format '{{.Names}}' | grep -qx "$n" || die "$n already exists; remove it (docker rm -f $n) or use --keep from a previous run deliberately"
 done
@@ -102,34 +155,60 @@ for p in "$PG_PORT" "$REDIS_PORT" "$API_PORT"; do
   ! lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 || die "port $p is in use"
 done
 [[ -f "$REPO/apps/api/dist/main.js" ]] || die "apps/api/dist/main.js is missing (build output is required to start the second API)"
-PG_DIGEST="$(jq -r .images.postgres.compose_pin "$MANIFEST")"
-REDIS_DIGEST="$(jq -r .images.redis.compose_pin "$MANIFEST")"
-[[ "$(jq -r .images.postgres.pin_matches "$MANIFEST")" == "true" ]] || die "the manifest's postgres image does not match the compose pin"
-COMPOSE_PG="$(grep -E '^[[:space:]]*image:[[:space:]]*postgres@' "$REPO/docker-compose.yml" | sed -E 's/^[[:space:]]*image:[[:space:]]*([^ ]+).*/\1/' | head -1)"
-[[ "$COMPOSE_PG" == "$PG_DIGEST" ]] || die "docker-compose.yml pins $COMPOSE_PG but the bundle was taken from $PG_DIGEST"
-docker image inspect "$PG_DIGEST" >/dev/null 2>&1 || die "$PG_DIGEST is not present locally (no pull is attempted by this script)"
-docker image inspect "$REDIS_DIGEST" >/dev/null 2>&1 || die "$REDIS_DIGEST is not present locally"
+say "  resources to create: $PG_NAME (:$PG_PORT, volume $PG_VOLUME), $REDIS_NAME (:$REDIS_PORT), API :$API_PORT"
+
+# ------------------------------------------------- image identity
+# The isolated containers start from the pins RECORDED IN THE BUNDLE (read at
+# backup time from the compose services by identity), never from a textual
+# match on the current compose file. Each pin must resolve locally by digest.
+step "image identity: the bundle's recorded pins (by compose service identity)"
+PG_DIGEST="$(jq -r '.images.postgres.compose_pin // empty' "$MANIFEST")"
+REDIS_DIGEST="$(jq -r '.images.redis.compose_pin // empty' "$MANIFEST")"
+[[ -n "$PG_DIGEST" && -n "$REDIS_DIGEST" ]] || die "the manifest does not record both compose pins (images.postgres.compose_pin, images.redis.compose_pin)"
+[[ "$(jq -r '.images.postgres.pin_matches // .images.postgres.pin_digest_matches' "$MANIFEST")" == "true" ]] || die "the manifest records that the source container's image did not match the compose pin at backup time (images.postgres.pin_matches=false)"
+image_resolves() { # image_resolves <reference@sha256:…>  -> the local image's repo digests must contain the reference's digest
+  local ref="$1" d id digests
+  d="${ref#*@}"
+  [[ "$ref" == *@sha256:* ]] || { say "  $ref is not pinned by digest"; return 1; }
+  id="$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null)" || { say "  $ref is not present locally (no pull is attempted by this script)"; return 1; }
+  digests="$(docker image inspect --format '{{join .RepoDigests ","}}' "$id")"
+  echo ",$digests," | grep -q "@$d," || { say "  $ref resolved to $id whose repo digests ($digests) do not carry $d"; return 1; }
+  say "  $ref -> local image $id (repo digests carry $d)"
+}
+image_resolves "$PG_DIGEST" || die "the bundle's postgres pin does not resolve locally by digest"
+image_resolves "$REDIS_DIGEST" || die "the bundle's redis pin does not resolve locally by digest"
+SRC_HEAD="$(jq -r '.bundle.git_head' "$MANIFEST")"
+if SRC_COMPOSE="$(git -C "$REPO" show "$SRC_HEAD:docker-compose.yml" 2>/dev/null)"; then
+  SRC_JSON="$(printf '%s\n' "$SRC_COMPOSE" | node "$REPO/scripts/ops/compose-services.mjs" - "$REPO")" || die "the source revision's docker-compose.yml could not be parsed"
+  SRC_PG="$(jq -r --arg s "$PG_SERVICE" '.services[$s].image // empty' <<<"$SRC_JSON")"
+  SRC_REDIS="$(jq -r --arg s "$REDIS_SERVICE" '.services[$s].image // empty' <<<"$SRC_JSON")"
+  check "$([[ "$SRC_PG" == "$PG_DIGEST" && "$SRC_REDIS" == "$REDIS_DIGEST" ]] && echo true || echo false)" \
+    "bundle pins equal the compose file of the source revision $(cut -c1-12 <<<"$SRC_HEAD") (postgres $([[ "$SRC_PG" == "$PG_DIGEST" ]] && echo same || echo "DIFFERS: $SRC_PG"); redis $([[ "$SRC_REDIS" == "$REDIS_DIGEST" ]] && echo same || echo "DIFFERS: $SRC_REDIS"))"
+  if [[ "$(jq -r 'if (.compose|type) == "object" and .compose.unmodified_in_worktree == false then "modified" else "clean-or-unknown" end' "$MANIFEST")" == "modified" ]]; then
+    say "  note: the manifest records that docker-compose.yml was modified in the worktree at backup time; the pins above are what the worktree file said"
+  fi
+else
+  say "  note: source revision $(cut -c1-12 <<<"$SRC_HEAD") is not in this clone; the bundle pins cannot be compared with its compose file"
+fi
+if [[ -f "$COMPOSE_FILE" ]]; then
+  CUR_JSON="$(node "$REPO/scripts/ops/compose-services.mjs" "$COMPOSE_FILE")" || die "docker-compose.yml could not be parsed"
+  CUR_PG="$(jq -r --arg s "$PG_SERVICE" '.services[$s].image // empty' <<<"$CUR_JSON")"
+  CUR_REDIS="$(jq -r --arg s "$REDIS_SERVICE" '.services[$s].image // empty' <<<"$CUR_JSON")"
+  if [[ "$CUR_PG" == "$PG_DIGEST" && "$CUR_REDIS" == "$REDIS_DIGEST" ]]; then
+    say "  current docker-compose.yml pins the same images (report only)"
+  else
+    say "  REPORT: current docker-compose.yml differs from the bundle — postgres now $CUR_PG, redis now $CUR_REDIS; the isolated restore still uses the bundle's pins"
+  fi
+fi
 say "  restore root: $RROOT"
 say "  postgres: $PG_DIGEST"
 say "  redis:    $REDIS_DIGEST"
-say "  resources: $PG_NAME (:$PG_PORT, volume $PG_VOLUME), $REDIS_NAME (:$REDIS_PORT), API :$API_PORT"
 
-API_PID=""
-teardown() {
-  if [[ -n "$API_PID" ]] && kill -0 "$API_PID" 2>/dev/null; then kill "$API_PID" 2>/dev/null || true; wait "$API_PID" 2>/dev/null || true; fi
-  if [[ "$KEEP" == "true" ]]; then
-    say "  --keep: $PG_NAME, $REDIS_NAME, volume $PG_VOLUME and $RROOT are left in place"
-    return
-  fi
-  docker rm -f "$PG_NAME" "$REDIS_NAME" >/dev/null 2>&1 || true
-  docker volume rm "$PG_VOLUME" >/dev/null 2>&1 || true
-  say "  removed $PG_NAME, $REDIS_NAME, volume $PG_VOLUME (restore root $RROOT and the bundle are kept)"
-}
-trap 'rc=$?; step "teardown"; teardown; exit $rc' EXIT
 
 # ------------------------------------------------------- config copy
 step "config/env -> $RROOT/config/env (0600)"
-mkdir -p "$RROOT/config" "$RROOT/work"
+mkdir "$RROOT/config" "$RROOT/work"
+ops_run_record dir "$RROOT/config" ""; ops_run_record dir "$RROOT/work" ""
 cp "$BUNDLE/config/env" "$RROOT/config/env"; chmod 600 "$RROOT/config/env"
 set -a
 # shellcheck disable=SC1090
@@ -140,11 +219,15 @@ say "  keys=$(grep -c '^[A-Z0-9_]*=' "$RROOT/config/env") (values never displaye
 
 T0=$(now_s)
 # ---------------------------------------------------------- postgres
-step "$PG_NAME from $PG_DIGEST"
-POSTGRES_PASSWORD="$EYE_DB_PASSWORD" docker run -d --name "$PG_NAME" \
+step "$PG_NAME from the bundle's pin $PG_DIGEST"
+docker volume create "$PG_VOLUME" >/dev/null
+ops_run_record volume "$PG_VOLUME" "$PG_VOLUME"
+CID="$(POSTGRES_PASSWORD="$EYE_DB_PASSWORD" docker run -d --name "$PG_NAME" \
   -p "127.0.0.1:$PG_PORT:5432" -v "$PG_VOLUME:/var/lib/postgresql" \
   -e POSTGRES_USER="$PG_SUPERUSER" -e POSTGRES_PASSWORD -e POSTGRES_DB=postgres \
-  "$PG_DIGEST" >/dev/null
+  "$PG_DIGEST")"
+ops_run_record container "$CID" "$PG_NAME"
+say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json; image in use: $(docker inspect --format '{{.Config.Image}}' "$CID")"
 for _ in $(seq 1 60); do
   docker exec "$PG_NAME" pg_isready -U "$PG_SUPERUSER" -d postgres -q 2>/dev/null && break; sleep 1
 done
@@ -181,6 +264,7 @@ for d in $(jq -r '.journal[] | select(.present) | .path' "$MANIFEST"); do
   say "  journal $d: $(find "$RROOT/$d" -type f | wc -l | tr -d ' ') file(s)"
 done
 mkdir -p "$RROOT/apps/api/.eye-local/degraded-demo"
+ops_run_record dir "$RROOT/apps/api/.eye-local/degraded-demo" "journal dir for the second API"
 T_RESTORE=$(( $(now_s) - T0 ))
 
 # ---------------------------------------------------------- verification
@@ -316,11 +400,13 @@ done
 T_VERIFY=$(( $(now_s) - T0 - T_RESTORE ))
 
 # ------------------------------------------------------------ second API
-step "$REDIS_NAME from $REDIS_DIGEST (empty — no Redis state is restored)"
+step "$REDIS_NAME from the bundle's pin $REDIS_DIGEST (empty — no Redis state is restored)"
 # The password reaches the container only as docker environment (never on a command line).
 export REDIS_PASSWORD="$EYE_REDIS_PASSWORD"
-docker run -d --name "$REDIS_NAME" -p "127.0.0.1:$REDIS_PORT:6379" -e REDIS_PASSWORD \
-  "$REDIS_DIGEST" sh -c 'exec redis-server --requirepass "$REDIS_PASSWORD"' >/dev/null
+CID="$(docker run -d --name "$REDIS_NAME" -p "127.0.0.1:$REDIS_PORT:6379" -e REDIS_PASSWORD \
+  "$REDIS_DIGEST" sh -c 'exec redis-server --requirepass "$REDIS_PASSWORD"')"
+ops_run_record container "$CID" "$REDIS_NAME"
+say "  container $(cut -c1-12 <<<"$CID") recorded in RUN.json"
 for _ in $(seq 1 30); do docker exec -e REDIS_PASSWORD "$REDIS_NAME" sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null' | grep -q PONG && break; sleep 1; done
 say "  keys in the fresh redis: $(docker exec -e REDIS_PASSWORD "$REDIS_NAME" sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning dbsize 2>/dev/null')"
 
@@ -332,6 +418,7 @@ API_PID=$(cd "$REPO/apps/api" && {
   EYE_VAULT_QUARANTINE_ROOT="$VAULT/quarantine" EYE_VAULT_EVIDENCE_ROOT="$VAULT/evidence" \
   EYE_DEGRADED_DIR="$RROOT/apps/api/.eye-local/degraded-demo" \
   node dist/main.js > "$RROOT/api.log" 2>&1 & echo $!; })
+ops_run_record process "$API_PID" "second API on :$API_PORT"
 READY=""
 for _ in $(seq 1 60); do
   READY="$(curl -sf "http://127.0.0.1:$API_PORT/readyz" 2>/dev/null || true)"; [[ -n "$READY" ]] && break; sleep 1
@@ -384,7 +471,7 @@ say "  restore (postgres start + globals + pg_restore x2 + tar extract): ${T_RES
 say "  verification: ${T_VERIFY}s   total including second API and probe: ${T_TOTAL}s"
 say "  checks: $PASS passed, $FAIL failed"
 jq -n --arg b "$BUNDLE" --arg r "$RROOT" --argjson pass "$PASS" --argjson fail "$FAIL" \
-  --argjson tr "$T_RESTORE" --argjson tv "$T_VERIFY" --argjson tt "$T_TOTAL" \
-  '{bundle:$b, restore_root:$r, checks:{passed:$pass, failed:$fail}, seconds:{restore:$tr, verify:$tv, total:$tt}}' > "$RROOT/RESTORE_REPORT.json"
+  --argjson tr "$T_RESTORE" --argjson tv "$T_VERIFY" --argjson tt "$T_TOTAL" --arg pg "$PG_DIGEST" --arg redis "$REDIS_DIGEST" \
+  '{bundle:$b, restore_root:$r, run_manifest:($r+"/RUN.json"), images_used:{postgres:$pg, redis:$redis}, checks:{passed:$pass, failed:$fail}, seconds:{restore:$tr, verify:$tv, total:$tt}}' > "$RROOT/RESTORE_REPORT.json"
 [[ "$FAIL" -eq 0 ]] || die "$FAIL verification check(s) failed — see above"
 say "  RESTORE VERIFIED"

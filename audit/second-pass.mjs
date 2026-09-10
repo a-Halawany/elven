@@ -103,19 +103,32 @@ function loadText(vol) {
   }
   return textCache.get(file);
 }
-function sourceRef(vol, clause) {
+function sourceRef(vol, clause, page) {
   const t = loadText(vol); if (t === null) return '';
+  // page-aware: when the row names a page/paragraph, search that block first (repeated wording occurs on many pages)
+  const pageNo = Number(String(page ?? '').replace(/[^0-9]/g, ''));
+  const inBlock = (probe) => {
+    if (!Number.isFinite(pageNo) || pageNo <= 0) return -1;
+    for (let i = 0; i < t.norm.length; i += 1) {
+      const m = t.markers[i]; if (m === null || Number(m.split(' ')[1]) !== pageNo) continue;
+      if (t.norm[i].includes(probe) || (t.norm[i] + ' ' + (t.norm[i + 1] ?? '')).includes(probe)) return i;
+    }
+    return -1;
+  };
   const words = clause.replace(/\s+/g, ' ').trim().toLowerCase().replace(/[…]+$/, '');
   const probe = words.slice(0, 70);
   if (probe.length < 12) return '';
   // exact line containing the opening words, else a window of two lines
-  let idx = t.norm.findIndex((l) => l.includes(probe));
-  if (idx < 0) {
-    const short = probe.slice(0, 40);
-    idx = t.norm.findIndex((l, i) => (l + ' ' + (t.norm[i + 1] ?? '')).includes(short));
-  }
+  let idx = inBlock(probe); if (idx < 0) idx = inBlock(probe.slice(0, 40));
+  let scope = 'page';
+  if (idx < 0) { scope = 'volume'; idx = t.norm.findIndex((l) => l.includes(probe)); }
+  if (idx < 0) { const short = probe.slice(0, 40); idx = t.norm.findIndex((l, i) => (l + ' ' + (t.norm[i + 1] ?? '')).includes(short)); }
   if (idx < 0) return '';
-  return `${t.file}:${t.markers[idx] ?? 'no-marker'}:L${idx + 1}`;
+  // the span: from the located line to the next blank line or marker (the clause's paragraph)
+  let end = idx; while (end + 1 < t.lines.length && t.lines[end + 1].trim() !== '' && !/^=== /.test(t.lines[end + 1])) end += 1;
+  const marker = t.markers[idx] ?? 'no-marker';
+  const mismatch = scope === 'volume' && Number.isFinite(pageNo) && pageNo > 0 && Number(marker.split(' ')[1]) !== pageNo;
+  return `${t.file}:${marker}:L${idx + 1}-L${end + 1}${mismatch ? ':page-mismatch' : ''}`;
 }
 
 // ── the pass ──────────────────────────────────────────────────────────────────
@@ -135,8 +148,9 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.csv')).sort()) {
     for (const raw of o.evidence.split(/;\s*/)) {
       const ptr = raw.trim(); if (!ptr) continue;
       const looksLikePath = /[\w.-]+\/[\w./*-]+|\.(ts|tsx|sql|mjs|js|json|yml|yaml|md|sh|cjs)(\b|$)/.test(ptr);
-      if (!looksLikePath) { resolved.push(ptr); continue; }             // a test-case name or a prose pointer, kept as is
-      const hit = resolvePointer(ptr);
+      const bareMigration = /\bmigrations?\s+(00\d\d)\b/i.exec(ptr) ?? /\b(00[0-5]\d)(?:_[\w-]+)?\b/.exec(ptr);
+      if (!looksLikePath && bareMigration === null) { resolved.push(ptr); continue; }   // a test-case name or a prose pointer, kept as is
+      const hit = looksLikePath ? resolvePointer(ptr) : resolvePointer(`apps/api/migrations/${bareMigration[1]}`);
       if (hit === null) { unresolved.push(ptr); continue; }
       resolved.push(ptr); scopes.add(hit.scope);
       if (isTestPointer(hit.path)) scopes.add('test');
@@ -176,7 +190,7 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.csv')).sort()) {
     }
     if (o.impl_status === 'not-applicable' && o.package === 'done') o.package = 'not-applicable';
     // 6. source reference
-    if (!o.source_ref) { o.source_ref = sourceRef(o.volume, o.clause); if (o.source_ref) stats.sourceRefs += 1; else stats.sourceRefMissing += 1; }
+    { o.source_ref = sourceRef(o.volume, o.clause, o.page); if (o.source_ref) stats.sourceRefs += 1; else stats.sourceRefMissing += 1; if (/page-mismatch/.test(o.source_ref)) stats.pageMismatch = (stats.pageMismatch ?? 0) + 1; }
     out.push(HEADER.map((c) => esc(o[c] ?? '')).join(','));
   }
   writeFileSync(join(dir, f), HEADER.join(',') + '\n' + out.join('\n') + '\n');

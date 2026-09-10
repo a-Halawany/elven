@@ -7,8 +7,15 @@ nothing. It defines what the runtime state IS, how it is captured as one coheren
 bundle, how the bundle is restored into an isolated environment and proved
 coherent, and what the drill measured.
 
-Scripts: `scripts/ops/backup.sh`, `scripts/ops/restore.sh`.
-Drill evidence: `docs/ops/evidence/restore-drill-20260910T075051Z.md`.
+Scripts: `scripts/ops/backup.sh`, `scripts/ops/restore.sh`, the guard library
+they share (`scripts/ops/lib/guards.sh`), the compose reader
+(`scripts/ops/compose-services.mjs`) and the guard probe suite
+(`scripts/ops/test-guards.sh`).
+Drill evidence: `docs/ops/evidence/restore-drill-20260910T075051Z.md` (first
+drill, 36/36) and `docs/ops/evidence/restore-drill-20260910T161412Z.md` (second
+drill with the corrected guards and image lookup, 37/37); guard probes:
+`docs/ops/evidence/guard-probes-20260910T161410Z.txt` (35/35). What changed
+between the two drills is in §14.
 
 ## 1. The runtime state, and why every part matters
 
@@ -38,8 +45,9 @@ restore runs the same PostgreSQL major and build the dump was taken from.
 - **OS-level secrets** — nothing outside the repository's `.eye-local/env` is
   captured (no keychain, no shell profile, no Docker credentials).
 - **Docker images** — pinned by immutable digest in `docker-compose.yml` and
-  `conformance.manifest.json`; the restore refuses to run if the digest present
-  locally differs from the bundle's, and it never pulls.
+  `conformance.manifest.json`; the bundle records both services' pins (§13) and
+  the restore starts from the bundle's recorded pin only if it resolves locally
+  to that digest; it never pulls.
 - **Build output and dependencies** (`apps/api/dist`, `node_modules`) — rebuilt
   from git with `pnpm install --frozen-lockfile && pnpm build`.
 - **Other databases in the cluster** (`eye_upgrade_0022`, `eye_virgin_0022`) —
@@ -83,8 +91,13 @@ scripts/ops/backup.sh
 ```
 
 Read-only against the live deployment (only `docker exec`/`docker inspect` on
-`eye-postgres`, file reads elsewhere). It produces
-`${EYE_BACKUP_ROOT:-$HOME/eye-backups}/<UTC timestamp>/` (0700) containing:
+the container named by the compose `postgres` service, file reads elsewhere).
+The destination guards of §12 run first — before the credential file is read
+and before any chmod, copy or write: `EYE_BACKUP_ROOT` (default
+`$HOME/eye-backups`; create it once with `mkdir -m 700`) must already exist, be
+a directory, not be a symlink, and be physically outside every protected path;
+the bundle directory `<root>/<UTC timestamp>/` is then created fresh with a
+plain `mkdir` (0700) and contains:
 
 | File | Content |
 | --- | --- |
@@ -93,7 +106,8 @@ Read-only against the live deployment (only `docker exec`/`docker inspect` on
 | `vault.tar` | `.eye-local/vault` with paths relative to the repository root |
 | `journal.tar` | the degraded journal directories that exist (absence is recorded in the manifest) |
 | `config/env` | byte copy of `.eye-local/env`, 0600, compared with `cmp` |
-| `MANIFEST.json` | sha256 and size of every file; git HEAD and branch; per database, before AND after the dumps: `schema_migrations` count and last filename, `objects.canonical_objects` count, audit event/seal/incident counts, every partition's chain head (`partition_id`, `next_seq`, `head_hash`, `frozen`), blob manifest and tombstone counts; the image ids and repo digests of both containers with a `pin_matches` flag against `docker-compose.yml` |
+| `MANIFEST.json` | sha256 and size of every file; git HEAD and branch; per database, before AND after the dumps: `schema_migrations` count and last filename, `objects.canonical_objects` count, audit event/seal/incident counts, every partition's chain head (`partition_id`, `next_seq`, `head_hash`, `frozen`), blob manifest and tombstone counts; `compose`: the sha256 of `docker-compose.yml`, whether it was unmodified in the worktree, and the `image:` of the `postgres` and `redis` SERVICES (§13); `images`: for each service, its container, image id and repo digests, `compose_pin`, `pin_matches` (the running image's repo digests carry the pin reference) and `pin_digest_matches` (they carry its digest) |
+| `RUN.json` | the run manifest: every directory this run created. On failure, only what is recorded is removed (a partial bundle would otherwise leave a copy of the credentials behind); on success it is kept for the record |
 
 Ordering is deliberate: dumps first, vault second. Blob bytes are never
 rewritten, so every manifest in the dump has its bytes in the tar unless it was
@@ -113,37 +127,54 @@ with `set -x`.
 scripts/ops/restore.sh <bundle> --into-isolated [--keep]
 ```
 
-1. Validates every file of the bundle against `MANIFEST.json`.
-2. Preflight: refuses a restore root inside the repository; refuses if
-   `eye-restore-pg`, `eye-restore-redis` or volume `eye-restore-pgdata` exist or
-   if ports 55433/56379/3402 are bound; asserts the bundle's postgres digest
-   equals the compose pin and is present locally.
-3. Copies `config/env` to `${EYE_RESTORE_ROOT:-$HOME/eye-restore/<ts>}/config/env`
-   (0600) and loads it.
-4. Starts `eye-restore-pg` from the pinned digest on `127.0.0.1:55433` with the
-   new volume `eye-restore-pgdata`; restores `globals.sql` (exactly one expected
+1. Validates every file of the bundle against `MANIFEST.json` (the bundle path
+   is resolved to its physical path first).
+2. Destination guards (§12), before any chmod, copy, extraction or container
+   start: the restore root is `EYE_RESTORE_ROOT` or `$HOME/eye-restore/<ts>`;
+   its parent must already exist, be a directory and not be a symlink (create
+   `$HOME/eye-restore` once with `mkdir -m 700`); the root's physical path must
+   be outside every protected path AND outside the bundle; the root is created
+   fresh with a plain `mkdir` (it must not exist) and `RUN.json` is opened in it.
+   The teardown trap is armed at that moment and is bound to `RUN.json`.
+3. Preflight: refuses if `eye-restore-pg`, `eye-restore-redis` or volume
+   `eye-restore-pgdata` exist or if ports 55433/56379/3402 are bound; requires
+   `apps/api/dist/main.js`.
+4. Image identity (§13): reads both pins from the bundle
+   (`images.postgres.compose_pin`, `images.redis.compose_pin`), requires each to
+   resolve locally through `docker image inspect` to an image whose repo digests
+   carry the pin's digest, checks the pins against the compose file of the
+   source revision recorded in the bundle (`git show <git_head>:docker-compose.yml`,
+   a PASS/FAIL check), and REPORTS whether the current `docker-compose.yml`
+   differs (not a failure: the isolated restore uses the bundle's pins).
+5. Copies `config/env` to `<restore root>/config/env` (0600) and loads it.
+6. Creates the volume `eye-restore-pgdata` and starts `eye-restore-pg` from the
+   bundle's postgres pin on `127.0.0.1:55433`, recording the volume name and the
+   container id in `RUN.json`; restores `globals.sql` (exactly one expected
    error: the superuser role already exists in a fresh cluster); creates and
    `pg_restore`s both databases with ownership preserved.
-5. Extracts `vault.tar` and `journal.tar` under the restore root.
-6. Verifies coherence (§6).
-7. Starts `eye-restore-redis` (empty) and a second API from `apps/api/dist/main.js`
+7. Extracts `vault.tar` and `journal.tar` under the restore root.
+8. Verifies coherence (§6).
+9. Starts `eye-restore-redis` (empty, from the bundle's redis pin; container id
+   recorded) and a second API from `apps/api/dist/main.js`
    on `:3402` with `EYE_DB_HOST/PORT` → the restored cluster, `EYE_DB_NAME=eye_demo`,
    the vault and journal roots under the restore root, `EYE_SCHEDULER_ENABLED=false`;
    waits for `/readyz`, then runs a probe that logs in as the platform
    administrator, locates the demonstration scope, logs in as the demo member
    `m.dvorak`, lists evidence and downloads one evidence object, re-hashing the
    returned bytes against the manifest digest.
-8. Stops the API and removes every `eye-restore-*` resource (the restore root,
-   `RESTORE_REPORT.json`, the API log and the work files stay; `--keep` leaves
-   the containers running for inspection).
+10. Stops the API (recorded pid) and removes EXACTLY the containers (by id) and
+    the volume recorded in `RUN.json` — never a name pattern. The restore root,
+    `RUN.json`, `RESTORE_REPORT.json`, the API log and the work files stay;
+    `--keep` leaves the recorded resources running for inspection.
 
 Overrides: `EYE_RESTORE_PG_PORT`, `EYE_RESTORE_REDIS_PORT`, `EYE_RESTORE_API_PORT`,
 `EYE_RESTORE_ROOT`, `EYE_RESTORE_STRICT_BLOB_DBS` (default `eye_demo`; see §10).
 
 ## 6. Verification performed on the restored environment
 
-| Check | Method | Drill result |
+| Check | Method | Drill result (first drill; the second drill's values are in its record) |
 | --- | --- | --- |
+| Image identity (second drill onwards) | bundle pins resolve locally by digest; pins = the source revision's compose file; current compose compared and reported | pass (1 check) |
 | Bundle integrity | sha256 of every file = manifest | 6/6 |
 | Roles | all nine roles present after globals | pass |
 | `pg_restore` | rc 0, zero errors, both databases | pass (8 s + 1 s) |
@@ -157,7 +188,8 @@ Overrides: `EYE_RESTORE_PG_PORT`, `EYE_RESTORE_REDIS_PORT`, `EYE_RESTORE_API_POR
 | Second API | `/readyz` `{"status":"ok","db":true,"audit":"ok"}` | pass |
 | Governed read | login → evidence list (201, 20 items) → evidence download (201, `integrity: verified`, returned bytes hash to the manifest digest) | pass |
 
-36 checks, 36 passed.
+36 checks, 36 passed in the first drill; 37 checks, 37 passed in the second
+(the added check is the source-revision pin comparison).
 
 ## 7. Restore procedure (in place) — governed recovery
 
@@ -189,29 +221,32 @@ absent from the application configuration).
 - `restore.sh` never names `eye-postgres`, `eye-redis`, `eye-pgdata`,
   `.eye-local/` or `apps/api/.eye-local/` in any command; the only live-side
   action in the whole procedure is `backup.sh`'s `docker exec … pg_dump`.
-- Every created resource is prefixed `eye-restore-`; the restore root is
-  required to be outside the repository; the ports differ from the live ones
-  (55433 vs 5432, 56379 vs 6379, 3402 vs 3401).
+- Every created resource is prefixed `eye-restore-` AND recorded in the run
+  manifest at creation; teardown removes only what is recorded, by container id
+  and volume name, never by name pattern. The restore root is required to be
+  physically outside every protected path (§12); the ports differ from the live
+  ones (55433 vs 5432, 56379 vs 6379, 3402 vs 3401).
 - The second API gets its own Redis, so no live queue sees a job or a scheduler
   from the restored instance; its vault and journal roots are under the restore
   root; its scheduler is disabled.
 - Verification runs BEFORE the second API starts, so the counts compared are
   the restored data, not the data plus the probe's own login audit events.
-- After the drill: both live containers still reported `Up 25 hours (healthy)`;
+- After the first drill: both live containers still reported `Up 25 hours (healthy)`;
   no `eye-restore-*` container or volume remained; the ports were released; no
   value of `.eye-local/env` appears in either transcript (checked by loading the
   file in a subshell and `grep -F`-ing each value against the transcripts —
-  0 hits).
+  0 hits). After the second drill: `Up 33 hours (healthy)`, the same checks, and
+  the same 0 hits across every transcript including the guard probes.
 
 ## 9. RPO / RTO as measured
 
-| Quantity | Measured in the drill of 2026-09-10 |
-| --- | --- |
-| Backup duration | 5 s (dumps 2 s + 0 s, globals, tar of 2,757 files, manifest) |
-| Bundle size | 82,840 KB (`pg/eye.dump` 36,561,204 B; `pg/eye_demo.dump` 3,415,342 B; `vault.tar` 43,844,608 B; `journal.tar` 3,584 B; `globals.sql` 2,879 B; `config/env` 790 B) |
-| Restore duration (container start, globals, two `pg_restore`s, tar extraction) | 12 s |
-| Verification | 2 s (plus 3 s in the first run) |
-| Second API up and governed read proven | 16 s total from the start of the restore |
+| Quantity | First drill (07:50Z) | Second drill (16:14Z, corrected scripts) |
+| --- | --- | --- |
+| Backup duration | 5 s (dumps 2 s + 0 s, globals, tar of 2,757 files, manifest) | 5 s (dumps 3 s + 0 s, tar of 2,775 files) |
+| Bundle size | 82,840 KB (`pg/eye.dump` 36,561,204 B; `pg/eye_demo.dump` 3,415,342 B; `vault.tar` 43,844,608 B; `journal.tar` 3,584 B; `globals.sql` 2,879 B; `config/env` 790 B) | 82,264 KB (`pg/eye_demo.dump` 3,541,647 B; `vault.tar` 43,933,696 B; the rest equal in size) |
+| Restore duration (container start, globals, two `pg_restore`s, tar extraction) | 12 s | 12 s |
+| Verification | 2 s (plus 3 s in the first run) | 3 s |
+| Second API up and governed read proven | 16 s total from the start of the restore | 17 s |
 | RTO (technical, local profile) | under one minute end to end; the operator steps of §7 dominate |
 | RPO | the interval between backups. The demonstration collects hourly (SCHEDULED_COLLECTION.md), so a backup after every scheduled tick, and after every seed, migration or credential rotation, bounds the loss to one collection window. Nothing in the bundle is incremental; each run is a full, self-contained bundle. |
 
@@ -273,3 +308,123 @@ absent from the application configuration).
   are in the evidence transcript.
 - Result: 36 checks passed, 0 failed; `RESTORE VERIFIED`; teardown complete;
   live deployment untouched.
+
+## 12. Destination guards (second drill onwards)
+
+The independent review of the first drill executed the two guard fragments
+against disposable stand-in directories and found both wanting: `restore.sh`
+resolved its root with `cd … && pwd` (a logical path) and compared a textual
+prefix, so an OUTSIDE symlink pointing into the repository was accepted while
+the physical destination was inside it; `backup.sh` checked the PARENT of
+`EYE_BACKUP_ROOT`, so a root equal to the repository itself was accepted. Both
+scripts now share `scripts/ops/lib/guards.sh`, whose rules are:
+
+- **Physical paths.** Every destination is resolved with `cd -P && pwd -P`
+  (present on macOS bash 3.2 and Linux; no GNU `realpath` dependency). A path
+  that does not exist yet is resolved through its nearest existing ancestor; a
+  dangling symlink component is followed so that its physical intent is judged.
+- **Protected set.** The repository worktree, its git common directory (a
+  worktree's `.git` lives elsewhere), `.eye-local` and `apps/api/.eye-local`
+  (and the target of either if it is a symlink — the 2026-09-09 incident shape),
+  every bind-mount host path declared in `docker-compose.yml` (read by service
+  structure; the local profile declares none — `eye-pgdata` is a named volume
+  inside the Docker VM), and, for a restore, the bundle being restored.
+- **Containment.** A destination is refused if its physical path is inside,
+  equal to, or an ancestor of any protected path.
+- **No symlinks.** The destination and every ancestor between it and its
+  nearest pre-existing directory (inclusive) must not be a symlink.
+- **Fresh destinations.** `restore.sh` creates its root with a plain `mkdir`
+  (fails if the path exists in any form: directory, file or dangling symlink);
+  its parent must already exist, be a directory and not be a symlink.
+  `backup.sh` requires `EYE_BACKUP_ROOT` to already exist, be a directory, not
+  be a symlink and pass containment, then creates the timestamped bundle
+  directory with a plain `mkdir`.
+- **Order.** The guards run before the credential file is read (backup) and
+  before any chmod, copy, tar extraction or container start (both).
+- **Cleanup bound to the run.** Every directory, container (by id), volume and
+  process a run creates is appended to `RUN.json` as it is created; cleanup
+  (teardown in restore, failure cleanup in backup) removes only recorded
+  resources, never anything matched by a name pattern.
+
+`scripts/ops/test-guards.sh` proves these rules with the same functions against
+stand-ins under `mktemp` (the real repository, `.eye-local`, containers and
+volumes are never a destination): outside symlink into a stand-in repository →
+refused (the transcript shows the physical destination inside the repository);
+backup root equal to the stand-in repository → refused; a destination that
+already exists → refused; a nested symlinked ancestor → refused; a legitimate
+fresh destination → accepted and created; plus the ancestor, `.eye-local`,
+bind-mount, dangling-symlink and symlinked-`.eye-local` variants, and end-to-end
+invocations of the real scripts with stand-in destinations that are refused
+before anything is created (`docker ps -aq` unchanged). Transcript:
+`docs/ops/evidence/guard-probes-20260910T161410Z.txt` (35/35).
+
+Operator consequence: `$HOME/eye-backups` and `$HOME/eye-restore` are created
+once by the operator (`mkdir -m 700`); the scripts no longer `mkdir -p` a root,
+and never `chmod` a directory they did not create.
+
+## 13. Image identity (second drill onwards)
+
+The first drill's scripts found the pins with a textual `image: postgres@…` /
+`image: redis@…` match, which cannot match the GHCR references the maintenance
+images will be pinned to (`ghcr.io/a-halawany/elven/postgres@sha256:…`). Both
+scripts now read `docker-compose.yml` by COMPOSE SERVICE IDENTITY through
+`scripts/ops/compose-services.mjs` (a YAML parse with the repository's `yaml`
+package; `services.postgres.image`, `services.redis.image`, `container_name`,
+and the bind-mount host paths of §12), whatever registry or path the reference
+carries.
+
+- `backup.sh` records both pins in `MANIFEST.json` (`compose.services.*.image`
+  and `images.*.compose_pin`), the sha256 of the compose file and whether it was
+  unmodified in the worktree, and for each running container whether its repo
+  digests carry the pin reference (`pin_matches`) and its digest
+  (`pin_digest_matches`).
+- `restore.sh` starts `eye-restore-pg` and `eye-restore-redis` from the BUNDLE'S
+  recorded pins. Before `docker run`, each pin must resolve locally
+  (`docker image inspect <pin>`) to an image whose repo digests carry the pin's
+  digest; no pull is attempted. It then checks (PASS/FAIL) that the bundle's
+  pins equal those of the compose file at the source revision recorded in the
+  bundle (`git show <git_head>:docker-compose.yml`, parsed the same way) and
+  REPORTS, without failing, whether the current `docker-compose.yml` pins
+  different images — a restore of an older bundle after a re-pin is legitimate
+  and runs on the images the bundle was taken from.
+
+The GHCR shape is proved by the probe suite against a stand-in compose file
+(the old textual predicate is reproduced as non-matching; the service parse
+returns the GHCR reference, from a file and from stdin). At this revision the
+compose file still pins the official references, so the second drill started
+its containers from `postgres@sha256:9a8afca5…` and `redis@sha256:978f0e01…`;
+after the re-pin the same scripts start from the GHCR digests with no change.
+
+## 14. What changed since the first drill, and the second drill's record
+
+| Area | First drill (scripts as reviewed) | Second drill (corrected) |
+| --- | --- | --- |
+| Restore root guard | `cd && pwd` (logical) + textual prefix; `mkdir -p` before the check | physical path; containment against the protected set and the bundle; no symlink in the chain; parent must exist; fresh plain `mkdir`; before any chmod/copy/extraction/container |
+| Backup root guard | parent of `EYE_BACKUP_ROOT` checked textually; `mkdir -p` and `chmod 700` of the root | root must exist, be a directory, not a symlink, physical containment; bundle dir fresh; no chmod of the root; guards run before the credential file is read |
+| Image lookup | `grep 'image: postgres@'` / `'redis@'` | compose service identity (`compose-services.mjs`); both pins recorded; restore starts from the bundle's pin after a local digest resolution; source-revision check; current-compose report |
+| Cleanup | `docker rm -f eye-restore-pg eye-restore-redis`, `docker volume rm eye-restore-pgdata` by name | bound to `RUN.json`: recorded container ids, recorded volume, recorded pid; backup removes its partial bundle on failure |
+| Portability | `stat -f`, `shasum` | `ops_mode` / `ops_sha256` fall back to `stat -c` / `sha256sum`; `cd -P`/`pwd -P` everywhere; bash 3.2 |
+| Checks | 36 | 37 (source-revision pin comparison added) |
+
+Drill record — 2026-09-10, second drill (`docs/ops/evidence/restore-drill-20260910T161412Z.md`):
+
+- Repository: `phase6-decisions` @ `59a245938f88ad9d3abb1a0518c69645eb9c06c7`
+  (scripts as corrected, uncommitted at drill time; `docker-compose.yml` carried
+  another session's uncommitted process-protection keys — pins unchanged — which
+  the manifest recorded as `unmodified_in_worktree: false` and the restore
+  reported).
+- Bundle: `$HOME/eye-backups/20260910T161412Z` (16:14:11Z–16:14:17Z, 5 s,
+  82,264 KB). Restore root: `$HOME/eye-restore/20260910T161418Z`
+  (16:14:17Z–16:14:36Z).
+- Images: `postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15`
+  (PostgreSQL 18.4) and `redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241`,
+  both resolved locally by digest before start; pins equal the source revision's
+  compose file; current compose pins the same.
+- `eye`: unchanged since the first drill (50 migrations, 14,227 canonical
+  objects, 56,303 audit events, 325 partitions, 4,293 live manifests).
+  `eye_demo`: 667 canonical objects, 4,790 audit events, 2 partitions, 264
+  manifests (263 live), 263/263 blobs present and verified; vault 2,775 files.
+- Result: 37 checks passed, 0 failed; `RESTORE VERIFIED`; teardown removed the
+  two recorded container ids and the recorded volume; live deployment
+  untouched; 0 secret values in any transcript.
+

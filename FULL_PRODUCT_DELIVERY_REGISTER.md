@@ -131,8 +131,14 @@ base-initialised volumes is recorded in `infra/images/candidates/evidence/v3/` (
 "failure" an annotated probe of the wrong cluster; redis 19/19; the limit case — a data directory not owned by the
 service user — needs one start with `--user root`, documented). With v3 the gate-form filesystem scan of the whole
 tree exits 0; the v1 recipe files that tripped DS-0002 are removed from the tree (their evidence and recipe text
-stay under `infra/images/candidates/`). The operator-facing differences (default exec user; redis loses the
-setpriv capability bounding, mitigable by compose `cap_drop`/`no-new-privileges`) are in the README. The earlier
+stay under `infra/images/candidates/`). The operator-facing differences (default exec user) are in the README. **Redis's process protections are
+RESTORED, not optional** (T4 of the review at `59a2459`): with `USER redis` the upstream setpriv path no longer runs,
+so `docker-compose.yml` now carries `user:`, `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]` on both
+services, measured on the v3 images and the bases (`infra/images/candidates/evidence/v3/process-protections.txt`,
+37/37 checks): redis v3 CapBnd=0, CapEff=0, NoNewPrivs=1 — equal to the base; postgres v3 all masks 0, NoNewPrivs=1 —
+stricter than the base; no capability added back; the live containers are recreated at the next governed
+recreation (a separate recorded operation). `user:` is required because the bases' entrypoints decide the privilege
+drop by capability and fail under `cap_drop` alone. The earlier
 note below is kept as history.
 
 **Earlier note (v1): two further upgrades are available on both branches and deliberately NOT in the candidates** (they are
@@ -241,6 +247,8 @@ Units: 3881. Source rows referenced: 6264 (6264 resolve to register rows of 6264
 | all | 3567 |
 | n/a | 314 |
 
+S7 in the accounting: `audit/summarise-units.mjs` counts a mandatory unit as UNFINISHED unless it is verified on every profile it applies to — the units in status `open` PLUS the units verified on the local profile only while applying to all profiles; the local-only progress is shown apart and is never accepted cross-profile.
+
 Reading the unit table: 3881 units decompose the 6264 rows (every row referenced). 404 units are `verified:local` — a named case exercises them on the local
 profile, which is the only profile that exists; none is `done`, because every one of them applies to all agreed
 profiles (S7 rule). 3129 mandatory units are open. The counts say what is owed, not what fraction is delivered.
@@ -282,13 +290,15 @@ Every family of the owner's register maps to atomic rows by chapter (`family_see
 |---|---|---|
 | Durable deployment recovery (the `.eye-local` loss of 2026-09-09; vault and journal backup/restore) | `partial` — coherent backup/restore DEMONSTRATED on the local profile (2026-09-10), not yet on any other profile and not encrypted at rest | `scripts/ops/backup.sh` (one bundle: both database dumps with `pg_dump -Fc`, role globals, the vault and journal tars, a byte copy of the configuration, a manifest with every digest, migration ledger, object and audit-chain heads and image digests) and `scripts/ops/restore.sh --into-isolated` (a NEW container from the same pinned digest on a new volume, restore, then 36 coherence checks: ledger, counts, the audit chain re-computed with the contracts' own hash over every unfrozen partition, every live evidence blob of the demonstration present with its recorded sha256, a second API instance serving a governed read from the restored state). Drill record `docs/ops/evidence/restore-drill-20260910T075051Z.md`; runbook `docs/ops/BACKUP_RESTORE.md` (RPO = the backup interval; RTO measured 16 s to a proven governed read). Limitations recorded: the harness database `eye` was never a coherent evidence store (per-test vault roots); the bundle holds secret material unencrypted and must not leave the host; the journal directories were empty during the drill; the live volume was never touched |
 | ECB live backfill (`activate-ecb.mjs`) | `blocked` | the publisher's data API timed out from this machine on every attempt on 2026-09-09; no waiver |
-| PortWatch / UN Comtrade | `blocked` (holds) | permission request pending / key untouched — unchanged by decision |
+| IMF PortWatch | permission **GRANTED** (owner-reported 2026-09-10; grant text and conditions to be attached at `docs/sources/portwatch-grant.md`) — activation in progress within the approved rights, the EXISTING cadence and budget (no change authorised) | `SOURCE_INTEGRATION_STATUS.md` records the dated entry: rights confirmed with the owner-reported evidence, the v2 live contract per §4a, and the first governed run's outcome; the replay-only hold is superseded |
+| UN Comtrade | `blocked` (hold) | deferred; the key untouched — unchanged |
 
 ## 8. Resource requests (specific, each tied to the next concrete task)
 
 - **R-1 — resolved**: the owner's register is preserved at `audit/The_Eye_Full_Product_Delivery_Register_2026-09-09.md` and reconciled in §5.
 - **R-2 — resolved**: all eleven volumes are in `docs/` at `07edd9dc`; the audit's first pass is complete (§5).
-- **R-4 — resolved to four genuine choices** (`audit/CROSS_REFERENCES.md`, exact clauses quoted, versioned mappings TSM-1/LSM-1/CAP): the truth-state vocabulary needs NO owner decision (an 18-row mapping; two compat aliases to add in code, one lifecycle value `retired` by forward migration); the CAP ids resolve by Volume 8 Appendix A (71 defined, 18 aliases); the `-004`/`-006` rows are judged per agreed profile, scheduled with P7-D, never passed on a local demonstration. The choices that remain the owner's, each with a recommendation: (1) the warning severity scale and its derivation (no volume defines one; recommended: four levels derived from consequence class by a versioned rule); (2) three or five acceptance legs per profile row (SaaS/private/on-premises, or also disconnected and air-gapped; recommended: three, with disconnected/air-gapped carried by their own rows); (3) SLO baseline values as floors or with per-profile variance (recommended: floors for semantics-bearing SLOs, declared variance for latency/availability); (4) four Volume 9 capability ids without a Volume 8 definition (recommended: alias by subject; fold CAP-PD-11 into AU-08 + DL-12 rather than add a 109th capability).
+- **R-4 — DECIDED by the owner (2026-09-10)**, subject to the reviewer's conditions, and scheduled: (1) four warning levels (low/normal/high/critical) with a VERSIONED derivation stating impact and response urgency, confidence and the C0–C4 operation/authority class kept explicit and distinct (a label never changes decision authority) — P4; (2) three deployment-mode acceptance legs (SaaS, private cloud, on-premises), with disconnected and air-gapped evidence carried COMPLETELY per applicable capability on their own rows (never used to omit cross-capability offline evidence) — P7-D; (3) SLO baselines: safety/durability/provenance semantics and floors preserved without weakening, with expressly declared and justified operational variance where the controlling clauses permit it, mapped for the ENTIRE catalogue — P7-D; (4) versioned, subject-based CAP aliases (CAP-PD-11 → CAP-AU-08 + CAP-DL-12 among them) with lossless mapping of every obligation and historical ids kept resolvable; no capability requirement deleted to preserve a count — audit CP-6. The eight scenario kinds of Volume 0 ch. 14 are P4 full-product completion work (schedule S5), not a reopened correction.
+- **R-4 (history) — resolved to four genuine choices** (`audit/CROSS_REFERENCES.md`, exact clauses quoted, versioned mappings TSM-1/LSM-1/CAP): the truth-state vocabulary needs NO owner decision (an 18-row mapping; two compat aliases to add in code, one lifecycle value `retired` by forward migration); the CAP ids resolve by Volume 8 Appendix A (71 defined, 18 aliases); the `-004`/`-006` rows are judged per agreed profile, scheduled with P7-D, never passed on a local demonstration. The choices that remain the owner's, each with a recommendation: (1) the warning severity scale and its derivation (no volume defines one; recommended: four levels derived from consequence class by a versioned rule); (2) three or five acceptance legs per profile row (SaaS/private/on-premises, or also disconnected and air-gapped; recommended: three, with disconnected/air-gapped carried by their own rows); (3) SLO baseline values as floors or with per-profile variance (recommended: floors for semantics-bearing SLOs, declared variance for latency/availability); (4) four Volume 9 capability ids without a Volume 8 definition (recommended: alias by subject; fold CAP-PD-11 into AU-08 + DL-12 rather than add a 109th capability).
 - **R-5 (new, for step S5)** representative domain data and accountable experts, and source permissions, per the resource register in the owner's file — requested per row when its implementation starts, not before.
 - **R-3 — publication approval requested, with the exact facts** (`infra/images/candidates/v2/PUBLICATION.md`; workflow `.github/workflows/publish-derived-images.yml`, manual dispatch only):
   - *Artefacts:* `ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910` and `ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910`, built by the workflow from `infra/images/candidates/v2/{postgres-18-alpine,redis-8-alpine}.Dockerfile` at the commit the run names; the immutable reference is the digest the push reports, and only that is pinned afterwards. Recipe: the pinned upstream digest + one apk transaction (postgres: libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0; redis: setpriv 2.41.6-r1, libcrypto3/libssl3 3.5.8-r0) + `USER postgres`/`USER redis`.
@@ -297,7 +307,7 @@ Every family of the owner's register maps to atomic rows by chapter (`family_see
   - *Permissions:* the workflow runs with `contents: read` and `packages: write` on the job-scoped `GITHUB_TOKEN`; no personal token; `id-token: write` only if signing is added later. New GHCR packages under a personal account are private by default and unlinked; the first run creates them, after which the owner links each package to the repository and sets the visibility (checks listed in PUBLICATION.md §7). If the account or organisation policy blocks Actions from writing packages, the run fails at login and the exact setting is reported — no personal token is asked for unless that failure demonstrates the need.
   - *Cost:* none for public packages; nothing else is purchased.
   - *After approval:* run the workflow with the approval reference; verify the registry and platform digests and the raw scan/SBOM of what was pushed; re-issue SCX-0002…0005 for the new `image` and retire SCX-0001/0006–0009 under the governed disposition process; re-pin `docker-compose.yml`, `conformance.manifest.json` and the scanner targets; run the C15 patched-image recheck and the full FINAL C16/C17 chain before any merge. Every stacked PR is re-checked; no commit hash is transplanted.
-  - *What the owner decides:* publish (recommended, public, both platforms) — or wait for rebuilt official images. Until then the candidates stay local and nothing is pinned.
+  - *Decided:* GHCR is APPROVED as a temporary maintenance route (`docs/images/DERIVED_IMAGES_APPROVAL.md`); publication proceeds within that approval through `publish-derived-images.yml` (bootstrapped by a `publish/derived-images/<date>` branch, never through `main`; structured inputs from `infra/images/candidates/v2/PUBLISH.json`; the run bound to the approved source revision; both platforms built natively and pushed by digest, one index; per-platform scans and SBOMs; receipts uploaded on every path; package write authority and public readability verified, not inferred). Upstream monitoring stays and each service returns to a verified official image through the governed process; the derived images are not permanent.
 
 ## 8a. Current delivery checkpoint (the review closed at `2e83945`; three tracks running together)
 
@@ -333,7 +343,7 @@ The checkpoint is "S1 green, S2 done, S4 complete" (schedule §9). Its units, ea
 | CP-6 · Audit second pass complete | none (read-only) | acceptance units for every capability group (`audit/acceptance-units/`), every `partial` row's remaining work verified against the code, the owner's four choices (R-4) recorded, `audit/SUMMARY.md` regenerated; no completion percentage |
 | CP-7 · Integrated baseline on `main` (S3) | CP-2, CP-3, CP-5 | the reviewed branches merged in the recorded order, each at its reviewed head with the full chain green; `test:int:all`, the upgrade check from 0001 and the browser suites on `main` |
 
-Holds unchanged throughout: no waiver, no unchecked merge, no source activation, credential use, purchase or email.
+Holds as they now stand: no waiver, no unchecked merge, no purchase, no cadence or budget change, no email; PortWatch activation proceeds within its granted permission; UN Comtrade stays deferred with its key untouched; the deferred `CorrectionApplied` consumer remains required full-product work (P3).
 
 ## 9. Integrated delivery schedule (one sequence, dependencies stated, no phase-complete claims)
 
@@ -354,8 +364,8 @@ pass (§5) and actual resources; the order and the dependencies are what this sc
 | S7 · Full-product acceptance | S5, S6 | nothing new: the state in which no mandatory acceptance unit remains open | **Full-product acceptance requires every applicable mandatory acceptance unit to be implemented and verified on the applicable released artefact and on every agreed deployment profile, with its required integrations and operational evidence. An open, partial, unverified, failed or blocked mandatory unit prevents acceptance. An owner, a dependency and a date schedule unfinished work; they do not close it. Explanatory and non-applicable source rows carry a documented applicability rationale, never a fabricated test.** | — |
 
 Rules that bind every step: forward-only migrations; corrections reproduced at the real harness before a
-change; no waiver of C15/C16/C17/C18/C19; no source activation, credential use, purchase or permission
-email without the owner's instruction; PortWatch and Comtrade holds unchanged until revisited
-deliberately; evidence classes kept apart in every report.
+change; no waiver of C15/C16/C17/C18/C19; no purchase, no cadence or budget change, no permission email
+without the owner's instruction; PortWatch proceeds within its granted permission and recorded conditions;
+UN Comtrade deferred with its key untouched; evidence classes kept apart in every report.
 
 No email is sent, no source activated and nothing purchased by this register.

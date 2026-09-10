@@ -70,9 +70,13 @@ Run over the first-pass files (kept in the session record) at head `2e83945`, th
   their capability area with the missing evidence as remaining work; partial rows likewise; documentary
   rows (verification `not-applicable`) to `impl_status = not-applicable` with an applicability
   rationale (26) — a source convention is never turned into feature work;
-- attached `source_ref` (`vNN.txt:<page|para|slide n>:L<line>` into `audit/extraction/text/`) to
-  5,391 rows, so the full clause is always readable; 873 rows whose excerpt was paraphrased or
-  reflowed by the first pass carry no automatic reference and are located by their `page` column;
+- attached `source_ref` (`vNN.txt:<page|para|slide n>:L<start>-L<end>` into `audit/extraction/text/`, the span being
+  the clause's paragraph) to 5,391 rows; the search is PAGE-AWARE (the row's `page` block first, the whole volume
+  only as a fallback, and a fallback that lands on another page is marked `:page-mismatch` — 217 rows, a
+  reconciliation list for CP-6, since repeated wording occurs on many pages); 873 rows whose excerpt was
+  paraphrased or reflowed by the first pass carry no automatic reference and are located by their `page` column;
+- bare migration references in prose (`migration 0033`) resolve like paths, so release states derived from them
+  are correct (15 rows moved to `branch-only` in the follow-up, e.g. V4 ES-24-004);
 - added `evidence_scope` (`main`, `branch`, `test` in any combination) so a reader sees at a glance
   whether a row's evidence is merged, branch-only, or test-backed.
 

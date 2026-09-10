@@ -202,22 +202,92 @@ redis (arm64 image; (a2) repeats start/PONG/SAVE on the amd64 image under emulat
 ### Operator-facing differences (v3 vs the bases / v2)
 
 * `docker exec <container> ...` runs as **`postgres` (uid 70) / `redis` (uid 999)** by default;
-  root is available with **`docker exec -u root <container> ...`** (verified). `docker-compose.yml`
-  needs no change for this: its healthchecks already run as whatever the image's user is.
+  root is available with **`docker exec -u root <container> ...`** (verified). The healthchecks in
+  `docker-compose.yml` run as whatever user the container has and were verified as the service user.
+  Under the compose process protections below, `docker exec -u root` is uid 0 **without
+  capabilities** (`chown` fails with "Operation not permitted", measured); repairs that need root
+  capabilities are a separate `docker run --rm -u root -v <vol>:/data <image> chown ...`.
 * The entrypoints' root-only repair steps (`chown` of `$PGDATA`/`/var/run/postgresql`; redis
   `fix_data_dir_perms`) **do not run**. Data directories must already belong to uid 70 / uid 999.
   Every directory the base images ever initialised does (observed in (b)); a volume populated by
   other means is repaired by one start with `--user root`, which re-enables the base behaviour for
   that run, or by `docker run --rm -u root -v <vol>:/data <image> chown -R redis /data`.
-* Process security posture. postgres: identical to the base (gosu changes only uid/gid; PID 1 shows
-  `CapEff 0`, `CapBnd 00000000a80425fb`, `NoNewPrivs 0` on both). redis: the base's setpriv path
-  additionally **cleared the capability bounding set and set no-new-privs**
-  (`CapBnd 0000000000000000`, `NoNewPrivs 1`); v3 runs with Docker's defaults for a non-root user
-  (`CapEff 0`, `CapBnd 00000000a80425fb`, `NoNewPrivs 0`). Equivalent hardening is available in
-  compose (`cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`) and was **not** applied
-  here; it is the owner's call at pin time.
+* Process security posture: v3 redis **lost** the bounding-set clear and no-new-privs that the base's
+  setpriv path applied; v3 postgres equals the base. Both measured, and the redis loss restored
+  through `docker-compose.yml`, in the next subsection.
 * `--user root` at container start restores the bases' root path (chown, then gosu/setpriv) in
-  full — the entrypoints are unchanged.
+  full — the entrypoints are unchanged. (With the compose `user:` below in force, that is a
+  one-off `docker run --user root ...` on the volume, not a compose start.)
 
-Still not pinned or published. Local `eye-cand3-*` containers and volumes were removed after the
-run; the four image tags were kept.
+### Process protections restored in `docker-compose.yml` (2026-09-10; `evidence/v3/process-protections.txt`)
+
+Measured with plain `docker run` (no extra flags) on the pinned base digests and the v3 tags, from
+`/proc/<pid>/status` of PID 1 and, for postgres, of its first backend child (redis-server has no
+children). Seccomp was `2` (filter mode, Docker's builtin default profile) and `CapInh`/`CapAmb`
+`0` in every case. `00000000a80425fb` is Docker's default capability set.
+
+| Image, plain `docker run` | Uid / Gid | CapPrm | CapEff | CapBnd | NoNewPrivs |
+|---|---|---|---|---|---|
+| redis base (entrypoint as root, then `setpriv --nnp --bounding-set=-all`) | 999 / 1000 | 0 | 0 | **0** | **1** |
+| redis v3 (`USER redis`, setpriv never runs) | 999 / 1000 | 0 | 0 | **00000000a80425fb** | **0** |
+| postgres base (entrypoint as root, then `gosu`) — PID 1 and child | 70 / 70 | 0 | 0 | 00000000a80425fb | 0 |
+| postgres v3 (`USER postgres`) — PID 1 and child | 70 / 70 | 0 | 0 | 00000000a80425fb | 0 |
+
+So the earlier claim holds for postgres: the base's `gosu` changes only uid/gid, its process state
+equals v3's. The v3 redis regression is real: bounding set widened from empty to Docker's default,
+no-new-privs off.
+
+**The compose change** (applied to both services; it does not touch the running `eye-postgres` /
+`eye-redis`, which keep their current configuration until the next governed recreation):
+
+```yaml
+user: "70:70"          # postgres      |  user: "999:1000"   # redis
+cap_drop: [ALL]
+security_opt: ["no-new-privileges:true"]
+```
+
+After, under exactly those flags (`docker run --cap-drop ALL --security-opt no-new-privileges:true
+[--user ...]`), PID 1 and every child:
+
+| Image, hardened | Uid / Gid | CapPrm | CapEff | CapBnd | NoNewPrivs | Functional checks under the flags |
+|---|---|---|---|---|---|---|
+| redis v3 | 999 / 1000 | 0 | 0 | **0** | **1** | PING, SET/GET, SAVE, BGSAVE (`rdb_last_bgsave_status:ok`), stop/start reload, **loads a base-written `dump.rdb`** (`rdb_last_load_keys_loaded:4`) and SAVEs into that volume, compose healthcheck `healthy` |
+| postgres v3 | 70 / 70 | 0 | 0 | **0** | **1** | fresh volume: `initdb` ran, entrypoint `chmod 00700 $PGDATA` (0700, 70:70), temp-server `pg_ctl -w start` / `stop` ("server started" / "server stopped"), `pg_ctl status` / `reload` as uid 70, `pg_isready -U eye -d eye` and Docker health `healthy`, `uuid-ossp` / `gen_random_uuid()`, `pg_dump -Fc` + `pg_restore` (3 rows), stop/start; **base-initialised volume** (the live `eye-pgdata` layout: `18` root-owned 0755, `18/docker` 70:0 0700): "Skipping initialization", 3 base rows read, INSERT + CHECKPOINT |
+| redis **base** + the same three keys | 999 / 1000 | 0 | 0 | 0 | 1 | starts through the entrypoint's non-root path, SAVE OK |
+| postgres **base** + the same three keys | 70 / 70 | 0 | 0 | 0 | 1 | base-initialised volume: 4 rows read, healthcheck; fresh volume: init complete |
+
+Result: v3 redis is back to the base's state (equal, not merely comparable: same uid/gid and the
+same five capability masks and NoNewPrivs), v3 postgres is stricter than the base, and 37/37
+harness checks passed. **No capability had to be added back** (`cap_add` is not used): redis-server
+and postgres as non-root processes need none; the only things that failed were the deliberate
+negative probes (`chown` to another uid as the service user and as exec-root: "Operation not
+permitted", the expected consequence of no CAP_CHOWN).
+
+Why `user:` is part of the change and not only `cap_drop` + `security_opt` (transcript §4): compose
+pins the **base** digests until the re-pin, and the bases' entrypoints decide the drop by
+capability. With `cap_drop: [ALL]` alone, base redis fails its `has_cap setuid`/`setgid` test,
+skips setpriv and runs `redis-server` as **uid 0** (CapBnd 0, NoNewPrivs 1, but root) and cannot
+even SAVE into the 999-owned `/data` ("Failed opening the temp RDB file ... Permission denied");
+base postgres runs its root path as a capability-less root, `chmod`/`find` on the uid-70 `$PGDATA`
+fail ("Operation not permitted" / "Permission denied") and it **exits 1** before `gosu`. With
+`user:` set, both bases take the same non-root entrypoint path v3 takes, so the compose file is
+correct for the digest it pins today and for the v3 re-pin, and the image `USER` and the compose
+`user:` agree (uid 70/70, uid 999/1000; transcript §5). The root-only repair steps of the entrypoints
+(chown of `$PGDATA`, `fix_data_dir_perms`) therefore no longer run at a compose start on the base
+either; `eye-pgdata` is uid-70-owned (verified in (b) above and again here), and redis has no
+volume.
+
+Repository shape checks after the compose edit: the CI step "Pinned-digest consistency (compose ==
+conformance manifest)" (`grep -qF "image: <digest>"`), `scripts/gate/lib/verification-contract.mjs`
+`composeImages()` / `conformanceImages()` (YAML parse, `image` only), `supply-chain.mjs`
+`pinnedImages()`, `c18-db-paths.mjs` `composeImages()`, the acceptance test "compose images are
+digest-pinned and recorded in the conformance manifest (R7)" (digests, loopback ports,
+`--requirepass`), the C15 provenance test "the compose pins the gate resolves are digest pins", and
+the C18 test "every secret-bearing environment reference in the repository is registered or
+declared" all pass unchanged; none reads `user`, `cap_drop` or `security_opt`, and no tracked file
+pins a hash of `docker-compose.yml` (`hermetic-isolation.test.ts` hashes it at run time only to
+prove the gate leaves it unmodified). `docker compose config` renders the three keys on both
+services.
+
+Still not pinned or published. Local `eye-cand3-*` and `eye-cand4-*` containers and volumes were
+removed after the runs; the four image tags were kept.
