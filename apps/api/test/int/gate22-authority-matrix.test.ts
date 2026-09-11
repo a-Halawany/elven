@@ -79,9 +79,6 @@ const SCENARIO_COVERAGE: Record<string, string> = {
   'objects.outbox_lease': 'gate22-outbox-hardening.test.ts',
   'objects.outbox_ack_leased': 'gate22-outbox-hardening.test.ts',
   'objects.outbox_release': 'gate22-outbox-hardening.test.ts',
-  'objects.outbox_lease_as_publisher': 'gate22-outbox-hardening.test.ts',
-  'objects.outbox_ack_as_publisher': 'gate22-outbox-hardening.test.ts',
-  'identity.agent_session_extend': 'phase6-scheduled-collection.test.ts',
   'ctx.issue_commit': 'adversarial.test.ts',
   'ctx.issue_evidence': 'gate22-evidence-deauthorization.test.ts',
   'ctx.issue_publish': 'adversarial.test.ts',
@@ -92,6 +89,18 @@ const SCENARIO_COVERAGE: Record<string, string> = {
   'ctx.open_operation': 'gate22-operation-closure.test.ts',
   'ctx.mark_obligations_executed': 'gate22-operation-closure.test.ts',
   'ctx.bind_operation_causation': 'gate22-capability-binding.test.ts',
+};
+
+/**
+ * Ports introduced by LATER migrations (above the Phase 0 ceiling this suite is also run
+ * against by scripts/phase1/verify-0022-upgrade.mjs, where they do not exist). Their
+ * coverage is consulted only when the catalogs discover them; the no-stale-coverage
+ * check applies to the base map alone, because absence at the ceiling is not staleness.
+ */
+const LATER_SCENARIO_COVERAGE: Record<string, string> = {
+  'objects.outbox_lease_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
+  'objects.outbox_ack_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
+  'identity.agent_session_extend': 'phase6-scheduled-collection.test.ts', // 0057
 };
 
 /**
@@ -187,7 +196,7 @@ describe('C14 — the matrix is driven by the catalogs, not by a list', () => {
   it('every discovered port is either a machine-classified NON-MUTATOR or has scenario coverage', () => {
     const gaps = ports
       .filter((p) => p.mutates)
-      .filter((p) => SCENARIO_COVERAGE[p.key] === undefined)
+      .filter((p) => SCENARIO_COVERAGE[p.key] === undefined && LATER_SCENARIO_COVERAGE[p.key] === undefined)
       .map((p) => `${p.key} (writes: ${p.writeEvidence.trim()})`);
     expect(
       gaps,
@@ -197,7 +206,7 @@ describe('C14 — the matrix is driven by the catalogs, not by a list', () => {
   });
 
   it('every scenario file referenced by the coverage map actually exists', () => {
-    const missing = [...new Set(Object.values(SCENARIO_COVERAGE))].filter(
+    const missing = [...new Set([...Object.values(SCENARIO_COVERAGE), ...Object.values(LATER_SCENARIO_COVERAGE)])].filter(
       (f) => !existsSync(join(__dirname, f)),
     );
     expect(missing, `coverage map points at non-existent files: ${missing.join(', ')}`).toEqual([]);
