@@ -667,3 +667,102 @@ are P4 completion work. **PortWatch:** permission granted (owner-reported; grant
 PortWatch contract is recorded as a finding), chokepoints and an operator/scheduler run-serialisation defect routed
 to P1 (`SOURCE_INTEGRATION_STATUS.md` §9). UN Comtrade deferred, key untouched. The `CorrectionApplied` consumer
 remains required work.
+
+
+## 15. The bounded checkpoint after the review at `d4730f2` (2026-09-11)
+
+The reviewer's five items (`audit/reviews/The_Eye_d4730f2_Bounded_Review_and_Claude_Next_Checkpoint.md`) were
+completed on heads `ef85a12` → `461a2b5`. The closure of §13.6 and every earlier closed finding are untouched; no
+broad correction review was opened.
+
+**1. Arm64 governance (`f011cc1`).** The four re-issued records were `linux/amd64` only, so the published arm64
+postgres child — the image the restore drill actually runs — was ungoverned. Its own artefact was analysed: the
+binary extracted from that exact child is `gosu` sha256 `3a8ef022…`, `go1.24.6`, `GOARCH=arm64`; its 22 findings are
+all `stdlib` rows on `usr/local/bin/gosu`, with no OS-package finding, and the arm64 redis child is clean at every
+severity. **`govulncheck` and a Go toolchain are absent on this host, so no symbol analysis of the arm64 binary
+exists: SCX-0010 (21 HIGH) and SCX-0011 (1 CRITICAL) accept the risk on the reachability argument, including the
+eight advisories that are NOT_AFFECTED on amd64 — the amd64 analysis was not carried across.** The amd64 records keep
+their scope, dates and expiry. The gate scans both children of each index (`SCAN_PLATFORMS` owned in one place so the
+runner and the final verifier cannot drift) and matches a record against the FINDING's platform, not a run-wide
+constant; a record naming a platform the run did not scan fails as OUT-OF-SCOPE rather than being counted unused, so
+widening the scan cannot hide a stale record. Local gate: PASS, 44 findings, 6 records, 0 unmatched, 0 unused, 0
+out-of-scope, 0 stale; `test/gate` 937/937. Obtaining `govulncheck` for arm64 would let those eight be re-classified
+on their own evidence; that is a named resource, not a gap to be argued away.
+
+**2. CP-4/5 recovery (`6226fec`).** Build identity replaces the timestamp heuristic: the bundle is built from the
+committed tree at a recorded SHA with the committed lockfile, carries the artefact, and the restore refuses a build
+whose deterministic dist digest differs — which fired in the drill and recorded a source-to-target upgrade instead of
+starting an unidentified build. Bundles are encrypted per file with AES-256-GCM under a per-bundle key wrapped by
+PBKDF2-HMAC-SHA512 (600k), the tag verified before any ciphertext is read; this host's `openssl enc` refuses AEAD and
+`age`/`gpg` are absent, so the AEAD comes from `node:crypto` — recorded as a limitation rather than replaced by a
+command-line key. A non-empty degraded journal was produced by the product's own writer in isolation, restored
+(`/readyz` degraded, same `degradedSince`, journal replayed) and reconciled to `ok`. A capture boundary is recorded
+and reconciled row by row on restore, with quiescence for the isolated source. The scheduler rebuilt 5/5 eligible
+entries and 97 attempts from the database with Redis empty and collection enabled, and served exactly one recorded
+tick. 68 checks passed, 1 failed — the operator credential, below.
+
+**3. PortWatch integrity (`823c4c8`).** Each defect was reproduced at the harness before it was fixed. `0051`
+serialises runs on a source lease at the database and replaces `append_run_event` so `run.started` is refused without
+it: an operator trigger during a scheduled walk is answered 409 naming the holder. `0051 §3`, `0052` and `0053` add
+the admitted-items register claimed inside the admitting transaction, make availability govern reuse, and re-point
+the register when a correction lands; the connector emits page-grouped output and the checkpoint is committed per
+completed page. `expected_schema.item_key_field` accepts an ordered list, and a contract declaring a string frames
+byte-for-byte as before. The 2,133 duplicates were superseded through a governed correction case — nothing deleted,
+each original retrievable — and the readiness register now reports rows, objects, distinct observations and
+superseded separately, because one number counted as canonical rows is what made the duplication invisible.
+`imf-portwatch-chokepoints` v2 activated on the daily layer with the cadence and budgets carried verbatim: 9 pages,
+8,418 rows, 8,427 distinct keys. It took two runs — a scheduled tick stalled, an operator run was refused 409 while
+that lease was held, then took over after expiry and recorded the already-admitted rows as no-ops — so all three
+corrections were demonstrated in the field, not only at the harness.
+
+**4. The C18 empty-user branch (`ef85a12`).** The producer records the image-user lookup for every image and hands
+the secret over as root, so a root image records the lookup with empty output and the same nine-argument exec with
+the ownerless sink, which is byte-identical to the legacy sink. The verifier treated that empty lookup as a defect
+and then demanded the legacy seven-argument exec, so every official postgres/redis image — exactly what the governed
+return to official images restores — failed twice on a shape its own producer emits. Three ledger shapes now bind one
+argv each; the stdin class binding, exact argv matching and the frozen historical verifiers are unchanged.
+Reproduced on the pre-fix verifier (the root case alone fails) and green after: C18.1.12, 1102/1102 in the file.
+
+**5. Accounting (`ef85a12`).** The twelve former mandatory not-applicable units are **seven open document-class
+obligations and five documentary rules** (AU-GOV-0076, 0077, 0080, 0083, 0088, 0175, 0202 open; 0089, 0090, 0299,
+0301, 0347 documentary). The CSVs and the per-unit table always said so; the prose was corrected to the data, never
+the reverse. The unfinished mandatory total is unchanged at 3,535.
+
+**A regression the serialisation caused, found and repaired (`461a2b5`).** Activating a version through the route
+fires an immediate scheduled tick, so the scheduled-corrections warm-up was refused `source_run_in_flight` — and the
+repeating tick can retake the lease between a check and an acquire. The helper now waits and retries its turn on that
+refusal alone; F07's property is asserted unchanged afterwards on a source with no run in flight.
+
+### 15.1 Checks at this checkpoint, by class
+
+| Check (class) | Result |
+|---|---|
+| **CI (hosted, authoritative)** at `461a2b5`, run 34546359239 | `build-test` **success** (unit, acceptance, the whole integration suite on a fresh database, the upgrade check, the legacy-view check, the C18 gate), `browser-regression` **success**, `supply-chain` **success** (C15 with the two-platform scan, patched-image recheck, FINAL C16, the FINAL-manifest assertion, licence inventory, C17 validation and obligations); run 34546359306 `C19 lifecycle` **success**. The C17 evidence-archive packaging and its upload are `skipped` by the workflow's `event_name != 'pull_request'` condition — they run on the push after each merge; not waived. Earlier heads: `ef85a12` green, `f011cc1` green (the two-platform gate), `823c4c8` `build-test` red on the F07 warm-up repaired at `461a2b5` |
+| **Harness (author)** — `test:int:all` locally | 45 files, **803 passed, 3 failed**: three `phase5-twins` cases refuse a twin input as `stale` under full-suite load. The same file passes **15/15 in isolation** and the same suite passes in CI on a fresh database, so this is a property of this long-lived local `eye` database, not of the tree — recorded as an open time-sensitivity to characterise, not dismissed |
+| **Harness (author)** — `phase6-collection-serialisation` (new) | 13 cases: overlap refused 409, lease released, per-page checkpoint, interrupted walk, crash-retry, register port, composite key, single-field framing preserved, five validator cases |
+| **Harness (author)** — `phase6-scheduled-corrections` after the warm-up repair | 17/17 |
+| **Gate (author)** — local C15 on the re-pinned tree | PASS: 44 findings (22 amd64 + 22 arm64), 6 records, 0 unmatched, 0 unused, 0 out-of-scope, 0 stale |
+| **Gate (author)** — `test/gate` | 937/937; `c18-db-paths` 1102/1102 including the new C18.1.12 three-shape probe |
+| **Upgrade check (author)** — virgin database through 0055 | **PASS**: 55 files, schema digests match exactly, Phase 1–2 suites on upgraded data 274/274 |
+| **Deployment (author)** — recovery | drill `20260910T223824Z`: 68 checks passed, 1 failed (the operator credential, §15.2); guard probes 51/51; the live containers and databases untouched by the drill |
+| **Deployment (author)** — PortWatch | chokepoints v2 walked 9 pages, 8,418 rows, 8,427 distinct keys, 0 revisions; the 2,133 duplicates superseded through a governed correction case (2,133 superseded, 0 rejected) |
+| **Browser** — unchanged this checkpoint | the CI `browser-regression` job covers its configured Phase 0/1 scope; it does not replace the recorded Phase 6 **3/3** or the Phase 4/5 serial run with **one ECB-dependent failure and twelve not run**. No skipped case is a pass |
+
+
+### 15.2 Open, recorded rather than closed
+
+- **The live containers are still on the official images** without the compose protections: their recreation
+  (register CP-4a) waits on two credential conditions the drill exposed — the `platform-admin` principal refuses the
+  current `EYE_TEST_ADMIN_PASSWORD` (`EYE-IDN-002`), and `eye-redis` has been `unhealthy` for 41 hours because the
+  healthcheck variable baked into the container is stale while the running server accepts the current env value. That
+  a red healthcheck surfaced nowhere for 41 hours is itself a P7-D observability row.
+- **Product observations from the PortWatch field work**, routed and not fixed here: a scheduled tick stalled with no
+  terminal event (cause undiagnosed); the outbox publisher crashed the API mid-correction with `capability denied:
+  mode publish required (context is none)`; the connector's code digest is unchanged by the framing addition, so
+  bumping it is a separate governed act; `/runs/:id/get` caps at 250 events and `/evidence/list` at 500 rows with no
+  item key.
+- **Migration 0038 requires `acquisition_mode = 'live'`** for a scheduled entry, so a zero-egress replay tick is
+  impossible by construction — an isolated verification that must not reach the network uses an upload source or
+  accepts that live entries do not tick.
+- The four product decisions, the eight scenario kinds and the `CorrectionApplied` consumer remain implementation
+  work; scheduling does not close them.
