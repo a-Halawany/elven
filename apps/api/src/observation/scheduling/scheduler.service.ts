@@ -286,18 +286,34 @@ export class SchedulerService implements OnModuleDestroy {
    * removed first; a waiting, delayed or active one is left to run. Durability rests on
    * graph.propagation_attempts, never on Redis state.
    */
-  async enqueuePropagation(tenantId: string, domainId: string, data: PropagationJobPayload): Promise<string | null> {
-    if (!this.enabled) return null;
+  async enqueuePropagation(tenantId: string, domainId: string, data: PropagationJobPayload): Promise<{ jobId: string | null; added: boolean; inFlight: string | null }> {
+    if (!this.enabled) return { jobId: null, added: false, inFlight: null };
     const q = this.queueNamed(redisName(propagationQueueNameFor(tenantId, domainId)));
     const existing = await q.getJob(data.event_id);
     if (existing !== undefined && existing !== null) {
       const state = await existing.getState();
+      // A job still waiting, delayed or ACTIVE belongs to a live worker: the re-drive is a no-op (0062).
       if (state === 'completed' || state === 'failed') await existing.remove();
-      else return existing.id ?? null;
+      else return { jobId: existing.id ?? null, added: false, inFlight: state };
     }
     const job = await q.add('propagate', data, { ...PROPAGATION_JOB_OPTS, jobId: data.event_id });
     this.startPropagationWorker(tenantId, domainId);
-    return job.id ?? null;
+    return { jobId: job.id ?? null, added: true, inFlight: null };
+  }
+
+  /**
+   * TEST CONTROL ONLY: abandon a domain's propagation worker the way a killed process does — the
+   * connection is closed without waiting for the active job, nothing is acknowledged, nothing is
+   * recorded. What the interrupted handler had committed stays committed; what it had not, is not.
+   */
+  async abandonPropagationWorkerForTests(tenantId: string, domainId: string): Promise<boolean> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('abandonPropagationWorkerForTests is available only in the test runtime');
+    const name = redisName(propagationQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w === undefined) return false;
+    await w.close(true).catch(() => undefined);
+    this.workers.delete(name);
+    return true;
   }
 
   /** TEST CONTROL ONLY: the propagation queue's counts, to wait for it to settle. */

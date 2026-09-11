@@ -62,11 +62,22 @@ export interface ReconcileReport {
   at: string; reason: string;
   domains: Array<{ tenantId: string; domainId: string; agentId: string }>;
   workers: string[];
+  /** Outstanding events re-added to their domain queue: never delivered, or stranded in received/walking/failed (0062). */
   reDriven: Array<{ tenantId: string; domainId: string; eventId: string; caseId: string; previous: string | null }>;
+  /** Outstanding events whose job is still held by a live worker (waiting, delayed or active): left alone. */
+  inFlight: Array<{ tenantId: string; domainId: string; eventId: string; caseId: string; previous: string | null; jobState: string }>;
 }
 
-/** A test-only fault, armed once: thrown at the named point of the NEXT delivery. Refused outside the test runtime. */
-export type ConsumerFault = 'before_root' | 'after_first_root';
+/**
+ * A test-only fault, armed once, at the named point of the NEXT delivery. Refused outside the test runtime.
+ *   before_root / after_first_root — an infrastructure fault: recorded as failed, then thrown (BullMQ retries).
+ *   interrupt_after_receipt / interrupt_after_first_root — a PROCESS INTERRUPTION: the handler stops dead at
+ *     that point, records nothing, returns nothing (the test then abandons the worker and the queue, as a
+ *     killed process with a lost Redis would); what was committed before the point stays committed.
+ *   slow_before_root — the first root is delayed a few seconds, so a reconciliation can be run against a live worker.
+ */
+export type ConsumerFault = 'before_root' | 'after_first_root' | 'interrupt_after_receipt' | 'interrupt_after_first_root' | 'slow_before_root';
+const INTERRUPTED = (): Promise<never> => new Promise<never>(() => { /* a killed process never returns */ });
 
 @Injectable()
 export class PropagationConsumerService implements OnApplicationBootstrap {
@@ -130,20 +141,22 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
         select * from graph.propagations_to_reconcile()`.execute(tx)).rows;
       return { domains, events };
     });
-    const report: ReconcileReport = { at: new Date().toISOString(), reason, domains: [], workers: [], reDriven: [] };
+    const report: ReconcileReport = { at: new Date().toISOString(), reason, domains: [], workers: [], reDriven: [], inFlight: [] };
     for (const d of domains) {
       this.scheduler.startPropagationWorker(d.tenant_id, d.domain_id);
       report.domains.push({ tenantId: d.tenant_id, domainId: d.domain_id, agentId: d.agent_id });
     }
     for (const e of events) {
       try {
-        const id = await this.scheduler.enqueuePropagation(e.tenant_id, e.domain_id, {
+        const r = await this.scheduler.enqueuePropagation(e.tenant_id, e.domain_id, {
           event_id: e.event_id, event_type: 'CorrectionApplied',
           // A pre-0060 apply row carried the submission's name; the re-drive says so.
           payload: { case_id: e.case_id, re_driven: reason, original_event_type: e.event_type },
           correlation_id: e.correlation_id, causation_id: e.causation_id, tenant_id: e.tenant_id, domain_id: e.domain_id,
         });
-        if (id !== null) report.reDriven.push({ tenantId: e.tenant_id, domainId: e.domain_id, eventId: e.event_id, caseId: e.case_id, previous: e.attempt_state });
+        const row = { tenantId: e.tenant_id, domainId: e.domain_id, eventId: e.event_id, caseId: e.case_id, previous: e.attempt_state };
+        if (r.added) report.reDriven.push(row);
+        else if (r.inFlight !== null) report.inFlight.push({ ...row, jobState: r.inFlight });
       } catch (x) {
         this.note(`re-drive of event ${e.event_id.slice(0, 8)}`, x);
       }
@@ -196,6 +209,7 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
       throw new UnrecoverableError(`job ${jobId} is not a scoped CorrectionApplied event`);
     }
     const rec = await this.receive(p.event_id, tenantId, domainId, caseId);
+    if (this.fault === 'interrupt_after_receipt') { this.fault = null; await INTERRUPTED(); }
     if (rec.state === 'complete' || rec.state === 'partial') return; // a redelivery of a finished event: a durable no-op
     if (rec.agent === null) { await this.finish(p.event_id, tenantId, domainId, caseId, 'failed', 'no active propagation agent is registered in this domain; operator-initiated propagation remains available', attempt); return; }
     if (rec.case_state !== 'applied') { await this.finish(p.event_id, tenantId, domainId, caseId, 'failed', `the correction case is ${rec.case_state}, not applied; nothing to propagate`, attempt); return; }
@@ -230,6 +244,7 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
         return;
       }
       if (this.fault === 'before_root') { this.fault = null; await this.finish(p.event_id, tenantId, domainId, caseId, 'failed', 'fault: injected infrastructure fault before the root (test)', attempt); throw new Error('injected infrastructure fault before the root (test)'); }
+      if (this.fault === 'slow_before_root') { this.fault = null; await new Promise((r) => setTimeout(r, 4000)); }
       try {
         await this.pipeline.write(this.env(principal, tenantId, domainId, root, correlationId), principal,
           { scope: 'DOMAIN', tenantId, domainId, action: 'graph.impact.propagate', objectType: 'INV', objectId: root }, GraphCapability.impact,
@@ -253,6 +268,7 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
         throw e; // infrastructure: BullMQ retries from the checkpoint
       }
       walkedNow += 1;
+      if (this.fault === 'interrupt_after_first_root' && walkedNow === 1) { this.fault = null; await INTERRUPTED(); }
       if (this.fault === 'after_first_root' && walkedNow === 1) { this.fault = null; await this.finish(p.event_id, tenantId, domainId, caseId, 'failed', 'fault: injected infrastructure fault after the first root (test)', attempt); throw new Error('injected infrastructure fault after the first root (test)'); }
       // The session follows the walk's progress: re-verified at every committed root.
       const until = await this.sessions.extendRunSession({ sessionId: principal.sessionId, principalId: principal.principalId, agentId: rec.agent.agent_id, tenantId, domainId, correlationId });

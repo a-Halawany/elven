@@ -249,8 +249,8 @@ describe('B1 · automatic propagation, durable idempotency, failure and retry, p
 
   it('REDELIVERY: the same event delivered again walks nothing twice (AU-MEM-0109)', async () => {
     await settle();
-    const id = await scheduler.enqueuePropagation(T(), D(), { event_id: eventId, event_type: 'CorrectionApplied', payload: { case_id: caseId }, correlation_id: uuidv7(), causation_id: uuidv7(), tenant_id: T(), domain_id: D() });
-    expect(id).toBe(eventId);
+    const re = await scheduler.enqueuePropagation(T(), D(), { event_id: eventId, event_type: 'CorrectionApplied', payload: { case_id: caseId }, correlation_id: uuidv7(), causation_id: uuidv7(), tenant_id: T(), domain_id: D() });
+    expect(re).toEqual({ jobId: eventId, added: true, inFlight: null });
     const a = await waitFor('the redelivery received', () => attemptsFor(caseId), (rows) => (rows[0]?.deliveries ?? 0) >= 2);
     await settle();
     expect(a[0]).toMatchObject({ state: 'complete', deliveries: 2, attempts: 1 });
@@ -295,6 +295,98 @@ describe('B1 · automatic propagation, durable idempotency, failure and retry, p
     expect(await attemptEvents(a[0]?.event_id ?? '')).toEqual(['received', 'walking', 'root.walked', 'failed', 'received', 'walking', 'root.walked', 'complete']);
     const job = await scheduler.propagationJobStateForTests(T(), D(), a[0]?.event_id ?? '');
     expect(job?.attemptsMade).toBe(2);
+  }, 180_000);
+
+  /**
+   * A REAL INTERRUPTION (Codex, 2026-09-12): the process stops dead — it records no failure, it acknowledges nothing —
+   * and Redis is lost with it. What the handler had committed stays committed; the attempt is stranded in
+   * 'received' or 'walking'. 0060's reconciliation re-drove only missing or failed attempts, so such an event was
+   * never walked again. 0062 re-drives every non-terminal attempt at the next start.
+   */
+  const twinEventCount = async () => Number((await sql<{ n: string }>`select count(*)::text n from twin.twin_events where twin_id = ${twinId}::uuid and event = 'version.unverified'`.execute(h.su)).rows[0]?.n);
+  const interruptedThenRestarted = async (label: string, fault: 'interrupt_after_receipt' | 'interrupt_after_first_root', evdIds: string[], reason: string) => {
+    const twinEventsBefore = await twinEventCount();
+    consumer.armFaultForTests(fault);
+    const c = await applyCorrection(evdIds, reason);
+    // The handler has stopped at the fault point: an attempt exists and no finish was ever recorded.
+    const stranded = await waitFor(`${label}: the attempt received`, () => attemptsFor(c), (rows) => rows.length === 1 && (fault === 'interrupt_after_receipt' ? rows[0]?.state === 'received' : rows[0]?.roots_walked.length === 1), 60_000);
+    await new Promise((r) => setTimeout(r, 1500)); // nothing more happens: the process is "dead" at this point
+    const before = { attempt: (await attemptsFor(c))[0] as Attempt, invalidations: (await invalidationsFor(c)).length, events: await attemptEvents(stranded[0]?.event_id ?? ''),
+      twinEvents: twinEventsBefore };
+    expect(before.attempt.state).toBe(fault === 'interrupt_after_receipt' ? 'received' : 'walking');
+    expect(before.events).not.toContain('failed');
+    expect(before.events).not.toContain('complete');
+    // The interruption: the worker abandoned without acknowledgement, the queue lost, the process restarted.
+    expect(await scheduler.abandonPropagationWorkerForTests(T(), D())).toBe(true);
+    await scheduler.obliteratePropagationsForTests(T(), D());
+    expect(await scheduler.propagationJobStateForTests(T(), D(), before.attempt.event_id), 'the queue still holds the job after the loss').toBeNull();
+    await h.app.close();
+    h.app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+    h.pipeline = h.app.get((await import('../../src/pipeline/pipeline.service.js')).PipelineService);
+    await bind(h.app);
+    const report = consumer.lastReconciliation();
+    expect(report, `startup reconciliation did not run: ${JSON.stringify(consumer.lastFailureSeen())}`).not.toBeNull();
+    const reDriven = report?.reDriven.find((e) => e.eventId === before.attempt.event_id);
+    expect(reDriven, `the stranded event was not re-driven: ${JSON.stringify(report?.reDriven)}`).toBeDefined();
+    expect(reDriven?.previous).toBe(before.attempt.state);
+    const after = await waitFor(`${label}: the walk resumed and completed`, () => attemptsFor(c), (rows) => rows[0]?.state === 'complete', 90_000);
+    await settle();
+    return { c, before, after: after[0] as Attempt, events: await attemptEvents(before.attempt.event_id), invalidations: await invalidationsFor(c),
+      twinEvents: await twinEventCount() };
+  };
+
+  it('INTERRUPTED AFTER RECEIPT, queue lost, process restarted: the stranded attempt is re-driven and every root walked once (AU-MEM-0109)', async () => {
+    const up = await h.upload([{ filename: 'terms-j.csv', text: TERMS_CSV.replace('assumption', 'assumption (j)'), documentTime: '2024-01-18T00:00:00Z' }]);
+    await admitTwin([...elements(evdB), { key: 'terms.freight-j', kind: 'assumed', value: 1, unit: 'x', citations: [{ kind: 'evidence', id: (up[0] as { id: string }).id, version: (up[0] as { version: number }).version }] }], 'interrupt-j');
+    const r = await interruptedThenRestarted('after receipt', 'interrupt_after_receipt', [(up[0] as { id: string }).id], 'document j restated; the process dies after receipt');
+    expect(r.before.attempt).toMatchObject({ state: 'received', deliveries: 1, attempts: 0 });
+    expect(r.before.invalidations).toBe(0);
+    expect(r.after).toMatchObject({ state: 'complete', deliveries: 2, attempts: 1 });
+    expect(r.after.roots_walked.length).toBe(1);
+    expect(r.invalidations.length, 'the root was walked more than once').toBe(1);
+    expect(r.events).toEqual(['received', 'received', 'walking', 'root.walked', 'complete']);
+    expect(r.twinEvents - r.before.twinEvents, 'twin events were duplicated').toBe(1);
+    expect((await caseState(r.c))?.propagation_state).toBe('complete');
+  }, 240_000);
+
+  it('INTERRUPTED AFTER THE FIRST COMMITTED ROOT, queue lost, process restarted: the walk resumes at the second root; no duplicate impact or twin event (AU-MEM-0109)', async () => {
+    const up = await h.upload([
+      { filename: 'terms-k.csv', text: TERMS_CSV.replace('assumption', 'assumption (k)'), documentTime: '2024-01-19T00:00:00Z' },
+      { filename: 'terms-l.csv', text: TERMS_CSV.replace('assumption', 'assumption (l)'), documentTime: '2024-01-19T00:00:00Z' },
+    ]);
+    const evdK = up[0] as { id: string; version: number }; const evdL = up[1] as { id: string; version: number };
+    await admitTwin([...elements(evdK), { key: 'terms.freight-l', kind: 'assumed', value: 1, unit: 'x', citations: [{ kind: 'evidence', id: evdL.id, version: evdL.version }] }], 'interrupt-kl');
+    const r = await interruptedThenRestarted('after the first root', 'interrupt_after_first_root', [evdK.id, evdL.id], 'documents k and l restated; the process dies after the first root');
+    expect(r.before.attempt).toMatchObject({ state: 'walking', deliveries: 1, attempts: 1 });
+    expect(r.before.attempt.roots_walked.length).toBe(1);
+    expect(r.before.invalidations, 'the first root committed before the interruption').toBe(1);
+    expect(r.after).toMatchObject({ state: 'complete', deliveries: 2, attempts: 2 });
+    expect(r.after.roots_walked.length).toBe(2);
+    expect(r.invalidations.length, 'a root was walked twice across the interruption').toBe(2);
+    expect(new Set(r.invalidations.map((i) => i.trigger_object_id))).toEqual(new Set([evdK.id, evdL.id]));
+    expect(r.events).toEqual(['received', 'walking', 'root.walked', 'received', 'walking', 'root.walked', 'complete']);
+    // The one version citing documents k and l was marked by the first root (before the interruption) and NOT again by the second.
+    expect(r.twinEvents - r.before.twinEvents, 'twin events were duplicated').toBe(1);
+    expect((await caseState(r.c))?.propagation_state).toBe('complete');
+  }, 240_000);
+
+  it('NO CONFLICT WITH A LIVE WORKER: a reconciliation run while a walk is in flight leaves its job alone; the walk completes once', async () => {
+    const up = await h.upload([{ filename: 'terms-m.csv', text: TERMS_CSV.replace('assumption', 'assumption (m)'), documentTime: '2024-01-20T00:00:00Z' }]);
+    const evdM = up[0] as { id: string; version: number };
+    await admitTwin([...elements(evdB), { key: 'terms.freight-m', kind: 'assumed', value: 1, unit: 'x', citations: [{ kind: 'evidence', id: evdM.id, version: evdM.version }] }], 'live-m');
+    consumer.armFaultForTests('slow_before_root');
+    const c = await applyCorrection([evdM.id], 'document m restated; the walk is slow');
+    const live = await waitFor('the attempt received by the live worker', () => attemptsFor(c), (rows) => rows[0]?.state === 'received', 60_000);
+    const eventId = live[0]?.event_id ?? '';
+    // While the worker holds the job (active), a reconciliation finds the non-terminal attempt and leaves it to the worker.
+    const report = await consumer.reconcile('control: reconciliation against a live worker');
+    expect(report.reDriven.map((e) => e.eventId)).not.toContain(eventId);
+    expect(report.inFlight.find((e) => e.eventId === eventId)).toMatchObject({ previous: 'received', jobState: 'active' });
+    const done = await waitFor('the live walk completed', () => attemptsFor(c), (rows) => rows[0]?.state === 'complete', 90_000);
+    await settle();
+    expect(done[0]).toMatchObject({ deliveries: 1, attempts: 1 });
+    expect((await invalidationsFor(c)).length).toBe(1);
+    expect(await attemptEvents(eventId)).toEqual(['received', 'walking', 'root.walked', 'complete']);
   }, 180_000);
 
   it('TRANSIENT FAULT: an infrastructure fault before any root is recorded, retried by the queue and completed; the process is alive (AU-MEM-0110)', async () => {
