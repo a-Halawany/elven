@@ -91,7 +91,7 @@ jobs:
       # The S7 accounting is evidence-backed and fails closed (Codex 2026-09-12): the negative controls (a claimed
       # verified:all without leg evidence; empty or foreign pointers) must refuse, the positive one must pass, and the
       # committed summary must match the units.
-      - name: Audit accounting controls (summarise-units: fail-closed, evidence-backed; blocking)
+      - name: Audit accounting controls (summarise-units fails closed, evidence-backed; blocking)
         run: node audit/summarise-units.controls.mjs
       # Gate-2 §10: typecheck runs BEFORE build and must pass from a genuinely clean
       # checkout. Workspace packages expose their sources through the "development"
