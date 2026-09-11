@@ -47,13 +47,29 @@ export const JSON_ARRAY_METHOD_REF = `json-array-framing@${VERSION}`;
  */
 export const JSON_ARRAY_COMPOSITE_METHOD_REF = `json-array-composite-framing@${VERSION}`;
 
+/**
+ * THE CODE DIGEST COVERS EVERY METHOD THE CONNECTOR CAN STAMP ON AN ITEM.
+ *
+ * It used to cover the transport and the traversal only, so adding the composite
+ * framing of §9.7 left it unchanged: an agent registered against the connector before
+ * that framing existed still matched it afterwards, although `frame()` had a new
+ * behaviour (SOURCE_INTEGRATION_STATUS.md §9.11.7 item 4). The digest now names the
+ * framing methods too. A framing added later changes the digest, every agent registered
+ * against the previous digest stops matching (`authorize_agent_run`: "agent code digest
+ * mismatch"), and a new agent has to be provisioned for the source through the governed
+ * route — which is the intended effect: an agent is a grant to run ONE identified body
+ * of code, not a name. The version stays 1.2.0 and every method ref stays byte for byte:
+ * what changed is the digest's coverage, not what any existing item carries.
+ */
+const CODE_DIGEST_INPUT = [
+  `observation.rest@${VERSION}`, REST_METHOD_REF, BACKFILL_METHOD_REF, JSON_ARRAY_METHOD_REF, JSON_ARRAY_COMPOSITE_METHOD_REF,
+].join(':');
+
 export class RestConnector implements Connector {
   readonly kind = 'rest' as const;
   readonly name = 'observation.rest';
   readonly version = VERSION;
-  readonly codeDigest = createHash('sha256')
-    .update(`${this.name}@${VERSION}:${REST_METHOD_REF}:${BACKFILL_METHOD_REF}`)
-    .digest('hex');
+  readonly codeDigest = createHash('sha256').update(CODE_DIGEST_INPUT).digest('hex');
 
   private readonly egress: Egress;
   /** The calendar day an open-ended window resolves against. Injectable for tests. */

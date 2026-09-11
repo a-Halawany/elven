@@ -781,13 +781,21 @@ schedule entry every 86400 s; a worker serves it here"**.
    expiry is for, and exactly the case a lock without one would have left blocked forever. Recorded as
    a product observation for the collection worker (a job that stops making progress is neither
    finished nor failed and nothing says so).
-4. **The connector's code digest does not change when framing behaviour is added.**
-   `RestConnector.codeDigest` is derived from its version and its method refs, all unchanged, so an
-   agent registered against 1.2.0 still matches although `frame()` now behaves differently for a
-   contract that declares a composite key. The LINEAGE is distinguishable — a composite-framed child
-   carries `json-array-composite-framing@1.2.0` — but the digest is not. Bumping the connector version
-   would be the honest answer and would invalidate every agent registered on this deployment (five
-   schedules), so it is named here as a governed act of its own rather than taken in passing.
+4. **The connector's code digest did not change when framing behaviour was added — RESOLVED
+   2026-09-11 through its governed act.** `RestConnector.codeDigest` was derived from the connector's
+   version, transport method and traversal method only, so adding the composite framing of §9.7 left
+   it unchanged and an agent registered against the earlier code still matched. The digest now covers
+   every method the connector can stamp on an item (`observation.rest@1.2.0`, the transport, the
+   traversal, `json-array-framing@1.2.0`, `json-array-composite-framing@1.2.0`):
+   `513c4d8cc310…` → `e27ca96f7958…`. The version and every method ref are byte for byte what they
+   were — no existing item's lineage changed — and the six REST agents this deployment ran
+   (`ecb-eurusd`, `eu-sanctions-payload`, `gdelt-discovery`, `imf-portwatch-chokepoints`,
+   `imf-portwatch-ports`, `worldbank-indicators`) stopped matching, which is the point: an agent is a
+   grant to run one identified body of code. Each source was given a new agent through the governed
+   route (`POST /agents/register`, `observation.agent.register`, as `platform-admin`, owner
+   `a.hoffmann`) and its previous agent revoked (`observation.agent.revoke`, as `m.dvorak`, reason
+   recorded); the schedules re-resolved to the new agents at the next reconcile (§9.11.10). No cadence
+   or budget changed; the UN Comtrade upload agent and the other upload/rss agents are untouched.
 5. **The local secret handoff had drifted from the deployment.** `.eye-local/env` was regenerated at
    2026-09-10 18:31 UTC — about two hours after the §9.6 acts — so its values no longer matched either
    the demonstration's identity credentials (set 2026-09-09 06:57 UTC) or the database and Redis role
@@ -886,6 +894,34 @@ isolation and in the clean full run, and the cause is recorded here rather than 
 |---|---|---|
 | `imf-portwatch-ports` | **v3 live, active**, rights confirmed, LIVE; the 2019→present walk held; the 2,133 duplicate copies **superseded** through correction case `01a08d7c…` (history preserved, nothing deleted); the register reports 4,984 objects held / 7,117 rows / 2,829 distinct observations / 2,133 superseded; next tick 2026-09-11 16:35:30 UTC, a forward poll | the grant text (§9.4, §9.9) |
 | `imf-portwatch-chokepoints` | **v2 live, active**, rights confirmed, LIVE, composite key on `Daily_Chokepoints_Data`; v1 superseded; the whole 2019→present window held (8,418 rows, 8,427 keys); schedule entry every 86,400 s; next tick a forward poll of the newest 90 rows | the grant text; the sweeper will close the stalled run of §9.11.8 |
+
+#### 9.11.10 The connector code digest — the governed act, performed 2026-09-11 (demonstration deployment)
+
+Item 4 of §9.11.7 was resolved after the review at `461a2b56` asked for its governed act. In order:
+
+1. **Code.** `RestConnector.codeDigest` now covers `observation.rest@1.2.0`, `rest-transport-framing@1.2.0`,
+   `rest-backfill-traversal@1.2.0`, `json-array-framing@1.2.0` and `json-array-composite-framing@1.2.0`
+   (`513c4d8cc310…` → `e27ca96f7958…`). Version and method refs unchanged; the four connector-dependent
+   integration suites pass unchanged (84/84) because the harness registers its agents against the
+   running connector.
+2. **Artifact.** The demonstration API was rebuilt and restarted on it (dist `b756a394133b…`); the
+   scheduler reconciled 6/6 persisted schedules to the six REST agents that no longer matched — which is
+   the refusal `authorize_agent_run` gives a scheduled job whose agent was registered against other code.
+3. **Agents.** Through the governed routes, for each of the six REST sources (`ecb-eurusd`,
+   `eu-sanctions-payload`, `gdelt-discovery`, `imf-portwatch-chokepoints`, `imf-portwatch-ports`,
+   `worldbank-indicators`): a new agent registered by `platform-admin` (`observation.agent.register`,
+   owner `a.hoffmann`, digest `e27ca96f7958…`), and the previous agent revoked by `m.dvorak`
+   (`observation.agent.revoke`, reason: "superseded: the connector's code digest now covers its framing
+   methods … this agent was registered against digest 513c4d8cc310"). Twelve rows in
+   `observation.agents`: six active on the new digest, six revoked on the old. The upload agents
+   (`carrier-advisories`, `nordwerk-internal`, `un-comtrade-upload`) and the rss agent are untouched.
+4. **Reconcile.** The API restarted once more; `reconciled 6/6 persisted schedule(s)` — this time to the
+   new agents (`schedules_to_reconcile()` takes the newest active agent per source).
+5. **Proof.** One operator-triggered run on `ecb-eurusd` v2 (`m.dvorak`, `observation.run.trigger`):
+   `finished`, 12 admitted, `run.started` carries `agent_version 1.2.0`, `code_digest e27ca96f7958…`.
+
+No contract, cadence or budget changed; no credential created or printed. The act is recorded here and
+in the ledger (`observation.agent.register` ×6, `observation.agent.revoke` ×6, `observation.run.trigger` ×1).
 
 Unchanged: UN Comtrade deferred and its key untouched; purchases zero; **no cadence and no budget
 value was changed**; no credential was created, rotated or printed; GDELT held; the four live sources
