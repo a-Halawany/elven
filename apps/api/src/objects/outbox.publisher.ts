@@ -12,7 +12,7 @@
  * pending → published/failed transition — so publication can neither forge nor
  * suppress delivery. Event identity and content are immutable by trigger.
  */
-import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { sql } from 'kysely';
 import { EYE_CONFIG } from '../config/config.module.js';
@@ -33,8 +33,11 @@ interface PendingRow {
 
 @Injectable()
 export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
+  private readonly log = new Logger('objects.outbox');
   private queue: Queue | null = null;
   private timer: NodeJS.Timeout | null = null;
+  /** Consecutive ticks whose LEASE step failed; reported when it changes, so a stuck publisher is visible without flooding the log. */
+  private leaseFailures = 0;
 
   constructor(
     @Inject(PUBLISHER_DB) private readonly db: Db,
@@ -49,8 +52,17 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         password: this.cfg['eye.redis.password'],
       },
     });
+    /*
+     * A BACKGROUND PUBLISHER THAT CANNOT PUBLISH REPORTS AND RETRIES; IT NEVER ENDS THE
+     * PROCESS. On 2026-09-10 the tick's first transaction rejected (`capability denied:
+     * mode publish required (context is none)` — the publish context's 60-second
+     * wall-clock expiry had elapsed between issuance and use while the process was busy
+     * with a multi-minute correction transaction) and, with no catch here, Node ended
+     * the API on the unhandled rejection. The rows stay pending and the next tick
+     * retries them; that is the whole of what a failed tick means.
+     */
     this.timer = setInterval(() => {
-      void this.publishPending();
+      this.publishPending().catch((e: unknown) => this.reportTick(e));
     }, 1000);
   }
 
@@ -59,14 +71,23 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     await this.queue?.close();
   }
 
+  /** The failure of one tick, reported once per streak and once when the streak ends. */
+  private reportTick(e: unknown): void {
+    this.leaseFailures += 1;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (this.leaseFailures === 1) this.log.warn(`publish tick failed; pending rows stay pending and the next tick retries: ${msg}`);
+    else if (this.leaseFailures % 60 === 0) this.log.warn(`publish tick has failed ${this.leaseFailures} times in a row: ${msg}`);
+  }
+
   async publishPending(): Promise<number> {
     if (this.queue === null) return 0;
-    const rows = (
-      await this.db.transaction().execute(async (tx) => {
-        await sql`select ctx.issue_publish(null::uuid)`.execute(tx);
-        return sql<PendingRow>`select * from objects.outbox_lease(50, 60)`.execute(tx);
-      })
-    ).rows;
+    // The capability is issued and the lease taken in ONE backend call (migration 0057),
+    // so no time can elapse between them on this side.
+    const rows = (await sql<PendingRow>`select * from objects.outbox_lease_as_publisher(50, 60)`.execute(this.db)).rows;
+    if (this.leaseFailures > 0) {
+      this.log.log(`publish tick recovered after ${this.leaseFailures} failed tick(s)`);
+      this.leaseFailures = 0;
+    }
 
     let published = 0;
     for (const row of rows) {
@@ -84,19 +105,16 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
           },
           { jobId: row.id }, // idempotent: duplicate publishes dedupe on job id
         );
-        // Narrow compare-and-set acknowledgement — the only mutation available.
-        const ok = await this.db.transaction().execute(async (tx) => {
-          await sql`select ctx.issue_publish(${row.id}::uuid)`.execute(tx);
-          // Compare-and-set tied to the LEASE: without the lease id and the
-          // expected current status, nothing moves.
-          return (
-            await sql<{ ok: boolean }>`select objects.outbox_ack_leased(
-              ${row.id}::uuid, ${row.lease_id}::uuid, 'pending', 'published') as ok`.execute(tx)
-          ).rows[0]?.ok === true;
-        });
+        // Narrow compare-and-set acknowledgement — the only mutation available —
+        // tied to the LEASE: without the lease id and the expected current status,
+        // nothing moves. Capability and acknowledgement in one call (0057).
+        const ok = (await sql<{ ok: boolean }>`select objects.outbox_ack_as_publisher(
+          ${row.id}::uuid, ${row.lease_id}::uuid, 'pending', 'published') as ok`.execute(this.db)).rows[0]?.ok === true;
         if (ok) published += 1;
-      } catch {
-        // Redis unavailable → rows stay pending; retried next tick (at-least-once).
+      } catch (e) {
+        // Redis unavailable, or the acknowledgement refused → the row stays leased until
+        // its lease lapses and is retried (at-least-once). Reported, never fatal.
+        this.reportTick(e);
       }
     }
     return published;

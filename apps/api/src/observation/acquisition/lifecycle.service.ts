@@ -52,6 +52,13 @@ export interface RunRequest {
   trigger?: { kind: 'scheduler' | 'operator'; by?: string; jobId?: string };
   /** Called the moment run.started is COMMITTED, so a caller that meets an execution fault later still knows which run it belongs to. */
   onOpened?: (runId: string) => void;
+  /**
+   * Extend the run's authority on the strength of its progress (migration 0057). Called
+   * after every committed page checkpoint; resolves to the new expiry, or null when the
+   * extension was refused. Absent for an operator-triggered run, which runs under the
+   * operator's own session.
+   */
+  extendAuthority?: () => Promise<Date | null>;
 }
 
 /** What the admission transaction actually committed for one item. */
@@ -566,15 +573,27 @@ export class AcquisitionLifecycle {
       // else is a failure. Either way the run gets a terminal event, so the
       // sweeper has nothing to reconcile.
       const budget = e instanceof BudgetExceeded;
-      await this.appendEvent(
+      let reason = describe(e);
+      /*
+       * A TERMINAL EVENT THAT CANNOT BE WRITTEN IS SAID, NOT SWALLOWED (0057). When the
+       * run's authority has lapsed, the terminal append is refused for the same reason
+       * the walk failed; the run projection then stays `started` until the sweeper
+       * reconciles it and the source lease releases at its expiry. The outcome the
+       * caller records (the scheduled attempt, the operator's answer) says so.
+       */
+      const terminal = await this.appendEvent(
         req, tenantId, domainId, runId, contract,
         budget ? 'observation.run.finish' : 'observation.run.finish',
         budget ? 'run.budget_exceeded' : 'run.failed',
-        { reason: describe(e), admitted, quarantined, noop },
-      ).catch(() => undefined);
+        { reason, admitted, quarantined, noop },
+      ).then(() => null, (err: unknown) => describe(err));
+      if (terminal !== null) {
+        reason = `${reason} (terminal event NOT recorded: ${terminal}; the run stays 'started' until the sweeper reconciles it and the source lease releases at its expiry)`;
+        this.log.warn(`run ${runId}: ${reason}`);
+      }
       return {
         runId, state: budget ? 'budget_exceeded' : 'failed',
-        admitted, quarantined, noop, reason: describe(e),
+        admitted, quarantined, noop, reason,
       };
     }
   }
@@ -617,6 +636,18 @@ export class AcquisitionLifecycle {
         return { result: {}, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
       },
     );
+    /*
+     * PROGRESS EXTENDS AUTHORITY (0057). The demonstration's chokepoints walk of
+     * 2026-09-10 outlived its run session's fixed 15-minute expiry and every admission
+     * after 23:32:31 was refused as "authority insufficient" — recorded then as a stall.
+     * A committed page is progress; it moves the session's expiry forward, so a run keeps
+     * its authority exactly as long as it keeps walking. A refused extension is reported
+     * and the run goes on until its authority lapses, which then fails it honestly.
+     */
+    if (req.extendAuthority !== undefined) {
+      const until = await req.extendAuthority();
+      if (until === null) this.log.warn(`run ${runId}: the run session could not be extended after a page checkpoint (the grant no longer verifies); the run continues on its remaining authority`);
+    }
   }
 
   /**

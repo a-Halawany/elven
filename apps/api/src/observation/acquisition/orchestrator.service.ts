@@ -243,6 +243,13 @@ export class CollectionOrchestrator {
       connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
       trigger: a.trigger,
       ...(a.onOpened === undefined ? {} : { onOpened: a.onOpened }),
+      // The run's authority follows its progress (0057): each committed page extends
+      // the agent run session opened above, re-verifying the grant as it goes.
+      extendAuthority: () => this.agentSessions.extendRunSession({
+        sessionId: principal.sessionId, principalId: principal.principalId,
+        agentId: a.agentId, tenantId: a.tenantId, domainId: a.domainId,
+        agentVersion: a.agentVersion, codeDigest: a.codeDigest, correlationId: a.correlationId,
+      }),
     });
   }
 

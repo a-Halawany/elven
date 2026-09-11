@@ -98,4 +98,49 @@ export class AgentSessionService {
     }
     return verified;
   }
+
+  /** How long a run session lives past its opening, or past its latest progress. */
+  runSessionSeconds(): number {
+    return Math.max(this.cfg['eye.identity.access_ttl_seconds'], 900);
+  }
+
+  /**
+   * Extend a run session on the strength of the run's PROGRESS (migration 0057).
+   *
+   * A run session is not a standing credential: it opens with a bounded expiry and is
+   * moved forward only by this call, which the lifecycle makes after every committed
+   * page checkpoint — the same principle as the source lease's heartbeat. The port
+   * re-verifies the grant (agent active, instance and digest as registered) so a
+   * revocation that landed mid-run ends the run's authority at its next page. The
+   * extension and its audit event commit together, exactly like the opening.
+   *
+   * Returns the new expiry, or null when the extension was REFUSED (a typed
+   * governance answer: the run continues on whatever authority it still has and
+   * fails, honestly, when that lapses). Infrastructure faults propagate.
+   */
+  async extendRunSession(a: {
+    sessionId: string; principalId: string; agentId: string; tenantId: string; domainId: string;
+    agentVersion: string; codeDigest: string; correlationId: string;
+  }): Promise<Date | null> {
+    const until = new Date(Date.now() + this.runSessionSeconds() * 1000);
+    try {
+      return await this.identityDb.transaction().execute(async (tx) => {
+        await sql`select ctx.issue_identity_op('identity.session.refresh', null::uuid,
+          ${a.correlationId}::uuid, 60)`.execute(tx);
+        const rows = await sql<{ agent_session_extend: Date }>`select identity.agent_session_extend(
+          ${a.sessionId}::uuid, ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
+          ${a.agentVersion}, ${a.codeDigest}, ${until}) as agent_session_extend`.execute(tx);
+        const next = rows.rows[0]?.agent_session_extend;
+        if (next === undefined) throw new AgentGrantRefused('agent session extension port returned no expiry');
+        await sql`select audit.commit_identity_event(
+          ${a.principalId}::uuid, ${a.sessionId}::uuid, 'identity.agent_session_extended',
+          'identity.session.refresh', 'success', 'OK', ${a.correlationId}::uuid,
+          ${JSON.stringify({ agent_id: a.agentId, agent_version: a.agentVersion, code_digest: a.codeDigest, expires_at: until.toISOString(), extended_by: 'run progress (page checkpoint)' })}::jsonb)`.execute(tx);
+        return new Date(next);
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === '42501') return null;
+      throw e;
+    }
+  }
 }
