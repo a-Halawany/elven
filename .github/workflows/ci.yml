@@ -345,7 +345,12 @@ jobs:
       # required job, on every run: it resolves the current official indexes, scans BOTH platform
       # children, REPORTS, and FAILS when a compatible fixed official image exists for a service —
       # the good news is what has to interrupt someone. It re-pins nothing and deletes no evidence.
+      # It runs even when the gate above FAILED on its findings (the scanners are staged before any
+      # scan), so a red gate does not also blind the recheck that watches for the image that would
+      # turn it green. It still cannot run when the gate refused before staging — then it fails
+      # closed as indeterminate, which is the truthful answer.
       - name: C15 patched-image recheck (blocking; fails when a compatible fixed official image exists)
+        if: always() && env.C15_OUT != ''
         run: |
           set -euo pipefail
           node scripts/gate/check-patched-images.mjs \
