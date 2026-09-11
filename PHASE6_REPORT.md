@@ -594,7 +594,8 @@ and the owner's directions were carried out on the branch heads `54d8ecc`, `b302
 
 **T1 — audit accounting and traceability.** S7 is in the accounting: `audit/summarise-units.mjs` counts a mandatory
 unit as unfinished unless it is verified on every profile it applies to — 3,535 unfinished = 3,196 in status open
-+ 339 verified on the local profile only while applying to all profiles; the twelve mandatory/not-applicable units
++ 339 verified on the local profile only while applying to all profiles (at those heads; 3,195 + 339 + 1 after
+B3's unit moved to `verified:ci`, and 3,542 = 3,202 + 339 + 1 after B1/B2 allocated their seven units, §18); the twelve mandatory/not-applicable units
 were reconciled one by one (**seven** are document-class obligations now open, **five** are authoring rules and
 documentary; `audit/UNIT_REPAIRS.md`); 78 truncated or conflated units repaired and 3 split; 59 local statuses that
 named only a module set back to open; source references are page-aware spans (`vNN.txt:page n:Lstart-Lend`, 217
@@ -1003,3 +1004,147 @@ and produced on `main` after each merge.
   expiry (2026-11-05) and the upstream recheck that would return the services to official images.
 - 3,535 unfinished mandatory acceptance units across the eleven volumes: passing this checkpoint
   establishes no completion.
+
+## 18. The bounded checkpoint after `1a99784` (2026-09-11): B1, the corrected scenario, the twin re-run, the accounting, B2, B4, B5
+
+Code head: **``1430747``** (every local result below names the head it was produced at); records head: the
+commit this section is committed with. The closure at `2e83945`, every earlier closed finding and the frozen
+criteria are untouched; no completed review was restarted; the completed monitor was not re-armed. GHCR remains
+temporary; no purchase, no cadence or budget change, no UN Comtrade activation. **This checkpoint establishes no
+completion.**
+
+**1. B1 — the `CorrectionApplied` consumer (`94ee705`, migration 0060), mappings first.** Two findings changed the
+batch as defined. The acceptance-unit ids reserved for it, AU-MEM-0091–0094, already belonged to other
+obligations (the moat diligence claim, the model cut-off, agent execution memory, the experience-lesson
+lifecycle) — preserved with their histories; the consumer's units are **AU-MEM-0108–0111** (the next contiguous
+ids), mapped to the existing requirements (V7 DP-24/DP-29/DP-43, V8 PR-24, V3 L1-I05, …), AU-DP-0041 narrowed to
+what B1 does not deliver (TT-04 reassessment, derivative coverage beyond graph/twins/forecasts/scenarios/
+simulations/warnings), AU-DP-0043 re-verified for partial-walk visibility, and sixteen units whose wording said
+"operator-initiated" or "consumer deferred" re-pointed, none closed by it. And **no event named `CorrectionApplied`
+was ever enqueued** — the apply path re-used the submission's name; from 0060 the apply publishes
+`CorrectionApplied` (with `applied_by`) and the submission keeps `CorrectionReceived`.
+The consumer: a `propagation_agent` role holding `graph.impact.propagate` and nothing else; an agent principal on
+the identity authority and a per-domain, revocable grant on the commit authority (one active per domain, a human
+owner, budgets); a session opened by its own port and extended only by walk progress (0057's rule); the outbox
+publisher routes `CorrectionApplied` to the domain's own queue before acknowledging the row (`domain-events` stays
+the unconsumed global log); a per-domain worker (concurrency 1) that refuses a misrouted job unrecoverably; an
+attempt ledger keyed by the outbox row id, written under the scheduler's bounded capability so a refused grant is
+still recorded; a per-root checkpoint locked FOR UPDATE inside the walk's transaction and committed with 0034's
+`record_impact`; coverage decided by the database (0027) — a truncated walk leaves the attempt and the case partial
+and listed, the automatic state and reason shown beside the case's own status on `/impact/awaiting`; infrastructure
+faults recorded and retried by the queue from the checkpoint; governance refusals (no agent, revoked grant, budget)
+recorded, not retried, the operator route always available. Harness `phase6-propagation-consumer` — real Redis,
+the real outbox publisher, the process restarted mid-suite — **15/15**: automatic propagation (the invalidation
+opened by the agent's principal, the citing twin version unverified, the case out of the queue), redelivery and
+restart no-ops, a crash after the first of two roots resumed from the checkpoint (exactly two invalidations), a
+transient fault retried, a partial walk visible and re-walkable, unrelated events untouched, scope fail-closed,
+budget and revoked-grant refusals, the backlog policy, every new port refusing without its capability, the four
+tables under forced RLS. Regression 9 suites 171/171. **On NORDWERK** (`scripts/phase6/register-propagation-agent.mjs`,
+demonstration API rebuilt at this head, `eye_demo` at 0061): the administrator registered the agent with
+`backlog: walk`; the two pre-0060 cases (1 and 4 corrected objects) were walked automatically at once, the
+2,133-object supersession was refused by the agent's budget (64) and stays listed for operator work with its reason;
+a fresh correction submitted by the operator and applied by the collection manager — nobody calling
+`/impact/propagate` — was walked **2.1 s after the apply** (1.1 s on the second run): invalidation opened by the
+agent's principal, linked to the case, assessed; the corridor forecast marked for attention; the case complete and
+gone from the queue; the strategy owner may still walk the same root.
+
+**2. The corrected scenario demonstration (`b020a07`, migration 0059).** The upside branch had the downside's
+below-threshold indicator; a recovery is "above a level AFTER the collapse", and the evaluator had no world-time
+start (an unbounded "above 50 for five days" is met by pre-disruption data). An indicator now `observes_from` a
+declared day. C-022 (16/16 locally) declares a distinct recovery indicator (> 50 for five days from the day the
+disruption ended): the deterioration evaluation flips the six sharing branches and leaves the upside OPEN; the
+bounded recovery evaluates 35 observations and flips the upside on 2023-12-01; the same level unbounded evaluates
+all 1,095 days and flips before the disruption it is meant to follow. The scenario view renders the custom kind
+label, the vocabulary version, divergence, assumptions and the indicator's first observed day. The earlier
+declaration (`declare-scenario-kinds.mjs`) is preserved as declared; `scripts/phase4/correct-scenario-kinds.mjs`
+declares the corrected tree beside it on NORDWERK: deterioration (< 41 × 5 from 2023-12-01) — 1,011 observations
+evaluated, flipped on **2024-01-27 at 32**, six branches (downside, disruption, stress, adversarial, counterfactual,
+regional blockade) flipped with one warning each (C2 assumed, normal, prompt, under a C1 operation), the upside
+open; recovery (> 50 × 5 from 2024-01-18) — **963 observations, no five consecutive published days above 50 on the
+record** (last 2026-09-06 at 23): the upside stays open, honestly. The eight-kind vocabulary check stays
+demonstrated; broader scenario capabilities stay in the register.
+
+**3. The twin re-run failure — resolved (`2b9b920`).** Diagnosed on an isolated database (`eye_twin_diag_1`):
+`phase5-twins` took its "after everything above was recorded" cut-off from the process clock floored to the
+millisecond, immediately after the database had stamped the claim's `recorded_at` from its own clock at
+microsecond precision; the clocks differ (Docker VM vs host, −1 ms … +107 ms observed) and the floor loses up to
+999 µs, so the cut-off landed before the claim whenever both fell in one millisecond or the container clock ran
+ahead. `ground()` judged the rule at millisecond precision and admitted the citation; 0035's carry-forward judged
+it at microsecond precision and marked the carried element incomplete — the three E3 failures (six with a clock
+step). Not a test-isolation or second-run effect (every fixture id is fresh per run; reproduced 1/4 on solo runs of
+the used database, 0/2 on full runs). The fixture takes its cut-off from the database clock (floored to the
+millisecond a version keeps, plus one); the product judges the rule once — `citedObject` returns `recorded_at` at
+microsecond precision and `ground()` compares at that precision, so a sub-millisecond-late citation is refused at
+grounding rather than admitted and re-judged. **Demonstration** (§18.1): two consecutive full-suite passes at the
+same head on the same newly created database. On the way, two more fixture timing races surfaced on fresh
+databases and were corrected the same way (`6d2f102`, ``1430747``): the consumer's scope case read a job hash
+fetched before BullMQ's move to failed; the residual-corrections R2 fixture took its 16 January record within a
+second of the world's runs. The historical bundles and the demonstration are preserved.
+
+**4. Accounting and evidence wording (`fb45962`, `e1d1100`).** The mandatory split was stated as
+3,535 = 3,195 open + 339 verified locally + 1 verified in CI (AU-PRD-0021 at `1a99784`); S7 depends on evidence for
+every applicable profile (after B4, every leg); each stack result is bound to its own head — the local 814/814 at
+`3e8f473` (before 0058), the hosted 815/815 at `1a99784` (the 46 files plus C-022); browser coverage stated as
+measured. After B1 and B2 allocated their seven units the split is **3,542 = 3,202 open + 339 + 1**; no leg of any
+unit is accepted.
+
+**5. B2 — warning levels (`73813c2`, migration 0061).** Four levels by a versioned derivation from the branch's
+consequence class (v1: C0/C1 low, C2 normal, C3 high, C4 critical, with urgency, response and impact and the
+clauses each row rests on); the absent-class rule (C2 assumed, the record says so; C3/C4 never assumed); the port
+derives and verifies; the six columns immutable; the raise operation's C0–C4 class recorded beside the label from
+the authority context; the PDP gains no input; SCN v3 and WRN v2 (the v1 schema was stale — it forbade the timing
+and controls the payload had carried since 0030/0031; the harness now validates the object). Harness
+`phase4-warning-levels` **6/6**; `phase4-acceptance` 16/16; 11 warning-touching suites 136/136. Found on the
+demonstration and corrected: an evaluation assembled its series inside the write, and the PortWatch record (8,645
+evidence versions, one governed retrieval each, ~4 minutes) outran the write capability's 60-second wall clock —
+the assembly now runs before the write, in no enclosing transaction (a read nested in a read waits on the audit
+chain it holds). Units AU-PRD-0061–0063 (next contiguous ids).
+
+**6. B4 and B5 (`e1d1100`).** The profile column is the LEG VECTOR on every unit (`saas|private|onprem`; the 80
+units with an offline obligation add `disconnected|air-gapped`; 23 units that name one profile carry one leg) with
+`legs_verified` per accepted leg — none accepted; `audit/SLO_CATALOGUE.md` v1 (12 floors, 5 value-variance, 5
+population targets, each with its clause); `audit/CAP_ALIASES.md` v1 (89 = 71 defined + 18 alias-v1, historical ids
+kept) with the `cap_alias` column resolved by `second-pass.mjs` (197 rows; 21 rows moved to branch-only because their
+evidence globs now include files that exist only on this branch) and checked by `summarise-units.mjs`.
+
+**7. The stack.** Held for the owner's explicit merge instruction. #46's head moves from `1a99784` to this
+checkpoint's code head and its hosted checks are refreshed (§18.2); the eight earlier prepared heads are unaffected
+and preserved. Once merging is authorized: the recorded order, each main-push chain and C17 archive verified before
+advancing.
+
+### 18.1 The twin demonstration — two consecutive full-suite passes
+
+| Database | Head | Run 1 | Run 2 | Note |
+|---|---|---|---|---|
+| `eye_twin_demo3_20260911` (new) | `1430747` | **836/836** (48 files, 250 s) | **836/836** (48 files, 281 s) | the demonstration: same head, same database, nothing reset between runs; `phase5-twins` 15/15 on both; evidence `docs/ops/evidence/twin-rerun-demonstration-20260911.{md,txt}` |
+| `eye_twin_demo2_20260911` (new) | `6d2f102` | 834/836 | 835/836 | the two fixture races of `1430747` found here; `phase5-twins` 15/15 on both |
+| `eye_twin_demo_20260911` (new) | `e1d1100` | 835/836 | 836/836 | the consumer scope case's race found here; `phase5-twins` 15/15 on both |
+| `eye_twin_diag_1` (isolated diagnosis) | `2ba42b8` | 815/815 | 815/815 | before the fix: the failure reproduced only on a solo run of the used database (1 of 4; +107 ms clock step), never on these two full runs — the sub-millisecond race |
+
+The 836 cases are the 815 of `1a99784` plus the fifteen of `phase6-propagation-consumer` and the six of
+`phase4-warning-levels`. The dirty path on the demonstration's head line is this report, uncommitted while the
+runs were made; the code at `1430747` is the code this section is committed against.
+
+### 18.2 Hosted runs at this checkpoint
+
+__HOSTED__
+
+### 18.3 Remaining blockers and open observations
+
+- **Hosted verification of B1/B2**: the seven units stay `open` until the hosted run at the implementing head is
+  green, then `verified:ci` (one artefact, no leg).
+- **Merge** — only on the owner's instruction.
+- Open operational observations, kept open: a budget-refused propagation attempt is re-driven at every process
+  start (recorded and refused again; harmless, noisy); the series assembly of a long record costs one governed
+  retrieval per evidence version (~4 minutes for PortWatch's 8,645) — an evaluation on a large record is minutes,
+  not seconds; the clock-skew ticks; the World Bank timeout; the C19 fixture lookup under concurrent runs; the arm64
+  acceptance's expiry (2026-11-05).
+- **3,542 unfinished mandatory acceptance units** across the eleven volumes; no deployment leg accepted. Passing
+  this checkpoint establishes no completion.
+
+### 18.4 The next implementation batch
+
+CP-6's five batches are implemented or applied; what remains of CP-6 is verification. The next implementation
+batch is the register's next open product work with harness-verifiable units on the hosted chain: the
+`GraphChanged`/`MemoryCorrected` subscription registry and consumers (AU-MEM-0030), which B1's consumer machinery
+now makes a bounded extension rather than new infrastructure.
