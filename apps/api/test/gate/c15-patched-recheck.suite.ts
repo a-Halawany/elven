@@ -354,16 +354,18 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = JSON.parse(readFileSync(join(REPO, 'scripts', 'gate', 'scanner-exclusions.json'), 'utf8'));
     const run = (d: unknown) => m.validateRecords(d, {
-      runDate: '2026-09-10', root: REPO, isTracked: () => true,
+      // 2026-09-11: the day the owner accepted SCX-0010/0011 (docs/images/ARM64_RISK_DECISION.md §5);
+      // a record approved after the run date is correctly refused, so the run date is the newest approval.
+      runDate: '2026-09-11', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
     // Validating the field only when present left it removable: deleting the one line saying
     // "not for production data, not for Phase 1" produced no finding at all.
     const accepted = doc.records.filter((r: { classification: string }) => r.classification === 'RISK_ACCEPTED').map((r: { id: string }) => r.id);
-    // SCX-0010 and SCX-0011 joined the set on 2026-09-10: the linux/arm64 child is scanned now,
-    // and its 22 findings are RISK_ACCEPTED because no reachability analysis of the arm64 gosu
-    // binary exists — so they, too, must carry a stated scope boundary.
+    // SCX-0010 and SCX-0011 joined the set on 2026-09-10 (the linux/arm64 child is scanned now) and
+    // were accepted by the owner on 2026-09-11, RISK_ACCEPTED within their scope and expiry — so
+    // they, too, must carry a stated scope boundary.
     expect(accepted).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0010', 'SCX-0011']);
     for (const id of accepted) {
       const cut = JSON.parse(JSON.stringify(doc));
@@ -387,7 +389,13 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     for (const r of doc.records) {
       expect(pinned, `${r.id} must name a pinned image`).toContain(r.image);
       expect(r.expires_on).toBe('2026-11-05');
-      expect(r.approved_on).toBe('2026-09-10');
+      // amd64: re-issued 2026-09-10 under the owner's re-issuance approval; arm64: accepted by the
+      // owner on 2026-09-11, the day of the decision, not the day the records were drafted.
+      expect(r.approved_on, `${r.id} approved_on`).toBe(r.scan_platform === 'linux/arm64' ? '2026-09-11' : '2026-09-10');
+      if (r.scan_platform === 'linux/arm64') {
+        expect(r.approver, `${r.id} names the owner as approver`).toMatch(/^product-owner/);
+        expect(r.evidence_files.map((e: { path: string }) => e.path)).toContain('docs/images/ARM64_RISK_DECISION.md');
+      }
       expect(r.evidence_files.map((e: { path: string }) => e.path)).toContain('infra/images/candidates/evidence/v2/gosu-verification.txt');
     }
     expect(doc.retired_records.ids).toEqual(['SCX-0001', 'SCX-0006', 'SCX-0007', 'SCX-0008', 'SCX-0009']);
