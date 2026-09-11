@@ -88,7 +88,7 @@ describe('C17.2 F — bundled native stack', () => {
 
   it('the build recipe is pinned to an immutable commit, not just a tag', () => {
     const m = loadBundledManifest(REPO);
-    expect(m.build_recipe.tag).toBe('v1.3.2');
+    expect(m.build_recipe.tag).toBe('v1.3.3');
     expect(m.build_recipe.commit_binding.commit).toMatch(/^[0-9a-f]{40}$/);
     // The reason is recorded, because a tag alone would look equally pinned.
     expect(m.build_recipe.commit_binding.why).toMatch(/tag is mutable/i);
@@ -280,7 +280,7 @@ describe('C17.2 F — bundled native stack', () => {
   it.each([
     ['path', (m: any) => {
       m.legal_files.find((r: any) => r.component === 'cgif').path =
-        'vendor/sharp-libvips/1.3.2/legal/cgif/ATTACKER-LICENSE';
+        'vendor/sharp-libvips/1.3.3/legal/cgif/ATTACKER-LICENSE';
     }, /surplus legal-file record .*ATTACKER-LICENSE.*not code-owned.*code-owned legal-file record .*cgif.*LICENSE.*missing/s],
     ['sha256', (m: any) => {
       m.legal_files.find((r: any) => r.component === 'cgif').sha256 = 'f'.repeat(64);
@@ -294,7 +294,7 @@ describe('C17.2 F — bundled native stack', () => {
     ['surplus record', (m: any) => {
       m.legal_files.push({
         component: 'cgif',
-        path: 'vendor/sharp-libvips/1.3.2/legal/cgif/SURPLUS',
+        path: 'vendor/sharp-libvips/1.3.3/legal/cgif/SURPLUS',
         bytes: 1,
         sha256: 'f'.repeat(64),
         source_url: 'https://attacker.example/SURPLUS',

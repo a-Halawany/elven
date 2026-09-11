@@ -1,0 +1,56 @@
+===== postgres-arm64  base=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15  v2=eye-cand2-postgres:18-alpine-maint
+--- image identity
+--- config diff (base vs v2) for User/Entrypoint/Cmd/Env/ExposedPorts/Volumes/WorkingDir/StopSignal/Labels/Healthcheck/Shell
+  IDENTICAL
+--- v2 config (for the record)
+{ "Entrypoint": [ "docker-entrypoint.sh" ], "Cmd": [ "postgres" ], "Env": [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "GOSU_VERSION=1.19", "LANG=en_US.utf8", "PG_MAJOR=18", "PG_VERSION=18.4", "PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094", "DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21", "PGDATA=/var/lib/postgresql/18/docker" ], "ExposedPorts": { "5432/tcp": {} }, "Volumes": { "/var/lib/postgresql": {} }, "WorkingDir": "/", "StopSignal": "SIGINT"}
+--- docker history (v2): size per layer, newest first
+6.25MB	RUN /bin/sh -c apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  && apk list -I libuuid    | grep -q '^libuuid-2.42.3-r1 '  && apk list -I libcrypto3 |
+0B	CMD ["postgres"]
+0B	EXPOSE map[5432/tcp:{}]
+0B	STOPSIGNAL SIGINT
+--- v2 added layer size (bytes) from docker history
+6.25MB
+
+===== postgres-amd64  base=postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b  v2=eye-cand2-postgres:amd64
+--- image identity
+--- config diff (base vs v2) for User/Entrypoint/Cmd/Env/ExposedPorts/Volumes/WorkingDir/StopSignal/Labels/Healthcheck/Shell
+  IDENTICAL
+--- v2 config (for the record)
+{ "Entrypoint": [ "docker-entrypoint.sh" ], "Cmd": [ "postgres" ], "Env": [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "GOSU_VERSION=1.19", "LANG=en_US.utf8", "PG_MAJOR=18", "PG_VERSION=18.4", "PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094", "DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21", "PGDATA=/var/lib/postgresql/18/docker" ], "ExposedPorts": { "5432/tcp": {} }, "Volumes": { "/var/lib/postgresql": {} }, "WorkingDir": "/", "StopSignal": "SIGINT"}
+--- docker history (v2): size per layer, newest first
+6.42MB	RUN /bin/sh -c apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  && apk list -I libuuid    | grep -q '^libuuid-2.42.3-r1 '  && apk list -I libcrypto3 |
+0B	CMD ["postgres"]
+0B	EXPOSE map[5432/tcp:{}]
+0B	STOPSIGNAL SIGINT
+--- v2 added layer size (bytes) from docker history
+6.42MB
+
+===== redis-arm64  base=redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241  v2=eye-cand2-redis:8-alpine-maint
+--- image identity
+--- config diff (base vs v2) for User/Entrypoint/Cmd/Env/ExposedPorts/Volumes/WorkingDir/StopSignal/Labels/Healthcheck/Shell
+  IDENTICAL
+--- v2 config (for the record)
+{ "Entrypoint": [ "docker-entrypoint.sh" ], "Cmd": [ "redis-server" ], "Env": [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "REDIS_VERSION=8.10.0" ], "ExposedPorts": { "6379/tcp": {} }, "WorkingDir": "/data"}
+--- docker history (v2): size per layer, newest first
+5.96MB	RUN /bin/sh -c apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  && apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  && apk list -I libcrypto3 | grep -q '^libcry
+0B	CMD ["redis-server"]
+0B	EXPOSE map[6379/tcp:{}]
+0B	ENTRYPOINT ["docker-entrypoint.sh"]
+--- v2 added layer size (bytes) from docker history
+5.96MB
+
+===== redis-amd64  base=redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a  v2=eye-cand2-redis:amd64
+--- image identity
+--- config diff (base vs v2) for User/Entrypoint/Cmd/Env/ExposedPorts/Volumes/WorkingDir/StopSignal/Labels/Healthcheck/Shell
+  IDENTICAL
+--- v2 config (for the record)
+{ "Entrypoint": [ "docker-entrypoint.sh" ], "Cmd": [ "redis-server" ], "Env": [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "REDIS_VERSION=8.10.0" ], "ExposedPorts": { "6379/tcp": {} }, "WorkingDir": "/data"}
+--- docker history (v2): size per layer, newest first
+6.15MB	RUN /bin/sh -c apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  && apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  && apk list -I libcrypto3 | grep -q '^libcry
+0B	CMD ["redis-server"]
+0B	EXPOSE map[6379/tcp:{}]
+0B	ENTRYPOINT ["docker-entrypoint.sh"]
+--- v2 added layer size (bytes) from docker history
+6.15MB
+

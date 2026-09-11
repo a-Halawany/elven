@@ -161,6 +161,14 @@ jobs:
       # proves preservation + intentional transformation + posture equivalence against the
       # code-owned contract, runs the suite matrix on both paths, and self-verifies the
       # checksummed evidence archive it packaged.
+      # The byte-frozen C18 differential verifiers (apps/api/test/gate/fixtures/c18-legacy-*)
+      # read apps/api/test/gate/docker-compose.yml — a tracked view GENERATED from the live
+      # compose file by scripts/gate/legacy-compose-view.mjs (same digests, the pre-registry
+      # `<service>@sha256:<digest>` spelling those verifiers predate). A stale view would make
+      # every frozen leg judge a different pin than the live one, so it is checked here,
+      # blocking, immediately before the gate that depends on it.
+      - name: C18 legacy compose view is current (blocking)
+        run: node scripts/gate/legacy-compose-view.mjs --check
       - name: C18 dual-path database history gate (tracked runner, blocking)
         id: c18_gate
         timeout-minutes: 25
@@ -330,11 +338,19 @@ jobs:
             --trivy-cache "$C15_CACHE" \
             --final \
             --expected-sha "$GITHUB_SHA"
-      # BLOCKING. SCX-0006..0009 accept residual risk for CVE-2026-14456 solely because no official
-      # image carries the fixed OpenSSL. An acceptance must not outlive its own justification because
-      # nobody re-checked, so the check runs here, in the required job, on every run - and it FAILS
-      # when a patched image appears, because the good news is what has to interrupt someone.
-      - name: C15 patched-image recheck (blocking; fails when the acceptance expires in fact)
+      # BLOCKING. The service images are TEMPORARILY pinned to derived maintenance builds
+      # (docs/images/DERIVED_IMAGES_APPROVAL.md) solely because no official postgres:18-alpine or
+      # redis:8-alpine build carries the util-linux, OpenSSL and c-ares fixes. That route must not
+      # outlive its own justification because nobody re-checked, so the check runs here, in the
+      # required job, on every run: it resolves the current official indexes, scans BOTH platform
+      # children, REPORTS, and FAILS when a compatible fixed official image exists for a service —
+      # the good news is what has to interrupt someone. It re-pins nothing and deletes no evidence.
+      # It runs even when the gate above FAILED on its findings (the scanners are staged before any
+      # scan), so a red gate does not also blind the recheck that watches for the image that would
+      # turn it green. It still cannot run when the gate refused before staging — then it fails
+      # closed as indeterminate, which is the truthful answer.
+      - name: C15 patched-image recheck (blocking; fails when a compatible fixed official image exists)
+        if: always() && env.C15_OUT != ''
         run: |
           set -euo pipefail
           node scripts/gate/check-patched-images.mjs \

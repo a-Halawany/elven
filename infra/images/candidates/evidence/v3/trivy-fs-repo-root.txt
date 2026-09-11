@@ -1,0 +1,59 @@
+2026-09-10T10:59:03+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-09-10T10:59:03+03:00	INFO	[misconfig] Misconfiguration scanning is enabled
+2026-09-10T10:59:03+03:00	INFO	[checks-client] Using existing checks from cache	path="/Users/halawany/Library/Caches/trivy/policy/content"
+2026-09-10T10:59:03+03:00	INFO	[secret] Secret scanning is enabled
+2026-09-10T10:59:03+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln,misconfig' to disable secret scanning
+2026-09-10T10:59:03+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-09-10T10:59:04+03:00	WARN	[secret] The size of the scanned file is too large. It is recommended to use `--skip-files` for this file to avoid high memory consumption.	file_path=".eye-local/vault/evidence/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/169028d0-ba7b-4c7c-9387-292177275302" size (MB)=24
+2026-09-10T10:59:07+03:00	INFO	Suppressing dependencies for development and testing. To display them, try the '--include-dev-deps' flag.
+2026-09-10T10:59:07+03:00	INFO	Number of language-specific files	num=1
+2026-09-10T10:59:07+03:00	INFO	[pnpm] Detecting vulnerabilities...
+2026-09-10T10:59:07+03:00	INFO	Detected config files	num=4
+
+Report Summary
+
+┌──────────────────────────────────────────────────────────┬────────────┬─────────────────┬─────────┬───────────────────┐
+│                          Target                          │    Type    │ Vulnerabilities │ Secrets │ Misconfigurations │
+├──────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ pnpm-lock.yaml                                           │    pnpm    │        0        │    -    │         -         │
+├──────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ infra/images/candidates/postgres-18-alpine.Dockerfile    │ dockerfile │        -        │    -    │         1         │
+├──────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ infra/images/candidates/redis-8-alpine.Dockerfile        │ dockerfile │        -        │    -    │         1         │
+├──────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ infra/images/candidates/v2/postgres-18-alpine.Dockerfile │ dockerfile │        -        │    -    │         0         │
+├──────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ infra/images/candidates/v2/redis-8-alpine.Dockerfile     │ dockerfile │        -        │    -    │         0         │
+└──────────────────────────────────────────────────────────┴────────────┴─────────────────┴─────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+infra/images/candidates/postgres-18-alpine.Dockerfile (dockerfile)
+==================================================================
+Tests: 20 (SUCCESSES: 19, FAILURES: 1)
+Failures: 1 (HIGH: 1, CRITICAL: 0)
+
+DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
+════════════════════════════════════════
+Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.
+
+See https://avd.aquasec.com/misconfig/ds-0002
+────────────────────────────────────────
+
+
+
+infra/images/candidates/redis-8-alpine.Dockerfile (dockerfile)
+==============================================================
+Tests: 20 (SUCCESSES: 19, FAILURES: 1)
+Failures: 1 (HIGH: 1, CRITICAL: 0)
+
+DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
+════════════════════════════════════════
+Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.
+
+See https://avd.aquasec.com/misconfig/ds-0002
+────────────────────────────────────────
+
+

@@ -1,0 +1,129 @@
+### A. v2 standalone on host port 55433, new volume eye-cand2-pgdata
+eye-cand2-pg ready after 2s
+--- SELECT version(); SHOW server_version; ssl settings
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+ server_version 
+----------------
+ 18.4
+(1 row)
+
+     name      |  setting   
+---------------+------------
+ ssl           | off
+ ssl_cert_file | server.crt
+ ssl_key_file  | server.key
+ ssl_library   | OpenSSL
+(4 rows)
+
+--- uuid consumers of libuuid / core
+CREATE EXTENSION
+ ossp_v4_ok | ossp_v1_ok | core_ok 
+------------+------------+---------
+ t          | t          | t
+(1 row)
+
+--- pgcrypto (libcrypto consumer): digest/hmac/gen_random_bytes
+CREATE EXTENSION
+ sha256_ok | rnd_len | hmac_ok 
+-----------+---------+---------
+ t         |      16 | t
+(1 row)
+
+--- installed library versions and OpenSSL identity (no openssl CLI in the base image)
+openssl CLI: not installed (library only)
+c-ares-1.34.8-r0 aarch64 {c-ares} (MIT) [installed]
+libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libuuid-2.42.3-r1 aarch64 {util-linux} (BSD-3-Clause) [installed]
+libcrypto.so.3 embedded version string: OpenSSL 3.5.8 25 Aug 2026
+lrwxrwxrwx    1 root     root            18 Sep 10 07:42 /usr/lib/libcares.so.2 -> libcares.so.2.19.7
+-rwxr-xr-x    1 root     root       4533144 Aug 25 20:58 /usr/lib/libcrypto.so.3
+-rwxr-xr-x    1 root     root        868240 Aug 25 20:58 /usr/lib/libssl.so.3
+lrwxrwxrwx    1 root     root            16 Sep 10 07:42 /usr/lib/libuuid.so.1 -> libuuid.so.1.3.0
+--- postgres links:
+	libssl.so.3 => /usr/lib/libssl.so.3 (0xffffa7ffa000)
+	libcrypto.so.3 => /usr/lib/libcrypto.so.3 (0xffffa7a00000)
+	libk5crypto.so.3 => /usr/lib/libk5crypto.so.3 (0xffffa7eb3000)
+--- libpq links:
+	libssl.so.3 => /usr/lib/libssl.so.3 (0xffff959a9000)
+	libcrypto.so.3 => /usr/lib/libcrypto.so.3 (0xffff95400000)
+	libk5crypto.so.3 => /usr/lib/libk5crypto.so.3 (0xffff958b4000)
+--- shipped server cert?
+ls: /var/lib/postgresql/server.crt: No such file or directory
+ls: /var/lib/postgresql/server.key: No such file or directory
+CA bundle entries in /etc/ssl/certs: 1
+--- sslmode=prefer against the DEFAULT server (no cert shipped => ssl=off => negotiated plaintext)
+ssl=false version=- cipher=-
+--- host-port reachability (127.0.0.1:55433) from a throwaway client container (sslmode=prefer)
+postgres|5432
+--- process user / data dir ownership (v2)
+PID   USER     COMMAND
+    1 postgres postgres
+   67 postgres postgres
+   68 postgres postgres
+drwxrwxrwt    3 postgres postgres      4096 Sep 10 07:45 /var/lib/postgresql
+drwx------   19 postgres root          4096 Sep 10 07:45 /var/lib/postgresql/18/docker
+uid=70(postgres) gid=70(postgres) groups=70(postgres),70(postgres)
+eye-cand2-pg stopped+removed
+
+### A2. TLS through the patched libssl3: server started with ssl=on and a throwaway self-signed cert (generated on the host, valid 2 days)
+eye-cand2-pg-tls ready after 2s
+--- sslmode=prefer (expect ssl=t) and sslmode=require; pg_stat_ssl of the backend
+sslmode=prefer -> ssl=true version=TLSv1.3 cipher=TLS_AES_256_GCM_SHA384 bits=256
+sslmode=require -> ssl=true version=TLSv1.3 cipher=TLS_AES_256_GCM_SHA384 bits=256
+--- sslmode=verify-full with the cert as CA (hostname localhost)
+verify-full -> ssl=true TLSv1.3
+eye-cand2-pg-tls stopped+removed
+
+### B. upgrade path: BASE writes into eye-cand2-pgdata2, v2 reads it
+eye-cand2-pg-base ready after 2s
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+CREATE TABLE
+INSERT 0 3
+ id | label 
+----+-------
+  1 | alpha
+  2 | beta
+  3 | gamma
+(3 rows)
+
+PID   USER     COMMAND
+    1 postgres postgres
+   67 postgres postgres
+drwx------   19 postgres root          4096 Sep 10 07:45 /var/lib/postgresql/18/docker
+eye-cand2-pg-base stopped+removed (clean shutdown)
+eye-cand2-pg-upg ready after 1s
+--- rows written by BASE, read by v2:
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+ id | label | has_uuid 
+----+-------+----------
+  1 | alpha | t
+  2 | beta  | t
+  3 | gamma | t
+(3 rows)
+
+ n 
+---
+ 3
+(1 row)
+
+drwx------   19 postgres root          4096 Sep 10 07:45 /var/lib/postgresql/18/docker
+PID   USER     COMMAND
+    1 postgres postgres
+   27 postgres postgres
+--- v2 log tail (recovery/errors)
+2026-09-10 07:45:46.085 UTC [1] LOG:  database system is ready to accept connections
+eye-cand2-pg-upg stopped+removed
+### done

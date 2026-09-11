@@ -1,0 +1,6 @@
+== redis reproducibility (Id, Created, last-layer diffid)
+eye-cand-redis:8-alpine-util-linux  Id=sha256:2c26668e3f65bb26ea3edd97bbb0f2add85d7c040db96ce687f764a8a74e8542  Created=2026-09-09T19:38:34.959834458Z  lastLayer=sha256:9ff802d5bfc4d85690af1e9bed50b540d2c5425673d34dc967c8f8bdea501140
+eye-cand-redis:rebuild2  Id=sha256:2523c0d8146703d7b21df66a26e3d7057b2a3abaccb04756e4fcb5a605510bc4  Created=2026-09-09T19:41:32.345469721Z  lastLayer=sha256:3801645e1254eec193fd848ce2ba2dbda12e39afb560194a64698383374dacc8
+eye-cand-redis:sde-a  Id=sha256:354c9b3bc7d2d937c5f1aee5b1da1b20b5211474a88e6f21cd260e147895dc76  Created=1970-01-01T00:00:00Z  lastLayer=sha256:c5b1ff18b7e563a100150df9401543e5a4cfa4b4ec7ba7742731fdc4137031b6
+eye-cand-redis:sde-b  Id=sha256:9992f5bbc36aaf3b490dbae4ee23a21fbf0b0c5ad7671363542db5bb5875d7e4  Created=1970-01-01T00:00:00Z  lastLayer=sha256:46f8126f578eafb9bb8a9f443dcfddefb447e7ca7fe5bdc772339fa4c639b74b
+-- layer-content check: extract the new layer of build1 vs rebuild2 and list mtimes/sha of changed files

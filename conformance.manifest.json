@@ -144,16 +144,26 @@
   ],
   "note_on_component_ids": "CP-* namespace is a Volume-4-level extension (ADR-P0-03); Volume 3 Appendix A allocates IDs only for L1-L10 layers.",
   "pinned_images": {
-    "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL, .trivyignore carries the dated CVE-level dispositions).",
+    "$comment": "Remediation R7/R8 — local Compose infrastructure pinned by immutable digest; CI and the verification harness scan EXACTLY these digests (blocking at HIGH/CRITICAL; scripts/gate/scanner-exclusions.json carries the governed, target-specific dispositions). 2026-09-10: TEMPORARY re-pin to the owner-approved derived maintenance images (docs/images/DERIVED_IMAGES_APPROVAL.md; published by run 34502081248 from infra/images/candidates/v2/, receipts in infra/images/published/20260910/). Each `digest` is the OCI INDEX reference the gate resolves per platform; `base` names the official index the image was derived from (tag and index digest, informational — not a pinned reference).",
     "postgres": {
-      "human_tag": "postgres:18-alpine",
-      "digest": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
-      "pinned_at": "2026-08-05"
+      "human_tag": "ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910",
+      "digest": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "platform_children": {
+        "linux/amd64": "sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a",
+        "linux/arm64": "sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc"
+      },
+      "base": "postgres:18-alpine, official index digest 9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (pinned 2026-08-05 to 2026-09-10)",
+      "pinned_at": "2026-09-10"
     },
     "redis": {
-      "human_tag": "redis:8-alpine",
-      "digest": "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241",
-      "pinned_at": "2026-08-05"
+      "human_tag": "ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910",
+      "digest": "ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15",
+      "platform_children": {
+        "linux/amd64": "sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432",
+        "linux/arm64": "sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc"
+      },
+      "base": "redis:8-alpine, official index digest 978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 (pinned 2026-08-05 to 2026-09-10)",
+      "pinned_at": "2026-09-10"
     }
   },
   "sbom_generator": {
