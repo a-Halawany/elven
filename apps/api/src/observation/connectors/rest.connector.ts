@@ -93,6 +93,7 @@ export class RestConnector implements Connector {
       nextCheckpoint['backfill'] = progress;
     }
 
+    const revalidated: NonNullable<AcquisitionOutput['revalidated']> = [];
     for (const endpoint of binding.endpoints) {
       ctx.budget.spendRequest();
       requestsMade += 1;
@@ -117,7 +118,7 @@ export class RestConnector implements Connector {
           originAllowlisted: null,
         };
         const parentItem: AcquiredItem = {
-          itemKey: itemKeyFor(endpoint, got.entry.retrieved_at),
+          itemKey: itemKeyFor(endpoint, got.entry.retrieved_at), pollKey: safeUrl(endpoint),
           bytes: got.body,
           declaredMediaType: got.entry.retained_headers['content-type'] ?? null,
           filename: got.entry.file,
@@ -138,7 +139,13 @@ export class RestConnector implements Connector {
       try {
         const res = await this.egress({ url: endpoint, headers: conditional, policy: binding.egress });
         if (res.status === 304) {
-          // Nothing new. Not an error, not an item, and not a freshness failure.
+          // Nothing new, and no bytes. Not an item — but a LIVE answer that what is held
+          // is still current; the lifecycle binds it to the held evidence if that is
+          // still available, and records it as unbound otherwise.
+          revalidated.push({
+            pollKey: safeUrl(endpoint), endpoint: res.finalUrlRedacted, status: 304,
+            validators: { ...(cp?.etag !== undefined ? { etag: cp.etag } : {}), ...(cp?.lastModified !== undefined ? { lastModified: cp.lastModified } : {}) },
+          });
           continue;
         }
         if (res.status < 200 || res.status >= 300) {
@@ -151,7 +158,7 @@ export class RestConnector implements Connector {
           ...(res.headers['last-modified'] !== undefined ? { lastModified: res.headers['last-modified'] } : {}),
         };
         const parentItem: AcquiredItem = {
-          itemKey: itemKeyFor(endpoint, new Date().toISOString()),
+          itemKey: itemKeyFor(endpoint, new Date().toISOString()), pollKey: safeUrl(endpoint),
           bytes: res.body,
           declaredMediaType: res.headers['content-type'] ?? null,
           filename: filenameFor(endpoint),
@@ -182,6 +189,7 @@ export class RestConnector implements Connector {
     return {
       items: [...parents, ...items],
       checkpoint: nextCheckpoint, bytesTransferred, requestsMade,
+      ...(revalidated.length > 0 ? { revalidated } : {}),
     };
   }
 
@@ -444,6 +452,10 @@ function frame(parent: AcquiredItem, expected: {
       transport: { ...parent.transport, methodRef: JSON_ARRAY_METHOD_REF },
       parentItemKey: parent.itemKey,
       fragment: { byteStart, byteEnd, methodRef: JSON_ARRAY_METHOD_REF },
+      // The child's stable identity across polls: its parent's poll key plus its own
+      // key. Without it an unchanged child is admitted again every time its parent
+      // is confirmed, parentless.
+      ...(parent.pollKey !== undefined ? { pollKey: `${parent.pollKey}#${expected.itemPath}:${key}` } : {}),
     });
   }
   return out.length > 0 ? out : null;
