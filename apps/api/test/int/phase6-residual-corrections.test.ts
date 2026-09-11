@@ -112,6 +112,11 @@ afterAll(async () => {
 describe('R2 · carried options obey the receiving version\'s cut-offs; the proposal revalidates every citation', () => {
   let pkg = ''; let evd16: { id: string; version: number };
   beforeAll(async () => {
+    // The cases below open a draft ONE SECOND before this record was recorded and expect the fixture world's runs
+    // (whose inputs were known when the world booted, moments ago) to be admissible in it. On a fresh database the
+    // world boots fast enough that the record would land within that second — seen once at 6d2f102: "inputs known
+    // at …57.350, after the version's known_at …57.334" — so the record is taken after a clear gap.
+    await sleep(1500);
     evd16 = (await h.upload([{ filename: 'carry-observation-16.csv', text: 'synthetic,record_id,value\ntrue,SYN-C16,1\n', documentTime: '2024-01-16T00:00:00Z' }]))[0] as { id: string; version: number };
     await sleep(30);
     const d = await c.declare({ decisionObjectId: w.decisionId, title: 'Reroute SYN-SHIP-4472 around the Cape', statement: 'whether to reroute the second magnet shipment now', owner: w.owner.principalId });

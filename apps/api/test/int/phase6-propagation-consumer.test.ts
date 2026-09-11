@@ -376,14 +376,16 @@ describe('B1 · automatic propagation, durable idempotency, failure and retry, p
     await settle();
     const stray = uuidv7();
     await scheduler.addPropagationJobForTests(T(), D(), { event_id: stray, event_type: 'CorrectionApplied', payload: { case_id: caseId }, correlation_id: uuidv7(), causation_id: uuidv7(), tenant_id: T(), domain_id: uuidv7() });
-    const job = await waitFor('the stray job settled', () => scheduler.propagationJobStateForTests(T(), D(), stray), (j) => j?.state === 'failed');
-    expect(job?.failedReason).toMatch(/does not match the queue/);
+    await waitFor('the stray job settled', () => scheduler.propagationJobStateForTests(T(), D(), stray), (j) => j?.state === 'failed');
     // Unrecoverable: it stays failed and is never retried (BullMQ's attemptsMade counter reads 0 or 1 for an unrecoverable
-    // failure depending on when the hash is read; the retry budget of 5 is what must NOT have been spent).
+    // failure and its failedReason lands a moment after the state, depending on when the job hash is read; the retry
+    // budget of 5 is what must NOT have been spent).
+    const later = await waitFor('the failure reason recorded', () => scheduler.propagationJobStateForTests(T(), D(), stray), (j) => j?.state === 'failed' && typeof j.failedReason === 'string' && j.failedReason.length > 0);
+    expect(later?.failedReason ?? '').toMatch(/does not match the queue/);
     await new Promise((r) => setTimeout(r, 2500));
-    const later = await scheduler.propagationJobStateForTests(T(), D(), stray);
-    expect(later?.state).toBe('failed');
-    expect(later?.attemptsMade ?? 0).toBeLessThanOrEqual(1);
+    const still = await scheduler.propagationJobStateForTests(T(), D(), stray);
+    expect(still?.state).toBe('failed');
+    expect(still?.attemptsMade ?? 0).toBeLessThanOrEqual(1);
     expect((await sql<{ n: string }>`select count(*)::text n from graph.propagation_attempts where event_id = ${stray}::uuid`.execute(h.su)).rows[0]?.n).toBe('0');
   }, 60_000);
 
