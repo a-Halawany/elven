@@ -291,6 +291,17 @@ ln -s "$T/r1/pre-existing" "$T/r1/linked-root"
 BI2="$(node "$HERE/build-identity.mjs" build --repo "$REPO" --root "$T/r1/linked-root" --root-precreated 2>&1)"; BI2_RC=$?
 probe "build-identity.mjs refuses a symlinked pre-created root" refused \
   "$([[ "$BI2_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$BI2" | sed 's/^build-identity: //')" || echo "accepted")" "is a symlink"
+# the inode the record carries is ONE "<device>:<inode>" token on this stat (GNU `stat -f` is a
+# file-system report: on Linux the reviewed helper recorded six lines and no directory was ever owned)
+INO="$(ops_inode "$T/r1")"
+probe "ops_inode answers one <device>:<inode> token on this host's stat ($(uname -s))" ok \
+  "$([[ "$INO" =~ ^[0-9]+:[0-9]+$ ]] && echo "ok: $INO" || echo "bad: [$INO]")"
+# a directory this run CREATED is in its cleanup set, and cleanup removes it (with what it holds)
+V0R="$(ops_run_create_dir "scratch" "$T/r1/mine" "scratch")"; printf 'mine\n' > "$T/r1/mine/WORK"
+probe "a directory the run created is in its owned set (recorded inode == current inode)" ok \
+  "$([[ "$(ops_run_owned_dirs)" == "$T/r1/mine" ]] && echo "ok: owned set = $T/r1/mine ($(jq -r '.created[-1].inode' "$OPS_RUN_MANIFEST"))" || echo "bad: owned set = [$(ops_run_owned_dirs | tr '\n' ' ')] record $(jq -c '.created[-1]' "$OPS_RUN_MANIFEST")")"
+for d in $(ops_run_owned_dirs); do rm -rf "$d"; done
+probe "…and failure cleanup removes it, with its contents" ok "$([[ ! -e "$T/r1/mine" ]] && echo "ok: $T/r1/mine removed" || echo "bad: still present")"
 # two attempts at one destination: the creator owns it, the loser owns nothing
 V1R="$(ops_run_create_dir "build root" "$T/r1/shared" "build root")"; printf 'work\n' > "$T/r1/shared/WORK"
 probe "the first attempt creates and owns the destination" created "$V1R" "inode"

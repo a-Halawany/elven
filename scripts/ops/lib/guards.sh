@@ -146,8 +146,27 @@ ops_run_init() {
     '{format:"eye-ops-run/2", script:$s, started_at_utc:$t, pid:($pid|tonumber), created:[]}' > "$OPS_RUN_MANIFEST"
   chmod 600 "$OPS_RUN_MANIFEST"
 }
-# ops_inode <path> -> "<device>:<inode>" of the path itself (not followed)
-ops_inode() { stat -f '%d:%i' "$1" 2>/dev/null || stat -c '%d:%i' "$1"; }
+# ops_stat_format <bsd-format> <gnu-format> <path>
+#   ONE line of `stat` output on either stat. BSD stat takes `-f <format>`; GNU
+#   stat takes `-c <format>` — and on GNU, `-f` means FILE-SYSTEM status, which
+#   succeeds with six lines of output. Trying `-f` first therefore "worked" on
+#   Linux by returning the wrong thing (the reviewer's finding, 2026-09-11: every
+#   directory a run created dropped out of its cleanup set because the recorded
+#   "inode" was a filesystem report). The GNU form is tried first — BSD stat
+#   rejects `-c` — and the answer is accepted only when it is a single line.
+ops_stat_format() {
+  local bsd="$1" gnu="$2" path="$3" out
+  if out="$(stat -c "$gnu" "$path" 2>/dev/null)" && [[ -n "$out" && "$out" != *$'\n'* ]]; then printf '%s\n' "$out"; return 0; fi
+  if out="$(stat -f "$bsd" "$path" 2>/dev/null)" && [[ -n "$out" && "$out" != *$'\n'* ]]; then printf '%s\n' "$out"; return 0; fi
+  return 1
+}
+# ops_inode <path> -> "<device>:<inode>" of the path itself (not followed); refuses anything but one "<n>:<n>" line
+ops_inode() {
+  local out
+  out="$(ops_stat_format '%d:%i' '%d:%i' "$1")" || return 1
+  [[ "$out" =~ ^[0-9]+:[0-9]+$ ]] || return 1
+  printf '%s\n' "$out"
+}
 # ops_run_record <kind: container|volume|process> <id> [detail]
 #   Directories are NOT accepted here: they are recorded by ops_run_create_dir.
 ops_run_record() {
@@ -185,5 +204,5 @@ ops_run_owned_dirs() {
 }
 
 # ---------------------------------------------------------------- portability
-ops_mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+ops_mode() { ops_stat_format '%Lp' '%a' "$1"; }
 ops_sha256() { if command -v shasum >/dev/null; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi; }
