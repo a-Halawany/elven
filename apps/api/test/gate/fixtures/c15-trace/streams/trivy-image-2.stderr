@@ -1,0 +1,17 @@
+2026-09-11T00:41:52+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-09-11T00:41:52+03:00	INFO	[secret] Secret scanning is enabled
+2026-09-11T00:41:52+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-09-11T00:41:52+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-09-11T00:41:54+03:00	INFO	Detected OS	family="alpine" version="3.24.1"
+2026-09-11T00:41:54+03:00	WARN	This OS version is not on the EOL list	family="alpine" version="3.24"
+2026-09-11T00:41:54+03:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.24" repository="3.24" pkg_num=53
+2026-09-11T00:41:54+03:00	INFO	Number of language-specific files	num=1
+2026-09-11T00:41:54+03:00	INFO	[gobinary] Detecting vulnerabilities...
+2026-09-11T00:41:54+03:00	WARN	Using severities from other vendors for some vulnerabilities. Read https://trivy.dev/docs/v0.73/guide/scanner/vulnerability#severity-selection for details.
+2026-09-11T00:41:54+03:00	WARN	Unable to get vulnerability details (CVE may be rejected)	err.message="failed to get vulnerability" err.err="failed to get vulnerability: no vulnerability details" err.time=2026-09-10T21:41:54.122593Z err.trace="01M26MA9AA2PT9TMB2SFJFAP8H" err.context.vuln_id="CVE-2026-80256" err.stacktrace="Oops: no vulnerability details\n  --- at /home/runner/go/pkg/mod/github.com/aquasecurity/trivy-db@v0.0.0-20260629102122-a0049d7ad12f/pkg/db/vulnerability.go:29 Config.GetVulnerability.func1()\n  --- at /home/runner/go/pkg/mod/go.etcd.io/bbolt@v1.5.0/db.go:953 DB.View()\n  --- at /home/runner/go/pkg/mod/github.com/aquasecurity/trivy-db@v0.0.0-20260629102122-a0049d7ad12f/pkg/db/vulnerability.go:25 Config.GetVulnerability()\n  --- at /home/runner/work/trivy/trivy/pkg/vulnerability/vulnerability.go:78 Client.FillInfo()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/local/service.go:174 Service.ScanTarget()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/local/service.go:125 Service.Scan()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/service.go:63 Service.ScanArtifact()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:705 runner.scan()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:302 runner.scanArtifact()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:219 runner.ScanImage()\nThrown: failed to get vulnerability\n  --- at /home/runner/go/pkg/mod/github.com/aquasecurity/trivy-db@v0.0.0-20260629102122-a0049d7ad12f/pkg/db/vulnerability.go:37 Config.GetVulnerability()\n  --- at /home/runner/work/trivy/trivy/pkg/vulnerability/vulnerability.go:78 Client.FillInfo()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/local/service.go:174 Service.ScanTarget()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/local/service.go:125 Service.Scan()\n  --- at /home/runner/work/trivy/trivy/pkg/scan/service.go:63 Service.ScanArtifact()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:705 runner.scan()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:302 runner.scanArtifact()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:219 runner.ScanImage()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:450 run()\n  --- at /home/runner/work/trivy/trivy/pkg/commands/artifact/run.go:409 Run()"
+
+📣 [34mNotices:[0m
+  - Version 0.74.0 of Trivy is now available, current version is 0.73.0
+
+To suppress version checks, run Trivy scans with the --skip-version-check flag
+

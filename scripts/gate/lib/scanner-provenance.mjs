@@ -30,6 +30,25 @@ import { readFileSync } from 'node:fs';
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
 /**
+ * EVERY platform whose index child the gate scans, in scan order. THE single definition:
+ * the runner and the source-owned verification contract both read this one, because two
+ * copies of a list like this drift and the verifier's whole job is to be able to disagree
+ * with the producer.
+ *
+ * `linux/amd64` is the primary deployment platform (CI is ubuntu-latest; the C16 target
+ * descriptor resolves linux/x64/glibc) and stays FIRST — that is what keeps `trivy-image-0`
+ * and `trivy-image-1` naming the same image on the same platform as they always have.
+ *
+ * `linux/arm64` was added on 2026-09-10. Point 1 of this file's own header says the two
+ * children of an index "have different layers and therefore different findings"; the gate
+ * acted on half of that, scanning amd64 and leaving arm64 — which the local restore drill
+ * actually runs, and whose `gosu` binary is a different file (sha256 3a8ef022… against
+ * amd64's 52c8749d…) — governed by nothing. Scanning both is what lets a disposition for
+ * either platform be written honestly and be checked.
+ */
+export const SCAN_PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64']);
+
+/**
  * Resolve a digest-pinned reference to its per-platform children.
  * Returns { kind: 'index' | 'manifest', children, target } where `target` is the
  * child digest for the requested platform, or null if that platform is absent.

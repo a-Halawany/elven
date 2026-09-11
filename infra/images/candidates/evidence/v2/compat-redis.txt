@@ -1,0 +1,91 @@
+### A. v2 standalone on host port 56380
+eye-cand2-redis ready after 1s
+--- ping / SET / GET / INFO server
+PONG
+OK
+hello-from-v2
+redis_version:8.10.0
+os:Linux 6.10.14-linuxkit aarch64
+arch_bits:64
+process_id:1
+executable:/data/redis-server
+config_file:
+--- host-port reachability (127.0.0.1:56380) from a throwaway client container
+hello-from-v2
+--- process user (entrypoint drops privileges through setpriv, the patched binary)
+PID   USER     COMMAND
+    1 redis    redis-server
+   61 root     sh
+   67 root     ps
+
+4:SETPRIV="/bin/setpriv --reuid redis --regid redis --clear-groups"
+13:	/bin/setpriv -d | grep -q 'Capability bounding set:.*\b'"$1"'\b'
+
+-rwxr-xr-x    1 root     root         67392 Sep  5 13:08 /bin/setpriv
+setpriv from util-linux 2.41.6
+uid: 0
+euid: 0
+gid: 0
+--- installed library versions and OpenSSL identity
+openssl CLI: not installed (library only)
+libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+setpriv-2.41.6-r1 aarch64 {util-linux} (GPL-2.0-or-later) [installed]
+libcrypto.so.3 embedded version string: OpenSSL 3.5.8 25 Aug 2026
+-rwxr-xr-x    1 root     root       4533144 Aug 25 21:00 /usr/lib/libcrypto.so.3
+-rwxr-xr-x    1 root     root        868240 Aug 25 21:00 /usr/lib/libssl.so.3
+--- redis-server links:
+	libssl.so.3 => /usr/lib/libssl.so.3 (0xffffa911c000)
+	libcrypto.so.3 => /usr/lib/libcrypto.so.3 (0xffffa8c00000)
+1:M 10 Sep 2026 07:46:04.365 * <bf> 	{ bf-error-rate       :      0.01 }
+1:M 10 Sep 2026 07:46:04.368 # WARNING: Redis does not require authentication and is not protected by network restrictions. Redis will accept connections from any IP address on any network interface.
+eye-cand2-redis stopped+removed
+
+### A2. TLS through the patched libssl3: redis-server --tls-port with a throwaway self-signed cert
+eye-cand2-redis-tls ready after 1s (TLS ping PONG)
+--- plaintext must be refused (port 0), TLS must work
+Error: Connection reset by peer
+OK
+ok
+tls-port
+6379
+PID   USER     COMMAND
+    1 redis    redis-server
+1:M 10 Sep 2026 07:46:05.372 * <bf> 	{ bf-error-rate       :      0.01 }
+1:M 10 Sep 2026 07:46:05.376 * Ready to accept connections tls
+1:M 10 Sep 2026 07:46:05.463 # Error accepting a client connection: error:0A00010B:SSL routines::wrong version number (addr=127.0.0.1:38906 laddr=127.0.0.1:6379)
+eye-cand2-redis-tls stopped+removed
+
+### B. persistence path: BASE writes dump.rdb into eye-cand2-redisdata, v2 loads it
+eye-cand2-redis-base ready after 1s
+redis_version:8.10.0
+OK
+3
+OK
+total 4
+-rw-------    1 redis    redis          150 Sep 10 07:46 dump.rdb
+PID   USER     COMMAND
+    1 redis    redis-server
+eye-cand2-redis-base stopped+removed
+eye-cand2-redis-upg ready after 1s
+--- keys written by BASE, read by v2:
+one
+two
+three
+a
+b
+c
+4
+loading:0
+async_loading:0
+rdb_changes_since_last_save:0
+rdb_last_load_keys_loaded:4
+total 4
+-rw-------    1 redis    redis          150 Sep 10 07:46 dump.rdb
+PID   USER     COMMAND
+    1 redis    redis-server
+1:M 10 Sep 2026 07:46:06.476 * <bf> 	{ bf-error-rate       :      0.01 }
+1:M 10 Sep 2026 07:46:06.479 * DB loaded from disk: 0.000 seconds
+1:M 10 Sep 2026 07:46:06.479 # WARNING: Redis does not require authentication and is not protected by network restrictions. Redis will accept connections from any IP address on any network interface.
+eye-cand2-redis-upg stopped+removed
+### done

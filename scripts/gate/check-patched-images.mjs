@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 /**
- * Fail as soon as a PATCHED official image exists.
+ * Detect a COMPATIBLE FIXED OFFICIAL image for each service, and REPORT it.
  *
- * SCX-0006..0009 accept residual risk for CVE-2026-14456 because no official `postgres:18-alpine`
- * or `redis:8-alpine` build carries the fixed OpenSSL (3.5.8-r0), even though Alpine published that
- * package on 2026-08-25. An acceptance that outlives its own justification is the failure mode this
- * exists to prevent: it must not quietly persist because nobody re-checked.
+ * Since 2026-09-10 the service images are pinned, TEMPORARILY and by owner approval
+ * (docs/images/DERIVED_IMAGES_APPROVAL.md), to derived maintenance builds under
+ * `ghcr.io/a-halawany/elven/`, because no official `postgres:18-alpine` or `redis:8-alpine` build
+ * carried the util-linux, OpenSSL and c-ares fixes. That route is meant to end. This resolves the
+ * CURRENT official index for each service's tag, scans its `linux/amd64` AND `linux/arm64` children,
+ * and decides — on installed package versions, never on severity — whether every watched fix is
+ * present on both platforms.
  *
- * So this resolves the CURRENT official digest for each tag and scans it. If the image has been
- * rebuilt, it FAILS and names the digest to re-pin to - a deliberate inversion, because the good
- * news is what has to interrupt someone.
- *
- * The scan runs at ALL severities and the verdict is made on the installed package version. A
- * severity filter would have let a reclassification from HIGH to Low read as "patched", retiring a
- * disposition while the vulnerable code sat exactly where it was.
+ * It re-pins NOTHING and deletes NO evidence. When a service qualifies it FAILS — a deliberate
+ * inversion, because the good news is what has to interrupt someone — and names the official index
+ * and its children, so the return can be done through the governed process: re-pin
+ * docker-compose.yml and conformance.manifest.json, re-issue or retire the SCX records that name the
+ * derived image (SCX-0002..0005 on linux/amd64 and SCX-0010..0011 on linux/arm64 today), regenerate
+ * evidence, run the FINAL chain. An indeterminate
+ * check also fails: "could not check" must not read like "nothing to do".
  *
  * Usage: check-patched-images.mjs [--trivy <path>] [--cache <dir>]
  */
@@ -21,60 +24,135 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RECHECK_SPEC, assessReport } from './lib/c19-patched-images.mjs';
+import { PLATFORMS, SERVICES, assessService } from './lib/c19-patched-images.mjs';
 
-const PLATFORM = 'linux/amd64';
 const argv = process.argv.slice(2);
 const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 const trivy = val('--trivy') ?? 'trivy';
 const cache = val('--cache') ?? mkdtempSync(join(tmpdir(), 'c15-recheck-'));
-// The scan writes its report here. A caller-supplied --cache that does not exist yet would make
+// The scans write their reports here. A caller-supplied --cache that does not exist yet would make
 // the scan fail for a reason that has nothing to do with the images.
 mkdirSync(cache, { recursive: true });
 const say = (s) => process.stdout.write(`${s}\n`);
+const warn = (s) => process.stderr.write(`${s}\n`);
 
-/** The digest a tag currently resolves to, read from the live registry. */
-function currentDigest(tag) {
-  const r = spawnSync('docker', ['buildx', 'imagetools', 'inspect', tag], { encoding: 'utf8' });
-  if (r.status !== 0) return null;
-  return /^Digest:\s+(sha256:[0-9a-f]{64})/m.exec(r.stdout ?? '')?.[1] ?? null;
+/**
+ * The official INDEX a tag currently resolves to, read from the live registry, and its per-platform
+ * children. `--raw` returns the index bytes themselves, so the children are derived from the
+ * document rather than from a formatted listing. A single-platform manifest has no children.
+ */
+function resolveOfficial(tag) {
+  const r = spawnSync('docker', ['buildx', 'imagetools', 'inspect', '--raw', tag], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  if (r.status !== 0) return { error: `the registry index could not be resolved (${(r.stderr ?? '').trim().slice(0, 160) || `docker exited ${r.status}`})` };
+  let doc;
+  try { doc = JSON.parse(r.stdout); } catch (e) {
+    return { error: `the registry index is not JSON (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
+  }
+  const d = spawnSync('docker', ['buildx', 'imagetools', 'inspect', tag], { encoding: 'utf8' });
+  const digest = d.status === 0 ? /^Digest:\s+(sha256:[0-9a-f]{64})/m.exec(d.stdout ?? '')?.[1] ?? null : null;
+  if (digest === null) return { error: 'the registry index digest could not be resolved' };
+  // The child for each watched platform, chosen by the SAME rule the gate's resolver uses
+  // (scripts/gate/lib/scanner-provenance.mjs): os and architecture must match, an attestation
+  // manifest (unknown/unknown) is never a child, and a variant is compared only when the watched
+  // platform names one — official images list arm64 as `linux/arm64/v8`, which satisfies
+  // `linux/arm64`.
+  const runnable = (Array.isArray(doc.manifests) ? doc.manifests : [])
+    .filter((m) => typeof m?.digest === 'string' && typeof m?.platform?.os === 'string'
+      && typeof m?.platform?.architecture === 'string'
+      && !(m.platform.os === 'unknown' && m.platform.architecture === 'unknown'));
+  const children = {};
+  for (const platform of PLATFORMS) {
+    const [wantOs, wantArch, wantVariant] = platform.split('/');
+    const match = runnable.find((m) => m.platform.os === wantOs && m.platform.architecture === wantArch
+      && (wantVariant === undefined || (m.platform.variant ?? wantVariant) === wantVariant));
+    if (match !== undefined) children[platform] = match.digest;
+  }
+  return { digest, children, single: !Array.isArray(doc.manifests) };
 }
 
-const patched = [];
-const indeterminate = [];
-for (const tag of RECHECK_SPEC.tags) {
-  const digest = currentDigest(tag);
-  if (digest === null) { indeterminate.push(`${tag}: the registry digest could not be resolved`); continue; }
-  const ref = `${tag.split(':')[0]}@${digest}`;
-  const out = join(cache, `${tag.replace(/\W+/g, '-')}.json`);
-  // NO --severity filter: the verdict must not depend on how the advisory is currently rated.
+/** Scan one platform child of the official image; the report, or an error string. */
+function scanChild(tag, ref, platform) {
+  const out = join(cache, `${tag.replace(/\W+/g, '-')}-${platform.replace(/\W+/g, '-')}.json`);
+  // NO --severity filter: the verdict must not depend on how an advisory is currently rated.
   const r = spawnSync(trivy, ['image', '--quiet', '--ignorefile', '/dev/null',
-    '--platform', PLATFORM, '--cache-dir', cache, '--format', 'json', '--output', out, ref],
+    '--platform', platform, '--cache-dir', cache, '--format', 'json', '--output', out, ref],
   { encoding: 'utf8', timeout: 900_000 });
-  if (r.status !== 0) { indeterminate.push(`${tag}: the scan failed (exit ${r.status})`); continue; }
-  let report;
-  try { report = JSON.parse(readFileSync(out, 'utf8')); } catch (e) {
-    indeterminate.push(`${tag}: the scan report is unreadable (${e.message.slice(0, 80)})`);
+  if (r.status !== 0) return { error: `the scan failed (exit ${r.status})` };
+  try { return { report: JSON.parse(readFileSync(out, 'utf8')) }; } catch (e) {
+    return { error: `the scan report is unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
+  }
+}
+
+const verdicts = [];
+for (const [service, spec] of Object.entries(SERVICES)) {
+  const tag = spec.tag;
+  const resolved = resolveOfficial(tag);
+  if (resolved.error !== undefined) {
+    say(`${service}: ${tag} -> UNRESOLVED (${resolved.error})`);
+    verdicts.push({ ...assessService(service, {}, Object.fromEntries(PLATFORMS.map((p) => [p, resolved.error]))), digest: null, children: {} });
     continue;
   }
-  const verdict = assessReport(report);
-  say(`${tag} -> ${digest}`);
-  say(`  ${verdict.state.toUpperCase()}: ${verdict.why}`);
-  if (verdict.state === 'patched') patched.push({ tag, digest });
-  if (verdict.state === 'indeterminate') indeterminate.push(`${tag}: ${verdict.why}`);
+  say(`${service}: ${tag} -> ${resolved.digest}${resolved.single ? ' (single-platform manifest)' : ''}`);
+  const repo = tag.split(':')[0];
+  const reports = {};
+  const errors = {};
+  for (const platform of PLATFORMS) {
+    const child = resolved.single ? null : resolved.children[platform];
+    if (!resolved.single && child === undefined) {
+      errors[platform] = `the official index has no ${platform} child`;
+      say(`  ${platform}: ABSENT from the index`);
+      continue;
+    }
+    // The reference is the resolved DIGEST, never the moving tag — the child's when the index has
+    // one, the index's own when it is a single manifest.
+    const ref = `${repo}@${child ?? resolved.digest}`;
+    const scanned = scanChild(tag, ref, platform);
+    if (scanned.error !== undefined) {
+      errors[platform] = scanned.error;
+      say(`  ${platform}: ${ref} -> ${scanned.error}`);
+      continue;
+    }
+    reports[platform] = scanned.report;
+    say(`  ${platform}: ${ref}`);
+  }
+  const v = assessService(service, reports, errors);
+  for (const platform of PLATFORMS) {
+    const p = v.platforms[platform];
+    for (const [id, f] of Object.entries(p.fixes)) say(`    [${id}] ${platform} ${f.state.toUpperCase()}: ${f.why}`);
+  }
+  say(`  ${service}: ${v.state.toUpperCase()}`);
+  verdicts.push({ ...v, digest: resolved.digest, children: resolved.children });
 }
+
+const indeterminate = verdicts.filter((v) => v.state === 'indeterminate');
+const fixed = verdicts.filter((v) => v.state === 'fixed');
 
 if (indeterminate.length > 0) {
   // Fail closed. "Could not check" must not read like "nothing to do".
-  process.stderr.write('\nc15-recheck: the acceptance could not be re-justified:\n');
-  for (const x of indeterminate) process.stderr.write(`  ${x}\n`);
+  warn('\nc15-recheck: the official images could not be checked on both platforms:');
+  for (const v of indeterminate) {
+    for (const platform of PLATFORMS) {
+      const p = v.platforms[platform];
+      if (p.error !== null) { warn(`  ${v.tag} ${platform}: ${p.error}`); continue; }
+      for (const [id, f] of Object.entries(p.fixes)) if (f.state === 'indeterminate') warn(`  ${v.tag} ${platform} [${id}]: ${f.why}`);
+    }
+  }
   process.exit(1);
 }
-if (patched.length > 0) {
-  process.stderr.write(`\nc15-recheck: a PATCHED official image now exists for ${RECHECK_SPEC.advisory}.\n`);
-  for (const { tag, digest } of patched) process.stderr.write(`  re-pin ${tag} to ${digest}\n`);
-  process.stderr.write('Re-pin conformance.manifest.json and docker-compose.yml, then DELETE the\n'
-    + 'corresponding SCX records: the gate rejects a record that matches nothing.\n');
+if (fixed.length > 0) {
+  for (const v of fixed) {
+    warn(`\nc15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for ${v.service}: ${v.tag} -> ${v.digest}`);
+    for (const platform of PLATFORMS) warn(`  ${platform} child ${v.children[platform] ?? v.digest}`);
+    warn(`  every watched fix (${Object.keys(v.platforms[PLATFORMS[0]].fixes).join(', ')}) is present on both platforms.`);
+    warn('  This is a REPORT: nothing was re-pinned and no evidence was deleted. Return the service to the');
+    warn(`  official image through the governed process — re-pin docker-compose.yml and conformance.manifest.json`);
+    warn(`  to ${v.tag.split(':')[0]}@${v.digest}, verify its provenance and compatibility, ${v.records.length > 0
+      ? `re-issue or retire ${v.records.join(', ')} (they name the derived image)`
+      : 'confirm no SCX record names the derived image'}, regenerate the`);
+    warn('  evidence, run the FINAL chain (docs/SCANNER_DISPOSITIONS.md §5).');
+  }
   process.exit(1);
 }
-say(`c15-recheck: no patched official image yet; SCX-0006..0009 remain justified`);
+say('\nc15-recheck: no compatible fixed official image yet for any service; the derived images '
+  + '(ghcr.io/a-halawany/elven/postgres, ghcr.io/a-halawany/elven/redis) remain the pinned route, '
+  + 'and SCX-0002..0005 (linux/amd64) and SCX-0010..0011 (linux/arm64) remain scoped to the derived postgres image.');

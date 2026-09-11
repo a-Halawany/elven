@@ -1,0 +1,51 @@
+===== redis (redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241)
+alpine-release: 3.23.5
+repositories:
+https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+https://dl-cdn.alpinelinux.org/alpine/v3.23/community
+v3.23.5-194-g67c786fbc92 [https://dl-cdn.alpinelinux.org/alpine/v3.23/main]
+v3.23.5-194-g67c786fbc92 [https://dl-cdn.alpinelinux.org/alpine/v3.23/community]
+OK: 27448 distinct packages available
+--- apk policy
+libblkid policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+libfdisk policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+libmount policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+libsmartcols policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+libuuid policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+setpriv policy:
+  2.41.4-r0:
+    lib/apk/db/installed
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+util-linux policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+util-linux-misc policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+uuidgen policy:
+  2.41.6-r1:
+    https://dl-cdn.alpinelinux.org/alpine/v3.23/main
+--- apk search -x
+libuuid-2.41.6-r1
+setpriv-2.41.6-r1
+util-linux-2.41.6-r1
+--- apk list --upgradable
+apk-tools-3.0.8-r0 aarch64 {apk-tools} (GPL-2.0-only) [upgradable from: apk-tools-3.0.6-r0]
+libapk-3.0.8-r0 aarch64 {apk-tools} (GPL-2.0-only) [upgradable from: libapk-3.0.6-r0]
+libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [upgradable from: libcrypto3-3.5.7-r0]
+libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [upgradable from: libssl3-3.5.7-r0]
+setpriv-2.41.6-r1 aarch64 {util-linux} (GPL-2.0-or-later) [upgradable from: setpriv-2.41.4-r0]
+--- apk dry-run upgrade of affected pkg
+(1/1) Upgrading setpriv (2.41.4-r0 -> 2.41.6-r1)
+OK: 11.7 MiB in 22 packages

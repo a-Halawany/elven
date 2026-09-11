@@ -1,6 +1,10 @@
 # THE EYE — Phase 3 Report: Enterprise Memory + Knowledge Graph (L3–L4)
 
-> Status: **IMPLEMENTED — awaiting owner review.** Built from `main` after Phase 2 closed at
+> Status: **COMPLETE.** Merged to `main` as **`6914af0329a177a4603825d8ca90496e764ebc44`**
+> (PR [#34](https://github.com/a-Halawany/elven/pull/34)) after owner product acceptance — not a
+> claim of independent code review.
+>
+> Originally: Built from `main` after Phase 2 closed at
 > [`6b4b22d6`](https://github.com/a-Halawany/elven/commit/6b4b22d69467ed398210c38cbf6c2183e2907c80).
 > Plan: [PHASE3_BUILD_PLAN.md](PHASE3_BUILD_PLAN.md) (approved, C1–C7 frozen with the owner's eight
 > resolver authority rules) · Phase 2: [PHASE2_REPORT.md](PHASE2_REPORT.md) ·

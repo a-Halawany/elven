@@ -1,0 +1,5 @@
+# trivy 0.73.0 image scan, --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignorefile /dev/null
+# `trivy convert --format table` prints nothing for a report with zero findings; this summary is derived from the JSON report.
+ArtifactName: eye-cand2-redis:8-alpine-maint  ArtifactType: container_image  OS: alpine 3.23.5  ImageID: sha256:180109ff191ec15103496d9f8515db45b2b446e1bf8bbc078c05b3ae51dcb075
+Target: eye-cand2-redis:8-alpine-maint (alpine 3.23.5)  Class: os-pkgs  Type: alpine  Vulnerabilities: 0  Secrets: 0  Misconfigurations: 0
+Total HIGH/CRITICAL vulnerabilities: 0; secrets: 0; misconfigurations: 0

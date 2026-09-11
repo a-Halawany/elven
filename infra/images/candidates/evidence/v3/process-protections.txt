@@ -1,0 +1,203 @@
+### process protections of the pinned base images and the v3 candidates — measurement transcript
+### Produced by a throwaway harness (scratchpad measure.sh, not tracked) with plain `docker run` and with
+### `docker run --cap-drop ALL --security-opt no-new-privileges:true` (the compose `cap_drop: [ALL]` +
+### `security_opt: [no-new-privileges:true]` pair), plus the explicit `--user` variants (compose `user:`).
+### Only eye-cand4-* container/volume names; no compose command; live eye-postgres/eye-redis untouched.
+### Passwords are throwaway and never printed. Fields are read from /proc/<pid>/status inside each container.
+### Sections: 1 = plain-run baseline (the before/after table); 2 = v3 redis hardened; 3 = v3 postgres hardened;
+### 4 = the BASE digests under the same hardening (with and without user:); 5 = v3 with hardening + user:.
+### process protections: base vs v3, plain docker run and under --cap-drop ALL --security-opt no-new-privileges:true
+### 2026-09-10T15:52:16Z  docker 28.5.1 linux/arm64  security options: [name=seccomp,profile=builtin name=cgroupns]
+### base redis:    redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+### base postgres: postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+### v3 redis:      eye-cand3-redis:8-alpine-maint   sha256:7edbdeac8859419f170f7059c57325d1517de7be8402d5ef0d827f7584b16ed2
+### v3 postgres:   eye-cand3-postgres:18-alpine-maint   sha256:ee4fc649fb6a1a09a7ecc44722e06e93fdefb976955e69d77a782fc7386fe338
+### Cap* values are hex masks; 0000000000000000 = no capabilities; 00000000a80425fb = Docker's default capability set. Seccomp: 2 = SECCOMP_MODE_FILTER (Docker's builtin default profile, applied in every case below).
+
+### 1. PLAIN docker run (no extra flags): PID 1 and the server process
+  eye-cand4-redis-base ready after 1s
+  --- redis BASE, plain
+    HostConfig: CapDrop=null CapAdd=null SecurityOpt=null User=
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  eye-cand4-redis-v3 ready after 1s
+  --- redis v3, plain
+    HostConfig: CapDrop=null CapAdd=null SecurityOpt=null User=redis
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 00000000a80425fb;CapAmb: 0000000000000000;NoNewPrivs: 0;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  eye-cand4-pg-base ready after 2s
+  --- postgres BASE, plain
+    HostConfig: CapDrop=null CapAdd=null SecurityOpt=null User=
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 00000000a80425fb;CapAmb: 0000000000000000;NoNewPrivs: 0;Seccomp: 2;Seccomp_filters: 1
+    child 69:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 00000000a80425fb;CapAmb: 0000000000000000;NoNewPrivs: 0;Seccomp: 2;Seccomp_filters: 1
+  eye-cand4-pg-v3 ready after 2s
+  --- postgres v3, plain
+    HostConfig: CapDrop=null CapAdd=null SecurityOpt=null User=postgres
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 00000000a80425fb;CapAmb: 0000000000000000;NoNewPrivs: 0;Seccomp: 2;Seccomp_filters: 1
+    child 53:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 00000000a80425fb;CapAmb: 0000000000000000;NoNewPrivs: 0;Seccomp: 2;Seccomp_filters: 1
+  --- docker exec identity/caps in each plain container (what an operator shell gets):
+    eye-cand4-redis-base: 0 CapEff: 00000000a80425fb CapBnd: 00000000a80425fb NoNewPrivs: 0 
+    eye-cand4-redis-v3: 999 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0 
+    eye-cand4-pg-base: 0 CapEff: 00000000a80425fb CapBnd: 00000000a80425fb NoNewPrivs: 0 
+    eye-cand4-pg-v3: 70 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0 
+  --- seeding the base stores (redis: 4 keys + SAVE; postgres: table t with 3 rows)
+    base redis SAVE -> OK
+    base postgres rows: 3
+  --- ownership of the base-written redis volume (the base's root entrypoint ran fix_data_dir_perms, then setpriv):
+    drwxr-xr-x    2 999      1000          4096 Sep 10 15:52 /mnt
+    total 4
+    -rw-------    1 999      1000           125 Sep 10 15:52 dump.rdb
+  --- ownership of the base-initialised postgres volume (the live eye-pgdata layout):
+    /mnt:
+    total 4
+    drwxr-xr-x    3 0        0             4096 Sep 10 15:52 18
+    
+    /mnt/18:
+    total 4
+    drwx------   19 70       0             4096 Sep 10 15:52 docker
+
+### 2. v3 redis under --cap-drop ALL --security-opt no-new-privileges:true
+  eye-cand4-redis-v3h ready after 1s
+  --- redis v3, hardened
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=redis
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  [PASS] (2a) v3 hardened: CapBnd = 0
+  [PASS] (2a) v3 hardened: CapEff = 0
+  [PASS] (2a) v3 hardened: NoNewPrivs = 1
+  [PASS] (2a) v3 hardened: uid 999
+  [PASS] (2b) PING
+  [PASS] (2b) SET/GET
+  [PASS] (2c) SAVE
+  [PASS] (2c) BGSAVE ok
+    total 4
+    -rw-------    1 999      1000           113 Sep 10 15:52 dump.rdb
+  [PASS] (2d) healthcheck command as the default user
+  [PASS] (2d) docker health status = healthy (observed: healthy)
+    INFO server: redis_version:8.10.0 os:Linux 6.10.14-linuxkit aarch64 process_id:1 
+    maxclients / open-files (redis raises the soft limit at start; the base under setpriv had no CAP_SYS_RESOURCE either):
+      maxclients 10000 
+  --- docker exec -u root inside the hardened container (root, but no capabilities):
+    0 CapEff: 0000000000000000 CapBnd: 0000000000000000 NoNewPrivs: 1 
+    chown attempt as exec-root: chown: /tmp/x: Operation not permitted
+  --- log lines of interest:
+  eye-cand4-redis-v3h ready after 1s
+  [PASS] (2e) stop/start: key reloaded from the v3-written dump
+  --- (2f) v3 hardened on the BASE-written volume (dump.rdb from the base's root+setpriv path)
+  eye-cand4-redis-v3h-upg ready after 1s
+  --- redis v3, hardened, base-written volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=redis
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  [PASS] (2f) rdb_last_load_keys_loaded:4
+    MGET one two three four -> a b c d 
+  [PASS] (2f) SAVE into the base-written volume
+    total 4
+    -rw-------    1 999      1000           125 Sep 10 15:52 dump.rdb
+  --- log lines of interest:
+
+### 3. v3 postgres under --cap-drop ALL --security-opt no-new-privileges:true
+  --- (3a) fresh named volume: initdb, chmod of PGDATA, pg_ctl temp server (all inside the entrypoint), compose env + healthcheck
+  eye-cand4-pg-v3h ready after 2s
+  --- postgres v3, hardened, fresh volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=postgres
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    child 53:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+  [PASS] (3a) v3 hardened: CapBnd = 0
+  [PASS] (3a) v3 hardened: CapEff = 0
+  [PASS] (3a) v3 hardened: NoNewPrivs = 1
+  [PASS] (3a) v3 hardened: uid 70
+  [PASS] (3a) initdb ran
+  [PASS] (3a) init process complete (pg_ctl start/stop of the temp server inside the entrypoint)
+  [PASS] (3a) pg_ctl -w start of the temp server: 'server started'
+  [PASS] (3a) pg_ctl -m fast -w stop of the temp server: 'server stopped'
+    PGDATA mode/owner (entrypoint chmod 00700; must be 700 and uid 70): 700 70:70 /var/lib/postgresql/18/docker
+3775 70:70 /var/run/postgresql
+  [PASS] (3a) PGDATA is 0700
+  [PASS] (3a) healthcheck pg_isready -U eye -d eye
+  [PASS] (3a) docker health status = healthy (observed: healthy)
+    version: PostgreSQL 18.4 on aarch64-unknown-linux
+  [PASS] (3a) uuid-ossp + gen_random_uuid()
+  --- explicit pg_ctl as the server user under cap_drop ALL:
+    pg_ctl status: pg_ctl: server is running (PID: 1)
+  [PASS] (3a) pg_ctl reload (SIGHUP to PID 1)
+  --- explicit chmod/chown on PGDATA as the server user under cap_drop ALL (owner may chmod; chown to another uid needs CAP_CHOWN and is expected to fail):
+    chmod 700: ok
+    chown 0: chown: /var/lib/postgresql/18/docker: Operation not permitted
+  --- pg_dump -Fc via docker exec (backup.sh form) + restore round trip:
+  [PASS] (3a) pg_dump/pg_restore round trip, 3 rows
+  --- log lines of interest:
+    fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
+    2026-09-10 15:52:26.109 UTC [30] WARNING:  no usable system locales were found
+    initdb: warning: enabling "trust" authentication for local connections
+  eye-cand4-pg-v3h ready after 1s
+  [PASS] (3a) stop/start: rows intact
+  --- (3b) v3 hardened on the BASE-initialised volume (root entrypoint, chown, gosu; the live eye-pgdata path)
+  eye-cand4-pg-v3h-upg ready after 1s
+  --- postgres v3, hardened, base-initialised volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=postgres
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    child 14:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+  [PASS] (3b) Skipping initialization
+  [PASS] (3b) reads the 3 base-written rows
+  [PASS] (3b) INSERT + CHECKPOINT
+  [PASS] (3b) healthcheck
+  --- log lines of interest:
+
+### 4. The BASE images (the digests docker-compose.yml pins TODAY) under the same hardening — the transitional state if the compose change lands before the re-pin
+  --- (4a) base redis + cap_drop ALL + no-new-privileges, no user: the entrypoint's has_cap setuid/setgid test fails, so it must skip the drop
+  eye-cand4-redis-baseh ready after 1s
+  --- redis BASE, hardened, no user
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=
+    PID 1:      Name: redis-server;Uid: 0 0 0 0;Gid: 0 0 0 0;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+    -> Uid: 0 0 0 0   (uid 0 = REGRESSION versus the plain base, which ran as uid 999)
+    SAVE as uid 0 without CAP_DAC_OVERRIDE into /data (999:1000 0755) -> ERR
+    /data: drwxr-xr-x    2 999      1000          4096 Jul 30 20:03 /data
+  --- log lines of interest:
+    1:M 10 Sep 2026 15:52:31.155 # Failed opening the temp RDB file temp-1.rdb (in server root dir /data) for saving: Permission denied
+  --- (4b) base redis + cap_drop ALL + no-new-privileges + --user 999:1000 (compose 'user:'): the entrypoint's non-root path, the same one v3 takes
+  eye-cand4-redis-baseu ready after 1s
+  --- redis BASE, hardened, user 999:1000
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=999:1000
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  [PASS] (4b) base + hardened + user: SAVE
+  --- (4c) base postgres + cap_drop ALL + no-new-privileges, no user: the entrypoint runs as root and must exec gosu, which needs CAP_SETUID/SETGID
+    state=exited exit=1
+    chmod: /var/lib/postgresql/18/docker: Operation not permitted
+    chmod: /var/run/postgresql: Operation not permitted
+    find: /var/lib/postgresql/18/docker: Permission denied
+  --- (4d) base postgres + cap_drop ALL + no-new-privileges + --user 70:70, on the base-initialised volume
+  eye-cand4-pg-baseu ready after 2s
+  --- postgres BASE, hardened, user 70:70, base-initialised volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=70:70
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    child 14:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+  [PASS] (4d) base + hardened + user: reads 4 rows (3 base + 1 written by v3 hardened in 3b)
+  [PASS] (4d) healthcheck
+  --- log lines of interest:
+    2026-09-10 15:52:38.189 UTC [26] FATAL:  the database system is starting up
+  --- (4e) base postgres + cap_drop ALL + no-new-privileges + --user 70:70 on a FRESH volume (initdb as uid 70 in the base)
+  eye-cand4-pg-baseuf ready after 2s
+  --- postgres BASE, hardened, user 70:70, fresh volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=70:70
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    child 53:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+  [PASS] (4e) init complete
+
+### 5. v3 images with cap_drop ALL + no-new-privileges + explicit user (the image USER and a compose 'user:' agree; shows the two are interchangeable)
+  eye-cand4-redis-v3hu ready after 1s
+  --- redis v3, hardened, user 999:1000
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=999:1000
+    PID 1:      Name: redis-server;Uid: 999 999 999 999;Gid: 1000 1000 1000 1000;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    (PID 1 has no child processes)
+  eye-cand4-pg-v3hu ready after 1s
+  --- postgres v3, hardened, user 70:70, base-initialised volume
+    HostConfig: CapDrop=["ALL"] CapAdd=null SecurityOpt=["no-new-privileges:true"] User=70:70
+    PID 1:      Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+    child 14:  Name: postgres;Uid: 70 70 70 70;Gid: 70 70 70 70;CapInh: 0000000000000000;CapPrm: 0000000000000000;CapEff: 0000000000000000;CapBnd: 0000000000000000;CapAmb: 0000000000000000;NoNewPrivs: 1;Seccomp: 2;Seccomp_filters: 1
+  [PASS] (5) rows intact
+
+### summary: PASS=37 FAIL=0
+### eye-cand4-* containers and volumes removed: containers=0 volumes=0

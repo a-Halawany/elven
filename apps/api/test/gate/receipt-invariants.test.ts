@@ -27,21 +27,39 @@ import { join } from 'node:path';
 
 import { assertFinalManifests } from '../../../../scripts/gate/assert-final-manifests.mjs';
 import { assertFinalManifests as assertR343Frozen } from './fixtures/assert-final-manifests.r343-frozen.mjs';
-import { buildPassingR34Evidence, editManifest, sha256 } from './helpers/evidence-fixture-r34';
+import {
+  buildPassingR34Evidence, editManifest, replaceBoundInAll, sha256,
+} from './helpers/evidence-fixture-r34';
 
 const REPO = join(__dirname, '..', '..', '..', '..');
 
 describe('C16-R3.4.4 receipt invariants', () => {
   let root: string;
   let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-r344-'));
     built = buildPassingR34Evidence(root, REPO);
+    legacy = buildPassingR34Evidence(join(root, 'legacy'), REPO, { platforms: ['linux/amd64'] });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
+
+  /**
+   * THE SAME EVIDENCE, TWICE.
+   *
+   * The gate scans every child in the tracked `SCAN_PLATFORMS` list, so `built` is the
+   * live-shaped package: one `trivy-image-<i>` per (platform, image) pair. The frozen verifier
+   * below is a byte copy written when the gate scanned a single child, and it is never edited —
+   * so it cannot validate that shape, and pointing it at `built` would make every control fail
+   * for a reason that has nothing to do with the mutation under test. `legacy` is the same
+   * package built for `['linux/amd64']` alone: the shape that verifier was written for. Every
+   * mutation is applied to BOTH, so the two verifiers really are shown the same thing.
+   */
   const c15 = () => built.c15Dir;
+  /** Every copy a mutation must land in. */
+  const c15Dirs = () => [built.c15Dir, legacy.c15Dir];
 
   const check = () => assertFinalManifests({
     c15Dir: c15(), c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
@@ -50,7 +68,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
   const frozen = () => {
     try {
       return assertR343Frozen({
-        c15Dir: c15(), c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+        c15Dir: legacy.c15Dir, c16Dir: legacy.c16Dir, expectedSha: legacy.expectedSha, root: REPO,
       }) as string[];
     } catch (e) {
       return [`THREW: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`];
@@ -63,23 +81,7 @@ describe('C16-R3.4.4 receipt invariants', () => {
    * so a control that leaves one stale would be caught by digest arithmetic and would prove
    * nothing about semantics.
    */
-  const replace = (rel: string, text: string) => {
-    writeFileSync(join(c15(), rel), text);
-    const bytes = readFileSync(join(c15(), rel));
-    const digest = sha256(bytes);
-    editManifest(c15(), 'supply-chain-manifest.json', (m) => {
-      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
-      if (a !== undefined) { a.bytes = bytes.length; a.sha256 = digest; }
-      for (const s of [...m.steps, ...m.trivy_cache_acquisition.steps]) {
-        for (const stream of ['stdout', 'stderr']) {
-          if (s[`${stream}_file`] === rel) {
-            s[`${stream}_bytes`] = bytes.length;
-            s[`${stream}_sha256`] = digest;
-          }
-        }
-      }
-    });
-  };
+  const replace = (rel: string, text: string) => replaceBoundInAll(c15Dirs(), rel, text);
 
   const editRaw = (rel: string, mutate: (doc: any) => void) => {
     const doc = JSON.parse(readFileSync(join(c15(), rel), 'utf8'));
@@ -91,9 +93,10 @@ describe('C16-R3.4.4 receipt invariants', () => {
   /**
    * The mutation no longer reproduces a bypass, because it changes the finding arithmetic.
    *
-   * Both pinned images now carry governed dispositions (CVE-2026-14456, SCX-0006..0009), so a
-   * mutation that adds, drops or re-targets findings on either image is caught by the earlier
-   * verifier's finding-reconciliation arithmetic. That is a genuine improvement; asserting the old
+   * The pinned postgres image carries governed dispositions (SCX-0002..0005 over its 22 gosu
+   * findings) and the pinned redis image reports none, so a mutation that adds, drops or
+   * re-targets findings on either image is caught by the earlier verifier's finding-reconciliation
+   * arithmetic. That is a genuine improvement; asserting the old
    * bypass still exists would be the wrong way to record it.
    *
    * What still needs proving is that the newer STRUCTURAL check is a distinct one - not arithmetic
@@ -208,18 +211,20 @@ describe('C16-R3.4.4 receipt invariants', () => {
   // This and the next control use `trivy-image-1`, the image with NO findings. Mutating a
   // target or duplicating a result on an image that HAS findings also disturbs the finding
   // reconciliation, which R3.4.3 already catches; on an image with none, the arithmetic is
-  // untouched and only the identity invariant can fail. That is the false pass.
+  // untouched and only the identity invariant can fail. That is the false pass. (While redis
+  // carried CVE-2026-14456 these ran as `structuralCheckIsDistinct`; since the 2026-09-10 re-pin
+  // to the derived image redis is clean again and the false pass is reproduced as first written.)
   it('rejects an os-pkgs target that merely STARTS WITH the derived reference', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => {
       const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
       r.Target = `${d.Metadata.Reference}-attacker (alpine 3.23.5)`;
     });
-    structuralCheckIsDistinct(/os-pkgs target is .*expected exactly/);
+    closesFalsePass(/os-pkgs target is .*expected exactly/);
   });
 
   it('rejects a duplicated JSON result', () => {
     editRaw('trivy-image-1.stdout.txt', (d) => { d.Results.push({ ...d.Results[0] }); });
-    structuralCheckIsDistinct(/repeats the result identity/);
+    closesFalsePass(/repeats the result identity/);
   });
 
   // ── §B7: findings ────────────────────────────────────────────────────────────
@@ -256,10 +261,12 @@ describe('C16-R3.4.4 receipt invariants', () => {
     // The FINDING is left exactly as captured, so the reconciliation arithmetic is identical
     // and R3.4.3 sees nothing wrong. What is removed is the package the finding is about — a
     // result asserting a vulnerability in something it never claimed to have found.
+    // Since the 2026-09-10 re-pin the postgres OS package set carries no finding; the gosu result
+    // does, so the package removed is the one its findings name (`stdlib`, by exact PURL).
     editRaw('trivy-image-0.stdout.txt', (d) => {
-      const r = d.Results.find((x: any) => x.Class === 'os-pkgs');
-      const name = r.Vulnerabilities[0].PkgName;
-      r.Packages = r.Packages.filter((p: any) => p.Name !== name);
+      const r = d.Results.find((x: any) => x.Class === 'lang-pkgs');
+      const purl = r.Vulnerabilities[0].PkgIdentifier.PURL;
+      r.Packages = r.Packages.filter((p: any) => p.Identifier.PURL !== purl);
     });
     closesFalsePass(/reports a vulnerability in .*, which this result does not list/);
   });

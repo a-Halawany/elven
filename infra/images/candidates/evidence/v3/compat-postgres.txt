@@ -1,0 +1,190 @@
+### v3 postgres compatibility  2026-09-10T08:06:15Z  image=eye-cand3-postgres:18-alpine-maint  base=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+image Config.User: postgres (base: '')
+
+### (a) fresh named volume eye-cand3-pgdata, compose-shaped env (POSTGRES_USER=eye, POSTGRES_DB=eye), compose healthcheck as --health-cmd
+  container Config.User: 'postgres'
+  eye-cand3-pg ready after 2s
+  [PASS] (a) initdb + server start on a fresh volume
+  --- PID 1 (postgres) identity, from /proc/1/status (no gosu step: entrypoint started as uid 70):
+    Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0
+  [PASS] (a) PID 1 runs as uid 70 (observed uid 70)
+  --- processes:
+    PID   USER     COMMAND
+        1 postgres postgres
+       53 postgres postgres
+       54 postgres postgres
+       55 postgres postgres
+       56 postgres postgres
+       57 postgres postgres
+       59 postgres postgres
+       60 postgres postgres
+       61 postgres postgres
+       84 postgres ps
+  --- entrypoint log lines (initdb ran as the service user; no gosu re-exec):
+    The files belonging to this database system will be owned by user "postgres".
+    initdb: warning: enabling "trust" authentication for local connections
+    initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+    2026-09-10 08:06:16.039 UTC [36] LOG:  database system is ready to accept connections
+    /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+    PostgreSQL init process complete; ready for start up.
+  [PASS] (a) initdb reports the cluster owned by user postgres
+  --- SELECT version():
+    PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+  [PASS] (a) SELECT version()
+  --- uuid-ossp, gen_random_uuid, pgcrypto:
+    CREATE EXTENSION
+    CREATE EXTENSION
+     ossp_v4_ok | ossp_v1_ok | core_ok 
+    ------------+------------+---------
+     t          | t          | t
+    (1 row)
+    
+     sha256_ok | rnd_len | hmac_ok 
+    -----------+---------+---------
+     t         |      16 | t
+    (1 row)
+    
+  [PASS] (a) uuid-ossp / gen_random_uuid / pgcrypto
+  --- installed pinned packages (apk list -I):
+    c-ares-1.34.8-r0 aarch64 {c-ares} (MIT) [installed]
+    libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+    libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+    libuuid-2.42.3-r1 aarch64 {util-linux} (BSD-3-Clause) [installed]
+  --- ownership (volume initialised from the image's /var/lib/postgresql, then initdb as uid 70):
+    drwxrwxrwt    3 70       70            4096 Sep 10 08:06 /var/lib/postgresql
+    drwxr-xr-x    3 70       70            4096 Sep 10 08:06 /var/lib/postgresql/18
+    drwx------   19 70       70            4096 Sep 10 08:06 /var/lib/postgresql/18/docker
+    drwxrwsr-t    1 70       70            4096 Sep 10 08:06 /var/run/postgresql
+    files under /var/lib/postgresql not owned by uid 70: 0
+  [PASS] (a) write a table (3 rows)
+
+### (c) docker exec default user vs -u root (compose-shaped container: superuser is 'eye')
+  --- docker exec id (default user):
+    uid=70(postgres) gid=70(postgres) groups=70(postgres)
+  [PASS] (c) docker exec runs as uid 70 by default
+  --- docker exec psql -U eye (unix socket, trust):
+    eye|3
+  [PASS] (c) docker exec psql -U eye as default user
+  --- docker exec psql -U postgres (NOTE: with POSTGRES_USER=eye no 'postgres' role exists; same on the base image; the literal -U postgres case is covered in (b)):
+    psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: FATAL:  role "postgres" does not exist
+  --- docker exec -u root:
+    uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+    root can write /root
+    libuuid-2.42.3-r1 aarch64 {util-linux} (BSD-3-Clause) [installed]
+  [PASS] (c) docker exec -u root gives root
+
+### (d) pg_dump -Fc via docker exec (backup.sh form: docker exec -e PGPASSWORD <c> pg_dump -U <superuser> -Fc --no-password <db>) + pg_dumpall --globals-only + pg_restore round trip
+  [PASS] (d) pg_dump -Fc
+    dump size:     3459 bytes; TOC entries for table t: 4
+  [PASS] (d) pg_dumpall --globals-only
+    globals.sql lines:       35 (content is secret material; not shown)
+  [PASS] (d) pg_restore into eye_rt (restore.sh form)
+    rows in eye_rt.t: 3
+
+### (e) compose healthcheck (docker-compose.yml: CMD-SHELL pg_isready -U eye -d eye) under the non-root default user
+/var/run/postgresql:5432 - accepting connections
+  [PASS] (e) healthcheck command via docker exec (default user)
+  [PASS] (e) docker health status = healthy
+
+### (f) container log: permission / chown / error lines
+  --- log lines matching could not change permissions|chown|permission denied|FATAL|ERROR|PANIC|WARNING:
+    2026-09-10 08:06:15.800 UTC [30] WARNING:  no usable system locales were found
+    initdb: warning: enabling "trust" authentication for local connections
+    2026-09-10 08:06:17.863 UTC [159] FATAL:  role "postgres" does not exist
+  [FAIL] (f) no permission/chown/FATAL lines (1) (rc=1)
+
+### (g) restart (docker stop / docker start) and docker restart
+  eye-cand3-pg ready after 1s
+  [PASS] (g) stop/start
+    rows after restart: 3  PID1: Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 CapEff: 000
+  eye-cand3-pg ready after 1s
+  [PASS] (g) docker restart
+    2026-09-10 08:06:22.557 UTC [1] LOG:  database system is shut down
+    PostgreSQL Database directory appears to contain a database; Skipping initialization
+    2026-09-10 08:06:22.812 UTC [19] LOG:  database system was shut down at 2026-09-10 08:06:22 UTC
+    2026-09-10 08:06:22.816 UTC [1] LOG:  database system is ready to accept connections
+  --- log lines matching could not change permissions|chown|permission denied|FATAL|ERROR|PANIC|WARNING:
+    2026-09-10 08:06:15.800 UTC [30] WARNING:  no usable system locales were found
+    initdb: warning: enabling "trust" authentication for local connections
+    2026-09-10 08:06:17.863 UTC [159] FATAL:  role "postgres" does not exist
+    2026-09-10 08:06:21.709 UTC [238] FATAL:  the database system is shutting down
+  eye-cand3-pg removed
+
+### (b) upgrade path: data directory initialised by the BASE image (root entrypoint -> chown -> gosu), then read by v3 (defaults: POSTGRES_USER=postgres)
+  eye-cand3-pg-base ready after 2s
+  [PASS] (b) base image initialises the volume
+  --- base PID 1 (after gosu): Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0
+  [PASS] (b) base writes 3 rows
+  base container stopped (clean shutdown) and removed
+  --- ownership of the base-written volume (read with the base image, entrypoint bypassed, as root):
+    drwxrwxrwt    3 70       70            4096 Sep 10 08:06 /mnt
+    drwxr-xr-x    3 0        0             4096 Sep 10 08:06 /mnt/18
+    drwx------   19 70       0             4096 Sep 10 08:06 /mnt/18/docker
+    total 124
+    -rw-------    1 70       70               3 Sep 10 08:06 PG_VERSION
+    drwx------    5 70       70            4096 Sep 10 08:06 base
+    drwx------    2 70       70            4096 Sep 10 08:06 global
+    files not owned by uid 70: 1
+  eye-cand3-pg-upg ready after 1s
+  [PASS] (b) v3 starts on the base-initialised volume
+  [PASS] (b) v3 log: 'database directory appears to contain a database; Skipping initialization'
+  --- v3 PID 1: Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0
+  --- rows written by BASE, read by v3:
+     id | label | has_uuid 
+    ----+-------+----------
+      1 | alpha | t
+      2 | beta  | t
+      3 | gamma | t
+    (3 rows)
+    
+  [PASS] (b) rows readable
+  [PASS] (b) v3 writes into the base-initialised volume (INSERT + CHECKPOINT)
+  --- (c) literal: docker exec psql -U postgres as the default exec user:
+    postgres|4
+  [PASS] (c) docker exec psql -U postgres (default user)
+    root exec: uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+  --- log lines matching could not change permissions|chown|permission denied|FATAL|ERROR|PANIC|WARNING:
+    (none)
+  [PASS] (b) no permission/chown/FATAL lines (0)
+  eye-cand3-pg-upg stopped+removed
+
+### (b2) limit case: a data directory NOT owned by uid 70 (the base entrypoint would chown it as root; v3 cannot). Simulated by chown -R 0:0 of the base-written cluster.
+    drwx------   19 0        0             4096 Sep 10 08:06 /mnt/18/docker
+  --- v3 on a root-owned PGDATA: state=exited exit=1; log:
+    The default database encoding has accordingly been set to "UTF8".
+    The default text search configuration will be set to "english".
+    
+    Data page checksums are enabled.
+    
+    initdb: error: could not access directory "/var/lib/postgresql/18/docker": Permission denied
+  --- the fix: one start with --user root (entrypoint runs its root path: chown to postgres, then gosu), then v3 as shipped
+  eye-cand3-pg-rootfix ready after 1s
+  [PASS] (b2) --user root start repairs ownership (PID1: Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 C)
+    drwx------   19 70       0             4096 Sep 10 08:06 /mnt/18/docker
+    files not owned by uid 70: 1
+  eye-cand3-pg-upg ready after 1s
+  [PASS] (b2) v3 as shipped starts after the repair; rows: 4
+
+### (a2) defaults (no POSTGRES_USER/POSTGRES_DB): fresh volume, superuser postgres, amd64 image under emulation (the platform the gate scans)
+  eye-cand3-pg-defaults ready after 3s
+  [PASS] (a2) amd64 image: initdb + start on a fresh volume
+    PostgreSQL 18.4 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+    PID1: Name: postgres Uid: 70 70 70 70 Gid: 70 70 70 70 CapEff: 000
+  [PASS] (a2) gen_random_uuid on amd64
+  --- log lines matching could not change permissions|chown|permission denied|FATAL|ERROR|PANIC|WARNING:
+    2026-09-10 08:06:31.060 UTC [30] WARNING:  no usable system locales were found
+    initdb: warning: enabling "trust" authentication for local connections
+    2026-09-10 08:06:31.669 UTC [63] FATAL:  the database system is starting up
+
+### summary: PASS=28 FAIL=1
+
+### note on the single [FAIL] in (f)
+The line "FATAL:  role \"postgres\" does not exist" (pid 159) was produced by this suite's own probe in (c):
+`docker exec eye-cand3-pg psql -U postgres` against a cluster whose superuser is `eye` (POSTGRES_USER=eye, as in
+docker-compose.yml). The base image logs the same line for the same probe. The other matched lines are initdb's
+standard "no usable system locales" / "enabling trust authentication" warnings and the "database system is
+starting up|shutting down" FATALs that pg_isready polling and docker stop produce on any postgres image. No
+"could not change permissions", "chown" or "Permission denied" line appears in any v3 log in this suite; the only
+"Permission denied" is the deliberate limit case (b2), where the exit is exactly as predicted.
+Net result on substance: 29/29 checks pass; the (f) grep is recorded as-is rather than re-run with the probe
+excluded.

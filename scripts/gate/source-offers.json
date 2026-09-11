@@ -19,9 +19,9 @@
   "records": [
     {
       "id": "SRC-0001",
-      "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.2",
+      "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.3",
       "name": "@img/sharp-libvips-linux-x64",
-      "version": "1.3.2",
+      "version": "1.3.3",
       "declared_license": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer",
       "why": [
@@ -33,14 +33,14 @@
       "corresponding_source": {
         "upstream_repository": "https://github.com/lovell/sharp-libvips",
         "upstream_directory": "npm/linux-x64",
-        "build_recipe_tag": "v1.3.2",
+        "build_recipe_tag": "v1.3.3",
         "libvips_upstream": "https://github.com/libvips/libvips",
         "author": "Lovell Fuller <npm@lovell.info>",
         "obtain": [
           "The complete build recipe for this exact artifact is the sharp-libvips repository at tag",
-          "v1.3.2, directory npm/linux-x64, which pins the libvips version and every bundled",
+          "v1.3.3, directory npm/linux-x64, which pins the libvips version and every bundled",
           "dependency it links.",
-          "git clone https://github.com/lovell/sharp-libvips && cd sharp-libvips && git checkout v1.3.2",
+          "git clone https://github.com/lovell/sharp-libvips && cd sharp-libvips && git checkout v1.3.3",
           "The libvips sources themselves are at https://github.com/libvips/libvips at the tag that",
           "recipe pins."
         ],

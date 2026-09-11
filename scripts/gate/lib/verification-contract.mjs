@@ -29,6 +29,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { SCAN_PLATFORMS } from './scanner-provenance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -123,6 +124,21 @@ export const C15_ACQUISITION_STEPS = Object.freeze([
 ]);
 export const IMAGE_STEP_PREFIX = 'trivy-image-';
 
+/**
+ * EVERY platform whose child manifest the gate scans, in scan order.
+ *
+ * RE-EXPORTED, never redeclared. The single definition lives in `lib/scanner-provenance.mjs`,
+ * which the runner already imports and which pulls in no third-party module; two copies of
+ * this list would drift, and the verifier's whole job is to disagree with the producer when
+ * the producer is wrong.
+ *
+ * Image steps are numbered PLATFORM-MAJOR: all images on platforms[0], then all images on
+ * platforms[1]. `trivy-image-<i>` for i < imageCount therefore still names the same image on
+ * the same platform as it did when the gate scanned one platform.
+ */
+export { SCAN_PLATFORMS };
+
+
 /** Governed reports that are not a step's raw stream but must still be produced and bound. */
 export const C15_REQUIRED_REPORTS = Object.freeze([
   'RESULT-PASS.txt',
@@ -195,8 +211,15 @@ export function normalizeArgv(argv, paths) {
  * `scanRefs` is the ordered list of resolved child-image scan references; it is supplied by
  * the caller only after being derived from Compose + verified index resolution, so an
  * evidence-supplied reference can never reach this function.
+ *
+ * `scanPlatforms` is the parallel list of platforms those references were resolved for. It is
+ * parallel rather than implied so that the argv contract names the platform the step actually
+ * passed to trivy: a step that scanned the arm64 child while claiming `--platform linux/amd64`
+ * would otherwise satisfy a contract that hardcoded one platform for every step. When it is
+ * omitted every step is expected to have scanned the primary platform, which is what a
+ * single-platform caller means.
  */
-export function expectedStepContract({ scanRefs }) {
+export function expectedStepContract({ scanRefs, scanPlatforms }) {
   const contract = ownMap();
 
   contract['pnpm-audit-human'] = {
@@ -243,16 +266,18 @@ export function expectedStepContract({ scanRefs }) {
   contract['trivy-fs-json'] = { tool: 'trivy', policy: 'informational', argv: fsArgv('json'), coverage: fsCoverage };
 
   scanRefs.forEach((scanRef, index) => {
+    const platform = (Array.isArray(scanPlatforms) ? scanPlatforms[index] : undefined)
+      ?? SCAN_PLATFORMS[0];
     contract[`${IMAGE_STEP_PREFIX}${index}`] = {
       tool: 'trivy', policy: 'blocking',
       argv: [
-        T.STAGED_TRIVY, 'image', '--platform', 'linux/amd64', '--scanners', 'vuln,secret',
+        T.STAGED_TRIVY, 'image', '--platform', platform, '--scanners', 'vuln,secret',
         '--severity', 'HIGH,CRITICAL', '--ignorefile', '/dev/null',
         '--cache-dir', T.TRIVY_CACHE, '--skip-db-update', '--skip-check-update', '--no-progress',
         '--format', 'json', scanRef,
       ],
       coverage: {
-        severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform: 'linux/amd64',
+        severity: 'HIGH,CRITICAL', ignorefile: 'none', cache: 'captured', platform,
         scanners: 'vuln,secret',
       },
     };
@@ -272,9 +297,23 @@ export function expectedStepContract({ scanRefs }) {
   return contract;
 }
 
-/** The image step ids implied by a SOURCE-derived image count. */
+/**
+ * The image step ids for a SOURCE-derived count of image STEPS.
+ *
+ * The count is steps, not images, and the multiplication by the scanned-platform count is left
+ * to the caller ON PURPOSE. The frozen historical verifiers import this function and call it
+ * with an image count, from bodies that are byte copies and are never edited; folding the
+ * platform factor in here would silently change what those verifiers expect and leave them
+ * demanding a step set their own image handling cannot account for. `imageStepCount()` is the
+ * conversion, and every live caller applies it explicitly.
+ */
 export function imageStepIdsFor(count) {
   return Array.from({ length: count }, (_, i) => `${IMAGE_STEP_PREFIX}${i}`);
+}
+
+/** Configured images → image steps: one scan per (platform, image) pair. */
+export function imageStepCount(imageCount) {
+  return imageCount * SCAN_PLATFORMS.length;
 }
 
 /** `<id>.stdout.txt` / `<id>.stderr.txt` — the only canonical stream names. */
@@ -290,10 +329,15 @@ export function ociIndexFileFor(index) {
   return `oci-index-${index}.json`;
 }
 
-export function expectedC15Inventory(imageCount) {
+/**
+ * `platformCount` defaults to 1 for the same reason `imageStepIdsFor` counts steps: the frozen
+ * verifiers call this with an image count alone and must keep describing the single-platform
+ * inventory they were written for. Live callers pass SCAN_PLATFORMS.length.
+ */
+export function expectedC15Inventory(imageCount, platformCount = 1) {
   const ids = [
     ...C15_NORMAL_STEPS.map((s) => s.id),
-    ...imageStepIdsFor(imageCount),
+    ...imageStepIdsFor(imageCount * platformCount),
     ...C15_ACQUISITION_STEPS.map((s) => s.id),
   ];
   // C16-R3.4.1 §A1: the raw OCI index bytes are shipped, one per configured image, so a
@@ -369,8 +413,11 @@ export function loadSourceContract(root = REPO_ROOT) {
       ['trivy', pins.tools?.trivy?.version ?? null],
     ]),
     cacheEntryPaths: [...CACHE_ENTRY_PATHS],
-    normalStepIds: [...C15_NORMAL_STEPS.map((s) => s.id), ...imageStepIdsFor(compose.images.length)],
+    normalStepIds: [
+      ...C15_NORMAL_STEPS.map((s) => s.id),
+      ...imageStepIdsFor(imageStepCount(compose.images.length)),
+    ],
     acquisitionStepIds: C15_ACQUISITION_STEPS.map((s) => s.id),
-    expectedInventory: expectedC15Inventory(compose.images.length).inventory,
+    expectedInventory: expectedC15Inventory(compose.images.length, SCAN_PLATFORMS.length).inventory,
   };
 }

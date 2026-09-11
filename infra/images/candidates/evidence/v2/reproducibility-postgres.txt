@@ -1,0 +1,91 @@
+== postgres v2 reproducibility (two builds of the same Dockerfile, --no-cache --pull=false, host arch linux/arm64)
+eye-cand2-postgres:18-alpine-maint  Id=sha256:ccbbfa4403186d2e11f61f92a199796332a5c51be672c6ddd5f619695794e263  Created=2026-09-10T07:42:26.724647675Z  layers=10  lastLayer=sha256:65e7f9d637e308cad4635d26c22ebe706ef7564a5d563ed831d8463fe938916c
+eye-cand2-postgres:rebuild2  Id=sha256:acd944cf4cdb1debad7736303354a9989ebb306528fb30afd463ccf377917741  Created=2026-09-10T07:46:22.293653839Z  layers=10  lastLayer=sha256:abfe4cf8a477e409c9988e99930a83b812a6425abc638850c23bc1c06f09ea1f
+-- new-layer file list (path, content sha256[0:16], mtime, size): build1 34 entries, rebuild2 34 entries
+-- full diff (build1 < > rebuild2):
+1,4c1,4
+< ./etc	dir	mtime=1789026145
+< ./etc/apk	dir	mtime=1789026146
+< ./etc/apk/world	sha=285ea2eed9d25dee	mtime=1789026146	size=182
+< ./etc/ssl	dir	mtime=1789026146
+---
+> ./etc	dir	mtime=1789026380
+> ./etc/apk	dir	mtime=1789026382
+> ./etc/apk/world	sha=285ea2eed9d25dee	mtime=1789026382	size=182
+> ./etc/ssl	dir	mtime=1789026381
+11,12c11,12
+< ./lib/apk/db	dir	mtime=1789026146
+< ./lib/apk/db/installed	sha=a150699dc4bad8a3	mtime=1789026146	size=68351
+---
+> ./lib/apk/db	dir	mtime=1789026382
+> ./lib/apk/db/installed	sha=a150699dc4bad8a3	mtime=1789026382	size=68351
+14,15c14,15
+< ./lib/apk/db/scripts.tar.gz	sha=f62b3b51fb89c38f	mtime=1789026146	size=2054
+< ./lib/apk/db/triggers	sha=25ce406d0c95a709	mtime=1789026146	size=95
+---
+> ./lib/apk/db/scripts.tar.gz	sha=f62b3b51fb89c38f	mtime=1789026382	size=2054
+> ./lib/apk/db/triggers	sha=25ce406d0c95a709	mtime=1789026382	size=95
+17,19c17,19
+< ./usr/lib	dir	mtime=1789026146
+< ./usr/lib/.wh.libcares.so.2.19.5	sha=e3b0c44298fc1c14	mtime=1789026146	size=0
+< ./usr/lib/engines-3	dir	mtime=1789026146
+---
+> ./usr/lib	dir	mtime=1789026382
+> ./usr/lib/.wh.libcares.so.2.19.5	sha=e3b0c44298fc1c14	mtime=1789026382	size=0
+> ./usr/lib/engines-3	dir	mtime=1789026381
+24c24
+< ./usr/lib/libcares.so.2	symlink->libcares.so.2.19.7	mtime=1789026146
+---
+> ./usr/lib/libcares.so.2	symlink->libcares.so.2.19.7	mtime=1789026382
+28c28
+< ./usr/lib/libuuid.so.1	symlink->libuuid.so.1.3.0	mtime=1789026146
+---
+> ./usr/lib/libuuid.so.1	symlink->libuuid.so.1.3.0	mtime=1789026382
+30c30
+< ./usr/lib/ossl-modules	dir	mtime=1789026146
+---
+> ./usr/lib/ossl-modules	dir	mtime=1789026381
+34c34
+< ./var/log/apk.log	sha=8b23119c35a7312a	mtime=1789026146	size=17422
+---
+> ./var/log/apk.log	sha=8cb536c930c084a7	mtime=1789026382	size=17422
+-- diff ignoring mtimes:
+34c34
+< ./var/log/apk.log	sha=8b23119c35a7312a	size=17422
+---
+> ./var/log/apk.log	sha=8cb536c930c084a7	size=17422
+-- build1 new-layer listing (for the record):
+./etc	dir	mtime=1789026145
+./etc/apk	dir	mtime=1789026146
+sha=285ea2eed9d25dee	./etc/apk/world	mtime=1789026146	size=182
+./etc/ssl	dir	mtime=1789026146
+sha=f1c1803d13d1d0b7	./etc/ssl/ct_log_list.cnf	mtime=1787691537	size=412
+sha=f1c1803d13d1d0b7	./etc/ssl/ct_log_list.cnf.dist	mtime=1787691537	size=412
+sha=a65a2cb9f4ee8ffd	./etc/ssl/openssl.cnf	mtime=1787691537	size=12411
+sha=a65a2cb9f4ee8ffd	./etc/ssl/openssl.cnf.dist	mtime=1787691537	size=12411
+./lib	dir	mtime=1781368758
+./lib/apk	dir	mtime=1781368758
+./lib/apk/db	dir	mtime=1789026146
+sha=a150699dc4bad8a3	./lib/apk/db/installed	mtime=1789026146	size=68351
+sha=e3b0c44298fc1c14	./lib/apk/db/lock	mtime=1783446209	size=0
+sha=f62b3b51fb89c38f	./lib/apk/db/scripts.tar.gz	mtime=1789026146	size=2054
+sha=25ce406d0c95a709	./lib/apk/db/triggers	mtime=1789026146	size=95
+./usr	dir	mtime=1783446358
+./usr/lib	dir	mtime=1789026146
+sha=e3b0c44298fc1c14	./usr/lib/.wh.libcares.so.2.19.5	mtime=1789026146	size=0
+./usr/lib/engines-3	dir	mtime=1789026146
+sha=187e2f7673de3da8	./usr/lib/engines-3/afalg.so	mtime=1787691537	size=67680
+sha=2b9866e20f4b91f8	./usr/lib/engines-3/capi.so	mtime=1787691537	size=67168
+sha=61727c2a4e56f9c4	./usr/lib/engines-3/loader_attic.so	mtime=1787691537	size=67952
+sha=132e008e8ead05bc	./usr/lib/engines-3/padlock.so	mtime=1787691537	size=67168
+./usr/lib/libcares.so.2	symlink->libcares.so.2.19.7	mtime=1789026146
+sha=4da163d1f39c2d78	./usr/lib/libcares.so.2.19.7	mtime=1783541406	size=263952
+sha=260d17c5fb9632a0	./usr/lib/libcrypto.so.3	mtime=1787691537	size=4533144
+sha=932e0853669c249b	./usr/lib/libssl.so.3	mtime=1787691537	size=868240
+./usr/lib/libuuid.so.1	symlink->libuuid.so.1.3.0	mtime=1789026146
+sha=49c90e9b4d831bce	./usr/lib/libuuid.so.1.3.0	mtime=1788613309	size=67544
+./usr/lib/ossl-modules	dir	mtime=1789026146
+sha=bf43646bba4ef7a6	./usr/lib/ossl-modules/legacy.so	mtime=1787691537	size=133008
+./var	dir	mtime=1781368758
+./var/log	dir	mtime=1783446209
+sha=8b23119c35a7312a	./var/log/apk.log	mtime=1789026146	size=17422
