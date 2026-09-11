@@ -187,26 +187,32 @@ async function forgetCheckpoint(): Promise<void> {
  * `observation.run.start` — and ended with a terminal event. Used where a case probes a
  * port directly and the port requires the caller to hold the source (0051 §1, 0056).
  */
-const runEvent = (tx: unknown, run: string, event: string, details: Record<string, unknown> = {}) => sql`select observation.append_run_event(
+const runEvent = (tx: unknown, run: string, event: string, details: Record<string, unknown> = {}, correlationId: string = uuidv7()) => sql`select observation.append_run_event(
   ${uuidv7()}::uuid, ${T()}::uuid, ${D()}::uuid, ${run}::uuid, ${S()}::uuid, ${h.version},
-  ${h.manager.principalId}::uuid, 'fixture', 'sha256:fixture', 'rest', '1', 'live', ${event}, ${JSON.stringify(details)}::jsonb, ${uuidv7()}::uuid)`.execute(tx as never);
+  ${h.manager.principalId}::uuid, 'fixture', 'sha256:fixture', 'rest', '1', 'live', ${event}, ${JSON.stringify(details)}::jsonb, ${correlationId}::uuid)`.execute(tx as never);
 async function openRun(): Promise<string> {
   const commitDb = h.app.get<Db>(COMMIT_DB);
   const run = uuidv7();
+  // The run.started event carries the operation's own correlation id, exactly as the
+  // lifecycle writes it: F06 asserts every run.started has ONE success audit under it.
+  const correlationId = uuidv7();
   await inCommitContext(commitDb, { sessionId: h.manager.sessionId as string, contextKey: h.manager.contextKey as string },
     { tenantId: T(), domainId: D() }, 'observation.run.start', uuidv7(), async (tx) => {
       const a = (await sql<{ answer: Record<string, unknown> }>`select observation.acquire_source_run_lease(
-        ${T()}::uuid, ${D()}::uuid, ${S()}::uuid, ${h.version}, ${run}::uuid, 'operator', 900, ${uuidv7()}::uuid) as answer`
+        ${T()}::uuid, ${D()}::uuid, ${S()}::uuid, ${h.version}, ${run}::uuid, 'operator', 900, ${correlationId}::uuid) as answer`
         .execute(tx as never)).rows[0]?.answer as Record<string, unknown>;
       if (a['granted'] !== true) throw new Error(`fixture run not granted the source: ${JSON.stringify(a)}`);
-      await runEvent(tx, run, 'run.started', { fixture: true });
-    });
+      await runEvent(tx, run, 'run.started', { fixture: true }, correlationId);
+    }, correlationId);
   return run;
 }
-const endRun = (run: string): Promise<unknown> => inCommitContext(h.app.get<Db>(COMMIT_DB),
-  { sessionId: h.manager.sessionId as string, contextKey: h.manager.contextKey as string },
-  { tenantId: T(), domainId: D() }, 'observation.run.cancel', uuidv7(),
-  async (tx) => runEvent(tx, run, 'run.cancelled', { reason: 'fixture run ended' }));
+const endRun = (run: string): Promise<unknown> => {
+  const correlationId = uuidv7();
+  return inCommitContext(h.app.get<Db>(COMMIT_DB),
+    { sessionId: h.manager.sessionId as string, contextKey: h.manager.contextKey as string },
+    { tenantId: T(), domainId: D() }, 'observation.run.cancel', uuidv7(),
+    async (tx) => runEvent(tx, run, 'run.cancelled', { reason: 'fixture run ended' }, correlationId), correlationId);
+};
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
