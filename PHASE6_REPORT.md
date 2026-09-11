@@ -904,8 +904,9 @@ evidence bundle preserved.
 * Integration, `eye_verify_20260911`: first full run **809/809** (45 files, `b43977c`, before 0057);
   second full run on the SAME database at `ab9a225`: 811/814 — the three `phase5-twins` E3 cases refused
   `consumption.weekly` as stale; the same file alone on that database afterwards: 15/15.
-* Integration, `eye_verify2_20260911` (fresh, first run, `3e8f473`): **814/814** (46 files) — 0057's new
-  cases included.
+* Integration, `eye_verify2_20260911` (fresh, first run, `3e8f473`, before 0058): **814/814** (46 files) — 0057's new
+  cases included. The hosted run at `1a99784` (34621875479), on its own fresh database, is **815/815**: the same 46 files
+  plus the C-022 scenario-kinds case added by 0058.
 * **F05/F06 contamination resolved:** the fixture-opened runs of the serialisation suite now carry their
   operation's correlation id (`da726d3`); both invariants are clean on the fresh databases. The
   long-lived `eye` database keeps the orphans of the pre-0056 probes; it is no longer the reference.
@@ -984,8 +985,8 @@ this head is green. Next batch: B1, the `CorrectionApplied` consumer.
 | 8 | #45 | `da47bd3` | 34620692823 green | green |
 | 9 | #46 | `1a99784` | 34621875479 green | 34621875446 green (delivery-chain dry run on attempt 2) |
 
-Nine of nine `ci` runs green — build-test (unit, gate suites, the full integration suite on a fresh
-database, C18 four stages, the upgrade check), browser-regression (Phase 0/1) and supply-chain
+Nine of nine `ci` runs green — each bound to the head in its row, none inferred from another —
+build-test (unit, gate suites, the full integration suite on a fresh database: 815/815 at `1a99784`, C18 four stages, the upgrade check), browser-regression (Phase 0/1) and supply-chain
 (two-platform C15 FINAL, patched-image recheck, FINAL C16, manifest assertion, licence inventory, C17
 validation, both gitleaks scans) — on every prepared head. Three C19 delivery-chain dry runs failed
 their publication-fixture lookup on a first attempt within the same minute six others resolved it,
