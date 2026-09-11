@@ -11,7 +11,7 @@
     "start": "2023-12-28T00:00:00Z",
     "end": "2024-01-18T00:00:00Z"
   },
-  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET §4. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST §4).",
+  "note": "Frozen replay set. Corridor rows dated 2024-01-11 to 2024-01-15 carry data_provenance=imf-portwatch-verified-2026-09-02 and are the real IMF PortWatch figures recorded in PHASE1_BUILD_PACKET \u00a74. Every other corridor row carries data_provenance=reconstructed-context: consistent with the December-2023 and January-2024 daily means the packet records, but not individually verified against the publisher. NORDWERK records are synthetic and marked synthetic=true at row level. Re-capture requires a new manifest_version and a recorded reason (REPLAY_DATA_MANIFEST \u00a74).",
   "entries": [
     {
       "url": "upload://nordwerk/inventory-2024Q1.csv",
@@ -62,7 +62,20 @@
       "sha256": "21548769cd0581dfcf852da3ed8c79fff8e006431e2880270946ce1d787be31e",
       "byte_length": 155,
       "acquisition_mode": "replay",
-      "planted_defect": "DEF-07: declared .csv, sniffed as ZIP — declared-versus-sniffed disagreement that changes handling"
+      "planted_defect": "DEF-07: declared .csv, sniffed as ZIP \u2014 declared-versus-sniffed disagreement that changes handling"
+    },
+    {
+      "url": "upload://nordwerk/routes-and-terms-2024Q1.csv",
+      "retrieved_at": "2026-09-06T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "text/csv; charset=utf-8"
+      },
+      "file": "routes-and-terms-2024Q1.csv",
+      "sha256": "a12178c691923b61d3d09d8a596912affc75773dca177eecf71f792ad4aa59e6",
+      "byte_length": 1045,
+      "acquisition_mode": "replay",
+      "note": "Phase 5: route days, reroute delta, corridor delay, freight and line-stop terms as ATTESTED synthetic records, so a twin cites them as assumed elements instead of literals (PHASE5_BUILD_PLAN.md \u00a74, \u00a76b)."
     }
   ]
 }

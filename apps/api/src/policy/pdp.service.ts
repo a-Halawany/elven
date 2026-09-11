@@ -96,6 +96,10 @@ const BUNDLE_V1: Rule[] = [
       { role: 'resolution_manager', atScope: 'DOMAIN' },
       { role: 'resolution_agent', atScope: 'DOMAIN' },
       { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -295,6 +299,193 @@ const BUNDLE_V1: Rule[] = [
   //   * OBSERVE vs. DECLARE. The Strategy Graph is declared by people. No agent
   //     role can write an objective, an assumption or a commitment, because
   //     nothing automatic has standing to say what an organisation intends.
+  // ───────────────────────── Phase 4: prediction ─────────────────────────
+  //   * READ is broad: forecasts are for the people who decide on them.
+  //   * A JOB (forecast_agent) may issue forecasts, run backtests, score outcomes
+  //     and evaluate indicators. It may NOT declare a scenario, define an
+  //     indicator or acknowledge a warning: those say what an organisation
+  //     watches for and who answered, and nothing automatic has standing there.
+  //   * strategy_owner may declare scenarios — a scenario tree is strategy.
+  {
+    actionPrefix: 'prediction.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.series.register',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.forecast.issue',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.backtest.record',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.outcome.record',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.scenario.declare',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.indicator.define',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.indicator.evaluate',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'prediction.warning.raise',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+  {
+    // Acknowledging a warning is a PERSON answering for it.
+    actionPrefix: 'prediction.warning.acknowledge',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+  },
+
+  // ───────────────────────── Phase 5: twins ─────────────────────────
+  //   * READ is broad: a twin is for the people who decide on what it represents.
+  //   * A twin is DECLARED, versioned, grounded and admitted by its owner — four
+  //     separate governed writes. A simulation operator holds none of them.
+  {
+    actionPrefix: 'twin.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.declare',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.version.admit',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.version',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'twin.ground',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+
+  // ───────────────────────── Phase 5: simulations ─────────────────────────
+  //   * A run is opened, completed and reproduced by a simulation operator or a
+  //     twin owner; READ is broad. Nothing here declares or grounds a twin.
+  {
+    actionPrefix: 'simulation.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.run.complete',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.run',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
+  {
+    actionPrefix: 'simulation.reproduce',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+  },
   {
     actionPrefix: 'graph.read',
     requiredAnyRole: [
@@ -308,6 +499,10 @@ const BUNDLE_V1: Rule[] = [
       { role: 'resolution_manager', atScope: 'DOMAIN' },
       { role: 'resolution_agent', atScope: 'DOMAIN' },
       { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -432,6 +627,14 @@ const BUNDLE_V1: Rule[] = [
       // and has no business reading the original bytes back out.
       { role: 'extraction_agent', atScope: 'DOMAIN' },
       { role: 'extraction_manager', atScope: 'DOMAIN' },
+      // PHASE 4, THE SAME WAY. A series is read out of evidence bytes by a
+      // deterministic parser, and the forecaster holds this decision in its own
+      // right; every read it makes is manifest-resolved, digest-verified and in
+      // custody, with the purpose and the series named on the entry.
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_agent', atScope: 'DOMAIN' },
+          { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,

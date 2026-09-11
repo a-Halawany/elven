@@ -1,0 +1,11 @@
+synthetic,record_id,kind,key,component_id,value,unit,note
+true,SYN-TERM-001,route,inland_days,,14,days,door-to-door 42 minus port-to-port 28 on SYN-ROUTE-ASIA-EU-01
+true,SYN-TERM-002,route,reroute_delay_days,,11,days,SYN-ROUTE-ASIA-EU-02 via the Cape of Good Hope
+true,SYN-TERM-003,terms,reroute_cost_per_container,,1850,EUR,carrier surcharge for the Cape routing
+true,SYN-TERM-004,terms,units_per_container,SYN-PART-MAG,1600,sets,38400 sets on SYN-SHIP-4471 in 24 containers
+true,SYN-TERM-005,terms,air_cost_per_kg,,19.40,EUR,emergency air freight
+true,SYN-TERM-006,terms,kg_per_unit,SYN-PART-MAG,0.445652,kg,4100 kg per 9200 sets
+true,SYN-TERM-007,terms,air_lead_days,,7,days,booking to plant
+true,SYN-TERM-008,terms,line_stop_cost_per_day,SYN-LINE-A1,142000,EUR,line A1 stop
+true,SYN-TERM-009,shock,corridor_delay_days,,14,days,assumed delay for un-rerouted shipments exposed to a Bab el-Mandeb collapse
+true,SYN-TERM-010,production,policy,SYN-PART-MAG,hold_safety_stock,,control policy: the line stops rather than consume below safety stock

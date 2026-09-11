@@ -1,0 +1,21 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from postgres-18-alpine.Dockerfile
+
+#2 [internal] load metadata for docker.io/library/postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+
+#3 [internal] load .dockerignore
+
+#4 [1/2] FROM docker.io/library/postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+
+#5 [2/2] RUN apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  && apk list -I libuuid    | grep -q '^libuuid-2.42.3-r1 '  && apk list -I libcrypto3 | grep -q '^libcrypto3-3.5.8-r0 '  && apk list -I libssl3    | grep -q '^libssl3-3.5.8-r0 '  && apk list -I c-ares     | grep -q '^c-ares-1.34.8-r0 '
+#5 0.821 (1/4) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+#5 1.112 (2/4) Upgrading c-ares (1.34.6-r0 -> 1.34.8-r0)
+#5 1.195 (3/4) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+#5 1.329 (4/4) Upgrading libuuid (2.42.1-r0 -> 2.42.3-r1)
+#5 1.390 OK: 229.3 MiB in 53 packages
+
+#6 exporting to image
+#6 exporting layers 0.0s done
+#6 writing image sha256:b68f7839ccec47c5bb937ccf15fc39bd8c622f1a25c96e7581d0fdc509459339 done
+#6 naming to docker.io/library/eye-cand2-postgres:amd64 done

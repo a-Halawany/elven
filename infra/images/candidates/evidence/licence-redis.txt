@@ -1,0 +1,5 @@
+setpriv-2.41.4-r0 aarch64 {util-linux} (GPL-2.0-or-later) [installed]
+setpriv-2.41.6-r1 aarch64 {util-linux} (GPL-2.0-or-later) [installed]
+setpriv-2.41.6-r1 contains:
+bin/setpriv
+

@@ -142,8 +142,17 @@ export default function createAdapter(env = process.env) {
     },
 
     resolveImage(ref, platform) {
+      // A scenario override may be keyed by `ref` alone (both platforms) or by
+      // `ref|platform` for one child, which is what a control needs to break exactly one
+      // platform's resolution while leaving the other intact.
+      const scoped = `${ref}|${platform}`;
+      if (Object.hasOwn(scenario.resolveImage ?? {}, scoped)) return scenario.resolveImage[scoped];
       if (Object.hasOwn(scenario.resolveImage ?? {}, ref)) return scenario.resolveImage[ref];
-      const idx = (trace.image_resolutions ?? []).findIndex((r) => r.ref === ref);
+      // MATCHED ON (ref, platform), not ref alone: the gate scans every platform child, and
+      // both children of an index are addressed by the SAME configured reference — so a
+      // ref-only lookup would replay the amd64 child's resolution for the arm64 scan.
+      const idx = (trace.image_resolutions ?? [])
+        .findIndex((r) => r.ref === ref && r.platform === platform);
       if (idx === -1) {
         return { ref, resolved: false, error: `no recorded resolution for ${ref} on ${platform}` };
       }

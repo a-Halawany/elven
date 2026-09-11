@@ -85,6 +85,13 @@ export interface GraphReads {
   readClaimLineage(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any;
+  /** Phase 4 dependents the walk may reach: forecasts, scenarios and warnings. */
+  readForecasts(): any;
+  readScenarios(): any;
+  readWarnings(): any;
+  /** Phase 5 dependents: twins (versions marked unverified by the port) and simulation runs (surfaced). */
+  readTwins(): any;
+  readRuns(): any;
   /**
    * Edges VISIBLE at an instant, filtered in the query.
    *
@@ -217,6 +224,10 @@ export interface ImpactWrites extends GraphReads {
   recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
+    /** Phase 4: forecasts the walk reached, marked for attention by the port. */
+    forecasts: unknown[];
+    /** Phase 5: twins whose citing versions the port marks unverified, and runs it surfaces. */
+    twins: unknown[]; simulations: unknown[];
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -265,6 +276,14 @@ class GraphCapabilityImpl extends GraphCore
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any { return this.from('observation.correction_current'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readForecasts(): any { return this.from('prediction.forecasts_current'); }
+  readTwins(): any { return this.from('twin.twins_current'); }
+  readRuns(): any { return this.from('simulation.runs_current'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readScenarios(): any { return this.from('prediction.scenarios_current'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readWarnings(): any { return this.from('prediction.warnings_current'); }
 
   async edgesVisibleAt(a: { knownAt: string; validAt: string; limit: number }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
@@ -477,6 +496,7 @@ class GraphCapabilityImpl extends GraphCore
   async recordImpact(a: {
     invalidationId: string; tenantId: string; domainId: string;
     assumptions: unknown[]; objectives: unknown[]; decisions: unknown[]; commitments: unknown[];
+    forecasts: unknown[]; twins: unknown[]; simulations: unknown[];
     statement: string; truncated: boolean; unexplored: unknown[];
     actor: string; eventId: string; correlationId: string;
   }): Promise<void> {
@@ -484,6 +504,7 @@ class GraphCapabilityImpl extends GraphCore
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
       ${JSON.stringify(a.assumptions)}::jsonb, ${JSON.stringify(a.objectives)}::jsonb,
       ${JSON.stringify(a.decisions)}::jsonb, ${JSON.stringify(a.commitments)}::jsonb,
+      ${JSON.stringify(a.forecasts)}::jsonb, ${JSON.stringify(a.twins)}::jsonb, ${JSON.stringify(a.simulations)}::jsonb,
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }

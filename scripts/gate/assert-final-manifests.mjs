@@ -44,9 +44,9 @@ import { npmPurl } from './lib/lock-closure.mjs';
 
 import {
   loadSourceContract, expectedStepContract, normalizeArgv, expectedC15Inventory,
-  imageStepIdsFor, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
+  imageStepIdsFor, imageStepCount, streamFilesFor, canonical, ownMap, hasOwnKey, ociIndexFileFor,
   C15_NORMAL_STEPS, C15_ACQUISITION_STEPS, C15_REQUIRED_REPORTS, C16_REQUIRED_REPORTS,
-  CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS, CANDIDATE_ROOT_TOKEN,
+  CACHE_ENTRY_PATHS, SHA256_HEX, ARGV_TOKENS, CANDIDATE_ROOT_TOKEN, SCAN_PLATFORMS,
 } from './lib/verification-contract.mjs';
 import { deriveC16Expectation } from './generate-closures.mjs';
 import { candidateSourceManifest } from './lib/candidate-source.mjs';
@@ -63,7 +63,12 @@ export const C16_FINAL_STATUS =
   'FINAL — produced in --final mode from a clean worktree at an explicitly expected source SHA';
 export const PHASE0_TARGET_IDS = Object.freeze(['development', 'production']);
 export const MANDATORY_SCANNERS = Object.freeze(['gitleaks', 'trivy']);
+/**
+ * The PRIMARY deployment platform. `SCAN_PLATFORMS` — imported from the same tracked source
+ * the runner reads — is the complete set of index children a passing run must have scanned.
+ */
 export const SCAN_PLATFORM = 'linux/amd64';
+export { SCAN_PLATFORMS };
 
 export const REQUIRED_C15_ARTIFACTS = C15_REQUIRED_REPORTS;
 export const REQUIRED_C16_ARTIFACTS = C16_REQUIRED_REPORTS;
@@ -289,20 +294,45 @@ function verifyImages({ c15, c15Dir, contract }) {
     problems.push('C15 image_platform_resolution is not an array');
     return { problems, scanRefs: null };
   }
-  if (res.length !== sourceRefs.length) {
-    problems.push(`C15 resolved ${res.length} image(s); tracked source declares ${sourceRefs.length}`);
+  // ── ONE RESOLUTION PER (PLATFORM, IMAGE), PLATFORM-MAJOR ──────────────────────
+  // The expectation is built from TRACKED SOURCE — the compose image set and the tracked
+  // platform list — never from the manifest. A run that scanned one child of each index and
+  // reported it twice, or that quietly dropped the second platform, disagrees with this.
+  const expectedPairs = SCAN_PLATFORMS.flatMap(
+    (platform) => sourceRefs.map((ref, imageIndex) => ({ platform, ref, imageIndex })),
+  );
+  if (res.length !== expectedPairs.length) {
+    problems.push(
+      `C15 recorded ${res.length} image resolution(s); tracked source declares ` +
+      `${sourceRefs.length} image(s) across ${SCAN_PLATFORMS.length} scanned platform(s) ` +
+      `(${SCAN_PLATFORMS.join(', ')}), which is ${expectedPairs.length}`,
+    );
   }
 
   const scanRefs = [];
-  sourceRefs.forEach((ref, index) => {
+  const scanPlatforms = [];
+  expectedPairs.forEach(({ platform, ref, imageIndex }, index) => {
+    scanPlatforms.push(platform);
     const r = res[index];
     if (r === undefined) {
-      problems.push(`C15 has no platform resolution for source-declared image ${index} (${ref})`);
+      problems.push(
+        `C15 has no platform resolution at position ${index} for source-declared image ` +
+        `${imageIndex} (${ref}) on ${platform}`,
+      );
       scanRefs.push(null);
       return;
     }
     if (r.pinned_ref !== ref) {
       problems.push(`C15 resolution ${index} is for ${JSON.stringify(r.pinned_ref)}; source declares ${ref}`);
+    }
+    // WHICH CHILD. Both children of an index are addressed by the same configured reference,
+    // so a resolution that does not name its platform cannot be checked against the child it
+    // claims to have selected.
+    if (r.scan_platform !== platform) {
+      problems.push(
+        `C15 resolution ${index} records scan_platform ${JSON.stringify(r.scan_platform)}; ` +
+        `tracked source expects ${platform} at that position`,
+      );
     }
     const digest = ref.slice(ref.indexOf('@') + 1);
     if (r.pinned_digest !== digest) {
@@ -323,7 +353,8 @@ function verifyImages({ c15, c15Dir, contract }) {
     // digest, the scan reference and the argv together was perfectly self-consistent and was
     // accepted. The index bytes are now shipped and bound; the digest is recomputed from them,
     // the child is parsed out of them, and the summary is checked AGAINST that, never used as it.
-    const indexRel = ociIndexFileFor(index);
+    // ONE index document per IMAGE — the same bytes whichever child is selected from them.
+    const indexRel = ociIndexFileFor(imageIndex);
     const { bytes: indexBytes, problem: indexProblem } = readMember(c15Dir, indexRel);
     if (indexProblem !== null) {
       problems.push(`C15 raw OCI index '${indexRel}' ${indexProblem}; the scanned child cannot be derived`);
@@ -353,16 +384,17 @@ function verifyImages({ c15, c15Dir, contract }) {
       scanRefs.push(null);
       return;
     }
+    const [wantOs, wantArch] = platform.split('/');
     const derivedChildren = manifests.filter((m) => {
       const os = m?.platform?.os;
       const arch = m?.platform?.architecture;
       const attestation = os === 'unknown' && arch === 'unknown';
-      return !attestation && os === 'linux' && arch === 'amd64';
+      return !attestation && os === wantOs && arch === wantArch;
     });
     if (derivedChildren.length !== 1) {
       problems.push(
         `C15 raw OCI index '${indexRel}' yields ${derivedChildren.length} non-attestation ` +
-        `linux/amd64 children; exactly 1 is required`,
+        `${platform} children; exactly 1 is required`,
       );
       scanRefs.push(null);
       return;
@@ -370,7 +402,7 @@ function verifyImages({ c15, c15Dir, contract }) {
     const derivedRef = `${ref.slice(0, ref.indexOf('@'))}@${derivedChildren[0].digest}`;
     if (r.scan_ref !== derivedRef) {
       problems.push(
-        `C15 resolution ${index} scan_ref ${JSON.stringify(r.scan_ref)} is not the linux/amd64 child ` +
+        `C15 resolution ${index} scan_ref ${JSON.stringify(r.scan_ref)} is not the ${platform} child ` +
         `derived from the shipped index bytes (${derivedRef})`,
       );
     }
@@ -390,7 +422,16 @@ function verifyImages({ c15, c15Dir, contract }) {
   if (c15.scan_platform !== undefined && c15.scan_platform !== SCAN_PLATFORM) {
     problems.push(`C15 scan_platform is ${JSON.stringify(c15.scan_platform)}, expected ${SCAN_PLATFORM}`);
   }
-  return { problems, scanRefs };
+  // The COMPLETE set, and in order — a run that scanned fewer platforms than tracked source
+  // declares has left index children ungoverned, and one that reordered them has mislabelled
+  // which child each step examined.
+  if (canonical(c15.scan_platforms) !== canonical([...SCAN_PLATFORMS])) {
+    problems.push(
+      `C15 scan_platforms is ${canonical(c15.scan_platforms)}, expected ` +
+      `${canonical([...SCAN_PLATFORMS])}`,
+    );
+  }
+  return { problems, scanRefs, scanPlatforms };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -583,13 +624,15 @@ function argvPathsFor({ c15, root, producerOutDir }) {
   };
 }
 
-function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanRefs, root }) {
+function verifyStepClosure({ c15, c15Dir, expectedSha, bindings, contract, scanRefs, scanPlatforms, root }) {
   const problems = [];
   const referenceCounts = ownMap();
 
-  const imageIds = imageStepIdsFor(contract.imageRefs.length);
+  const imageIds = imageStepIdsFor(imageStepCount(contract.imageRefs.length));
   const expectedNormal = [...C15_NORMAL_STEPS.map((s) => s.id), ...imageIds];
-  const expectedArgv = expectedStepContract({ scanRefs: scanRefs ?? [] });
+  const expectedArgv = expectedStepContract({
+    scanRefs: scanRefs ?? [], scanPlatforms: scanPlatforms ?? [],
+  });
   const derivedOut = deriveProducerOutDir(c15);
   problems.push(...derivedOut.problems);
   const paths = argvPathsFor({ c15, root, producerOutDir: derivedOut.outDir });
@@ -912,6 +955,25 @@ const FILESYSTEM_RESULT_SET = Object.freeze([
   Object.freeze({ Target: 'pnpm-lock.yaml', Class: 'lang-pkgs', Type: 'pnpm' }),
 ]);
 
+/**
+ * The filesystem scan's result universe is SOURCE-OWNED: the lockfile, plus one `config/dockerfile`
+ * result for every tracked Dockerfile (trivy's misconfiguration scanner reports each one, findings or
+ * not). A Dockerfile result must carry NO failures and no package or vulnerability arrays: the blocking
+ * step passed at HIGH,CRITICAL, so a genuine receipt reports none. Derived from `git ls-files`, so an
+ * added, removed or renamed Dockerfile changes the expectation with the source, never by hand.
+ */
+function filesystemResultSet(repoRoot) {
+  const set = [...FILESYSTEM_RESULT_SET];
+  let tracked = [];
+  const ls = spawnSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' });
+  if (ls.status !== 0) return set;
+  tracked = String(ls.stdout).split('\0').filter(Boolean);
+  for (const f of tracked.sort()) {
+    if (/(^|\/)Dockerfile$/.test(f) || /\.Dockerfile$/.test(f)) set.push(Object.freeze({ Target: f, Class: 'config', Type: 'dockerfile' }));
+  }
+  return set;
+}
+
 function filesystemCoverageProblems(label, purls, sourceSets) {
   const problems = [];
   if (sourceSets === null) return problems;
@@ -947,7 +1009,7 @@ function filesystemResultsProblems(label, results, sourceSets) {
   const seen = results.map((r) => (r === null || typeof r !== 'object'
     ? '(not an object)'
     : `${r.Target} [${r.Class}/${r.Type}]`));
-  const want = FILESYSTEM_RESULT_SET.map((e) => `${e.Target} [${e.Class}/${e.Type}]`);
+  const want = filesystemResultSet(sourceSets?.repoRoot ?? process.cwd()).map((e) => `${e.Target} [${e.Class}/${e.Type}]`);
   if (seen.length !== want.length || [...seen].sort().join(' | ') !== [...want].sort().join(' | ')) {
     problems.push(
       `C15 ${label} Results is ${JSON.stringify(seen)}, but the source contract derives exactly `
@@ -959,6 +1021,15 @@ function filesystemResultsProblems(label, results, sourceSets) {
   let purls = new Set();
   for (const [i, r] of results.entries()) {
     const at = `Results[${i}]`;
+    if (r.Class === 'config' && r.Type === 'dockerfile') {
+      const ms = r.MisconfSummary ?? null;
+      if (ms === null || typeof ms !== 'object') problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) carries no MisconfSummary`);
+      else if (Number(ms.Failures) !== 0 || Number(ms.Exceptions ?? 0) !== 0) problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) reports ${ms.Failures} failure(s) and ${ms.Exceptions ?? 0} exception(s); the blocking scan passed, so a genuine receipt reports none`);
+      for (const k of ['Misconfigurations', 'Vulnerabilities', 'Packages', 'Secrets', 'Licenses']) {
+        if (Array.isArray(r[k]) && r[k].length > 0) problems.push(`C15 ${label} ${at} (Dockerfile ${r.Target}) carries ${r[k].length} ${k}; a passing Dockerfile receipt carries none`);
+      }
+      continue;
+    }
     const contract = contractFor(r.Class, r.Type);
     if (contract === null) {
       problems.push(`C15 ${label} ${at} has no result contract for (${r.Class}, ${r.Type})`);
@@ -1546,7 +1617,7 @@ function sourceCoverageSets(root, asOfDate) {
   }
 }
 
-function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha, asOfDate }) {
+function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, scanPlatforms, root, expectedSha, asOfDate }) {
   const problems = [];
   const { sets: sourceSets, problems: setProblems } = sourceCoverageSets(root, asOfDate);
   problems.push(...setProblems);
@@ -1649,7 +1720,13 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
   }
   const reconstructed = [];
   let reconstructable = true;
-  contract.imageRefs.forEach((pinnedRef, index) => {
+  // PLATFORM-MAJOR, exactly as the runner numbers the steps: every image on SCAN_PLATFORMS[0],
+  // then every image on SCAN_PLATFORMS[1]. The pinned reference is the image's — both children
+  // share it — and the platform is what says WHICH child the report should describe.
+  const reportPairs = SCAN_PLATFORMS.flatMap(
+    (platform) => contract.imageRefs.map((pinnedRef) => ({ platform, pinnedRef })),
+  );
+  reportPairs.forEach(({ platform, pinnedRef }, index) => {
     const rel = `trivy-image-${index}.stdout.txt`;
     const text = read(rel);
     if (text === null) { reconstructable = false; return; }
@@ -1660,7 +1737,8 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
       // both were enabled. A scan that quietly ran fewer scanners covered less than it claims.
       problems.push(...scannerCoverageProblems(`trivy-image-${index}.stderr.txt`,
         read(`trivy-image-${index}.stderr.txt`), { scanners: ['vulnerability', 'secret'] }));
-      reconstructed.push(...findingsFromTrivyJson(text, pinnedRef));
+      reconstructed.push(...findingsFromTrivyJson(text, pinnedRef,
+        (scanPlatforms ?? [])[index] ?? platform));
     } catch (e) {
       problems.push(`C15 ${rel} could not be parsed as a trivy report (${e instanceof Error ? e.message.slice(0, 100) : e})`);
       reconstructable = false;
@@ -1701,10 +1779,11 @@ function verifyRawSemantics({ c15, c15Dir, contract, scanRefs, root, expectedSha
     problems.push(`C15 tracked scanner dispositions do not validate at ${runDate}: ${validation.problems[0]}`);
   }
   const recomputed = reconcileFindings(exclusionDoc, reconstructed, {
-    scanPlatform: SCAN_PLATFORM, fatalIndices: validation.fatalIndices,
+    scanPlatform: SCAN_PLATFORM, scanPlatforms: [...SCAN_PLATFORMS],
+    fatalIndices: validation.fatalIndices,
   });
 
-  for (const key of ['unmatched', 'unused_records', 'stale_advisory_ids']) {
+  for (const key of ['unmatched', 'unused_records', 'unscanned_platform_records', 'stale_advisory_ids']) {
     const list = recomputed[key];
     if (!Array.isArray(list) || list.length !== 0) {
       problems.push(`C15 RECOMPUTED reconciliation has a non-empty '${key}' (${(list ?? []).length})`);
@@ -2242,7 +2321,7 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
     const images = verifyImages({ c15, c15Dir, contract });
     problems.push(...images.problems);
 
-    const { inventory } = expectedC15Inventory(contract.imageRefs.length);
+    const { inventory } = expectedC15Inventory(contract.imageRefs.length, SCAN_PLATFORMS.length);
     const c15Bindings = verifyBindings({
       label: 'C15', dir: c15Dir, bindings: c15.evidence_artifacts,
       allowed: C15_UNBOUND_ALLOWED, requiredInventory: inventory,
@@ -2250,11 +2329,13 @@ export function assertFinalManifests({ c15Dir, c16Dir, expectedSha, root = ROOT 
     problems.push(...c15Bindings.problems);
 
     problems.push(...verifyStepClosure({
-      c15, c15Dir, expectedSha, bindings: c15Bindings.byPath, contract, scanRefs: images.scanRefs, root,
+      c15, c15Dir, expectedSha, bindings: c15Bindings.byPath, contract,
+      scanRefs: images.scanRefs, scanPlatforms: images.scanPlatforms, root,
     }).problems);
 
     problems.push(...verifyRawSemantics({
-      c15, c15Dir, contract, scanRefs: images.scanRefs, root, expectedSha, asOfDate: c16AsOfDate,
+      c15, c15Dir, contract, scanRefs: images.scanRefs, scanPlatforms: images.scanPlatforms,
+      root, expectedSha, asOfDate: c16AsOfDate,
     }));
 
     if (c15.step_policy_audit?.every_informational_step_duplicates_a_blocking_step !== true) {

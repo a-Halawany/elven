@@ -46,6 +46,63 @@ export interface SourceBinding {
   };
   budgets: RunBudgets;
   egress: EgressPolicy;
+  /**
+   * A CLOSED-RANGE BACKFILL, declared by the contract (Phase 4 §4a).
+   *
+   * The poller Phase 1 shipped polls FORWARD from a checkpoint and has no end
+   * condition. A historical backfill walks a closed `[from, to)` window in
+   * deterministic pages and terminates. Declaring it on the contract — the
+   * strategy, the window, the ordering — is what makes the traversal reviewable:
+   * an ArcGIS page order is undefined without `orderByFields`, and a contract
+   * that does not say how it pages has not said what it collects.
+   */
+  backfill?: BackfillDeclaration;
+}
+
+export type BackfillStrategy = 'period-range' | 'arcgis-offset';
+
+export interface BackfillDeclaration {
+  strategy: BackfillStrategy;
+  /** The base URL range parameters are appended to. Its host must be one of the contract's endpoints'. */
+  endpoint: string;
+  /** Inclusive start date (YYYY-MM-DD). */
+  from: string;
+  /** Exclusive end date (YYYY-MM-DD), or null for "the day the run happens". */
+  to: string | null;
+  /** period-range: days per request window. */
+  windowDays?: number;
+  /** period-range: the query parameter names carrying the window. */
+  startParam?: string;
+  endParam?: string;
+  /** arcgis-offset: rows per page (`resultRecordCount`), at most the service's maxRecordCount. */
+  pageSize?: number;
+  /** arcgis-offset: `orderByFields` — REQUIRED, because unordered paging can skip and duplicate rows. */
+  orderBy?: string;
+  /** arcgis-offset: the date field the window predicate is written against. */
+  timeField?: string;
+  /** arcgis-offset: the contract's static filter (e.g. `portid='chokepoint4'`), AND-ed with the window. */
+  where?: string;
+}
+
+/**
+ * Where a backfill stands, carried on the connector checkpoint and advanced only
+ * after the database commits (§5 step 9). A run that starts with `done: true`
+ * polls forward as before; one that starts with `done: false` continues the
+ * backfill inside its own budget and stops when either is exhausted.
+ */
+export interface BackfillProgress {
+  strategy: BackfillStrategy;
+  from: string;
+  to: string;
+  /** The contract version the walk was made under. A NEW version walks again. */
+  contractVersion: number;
+  /** period-range: the next window's inclusive start. arcgis-offset: the next `resultOffset`. */
+  cursor: string | number;
+  done: boolean;
+  requests: number;
+  items: number;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 /** Transport evidence retained for an acquired item. No semantic field exists. */
@@ -74,6 +131,33 @@ export interface AcquiredItem {
   /** For per-item framing of a parent payload (§10.1). */
   parentItemKey?: string | null;
   fragment?: { byteStart: number; byteEnd: number; methodRef: string } | null;
+  /**
+   * TRUE for an item whose key is DETERMINISTIC across runs — a backfill window
+   * or a row inside one — rather than bound to the retrieval instant.
+   *
+   * A forward poll's item is a new observation every time, by design (§5.12). A
+   * backfill window is not: retrieving 2019-01 again is the same window, and the
+   * lifecycle compares its bytes with what it already holds — identical bytes are
+   * an audited no-op, changed bytes are a REVISION admitted as the next version
+   * of the same evidence object. Without this flag a re-run over an overlapping
+   * range would admit duplicate evidence.
+   */
+  deterministic?: boolean;
+  /**
+   * The stable identity of WHAT WAS POLLED, across runs: a REST endpoint (its
+   * redacted URL), a feed, a feed entry's guid + pubDate. A forward poll's item key
+   * is bound to the retrieval instant by design (§5.12); the poll key is what the
+   * lifecycle compares bytes against, so a poll that returns exactly what is
+   * already held is recorded as an audited, freshness-bearing confirmation and
+   * stores no second copy. Absent for items that have no stable identity.
+   */
+  pollKey?: string;
+  /**
+   * For a backfilled window: the traversal cursor at which its window began, so
+   * the lifecycle can roll the checkpoint back to a window it QUARANTINED rather
+   * than let the cursor pass a window that was never collected.
+   */
+  backfillCursor?: string | number;
 }
 
 export interface AcquisitionOutput {
@@ -85,6 +169,17 @@ export interface AcquisitionOutput {
   requestsMade: number;
   /** A raw parent payload preserved as its own EVD when the connector frames items out of it. */
   parent?: AcquiredItem | null;
+  /**
+   * Polls the publisher answered NOT MODIFIED (HTTP 304) to a conditional request.
+   * No bytes moved and no item exists; the lifecycle turns each into a confirmation
+   * of the held evidence for that poll key — if, and only if, that evidence is still
+   * available — and otherwise records an unbound not-modified answer.
+   */
+  revalidated?: Array<{
+    pollKey: string; endpoint: string; status: number;
+    /** The validators the conditional request carried — what the publisher's 304 actually confirms. */
+    validators: { etag?: string; lastModified?: string };
+  }>;
 }
 
 export interface AcquisitionContext {

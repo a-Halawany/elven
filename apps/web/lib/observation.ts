@@ -42,6 +42,27 @@ export interface SourceSummary {
   health_state: HealthState;
 }
 
+/** What a source IS and what stands between it and live collection — from stored records, activating nothing. */
+export interface ScheduledAttempt {
+  attempt_id: string; job_id: string; outcome: string; run_id: string | null; reason: string | null;
+  started_at: string; finished_at: string; admitted: number; noop: number; quarantined: number;
+}
+export interface SourceReadiness {
+  verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
+  reason: string; credential: string; scheduled: boolean; cadence_seconds: number | null; scheduler_enabled: boolean;
+  automatic: {
+    schedule_entry: { status: string; cadence_seconds: number; scheduler_id: string } | null;
+    runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_scheduler: { state: 'present' | 'absent' | 'unknown' | 'disabled'; present: boolean; every_seconds: number | null; next_at: string | null; error: string | null }; redis_names: { queue: string; scheduler: string } };
+    last_attempt: ScheduledAttempt | null;
+    last_success: ScheduledAttempt | null;
+    attempts: { scope: 'all'; total: number; finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number; faulted: number };
+  };
+  last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
+  evidence_objects: number;
+  health: { state: string; lag_class: string | null; evaluated_at: string } | null;
+}
+export type SourceWithReadiness = SourceSummary & { publisher?: string; readiness: SourceReadiness };
+
 export interface Overview {
   sources: SourceSummary[];
   counts: {
@@ -128,6 +149,8 @@ export const observation = {
 
   listSources: (s: Scope) =>
     obs<{ sources: SourceSummary[]; receipt: Receipt }>(s, '/sources/list', 'observation.read.sources', 'SRC', { limit: 200 }),
+  sourcesReadiness: (s: Scope) =>
+    obs<{ sources: SourceWithReadiness[]; receipt: Receipt }>(s, '/sources/readiness', 'observation.read.sources', 'SRC', { limit: 200 }),
 
   getSource: (s: Scope, sourceId: string) =>
     obs<Record<string, unknown>>(s, `/sources/${sourceId}/get`, 'observation.read.sources', 'SRC', {}, sourceId),

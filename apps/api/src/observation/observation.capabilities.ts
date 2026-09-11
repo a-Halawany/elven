@@ -75,12 +75,48 @@ export interface ObservationReads {
   readSchedulerEntries(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any;
+  /**
+   * The LATEST evidence held for each deterministic item key of a source — what
+   * a backfill re-run compares its bytes against (Phase 4 §4a). One query per
+   * run, not one per item.
+   */
+  latestEvidenceByItemKeys(a: { sourceId: string; itemKeys: string[] }): Promise<Array<HeldEvidenceRow>>;
+  /**
+   * The latest evidence held per POLL KEY — the stable identity of what was polled
+   * (a REST endpoint, a feed, a feed entry). A forward poll's item key carries the
+   * retrieval instant, so it never repeats; the poll key is what an unchanged
+   * response is compared against.
+   */
+  latestEvidenceByPollKeys(a: { sourceId: string; pollKeys: string[] }): Promise<Array<HeldEvidenceRow & { poll_key: string }>>;
+  /**
+   * The held evidence for a poll key WHOSE RETAINED TRANSPORT HEADERS carry the given
+   * validator — the ETag sent as If-None-Match, or the Last-Modified sent as
+   * If-Modified-Since when no ETag was sent. A 304 confirms exactly the representation
+   * the validator names, which is not necessarily the newest held.
+   */
+  evidenceByValidator(a: { sourceId: string; pollKey: string; etag: string | null; lastModified: string | null }): Promise<HeldEvidenceRow | null>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readScheduledAttempts(): any;
   rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
   }>>;
   replayHealth(tenantId: string, domainId: string, sourceId: string): Promise<Array<{
     evaluated_at: Date; state: string; calc_version: string; universe_version: string; reason: string;
   }>>;
+}
+
+/**
+ * What is HELD for an item or poll key, with what the lifecycle must know before it
+ * may reuse it: the latest version's lifecycle state (a withdrawn object's bytes are
+ * not served), the manifest the bytes resolve through, whether that manifest has been
+ * governed-deleted, and where the bytes are — so availability and integrity can be
+ * established, not assumed, before a poll is "confirmed unchanged".
+ */
+export interface HeldEvidenceRow {
+  item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
+  content_digest: string; recorded_at: string;
+  lifecycle_state: string; manifest_id: string | null; locator: string | null; vault: string | null;
+  manifest_present: boolean; tombstoned: boolean;
 }
 
 // ───────────────────────── registry writes ─────────────────────────
@@ -258,6 +294,89 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   readSchedulerEntries(): any { return this.from('observation.scheduler_entries'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
+
+  async latestEvidenceByItemKeys(a: { sourceId: string; itemKeys: string[] }): Promise<Array<HeldEvidenceRow>> {
+    if (a.itemKeys.length === 0) return [];
+    // The newest OBS per item key, then the newest EVD VERSION that cites it. A
+    // revision admits a new EVD version citing a new OBS with the same item key,
+    // so "latest OBS, then its latest EVD" is the current state of that window.
+    return this.call(sql`
+      with obs as (
+        select distinct on (o.payload ->> 'item_key') o.object_id, o.payload ->> 'item_key' as item_key
+          from objects.canonical_objects o
+         where o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and o.payload ->> 'item_key' = any(${a.itemKeys}::text[])
+         order by o.payload ->> 'item_key', o.recorded_at desc, o.object_version desc)
+      select obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at, e.lifecycle_state,
+             e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
+             exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+  }
+
+  async latestEvidenceByPollKeys(a: { sourceId: string; pollKeys: string[] }): Promise<Array<HeldEvidenceRow & { poll_key: string }>> {
+    if (a.pollKeys.length === 0) return [];
+    // An item key is `<poll key>` (a feed entry), or `<poll key>@<retrieval instant>`
+    // (a forward poll), or `<parent poll key>@<instant>#<path>:<key>` (a framed child).
+    // Stripping the `@<instant>` segment therefore recovers the poll key EXACTLY — a
+    // prefix match would let a framed child stand in for its parent, or a backfill
+    // window (`@backfill:…`) stand in for the forward poll; neither is the same thing.
+    return this.call(sql`
+      with keys as (select unnest(${a.pollKeys}::text[]) as poll_key),
+      obs as (
+        select distinct on (k.poll_key) k.poll_key, o.object_id, o.payload ->> 'item_key' as item_key
+          from keys k
+          join objects.canonical_objects o
+            on o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and o.payload ->> 'item_key' not like '%@backfill:%'
+           and (o.payload ->> 'item_key' = k.poll_key
+                or regexp_replace(o.payload ->> 'item_key', '@[^#]*', '') = k.poll_key)
+         order by k.poll_key, o.recorded_at desc, o.object_version desc)
+      select obs.poll_key, obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at, e.lifecycle_state,
+             e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
+             exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+  }
+
+  async evidenceByValidator(a: { sourceId: string; pollKey: string; etag: string | null; lastModified: string | null }): Promise<HeldEvidenceRow | null> {
+    if (a.etag === null && a.lastModified === null) return null;
+    const rows = await this.call<HeldEvidenceRow>(sql`
+      with obs as (
+        select o.object_id, o.payload ->> 'item_key' as item_key
+          from objects.canonical_objects o
+         where o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and o.payload ->> 'item_key' not like '%@backfill:%'
+           and (o.payload ->> 'item_key' = ${a.pollKey} or regexp_replace(o.payload ->> 'item_key', '@[^#]*', '') = ${a.pollKey})
+           and (case when ${a.etag}::text is not null
+                     then o.payload #>> '{transport,retained_headers,etag}' = ${a.etag}::text
+                     else o.payload #>> '{transport,retained_headers,last-modified}' = ${a.lastModified}::text end)
+         order by o.recorded_at desc, o.object_version desc limit 1)
+      select obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at, e.lifecycle_state,
+             e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
+             exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+    return rows[0] ?? null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readScheduledAttempts(): any { return this.from('observation.scheduled_attempts'); }
 
   async rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
