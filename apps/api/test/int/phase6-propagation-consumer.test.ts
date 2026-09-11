@@ -377,8 +377,13 @@ describe('B1 · automatic propagation, durable idempotency, failure and retry, p
     const stray = uuidv7();
     await scheduler.addPropagationJobForTests(T(), D(), { event_id: stray, event_type: 'CorrectionApplied', payload: { case_id: caseId }, correlation_id: uuidv7(), causation_id: uuidv7(), tenant_id: T(), domain_id: uuidv7() });
     const job = await waitFor('the stray job settled', () => scheduler.propagationJobStateForTests(T(), D(), stray), (j) => j?.state === 'failed');
-    expect(job).toMatchObject({ state: 'failed', attemptsMade: 1 });
     expect(job?.failedReason).toMatch(/does not match the queue/);
+    // Unrecoverable: it stays failed and is never retried (BullMQ's attemptsMade counter reads 0 or 1 for an unrecoverable
+    // failure depending on when the hash is read; the retry budget of 5 is what must NOT have been spent).
+    await new Promise((r) => setTimeout(r, 2500));
+    const later = await scheduler.propagationJobStateForTests(T(), D(), stray);
+    expect(later?.state).toBe('failed');
+    expect(later?.attemptsMade ?? 0).toBeLessThanOrEqual(1);
     expect((await sql<{ n: string }>`select count(*)::text n from graph.propagation_attempts where event_id = ${stray}::uuid`.execute(h.su)).rows[0]?.n).toBe('0');
   }, 60_000);
 
