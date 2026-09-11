@@ -1,0 +1,324 @@
+# Publish the TEMPORARY derived (patched) service images to GHCR.
+#
+# Authority: the owner's recorded approval of GHCR as a TEMPORARY maintenance route for the PostgreSQL
+# and Redis service images, until compatible fixed official images are available and verified
+# (FULL_PRODUCT_DELIVERY_REGISTER.md §4.2; infra/images/candidates/v2/PUBLICATION.md). Upstream
+# monitoring stays in place (c15-patched-image-recheck.yml); a governed return to official images
+# follows through the digest/disposition/release process. This workflow never re-pins anything.
+#
+# Bootstrap without touching `main`: GitHub only lists `workflow_dispatch` workflows that exist on the
+# default branch, and the Phase 6 stack is not merged (and must not be merged or waived to enable
+# publication). A `push` trigger reads the workflow from the pushed commit itself, so the bounded
+# bootstrap is: create a branch `publish/derived-images/<date>` from the reviewed head and push it.
+# Nothing else is required on `main`. The branch carries the same tree as the reviewed head; the
+# control file below binds the run to the approved source revision.
+#
+# Inputs come from a COMMITTED control file (infra/images/candidates/v2/PUBLISH.json), never from
+# free text: every value read from it is passed to shell through environment variables and validated
+# against a strict pattern before use. No expression is interpolated into shell source.
+#
+# Credentials: the job-scoped GITHUB_TOKEN (`packages: write`). No personal token. No third-party
+# actions beyond the repository's pinned actions/checkout and actions/upload-artifact.
+#
+# Platforms: linux/amd64 (the gate scans it) on ubuntu-latest and linux/arm64 on GitHub's native
+# arm64 runner; each pushed by digest, then combined into one index. Scans and SBOMs are produced
+# for BOTH children from the pinned scanner (linux-x64 pin) on ubuntu-latest, reading the children
+# by digest from the registry. Receipts (pushed digests, manifests, scans, SBOMs, access checks) are
+# uploaded with `if: always()` so a pushed image never outlives its receipt.
+name: publish-derived-images
+
+on:
+  push:
+    branches:
+      - 'publish/derived-images/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-derived-images
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  CONTROL: infra/images/candidates/v2/PUBLISH.json
+
+jobs:
+  preflight:
+    name: Validate the control file, the approved source revision and package access
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      date_tag: ${{ steps.ctl.outputs.date_tag }}
+      approved_sha: ${{ steps.ctl.outputs.approved_sha }}
+      ref_postgres: ${{ steps.ctl.outputs.ref_postgres }}
+      ref_redis: ${{ steps.ctl.outputs.ref_redis }}
+      tag_postgres: ${{ steps.ctl.outputs.tag_postgres }}
+      tag_redis: ${{ steps.ctl.outputs.tag_redis }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read and validate the control file (structured inputs only; strict patterns)
+        id: ctl
+        run: |
+          set -euo pipefail
+          test -f "$CONTROL"
+          node - "$CONTROL" <<'JS'
+          const fs = require('node:fs');
+          const c = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
+          if (!/^[0-9a-f]{40}$/.test(c.approved_source_sha)) fail('approved_source_sha must be a 40-hex commit id');
+          if (!/^20[0-9]{6}$/.test(c.date_tag)) fail('date_tag must be YYYYMMDD');
+          if (!/^[a-z0-9][a-z0-9-]*$/.test(c.namespace)) fail('namespace must be a lower-case GHCR namespace');
+          if (!/^[a-z0-9][a-z0-9-]*$/.test(c.repository)) fail('repository must be a lower-case name');
+          for (const img of ['postgres', 'redis']) {
+            const i = c.images?.[img];
+            if (!i) fail(`images.${img} missing`);
+            if (!/^infra\/images\/candidates\/v2\/[a-z0-9.-]+\.Dockerfile$/.test(i.dockerfile)) fail(`images.${img}.dockerfile path is not a v2 recipe`);
+            if (!/^[a-z0-9][a-z0-9._-]*$/.test(i.tag_prefix)) fail(`images.${img}.tag_prefix invalid`);
+            if (!/^(postgres|redis)@sha256:[0-9a-f]{64}$/.test(i.base)) fail(`images.${img}.base must be the pinned upstream digest`);
+          }
+          if (typeof c.approval?.recorded_in !== 'string' || !/^[\w./-]+$/.test(c.approval.recorded_in)) fail('approval.recorded_in must be a repository path');
+          if (c.approval?.scope !== 'temporary-maintenance-until-official-images-qualify') fail('approval.scope must state the temporary scope');
+          const out = process.env.GITHUB_OUTPUT;
+          const w = (k, v) => fs.appendFileSync(out, `${k}=${v}\n`);
+          const ref = (img) => `ghcr.io/${c.namespace}/${c.repository}/${img}`;
+          w('date_tag', c.date_tag); w('approved_sha', c.approved_source_sha);
+          w('ref_postgres', ref('postgres')); w('ref_redis', ref('redis'));
+          w('tag_postgres', `${c.images.postgres.tag_prefix}-maint-${c.date_tag}`);
+          w('tag_redis', `${c.images.redis.tag_prefix}-maint-${c.date_tag}`);
+          JS
+
+      - name: Bind the run to the approved source revision (the recipes must be byte-identical to the approved commit)
+        env:
+          APPROVED_SHA: ${{ steps.ctl.outputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          test -f "$CONTROL"
+          git cat-file -e "$APPROVED_SHA^{commit}" || { echo "::error::approved commit $APPROVED_SHA is not in this checkout's history"; exit 1; }
+          # the recipes at HEAD must be byte-identical to the recipes at the approved commit (the control file names that commit)
+          for f in infra/images/candidates/v2/postgres-18-alpine.Dockerfile infra/images/candidates/v2/redis-8-alpine.Dockerfile; do
+            here="$(git rev-parse "HEAD:$f")"; there="$(git rev-parse "$APPROVED_SHA:$f")"
+            [ "$here" = "$there" ] || { echo "::error::$f differs from the approved revision ($here vs $there)"; exit 1; }
+            echo "bound: $f blob $here == approved $APPROVED_SHA"
+          done
+          test -f "$(node -p "JSON.parse(require('fs').readFileSync(process.env.CONTROL,'utf8')).approval.recorded_in")" || { echo '::error::the approval record path does not exist'; exit 1; }
+          echo "approved_source_sha=$APPROVED_SHA head=$GITHUB_SHA"
+
+      - name: Authenticate to GHCR (authentication only; write authority is proven by the push itself, readability by the anonymous fetch after publication)
+        run: |
+          set -euo pipefail
+          # The job token is an installation token: GitHub's user-scoped package listing rejects it (HTTP 400), so
+          # package authority cannot be pre-checked through that endpoint. The push in the build jobs is the proof of
+          # write authority; the index job records the package API answer for the pushed packages and proves public
+          # readability with an unauthenticated manifest fetch.
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          echo 'login ok'
+
+  build:
+    name: Build and push by digest (${{ matrix.platform }})
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify the builder supports the target platform natively
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          docker buildx create --use --name eye-publish >/dev/null
+          docker buildx inspect --bootstrap | tee /tmp/builder.txt
+          grep -q "Platforms:.*$PLATFORM" /tmp/builder.txt || { echo "::error::builder on $(uname -m) does not list $PLATFORM"; exit 1; }
+          echo "native: $(uname -m) supports $PLATFORM"
+
+      - name: Log in
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push each recipe by digest
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+          APPROVED_SHA: ${{ needs.preflight.outputs.approved_sha }}
+          REF_POSTGRES: ${{ needs.preflight.outputs.ref_postgres }}
+          REF_REDIS: ${{ needs.preflight.outputs.ref_redis }}
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          build_one() {
+            local name="$1" ref="$2" file="$3"
+            echo "== $ref ($PLATFORM) from $file at $APPROVED_SHA"
+            docker buildx build --no-cache --pull=false --platform "$PLATFORM" \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.revision=${APPROVED_SHA}" \
+              --label "org.opencontainers.image.description=The Eye TEMPORARY derived service image (util-linux/OpenSSL/c-ares maintenance over the pinned upstream digest); recipe ${file}" \
+              --provenance=false --sbom=false \
+              --output "type=image,name=${ref},push-by-digest=true,name-canonical=true,push=true" \
+              --metadata-file "receipts/${name}-${ARCH}.metadata.json" \
+              -f "$file" infra/images/candidates/v2
+            local digest
+            digest="$(node -p "JSON.parse(require('fs').readFileSync('receipts/${name}-${ARCH}.metadata.json','utf8'))['containerimage.digest']")"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for $name $PLATFORM"; exit 1; }
+            printf '%s %s %s\n' "$name" "$PLATFORM" "$digest" >> receipts/pushed-by-digest.txt
+            docker buildx imagetools inspect "${ref}@${digest}" > "receipts/${name}-${ARCH}.manifest.txt"
+          }
+          build_one postgres "$REF_POSTGRES" infra/images/candidates/v2/postgres-18-alpine.Dockerfile
+          build_one redis "$REF_REDIS" infra/images/candidates/v2/redis-8-alpine.Dockerfile
+          cat receipts/pushed-by-digest.txt
+
+      - name: Upload the platform receipts (always — a pushed image never outlives its receipt)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: derived-images-${{ needs.preflight.outputs.date_tag }}-${{ github.run_id }}-${{ matrix.arch }}
+          path: receipts
+          if-no-files-found: warn
+          retention-days: 90
+
+  index:
+    name: Create the index, scan and SBOM both children, verify access and visibility
+    needs: [preflight, build]
+    if: always() && needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Collect the platform receipts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: derived-images-${{ needs.preflight.outputs.date_tag }}-${{ github.run_id }}-*
+          path: platform-receipts
+
+      - name: Refuse to index unless BOTH platforms pushed
+        run: |
+          set -euo pipefail
+          cat platform-receipts/*/pushed-by-digest.txt > /tmp/pushed.txt
+          cat /tmp/pushed.txt
+          for name in postgres redis; do for p in linux/amd64 linux/arm64; do
+            grep -q "^$name $p sha256:" /tmp/pushed.txt || { echo "::error::$name $p was not pushed; the receipts of what WAS pushed are uploaded; no index is created"; exit 1; }
+          done; done
+
+      - name: Install the PINNED scanner (same pins and digest checks as the C15 gate)
+        timeout-minutes: 25
+        run: |
+          bash scripts/gate/install-scanners.sh trivy
+          trivy --version | head -1
+
+      - name: Log in
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Create the index for each image and record the index and child digests
+        env:
+          REF_POSTGRES: ${{ needs.preflight.outputs.ref_postgres }}
+          REF_REDIS: ${{ needs.preflight.outputs.ref_redis }}
+          TAG_POSTGRES: ${{ needs.preflight.outputs.tag_postgres }}
+          TAG_REDIS: ${{ needs.preflight.outputs.tag_redis }}
+          APPROVED_SHA: ${{ needs.preflight.outputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          cp /tmp/pushed.txt receipts/pushed-by-digest.txt
+          index_one() {
+            local name="$1" ref="$2" tag="$3"
+            local amd arm
+            amd="$(awk -v n="$name" '$1==n && $2=="linux/amd64"{print $3}' /tmp/pushed.txt)"
+            arm="$(awk -v n="$name" '$1==n && $2=="linux/arm64"{print $3}' /tmp/pushed.txt)"
+            docker buildx imagetools create -t "${ref}:${tag}" "${ref}@${amd}" "${ref}@${arm}"
+            local idx
+            idx="$(docker buildx imagetools inspect "${ref}:${tag}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+            [[ "$idx" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no index digest for $name"; exit 1; }
+            docker buildx imagetools inspect "${ref}:${tag}" > "receipts/${name}.index.txt"
+            docker buildx imagetools inspect "${ref}:${tag}" --raw > "receipts/${name}.index.json"
+            printf '%s index %s\n%s linux/amd64 %s\n%s linux/arm64 %s\n' "$name" "$idx" "$name" "$amd" "$name" "$arm" >> receipts/published.txt
+            echo "${ref}:${tag}@${idx}" >> receipts/published-references.txt
+          }
+          index_one postgres "$REF_POSTGRES" "$TAG_POSTGRES"
+          index_one redis "$REF_REDIS" "$TAG_REDIS"
+          {
+            echo "approved_source_sha=$APPROVED_SHA"
+            echo "head=$GITHUB_SHA"
+            echo "run=$GITHUB_RUN_ID"
+            echo "actor=$GITHUB_ACTOR"
+          } > receipts/RUN.txt
+          cat receipts/published.txt
+
+      - name: Scan and SBOM BOTH platform children of each published image (what was pushed is what is scanned)
+        env:
+          REF_POSTGRES: ${{ needs.preflight.outputs.ref_postgres }}
+          REF_REDIS: ${{ needs.preflight.outputs.ref_redis }}
+        run: |
+          set -euo pipefail
+          scan_one() {
+            local name="$1" ref="$2" platform="$3" arch="$4"
+            local d; d="$(awk -v n="$name" -v p="$platform" '$1==n && $2==p{print $3}' /tmp/pushed.txt)"
+            trivy image --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL --ignorefile /dev/null --no-progress --format json "${ref}@${d}" > "receipts/${name}-${arch}.trivy.json"
+            trivy image --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL --ignorefile /dev/null --no-progress --format table "${ref}@${d}" > "receipts/${name}-${arch}.trivy.txt" || true
+            trivy image --platform "$platform" --format cyclonedx "${ref}@${d}" > "receipts/${name}-${arch}.sbom.cdx.json"
+          }
+          for p in "linux/amd64 amd64" "linux/arm64 arm64"; do set -- $p; scan_one postgres "$REF_POSTGRES" "$1" "$2"; scan_one redis "$REF_REDIS" "$1" "$2"; done
+          sha256sum receipts/* > receipts/SHA256SUMS
+
+      - name: Verify package visibility and anonymous readability (public is what the gate and local development need)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NS: ${{ github.repository_owner }}
+          REF_POSTGRES: ${{ needs.preflight.outputs.ref_postgres }}
+          REF_REDIS: ${{ needs.preflight.outputs.ref_redis }}
+          TAG_POSTGRES: ${{ needs.preflight.outputs.tag_postgres }}
+          TAG_REDIS: ${{ needs.preflight.outputs.tag_redis }}
+        run: |
+          set -euo pipefail
+          : > receipts/access.txt
+          for pair in "postgres $REF_POSTGRES $TAG_POSTGRES" "redis $REF_REDIS $TAG_REDIS"; do set -- $pair
+            pkg="$(echo "$2" | sed -E 's#^ghcr\.io/[^/]+/##')"          # e.g. elven/postgres
+            enc="$(printf '%s' "$pkg" | sed 's#/#%2F#g')"
+            code="$(curl -sS -o /tmp/pkg-$1.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/users/$NS/packages/container/$enc" || echo 000)"
+            vis="$(node -p "try{JSON.parse(require('fs').readFileSync('/tmp/pkg-$1.json','utf8')).visibility}catch(e){'unknown'}")"
+            repo_link="$(node -p "try{JSON.parse(require('fs').readFileSync('/tmp/pkg-$1.json','utf8')).repository?.full_name ?? 'none'}catch(e){'unknown'}")"
+            # anonymous readability: an unauthenticated token request for pull scope, then the manifest
+            anon="$(curl -sS "https://ghcr.io/token?scope=repository:$NS/$pkg:pull" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).token ?? ''")"
+            mcode="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $anon" -H 'Accept: application/vnd.oci.image.index.v1+json' "https://ghcr.io/v2/$NS/$pkg/manifests/$3")"
+            echo "$1: package api HTTP $code visibility=$vis repository=$repo_link anonymous-manifest HTTP $mcode" | tee -a receipts/access.txt
+          done
+          if [ "$(grep -c 'anonymous-manifest HTTP 200' receipts/access.txt)" = 2 ]; then
+            echo 'both packages are publicly readable (anonymous manifest fetch succeeded for each)' | tee -a receipts/access.txt
+          else
+            echo '::warning::at least one package is NOT anonymously readable — the owner must set the package visibility to public (package settings → Danger Zone → Change visibility) and link it to the repository; the images are pushed and their receipts are uploaded' | tee -a receipts/access.txt
+          fi
+
+      - name: Upload the publication receipts (always)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: derived-images-${{ needs.preflight.outputs.date_tag }}-${{ github.run_id }}-index
+          path: receipts
+          if-no-files-found: warn
+          retention-days: 90

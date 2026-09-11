@@ -25,6 +25,7 @@ import { assertFinalManifests as assertR34Frozen } from './fixtures/assert-final
 import { assertFinalManifests as assertR341Frozen } from './fixtures/assert-final-manifests.r341-frozen.mjs';
 import {
   loadSourceContract, expectedStepContract, normalizeArg, ownMap, hasOwnKey, canonical,
+  SCAN_PLATFORMS,
 } from '../../../../scripts/gate/lib/verification-contract.mjs';
 import {
   buildPassingR34Evidence, editManifest, rebind, sha256,
@@ -35,17 +36,37 @@ const REPO = join(__dirname, '..', '..', '..', '..');
 describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   let root: string;
   let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-r34-'));
     built = buildPassingR34Evidence(root, REPO);
+    // THE SAME EVIDENCE, in the single-platform shape the frozen R3.3 verifier was written
+    // for. The gate scans every child in the tracked SCAN_PLATFORMS list, so `built` carries
+    // one image step per (platform, image) pair; R3.3 is a byte copy from when the gate
+    // scanned one child and is never edited, so pointing it at `built` would make every
+    // control fail for a reason unrelated to the mutation under test. Every C15 mutation is
+    // applied to BOTH, so the two verifiers really are shown the same thing. The C16 half is
+    // one derivation and is shared, not duplicated.
+    legacy = buildPassingR34Evidence(join(root, 'legacy'), REPO, { platforms: ['linux/amd64'] });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
   const c15 = () => built.c15Dir;
   const c16 = () => built.c16Dir;
-  const editC15 = (fn: (m: Record<string, any>) => void) => editManifest(c15(), 'supply-chain-manifest.json', fn);
+  /** Every copy of the C15 package a mutation must land in. */
+  const c15All = () => [built.c15Dir, legacy.c15Dir];
+  const editC15 = (fn: (m: Record<string, any>) => void) => {
+    for (const d of c15All()) editManifest(d, 'supply-chain-manifest.json', fn);
+  };
   const editC16 = (fn: (m: Record<string, any>) => void) => editManifest(c16(), 'closure-reconciliation.json', fn);
+  const writeC15 = (rel: string, data: string | Buffer) => {
+    for (const d of c15All()) writeFileSync(join(d, rel), data);
+  };
+  const rmC15 = (rel: string) => { for (const d of c15All()) rmSync(join(d, rel)); };
+  const rebindC15 = (rel: string) => {
+    for (const d of c15All()) rebind(d, 'supply-chain-manifest.json', rel);
+  };
 
   const check = (over: { c15?: string; c16?: string } = {}) =>
     assertFinalManifests({
@@ -56,7 +77,7 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   const frozen = (over: { c15?: string; c16?: string } = {}) => {
     try {
       return assertR33Defective({
-        c15Dir: over.c15 ?? c15(), c16Dir: over.c16 ?? c16(),
+        c15Dir: over.c15 ?? legacy.c15Dir, c16Dir: over.c16 ?? c16(),
         expectedSha: built.expectedSha, root: REPO,
       }) as string[];
     } catch (e) {
@@ -114,9 +135,12 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
     expect([...c.conformanceRefs].sort()).toEqual([...c.imageRefs].sort());
     expect(c.targetIds).toEqual(['development', 'production']);
     expect(c.scannerNames).toEqual(['gitleaks', 'trivy']);
-    // 6 normal + N image + 2 acquisition steps, two streams each; 4 governed reports; and
-    // C16-R3.4.1 §A1 adds one shipped raw OCI index per configured image.
-    expect(c.expectedInventory.length).toBe((6 + c.imageRefs.length + 2) * 2 + 4 + c.imageRefs.length);
+    // 6 normal + (N images x P scanned platforms) image + 2 acquisition steps, two streams
+    // each; 4 governed reports; and C16-R3.4.1 §A1 adds one shipped raw OCI index per
+    // configured IMAGE — one document per index, whichever child is selected from it.
+    expect(SCAN_PLATFORMS.length).toBeGreaterThan(0);
+    const imageSteps = c.imageRefs.length * SCAN_PLATFORMS.length;
+    expect(c.expectedInventory.length).toBe((6 + imageSteps + 2) * 2 + 4 + c.imageRefs.length);
   });
 
   it('controlled-key lookups are prototype-safe', () => {
@@ -145,7 +169,7 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
 
   it('an ATTACKER-DEFINED image set is rejected: source, not the manifest, fixes the steps', () => {
     const fake = `postgres@sha256:${'c'.repeat(64)}`;
-    for (const f of ['trivy-image-1.stdout.txt', 'trivy-image-1.stderr.txt']) rmSync(join(c15(), f));
+    for (const f of ['trivy-image-1.stdout.txt', 'trivy-image-1.stderr.txt']) rmC15(f);
     editC15((m) => {
       m.digest_pinned_images = [fake];
       m.image_platform_resolution = [m.image_platform_resolution[0]];
@@ -159,7 +183,7 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   });
 
   it('a MISSING configured image is rejected even when everything else is consistent', () => {
-    for (const f of ['trivy-image-1.stdout.txt', 'trivy-image-1.stderr.txt']) rmSync(join(c15(), f));
+    for (const f of ['trivy-image-1.stdout.txt', 'trivy-image-1.stderr.txt']) rmC15(f);
     editC15((m) => {
       m.digest_pinned_images = [m.digest_pinned_images[0]];
       m.image_platform_resolution = [m.image_platform_resolution[0]];
@@ -243,7 +267,7 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   it('an ALTERNATE bound stream path is rejected even when the file exists and is bound', () => {
     // Bind a second copy under a non-canonical name and point the step at it.
     const alt = 'trivy-fs.stdout.alt.txt';
-    writeFileSync(join(c15(), alt), readFileSync(join(c15(), 'trivy-fs.stdout.txt')));
+    writeC15(alt, readFileSync(join(c15(), 'trivy-fs.stdout.txt')));
     editC15((m) => {
       const bytes = readFileSync(join(c15(), alt));
       m.evidence_artifacts.push({ path: alt, bytes: bytes.length, sha256: sha256(bytes) });
@@ -335,22 +359,22 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   // ── §C raw-output semantic reconstruction ────────────────────────────────────
 
   it('a RAW image report altered while the reconciliation claim stands is rejected', () => {
-    const p = join(c15(), 'trivy-image-0.stdout.txt');
-    const r = JSON.parse(readFileSync(p, 'utf8'));
+    const rel0 = 'trivy-image-0.stdout.txt';
+    const r = JSON.parse(readFileSync(join(c15(), rel0), 'utf8'));
     for (const res of r.Results ?? []) res.Vulnerabilities = [];
-    writeFileSync(p, JSON.stringify(r, null, 2));
+    writeC15(rel0, JSON.stringify(r, null, 2));
     editC15((m) => {
-      const b = readFileSync(p);
+      const b = readFileSync(join(c15(), rel0));
       const s = m.steps.find((x: any) => x.id === 'trivy-image-0');
       s.stdout_bytes = b.length; s.stdout_sha256 = sha256(b);
     });
-    rebind(c15(), 'supply-chain-manifest.json', 'trivy-image-0.stdout.txt');
+    rebindC15(rel0);
     closesFalsePass(/image-findings\.json does not equal the findings reconstructed from the delivered raw/);
   });
 
   it('image-findings.json altered INDEPENDENTLY of the raw output is rejected', () => {
-    writeFileSync(join(c15(), 'image-findings.json'), `${JSON.stringify([], null, 2)}\n`);
-    rebind(c15(), 'supply-chain-manifest.json', 'image-findings.json');
+    writeC15('image-findings.json', `${JSON.stringify([], null, 2)}\n`);
+    rebindC15('image-findings.json');
     closesFalsePass(/image-findings\.json does not equal the findings reconstructed/);
   });
 
@@ -363,39 +387,39 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   });
 
   it('a non-empty gitleaks report is rejected even though it is byte-bound', () => {
-    writeFileSync(join(c15(), 'gitleaks-worktree.json'),
+    writeC15('gitleaks-worktree.json',
       JSON.stringify([{ RuleID: 'generic-api-key', File: 'x.ts' }]));
-    rebind(c15(), 'supply-chain-manifest.json', 'gitleaks-worktree.json');
+    rebindC15('gitleaks-worktree.json');
     closesFalsePass(/gitleaks-worktree\.json reports 1 secret finding/);
   });
 
   it('a dependency audit carrying high vulnerabilities is rejected', () => {
-    const p = join(c15(), 'pnpm-audit-json.stdout.txt');
-    writeFileSync(p, `${JSON.stringify({
+    const relAudit = 'pnpm-audit-json.stdout.txt';
+    writeC15(relAudit, `${JSON.stringify({
       advisories: { 1: { severity: 'high', title: 'x' } },
       metadata: { vulnerabilities: { high: 1, critical: 0 } },
     })}\n`);
     editC15((m) => {
-      const b = readFileSync(p);
+      const b = readFileSync(join(c15(), relAudit));
       const s = m.steps.find((x: any) => x.id === 'pnpm-audit-json');
       s.stdout_bytes = b.length; s.stdout_sha256 = sha256(b);
     });
-    rebind(c15(), 'supply-chain-manifest.json', 'pnpm-audit-json.stdout.txt');
+    rebindC15(relAudit);
     closesFalsePass(/carries 1 advisory record\(s\) while the human receipt says the tree is clean/);
   });
 
   it('a filesystem scan carrying blocking results is rejected', () => {
-    const p = join(c15(), 'trivy-fs-json.stdout.txt');
-    writeFileSync(p, `${JSON.stringify({
+    const relFs = 'trivy-fs-json.stdout.txt';
+    writeC15(relFs, `${JSON.stringify({
       SchemaVersion: 2,
       Results: [{ Target: 'x', Vulnerabilities: [{ VulnerabilityID: 'CVE-1', Severity: 'CRITICAL' }] }],
     })}\n`);
     editC15((m) => {
-      const b = readFileSync(p);
+      const b = readFileSync(join(c15(), relFs));
       const s = m.steps.find((x: any) => x.id === 'trivy-fs-json');
       s.stdout_bytes = b.length; s.stdout_sha256 = sha256(b);
     });
-    rebind(c15(), 'supply-chain-manifest.json', 'trivy-fs-json.stdout.txt');
+    rebindC15(relFs);
     closesFalsePass(/filesystem scan carries 1 blocking HIGH\/CRITICAL result/);
   });
 
@@ -595,14 +619,14 @@ describe('C16-R3.4 source-anchored evidence reconstruction', () => {
   // ── inventory equality ───────────────────────────────────────────────────────
 
   it('an EXTRA bound file is rejected: the inventory is an equality, not a minimum', () => {
-    writeFileSync(join(c15(), 'bonus.txt'), 'extra');
+    writeC15('bonus.txt', 'extra');
     const bytes = readFileSync(join(c15(), 'bonus.txt'));
     editC15((m) => { m.evidence_artifacts.push({ path: 'bonus.txt', bytes: bytes.length, sha256: sha256(bytes) }); });
     closesFalsePass(/bound 'bonus\.txt', which the source-owned contract does not expect/);
   });
 
   it('an EXTRA unbound file is still rejected', () => {
-    writeFileSync(join(c15(), 'unbound.txt'), 'nobody checked these bytes');
+    writeC15('unbound.txt', 'nobody checked these bytes');
     alsoCaughtByR33(/unbound\.txt.*UNBOUND/);
   });
 
@@ -635,7 +659,11 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
     root = mkdtempSync(join(tmpdir(), 'eye-r341-'));
     built = buildPassingR34Evidence(join(root, 'now'), REPO);
     // The package R3.4 expected, so "frozen R3.4 accepted this mutation" is an unfiltered claim.
-    legacy = buildPassingR34Evidence(join(root, 'r34'), REPO, { shape: 'r34' });
+    // `platforms` restricts it to the single child R3.4 knew about: that verifier is a byte copy
+    // and is never edited, so it cannot be shown a package with a second platform's image steps.
+    legacy = buildPassingR34Evidence(join(root, 'r34'), REPO, {
+      shape: 'r34', platforms: ['linux/amd64'],
+    });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
@@ -767,10 +795,15 @@ describe('C16-R3.4.1 — false passes reproduced against the frozen R3.4 verifie
 describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verifier', () => {
   let root: string;
   let built: ReturnType<typeof buildPassingR34Evidence>;
+  let legacy: ReturnType<typeof buildPassingR34Evidence>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'eye-r342-'));
-    built = buildPassingR34Evidence(root, REPO);
+    built = buildPassingR34Evidence(join(root, 'now'), REPO);
+    // The package R3.4.1 expected: the same evidence restricted to the single index child that
+    // verifier knew about. It is a byte copy and is never edited, so it cannot be shown a
+    // package carrying a second platform's image steps. Every mutation is applied to both.
+    legacy = buildPassingR34Evidence(join(root, 'r341'), REPO, { platforms: ['linux/amd64'] });
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
@@ -780,21 +813,25 @@ describe('C16-R3.4.2 — false passes reproduced against the frozen R3.4.1 verif
   const frozen341 = () => {
     try {
       return assertR341Frozen({
-        c15Dir: built.c15Dir, c16Dir: built.c16Dir, expectedSha: built.expectedSha, root: REPO,
+        c15Dir: legacy.c15Dir, c16Dir: legacy.c16Dir, expectedSha: legacy.expectedSha, root: REPO,
       }) as string[];
     } catch (e) { return [`THREW: ${e instanceof Error ? e.message.slice(0, 100) : e}`]; }
   };
-  const editC15 = (fn: (m: Record<string, any>) => void) =>
+  const editC15 = (fn: (m: Record<string, any>) => void) => {
     editManifest(built.c15Dir, 'supply-chain-manifest.json', fn);
+    editManifest(legacy.c15Dir, 'supply-chain-manifest.json', fn);
+  };
   const rebindRaw = (rel: string, body: string) => {
-    writeFileSync(join(built.c15Dir, rel), body);
-    const bytes = readFileSync(join(built.c15Dir, rel));
-    editC15((m) => {
-      const a = m.evidence_artifacts.find((x: any) => x.path === rel);
-      if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
-      const step = m.steps.find((x: any) => x.stdout_file === rel);
-      if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
-    });
+    for (const pkg of [built, legacy]) {
+      writeFileSync(join(pkg.c15Dir, rel), body);
+      const bytes = readFileSync(join(pkg.c15Dir, rel));
+      editManifest(pkg.c15Dir, 'supply-chain-manifest.json', (m) => {
+        const a = m.evidence_artifacts.find((x: any) => x.path === rel);
+        if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
+        const step = m.steps.find((x: any) => x.stdout_file === rel);
+        if (step !== undefined) { step.stdout_bytes = bytes.length; step.stdout_sha256 = sha256(bytes); }
+      });
+    }
   };
   const closes = (expected: RegExp) => {
     const problems = check();

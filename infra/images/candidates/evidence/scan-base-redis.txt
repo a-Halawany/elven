@@ -1,0 +1,53 @@
+
+Report Summary
+
+┌───────────────────────────────────────────────────────────────────────────────┬────────┬─────────────────┐
+│                                    Target                                     │  Type  │ Vulnerabilities │
+├───────────────────────────────────────────────────────────────────────────────┼────────┼─────────────────┤
+│ redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 │ alpine │        8        │
+│ (alpine 3.23.5)                                                               │        │                 │
+└───────────────────────────────────────────────────────────────────────────────┴────────┴─────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 (alpine 3.23.5)
+=============================================================================================
+Total: 8 (HIGH: 8, CRITICAL: 0)
+
+┌────────────┬────────────────┬──────────┬────────┬───────────────────┬───────────────┬────────────────────────────────────────────────────────────┐
+│  Library   │ Vulnerability  │ Severity │ Status │ Installed Version │ Fixed Version │                           Title                            │
+├────────────┼────────────────┼──────────┼────────┼───────────────────┼───────────────┼────────────────────────────────────────────────────────────┤
+│ libcrypto3 │ CVE-2026-14456 │ HIGH     │ fixed  │ 3.5.7-r0          │ 3.5.8-r0      │ openssl: OpenSSL: Denial of Service via unbounded memory   │
+│            │                │          │        │                   │               │ growth in QUIC server...                                   │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-14456                 │
+├────────────┤                │          │        │                   │               │                                                            │
+│ libssl3    │                │          │        │                   │               │                                                            │
+│            │                │          │        │                   │               │                                                            │
+│            │                │          │        │                   │               │                                                            │
+├────────────┼────────────────┤          │        ├───────────────────┼───────────────┼────────────────────────────────────────────────────────────┤
+│ setpriv    │ CVE-2026-53612 │          │        │ 2.41.4-r0         │ 2.41.6-r0     │ util-linux: util-linux: TOCTOU in the mount program when   │
+│            │                │          │        │                   │               │ applying post-mount ownership/mode changes...              │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-53612                 │
+│            ├────────────────┤          │        │                   │               ├────────────────────────────────────────────────────────────┤
+│            │ CVE-2026-53613 │          │        │                   │               │ util-linux: util-linux: TOCTOU in the mount program via    │
+│            │                │          │        │                   │               │ ancestor directory swap on...                              │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-53613                 │
+│            ├────────────────┤          │        │                   │               ├────────────────────────────────────────────────────────────┤
+│            │ CVE-2026-53614 │          │        │                   │               │ util-linux: util-linux: SUID mount(8) allows nosuid/noexec │
+│            │                │          │        │                   │               │ bypass via LIBMOUNT_FORCE_MOUNT2                           │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-53614                 │
+│            ├────────────────┤          │        │                   │               ├────────────────────────────────────────────────────────────┤
+│            │ CVE-2026-76642 │          │        │                   │               │ util-linux: util-linux: failed external mount helper still │
+│            │                │          │        │                   │               │ runs privileged X-mount post-hooks                         │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-76642                 │
+│            ├────────────────┤          │        │                   ├───────────────┼────────────────────────────────────────────────────────────┤
+│            │ CVE-2026-78408 │          │        │                   │ 2.41.6-r1     │ util-linux: util-linux: nsenter --join-cgroup leaks root   │
+│            │                │          │        │                   │               │ cgroup migration authority                                 │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-78408                 │
+│            ├────────────────┤          │        │                   ├───────────────┼────────────────────────────────────────────────────────────┤
+│            │ CVE-2026-78410 │          │        │                   │ 2.41.6-r0     │ util-linux: util-linux: restricted bind mounts do not pin  │
+│            │                │          │        │                   │               │ the source, allowing X-mount.owner/group/mode...           │
+│            │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-78410                 │
+└────────────┴────────────────┴──────────┴────────┴───────────────────┴───────────────┴────────────────────────────────────────────────────────────┘

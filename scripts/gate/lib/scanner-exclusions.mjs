@@ -447,7 +447,30 @@ function describeType(v) {
 /**
  * Reconcile governed records against the ACTUAL finding set from an unsuppressed scan.
  *
- * `findings` is a flat list of { advisory_id, image, package_name, purl, severity, target }.
+ * `findings` is a flat list of
+ * { advisory_id, image, scan_platform, package_name, purl, severity, target }.
+ *
+ * ── 2026-09-10: RECONCILIATION IS PER PLATFORM ───────────────────────────────────
+ * The platform comparison used to be `record.scan_platform !== opts.scanPlatform`, a single
+ * run-wide constant, because the gate scanned exactly one child of each image index. That
+ * made a correct record for a second platform indistinguishable from a rotten one: it
+ * matched nothing, so it was reported UNUSED and failed the gate — not because the
+ * disposition had gone stale, but because the run never looked at the artifact it governs.
+ *
+ * The comparison is now against the platform of the FINDING, which the scan that produced it
+ * records. Two things follow, and neither weakens anything:
+ *   * a record still governs only findings on the exact platform it names — the check is
+ *     per finding instead of per run, which is strictly narrower, never wider;
+ *   * UNUSED is unchanged. A record that matches nothing still fails. What changes is that
+ *     the gate must be able to say it LOOKED: every platform a record names must be one this
+ *     run actually scanned, and a record naming any other platform is reported separately in
+ *     `unscanned_platform_records` and fails the gate. Without that, moving a record to an
+ *     unscanned platform would be a way to park it beyond review — the exact hole the unused
+ *     rule exists to close.
+ *
+ * `opts.scanPlatforms` is the set of platforms this run scanned. A caller that scans one
+ * platform may keep passing the scalar `opts.scanPlatform`; it is then both the default
+ * platform of a finding that declares none and the single scanned platform.
  */
 export function reconcileFindings(doc, findings, opts = {}) {
   // A structurally invalid record cannot govern anything, so it is removed from the
@@ -459,8 +482,17 @@ export function reconcileFindings(doc, findings, opts = {}) {
   const unmatched = [];
   const mismatchDetail = [];
   const scanPlatform = opts.scanPlatform ?? null;
+  const scanPlatforms = Array.isArray(opts.scanPlatforms)
+    ? [...opts.scanPlatforms]
+    : (scanPlatform === null ? [] : [scanPlatform]);
+  /** The platform a finding belongs to: its own, or the run's when it declares none. */
+  const platformOf = (f) => f.scan_platform ?? scanPlatform ?? null;
 
-  const keyOf = (f) => `${f.advisory_id}|${f.image}|${f.purl ?? f.package_name}`;
+  // The key must separate platforms. Both children of one index are addressed by the SAME
+  // configured reference, so without the platform the 22 amd64 rows and the 22 arm64 rows
+  // collapse into 22 indistinguishable keys and a record could appear to have governed
+  // findings it never saw.
+  const keyOf = (f) => `${f.advisory_id}|${f.image}|${platformOf(f) ?? '(no platform)'}|${f.purl ?? f.package_name}`;
 
   for (const f of findings) {
     // EVERY consequence-relevant field must agree. A record that matches on advisory id
@@ -471,8 +503,9 @@ export function reconcileFindings(doc, findings, opts = {}) {
       const why = [];
       if (!advisoryIdsOf(r).includes(f.advisory_id)) return false;
       if (r.image !== f.image) why.push(`image ${r.image} != ${f.image}`);
-      if (scanPlatform !== null && r.scan_platform !== scanPlatform) {
-        why.push(`platform ${r.scan_platform} != resolved ${scanPlatform}`);
+      const findingPlatform = platformOf(f);
+      if (findingPlatform !== null && r.scan_platform !== findingPlatform) {
+        why.push(`platform ${r.scan_platform} != resolved ${findingPlatform}`);
       }
       if (r.package_name !== f.package_name) why.push(`package ${r.package_name} != ${f.package_name}`);
       if (r.package_purl !== f.purl) why.push(`purl ${r.package_purl} != ${f.purl}`);
@@ -503,7 +536,10 @@ export function reconcileFindings(doc, findings, opts = {}) {
     if (record === undefined) {
       unmatched.push(f);
       if (reasons.length > 0) {
-        mismatchDetail.push(`${f.advisory_id} (${f.severity}, ${f.package_name}): ${reasons.join(' | ')}`);
+        mismatchDetail.push(
+          `${f.advisory_id} (${f.severity}, ${f.package_name}, ${platformOf(f) ?? 'no platform'}): ` +
+          `${reasons.join(' | ')}`,
+        );
       }
       continue;
     }
@@ -511,12 +547,23 @@ export function reconcileFindings(doc, findings, opts = {}) {
     matchedBy.set(id, [...(matchedBy.get(id) ?? []), keyOf(f)]);
   }
 
+  // A record whose platform this run did not scan was never given the chance to match, so
+  // "unused" would be a false accusation and "stale" would be a false diagnosis — and leaving
+  // it silent would be a hole. It is reported ONCE, on its own terms, and the caller fails the
+  // gate on it. Nothing is excused: the record is still a blocking problem, just an honestly
+  // named one.
+  const outOfScope = (r) => scanPlatforms.length > 0 && !scanPlatforms.includes(r.scan_platform);
+  const unscannedPlatformRecords = records.filter(outOfScope)
+    .map((r) => `${r.id ?? '(unnamed)'} names scan_platform ${JSON.stringify(r.scan_platform)}, ` +
+      `which this run did not scan (scanned: ${scanPlatforms.join(', ')})`);
+
   const unused = records
-    .filter((r) => (matchedBy.get(r.id ?? '(unnamed)') ?? []).length === 0)
+    .filter((r) => !outOfScope(r) && (matchedBy.get(r.id ?? '(unnamed)') ?? []).length === 0)
     .map((r) => r.id ?? '(unnamed)');
 
   const staleAdvisories = [];
   for (const r of records) {
+    if (outOfScope(r)) continue;
     const covered = new Set(
       (matchedBy.get(r.id ?? '(unnamed)') ?? []).map((k) => k.split('|')[0]),
     );
@@ -527,19 +574,29 @@ export function reconcileFindings(doc, findings, opts = {}) {
 
   return {
     total_findings: findings.length,
+    scanned_platforms: [...scanPlatforms],
     matched: [...matchedBy.entries()].map(([id, keys]) => ({ record: id, findings: keys.sort() }))
       .sort((a, b) => (a.record < b.record ? -1 : 1)),
     unmatched: unmatched
-      .map((f) => `${f.advisory_id} ${f.severity} ${f.package_name} ${f.purl ?? ''} in ${f.image}`)
+      .map((f) => `${f.advisory_id} ${f.severity} ${f.package_name} ${f.purl ?? ''} ` +
+        `on ${platformOf(f) ?? 'no platform'} in ${f.image}`)
       .sort(),
     near_miss_detail: mismatchDetail.sort(),
     unused_records: unused.sort(),
+    unscanned_platform_records: unscannedPlatformRecords.sort(),
     stale_advisory_ids: staleAdvisories.sort(),
   };
 }
 
-/** Flatten a trivy JSON image report into the finding shape reconcileFindings expects. */
-export function findingsFromTrivyJson(reportText, image) {
+/**
+ * Flatten a trivy JSON image report into the finding shape reconcileFindings expects.
+ *
+ * `scanPlatform` is the platform the scan that produced this report was pinned to. It is
+ * carried on every finding because both platform children of one index are addressed by the
+ * SAME configured `image` reference: without it the delivered `image-findings.json` cannot
+ * distinguish a row found on linux/amd64 from the identical row found on linux/arm64.
+ */
+export function findingsFromTrivyJson(reportText, image, scanPlatform = null) {
   const doc = JSON.parse(reportText);
   const out = [];
   for (const result of doc.Results ?? []) {
@@ -547,6 +604,7 @@ export function findingsFromTrivyJson(reportText, image) {
       out.push({
         advisory_id: v.VulnerabilityID,
         image,
+        scan_platform: scanPlatform,
         package_name: v.PkgName ?? null,
         purl: v.PkgIdentifier?.PURL ?? null,
         severity: v.Severity ?? null,

@@ -1,0 +1,27 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from redis-8-alpine.Dockerfile
+#1 transferring dockerfile: 1.26kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/2] FROM docker.io/library/redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+#4 CACHED
+
+#5 [2/2] RUN apk add --no-cache setpriv=2.41.6-r1  && apk list -I setpriv | grep -q '^setpriv-2.41.6-r1 '
+#5 1.260 (1/1) Upgrading setpriv (2.41.4-r0 -> 2.41.6-r1)
+#5 1.345 Executing busybox-1.37.0-r30.trigger
+#5 1.349 OK: 11.7 MiB in 22 packages
+#5 DONE 1.4s
+
+#6 exporting to image
+#6 exporting layers done
+#6 writing image sha256:2c26668e3f65bb26ea3edd97bbb0f2add85d7c040db96ce687f764a8a74e8542 done
+#6 naming to docker.io/library/eye-cand-redis:8-alpine-util-linux done
+#6 DONE 0.0s
