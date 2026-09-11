@@ -1186,7 +1186,7 @@ probe() { EYE_API_HOME="$API_CWD" EYE_REDIS_PORT="$REDIS_PORT" EYE_REDIS_PASSWOR
 # queues are paused BEFORE the API starts, so the reconstruction is observed
 # without anything being executed, and the egress bound below is applied while
 # every job is still sitting still.
-step "pausing the isolated queues BEFORE the scheduler starts (BullMQ produces the first job of an `every` scheduler immediately)"
+step "pausing the isolated queues BEFORE the scheduler starts (BullMQ produces the first job of an 'every' scheduler immediately)"
 PAUSED="$(probe pause)"
 say "  paused: $(jq -r '[.paused[] | .queue] | join(", ")' <<<"$PAUSED")"
 

@@ -693,7 +693,10 @@ not verify.
 
 1. **the bundle directory** — `pg/*.dump.enc`, `pg/globals.sql.enc`,
    `vault.tar.enc`, `journal.tar.enc`, `config/env.enc`, `api-dist.tar.enc`,
-   plus `MANIFEST.json` and `RUN.json` in the clear (neither holds a secret);
+   `runtime-workspace.tar.enc` (fifth drill onwards), plus `MANIFEST.json` and
+   `RUN.json` in the clear (neither holds a secret). The manifest's file map is
+   itself authenticated (format `eye-bundle-crypto/2`, §22): a record's path is
+   its authenticated identity, and a bundle sealed under format `/1` is refused;
 2. **the passphrase the bundle was sealed with**, supplied in the environment as
    `EYE_BACKUP_PASSPHRASE`.
 
@@ -976,3 +979,40 @@ administrator password in `.eye-local/env` is refused `EYE-IDN-002` by the
 realigned with the file; the application principal was not. See the drill record
 §6 and §8 — it is a repair the deployment needs, not something a backup script
 can supply.
+
+## 22. Fifth drill — after the review at `461a2b56` (2026-09-11, 11:29–11:32 UTC)
+
+Full record: `docs/ops/evidence/restore-drill-20260911T112927Z.md`. Guard probes: 69, 69 passed
+(the 18 new ones hold the reviewer's two reproductions and their neighbours). The four earlier
+drill records are unchanged, the fourth's failed check included.
+
+**What the review found in the paths §§16–20 added, and what changed.**
+
+| Finding | Reproduced | Correction | Where |
+| --- | --- | --- | --- |
+| R1 — `backup.sh` recorded the build root in the run manifest *before* the builder refused it as already existing, so failure cleanup deleted a directory this run never created | on the reviewed guards in a disposable tree: `existing_build_deleted=true`, `sentinel_survived=false` | a directory is recorded only by `ops_run_create_dir`, after this run's own plain `mkdir` succeeded, with its inode; cleanup removes only recorded directories still at that inode (`ops_run_owned_dirs`); `build-identity.mjs --root-precreated` verifies an empty, non-symlink directory owned by this user before writing; `ops_run_record dir` is refused | `scripts/ops/lib/guards.sh`, `backup.sh`, `restore.sh`, `build-identity.mjs`; probes "R1" |
+| R2 — `bundle-crypto.mjs` chose the output path from a record's *key* but authenticated under its *aad*; a key changed to `../../escaped.bin` with the aad retained verified, opened, and wrote outside `--into` | on the reviewed script: `verify_passed=true open_passed=true escaped=true` | format `eye-bundle-crypto/2`: aad must equal the key; keys are canonical relative paths; the whole file map is authenticated (`files_tag_hex`, HMAC under a KEK-derived key) before the data key is unwrapped; every output physically contained under the resolved destination (ancestors created or verified real directories, no symlinked leaf or ancestor), every source verified inside the bundle. Format `/1` bundles are refused. | `scripts/ops/bundle-crypto.mjs`; probes "R2" |
+| R4 — the missing-build-root fallback ran the bundled dist against the checkout's `node_modules` and only *reported* a different lockfile; the fourth drill's tick was `refused` (artifact `ef85a12` over a schema with 0051) and was counted as a pass | by inspection (the fallback) and in the fourth drill's own transcript (the tick) | the bundle carries `runtime-workspace.tar` (lockfile, workspace/package manifests, `packages/contracts/dist`); without the build root, restore installs the artifact's production dependencies from that record with `pnpm install --frozen-lockfile --prod` or **refuses before launch**; the build identity records the artifact's migration ledger and restore refuses an artifact whose ledger does not end where the restored schema ends; the tick's **outcome** is its own check (only `finished` passes) | `backup.sh`, `restore.sh`, `build-identity.mjs` |
+
+**The run.** One committed checkpoint (`1c8242e`, migrations through 0056, both databases at
+0056), the demo's own running artifact byte-identical to the build. Bundle `L` from the live
+deployment (not quiesced; boundary moved by one audit event, enumerated on restore); `E1` restored
+and driven degraded (3 journal records, 3 governed incidents); bundle `D` quiesced; `E2` restored
+**with `D`'s build root moved away** — dependencies installed from the bundle's own lockfile
+(179 packages, 2.3 s), artifact re-verified inside that workspace, schema compatibility checked,
+the journal restored (`/readyz` degraded from the durable journal, 6 incidents), governed recovery
+run from the runtime workspace and surviving a restart, the scheduler rebuilt into an empty Redis
+and **one scheduled collection completed** (`eu-sanctions-rss`, `finished`, 1 admitted + 5
+confirmed), and the governed read (member login → evidence list → download re-verified) passing.
+E1 61/61, E2 76/76, every return code 0.
+
+**The operator credential.** Resolved through the recovery process that already existed — the
+17:39Z bundle's `config/env` holds the pre-regeneration credential — and the product's own
+governed rotation route: `platform-admin` and the eleven demo personas were each logged in with
+the recovered value and rotated to the value `.eye-local/env` now holds (twelve audited
+`identity.credential_rotated` events in `eye_demo`; nothing reset, nothing printed). The fourth
+drill's failed check is the check this drill passes.
+
+**Still open.** The governed live-container recreation (CP-4a) now has its credential
+preconditions and its rollback bundle; it waits on the arm64 risk decision
+(`docs/images/ARM64_RISK_DECISION.md`), because this host runs the `linux/arm64` child.
