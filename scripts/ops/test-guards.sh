@@ -232,6 +232,81 @@ TAMPER="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypt
 probe "a TAMPERED ciphertext fails authentication and no plaintext is written for it" refused \
   "$([[ "$TAMPER_RC" -ne 0 && ! -e "$T/crypto-open-tampered/pg/a.dump" ]] && echo "refused: $(head -1 <<<"$TAMPER" | sed 's/^bundle-crypto: //')" || echo "accepted: rc=$TAMPER_RC")" "authentication FAILED"
 
+printf '\n== probes: R2 — the authenticated identity of a payload is its path; the file map is authenticated; every write is contained\n'
+# A fresh sealed bundle for the mapping probes (the one above has a tampered ciphertext by now).
+CB2="$T/crypto-bundle-2"; mkdir -p "$CB2/pg"
+printf 'payload bytes\n' > "$CB2/payload.txt"; head -c 4096 /dev/urandom > "$CB2/pg/b.dump"
+SEAL2="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" seal --bundle "$CB2" --files 'payload.txt,pg/b.dump' 2>&1)"
+jq -n --argjson c "$SEAL2" '{format:"eye-backup-bundle/2", encryption:$c}' > "$CB2/MANIFEST.json"
+probe "the sealed map carries an authentication tag over every (path, iv, tag, digests, sizes) entry" ok \
+  "$([[ "$(jq -r '.encryption.files_tag_hex | length' "$CB2/MANIFEST.json")" == "64" && "$(jq -r '.encryption.files["payload.txt"].aad' "$CB2/MANIFEST.json")" == "payload.txt" ]] && echo "ok: files_tag_hex present; aad == path" || echo "bad")"
+# (a) the reviewer's reproduction: key -> ../../escaped.bin, aad retained, ciphertext where the key says
+mkdir -p "$T/r2/deep/er"; cp -R "$CB2" "$T/r2/deep/er/bundle"; cp "$CB2/payload.txt.enc" "$T/r2/deep/escaped.bin.enc"
+jq '.encryption.files["../../escaped.bin"] = .encryption.files["payload.txt"] | del(.encryption.files["payload.txt"])' "$CB2/MANIFEST.json" > "$T/r2/deep/er/bundle/ALTERED.json"
+ESC="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$T/r2/deep/er/bundle" --into "$T/r2/restore/plain" --manifest "$T/r2/deep/er/bundle/ALTERED.json" 2>&1)"; ESC_RC=$?
+probe "a map key changed to a traversal path with its aad retained is refused before any write (the reviewer's reproduction)" refused \
+  "$([[ "$ESC_RC" -ne 0 && -z "$(find "$T/r2" -name 'escaped.bin' -o -name '*.decrypting' 2>/dev/null)" && ! -e "$T/r2/restore/plain/pg/b.dump" ]] && echo "refused: $(head -1 <<<"$ESC" | sed 's/^bundle-crypto: //')" || echo "accepted: rc=$ESC_RC $(find "$T/r2" -name 'escaped.bin')")" "'..' segment"
+# (b) a canonical sibling key with the original aad: the identity no longer matches the path
+jq '.encryption.files["moved.txt"] = .encryption.files["payload.txt"] | del(.encryption.files["payload.txt"])' "$CB2/MANIFEST.json" > "$CB2/MOVED.json"; cp "$CB2/payload.txt.enc" "$CB2/moved.txt.enc"
+MV="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$CB2" --into "$T/r2/moved" --manifest "$CB2/MOVED.json" 2>&1)"; MV_RC=$?
+probe "a payload re-pointed to another path inside the bundle (aad retained) is refused: the authenticated identity is the path" refused \
+  "$([[ "$MV_RC" -ne 0 && ! -e "$T/r2/moved/moved.txt" && ! -e "$T/r2/moved/pg/b.dump" ]] && echo "refused: $(head -1 <<<"$MV" | sed 's/^bundle-crypto: //')" || echo "accepted: rc=$MV_RC")" "is not its path"
+# (c) an entry removed from the map, everything else intact, aad == key everywhere
+jq 'del(.encryption.files["pg/b.dump"])' "$CB2/MANIFEST.json" > "$CB2/PRUNED.json"
+PR="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" verify --bundle "$CB2" --manifest "$CB2/PRUNED.json" 2>&1)"; PR_RC=$?
+probe "a map with an entry removed (every remaining record consistent) is refused by the map tag before any ciphertext is read" refused \
+  "$([[ "$PR_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$PR" | sed 's/^bundle-crypto: //')" || echo "accepted: $PR")" "file map does not authenticate"
+# (d) the destination carries a symlinked subdirectory pointing outside it
+mkdir -p "$T/r2/outside" "$T/r2/linked"; ln -s "$T/r2/outside" "$T/r2/linked/pg"
+LN="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$CB2" --into "$T/r2/linked" 2>&1)"; LN_RC=$?
+probe "a symlinked ancestor inside the destination is refused and nothing is written through it" refused \
+  "$([[ "$LN_RC" -ne 0 && -z "$(ls -A "$T/r2/outside")" && ! -e "$T/r2/linked/payload.txt" ]] && echo "refused: $(head -1 <<<"$LN" | sed 's/^bundle-crypto: //')" || echo "accepted: rc=$LN_RC outside=$(ls -A "$T/r2/outside" | tr '\n' ' ')")" "is a symlink"
+# (e) the intact bundle still opens, byte for byte, into a fresh destination
+OK2="$(EYE_BACKUP_PASSPHRASE='stand-in passphrase 1' node "$HERE/bundle-crypto.mjs" open --bundle "$CB2" --into "$T/r2/ok" 2>&1)"; OK2_RC=$?
+probe "the intact map still opens into its destination, byte for byte, with the map reported authenticated" ok \
+  "$([[ "$OK2_RC" -eq 0 && "$(cat "$T/r2/ok/payload.txt")" == "payload bytes" && -f "$T/r2/ok/pg/b.dump" && "$(jq -r .file_map <<<"$OK2")" == "authenticated" ]] && echo "ok: payload.txt and pg/b.dump recovered; file_map authenticated" || echo "bad: rc=$OK2_RC $OK2")"
+# (f) a bundle sealed under format /1 (no map tag) is refused, by format, before the passphrase is read
+jq '.encryption.format = "eye-bundle-crypto/1" | del(.encryption.files_tag_hex)' "$CB2/MANIFEST.json" > "$CB2/V1.json"
+V1="$(EYE_BACKUP_PASSPHRASE= node "$HERE/bundle-crypto.mjs" verify --bundle "$CB2" --manifest "$CB2/V1.json" 2>&1)"; V1_RC=$?
+probe "a format /1 bundle (unauthenticated file map) is refused rather than opened" refused \
+  "$([[ "$V1_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$V1" | sed 's/^bundle-crypto: //')" || echo "accepted")" "file map is not authenticated"
+
+printf '\n== probes: R1 — a directory is owned by CREATING it, never by naming it (guards.sh run manifest, stand-in paths only)\n'
+mkdir -p "$T/r1/pre-existing"; printf 'sentinel\n' > "$T/r1/pre-existing/SENTINEL"
+mkdir -p "$T/r1/run1"; ops_run_init "$T/r1/run1/RUN.json" "probe-run-1"
+probe "recording a directory by name alone is refused by the manifest API" refused \
+  "$(ops_run_record dir "$T/r1/pre-existing" "build root" 2>&1 || true)" "recorded only by ops_run_create_dir"
+probe "creating a pre-existing directory as a build root is refused" refused \
+  "$(ops_run_create_dir "build root" "$T/r1/pre-existing" "build root")" "already exists"
+probe "…and the refusal recorded nothing: the run owns no directory it could remove" ok \
+  "$([[ -z "$(ops_run_owned_dirs)" ]] && echo "ok: owned set empty ($(jq -c '[.created[]|select(.kind=="dir")]|length' "$OPS_RUN_MANIFEST") dir records)" || echo "bad: $(ops_run_owned_dirs)")"
+for d in $(ops_run_owned_dirs); do rm -rf "$d"; done # the exact cleanup backup.sh runs on failure
+probe "…so failure cleanup leaves the pre-existing directory and its sentinel in place (the reviewer's reproduction, corrected)" ok \
+  "$([[ -f "$T/r1/pre-existing/SENTINEL" ]] && echo "ok: existing_build_deleted=false sentinel_survived=true" || echo "bad: existing_build_deleted=true")"
+# the real builder, told the root is pre-created, refuses one that is not empty — without writing into it
+BI="$(node "$HERE/build-identity.mjs" build --repo "$REPO" --root "$T/r1/pre-existing" --root-precreated 2>&1)"; BI_RC=$?
+probe "build-identity.mjs refuses a pre-created root that is not empty, and writes nothing into it" refused \
+  "$([[ "$BI_RC" -ne 0 && "$(ls -A "$T/r1/pre-existing" | tr '\n' ' ')" == "SENTINEL " ]] && echo "refused: $(head -1 <<<"$BI" | sed 's/^build-identity: //')" || echo "accepted: rc=$BI_RC $(ls -A "$T/r1/pre-existing")")" "is not empty"
+ln -s "$T/r1/pre-existing" "$T/r1/linked-root"
+BI2="$(node "$HERE/build-identity.mjs" build --repo "$REPO" --root "$T/r1/linked-root" --root-precreated 2>&1)"; BI2_RC=$?
+probe "build-identity.mjs refuses a symlinked pre-created root" refused \
+  "$([[ "$BI2_RC" -ne 0 ]] && echo "refused: $(head -1 <<<"$BI2" | sed 's/^build-identity: //')" || echo "accepted")" "is a symlink"
+# two attempts at one destination: the creator owns it, the loser owns nothing
+V1R="$(ops_run_create_dir "build root" "$T/r1/shared" "build root")"; printf 'work\n' > "$T/r1/shared/WORK"
+probe "the first attempt creates and owns the destination" created "$V1R" "inode"
+mkdir -p "$T/r1/run2"; M1="$OPS_RUN_MANIFEST"; ops_run_init "$T/r1/run2/RUN.json" "probe-run-2"
+probe "a concurrent second attempt at the same destination is refused and owns nothing" refused \
+  "$(ops_run_create_dir "build root" "$T/r1/shared" "build root")" "already exists"
+for d in $(ops_run_owned_dirs); do rm -rf "$d"; done # run 2's cleanup
+probe "…and run 2's cleanup does not remove run 1's directory or its work" ok \
+  "$([[ -f "$T/r1/shared/WORK" ]] && echo "ok: run 1's WORK file survives run 2's cleanup" || echo "bad")"
+# the path replaced underneath run 1: a different directory at the same name is not run 1's to remove
+OPS_RUN_MANIFEST="$M1"; mv "$T/r1/shared" "$T/r1/shared-moved"; mkdir "$T/r1/shared"; printf 'someone else\n' > "$T/r1/shared/OTHER"
+probe "a directory replaced underneath the run (same path, different inode) is no longer in the run's owned set" ok \
+  "$([[ -z "$(ops_run_owned_dirs)" ]] && echo "ok: owned set empty; recorded inode no longer at the path" || echo "bad: $(ops_run_owned_dirs)")"
+for d in $(ops_run_owned_dirs); do rm -rf "$d"; done
+probe "…so run 1's cleanup leaves the replacement in place" ok "$([[ -f "$T/r1/shared/OTHER" ]] && echo "ok: OTHER survives" || echo "bad")"
+
 printf '\n== probes: the backup source override can only point AWAY from the live deployment\n'
 probe "backup.sh refuses to run without EYE_BACKUP_PASSPHRASE (before anything is read or written)" refused \
   "$(EYE_BACKUP_PASSPHRASE= EYE_BACKUP_ROOT="$T/fresh" "$HERE/backup.sh" 2>&1 | grep -m1 '^backup: EYE_BACKUP_PASSPHRASE' | sed 's/^backup: /refused: /')" "is not set in the environment"

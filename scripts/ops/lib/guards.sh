@@ -127,21 +127,62 @@ ops_mkdir_fresh() {
 # ---------------------------------------------------------------- run manifest
 # Every container, volume, directory or process a run creates is recorded here
 # as it is created; cleanup removes ONLY recorded resources, never a name pattern.
+#
+# OWNERSHIP IS ESTABLISHED BY CREATION, NEVER BY NAMING (reviewer's finding R1,
+# 2026-09-11: backup.sh recorded its build root before the builder refused the
+# already-existing directory, and failure cleanup then deleted a directory this
+# run never created). The rule enforced here:
+#   * a directory is recorded ONLY through ops_run_create_dir, which records it
+#     after — and only after — THIS run's own plain `mkdir` (no -p) succeeded: an
+#     atomic create-or-fail, so two runs aiming at one path cannot both own it;
+#   * the record carries the directory's device:inode at creation, and cleanup
+#     removes a recorded directory only while it is still that same directory
+#     (same inode, not a symlink) — a path that was replaced underneath the run
+#     is no longer the run's to remove.
 # ops_run_init <file> <script>
 ops_run_init() {
   OPS_RUN_MANIFEST="$1"
   jq -n --arg s "$2" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg pid "$$" \
-    '{format:"eye-ops-run/1", script:$s, started_at_utc:$t, pid:($pid|tonumber), created:[]}' > "$OPS_RUN_MANIFEST"
+    '{format:"eye-ops-run/2", script:$s, started_at_utc:$t, pid:($pid|tonumber), created:[]}' > "$OPS_RUN_MANIFEST"
   chmod 600 "$OPS_RUN_MANIFEST"
 }
-# ops_run_record <kind: dir|container|volume|process> <id> [detail]
+# ops_inode <path> -> "<device>:<inode>" of the path itself (not followed)
+ops_inode() { stat -f '%d:%i' "$1" 2>/dev/null || stat -c '%d:%i' "$1"; }
+# ops_run_record <kind: container|volume|process> <id> [detail]
+#   Directories are NOT accepted here: they are recorded by ops_run_create_dir.
 ops_run_record() {
   local tmp="$OPS_RUN_MANIFEST.tmp"
+  if [[ "$1" == "dir" ]]; then
+    printf 'refused: a directory is recorded only by ops_run_create_dir, after this run created it\n' >&2; return 1
+  fi
   jq --arg k "$1" --arg i "$2" --arg d "${3:-}" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '.created += [{kind:$k, id:$i, detail:$d, at:$t}]' "$OPS_RUN_MANIFEST" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$OPS_RUN_MANIFEST"
 }
+# ops_run_create_dir <label> <path> [detail]
+#   Plain mkdir (no -p): the path must not exist in any form. Recorded, with its
+#   inode, ONLY when the mkdir succeeded — a refusal records nothing, so a later
+#   cleanup has nothing of this path to remove. Prints the verdict line.
+ops_run_create_dir() {
+  local label="$1" path="$2" detail="${3:-}" v tmp
+  v="$(ops_mkdir_fresh "$label" "$path")" || { printf '%s\n' "$v"; return 1; }
+  chmod 700 "$path"
+  tmp="$OPS_RUN_MANIFEST.tmp"
+  jq --arg i "$path" --arg d "$detail" --arg n "$(ops_inode "$path")" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '.created += [{kind:"dir", id:$i, detail:$d, inode:$n, at:$t}]' "$OPS_RUN_MANIFEST" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$OPS_RUN_MANIFEST"
+  printf '%s (owned by this run: inode %s recorded)\n' "$v" "$(ops_inode "$path")"
+}
 # ops_run_ids <kind>  -> the recorded ids of that kind, one per line
 ops_run_ids() { jq -r --arg k "$1" '.created[] | select(.kind==$k) | .id' "$OPS_RUN_MANIFEST"; }
+# ops_run_owned_dirs -> the recorded directories that are STILL the ones this run
+#   created (same device:inode, not a symlink), deepest first — the only set a
+#   failure cleanup may remove.
+ops_run_owned_dirs() {
+  local id ino
+  jq -r '.created[] | select(.kind=="dir") | .id + "\t" + (.inode // "")' "$OPS_RUN_MANIFEST" | sort -r | while IFS=$'\t' read -r id ino; do
+    [[ -n "$ino" && -d "$id" && ! -L "$id" && "$(ops_inode "$id")" == "$ino" ]] || continue
+    printf '%s\n' "$id"
+  done
+}
 
 # ---------------------------------------------------------------- portability
 ops_mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }

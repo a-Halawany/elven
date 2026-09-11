@@ -127,8 +127,22 @@ function cmdBuild(argv) {
   const porcelain = run(['git', '-C', repo, 'status', '--porcelain']).stdout;
   const changes = porcelain.split('\n').filter((l) => l.trim() !== '');
 
-  if (existsSync(root)) die(`${root} already exists (a fresh build root is required)`);
-  mkdirSync(root, { recursive: false, mode: 0o700 });
+  if (argv.includes('--root-precreated')) {
+    // The caller CREATED the root itself (an atomic plain mkdir, recorded as its own
+    // only once it succeeded — backup.sh, R1). What is verified here is that the
+    // directory is exactly what such a creation produces: a real directory, not a
+    // symlink, owned by this user, and EMPTY. Anything else is not a fresh root and
+    // is refused without being written to.
+    let st;
+    try { st = lstatSync(root); } catch { die(`${root} does not exist (--root-precreated names a directory the caller created)`); }
+    if (st.isSymbolicLink()) die(`${root} is a symlink; a build root must be a directory the caller created`);
+    if (!st.isDirectory()) die(`${root} is not a directory`);
+    if (typeof process.getuid === 'function' && st.uid !== process.getuid()) die(`${root} is not owned by this user (uid ${st.uid})`);
+    if (readdirSync(root).length !== 0) die(`${root} is not empty (a fresh build root is required; nothing was written)`);
+  } else {
+    if (existsSync(root)) die(`${root} already exists (a fresh build root is required)`);
+    mkdirSync(root, { recursive: false, mode: 0o700 });
+  }
   const src = join(root, 'src');
   mkdirSync(src, { mode: 0o700 });
 
@@ -162,6 +176,11 @@ function cmdBuild(argv) {
 
   const node = process.version;
   const pnpm = run(['pnpm', '--version']).stdout.trim();
+  // The migration ledger of the COMMITTED tree at the SHA: what schema this artifact
+  // was written against. A restore compares it with the restored database's
+  // `schema_migrations` so an artifact is never started over a schema it predates.
+  const migrations = must(['git', '-C', repo, 'ls-tree', '--name-only', full, 'apps/api/migrations/']).stdout
+    .split('\n').map((l) => l.trim().replace(/^apps\/api\/migrations\//, '')).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort();
 
   const identity = {
     format: FORMAT,
@@ -175,6 +194,7 @@ function cmdBuild(argv) {
       source: 'git archive <sha> (the committed tree; the worktree is never built and never written to)',
     },
     lockfile: { path: 'pnpm-lock.yaml', sha256: lockSha, bytes: lockBytes, frozen: true },
+    migrations: { count: migrations.length, last: migrations[migrations.length - 1] ?? null, source: 'git ls-tree <sha> apps/api/migrations/' },
     toolchain: { node, pnpm, platform: process.platform, arch: process.arch },
     build: {
       started_at_utc: startedAt,
@@ -248,7 +268,7 @@ else if (argv[0] === 'digest') cmdDigest(argv);
 else {
   process.stderr.write(
     'usage:\n' +
-    '  build-identity.mjs build  --repo <repo> --root <fresh build root> [--sha <sha>] [--filter <pnpm filter>] [--out <file>]\n' +
+    '  build-identity.mjs build  --repo <repo> --root <fresh build root> [--root-precreated] [--sha <sha>] [--filter <pnpm filter>] [--out <file>]\n' +
     '  build-identity.mjs digest --dist <dir>\n' +
     '  build-identity.mjs --verify <MANIFEST.json|BUILD_IDENTITY.json> [--dist <dir>] [--entries <DIST_ENTRIES.json>]\n');
   process.exit(2);

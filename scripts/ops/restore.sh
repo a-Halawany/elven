@@ -178,7 +178,8 @@ V="$(ops_mkdir_fresh "restore root" "$RROOT")" || die "$V"
 say "  $V"
 RROOT="$(ops_phys "$RROOT")"
 ops_run_init "$RROOT/RUN.json" "restore.sh"
-ops_run_record dir "$RROOT" "restore root"
+jq --arg i "$RROOT" --arg n "$(ops_inode "$RROOT")" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '.created += [{kind:"dir", id:$i, detail:"restore root", inode:$n, at:$t}]' "$RROOT/RUN.json" > "$RROOT/RUN.json.tmp" && chmod 600 "$RROOT/RUN.json.tmp" && mv "$RROOT/RUN.json.tmp" "$RROOT/RUN.json"
 chmod 700 "$RROOT"
 API_PID=""
 teardown() {
@@ -208,8 +209,7 @@ trap 'rc=$?; step "teardown (bound to $RROOT/RUN.json)"; teardown; exit $rc' EXI
 SRC="$BUNDLE"
 if [[ "$ENCRYPTED" == "true" ]]; then
   step "decrypting the sealed bundle into $RROOT/plain (0700; the bundle itself is not written to)"
-  mkdir "$RROOT/plain"; chmod 700 "$RROOT/plain"
-  ops_run_record dir "$RROOT/plain" "decrypted payload"
+  V="$(ops_run_create_dir "decrypted payload" "$RROOT/plain" "decrypted payload")" || die "$V"
   OPENED="$(node "$REPO/scripts/ops/bundle-crypto.mjs" open --bundle "$BUNDLE" --into "$RROOT/plain" --manifest "$MANIFEST")" \
     || die "the bundle could not be decrypted"
   SRC="$RROOT/plain"
@@ -373,8 +373,8 @@ observe_protections() { # observe_protections <service> <container-name> <contai
 
 # ------------------------------------------------------- config copy
 step "config/env -> $RROOT/config/env (0600)"
-mkdir "$RROOT/config" "$RROOT/work"
-ops_run_record dir "$RROOT/config" ""; ops_run_record dir "$RROOT/work" ""
+V="$(ops_run_create_dir "config" "$RROOT/config")" || die "$V"
+V="$(ops_run_create_dir "work" "$RROOT/work")" || die "$V"
 cp "$SRC/config/env" "$RROOT/config/env"; chmod 600 "$RROOT/config/env"
 set -a
 # shellcheck disable=SC1090
@@ -537,8 +537,11 @@ done
 # degraded journal, this is exactly where journal.tar put it, so the restored
 # process replays the SAME records the source had written (Gate-2.1 §7).
 JOURNAL_DIR="$RROOT/apps/api/.eye-local/degraded-demo"
-mkdir -p "$JOURNAL_DIR"
-ops_run_record dir "$JOURNAL_DIR" "journal dir for the second API"
+# Its ancestors are created plainly, each recorded only once created; the path may
+# already exist when journal.tar put the source's records there.
+for d in "$RROOT/apps" "$RROOT/apps/api" "$RROOT/apps/api/.eye-local" "$JOURNAL_DIR"; do
+  [[ -d "$d" && ! -L "$d" ]] || { V="$(ops_run_create_dir "journal path" "$d" "journal dir for the second API")" || die "$V"; }
+done
 JOURNAL_RECORDS=0
 [[ ! -f "$JOURNAL_DIR/audit-degraded.jsonl" ]] || JOURNAL_RECORDS=$(grep -c . "$JOURNAL_DIR/audit-degraded.jsonl" || true)
 say "  degraded journal for the restored API: $JOURNAL_DIR ($JOURNAL_RECORDS record(s) restored from the bundle)"
@@ -575,7 +578,7 @@ else
   fi
 
   # a. the artifact the bundle carries
-  mkdir "$RROOT/artifact"; ops_run_record dir "$RROOT/artifact" "the bundle's application artifact"
+  V="$(ops_run_create_dir "artifact" "$RROOT/artifact" "the bundle's application artifact")" || die "$V"
   tar -C "$RROOT/artifact" -xf "$SRC/api-dist.tar"
   BUNDLED_VERIFY=0
   node "$REPO/scripts/ops/build-identity.mjs" --verify "$MANIFEST" --dist "$RROOT/artifact/dist" > "$RROOT/work/artifact-bundled.json" 2>&1 || BUNDLED_VERIFY=$?
@@ -593,16 +596,37 @@ else
     API_CWD="$BUILD_SRC_API"; API_MAIN="dist/main.js"
     ARTIFACT_SOURCE="the build root recorded in the bundle ($BUILD_SRC_API) — self-contained: the verified dist AND the node_modules of the frozen-lockfile install"
   else
-    API_CWD="$REPO/apps/api"; API_MAIN="$RROOT/artifact/dist/main.js"
-    NODE_PATH_FOR_API="$REPO/apps/api/node_modules"
-    ARTIFACT_SOURCE="the bundle's own api-dist.tar, extracted to $RROOT/artifact/dist, resolving dependencies through $NODE_PATH_FOR_API"
-    LOCK_NOW="$(sha "$REPO/pnpm-lock.yaml")"
+    # THE BUILD ROOT IS NOT AVAILABLE (a different host, or it was pruned). The
+    # dependencies are then INSTALLED FROM THE BUNDLE'S OWN RECORD — the committed
+    # lockfile and manifests in runtime-workspace.tar — with `pnpm install
+    # --frozen-lockfile --prod`, which installs exactly the resolutions and integrity
+    # hashes the lockfile records and fails when the lockfile does not satisfy the
+    # manifests. Nothing of the checkout's node_modules is used. When the record is
+    # absent or the install fails, the restore REFUSES before launch: a report-only
+    # lockfile comparison is not a binding (R4).
+    [[ -f "$SRC/runtime-workspace.tar" ]] || die "REFUSED: the build root recorded in the bundle is not available and the bundle carries no runtime-workspace.tar (a bundle from before R4); the artifact's dependencies cannot be bound, so nothing is started"
+    V="$(ops_run_create_dir "runtime workspace" "$RROOT/runtime" "the bundle's dependency record, installed")" || die "$V"
+    tar -C "$RROOT/runtime" -xf "$SRC/runtime-workspace.tar"
     LOCK_THEN="$(jq -r '.build.lockfile.sha256' "$MANIFEST")"
-    if [[ "$LOCK_NOW" == "$LOCK_THEN" ]]; then
-      check true "the dependencies the artifact will resolve against come from the SAME pnpm-lock.yaml the artifact was built with ($LOCK_THEN)"
-    else
-      say "  REPORT: this host's pnpm-lock.yaml ($LOCK_NOW) is NOT the one the artifact was built with ($LOCK_THEN); the dependency tree it resolves against is not the recorded one"
+    LOCK_BUNDLED="$(sha "$RROOT/runtime/pnpm-lock.yaml")"
+    check "$([[ "$LOCK_BUNDLED" == "$LOCK_THEN" ]] && echo true || echo false)" "the lockfile carried in runtime-workspace.tar is the one the artifact was built with ($LOCK_THEN)"
+    [[ "$LOCK_BUNDLED" == "$LOCK_THEN" ]] || die "REFUSED: the bundled lockfile ($LOCK_BUNDLED) is not the recorded one ($LOCK_THEN); nothing is started"
+    PNPM_THEN="$(jq -r '.build.toolchain.pnpm' "$MANIFEST")"; PNPM_NOW="$(pnpm --version 2>/dev/null || echo none)"
+    say "  pnpm: recorded $PNPM_THEN, this host $PNPM_NOW$([[ "$PNPM_THEN" == "$PNPM_NOW" ]] || echo ' (DIFFERENT — recorded; the lockfile, not the tool version, binds the resolutions)')"
+    say "  installing the artifact's production dependencies from the bundle's lockfile (frozen) into $RROOT/runtime …"
+    if ! (cd "$RROOT/runtime" && pnpm install --frozen-lockfile --prod --filter '@eye/api...' > "$RROOT/work/runtime-install.log" 2>&1); then
+      say "  $(tail -5 "$RROOT/work/runtime-install.log" | sed 's/^/    /')"
+      die "REFUSED: the frozen-lockfile install from the bundle's record failed (see $RROOT/work/runtime-install.log); the dependencies cannot be bound, so nothing is started"
     fi
+    RT_PKGS="$(ls "$RROOT/runtime/node_modules/.pnpm" 2>/dev/null | grep -vc '^node_modules$\|^lock.yaml$' || true)"
+    check "$([[ -L "$RROOT/runtime/apps/api/node_modules/@eye/contracts" && -f "$RROOT/runtime/packages/contracts/dist/index.js" ]] && echo true || echo false)" \
+      "the artifact's dependencies were installed from the bundle's lockfile: $RT_PKGS packages in the virtual store, @eye/contracts linked to the bundled packages/contracts/dist ($(grep -m1 'Done in' "$RROOT/work/runtime-install.log" || echo 'done'))"
+    # the verified dist goes where the artifact expects itself: apps/api/dist inside the workspace
+    tar -C "$RROOT/runtime/apps/api" -xf "$SRC/api-dist.tar"
+    node "$REPO/scripts/ops/build-identity.mjs" --verify "$MANIFEST" --dist "$RROOT/runtime/apps/api/dist" > "$RROOT/work/artifact-runtime.json" 2>&1 \
+      || die "REFUSED: the artifact placed in the runtime workspace does not have the recorded digest"
+    API_CWD="$RROOT/runtime/apps/api"; API_MAIN="dist/main.js"
+    ARTIFACT_SOURCE="the bundle's own api-dist.tar and its dependencies installed from the bundle's own lockfile (frozen, production) in $RROOT/runtime — nothing of this checkout's node_modules"
   fi
   say "  starting from: $ARTIFACT_SOURCE"
 
@@ -662,6 +686,28 @@ for db in $(jq -r '.databases[]' "$MANIFEST"); do
     else check false "$db.$key = $g (manifest before=$b after=$a)"; fi
   done
 done
+
+# SCHEMA COMPATIBILITY OF THE ARTIFACT (R4). The fourth drill started an artifact built
+# at ef85a12 over a database whose newest migration (0051) required a source run lease
+# the artifact had never heard of: the reconstructed scheduled attempt was refused for
+# holding none. The bundle now records the migration ledger of the artifact's own
+# committed tree; the restored database's ledger must END at the same migration —
+# an artifact is not started over a schema it predates, and a database is not started
+# under an artifact that expects migrations it does not have.
+if [[ -n "$(jq -r '.build.migrations.last // empty' "$MANIFEST")" ]]; then
+  ART_LAST="$(jq -r '.build.migrations.last' "$MANIFEST")"; ART_N="$(jq -r '.build.migrations.count' "$MANIFEST")"
+  for db in $(jq -r '.databases[]' "$MANIFEST"); do
+    DB_LAST="$(rpsq "$db" "select max(filename) from public.schema_migrations")"
+    if [[ "$DB_LAST" == "$ART_LAST" ]]; then
+      check true "$db: the restored schema ends at $DB_LAST, the migration the artifact's tree ends at ($ART_N migrations at git $(cut -c1-12 <<<"$BUILD_SHA")) — compatible"
+    else
+      check false "$db: the restored schema ends at $DB_LAST but the artifact's tree ends at $ART_LAST — INCOMPATIBLE; the artifact is not started over this schema"
+      die "REFUSED: artifact/schema mismatch for $db ($DB_LAST vs $ART_LAST). Restore with the bundle taken from the commit whose migrations the database carries."
+    fi
+  done
+else
+  say "  note: this bundle records no migration ledger for its artifact (pre-R4); compatibility with the restored schema is not established"
+fi
 
 step "verification: audit chain (read-only re-computation of every partition; the app's verifyChain rules, without opening incidents)"
 cat > "$RROOT/work/verify-chain.mjs" <<'EOF'
@@ -1248,6 +1294,15 @@ else
   ATTEMPTS_AFTER="$(rpsq "$API_DB" "select count(*) from observation.scheduled_attempts")"
   check "$([[ "$(( ATTEMPTS_AFTER - ATTEMPTS_BEFORE ))" == "1" ]] && echo true || echo false)" \
     "exactly ONE attempt was recorded in this phase ($ATTEMPTS_BEFORE -> $ATTEMPTS_AFTER)"
+  # DISPATCH IS NOT COLLECTION (R4). The fourth drill counted the served-and-recorded
+  # tick as a pass while its outcome was `refused`: the reconstructed worker dispatched,
+  # governance refused, no egress happened, nothing was collected. That is scheduler
+  # reconstruction demonstrated and collection NOT demonstrated. So the tick's OUTCOME
+  # is a check of its own: only `finished` — the run opened under the source lease,
+  # made its authorised request, and recorded its admissions and no-ops — passes.
+  TICK_RUN_ITEMS="$(( $(jq -r '.items_admitted // 0' <<<"$TICK_JSON") + $(jq -r '.items_noop // 0' <<<"$TICK_JSON") ))"
+  check "$([[ "$TICK_OUTCOME" == "finished" ]] && echo true || echo false)" \
+    "the reconstructed scheduled collection COMPLETED: outcome $TICK_OUTCOME$([[ "$TICK_OUTCOME" == "finished" ]] && echo ", $TICK_RUN_ITEMS item(s) admitted or confirmed" || echo " ($(jq -r '.reason // ""' <<<"$TICK_JSON" | cut -c1-160))")"
 fi
 COUNTS="$(probe report)"
 say "  queue counts at the end of the phase: $(jq -c '.counts' <<<"$COUNTS")"

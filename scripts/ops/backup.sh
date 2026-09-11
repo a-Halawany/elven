@@ -10,6 +10,9 @@
 #   vault.tar                       .eye-local/vault/{quarantine,evidence}, paths relative to the repo root
 #   journal.tar                     the degraded-audit journals (demo + dev default dir)
 #   config/env                      a byte copy of .eye-local/env, mode 0600
+#   runtime-workspace.tar           the DEPENDENCY RECORD: the committed lockfile, the workspace/package manifests and
+#                                   packages/contracts/dist, so a restore without the build root installs the
+#                                   artifact's dependencies from the bundle itself (frozen lockfile) or refuses
 #   api-dist.tar                    the APPLICATION ARTIFACT: the apps/api/dist tree produced by this run's
 #                                   build, so the bundle carries the identified build, not a reference to one
 #   MANIFEST.json                   sha256 of every file, git HEAD, per-database counts and audit heads,
@@ -193,23 +196,28 @@ done
 
 # ------------------------------------------------- bundle directory (fresh)
 step "bundle directory (fresh; cleanup on failure is bound to the run manifest)"
+# The bundle directory is created BEFORE the run manifest exists (the manifest lives
+# inside it), so it is the one directory recorded after the fact — by the mkdir that
+# just succeeded here, with the inode that mkdir produced.
 V="$(ops_mkdir_fresh "bundle" "$B")" || die "$V"
 say "  $V"
-ops_run_init "$B/RUN.json" "backup.sh"
-ops_run_record dir "$B" "bundle"
 chmod 700 "$B"
+ops_run_init "$B/RUN.json" "backup.sh"
+jq --arg i "$B" --arg n "$(ops_inode "$B")" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '.created += [{kind:"dir", id:$i, detail:"bundle", inode:$n, at:$t}]' "$B/RUN.json" > "$B/RUN.json.tmp" && chmod 600 "$B/RUN.json.tmp" && mv "$B/RUN.json.tmp" "$B/RUN.json"
 cleanup_on_failure() {
-  # Only directories this run created (recorded in RUN.json) are removed; a
-  # partial bundle would otherwise leave a copy of the credentials behind.
+  # Only directories this run CREATED are removed — recorded by their creation
+  # (ops_run_create_dir) and still the same inode (ops_run_owned_dirs). A path
+  # this run merely named, or one replaced underneath it, is not its to remove.
+  # A partial bundle would otherwise leave a copy of the credentials behind.
   local d
-  for d in $(ops_run_ids dir | sort -r); do
-    [[ -d "$d" && ! -L "$d" ]] || continue
-    rm -rf "$d"; say "  removed partial $d (recorded in the run manifest)"
+  for d in $(ops_run_owned_dirs); do
+    rm -rf "$d"; say "  removed partial $d (created by this run; recorded in the run manifest)"
   done
 }
 trap 'rc=$?; if [[ $rc -ne 0 ]]; then step "failure (rc=$rc): removing what this run created"; cleanup_on_failure; fi; exit $rc' EXIT
-mkdir "$B/pg" "$B/config"
-ops_run_record dir "$B/pg" ""; ops_run_record dir "$B/config" ""
+V="$(ops_run_create_dir "bundle/pg" "$B/pg")" || die "$V"
+V="$(ops_run_create_dir "bundle/config" "$B/config")" || die "$V"
 say "  bundle: $B"
 say "  repository: $REPO @ $(git -C "$REPO" rev-parse HEAD) ($(git -C "$REPO" branch --show-current))"
 T0=$(now_s)
@@ -239,9 +247,14 @@ if [[ "${EYE_BACKUP_SKIP_BUILD:-0}" == "1" ]]; then
   DIST_MATCHES_RUNNING=null
 else
   say "  build root: $BUILD_ROOT (fresh; git archive of $(git -C "$REPO" rev-parse HEAD | cut -c1-12), then pnpm install --frozen-lockfile, then pnpm --filter @eye/api... build)"
-  # Recorded BEFORE the build runs, so a failed build leaves nothing behind either.
-  ops_run_record dir "$BUILD_ROOT" "build root"
-  BUILD_IDENTITY="$(node "$REPO/scripts/ops/build-identity.mjs" build --repo "$REPO" --root "$BUILD_ROOT")" \
+  # CREATED here — an atomic plain mkdir that fails if anything is at the path — and
+  # recorded only when that mkdir succeeded, so a failed build leaves nothing behind
+  # and a directory that already existed is refused WITHOUT ever becoming this run's
+  # to remove (R1). The builder is told the root is pre-created and verifies it is an
+  # empty directory owned by this user before writing into it.
+  V="$(ops_run_create_dir "build root" "$BUILD_ROOT" "build root")" || die "$V"
+  say "  $V"
+  BUILD_IDENTITY="$(node "$REPO/scripts/ops/build-identity.mjs" build --repo "$REPO" --root "$BUILD_ROOT" --root-precreated)" \
     || die "the build failed; the bundle is not created (see the output above)"
   say "  git sha:        $(jq -r '.git.sha' <<<"$BUILD_IDENTITY")  (worktree clean: $(jq -r '.git.worktree_clean' <<<"$BUILD_IDENTITY"))"
   if [[ "$(jq -r '.git.worktree_clean' <<<"$BUILD_IDENTITY")" != "true" ]]; then
@@ -269,6 +282,19 @@ else
   # The artifact travels WITH the bundle, so a restore is never left looking for it.
   tar -C "$(dirname "$(jq -r '.build.dist_path' <<<"$BUILD_IDENTITY")")" -cf "$B/api-dist.tar" dist
   say "  api-dist.tar    $(size "$B/api-dist.tar") bytes (the identified artifact travels with the bundle)"
+  # THE DEPENDENCIES TRAVEL AS THEIR RECORD (R4). A restore whose build root is gone
+  # used to run the bundled dist against the CHECKOUT's node_modules and merely report
+  # a different lockfile. The bundle now carries the runtime workspace — the committed
+  # lockfile, the workspace and package manifests, and the built workspace package the
+  # API imports — so restore.sh can `pnpm install --frozen-lockfile --prod` from the
+  # bundle's own record and refuse to launch when that install cannot be bound.
+  BUILD_SRC="$(jq -r '.build.source_root' <<<"$BUILD_IDENTITY")"
+  RT_FILES="pnpm-lock.yaml pnpm-workspace.yaml package.json apps/api/package.json packages/contracts/package.json packages/contracts/dist"
+  [[ ! -f "$BUILD_SRC/.npmrc" ]] || RT_FILES="$RT_FILES .npmrc"
+  for f in apps/web/package.json packages/tokens/package.json; do [[ ! -f "$BUILD_SRC/$f" ]] || RT_FILES="$RT_FILES $f"; done
+  # shellcheck disable=SC2086
+  tar -C "$BUILD_SRC" -cf "$B/runtime-workspace.tar" $RT_FILES
+  say "  runtime-workspace.tar $(size "$B/runtime-workspace.tar") bytes (lockfile sha256 $(jq -r '.lockfile.sha256' <<<"$BUILD_IDENTITY"), workspace manifests, packages/contracts/dist)"
   if [[ "${EYE_BACKUP_PRUNE_BUILD:-0}" == "1" ]]; then
     rm -rf "$BUILD_ROOT/src"
     say "  EYE_BACKUP_PRUNE_BUILD=1: the checkout and its node_modules are removed; $BUILD_ROOT keeps only BUILD_IDENTITY.json and DIST_ENTRIES.json"
@@ -502,6 +528,7 @@ step "MANIFEST.json"
 FILES_JSON="{}"
 SEALED_FILES="pg/eye.dump,pg/eye_demo.dump,pg/globals.sql,vault.tar,journal.tar,config/env"
 [[ ! -f "$B/api-dist.tar" ]] || SEALED_FILES="$SEALED_FILES,api-dist.tar"
+[[ ! -f "$B/runtime-workspace.tar" ]] || SEALED_FILES="$SEALED_FILES,runtime-workspace.tar"
 for f in ${SEALED_FILES//,/ }; do
   FILES_JSON="$(jq -c --arg f "$f" --arg s "$(sha "$B/$f")" --argjson b "$(size "$B/$f")" '. + {($f): {sha256:$s, bytes:$b}}' <<<"$FILES_JSON")"
 done
