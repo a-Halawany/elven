@@ -1,0 +1,7 @@
+3,8d2
+< CVE-2026-53612	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53613	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53614	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-76642	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-78408	setpriv	2.41.4-r0	2.41.6-r1	HIGH
+< CVE-2026-78410	setpriv	2.41.4-r0	2.41.6-r0	HIGH

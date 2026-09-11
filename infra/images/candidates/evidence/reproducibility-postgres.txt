@@ -1,0 +1,6 @@
+== postgres reproducibility (Id, Created, last-layer diffid)
+eye-cand-postgres:18-alpine-util-linux  Id=sha256:e7f664f7307a4bad72661c0ce0354f99903f814962c29819e069c4abaacf9b11  Created=2026-09-09T19:38:33.386424889Z  lastLayer=sha256:10112d309577ca2de67eb0a32f52530c1e841b2bd76dfba2f8656dd956860f79
+eye-cand-postgres:rebuild2  Id=sha256:bf2c1c43b4b1fca6301fdca1ff78ceb191301177cf4de58c20eec8dc5bb46083  Created=2026-09-09T19:41:16.078141505Z  lastLayer=sha256:18fbcf53728870c980a3783884e326ab795f42e719072d72d3bd388444e34d8a
+eye-cand-postgres:sde-a  Id=sha256:ab3e95e16f34b0ae1a6353cbeccbb0a487eadcbd139ccd2496b2b863ecc4cf73  Created=1970-01-01T00:00:00Z  lastLayer=sha256:5938c7a5312bf1141f9a19f73963f228a0ea81dc1733a1224e3643a8526125e4
+eye-cand-postgres:sde-b  Id=sha256:70ac96b98b54eafc730a906886a4a5f87ee0273851a1a0ebbe337fec664c8d6f  Created=1970-01-01T00:00:00Z  lastLayer=sha256:9796fadd2c3a4065ff8ea5a90def1b5ca304f9a0fc1784c727aaf76751d56af6
+-- layer-content check: extract the new layer of build1 vs rebuild2 and list mtimes/sha of changed files

@@ -1,0 +1,3 @@
+postgres: package api HTTP 200 visibility=public repository=a-Halawany/elven anonymous-manifest HTTP 200
+redis: package api HTTP 200 visibility=public repository=a-Halawany/elven anonymous-manifest HTTP 200
+both packages are publicly readable (anonymous manifest fetch succeeded for each)

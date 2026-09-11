@@ -1,0 +1,17 @@
+# Licences of the changed components (CycloneDX SBOM, trivy 0.73.0), base -> v2
+## postgres (linux/amd64 and linux/arm64 identical)
+c-ares@1.34.6-r0	library	MIT
+libcrypto3@3.5.7-r0	library	Apache-2.0
+libssl3@3.5.7-r0	library	Apache-2.0
+libuuid@2.42.1-r0	library	BSD-3-Clause
+c-ares@1.34.8-r0	library	MIT
+libcrypto3@3.5.8-r0	library	Apache-2.0
+libssl3@3.5.8-r0	library	Apache-2.0
+libuuid@2.42.3-r1	library	BSD-3-Clause
+## redis
+libcrypto3@3.5.7-r0	library	Apache-2.0
+libssl3@3.5.7-r0	library	Apache-2.0
+setpriv@2.41.4-r0	library	GPL-2.0-or-later
+libcrypto3@3.5.8-r0	library	Apache-2.0
+libssl3@3.5.8-r0	library	Apache-2.0
+setpriv@2.41.6-r1	library	GPL-2.0-or-later

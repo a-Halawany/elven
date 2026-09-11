@@ -29,7 +29,7 @@ export const BUNDLED_PACKAGE = '@img/sharp-libvips-linux-x64';
  * inventory, patent record, build recipe and source offers were the reviewed ones.  Without it,
  * changing LGPL to MIT or replacing an upstream with attacker.example was self-consistent.
  */
-export const BUNDLED_MANIFEST_SHA256 = 'd06e6165c0178033dd3301c01c5e9f41923814dadc74b72c0518305951f64b49';
+export const BUNDLED_MANIFEST_SHA256 = 'e2abe5e207ecdc7892c8a511ad89b0a9f02b001db8f23e8b5770cd278f999f72';
 /** README name -> versions.json key, where they differ. `null` = not independently versioned. */
 export const KEY_ALIASES = Object.freeze({
   libarchive: 'archive', libexif: 'exif', libffi: 'ffi', libheif: 'heif',
@@ -41,14 +41,14 @@ export const KEY_ALIASES = Object.freeze({
 /** Identity and build facts independently read from the published package and reviewed recipe. */
 export const BUNDLED_PACKAGE_CONTRACT = Object.freeze({
   name: BUNDLED_PACKAGE,
-  version: '1.3.2',
-  purl: 'pkg:npm/%40img/sharp-libvips-linux-x64@1.3.2',
+  version: '1.3.3',
+  purl: 'pkg:npm/%40img/sharp-libvips-linux-x64@1.3.3',
   declared_license: 'LGPL-3.0-or-later',
   author: 'Lovell Fuller <npm@lovell.info>',
   repository: 'https://github.com/lovell/sharp-libvips',
   directory: 'npm/linux-x64',
-  tag: 'v1.3.2',
-  commit: '4da6d14c0d59866adfb9d8cf52bcaa53846dc4f6',
+  tag: 'v1.3.3',
+  commit: '6e5971d333377743163edc3ad9e5d0b897abcbc9',
 });
 
 /**
@@ -105,41 +105,41 @@ const legal = (path, bytes, sha256, source_url, role = 'licence-and-attribution'
 
 export const BUNDLED_LEGAL_FILES = Object.freeze({
   aom: Object.freeze([
-    legal('vendor/sharp-libvips/1.3.2/legal/aom/LICENSE', 1316, '4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2', 'https://aomedia.googlesource.com/aom/+/03087864cf4bea6abb0d28f95cf7843511413d8f/LICENSE'),
-    legal('vendor/sharp-libvips/1.3.2/legal/aom/PATENTS', 5701, '661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61', 'https://aomedia.googlesource.com/aom/+/03087864cf4bea6abb0d28f95cf7843511413d8f/PATENTS', 'patent-grant'),
+    legal('vendor/sharp-libvips/1.3.3/legal/aom/LICENSE', 1316, '4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/LICENSE'),
+    legal('vendor/sharp-libvips/1.3.3/legal/aom/PATENTS', 5701, '661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/PATENTS', 'patent-grant'),
   ]),
   cairo: Object.freeze([
-    legal('vendor/sharp-libvips/1.3.2/legal/cairo/COPYING', 1576, '67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING'),
-    legal('vendor/sharp-libvips/1.3.2/legal/cairo/COPYING-LGPL-2.1', 26533, '9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-LGPL-2.1'),
-    legal('vendor/sharp-libvips/1.3.2/legal/cairo/COPYING-MPL-1.1', 25755, '53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-MPL-1.1'),
+    legal('vendor/sharp-libvips/1.3.3/legal/cairo/COPYING', 1576, '67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING'),
+    legal('vendor/sharp-libvips/1.3.3/legal/cairo/COPYING-LGPL-2.1', 26533, '9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-LGPL-2.1'),
+    legal('vendor/sharp-libvips/1.3.3/legal/cairo/COPYING-MPL-1.1', 25755, '53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-MPL-1.1'),
   ]),
-  cgif: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/cgif/LICENSE', 1099, '7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d', 'https://github.com/dloebl/cgif/blob/v0.5.3/LICENSE')]),
-  expat: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/expat/COPYING', 1144, '31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87', 'https://github.com/libexpat/libexpat/blob/R_2_8_2/expat/COPYING')]),
-  fontconfig: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/fontconfig/COPYING', 8616, '51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067', 'https://gitlab.freedesktop.org/fontconfig/fontconfig/-/blob/2.18.1/COPYING')]),
-  freetype: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/freetype/FTL.TXT', 6743, '5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f', 'https://github.com/freetype/freetype/blob/VER-2-14-3/docs/FTL.TXT')]),
-  fribidi: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/fribidi/COPYING', 26440, '32434afcc8666ba060e111d715bfdb6c2d5dd8a35fa4d3ab8ad67d8f850d2f2b', 'https://github.com/fribidi/fribidi/blob/v1.0.16/COPYING')]),
-  glib: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/glib/LGPL-2.1-or-later.txt', 25967, 'fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb', 'https://gitlab.gnome.org/GNOME/glib/-/blob/2.89.1/LICENSES/LGPL-2.1-or-later.txt')]),
-  harfbuzz: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/harfbuzz/COPYING', 1971, 'ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64', 'https://github.com/harfbuzz/harfbuzz/blob/14.2.1/COPYING')]),
-  highway: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/highway/LICENSE', 20785, 'e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af', 'https://github.com/google/highway/blob/1.4.0/LICENSE')]),
-  lcms: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/lcms/LICENSE', 1080, '6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31', 'https://github.com/mm2/Little-CMS/blob/lcms2.19.1/LICENSE')]),
-  libarchive: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libarchive/COPYING', 3089, '30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229', 'https://github.com/libarchive/libarchive/blob/v3.8.8/COPYING')]),
-  libexif: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libexif/COPYING', 26434, '36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89', 'https://github.com/libexif/libexif/blob/v0.6.26/COPYING')]),
-  libffi: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libffi/LICENSE', 1132, 'd5699fa516968e3a1550e6c902b7441c78856f2603d61bedd0b0662a26655366', 'https://github.com/libffi/libffi/blob/v3.6.0/LICENSE')]),
-  libheif: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libheif/COPYING', 44366, 'fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596', 'https://github.com/strukturag/libheif/blob/v1.23.1/COPYING')]),
-  libimagequant: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libimagequant/COPYRIGHT', 1851, '7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99', 'https://github.com/lovell/libimagequant/blob/v2.4.1/COPYRIGHT')]),
-  libnsgif: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libnsgif/COPYING', 1133, '1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c', 'https://github.com/libvips/libvips/blob/v8.18.3/libvips/foreign/libnsgif/COPYING')]),
-  libpng: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libpng/LICENSE', 5345, 'bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526', 'https://github.com/pnggroup/libpng/blob/v1.6.58/LICENSE')]),
-  librsvg: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/librsvg/COPYING.LIB', 26530, 'dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551', 'https://gitlab.gnome.org/GNOME/librsvg/-/blob/2.62.90/COPYING.LIB')]),
-  libtiff: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libtiff/LICENSE.md', 2416, '0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade', 'https://gitlab.com/libtiff/libtiff/-/blob/d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d/LICENSE.md')]),
-  libultrahdr: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libultrahdr/LICENSE', 12566, 'c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316', 'https://github.com/google/libultrahdr/blob/1acdbed8c712e6923ebf9de4e7c8d8dda06509e9/LICENSE')]),
-  libvips: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libvips/LICENSE', 26530, 'dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551', 'https://github.com/libvips/libvips/blob/v8.18.3/LICENSE')]),
-  libwebp: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libwebp/COPYING', 1496, '5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf', 'https://github.com/webmproject/libwebp/blob/v1.6.0/COPYING')]),
-  libxml2: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/libxml2/Copyright', 1314, '5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626', 'https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.3/Copyright')]),
-  mozjpeg: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/mozjpeg/LICENSE.md', 5620, '96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430', 'https://github.com/mozilla/mozjpeg/blob/08265790774cd0714832c9e675522acbe5581437/LICENSE.md')]),
-  pango: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/pango/COPYING', 25292, 'd245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5', 'https://gitlab.gnome.org/GNOME/pango/-/blob/1.58.0/COPYING')]),
-  pixman: Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/pixman/COPYING', 2087, 'fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793', 'https://gitlab.freedesktop.org/pixman/pixman/-/blob/pixman-0.46.4/COPYING')]),
-  'proxy-libintl': Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/proxy-libintl/COPYING', 25292, 'd245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5', 'https://github.com/frida/proxy-libintl/blob/0.5/COPYING')]),
-  'zlib-ng': Object.freeze([legal('vendor/sharp-libvips/1.3.2/legal/zlib-ng/LICENSE.md', 867, '6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee', 'https://github.com/zlib-ng/zlib-ng/blob/2.3.3/LICENSE.md')]),
+  cgif: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/cgif/LICENSE', 1099, '7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d', 'https://github.com/dloebl/cgif/blob/v0.5.3/LICENSE')]),
+  expat: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/expat/COPYING', 1144, '31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87', 'https://github.com/libexpat/libexpat/blob/R_2_8_3/expat/COPYING')]),
+  fontconfig: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/fontconfig/COPYING', 8616, '51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067', 'https://gitlab.freedesktop.org/fontconfig/fontconfig/-/blob/2.18.3/COPYING')]),
+  freetype: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/freetype/FTL.TXT', 6743, '5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f', 'https://github.com/freetype/freetype/blob/VER-2-14-3/docs/FTL.TXT')]),
+  fribidi: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/fribidi/COPYING', 26440, '32434afcc8666ba060e111d715bfdb6c2d5dd8a35fa4d3ab8ad67d8f850d2f2b', 'https://github.com/fribidi/fribidi/blob/v1.0.16/COPYING')]),
+  glib: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/glib/LGPL-2.1-or-later.txt', 25967, 'fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb', 'https://gitlab.gnome.org/GNOME/glib/-/blob/2.89.4/LICENSES/LGPL-2.1-or-later.txt')]),
+  harfbuzz: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/harfbuzz/COPYING', 1971, 'ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64', 'https://github.com/harfbuzz/harfbuzz/blob/14.3.1/COPYING')]),
+  highway: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/highway/LICENSE', 20785, 'e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af', 'https://github.com/google/highway/blob/1.4.0/LICENSE')]),
+  lcms: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/lcms/LICENSE', 1080, '6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31', 'https://github.com/mm2/Little-CMS/blob/lcms2.19.1/LICENSE')]),
+  libarchive: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libarchive/COPYING', 3089, '30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229', 'https://github.com/libarchive/libarchive/blob/v3.8.9/COPYING')]),
+  libexif: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libexif/COPYING', 26434, '36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89', 'https://github.com/libexif/libexif/blob/v0.6.26/COPYING')]),
+  libffi: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libffi/LICENSE', 1132, '17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c', 'https://github.com/libffi/libffi/blob/v3.8.0/LICENSE')]),
+  libheif: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libheif/COPYING', 44366, 'fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596', 'https://github.com/strukturag/libheif/blob/v1.23.2/COPYING')]),
+  libimagequant: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libimagequant/COPYRIGHT', 1851, '7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99', 'https://github.com/lovell/libimagequant/blob/v2.4.1/COPYRIGHT')]),
+  libnsgif: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libnsgif/COPYING', 1133, '1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c', 'https://github.com/libvips/libvips/blob/v8.18.6/libvips/foreign/libnsgif/COPYING')]),
+  libpng: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libpng/LICENSE', 5345, 'bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526', 'https://github.com/pnggroup/libpng/blob/v1.6.58/LICENSE')]),
+  librsvg: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/librsvg/COPYING.LIB', 26530, 'dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551', 'https://gitlab.gnome.org/GNOME/librsvg/-/blob/2.62.91/COPYING.LIB')]),
+  libtiff: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libtiff/LICENSE.md', 2416, '0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade', 'https://gitlab.com/libtiff/libtiff/-/blob/v4.7.2/LICENSE.md')]),
+  libultrahdr: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libultrahdr/LICENSE', 12566, 'c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316', 'https://github.com/google/libultrahdr/blob/v2.0.2/LICENSE')]),
+  libvips: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libvips/LICENSE', 26530, 'dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551', 'https://github.com/libvips/libvips/blob/v8.18.6/LICENSE')]),
+  libwebp: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libwebp/COPYING', 1496, '5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf', 'https://github.com/webmproject/libwebp/blob/v1.6.0/COPYING')]),
+  libxml2: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/libxml2/Copyright', 1314, '5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626', 'https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.3/Copyright')]),
+  mozjpeg: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/mozjpeg/LICENSE.md', 5620, '96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430', 'https://github.com/mozilla/mozjpeg/blob/08265790774cd0714832c9e675522acbe5581437/LICENSE.md')]),
+  pango: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/pango/COPYING', 25292, 'd245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5', 'https://gitlab.gnome.org/GNOME/pango/-/blob/1.58.0/COPYING')]),
+  pixman: Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/pixman/COPYING', 2087, 'fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793', 'https://gitlab.freedesktop.org/pixman/pixman/-/blob/pixman-0.46.4/COPYING')]),
+  'proxy-libintl': Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/proxy-libintl/COPYING', 25292, 'd245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5', 'https://github.com/frida/proxy-libintl/blob/0.5/COPYING')]),
+  'zlib-ng': Object.freeze([legal('vendor/sharp-libvips/1.3.3/legal/zlib-ng/LICENSE.md', 867, '6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee', 'https://github.com/zlib-ng/zlib-ng/blob/2.3.3/LICENSE.md')]),
 });
 
 // Compatibility name for the notices generator and existing callers. These are upstream files,
@@ -493,9 +493,9 @@ export function verifyBundledComponents(root, { texts = new Map() } = {}) {
 
   // There may be no unbound file hiding beside the reviewed set. Enumerate the vendor closure in
   // the opposite direction; this also makes a newly-added legal sidecar a blocking review event.
-  const vendorLegalRoot = join(root, 'vendor', 'sharp-libvips', '1.3.2', 'legal');
+  const vendorLegalRoot = join(root, 'vendor', 'sharp-libvips', '1.3.3', 'legal');
   const actualLegalPaths = [];
-  const enumerateLegal = (at, rel = 'vendor/sharp-libvips/1.3.2/legal') => {
+  const enumerateLegal = (at, rel = 'vendor/sharp-libvips/1.3.3/legal') => {
     let entries;
     try { entries = readdirSync(at, { withFileTypes: true }); } catch (e) {
       problems.push(`C17 bundled legal root cannot be enumerated: ${e instanceof Error ? e.message : e}`);

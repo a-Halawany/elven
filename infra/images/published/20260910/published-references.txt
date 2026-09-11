@@ -1,0 +1,2 @@
+ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7
+ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15

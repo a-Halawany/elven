@@ -1,0 +1,12 @@
+== registry (compressed) size of the base children, from their OCI manifests (docker buildx imagetools inspect --raw, read-only)
+postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b: 9 layers, compressed layers total 119974201 bytes (114.4 MiB), config 8509 bytes
+postgres@sha256:122c9942437efcbbb8d595fc578dee7d26ee1543c2a8634d183adfa4a1e55b4d: 9 layers, compressed layers total 117805452 bytes (112.3 MiB), config 8523 bytes
+redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a: 7 layers, compressed layers total 39003587 bytes (37.2 MiB), config 6833 bytes
+redis@sha256:0f8941c253cc39d98439a608dcb4f0a840b54421cc5109a68c72b2d2d223cea5: 7 layers, compressed layers total 38667183 bytes (36.9 MiB), config 6855 bytes
+   (b6a16ed0 = postgres linux/amd64 child; 122c9942 = postgres linux/arm64 child; a6a88248 = redis linux/amd64 child; 0f8941c2 = redis linux/arm64 child)
+
+== v2 images: uncompressed size (docker inspect .Size) and the added layer's size as saved and gzip -6 compressed
+eye-cand2-postgres:amd64: uncompressed image 310006109 bytes (295.6 MiB); added layer as saved 6444544 bytes [POSIX tar archive]; gzip -6 of it 2523570 bytes (2.40 MiB)
+eye-cand2-postgres:18-alpine-maint: uncompressed image 304110774 bytes (290.0 MiB); added layer as saved 6273024 bytes [POSIX tar archive]; gzip -6 of it 2821657 bytes (2.69 MiB)
+eye-cand2-redis:amd64: uncompressed image 124772857 bytes (118.9 MiB); added layer as saved 6176256 bytes [POSIX tar archive]; gzip -6 of it 2405246 bytes (2.29 MiB)
+eye-cand2-redis:8-alpine-maint: uncompressed image 124286533 bytes (118.5 MiB); added layer as saved 5980160 bytes [POSIX tar archive]; gzip -6 of it 2699041 bytes (2.57 MiB)

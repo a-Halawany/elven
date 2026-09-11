@@ -1,0 +1,71 @@
+== gosu byte identity: sha256 of /usr/local/bin/gosu inside each image (docker run --rm, read-only check)
+linux/amd64 base postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b
+    52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
+    1769900 bytes mtime=1783446242
+    1.19 (go1.24.6 on linux/amd64; gc)
+linux/amd64 v1 eye-cand-postgres:amd64
+    52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
+    1769900 bytes mtime=1783446242
+    1.19 (go1.24.6 on linux/amd64; gc)
+linux/amd64 v2 eye-cand2-postgres:amd64
+    52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
+    1769900 bytes mtime=1783446242
+    1.19 (go1.24.6 on linux/amd64; gc)
+linux/arm64 base postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
+    1830424 bytes mtime=1783446211
+    1.19 (go1.24.6 on linux/arm64; gc)
+linux/arm64 v1 eye-cand-postgres:18-alpine-util-linux
+    3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
+    1830424 bytes mtime=1783446211
+    1.19 (go1.24.6 on linux/arm64; gc)
+linux/arm64 v2 eye-cand2-postgres:18-alpine-maint
+    3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44
+    1830424 bytes mtime=1783446211
+    1.19 (go1.24.6 on linux/arm64; gc)
+
+== SCX-0004/0005 bound binary sha256: 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (linux/amd64 child b6a16ed0)
+
+== gosu finding set (target usr/local/bin/gosu): base vs v1 vs v2, per platform (CVE, pkg, installed, fixed, severity, purl)
+amd64: base=22 v1=22 v2=22
+  base -> v2: IDENTICAL finding set
+  v1 -> v2: IDENTICAL finding set
+arm64: base=22 v1=22 v2=22
+  base -> v2: IDENTICAL finding set
+  v1 -> v2: IDENTICAL finding set
+v2 amd64 vs arm64 gosu finding set: IDENTICAL
+
+== v2 amd64 gosu findings as the gate would see them (advisory, severity, purl, target) and the SCX record that governs each today
+CVE-2025-68121	CRITICAL	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0003	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2025-61726	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2025-61729	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-25679	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-27145	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-32280	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-32281	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-32283	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-33811	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-33814	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-33818	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-39820	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-39821	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0004	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-39822	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-39836	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-42499	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-42504	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0002	RISK_ACCEPTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-56853	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-56858	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-56859	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-56860	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+CVE-2026-56862	HIGH	pkg:golang/stdlib@v1.24.6	usr/local/bin/gosu	SCX-0005	NOT_AFFECTED	purl=OK target=OK sev=OK ver=OK pkg=OK image=OLD-PIN(9a8afca5)
+
+== records that would match NOTHING on v2 (their finding is fixed): unused records fail the gate
+SCX-0001	c-ares	RISK_ACCEPTED	advisories=1	still-present-on-v2=0	UNUSED on v2 -> must be deleted
+SCX-0002	stdlib	RISK_ACCEPTED	advisories=14	still-present-on-v2=14	still needed
+SCX-0003	stdlib	RISK_ACCEPTED	advisories=1	still-present-on-v2=1	still needed
+SCX-0004	stdlib	NOT_AFFECTED	advisories=1	still-present-on-v2=1	still needed
+SCX-0005	stdlib	NOT_AFFECTED	advisories=6	still-present-on-v2=6	still needed
+SCX-0006	libcrypto3	RISK_ACCEPTED	advisories=1	still-present-on-v2=0	UNUSED on v2 -> must be deleted
+SCX-0007	libssl3	RISK_ACCEPTED	advisories=1	still-present-on-v2=0	UNUSED on v2 -> must be deleted
+SCX-0008	libcrypto3	RISK_ACCEPTED	advisories=1	still-present-on-v2=0	UNUSED on v2 -> must be deleted
+SCX-0009	libssl3	RISK_ACCEPTED	advisories=1	still-present-on-v2=0	UNUSED on v2 -> must be deleted
