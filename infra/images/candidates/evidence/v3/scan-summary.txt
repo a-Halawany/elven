@@ -1,0 +1,24 @@
+# trivy Version: 0.73.0 image scan, --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignorefile /dev/null --no-progress --skip-version-check
+# 2026-09-10T08:06:15Z
+v3-postgres-arm64: rc=0 vulns=22 secrets=0 misconfigurations=0 image_id=sha256:ee4fc649fb6a1a09a7ecc44722e06e93fdefb976955e69d77a782fc7386fe338 targets=eye-cand3-postgres:18-alpine-maint (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+  gosu rows: 22; non-gosu rows: 0
+  finding set v3 == v2 (/Users/halawany/work/personal/mohammed/new_project/infra/images/candidates/evidence/v2/vulns-v2-postgres-arm64.tsv): IDENTICAL (22 rows)
+  coverage lines (stderr): 3/3
+v3-postgres-amd64: rc=0 vulns=22 secrets=0 misconfigurations=0 image_id=sha256:7fbf192f83bd8ce6770dbcf1b7952b1bab4754dc487fcfd56e223f406ea51ab8 targets=eye-cand3-postgres:amd64 (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+  gosu rows: 22; non-gosu rows: 0
+  finding set v3 == v2 (/Users/halawany/work/personal/mohammed/new_project/infra/images/candidates/evidence/v2/vulns-v2-postgres-amd64.tsv): IDENTICAL (22 rows)
+  coverage lines (stderr): 3/3
+v3-redis-arm64: rc=0 vulns=0 secrets=0 misconfigurations=0 image_id=sha256:7edbdeac8859419f170f7059c57325d1517de7be8402d5ef0d827f7584b16ed2 targets=eye-cand3-redis:8-alpine-maint (alpine 3.23.5)[os-pkgs]
+  gosu rows: 0; non-gosu rows: 0
+  finding set v3 == v2 (/Users/halawany/work/personal/mohammed/new_project/infra/images/candidates/evidence/v2/vulns-v2-redis-arm64.tsv): IDENTICAL (0 rows)
+  coverage lines (stderr): 3/3
+v3-redis-amd64: rc=0 vulns=0 secrets=0 misconfigurations=0 image_id=sha256:16ec77e6431c2d50ff394a8fb822be2c545394a7d4ecd306c754f0d73902e236 targets=eye-cand3-redis:amd64 (alpine 3.23.5)[os-pkgs]
+  gosu rows: 0; non-gosu rows: 0
+  finding set v3 == v2 (/Users/halawany/work/personal/mohammed/new_project/infra/images/candidates/evidence/v2/vulns-v2-redis-amd64.tsv): IDENTICAL (0 rows)
+  coverage lines (stderr): 3/3
+--- installed versions of the pinned packages, read from the v3 SBOM-equivalent (trivy json .Results os-pkgs Packages)
+v3-postgres-arm64: c-ares=1.34.8-r0 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1
+v3-postgres-amd64: c-ares=1.34.8-r0 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 libuuid=2.42.3-r1
+v3-redis-arm64: libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 setpriv=2.41.6-r1
+v3-redis-amd64: libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 setpriv=2.41.6-r1
+scan rc=0

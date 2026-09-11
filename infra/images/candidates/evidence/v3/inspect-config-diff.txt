@@ -1,0 +1,48 @@
+===== postgres-arm64  base=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15  v3=eye-cand3-postgres:18-alpine-maint
+--- identity
+sha256:db676a0ed906c00f55020fb8999e4fb30c598bf5c3b5c188630aef2812d3f11d linux/arm64 User=""
+sha256:ee4fc649fb6a1a09a7ecc44722e06e93fdefb976955e69d77a782fc7386fe338 linux/arm64 User="postgres"
+--- full .Config diff (base -> v3), jq -S, all keys
+21a22
+>   "User": "postgres",
+--- docker history (v3), newest first
+0B	USER postgres
+6.25MB	RUN /bin/sh -c apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  && apk list -I libuuid    | grep -q '^libuuid-
+0B	CMD ["postgres"]
+
+===== postgres-amd64  base=postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b  v3=eye-cand3-postgres:amd64
+--- identity
+sha256:bd1890816ae0b8ad4644f05728570d4be774e1f1490d7232f5084b52ea335183 linux/amd64 User=""
+sha256:7fbf192f83bd8ce6770dbcf1b7952b1bab4754dc487fcfd56e223f406ea51ab8 linux/amd64 User="postgres"
+--- full .Config diff (base -> v3), jq -S, all keys
+21a22
+>   "User": "postgres",
+--- docker history (v3), newest first
+0B	USER postgres
+6.42MB	RUN /bin/sh -c apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  && apk list -I libuuid    | grep -q '^libuuid-
+0B	CMD ["postgres"]
+
+===== redis-arm64  base=redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241  v3=eye-cand3-redis:8-alpine-maint
+--- identity
+sha256:fbe100e8c73fa3ceb2cb5c357c390d5b8c898591fc693590aa68dac219ae8ae1 linux/arm64 User=""
+sha256:7edbdeac8859419f170f7059c57325d1517de7be8402d5ef0d827f7584b16ed2 linux/arm64 User="redis"
+--- full .Config diff (base -> v3), jq -S, all keys
+14a15
+>   "User": "redis",
+--- docker history (v3), newest first
+0B	USER redis
+5.96MB	RUN /bin/sh -c apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  && apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  && a
+0B	CMD ["redis-server"]
+
+===== redis-amd64  base=redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a  v3=eye-cand3-redis:amd64
+--- identity
+sha256:cc48e0fe25c0095fb69b711b6c110b3801e7b30189e14358a5f16d4a747c9ec0 linux/amd64 User=""
+sha256:16ec77e6431c2d50ff394a8fb822be2c545394a7d4ecd306c754f0d73902e236 linux/amd64 User="redis"
+--- full .Config diff (base -> v3), jq -S, all keys
+14a15
+>   "User": "redis",
+--- docker history (v3), newest first
+0B	USER redis
+6.15MB	RUN /bin/sh -c apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  && apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  && a
+0B	CMD ["redis-server"]
+

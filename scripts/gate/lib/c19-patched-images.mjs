@@ -1,7 +1,17 @@
 /**
- * Decide whether an official image has been REBUILT with a fixed package.
+ * Decide whether an OFFICIAL image has been REBUILT with the fixed packages this repository needed.
  *
- * Two earlier versions of this were wrong in instructive ways.
+ * ── PURPOSE (2026-09-10) ─────────────────────────────────────────────────────────
+ * The service images are TEMPORARILY pinned to derived maintenance builds
+ * (`ghcr.io/a-halawany/elven/{postgres,redis}`, docs/images/DERIVED_IMAGES_APPROVAL.md) because no
+ * official `postgres:18-alpine` / `redis:8-alpine` build carried the util-linux, OpenSSL and c-ares
+ * fixes. That route ends the day a COMPATIBLE FIXED OFFICIAL image exists for a service — on BOTH
+ * `linux/amd64` and `linux/arm64` — and the recheck is what notices it. It reports; it re-pins
+ * nothing and deletes no evidence. The return to an official image is a governed operation
+ * (re-pin, re-issue or retire the SCX records that name the image, regenerate evidence, FINAL chain).
+ *
+ * ── WHY THE MODEL LOOKS LIKE THIS ────────────────────────────────────────────────
+ * Two earlier versions were wrong in instructive ways.
  *
  * The first asked a scanner for HIGH/CRITICAL findings and read "no finding" as "patched". Severity
  * is an advisory database's editorial judgement and it changes; reading a reclassification as a fix
@@ -13,30 +23,115 @@
  * while they are squarely inside their own affected ranges, and it calls 3.4.x "affected" because
  * it sorts below, when that branch predates the QUIC listener entirely.
  *
- * So the model is the advisory's actual shape: half-open ranges per branch. A version is affected
- * iff it falls inside one of them.
+ * So the model is each advisory's actual shape: half-open ranges, `introduced` inclusive, `fixed`
+ * exclusive. A version is affected iff it falls inside one of them. Where a fix landed in an Alpine
+ * package REVISION (util-linux: CVE-2026-78408 is fixed one revision after its siblings), the range
+ * names the revision and the comparison is revision-aware; where it did not, the base decides.
  */
 
+/** The platforms a compatible official image must qualify on. Both — the derived images ship both. */
+export const PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64']);
+
 /**
- * OpenSSL's published affected ranges for CVE-2026-14456. `introduced` is inclusive, `fixed` is
- * exclusive - the shape the advisory itself uses.
+ * OpenSSL's published affected ranges for CVE-2026-14456. Upstream ranges: a distribution that
+ * backported the fix into an earlier revision — say `3.5.7-r1` — still reads as affected here. That
+ * is the conservative direction: it keeps a service on the derived image a little longer rather
+ * than declaring an official image fixed that is not.
  */
-export const RECHECK_SPEC = Object.freeze({
+export const OPENSSL_FIX = Object.freeze({
+  id: 'openssl',
   advisory: 'CVE-2026-14456',
+  advisories: Object.freeze(['CVE-2026-14456']),
   packages: Object.freeze(['libcrypto3', 'libssl3']),
   ranges: Object.freeze([
     Object.freeze({ introduced: '3.5.0', fixed: '3.5.8' }),
     Object.freeze({ introduced: '3.6.0', fixed: '3.6.4' }),
     Object.freeze({ introduced: '4.0.0', fixed: '4.0.2' }),
   ]),
-  tags: Object.freeze(['postgres:18-alpine', 'redis:8-alpine']),
-  /**
-   * The ranges are UPSTREAM. A distribution that backported the fix into an earlier revision - say
-   * `3.5.7-r1` - still reads as affected here. That is the conservative direction: it keeps an
-   * acceptance in force that could have been retired, rather than retiring one that should stand.
-   */
   note: 'upstream ranges; a distribution backport reads as affected, which fails safe',
 });
+
+/**
+ * util-linux (CVE-2026-53612 family), 2026-09: seven HIGH advisories against `libuuid` in
+ * `postgres:18-alpine` (Alpine 3.24, fixed in 2.42.3-r0 / -r1) and `setpriv` in `redis:8-alpine`
+ * (Alpine 3.23, fixed in 2.41.6-r0 / -r1). Alpine PACKAGE versions, revision included:
+ * CVE-2026-78408 is fixed one revision later than its siblings, so `2.42.3-r0` is still affected and
+ * only `-r1` is clear.
+ */
+const UTIL_LINUX_ADVISORIES = Object.freeze([
+  'CVE-2026-53612', 'CVE-2026-53613', 'CVE-2026-53614', 'CVE-2026-76642',
+  'CVE-2026-78408', 'CVE-2026-78409', 'CVE-2026-78410',
+]);
+const UTIL_LINUX_RANGES = Object.freeze([
+  Object.freeze({ introduced: '2.42.0', fixed: '2.42.3-r1' }), // Alpine 3.24
+  Object.freeze({ introduced: '2.41.0', fixed: '2.41.6-r1' }), // Alpine 3.22 / 3.23
+]);
+export const UTIL_LINUX_POSTGRES_FIX = Object.freeze({
+  id: 'util-linux/postgres',
+  advisory: 'CVE-2026-53612',
+  advisories: UTIL_LINUX_ADVISORIES,
+  packages: Object.freeze(['libuuid']),
+  ranges: UTIL_LINUX_RANGES,
+  note: 'Alpine package ranges, revision-aware',
+});
+export const UTIL_LINUX_REDIS_FIX = Object.freeze({
+  id: 'util-linux/redis',
+  advisory: 'CVE-2026-53612',
+  advisories: UTIL_LINUX_ADVISORIES,
+  packages: Object.freeze(['setpriv']),
+  ranges: UTIL_LINUX_RANGES,
+  note: 'Alpine package ranges, revision-aware',
+});
+
+/**
+ * c-ares (CVE-2026-33630), postgres only: fixed in 1.34.8 (Alpine 1.34.8-r0). `introduced: '0'`
+ * because every earlier 1.34.x the official image has shipped is affected and the conservative
+ * reading of an unknown lower bound is "affected".
+ */
+export const C_ARES_FIX = Object.freeze({
+  id: 'c-ares',
+  advisory: 'CVE-2026-33630',
+  advisories: Object.freeze(['CVE-2026-33630']),
+  packages: Object.freeze(['c-ares']),
+  ranges: Object.freeze([Object.freeze({ introduced: '0', fixed: '1.34.8' })]),
+  note: 'upstream fixed version; no lower bound, which fails safe',
+});
+
+/** Kept under its historical name: the OpenSSL spec was the first the recheck watched. */
+export const RECHECK_SPEC = OPENSSL_FIX;
+
+/**
+ * The services, the OFFICIAL tag each one returns to, and every fix that tag must carry — on every
+ * platform in PLATFORMS — before it is a compatible fixed official image for that service.
+ */
+export const SERVICES = Object.freeze({
+  postgres: Object.freeze({
+    tag: 'postgres:18-alpine',
+    pinned: 'ghcr.io/a-halawany/elven/postgres',
+    fixes: Object.freeze([OPENSSL_FIX, UTIL_LINUX_POSTGRES_FIX, C_ARES_FIX]),
+    /**
+     * The governed records that name the derived image and must be re-reviewed on the return.
+     * SCX-0002..0005 govern its linux/amd64 child; SCX-0010 and SCX-0011 govern the linux/arm64
+     * child, which the gate began scanning on 2026-09-10. Returning to the official image
+     * re-scopes ALL of them, on both platforms, or the ones left behind fail as unused.
+     */
+    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']),
+  }),
+  redis: Object.freeze({
+    tag: 'redis:8-alpine',
+    pinned: 'ghcr.io/a-halawany/elven/redis',
+    fixes: Object.freeze([OPENSSL_FIX, UTIL_LINUX_REDIS_FIX]),
+    records: Object.freeze([]),
+  }),
+});
+
+/** Every fix the recheck watches, in the order it reports them. */
+export const RECHECK_SPECS = Object.freeze([OPENSSL_FIX, UTIL_LINUX_POSTGRES_FIX, UTIL_LINUX_REDIS_FIX, C_ARES_FIX]);
+
+/** The advisory ids a spec watches, whichever field names them. */
+export function advisoriesOf(spec) {
+  return Array.isArray(spec?.advisories) && spec.advisories.length > 0 ? spec.advisories : [spec?.advisory].filter(Boolean);
+}
 
 /** `{ base: [major, minor, patch], rev }`, or null for anything this does not understand. */
 export function parseApkVersion(v) {
@@ -72,14 +167,18 @@ export function compareApkVersions(a, b) {
   return 0;
 }
 
-/** Is this version inside one of the advisory's affected ranges? null when unparseable. */
+/** Is this version inside one of the spec's affected ranges? null when unparseable. */
 export function isAffectedVersion(version, spec = RECHECK_SPEC) {
   const p = parseApkVersion(version);
   if (p === null) return null;
   for (const r of spec.ranges) {
     const introduced = parseApkVersion(r.introduced);
     const fixed = parseApkVersion(r.fixed);
-    if (compareBase(p.base, introduced.base) >= 0 && compareBase(p.base, fixed.base) < 0) return true;
+    if (compareBase(p.base, introduced.base) < 0) continue;
+    if (compareBase(p.base, fixed.base) < 0) return true;
+    // At the fixed BASE: affected only when the range names a revision the package has not reached.
+    // An unknown revision on the package reads as affected — the conservative direction.
+    if (compareBase(p.base, fixed.base) === 0 && fixed.rev !== null && (p.rev === null || p.rev < fixed.rev)) return true;
   }
   return false;
 }
@@ -102,11 +201,11 @@ export function inventoryVersions(results, spec = RECHECK_SPEC) {
 }
 
 /**
- * `affected` | `patched` | `indeterminate`.
+ * `affected` | `patched` | `indeterminate`, for ONE fix in ONE scan report.
  *
  * `indeterminate` is a first-class answer and is never folded into the others: a report we cannot
- * read, or one that disagrees with itself, tells us nothing about whether the acceptance is still
- * justified. Retiring a disposition on the strength of a parse failure or a contradiction is the
+ * read, or one that disagrees with itself, tells us nothing about whether the official image was
+ * rebuilt. Declaring an image fixed on the strength of a parse failure or a contradiction is the
  * outcome this exists to prevent.
  */
 export function assessReport(report, spec = RECHECK_SPEC) {
@@ -154,17 +253,19 @@ export function assessReport(report, spec = RECHECK_SPEC) {
   }
 
   // ── 2. the advisory rows, at ANY severity ──
+  const ids = advisoriesOf(spec);
+  const label = ids.join('/');
   const listed = results.flatMap((r) => (Array.isArray(r?.Vulnerabilities) ? r.Vulnerabilities : []))
-    .filter((v) => v?.VulnerabilityID === spec.advisory);
+    .filter((v) => ids.includes(v?.VulnerabilityID));
 
   // ── 3. reconcile the two before trusting either ──
+  const at = [...inventory].map(([n, vs]) => `${n} ${vs[0]}`).join(', ');
   if (listed.length > 0 && affectedByInventory.length === 0) {
     const rows = [...new Set(listed.map((v) => `${v.PkgName} ${v.InstalledVersion}`))].join(', ');
-    const inv = [...inventory].map(([n, vs]) => `${n} ${vs[0]}`).join(', ');
     return {
       state: 'indeterminate',
-      why: `${spec.advisory} is still reported (${rows}) but the installed inventory is outside every `
-        + `affected range (${inv}); the report disagrees with itself and cannot settle whether the `
+      why: `${label} is still reported (${rows}) but the installed inventory is outside every `
+        + `affected range (${at}); the report disagrees with itself and cannot settle whether the `
         + 'image was rebuilt',
     };
   }
@@ -172,11 +273,55 @@ export function assessReport(report, spec = RECHECK_SPEC) {
     return {
       state: 'affected',
       why: `${affectedByInventory.join(', ')} falls inside an affected range`
-        + (listed.length > 0 ? ` and ${spec.advisory} is reported (${listed.length} row(s))`
-          : `; ${spec.advisory} is no longer listed, but the package was not rebuilt`),
+        + (listed.length > 0 ? ` and ${label} is reported (${listed.length} row(s))`
+          : `; ${label} is no longer listed, but the package was not rebuilt`),
       severities: [...new Set(listed.map((v) => v.Severity))],
+      versions: at,
     };
   }
-  const at = [...inventory].map(([n, vs]) => `${n} ${vs[0]}`).join(', ');
-  return { state: 'patched', why: `${at} is outside every affected range for ${spec.advisory}` };
+  return { state: 'patched', why: `${at} is outside every affected range for ${label}`, versions: at };
+}
+
+/**
+ * The verdict for ONE SERVICE from its per-platform reports:
+ *
+ *   `fixed`         every fix is `patched` on EVERY platform in PLATFORMS — a compatible fixed
+ *                   official image exists for the service (subject to the governed return);
+ *   `affected`      at least one fix is still `affected` somewhere, and nothing is indeterminate;
+ *   `indeterminate` any platform is missing, unreadable or contradictory — "could not check" must
+ *                   never read like either of the others.
+ *
+ * `reports` maps platform → parsed trivy report, or null when that platform could not be scanned
+ * (`platformErrors` says why). A platform ABSENT from the official index is a fact about the image
+ * (it does not qualify), recorded as indeterminate here on purpose: the recheck exists to say when
+ * the return CAN happen, and an image that cannot run on one of the two platforms cannot be checked
+ * for it, let alone chosen.
+ */
+export function assessService(service, reports, platformErrors = {}, platforms = PLATFORMS) {
+  const spec = SERVICES[service];
+  if (spec === undefined) throw new Error(`unknown service ${JSON.stringify(service)}`);
+  const perPlatform = {};
+  let indeterminate = 0;
+  let affected = 0;
+  for (const platform of platforms) {
+    const report = reports?.[platform] ?? null;
+    if (report === null) {
+      perPlatform[platform] = {
+        error: platformErrors[platform] ?? 'no report',
+        fixes: Object.fromEntries(spec.fixes.map((f) => [f.id, { state: 'indeterminate', why: platformErrors[platform] ?? 'no report' }])),
+      };
+      indeterminate += spec.fixes.length;
+      continue;
+    }
+    const fixes = {};
+    for (const fix of spec.fixes) {
+      const v = assessReport(report, fix);
+      fixes[fix.id] = v;
+      if (v.state === 'indeterminate') indeterminate += 1;
+      if (v.state === 'affected') affected += 1;
+    }
+    perPlatform[platform] = { error: null, fixes };
+  }
+  const state = indeterminate > 0 ? 'indeterminate' : affected > 0 ? 'affected' : 'fixed';
+  return { service, tag: spec.tag, state, platforms: perPlatform, records: [...spec.records] };
 }

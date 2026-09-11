@@ -1,0 +1,26 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from postgres-18-alpine.Dockerfile
+#1 transferring dockerfile: 1.19kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/2] FROM docker.io/library/postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+#4 CACHED
+
+#5 [2/2] RUN apk add --no-cache libuuid=2.42.3-r1  && apk list -I libuuid | grep -q '^libuuid-2.42.3-r1 '
+#5 1.776 (1/1) Upgrading libuuid (2.42.1-r0 -> 2.42.3-r1)
+#5 1.873 OK: 219.8 MiB in 53 packages
+#5 DONE 1.9s
+
+#6 exporting to image
+#6 exporting layers done
+#6 writing image sha256:e7f664f7307a4bad72661c0ce0354f99903f814962c29819e069c4abaacf9b11 done
+#6 naming to docker.io/library/eye-cand-postgres:18-alpine-util-linux done
+#6 DONE 0.0s
