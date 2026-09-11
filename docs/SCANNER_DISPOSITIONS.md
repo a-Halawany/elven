@@ -511,6 +511,13 @@ one thing `gosu` does, under the Phase 0 exposure bounds of §4. That is a weake
 amd64 SCX-0004/0005 make, and it is deliberately weaker, because the analysis that would support
 the stronger one has not been run on this binary.
 
+**Approval (2026-09-11).** SCX-0010 and SCX-0011 were accepted by the product owner, as they stand and
+within their scope and expiry, in the checkpoint directive following the review at `461a2b56`
+(`docs/images/ARM64_RISK_DECISION.md` §5). The records' `approver` and dates say so. Owner acceptance,
+not independent verification. A govulncheck binary-mode analysis of the arm64 binary now exists
+(2026-09-11, `infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}`: 0 called,
+all 22 unreachable); it is bound as additional evidence and does not change the classification.
+
 ### 3.8 Current reconciliation, `linux/arm64` (2026-09-10)
 
 | Record | Image | Classification | Findings |

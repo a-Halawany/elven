@@ -1,9 +1,10 @@
 # `linux/arm64` gosu findings — the decision that is still the approver's to make
 
 Prepared 2026-09-11 for the review at `461a2b56` (finding "Arm64 dispositions — matching is
-evidenced; approval must be attributable"). This document does not approve anything. It states
-what is authorised today, what is not, what was analysed on the artifact itself since the review,
-and the one concrete decision that remains, in the form the approver can sign.
+evidenced; approval must be attributable"). §§1–4 state what was authorised at the time of writing,
+what was not, what was analysed on the artifact itself since the review, and the one concrete decision
+that remained, in the form the approver could sign. **§5 records the decision as the owner took it
+later the same day (Option A).**
 
 ## 1. What is authorised, and by whom
 
@@ -83,3 +84,23 @@ risk the analysis shows is not exercised. The recommendation is not the decision
   request for the GHCR route to be approved again.
 * The Go image used for the analysis is a scanning tool, pinned by digest above, pulled once for this
   purpose; it is not part of the product, not a service image and not a new pin.
+
+## 5. The decision, as taken (2026-09-11)
+
+**Owner acceptance — Option A.** In the checkpoint directive following the review at `461a2b56`
+(2026-09-11), the owner recorded acceptance of the outstanding security disposition for this
+checkpoint **within its existing scope and expiry**: SCX-0010 (21 HIGH) and SCX-0011 (1 CRITICAL)
+stand as `RISK_ACCEPTED` for the `linux/arm64` child of
+`ghcr.io/a-halawany/elven/postgres@sha256:69a974ae…`, `prohibited_use` and `compensating_controls`
+unchanged, expiring 2026-11-05. The records now name the approver as the product owner with the date
+of acceptance (`approved_on` / `reviewed_on` 2026-09-11 — the day the decision was made, not the day
+the records were drafted), and bind this document and the arm64 govulncheck text report as
+additional evidence.
+
+**What this is and is not.** This is the owner's acceptance. It is not independent Codex
+verification, and no further Codex security review is required for this pass. It does not
+reclassify the findings (Option B was not taken; the symbol analysis of §2 remains additional
+evidence, not the record's claim), does not widen the amd64 records, and does not make GHCR
+anything other than temporary: upstream monitoring stays and a compatible fixed official image
+still returns each service through the governed process. With the acceptance recorded, the live
+recreation of the containers on this arm64 host (CP-4a) is no longer blocked on this item.
