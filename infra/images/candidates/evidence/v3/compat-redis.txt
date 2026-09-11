@@ -1,0 +1,143 @@
+### v3 redis compatibility  2026-09-10T08:06:15Z  image=eye-cand3-redis:8-alpine-maint  base=redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+image Config.User: redis (base: '')
+
+### (a) fresh named volume eye-cand3-redisdata, compose-shaped command (redis-server --requirepass <pw>), compose healthcheck as --health-cmd
+  container Config.User: 'redis'
+  eye-cand3-redis ready after 1s
+  [PASS] (a) start + PONG
+  --- PID 1 (redis-server) identity from /proc/1/status (entrypoint started as uid 999: no setpriv step):
+    Name: redis-server Uid: 999 999 999 999 Gid: 1000 1000 1000 1000 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0
+  [PASS] (a) PID 1 runs as uid 999 redis (observed uid 999)
+  --- processes:
+    PID   USER     COMMAND
+        1 redis    redis-server
+       39 redis    ps
+  --- docker exec id (default user):
+    uid=999(redis) gid=1000(redis) groups=1000(redis)
+  --- entrypoint log head:
+    Starting Redis Server
+    1:C 10 Sep 2026 08:06:15.607 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+    1:C 10 Sep 2026 08:06:15.607 * Redis version=8.10.0, bits=64, commit=00000000, modified=1, pid=1, just started
+  --- SET/GET:
+    OK
+    GET k1 -> hello-from-v3
+  [PASS] (a) SET/GET
+  --- INFO server:
+    redis_version:8.10.0
+    os:Linux 6.10.14-linuxkit aarch64
+    arch_bits:64
+    process_id:1
+    executable:/data/redis-server
+    config_file:
+  [PASS] (a) INFO server
+  --- unauthenticated ping must be refused (requirepass in effect):
+    NOAUTH Authentication required.
+    
+  --- host port 127.0.0.1:56381 from the host (nc handshake, no auth):
+    -NOAUTH Authentication required.
+  --- installed pinned packages:
+    libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+    libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+    setpriv-2.41.6-r1 aarch64 {util-linux} (GPL-2.0-or-later) [installed]
+  --- /data ownership (volume initialised from the image's /data):
+    drwxr-xr-x    2 999      1000          4096 Jul 30 20:03 /data
+
+### (c) SAVE / BGSAVE in v3
+    SAVE -> OK
+  [PASS] (c) SAVE
+    BGSAVE -> Background saving started
+    rdb_changes_since_last_save:0
+    rdb_last_save_time:1789027576
+    rdb_last_bgsave_status:ok
+  [PASS] (c) rdb_last_bgsave_status:ok
+    total 4
+    -rw-------    1 999      1000           112 Sep 10 08:06 dump.rdb
+
+### (d) compose healthcheck (docker-compose.yml: CMD-SHELL redis-cli -a "$REDIS_HEALTHCHECK_PASSWORD" ping | grep -q PONG) under the non-root default user
+  [PASS] (d) healthcheck command via docker exec (default user)
+  [PASS] (d) docker health status = healthy
+  --- docker exec -u root:
+    uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+  [PASS] (d) docker exec -u root gives root
+
+### (e) restart (stop/start, then docker restart): dump.rdb written by v3 reloaded
+  eye-cand3-redis ready after 1s
+  [PASS] (e) stop/start
+    GET k1 after restart -> hello-from-v3; rdb_last_load_keys_loaded:1
+  eye-cand3-redis ready after 1s
+  [PASS] (e) docker restart
+    1:M 10 Sep 2026 08:06:22.855 * DB loaded from disk: 0.000 seconds
+    1:M 10 Sep 2026 08:06:22.855 * Ready to accept connections tcp
+  --- log lines matching Warning|Notice|permission|denied|Failed|Fatal|error:
+    1:M 10 Sep 2026 08:06:15.608 * <bf> 	{ bf-error-rate       :      0.01 }
+    1:M 10 Sep 2026 08:06:22.182 * <bf> 	{ bf-error-rate       :      0.01 }
+    1:M 10 Sep 2026 08:06:22.852 * <bf> 	{ bf-error-rate       :      0.01 }
+  eye-cand3-redis removed
+
+### (b) persistence path: BASE (root entrypoint + setpriv drop) writes dump.rdb into eye-cand3-redisdata-base; v3 loads it
+  eye-cand3-redis-base ready after 1s
+  [PASS] (b) base starts
+  --- base PID 1 (after setpriv): Name: redis-server Uid: 999 999 999 999 Gid: 1000 1000 1000 1000 CapEff: 0000000000000000 CapBnd: 0000000000000000 NoNewPrivs: 1
+    base SAVE -> OK
+    total 4
+    -rw-------    1 999      1000           125 Sep 10 08:06 dump.rdb
+  base stopped+removed
+  --- ownership of /data in the base-written volume (read with the base image, entrypoint bypassed, as root):
+    drwxr-xr-x    2 999      1000          4096 Sep 10 08:06 /mnt
+    total 4
+    -rw-------    1 999      1000           125 Sep 10 08:06 dump.rdb
+  eye-cand3-redis-upg ready after 1s
+  [PASS] (b) v3 starts on the base-written volume
+usage: paste [-s] [-d delimiters] file ...
+    keys: 4; MGET one two three four -> 
+  [PASS] (b) rdb_last_load_keys_loaded:4
+    1:M 10 Sep 2026 08:06:24.327 * DB loaded from disk: 0.000 seconds
+  [PASS] (b) v3 SAVE into the base-written volume (write)
+    total 4
+    -rw-------    1 999      1000           133 Sep 10 08:06 dump.rdb
+  --- v3 PID 1: Name: redis-server Uid: 999 999 999 999 Gid: 1000 1000 1000 1000 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0
+  --- log lines matching Warning|Notice|permission|denied|Failed|Fatal|error:
+    1:M 10 Sep 2026 08:06:24.324 * <bf> 	{ bf-error-rate       :      0.01 }
+  eye-cand3-redis-upg stopped+removed
+
+### (b2) limit case: /data and dump.rdb owned by root (e.g. a volume populated outside the entrypoint). The base entrypoint repairs this as root (fix_data_dir_perms); v3 cannot.
+    drwxr-xr-x    2 0        0             4096 Sep 10 08:06 /mnt
+    total 4
+    -rw-------    1 0        0              133 Sep 10 08:06 dump.rdb
+  --- v3 on root-owned /data: state=exited exit=1; log:
+    1:M 10 Sep 2026 08:06:25.168 * Module 'ReJSON' loaded from /usr/local/lib/redis/modules//rejson.so
+    1:M 10 Sep 2026 08:06:25.168 * <search> Acquired RedisJSON_V8 API
+    1:M 10 Sep 2026 08:06:25.168 * Server initialized
+    1:M 10 Sep 2026 08:06:25.168 # Fatal error: can't open the RDB file dump.rdb for reading: Permission denied
+    1:M 10 Sep 2026 08:06:25.168 # Fatal error loading the DB, check server logs. Exiting.
+  --- the fix: one start with --user root (entrypoint runs its root path: fix_data_dir_perms chown to redis, then setpriv drop), then v3 as shipped
+  eye-cand3-redis-rootfix ready after 1s
+  [PASS] (b2) --user root start repairs ownership (PID1: Name: redis-server Uid: 999 999 999 999 Gid: 1000 1000 1000 1000 CapEf)
+    drwxr-xr-x    2 999      0             4096 Sep 10 08:06 /mnt
+    total 4
+    -rw-------    1 999      1000           133 Sep 10 08:06 dump.rdb
+  eye-cand3-redis-upg ready after 1s
+  [PASS] (b2) v3 as shipped starts after the repair; DBSIZE=5; SAVE=OK
+
+### (a2) amd64 image under emulation (the platform the gate scans): start, PONG, SAVE
+  eye-cand3-redis-amd64 ready after 2s
+  [PASS] (a2) amd64 image: start + PONG
+usage: paste [-s] [-d delimiters] file ...
+      PID1: Name: redis-server Uid: 999 999 999 999 Gid: 1000 
+  [PASS] (a2) SAVE on amd64
+  --- log lines matching Warning|Notice|permission|denied|Failed|Fatal|error:
+    1:M 10 Sep 2026 08:06:29.411 * <bf> 	{ bf-error-rate       :      0.01 }
+
+### summary: PASS=19 FAIL=0
+
+### supplement (two lines lost to macOS 'paste' in the run above; same volumes, new throwaway password)
+  (b) values written by BASE (one..four) plus 'five' written by v3 in (b2), read by v3 from the base-written volume:
+    MGET one two three four five -> a b c d e 
+    rdb_last_load_keys_loaded:5
+  (a2) amd64 INFO server:
+    redis_version:8.10.0
+    os:Linux 6.10.14-linuxkit x86_64
+    arch_bits:64
+    process_id:1
+    executable:/data/redis-server
+    PID1: Uid: 999 999 999 999 Gid: 1000 1000 1000 1000 CapEff: 0000000000000000 CapBnd: 00000000a80425fb NoNewPrivs: 0 

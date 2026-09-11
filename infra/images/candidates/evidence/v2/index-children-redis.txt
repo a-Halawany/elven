@@ -1,0 +1,5 @@
+  MediaType:   application/vnd.oci.image.manifest.v1+json
+  Platform:    linux/amd64
+  Annotations: 
+    org.opencontainers.image.base.name:       alpine:3.23
+    org.opencontainers.image.created:         2026-07-30T19:33:15Z

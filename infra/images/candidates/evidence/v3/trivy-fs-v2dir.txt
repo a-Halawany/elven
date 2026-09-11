@@ -1,0 +1,22 @@
+2026-09-10T10:59:17+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-09-10T10:59:17+03:00	INFO	[misconfig] Misconfiguration scanning is enabled
+2026-09-10T10:59:17+03:00	INFO	[checks-client] Using existing checks from cache	path="/Users/halawany/Library/Caches/trivy/policy/content"
+2026-09-10T10:59:17+03:00	INFO	[secret] Secret scanning is enabled
+2026-09-10T10:59:17+03:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln,misconfig' to disable secret scanning
+2026-09-10T10:59:17+03:00	INFO	[secret] Please see https://trivy.dev/docs/v0.73/guide/scanner/secret#recommendation for faster secret detection
+2026-09-10T10:59:17+03:00	INFO	Number of language-specific files	num=0
+2026-09-10T10:59:17+03:00	INFO	Detected config files	num=2
+
+Report Summary
+
+┌───────────────────────────────┬────────────┬─────────────────┬─────────┬───────────────────┐
+│            Target             │    Type    │ Vulnerabilities │ Secrets │ Misconfigurations │
+├───────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ postgres-18-alpine.Dockerfile │ dockerfile │        -        │    -    │         0         │
+├───────────────────────────────┼────────────┼─────────────────┼─────────┼───────────────────┤
+│ redis-8-alpine.Dockerfile     │ dockerfile │        -        │    -    │         0         │
+└───────────────────────────────┴────────────┴─────────────────┴─────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+

@@ -78,6 +78,10 @@ function graphCap(w: WorldRows) {
     readCanonicalObjects: () => relation(w.canonical ?? []),
     readClaimLineage: () => relation([]),
     readCorrections: () => relation(w.corrections ?? []),
+    // Phase 4 dependents the walk may reach; none in these worlds.
+    readForecasts: () => relation([]),
+    readScenarios: () => relation([]),
+    readWarnings: () => relation([]),
     /*
      * The double models the CAPABILITY CONTRACT, not the SQL: eligibility is
      * applied before the bound, and `total` counts everything eligible. A double

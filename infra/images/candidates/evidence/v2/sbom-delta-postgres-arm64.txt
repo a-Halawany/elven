@@ -1,0 +1,16 @@
+12c12
+< c-ares@1.34.6-r0	library	MIT
+---
+> c-ares@1.34.8-r0	library	MIT
+25c25
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+35c35
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+39c39
+< libuuid@2.42.1-r0	library	BSD-3-Clause
+---
+> libuuid@2.42.3-r1	library	BSD-3-Clause

@@ -372,14 +372,16 @@ describe('C15 behavioural control — governed scan dispositions', () => {
   }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNGOVERNED finding when a disposition is removed entirely', () => {
-    // Removing the c-ares record leaves its real HIGH finding with no governed
-    // disposition, which must fail rather than pass silently.
+    // Removing the single-advisory NOT_AFFECTED record leaves its real HIGH gosu finding with no
+    // governed disposition, which must fail rather than pass silently. (Until the 2026-09-10 re-pin
+    // this removed SCX-0001, the c-ares record; that finding is fixed in the derived image and the
+    // record is retired, so the control moves to a record that still governs something.)
     const doc = current();
-    doc.records = doc.records.filter((r) => r.id !== 'SCX-0001');
+    doc.records = doc.records.filter((r) => r.id !== 'SCX-0004');
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
-    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2026-33630/);
+    expect(r.manifest!.failures.join('\n')).toMatch(/UNGOVERNED image finding: CVE-2026-39821/);
   }, GATE_TEST_TIMEOUT_MS);
 
   it('refuses an UNUSED disposition that matches no finding', () => {
@@ -395,7 +397,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
       package_purl: 'pkg:apk/alpine/left-pad@1.0.0?arch=x86_64&distro=3.24.1',
       installed_version: '1.0.0',
       severities: ['HIGH'],
-      result_target: 'postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)',
+      result_target: 'ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a (alpine 3.24.1)',
     });
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
@@ -434,7 +436,7 @@ describe('C15 behavioural control — final-source binding', () => {
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C15 behavioural control — POSITIVE: the unmodified gate passes', () => {
-  it('passes and writes a PASS manifest with 8 steps, 6 blocking, cache unchanged', () => {
+  it('passes and writes a PASS manifest with 10 steps, 8 blocking, cache unchanged', () => {
     const r = runGate();
     expect(r.status, `gate should pass; failures: ${JSON.stringify(r.manifest?.failures)}`).toBe(0);
     expect(r.manifest!.outcome).toBe('PASS');
@@ -445,8 +447,12 @@ describe('C15 behavioural control — POSITIVE: the unmodified gate passes', () 
       image_finding_reconciliation: { unmatched: string[]; unused_records: string[]; total_findings: number };
       step_policy_audit: { every_informational_step_duplicates_a_blocking_step: boolean };
     };
-    expect(m.summary.total_steps).toBe(8);
-    expect(m.summary.blocking_steps).toBe(6);
+    // Ten since the gate scans BOTH platform children of each configured index: the six
+    // named steps plus one `trivy-image-<i>` per (platform, image) pair. Eight are blocking —
+    // the four image scans and four of the six named steps. The literals are deliberate: a
+    // step appearing or vanishing must fail here until someone changes them on purpose.
+    expect(m.summary.total_steps).toBe(10);
+    expect(m.summary.blocking_steps).toBe(8);
     expect(m.trivy_cache_unchanged, 'authoritative scans must not update the captured cache').toBe(true);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
@@ -591,8 +597,18 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     const doc = JSON.parse(readFileSync(join(REPO, governed), 'utf8')) as {
       records: Array<Record<string, unknown>>;
     };
-    // Same advisory, same package, same image — only the platform differs.
-    for (const r of doc.records) r.scan_platform = 'linux/arm64';
+    // Move the linux/amd64 records to linux/arm64 and drop the genuine arm64 ones, so the
+    // amd64 findings are left with no record naming their platform. Same advisories, same
+    // package, same image, same severities — ONLY the platform differs, which is the whole
+    // point: the gate now scans both children, so this control has to prove the platform
+    // still separates them rather than that an unscanned platform matches nothing.
+    // (The real SCX-0010/0011 are removed rather than left in place because they cover the
+    // same advisories on linux/arm64; keeping both would be a duplicate scope, and the gate
+    // would refuse the document before reconciliation for a different reason entirely.)
+    const amd64 = doc.records.filter((r) => r.scan_platform === 'linux/amd64');
+    expect(amd64.length, 'the fixture needs linux/amd64 records to move').toBeGreaterThan(0);
+    for (const r of amd64) r.scan_platform = 'linux/arm64';
+    doc.records = amd64;
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
     expect(r.manifest!.outcome).toBe('FAIL');
@@ -604,6 +620,28 @@ describe('C16-R3 — a disposition cannot govern a different platform', () => {
     };
     expect(m.image_finding_reconciliation.near_miss_detail.join('\n'))
       .toMatch(/platform linux\/arm64 != resolved linux\/amd64/);
+  }, GATE_TEST_TIMEOUT_MS);
+
+  it('a disposition for a platform the gate does not scan fails as OUT-OF-SCOPE, not as stale', () => {
+    // The rule the per-platform reconciliation had to add. A record naming an unscanned
+    // platform was never given the chance to match: calling it UNUSED would be a false
+    // accusation, and saying nothing would make an unscanned platform a place to park a
+    // disposition beyond review. It fails on its own terms, and the message says which
+    // platforms the run actually scanned.
+    const governed = 'scripts/gate/scanner-exclusions.json';
+    const doc = JSON.parse(readFileSync(join(REPO, governed), 'utf8')) as {
+      records: Array<Record<string, unknown>>;
+    };
+    const arm = doc.records.find((x) => x.scan_platform === 'linux/arm64')!;
+    arm.scan_platform = 'linux/s390x';
+    const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
+    expect(r.status).not.toBe(0);
+    expect(r.manifest!.outcome).toBe('FAIL');
+    const text = r.manifest!.failures.join('\n');
+    expect(text).toMatch(/OUT-OF-SCOPE scan disposition: .*names scan_platform "linux\/s390x"/);
+    expect(text).toMatch(/scanned: linux\/amd64, linux\/arm64/);
+    // Its findings are then ungoverned, which must ALSO be reported rather than absorbed.
+    expect(text).toMatch(/UNGOVERNED image finding/);
   }, GATE_TEST_TIMEOUT_MS);
 
   it('a severity ESCALATION is not absorbed by a HIGH-only disposition', () => {
@@ -716,11 +754,13 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
       scanner_exclusions: { declared: number };
       image_finding_reconciliation: { total_findings: number; unmatched: string[]; unused_records: string[] };
     };
-    // Nine since the CVE-2026-14456 maintenance change added SCX-0006..0009: one record per
-    // package per image target, because a single record spanning both would be a wildcard.
-    // The literal is deliberate: a record appearing or vanishing must fail here until someone
-    // changes this number on purpose.
-    expect(m.scanner_exclusions.declared).toBe(9);
+    // Six. Four since the 2026-09-10 re-pin to the derived maintenance images — SCX-0002..0005,
+    // all re-issued for the derived postgres image (the gosu binary is byte-identical); SCX-0001
+    // and SCX-0006..0009 governed findings the derived images fix and were retired, because a
+    // record that matches nothing fails the gate — plus SCX-0010 and SCX-0011, which govern the
+    // linux/arm64 child the gate began scanning on 2026-09-10. The literal is deliberate: a
+    // record appearing or vanishing must fail here until someone changes this number on purpose.
+    expect(m.scanner_exclusions.declared).toBe(6);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);

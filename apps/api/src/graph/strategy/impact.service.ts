@@ -44,6 +44,14 @@ export interface ImpactResult {
   objectives: AffectedObject[];
   decisions: AffectedObject[];
   commitments: AffectedObject[];
+  /**
+   * Phase 4: forecasts, scenario trees and warnings that rest — directly or
+   * through an assumption — on what changed. A reached forecast is MARKED FOR
+   * ATTENTION by the port and surfaced; it is never re-issued by the walk.
+   */
+  forecasts: AffectedObject[];
+  scenarios: AffectedObject[];
+  warnings: AffectedObject[];
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -88,6 +96,21 @@ export class ImpactService {
     const strategy = (await cap.readStrategy().selectAll()
       .execute()) as Array<Record<string, unknown>>;
     const byId = new Map(strategy.map((s) => [String(s['strategy_object_id']), s]));
+    /*
+     * PHASE 4 DEPENDENTS, in the same table. A forecast rests on assumptions and
+     * on the evidence it read; a scenario rests on its forecast; a warning on its
+     * scenario. They are looked up beside the strategy objects so one walk reaches
+     * all of them — there is no second propagation.
+     */
+    const forecasts = new Map<string, Record<string, unknown>>(
+      ((await cap.readForecasts().selectAll().execute()) as Array<Record<string, unknown>>)
+        .map((f) => [String(f['forecast_id']), f]));
+    const scenarios = new Map<string, Record<string, unknown>>(
+      ((await cap.readScenarios().selectAll().execute()) as Array<Record<string, unknown>>)
+        .map((f) => [String(f['scenario_id']), f]));
+    const warnings = new Map<string, Record<string, unknown>>(
+      ((await cap.readWarnings().selectAll().execute()) as Array<Record<string, unknown>>)
+        .map((f) => [String(f['warning_id']), f]));
 
     /*
      * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
@@ -105,11 +128,14 @@ export class ImpactService {
     const reachedEdges = new Set<string>();
     const reachedClaims = new Set<string>();
 
+    const reachedEvidence = new Set<string>();
     if (a.triggerKind === 'evidence_correction') {
       const lineage = (await cap.readClaimLineage().selectAll()
         .where('evidence_object_id' as never, '=', a.triggerObjectId as never)
         .execute()) as Array<Record<string, unknown>>;
       for (const l of lineage) reachedClaims.add(String(l['claim_object_id']));
+      // A forecast may rest on the corrected evidence DIRECTLY (its series read it).
+      reachedEvidence.add(a.triggerObjectId);
     } else if (a.triggerKind === 'claim_correction' || a.triggerKind === 'claim_withdrawal') {
       reachedClaims.add(a.triggerObjectId);
     } else if (a.triggerKind === 'edge_retraction') {
@@ -147,6 +173,8 @@ export class ImpactService {
         kind: 'entity', id, via: 'rests on an entity the changed claim resolved to' })),
       ...[...reachedEdges].map((id) => ({
         kind: 'edge', id, via: 'rests on an edge the changed claim asserted' })),
+      ...[...reachedEvidence].map((id) => ({
+        kind: 'evidence', id, via: 'a value it was fitted on was read from the corrected evidence' })),
     ];
 
     const found = new Map<string, AffectedObject>();
@@ -161,18 +189,46 @@ export class ImpactService {
           const dependent = String(d['dependent_object_id']);
           if (found.has(dependent)) continue;
           const s = byId.get(dependent);
-          if (s === undefined) continue;
-          found.set(dependent, {
-            strategy_object_id: dependent,
-            object_type: String(s['object_type']),
-            title: String(s['title']),
-            reached_via: seed.via,
-            hop,
-          });
-          next.push({
-            kind: 'strategy', id: dependent,
-            via: `rests on ${String(s['object_type'])} "${String(s['title'])}"`,
-          });
+          if (s !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent,
+              object_type: String(s['object_type']),
+              title: String(s['title']),
+              reached_via: seed.via,
+              hop,
+            });
+            next.push({
+              kind: 'strategy', id: dependent,
+              via: `rests on ${String(s['object_type'])} "${String(s['title'])}"`,
+            });
+            continue;
+          }
+          const f = forecasts.get(dependent);
+          if (f !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'FCT',
+              title: `${String(f['series_key'])} · ${String(f['horizon_code'])} · ${String(f['method'])}`,
+              reached_via: seed.via, hop,
+            });
+            next.push({ kind: 'forecast', id: dependent, via: `rests on the forecast for ${String(f['series_key'])}` });
+            continue;
+          }
+          const sc = scenarios.get(dependent);
+          if (sc !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'SCN', title: String(sc['title']),
+              reached_via: seed.via, hop,
+            });
+            next.push({ kind: 'strategy', id: dependent, via: `rests on scenario "${String(sc['title'])}"` });
+            continue;
+          }
+          const w = warnings.get(dependent);
+          if (w !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'WRN', title: String(w['title']),
+              reached_via: seed.via, hop,
+            });
+          }
         }
       }
       frontier = next;
@@ -198,6 +254,9 @@ export class ImpactService {
       objectives: of('OBJ'),
       decisions: of('DEC'),
       commitments: of('CMT'),
+      forecasts: of('FCT'),
+      scenarios: of('SCN'),
+      warnings: of('WRN'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -267,6 +326,7 @@ export class ImpactService {
       invalidationId, tenantId, domainId,
       assumptions: walked.assumptions, objectives: walked.objectives,
       decisions: walked.decisions, commitments: walked.commitments,
+      forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -368,9 +428,13 @@ function buildStatement(
   invalidationId: string,
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
-  const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length;
+  const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
+    + w.forecasts.length + w.scenarios.length + w.warnings.length;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
+  const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
+    : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) and `
+      + `${w.warnings.length} warning(s) reported`;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *
@@ -390,7 +454,7 @@ function buildStatement(
   return `dependency propagation assessed by invalidation ${invalidationId}: `
     + `${w.assumptions.length} assumption(s) marked unverified; `
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
-    + `${w.commitments.length} commitment(s) reported for human review; `
+    + `${w.commitments.length} commitment(s) reported for human review${phase4}; `
     + reach + truncation;
 }
 

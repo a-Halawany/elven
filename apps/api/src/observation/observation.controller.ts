@@ -64,10 +64,20 @@ export class ObservationController {
     @Req() req: EyeRequest,
     @Param('tenantId') tenantId: string,
     @Param('domainId') domainId: string,
-    @Body() body: { payload?: { contract?: unknown } },
+    @Body() body: { payload?: { contract?: unknown; sourceId?: string } },
   ) {
     const { envelope, principal } = ctx(req);
-    const sourceId = newId();
+    /*
+     * A NEW CONTRACT VERSION OF AN EXISTING SOURCE names the source it versions.
+     *
+     * Phase 1 minted a fresh source id on every registration, so a source could
+     * never carry a second version through this route. Phase 4 needs exactly that
+     * — ECB moves from a replay v1 to a live v2 with a declared backfill — and
+     * the contract must say which version it supersedes. The port keeps one
+     * active version per source; activating v2 requires superseding v1 first.
+     */
+    const versioning = typeof body.payload?.sourceId === 'string';
+    const sourceId = versioning ? (body.payload?.sourceId as string) : newId();
     const route = {
       scope: 'DOMAIN' as const, tenantId, domainId,
       action: 'observation.source.register', objectType: 'SRC', objectId: sourceId,
@@ -75,6 +85,32 @@ export class ObservationController {
     if (body.payload?.contract === undefined) {
       await this.pipeline.rejectAuthenticatedRequest(
         envelope, principal, route, 'EYE-REQ-001', 'a source contract is required', 400);
+    }
+    if (versioning) {
+      const c = body.payload?.contract as { source_key?: string; lifecycle?: { contract_version?: number; supersedes_version?: number | null } };
+      const current = await this.pipeline.consequentialRead(
+        { ...envelope, action: 'observation.read.sources', message_id: newId() }, principal,
+        { scope: 'DOMAIN', tenantId, domainId, action: 'observation.read.sources', objectType: 'SRC', objectId: sourceId },
+        ObservationCapability.read,
+        async (cap) => (await cap.readSourceContracts().selectAll()
+          .where('source_id' as never, '=', sourceId as never)
+          .orderBy('contract_version' as never, 'desc')
+          .executeTakeFirst()) as { source_key: string; contract_version: number } | undefined);
+      const row = current.result;
+      if (row === undefined) {
+        await this.pipeline.rejectAuthenticatedRequest(
+          envelope, principal, route, 'EYE-STA-001', 'no such source to version', 404);
+      } else if (row.source_key !== c.source_key) {
+        await this.pipeline.rejectAuthenticatedRequest(
+          envelope, principal, route, 'EYE-REQ-001',
+          'a new contract version must keep the source key of the source it versions', 400);
+      } else if (c.lifecycle?.supersedes_version !== row.contract_version
+                 || typeof c.lifecycle?.contract_version !== 'number'
+                 || c.lifecycle.contract_version <= row.contract_version) {
+        await this.pipeline.rejectAuthenticatedRequest(
+          envelope, principal, route, 'EYE-REQ-001',
+          `a new contract version must supersede the current version ${row.contract_version} and carry a higher contract_version`, 400);
+      }
     }
     const out = await this.pipeline.write(
       envelope, principal, route, ObservationCapability.registry,
