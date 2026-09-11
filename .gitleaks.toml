@@ -140,3 +140,34 @@ commits = ['''a269debe51dc34023dce87102058dbb5d8129d44''', '''5f84fe20b2e46fcea6
 paths = ['''(^|/)infra/images/candidates/evidence/v2/reproducibility-redis\.txt$''']
 regexTarget = "match"
 regexes = ['''capi\.so\tsha=7891a5d69534db2e''']
+
+# ── 6. UPSTREAM COMMIT URLS in a vulnerability-database report, not credentials ─
+[[allowlists]]
+description = """
+FALSE POSITIVE, scoped as narrowly as the finding — to ONE rule, ONE file and ONE
+URL shape.
+
+The arm64 govulncheck evidence (`infra/images/published/20260910/
+gosu-arm64-3a8ef022.govulncheck.json`, the `-json` output of govulncheck v1.1.4 on
+the published arm64 gosu binary, kept whole so every OSV entry and finding it
+reports can be read) carries the Go vulnerability database's own reference URLs,
+which cite the FIX commits of the Go repositories (`go`, `net`, …):
+
+  "url": "https://go.googlesource.com/go/+/cd3b4ca9f20fd14187ed4cdfdee1a02ea87e5cd8"
+  "url": "https://go.googlesource.com/net/+/89ef3d95e781148a0951956029c92a211477f7f9"
+
+The sourcegraph-access-token rule keys on a bare 40-hex run after the letters
+`source` (here inside the hostname `googlesource`) and matched 59 such commit ids.
+They are public upstream commit identifiers published by https://vuln.go.dev; no
+credential is involved.
+
+Scope: the rule, the one file, and only a match that sits inside a
+`go.googlesource.com/<repo>/+/<40 hex>` URL (regexTarget = line). The same hex anywhere
+else, any other file, and every other rule remain fully in scope. All three
+conditions must hold (condition = AND).
+"""
+condition = "AND"
+rules = ['''sourcegraph-access-token''']
+paths = ['''(^|/)infra/images/published/20260910/gosu-arm64-3a8ef022\.govulncheck\.json$''']
+regexTarget = "line"
+regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
