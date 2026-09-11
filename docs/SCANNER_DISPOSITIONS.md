@@ -435,8 +435,8 @@ reachability analysis of `3a8ef022…` exists. The amd64 analysis
 (`docs/evidence/govulncheck-gosu-b6a16ed0.*`) was run against `52c8749d…`; a call-graph result
 for one compiled binary is not a result for a different one, and copying it across would be the
 same substitution this document refuses everywhere else. **Every arm64 record is therefore
-`RISK_ACCEPTED`, not `NOT_AFFECTED`** — including the eight advisories whose amd64 counterparts
-are NOT_AFFECTED under SCX-0004 and SCX-0005. The acceptance rests on the operational argument
+`RISK_ACCEPTED`, not `NOT_AFFECTED`** — including the seven advisories whose amd64 counterparts
+are NOT_AFFECTED under SCX-0004 (one) and SCX-0005 (six). The acceptance rests on the operational argument
 those records also carry, which *is* artifact-independent: `gosu` runs once at container start to
 drop root privileges and exits; it is neither a long-lived process nor a network listener, and
 the affected surfaces (`net/http`, `net/mail`, `crypto/tls`, `crypto/x509` DoS classes) are not
@@ -562,8 +562,8 @@ blocking release gate.
   UNGOVERNED, and a record naming a platform that is not in the list fails as out of scope. An
   arm64 disposition may not be justified by amd64 evidence, or the reverse: SCX-0010 and
   SCX-0011 exist precisely because SCX-0002…0005 cannot reach the arm64 artifact.
-* **SCX-0010 and SCX-0011 are weaker than their amd64 counterparts on purpose.** Eight advisories
-  are NOT_AFFECTED on `linux/amd64` (SCX-0004, SCX-0005) and only RISK_ACCEPTED on `linux/arm64`,
+* **SCX-0010 and SCX-0011 are weaker than their amd64 counterparts on purpose.** Seven advisories
+  are NOT_AFFECTED on `linux/amd64` (one under SCX-0004, six under SCX-0005) and only RISK_ACCEPTED on `linux/arm64`,
   because the govulncheck binary-mode analysis exists for `52c8749d…` and not for `3a8ef022…`.
   Running that analysis on the arm64 binary is the work that would justify reclassifying them,
   and it must be recorded as new evidence in a new record, never by editing these.

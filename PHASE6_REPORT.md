@@ -681,12 +681,12 @@ binary extracted from that exact child is `gosu` sha256 `3a8ef022…`, `go1.24.6
 all `stdlib` rows on `usr/local/bin/gosu`, with no OS-package finding, and the arm64 redis child is clean at every
 severity. **`govulncheck` and a Go toolchain are absent on this host, so no symbol analysis of the arm64 binary
 exists: SCX-0010 (21 HIGH) and SCX-0011 (1 CRITICAL) accept the risk on the reachability argument, including the
-eight advisories that are NOT_AFFECTED on amd64 — the amd64 analysis was not carried across.** The amd64 records keep
+seven advisories that are NOT_AFFECTED on amd64 (one under SCX-0004, six under SCX-0005; an earlier line counted CVE-2026-33818 twice and said eight) — the amd64 analysis was not carried across.** The amd64 records keep
 their scope, dates and expiry. The gate scans both children of each index (`SCAN_PLATFORMS` owned in one place so the
 runner and the final verifier cannot drift) and matches a record against the FINDING's platform, not a run-wide
 constant; a record naming a platform the run did not scan fails as OUT-OF-SCOPE rather than being counted unused, so
 widening the scan cannot hide a stale record. Local gate: PASS, 44 findings, 6 records, 0 unmatched, 0 unused, 0
-out-of-scope, 0 stale; `test/gate` 937/937. Obtaining `govulncheck` for arm64 would let those eight be re-classified
+out-of-scope, 0 stale; `test/gate` 937/937. Obtaining `govulncheck` for arm64 would let those seven be re-classified
 on their own evidence; that is a named resource, not a gap to be argued away.
 
 **2. CP-4/5 recovery (`6226fec`).** Build identity replaces the timestamp heuristic: the bundle is built from the

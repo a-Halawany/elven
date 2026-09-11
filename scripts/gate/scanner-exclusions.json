@@ -48,12 +48,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -93,12 +93,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -135,12 +135,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -190,12 +190,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -246,7 +246,7 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the 21 HIGH rows. They share a platform, package, PURL, installed version, result target, severity, classification and one review on one date, so they are held together; the single CRITICAL is held by SCX-0011 because a disposition approved for HIGH must never absorb a CRITICAL, the same reason SCX-0003 is separate from SCX-0002. Eight of these advisories (CVE-2026-39821 and the six of SCX-0005, plus CVE-2026-33818) are NOT_AFFECTED on linux/amd64 on the strength of symbol analysis of the amd64 binary; on this platform they are only RISK_ACCEPTED, because that analysis was not performed on this artifact.",
+      "reason": "FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the 21 HIGH rows. They share a platform, package, PURL, installed version, result target, severity, classification and one review on one date, so they are held together; the single CRITICAL is held by SCX-0011 because a disposition approved for HIGH must never absorb a CRITICAL, the same reason SCX-0003 is separate from SCX-0002. Seven of these advisories (CVE-2026-39821 under SCX-0004 and the six under SCX-0005, which include CVE-2026-33818) are NOT_AFFECTED on linux/amd64 on the strength of symbol analysis of the amd64 binary; on this platform they are only RISK_ACCEPTED, because that analysis was not performed on this artifact.",
       "compensating_controls": [
         "gosu runs once at container start to drop root privileges and exit; it is neither a long-lived process nor a network listener, so the affected net/http, net/mail, crypto/tls and crypto/x509 surfaces are not exercised by that use.",
         "This is an ACCEPTANCE, not a claim of non-applicability: no reachability analysis of the arm64 binary exists, so the vulnerable code is not asserted to be absent from it.",
@@ -265,12 +265,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -316,12 +316,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-10",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f",
+      "evidence_sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "448d791d82d8e4cfc9826b1e4be6ce4a7fd739d3e332e812f5e2fffd9d12817f"
+          "sha256": "1293bd9fcfc53afe6f75bd354d43773b297bedfefdb68f622b374a39c44dc552"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",

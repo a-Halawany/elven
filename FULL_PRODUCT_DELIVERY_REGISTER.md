@@ -120,8 +120,8 @@ analysed: the binary extracted from that exact child is `gosu` sha256 `3a8ef022�
 and its 22 findings are all `stdlib` rows on `usr/local/bin/gosu` (0 of 53 OS packages); the arm64 redis child is
 clean at every severity. **`govulncheck` and a Go toolchain are absent on this host, so no symbol analysis of the
 arm64 binary exists: all 22 are RISK_ACCEPTED under the new SCX-0010 (21 HIGH) and SCX-0011 (1 CRITICAL) — including
-the eight that are NOT_AFFECTED on amd64. The amd64 analysis was NOT carried across**, and the amd64 records keep
-their scope, dates and expiry untouched. Obtaining `govulncheck` for arm64 would let those eight be re-classified on
+the seven that are NOT_AFFECTED on amd64 (one under SCX-0004, six under SCX-0005; "eight" earlier double-counted CVE-2026-33818). The amd64 analysis was NOT carried across**, and the amd64 records keep
+their scope, dates and expiry untouched. Obtaining `govulncheck` for arm64 would let those seven be re-classified on
 their own evidence; until then the honest classification is acceptance. The gate now scans BOTH children of each
 index (`SCAN_PLATFORMS` owned in one place so the runner and the final verifier cannot drift) and reconciles a
 record against the FINDING's platform rather than a run-wide constant — strictly narrower; a record naming a platform
