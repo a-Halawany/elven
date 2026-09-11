@@ -11,8 +11,8 @@ never verifies a `profiles = all` unit; hosted CI on a fresh database verifies t
 | **B3 — scenario kinds** | the eight kinds of Volume 0 ch. 14 as a versioned vocabulary; divergence and per-branch assumptions | AU-PRD-0021 | **implemented** on `phase6-decisions` (migration 0058; harness case C-022 in `phase4-acceptance`, 16/16 locally); `verified:ci` once the hosted run at the implementing head is green |
 | **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-0108–0111 (new; the consumer's own properties), AU-DP-0043 (partial-walk visibility, re-verified); AU-DP-0041 narrowed — see §B1 | **implemented** on `phase6-decisions` (migration 0060; harness `phase6-propagation-consumer`, 15/15 locally on real Redis and the real outbox); `verified:ci` once the hosted run at the implementing head is green; exercised on the demonstration (§B1) |
 | **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-0061–0063 (new); AU-PRD-0034/-0037/-0039, AU-DP-0164 re-pointed — §B2 | **implemented** on `phase6-decisions` (migration 0061; harness `phase4-warning-levels`, 6/6 locally); `verified:ci` once the hosted run at the implementing head is green |
-| **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | defined; audit-side work |
-| **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | defined; audit-side work |
+| **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | **applied** (2026-09-11): leg vector + `legs_verified` on every unit; `audit/SLO_CATALOGUE.md` v1; no leg accepted |
+| **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | **applied** (2026-09-11): `audit/CAP_ALIASES.md` v1; `cap_alias` on the requirement CSVs; 89 = 71 + 18, unresolved 0 |
 
 ## B3 — the eight scenario kinds (done in code; verification pending the hosted run)
 
@@ -182,7 +182,26 @@ op_class C2, WRN@v2). Profiles: all; evidence class: harness → `verified:ci` a
 hosted run at the implementing head. AU-PRD-0034/-0037/-0039 and AU-DP-0164 re-pointed; none
 closed by the re-pointing.
 
-## B4 — profile legs and SLO floors (defined; audit-side)
+## B4 — profile legs and SLO floors (applied)
+
+**Done (2026-09-11).** `audit/migrate-units-legs.mjs` (one-shot, kept as the record) rewrote the four
+unit files: `profiles` is the LEG VECTOR — `saas|private|onprem` for every unit that applied to all
+profiles, `saas|private|onprem|disconnected|air-gapped` for the 80 units whose statement or condition
+carries an offline obligation (83 regex candidates, three excluded by hand: AU-EXO-0001 "disconnected
+feature island", AU-LRN-0006 "evaluate offline", AU-UX-0189 "disconnected screens"), `n/a` unchanged;
+a `legs_verified` column after `status` holds, per accepted leg, `<leg>=<pointer to the signed per-leg
+result>` — empty everywhere at this head. Every count by mandatory, status and package was asserted
+identical before and after. A hand pass then gave the 23 units that name one profile a one-leg vector
+(6 saas, 5 private, 12 onprem; AU-INF-0301 and AU-GOV-0296 stay three legs). `audit/summarise-units.mjs`
+validates the vocabulary and the rules (verified:all ⇔ every leg accepted; no accepted leg on an open
+or n/a unit; legs in canonical order; a pointer on every accepted leg) and reports the Leg table: saas
+0 of 3525, private 0 of 3524, onprem 0 of 3531, disconnected 0 of 80, air-gapped 0 of 80.
+`audit/SLO_CATALOGUE.md` v1 maps the 22 objectives of Volume 4 Appendix F: 12 floors (F), 5 value-
+variance (V), 5 population targets (P), each with the clause that makes it a floor or permits the
+variance, the declared-variance record a V or P leg must carry, and the leg acceptance rule; the 22
+units AU-INF-0448..0469 cite their class in their condition. Nothing changed in product code.
+
+**As defined.**
 
 **Decision.** Three acceptance legs per profile row (SaaS, private cloud, on-premises), with
 disconnected and air-gapped evidence carried COMPLETELY per applicable capability on their own rows;
@@ -198,7 +217,22 @@ permits variance. No product code.
 **Acceptance units:** every `profiles = all` unit's legs made explicit (mechanical rewrite, one
 commit, counts unchanged); AU-INF-… SLO rows re-pointed to the catalogue.
 
-## B5 — CAP aliases (defined; audit-side)
+## B5 — CAP aliases (applied)
+
+**Done (2026-09-11).** `audit/CAP_ALIASES.md` v1: the 89 Volume 9 capability ids, 71 defined in Volume 8
+Appendix A and 18 resolved by subject-based alias (CAP-PD-01..06 → DL-01..06; PD-09 → DL-11; PD-10 → DL-12;
+PD-11 → AU-08 + DL-12; PD-12 → DL-12; TG-01 → TR-01; TG-02 → TR-02; TG-03 → TR-04; TG-04 → TR-06; TG-05 →
+TR-07; TG-06 → TR-08; TG-08 → TR-11; TG-11 → TR-09), each with its basis and the rejected reading; five
+rules (historical ids never renamed; a change is a new table version; an alias moves no obligation).
+`audit/second-pass.mjs` gained the `cap_alias` column and step 7 (the row's id or a V9 clause's CAP id
+resolved against Appendix A and the table; an alias noted on the row; an unresolved id reported), and
+was re-run: 197 rows carry `cap_alias` (108 Volume 8 definitions, 71 Volume 9 bindings `defined`, 18
+`alias-v1:…`), 0 unresolved; the same run moved 21 rows to `branch-only` because their evidence globs
+now include files that exist only on this branch (`apps/api/src/graph/**` gained `propagation/*`).
+`audit/summarise-units.mjs` checks every V9 CAP row and every unit's `V9:CAP-…` binding against the
+table: 89 = 71 defined + 18 alias, unresolved 0.
+
+**As defined.**
 
 **Decision.** Versioned, subject-based aliases (CAP-PD-11 → CAP-AU-08 + CAP-DL-12 among them),
 lossless mapping of every obligation, historical ids resolvable, nothing deleted to preserve a count.
@@ -212,8 +246,10 @@ versioned alias (a check in `summarise-units.mjs` reports any that do not).
 
 ## Order and the next implementation batch
 
-B3, B1 and B2 are done in code (the 2026-09-11 checkpoints). Next: B4/B5 (audit mechanics, no
-product risk) — see §B4/§B5 for their state. The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
+B3, B1 and B2 are done in code and B4/B5 applied to the audit (the 2026-09-11 checkpoints). What
+remains of CP-6 is verification, not implementation: the hosted run at the implementing head turns the
+B1/B2 units `verified:ci`; every leg of every unit stays unaccepted until a deployment profile carries
+its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
 the next demonstration step after the hosted run is green.

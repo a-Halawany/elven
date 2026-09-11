@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const dir = join(here, 'requirements');
-const HEADER = ['id', 'volume', 'chapter', 'page', 'clause', 'family_seed', 'capability_area', 'impl_status', 'verif_status', 'release_status', 'phase_origin', 'package', 'evidence', 'remaining_work', 'notes', 'source_ref', 'evidence_scope'];
+const HEADER = ['id', 'volume', 'chapter', 'page', 'clause', 'family_seed', 'capability_area', 'impl_status', 'verif_status', 'release_status', 'phase_origin', 'package', 'evidence', 'remaining_work', 'notes', 'source_ref', 'evidence_scope', 'cap_alias'];
 const AREA_PACKAGE = { observation: 'P1', intelligence: 'P2', 'memory-graph': 'P3', 'data-platform': 'P3', prediction: 'P4', 'twin-simulation': 'P5', decision: 'P6', 'executive-os': 'P6', agents: 'P7-A', 'learning-evaluation': 'P7-B', marketplace: 'P7-C', 'identity-policy': 'P7-D', infrastructure: 'P7-D', ux: 'P7-E', commercial: 'P7-F', 'governance-docs': 'P7-F' };
 
 function parseCsv(text) {
@@ -55,6 +55,20 @@ const treeHead = new Set(execSync('git ls-files', { cwd: root }).toString().spli
 const treeMain = new Set(execSync('git ls-tree -r --name-only main', { cwd: root }).toString().split('\n').filter(Boolean));
 const migrationsHead = [...treeHead].filter((p) => p.startsWith('apps/api/migrations/')).map((p) => p.slice('apps/api/migrations/'.length));
 const PREFIXES = ['', 'apps/api/', 'apps/api/src/', 'apps/api/test/', 'apps/api/test/int/', 'apps/api/test/unit/', 'apps/api/test/gate/', 'apps/api/migrations/', 'apps/web/', 'apps/web/app/', 'apps/web/lib/', 'apps/web/components/', 'packages/', 'packages/contracts/src/', 'packages/contracts/', 'scripts/', 'scripts/gate/', '.github/workflows/', 'e2e/', 'docs/', 'infra/'];
+
+// ── CAP aliases (batch B5) ───────────────────────────────────────────────────
+// Volume 8 Appendix A governs capability ids; Volume 9 cites 18 ids it never defines. audit/CAP_ALIASES.md holds the
+// versioned, subject-based alias table (register §8 R-4 (4)). Historical ids are never renamed: the row keeps its id and
+// gains `cap_alias`. A V9 CAP row that resolves nowhere is reported and left empty; summarise-units.mjs refuses it.
+const v8Caps = new Set(parseCsv(readFileSync(join(dir, 'v08.csv'), 'utf8')).slice(1).filter((r) => r[1] === 'V8' && /^CAP-[A-Z]{2}-\d{2}$/.test(r[0])).map((r) => r[0]));
+const capAliases = new Map(); // V9 id → 'defined' | 'alias-v1:CAP-XX-nn[+CAP-YY-mm]'
+{ const p = join(here, 'CAP_ALIASES.md'); if (existsSync(p)) for (const line of readFileSync(p, 'utf8').split('\n')) { const m = /^\|\s*(CAP-[A-Z]{2}-\d{2})\s*\|\s*(alias-v\d+|defined)\s*\|\s*([^|]*)\|/.exec(line); if (m) capAliases.set(m[1], m[2] === 'defined' ? 'defined' : `${m[2]}:${m[3].split('+').map((t) => t.trim()).filter(Boolean).join('+')}`); } }
+function resolveCap(id) {
+  if (v8Caps.has(id)) return 'defined';
+  const a = capAliases.get(id); if (!a || a === 'defined') return null;
+  const targets = a.slice(a.indexOf(':') + 1).split('+'); if (targets.some((t) => !v8Caps.has(t))) return null;   // an alias must land in Appendix A
+  return a;
+}
 
 /** Resolve one pointer to a tracked path (or a directory prefix with files under it). Returns { path, scope } or null. */
 function resolvePointer(raw) {
@@ -191,6 +205,15 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.csv')).sort()) {
     if (o.impl_status === 'not-applicable' && o.package === 'done') o.package = 'not-applicable';
     // 6. source reference
     { o.source_ref = sourceRef(o.volume, o.clause, o.page); if (o.source_ref) stats.sourceRefs += 1; else stats.sourceRefMissing += 1; if (/page-mismatch/.test(o.source_ref)) stats.pageMismatch = (stats.pageMismatch ?? 0) + 1; }
+    // 7. CAP alias (B5): the V9 Appendix N rows and any row whose clause cites a Volume 9-local CAP id
+    { const cited = new Set([...(o.id.match(/^CAP-[A-Z]{2}-\d{2}$/) ? [o.id] : []), ...(o.volume === 'V9' ? [...o.clause.matchAll(/\b(CAP-[A-Z]{2}-\d{2})\b/g)].map((m) => m[1]) : [])]);
+      const resolved = [...cited].map((id) => [id, resolveCap(id)]);
+      const alias = resolved.filter(([, r]) => r && r !== 'defined');
+      const unresolved = resolved.filter(([, r]) => r === null).map(([id]) => id);
+      o.cap_alias = o.id.startsWith('CAP-') ? (resolved[0]?.[1] ?? '') : alias.map(([id, r]) => `${id}=${r}`).join('; ');
+      if (alias.length && !/CAP alias v1/.test(o.notes)) note(`CAP alias v1 (audit/CAP_ALIASES.md): ${alias.map(([id, r]) => `${id} → ${r.slice(r.indexOf(':') + 1)}`).join('; ')}; historical id kept`);
+      if (unresolved.length) { stats.capUnresolved = (stats.capUnresolved ?? 0) + unresolved.length; if (!/UNRESOLVED CAP/.test(o.notes)) note(`UNRESOLVED CAP id(s): ${unresolved.join(', ')}`); }
+      if (o.cap_alias) stats.capResolved = (stats.capResolved ?? 0) + 1; }
     out.push(HEADER.map((c) => esc(o[c] ?? '')).join(','));
   }
   writeFileSync(join(dir, f), HEADER.join(',') + '\n' + out.join('\n') + '\n');
