@@ -10,7 +10,7 @@ never verifies a `profiles = all` unit; hosted CI on a fresh database verifies t
 |---|---|---|---|
 | **B3 — scenario kinds** | the eight kinds of Volume 0 ch. 14 as a versioned vocabulary; divergence and per-branch assumptions | AU-PRD-0021 | **implemented** on `phase6-decisions` (migration 0058; harness case C-022 in `phase4-acceptance`, 16/16 locally); `verified:ci` once the hosted run at the implementing head is green |
 | **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-0108–0111 (new; the consumer's own properties), AU-DP-0043 (partial-walk visibility, re-verified); AU-DP-0041 narrowed — see §B1 | **implemented** on `phase6-decisions` (migration 0060; harness `phase6-propagation-consumer`, 15/15 locally on real Redis and the real outbox); `verified:ci` once the hosted run at the implementing head is green; exercised on the demonstration (§B1) |
-| **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-… (warning severity) — §B2 | defined; not implemented |
+| **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-0061–0063 (new); AU-PRD-0034/-0037/-0039, AU-DP-0164 re-pointed — §B2 | **implemented** on `phase6-decisions` (migration 0061; harness `phase4-warning-levels`, 6/6 locally); `verified:ci` once the hosted run at the implementing head is green |
 | **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | defined; audit-side work |
 | **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | defined; audit-side work |
 
@@ -131,21 +131,56 @@ said "operator-initiated" or "consumer deferred" were re-pointed (AU-MEM-0029/-0
 **On the demonstration** (`scripts/phase6/register-propagation-agent.mjs`, then a fresh
 correction applied through the governed route): see PHASE6_REPORT.md §18.
 
-## B2 — warning levels (defined)
+## B2 — warning levels (implemented)
 
 **Decision.** Four levels — low, normal, high, critical — derived by a VERSIONED rule from the
 consequence class, stating impact and response urgency; confidence and the C0–C4 authority class
 kept explicit and distinct (a label never changes decision authority).
 
-**Change.** Migration: `prediction.warning_level_versions` (v1: the derivation table consequence →
-level, urgency), `warnings_current.level`, `level_version`, `urgency`; the raise path derives them at
-raise time and records the version; `WRN` schema v2 carries them; the authority class stays the
-operation's, untouched by the level. The web warning card shows level + version.
+**Two findings on the way.** The ids first pencilled here (AU-PRD-0090–0092) were free but not
+contiguous; the units are **AU-PRD-0061–0063** (the highest existing AU-PRD was 0060). And the
+registered WRN v1 schema was stale — it forbade the `timing` and `controls` the payload has carried
+since 0030/0031, and nothing on this path had ever validated a warning against its schema; WRN v2
+registers the real payload and the harness validates the canonical object against it.
 
-**Acceptance units (new):** AU-PRD-0090 "every raised warning carries a level from the current
-derivation version and the version it was derived under"; AU-PRD-0091 "a change of derivation is a new
-version; existing warnings keep theirs"; AU-PRD-0092 "the level never changes the operation's
-consequence class or the authority a response requires". Evidence: harness → `verified:ci`.
+**Change (migration `0061_warning_levels_v1.sql`; `scenarios.service.ts`; `prediction.controller.ts`;
+`prediction.capabilities.ts`; `apps/web/lib/warning-level.ts`; `apps/web/app/prediction/warnings/page.tsx`).**
+* `branches_current.consequence_class` (C0–C4, Volume 5 ch. 58), declared by the declarer, or null —
+  a warning from such a branch is classed by the derivation's **absent-class rule** (C2 assumed:
+  Volume 5 p. 132 "apply the more restrictive plausible class"; DP-63-005; a warning advises and
+  executes nothing, so C2 is the more restrictive plausible class and C3/C4 are never assumed) and
+  records `consequence_class_source = assumed`. `add_branch` replaced; SCN v3.
+* `prediction.warning_level_versions` / `warning_level_derivations` — v1 = consequence class →
+  level, urgency, response, impact, with its source clauses (Volume 9 App. M NOT-01..32 priority
+  and response columns; NOT-07 high or critical; Volume 4 ch. 47 and SLO-016; Volume 8 ch. 26):
+  C0 low/routine, C1 low/routine, C2 normal/prompt, C3 high/urgent/acknowledge-and-act,
+  C4 critical/immediate/act. Reference data under forced RLS, append-only, writable by migrations
+  alone; `derive_warning_level(class, version?)` is the ONE derivation (the service builds the
+  canonical object from it; the port derives again and refuses a disagreement — no copy in code).
+* `warnings_current.level, level_version, urgency, consequence_class, consequence_class_source,
+  op_class` — bound for every row raised from now on (`NOT VALID` check: earlier rows keep NULL and
+  the screen says "raised before derivation v1"); the six columns are immutable (trigger); the
+  `op_class` is read from the authority context (`public.eye_op_class()`, the 0042/0043 precedent)
+  and never from the label. The PDP gains no input; no prediction route sets a consequence class;
+  acknowledgement stays a person's act by role. WRN v2 carries `level{value, version, urgency,
+  response, impact}` and `authority{op_class}`; the `EarlyWarningRaised` event and the briefing's
+  warning item carry the level; the warnings screen shows the level as glyph + text + colour with
+  its derivation version, the class it came from, and the class of the operation that raised it.
+* Found while exercising the corrected scenario on the demonstration: an evaluation assembled its
+  series INSIDE the write, and a long record (8,645 PortWatch evidence versions, one governed
+  retrieval each) outran the write capability's 60-second wall clock; the first port call was
+  refused. The assembly now runs before the write (its own governed reads), and the write holds
+  the port calls only.
+
+**Acceptance units.** AU-PRD-0061 (every raised warning levelled under the current derivation;
+all five classes; absent-class rule), AU-PRD-0062 (a change of derivation is a new version;
+existing warnings keep theirs; immutable), AU-PRD-0063 (the label changes no authority: op_class
+from the context, acknowledgement by role alike for low and critical, a forged label refused by
+the port and the flip left visibly owed). Evidence: `apps/api/test/int/phase4-warning-levels.test.ts`
+(6 cases) and the D5/D6 case of `phase4-acceptance` (the pre-0061 fixture: C2 assumed, normal,
+op_class C2, WRN@v2). Profiles: all; evidence class: harness → `verified:ci` at the first green
+hosted run at the implementing head. AU-PRD-0034/-0037/-0039 and AU-DP-0164 re-pointed; none
+closed by the re-pointing.
 
 ## B4 — profile legs and SLO floors (defined; audit-side)
 
@@ -177,8 +212,8 @@ versioned alias (a check in `summarise-units.mjs` reports any that do not).
 
 ## Order and the next implementation batch
 
-B3 and B1 are done in code (the 2026-09-11 checkpoints). Next: **B2** (warning levels), then
-B4/B5 (audit mechanics, no product risk). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
+B3, B1 and B2 are done in code (the 2026-09-11 checkpoints). Next: B4/B5 (audit mechanics, no
+product risk) — see §B4/§B5 for their state. The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
 the next demonstration step after the hosted run is green.

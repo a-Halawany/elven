@@ -612,7 +612,12 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     expect(new Date(warning?.closes as string).getTime() - new Date(warning?.opens as string).getTime()).toBe(48 * 3_600_000);
     expect((warning?.evidence as unknown[]).length).toBeGreaterThanOrEqual(2);
     const wobj = (await sql<{ schema_ref: string }>`select schema_ref from objects.canonical_objects where object_id = ${w.warningId}::uuid`.execute(su)).rows[0];
-    expect(wobj?.schema_ref).toBe('WRN@v1');
+    expect(wobj?.schema_ref).toBe('WRN@v2');
+    // B2 (0061): the branch declared no consequence class, so the warning is classed C2 ASSUMED — level normal, urgency
+    // prompt — under derivation v1; the raise ran under the envelope's C2 authority context, recorded beside the label.
+    const lvl = (await sql<{ level: string; level_version: number; urgency: string; consequence_class: string; consequence_class_source: string; op_class: string }>`
+      select level, level_version, urgency, consequence_class, consequence_class_source, op_class from prediction.warnings_current where warning_id = ${w.warningId}::uuid`.execute(su)).rows[0];
+    expect(lvl).toEqual({ level: 'normal', level_version: 1, urgency: 'prompt', consequence_class: 'C2', consequence_class_source: 'assumed', op_class: 'C2' });
 
     // Acknowledged by a person, inside the window.
     const ack = await controller.acknowledgeWarning(req(owner, 'prediction.warning.acknowledge', 'WRN', w.warningId), fx.tenantId, fx.domainId,
@@ -675,7 +680,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const vocab = (await sql<{ kinds: string[] }>`select kinds from prediction.scenario_kind_versions where version = 1`.execute(su)).rows[0];
     expect(vocab?.kinds).toEqual(['baseline', 'upside', 'downside', 'disruption', 'stress', 'adversarial', 'counterfactual', 'user-defined']);
     const obj = (await sql<{ schema_ref: string; payload: Record<string, unknown> }>`select schema_ref, payload from objects.canonical_objects where object_id = ${scn.scenario.scenarioId}::uuid`.execute(su)).rows[0];
-    expect(obj?.schema_ref).toBe('SCN@v2');
+    expect(obj?.schema_ref).toBe('SCN@v3');
     expect(obj?.payload['kind_vocabulary_version']).toBe(1);
     // A stray row with a kind outside the vocabulary is refused by the database itself.
     await expect(sql`update prediction.branches_current set kind = 'wildcard' where branch_id = ${blockade === undefined ? uuidv7() : (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId}::uuid`.execute(su)).rejects.toThrow(/kind_check|immutable|append-only/);
@@ -724,10 +729,12 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const wid = uuidv7();
     await sql`insert into prediction.warnings_current (
         warning_id, scope, tenant_id, domain_id, title, evidence, consequence, confidence,
-        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id, raised_as_of, timing_mode)
+        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id, raised_as_of, timing_mode,
+        consequence_class, consequence_class_source, level, level_version, urgency, op_class)
       values (${wid}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, 'stale warning',
         '[{"kind":"fixture"}]'::jsonb, 'this warning was never answered', 0.5,
-        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid, now() - interval '3 days', 'live')`.execute(su);
+        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid, now() - interval '3 days', 'live',
+        'C2', 'assumed', 'normal', 1, 'prompt', 'C2')`.execute(su);
     await sql`insert into prediction.warning_events (event_id, scope, tenant_id, domain_id, warning_id, event, actor_principal_id, details, correlation_id)
       values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, ${wid}::uuid, 'warning.raised', ${ownerId}::uuid, '{}'::jsonb, ${uuidv7()}::uuid)`.execute(su);
     const ind = (await sql<{ id: string }>`select indicator_id::text id from prediction.indicators_current where series_key = ${seriesKey} limit 1`.execute(su)).rows[0];
@@ -812,7 +819,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const rows = (await sql<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'prediction' and c.relkind = 'r'`.execute(su)).rows;
-    expect(rows.length).toBe(13); // 12 of 0029–0037, plus the scenario kind vocabulary of 0058
+    expect(rows.length).toBe(15); // 12 of 0029–0037, the scenario kind vocabulary of 0058, the warning level versions and derivations of 0061
     for (const r of rows) {
       expect(r.relrowsecurity, `${r.relname} has no row-level security`).toBe(true);
       expect(r.relforcerowsecurity, `${r.relname} does not FORCE it`).toBe(true);

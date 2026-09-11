@@ -237,7 +237,9 @@ export class BriefingService {
       if (raisedIn || ackIn) controlInputs.push(await this.controlsOfObject(cap, 'WRN', String(w['warning_id']), null));
       const wc = raisedIn || ackIn ? controlInputs[controlInputs.length - 1] as ControlInput : null;
       if (raisedIn) push({ kind: 'warning', id: String(w['warning_id']), version: null, title: `raised: ${String(w['title'])}`, at: iso(w['raised_at']), truth_state: 'inferred', synthetic_state: wc?.synthetic_state !== false,
-        source_state: 'internal', source: null, owner: String(w['routed_to']), details: { state: warningState(w), consequence: w['consequence'], response_window_closes_at: isoOrNull(w['response_window_closes_at']) } });
+        source_state: 'internal', source: null, owner: String(w['routed_to']), details: { state: warningState(w), consequence: w['consequence'], response_window_closes_at: isoOrNull(w['response_window_closes_at']),
+          // B2 (0061): the level the warning carried, and the class it was derived from; null for a warning raised before a derivation existed.
+          level: w['level'] ?? null, level_version: w['level_version'] ?? null, urgency: w['urgency'] ?? null, consequence_class: w['consequence_class'] ?? null, consequence_class_source: w['consequence_class_source'] ?? null } });
       if (ackIn) push({ kind: 'warning-acknowledged', id: String(w['warning_id']), version: null, title: `acknowledged: ${String(w['title'])}`, at: iso(w['acknowledged_at']), truth_state: 'asserted', synthetic_state: wc?.synthetic_state !== false,
         source_state: 'internal', source: null, owner: String(w['acknowledged_by']), details: { acknowledgement: w['acknowledgement'] } });
     }

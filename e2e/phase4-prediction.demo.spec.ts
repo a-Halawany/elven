@@ -134,10 +134,14 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
   test('a replayed warning is dated in the replay, audited now, and timely against its deadline', async ({ page }) => {
     await page.goto('/prediction/warnings');
     await expect(page.getByRole('columnheader', { name: 'Raised as of' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Level' })).toBeVisible();
     // Act IV's own warning, not one of the branches the action-path checks below seed on reruns.
     const row = page.getByRole('row').filter({ hasText: 'Bab el-Mandeb Strait over the next 30 days' }).filter({ hasText: 'REPLAY' }).first();
     await expect(row).toBeVisible();
     await expect(row.getByText('● issued in time')).toBeVisible();
+    // B2 (0061): the level is stated as glyph + text with its derivation version — or, for a warning raised before the
+    // derivation existed (a demonstration seeded before 0061), the screen says so rather than inventing one.
+    await expect(row.getByText(/NORMAL · derivation v1|no level — raised before derivation v1/)).toBeVisible();
     await row.getByRole('button').first().click();
     const detail = page.locator('section[aria-labelledby="wrn-h"]');
     await expect(detail.getByText(/REPLAY · raised as of .*2024/).first()).toBeVisible();
@@ -145,6 +149,7 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
     await expect(detail.getByText(/before the decision deadline/).first()).toBeVisible();
     await expect(detail.getByText(/one warning per flip/)).toBeVisible();
     await expect(detail.getByText(/classification/).first()).toBeVisible();
+    await expect(detail.getByText(/derived from consequence class .* the label changes no authority|predates derivation v1 and carries none/).first()).toBeVisible();
     await shot(page, '05-warnings');
   });
 

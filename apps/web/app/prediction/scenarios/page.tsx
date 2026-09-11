@@ -78,7 +78,8 @@ export default function ScenariosPage() {
                     <Td>{b.signpost ?? '—'}</Td>
                     <Td mono>{b.owner_principal_id.slice(0, 8)}…</Td>
                     <Td>{b.response_window_hours} h{b.decision_deadline === undefined || b.decision_deadline === null ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no deadline · T3 unmeasured</div> : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>by {fmtInstant(b.decision_deadline)}</div>}</Td>
-                    <Td>{b.consequence}</Td>
+                    <Td>{b.consequence}{b.consequence_class ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class <Mono>{b.consequence_class}</Mono> (declared)</div>
+                      : <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class not declared — a warning assumes C2 and says so</div>}</Td>
                   </tr>
                 );
               })}

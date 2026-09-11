@@ -59,6 +59,10 @@ export interface PredictionReads {
   evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]>;
   /** One exact evidence version with the controls it carries — the version a flip CITED, whatever superseded it since. */
   evidenceVersion(a: { objectId: string; version: number }): Promise<EvidenceVersionRow | undefined>;
+  /** B2 (0061): the ONE derivation, consequence class → level under the current version; the versions and rows themselves. */
+  deriveWarningLevel(consequenceClass: string): Promise<{ version: number; level: string; urgency: string; response: string; impact: string }>;
+  readWarningLevelVersions(): any;
+  readWarningLevelDerivations(): any;
   /** Flipped branches still owed a warning — the obligation a failed raise left behind. */
   owedFlips(): Promise<Array<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
                                evidence_object_id: string; evidence_version: number }>>;
@@ -123,7 +127,10 @@ export interface ScenarioWrites extends PredictionReads {
   addBranch(a: {
     branchId: string; tenantId: string; domainId: string; scenarioId: string; name: string; kind: string;
     statement: string; indicatorId: string | null; signpost: string | null; owner: string;
-    reviewCadence: string; responseHours: number; consequence: string; decisionDeadline: string | null;
+    reviewCadence: string; responseHours: number; consequence: string;
+    /** B2 (0061): the C0–C4 class of the consequence the flip reaches, declared by the declarer, or null (assumed at raise time). */
+    consequenceClass: string | null;
+    decisionDeadline: string | null;
     /** Scenario kind vocabulary v1 (migration 0058): the label of a user-defined kind, how the branch diverges from the baseline, its own assumptions. */
     kindLabel: string | null; divergence: string | null; assumptions: Array<{ statement: string; basis?: string | null }>;
     actor: string; eventId: string; correlationId: string;
@@ -160,6 +167,8 @@ export interface WarningWrites extends PredictionReads {
     forecastId: string | null; title: string; evidence: unknown[]; consequence: string; confidence: number;
     opensAt: string; closesAt: string; routedTo: string; flipEventId: string | null; raisedAsOf: string;
     timingMode: 'live' | 'replay'; decisionDeadline: string | null; timely: boolean | null; decisionMissed: boolean; controls: unknown;
+    /** B2 (0061): what the canonical object says; the port derives the same and refuses a disagreement. */
+    consequenceClass: string; consequenceClassSource: 'declared' | 'assumed'; level: string; levelVersion: number; urgency: string; opClass: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
@@ -299,7 +308,7 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.add_branch(
       ${a.branchId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.name}, ${a.kind},
       ${a.statement}, ${a.indicatorId}::uuid, ${a.signpost}, ${a.owner}::uuid, ${a.reviewCadence},
-      ${a.responseHours}, ${a.consequence}, ${a.decisionDeadline}::timestamptz,
+      ${a.responseHours}, ${a.consequence}, ${a.consequenceClass}, ${a.decisionDeadline}::timestamptz,
       ${a.kindLabel}, ${a.divergence}, ${JSON.stringify(a.assumptions)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
@@ -333,8 +342,21 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.opensAt}::timestamptz, ${a.closesAt}::timestamptz, ${a.routedTo}::uuid,
       ${a.flipEventId}::uuid, ${a.raisedAsOf}::timestamptz, ${a.timingMode}, ${a.decisionDeadline}::timestamptz,
       ${a.timely}, ${a.decisionMissed}, ${JSON.stringify(a.controls ?? {})}::jsonb,
+      ${a.consequenceClass}, ${a.consequenceClassSource}, ${a.level}, ${a.levelVersion}, ${a.urgency}, ${a.opClass},
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+
+  async deriveWarningLevel(consequenceClass: string): Promise<{ version: number; level: string; urgency: string; response: string; impact: string }> {
+    const rows = await this.call<{ out_version: number; out_level: string; out_urgency: string; out_response: string; out_impact: string }>(
+      sql`select out_version, out_level, out_urgency, out_response, out_impact from prediction.derive_warning_level(${consequenceClass}, null)`);
+    const r = rows[0];
+    if (r === undefined) throw new Error(`no warning level derivation for class ${consequenceClass}`);
+    return { version: r.out_version, level: r.out_level, urgency: r.out_urgency, response: r.out_response, impact: r.out_impact };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readWarningLevelVersions(): any { return this.from('prediction.warning_level_versions'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readWarningLevelDerivations(): any { return this.from('prediction.warning_level_derivations'); }
 
   async acknowledgeWarning(a: Parameters<AcknowledgeWrites['acknowledgeWarning']>[0]): Promise<string> {
     const rows = await this.call<{ s: string }>(sql`select prediction.acknowledge_warning(

@@ -22,7 +22,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { PredictionReads, ScenarioWrites, IndicatorWrites, EvaluationWrites, WarningWrites,
   AcknowledgeWrites } from '../prediction.capabilities.js';
-import { SeriesService, dayOf, type Reader } from '../series/series.service.js';
+import { SeriesService, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { foldControls, controlsOf, type Controls } from '../controls.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +35,20 @@ export const SCENARIO_KINDS_V1 = ['baseline', 'upside', 'downside', 'disruption'
 export type ScenarioKind = (typeof SCENARIO_KINDS_V1)[number];
 export const SCENARIO_KIND_VOCABULARY_VERSION = 1;
 
+/**
+ * WARNING LEVELS (migration 0061; register R-4 (1)). Four levels derived by a VERSIONED rule from
+ * the C0–C4 class of the consequence a branch's flip reaches — the derivation lives in the
+ * database (prediction.derive_warning_level) and is not copied here; these are the vocabularies a
+ * reader may rely on. Confidence stays the numeric it is, and the C0–C4 class of the raise
+ * OPERATION is recorded beside the label and never read by the derivation: a label never changes
+ * decision authority.
+ */
+export const CONSEQUENCE_CLASSES_V1 = ['C0', 'C1', 'C2', 'C3', 'C4'] as const;
+export type ConsequenceClass = (typeof CONSEQUENCE_CLASSES_V1)[number];
+export const WARNING_LEVELS_V1 = ['low', 'normal', 'high', 'critical'] as const;
+export const WARNING_URGENCIES_V1 = ['routine', 'prompt', 'urgent', 'immediate'] as const;
+export const WARNING_RESPONSES_V1 = ['acknowledge', 'acknowledge-and-act', 'act'] as const;
+
 export interface BranchAssumption { statement: string; basis?: string | null }
 
 export interface BranchIntake {
@@ -46,6 +60,8 @@ export interface BranchIntake {
   /** The branch's own assumption set. */
   assumptions?: BranchAssumption[];
   signpost: string | null; owner: string; reviewCadence: string; responseWindowHours: number; consequence: string;
+  /** B2 (0061): the C0–C4 class of the consequence the flip reaches (Volume 5 ch. 58), declared by the declarer; null = not stated (assumed C2 at raise time, and said so). */
+  consequenceClass?: ConsequenceClass | null;
   /**
    * The instant by which the decision the warning serves must be taken — set by
    * the declarer from the decision, not from the clock. Without it, timeliness
@@ -102,6 +118,9 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
     }
     if (typeof b.owner !== 'string' || !UUID.test(b.owner)) bad(`branch "${b.name}" needs a named owner`);
     if (typeof b.consequence !== 'string' || b.consequence.trim().length < 8) bad(`branch "${b.name}" needs a consequence of at least 8 characters`);
+    if (b.consequenceClass != null && !(CONSEQUENCE_CLASSES_V1 as readonly string[]).includes(b.consequenceClass as string)) {
+      bad(`branch "${b.name}": consequenceClass must be one of C0–C4 (Volume 5 ch. 58) or omitted`);
+    }
     if (typeof b.responseWindowHours !== 'number' || b.responseWindowHours < 1) bad(`branch "${b.name}" needs a response window in hours`);
     if (b.decisionDeadline != null && (typeof b.decisionDeadline !== 'string' || Number.isNaN(Date.parse(b.decisionDeadline)))) {
       bad(`branch "${b.name}": decisionDeadline must be an instant`);
@@ -117,6 +136,7 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
       assumptions: (b.assumptions ?? []).map((a) => ({ statement: a.statement, basis: a.basis ?? null })),
       owner: b.owner, reviewCadence: b.reviewCadence ?? (m.reviewCadence as string),
       responseWindowHours: b.responseWindowHours, consequence: b.consequence,
+      consequenceClass: b.consequenceClass == null ? null : b.consequenceClass,
       decisionDeadline: b.decisionDeadline == null ? null : new Date(b.decisionDeadline).toISOString() })),
   };
 }
@@ -152,7 +172,7 @@ export class ScenariosService {
         assumptions: b.assumptions ?? [], statement: b.statement,
         indicator: b.indicatorId === null ? null : { indicator_id: b.indicatorId }, signpost: b.signpost,
         owner: `principal:${b.owner}`, review_cadence: b.reviewCadence, response_window_hours: b.responseWindowHours,
-        consequence: b.consequence, decision_deadline: b.decisionDeadline })),
+        consequence: b.consequence, consequence_class: b.consequenceClass ?? null, decision_deadline: b.decisionDeadline })),
       controls,
     };
     const header: CanonicalHeader = {
@@ -166,7 +186,7 @@ export class ScenariosService {
       contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${intake.owner}`], classification: controls.classification,
       purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
       retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v2', ontology_ref: null,
+      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v3', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const v = validateHeader(header);
@@ -182,6 +202,7 @@ export class ScenariosService {
         branchId: b.branchId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, scenarioId,
         name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId, signpost: b.signpost,
         owner: b.owner, reviewCadence: b.reviewCadence, responseHours: b.responseWindowHours, consequence: b.consequence,
+        consequenceClass: b.consequenceClass ?? null,
         decisionDeadline: b.decisionDeadline, kindLabel: b.kindLabel ?? null, divergence: b.divergence ?? null, assumptions: b.assumptions ?? [],
         actor, eventId: newId(), correlationId,
       });
@@ -225,16 +246,40 @@ export class ScenariosService {
    * incomplete history (evidence this reader could not read) is refused: a
    * streak counted on a partial series is not the publisher's streak.
    */
+  /**
+   * THE SERIES IS ASSEMBLED BEFORE THE WRITE. Assembling a long series is one governed
+   * retrieval per evidence version — minutes on the demonstration's PortWatch record — and a
+   * write's bound capability expires on a 60-second wall clock (0011). On 2026-09-11 the first
+   * evaluation of a bounded indicator on the demonstration assembled 8,645 versions inside the
+   * write and the first port call was refused (`context is bound to action <none>`): the same
+   * class of finding the outbox publisher met on 2026-09-10. So the reads happen first, under the
+   * reader's own consequential reads, and the write holds only the port calls.
+   */
+  async seriesKeyOf(cap: PredictionReads, indicatorId: string, correlationId: string): Promise<string> {
+    const ind = (await cap.readIndicators().selectAll()
+      .where('indicator_id' as never, '=', indicatorId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (ind === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized indicator matches'), 404);
+    return String(ind['series_key']);
+  }
+
+  /** The series' own governed reads run here, in no enclosing transaction: a read nested in a read would wait on the audit chain it holds. */
+  async assembleForEvaluation(reader: Reader, seriesKey: string, knownAt: string, correlationId: string): Promise<AssembledSeries> {
+    const assembled = await this.series.assemble(reader, seriesKey, knownAt, null);
+    if (!assembled.complete) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId,
+        `${assembled.unreadable.length} evidence version(s) of ${seriesKey} could not be read by this reader; the indicator is not evaluated on an incomplete history`), 409);
+    }
+    return assembled;
+  }
+
   async evaluate(
-    cap: EvaluationWrites, ctx: ScopeContext, reader: Reader, indicatorId: string, knownAt: string, actor: string, correlationId: string,
+    cap: EvaluationWrites, ctx: ScopeContext, assembled: AssembledSeries, indicatorId: string, knownAt: string, actor: string, correlationId: string,
   ): Promise<{ evaluated: number; breached: boolean; streak: number; flips: Flip[]; owed: Flip[]; replayAsOf: string | null }> {
     const ind = (await cap.readIndicators().selectAll()
       .where('indicator_id' as never, '=', indicatorId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (ind === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized indicator matches'), 404);
-    const assembled = await this.series.assemble(reader, String(ind['series_key']), knownAt, null);
-    if (!assembled.complete) {
-      throw new HttpException(errorBody('EYE_STA_001', correlationId,
-        `${assembled.unreadable.length} evidence version(s) of ${String(ind['series_key'])} could not be read by this reader; the indicator is not evaluated on an incomplete history`), 409);
+    if (assembled.series.series_key !== String(ind['series_key'])) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'the assembled series is not the indicator\'s'), 409);
     }
     // The controls of the EXACT version a flip cites — from this assembly when it
     // contributed the point, otherwise read by object and version, so a later
@@ -299,10 +344,21 @@ export class ScenariosService {
    * cannot be resolved the warning is not admitted at all: it stays owed on the
    * branch, visibly, until they can be.
    */
+  /**
+   * The level a warning from this class carries (0061). A separate method so the harness can
+   * make the canonical object disagree with the derivation and watch the port refuse it.
+   */
+  async levelFor(cap: WarningWrites, consequenceClass: string): Promise<{ version: number; level: string; urgency: string; response: string; impact: string }> {
+    return cap.deriveWarningLevel(consequenceClass);
+  }
+
   async warnForFlip(
     cap: WarningWrites, ctx: ScopeContext, flip: Flip, confidence: number, actor: string, correlationId: string, purposeId: string,
     timing: 'live' | 'replay', now = new Date(), warningId: string = newId(),
-  ): Promise<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: 'live' | 'replay' }> {
+    /** The C0–C4 class of the AUTHORITY CONTEXT this raise runs under (the envelope's), recorded beside the label. */
+    opClass = 'C1',
+  ): Promise<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: 'live' | 'replay';
+               level: string; levelVersion: number; urgency: string; response: string; consequenceClass: string; consequenceClassSource: 'declared' | 'assumed'; opClass: string }> {
     const branch = (await cap.readBranches().selectAll()
       .where('branch_id' as never, '=', flip.branchId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (branch === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized branch matches'), 404);
@@ -332,6 +388,12 @@ export class ScenariosService {
       controlsOf(scenario?.['controls']) ?? {},
       flip.evidenceControls,
     ]);
+    // THE CLASS IS THE BRANCH'S DECLARATION, OR ASSUMED BY THE DERIVATION'S RULE (0061); the level is the
+    // database's derivation — the port derives it again and refuses an object that disagrees.
+    const declared = branch['consequence_class'];
+    const consequenceClass = typeof declared === 'string' ? declared : 'C2';
+    const consequenceClassSource: 'declared' | 'assumed' = typeof declared === 'string' ? 'declared' : 'assumed';
+    const lvl = await this.levelFor(cap, consequenceClass);
     const evidence = [{ kind: 'evidence', evidence_object_id: flip.evidenceObjectId, evidence_version: flip.evidenceVersion,
                         observation_at: flip.observationAt, value: flip.value },
                       { kind: 'flip_event', event_id: flip.flipEventId, branch_id: flip.branchId },
@@ -341,10 +403,12 @@ export class ScenariosService {
     const payload = {
       title, branch_id: flip.branchId, indicator_id: String(branch['indicator_id']),
       forecast_id: scenario?.['forecast_id'] ?? null, flip_event_id: flip.flipEventId,
-      evidence, consequence: String(branch['consequence']), confidence,
+      evidence, consequence: String(branch['consequence']), consequence_class: consequenceClass, consequence_class_source: consequenceClassSource, confidence,
       timing: { mode: timing, raised_as_of: raisedAsOf, recorded_at: recordedAt, decision_deadline: decisionDeadline, timely, decision_missed: decisionMissed },
       response_window: { opens_at: raisedAsOf, closes_at: closesAt }, routed_to: `principal:${routedTo}`,
       controls,
+      level: { value: lvl.level, version: lvl.version, urgency: lvl.urgency, response: lvl.response, impact: lvl.impact },
+      authority: { op_class: opClass },
     };
     const header: CanonicalHeader = {
       object_id: warningId, object_type: 'WRN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
@@ -358,7 +422,7 @@ export class ScenariosService {
       contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: controls.classification, purpose_scope: purposeId,
       rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
       access_policy_ref: controls.access_policy_ref, quality_profile: null,
-      quality_state: null, freshness_state: null, schema_ref: 'WRN@v1', ontology_ref: null, correction_of: null,
+      quality_state: null, freshness_state: null, schema_ref: 'WRN@v2', ontology_ref: null, correction_of: null,
       supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const v = validateHeader(header);
@@ -369,9 +433,11 @@ export class ScenariosService {
       indicatorId: String(branch['indicator_id']), forecastId: scenario?.['forecast_id'] === undefined ? null : (scenario['forecast_id'] as string | null),
       title, evidence, consequence: String(branch['consequence']), confidence, opensAt: raisedAsOf, closesAt, routedTo,
       flipEventId: flip.flipEventId, raisedAsOf, timingMode: timing, decisionDeadline, timely, decisionMissed, controls,
+      consequenceClass, consequenceClassSource, level: lvl.level, levelVersion: lvl.version, urgency: lvl.urgency, opClass,
       actor, eventId: newId(), correlationId,
     });
-    return { warningId, routedTo, raisedAsOf, closesAt, timely, decisionMissed, timingMode: timing };
+    return { warningId, routedTo, raisedAsOf, closesAt, timely, decisionMissed, timingMode: timing,
+             level: lvl.level, levelVersion: lvl.version, urgency: lvl.urgency, response: lvl.response, consequenceClass, consequenceClassSource, opClass };
   }
 
   /**
@@ -397,12 +463,12 @@ export class ScenariosService {
     if (s === undefined) return undefined;
     const branches = (await cap.readBranches().selectAll().where('scenario_id' as never, '=', scenarioId as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readScenarioEvents().selectAll().where('scenario_id' as never, '=', scenarioId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
-    const indicators = (await cap.readIndicators().selectAll().execute()) as Array<Record<string, unknown>>;
+    const indicators = ((await cap.readIndicators().selectAll().execute()) as Array<Record<string, unknown>>).map(withIndicatorDays);
     return { ...s, branches: branches.map((b) => ({ ...b, indicator: indicators.find((i) => String(i['indicator_id']) === String(b['indicator_id'])) ?? null })), events };
   }
 
   async listIndicators(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {
-    return (await cap.readIndicators().selectAll().orderBy('defined_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
+    return ((await cap.readIndicators().selectAll().orderBy('defined_at' as never, 'desc').execute()) as Array<Record<string, unknown>>).map(withIndicatorDays);
   }
 
   async listWarnings(cap: PredictionReads, limit = 100): Promise<Array<Record<string, unknown>>> {
@@ -415,4 +481,15 @@ export class ScenariosService {
     const events = (await cap.readWarningEvents().selectAll().where('warning_id' as never, '=', warningId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     return { ...w, events };
   }
+}
+
+/*
+ * A DATE column names a day, not an instant. The driver hands it back as a Date at LOCAL
+ * midnight, which JSON would then print in UTC — a day west of Greenwich — so an indicator's
+ * day-valued columns are rendered as the day they name before they leave (the twin precedent).
+ */
+function withIndicatorDays(row: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...row };
+  for (const c of ['observes_from', 'last_observation_at']) if (c in out) out[c] = dayOf(out[c]);
+  return out;
 }
