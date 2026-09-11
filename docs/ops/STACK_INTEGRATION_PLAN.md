@@ -272,3 +272,42 @@ do not count the phase suites.
   `if: always() && env.C15_OUT != ''` and the new step name.
 - **Semantic effects of the clean merges.** Seven heads merge the change-set cleanly at the text
   level. Clean text is not a passing gate; each still needs its own full-chain run (§4).
+
+
+---
+
+## 7. The stack, PREPARED (2026-09-11) — exact heads, what each carries, its hosted run
+
+Executed as §4 describes, by the owner's instruction "prepare the integration stack": every head
+merged its predecessor in the recorded order, nothing rebased or squashed, no reviewed commit
+rewritten. The maintenance set landed on #39 as one product-free commit (`65c0f4d`, the 179 files of
+§1 taken byte for byte from `phase6-decisions@4ad058f`, #39's `if:` guard kept), the dependency
+maintenance as a second (`fd00dfe`: the pins of `038fa9f`, the lockfile regenerated on #39's own tree,
+`pnpm audit` clean, C17 bundled stack 1.3.3 32/32, licence gate PASS), and `apps/web/next-env.d.ts`
+as next 16.3.3 writes it (`a2cb0d8` — the build regenerates the tracked file and the C18 step refuses
+a dirty worktree). Two things ordering alone did not solve appeared in execution and are recorded:
+
+* **git's textual merge of two `pnpm-lock.yaml` files does not satisfy the manifests**
+  (`ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY`): every head from #38 on regenerated its lockfile on its own
+  tree after the merge, and carried the `apps/web` vitest pin (a workspace #39's tree did not
+  declare); each such commit says so.
+* The three `PROGRESS.md` conflicts (#38, #40, #41) were resolved by hand: Phase 3 keeps the merged
+  status #36 records; Phase 4 and Phase 5 keep the implementing branch's row over the plan's.
+
+| Order | PR | Prepared head | Carries | Hosted `ci` run |
+|---|---|---|---|---|
+| 1 | #39 | `a2cb0d8` | `7259c49` + maintenance set `65c0f4d` + dependency maintenance `fd00dfe` + `a2cb0d8` | 34620632427 — green (build-test, browser-regression, supply-chain) |
+| 2 | #36 | `d458b36` | `63a6c9f` + merges of #39 | 34620663921 — green on attempt 2 (attempt 1: the A5 timing side-channel assertion flaked on the runner, 15 ms vs 1.3 ms; the build-test job re-run alone) |
+| 3 | #38 | `1ed69ed` | `879ce2d` + merges of #36 (`PROGRESS.md` by hand) + lockfile on its tree `42c348a` | 34620667803 — green |
+| 4 | #40 | `fb18c1f` | `9e33e97` + merges of #38 (`PROGRESS.md` by hand) + lockfile `2e44bbf` | 34620672990 — green |
+| 5 | #41 | `9f18468` | `f527446` + merges of #40 (`PROGRESS.md` by hand) + lockfile `11a8052` | 34620677405 — green |
+| 6 | #43 | `34969e8` | `6086de4` + merges of #41 + lockfile `80eb588` | 34620681791 — green |
+| 7 | #44 | `41eaa04` | `c546046` + merges of #43 + lockfile `3e8d83c` | 34620686380 — green |
+| 8 | #45 | `da47bd3` | `4f88381` + merges of #44 + lockfile `d568a37` | 34620692823 — green |
+| 9 | #46 | `1a99784` | `590928f` + merges of #45 (`ci.yml` by hand) + this checkpoint's commits (0057, 0058, CP-4a, the register) | 34621875479 — RUN46_RESULT |
+
+Each PR's required checks run on the synthetic merge of its prepared head with its base; a head that
+contains its predecessors passes the same chain it will pass on `main`. The push-only C17 archive is
+produced on `main` after each merge and is not part of these runs. **No merge has been made; merging
+waits for the owner's explicit instruction**, in this order, one at a time, with the archive verified
+after each.
