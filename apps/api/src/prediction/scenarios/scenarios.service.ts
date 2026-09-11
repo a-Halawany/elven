@@ -191,11 +191,18 @@ export class ScenariosService {
 
   async defineIndicator(
     cap: IndicatorWrites, ctx: ScopeContext,
-    a: { seriesKey: string; description: string; comparator: string; threshold: number; consecutiveDays: number; owner: string },
+    a: { seriesKey: string; description: string; comparator: string; threshold: number; consecutiveDays: number; owner: string; observesFrom?: string | null },
     actor: string, correlationId: string,
   ): Promise<{ indicatorId: string }> {
     if (!['<', '<=', '>', '>='].includes(a.comparator)) {
       throw new HttpException(errorBody('EYE_REQ_001', correlationId, "comparator must be one of '<', '<=', '>', '>='"), 422);
+    }
+    // The first observation day the indicator watches (0059). A recovery is "above a level AFTER
+    // the collapse": without a bound, pre-collapse observations satisfy the level and the branch
+    // flips before the event it follows.
+    const observesFrom = a.observesFrom == null ? null : String(a.observesFrom);
+    if (observesFrom !== null && !/^\d{4}-\d{2}-\d{2}$/.test(observesFrom)) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'observesFrom must be a calendar day (YYYY-MM-DD)'), 422);
     }
     if (!Number.isFinite(a.threshold)) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'threshold must be a number'), 422);
     if (!Number.isInteger(a.consecutiveDays) || a.consecutiveDays < 1) {
@@ -205,7 +212,7 @@ export class ScenariosService {
     await cap.defineIndicator({
       indicatorId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, seriesKey: a.seriesKey,
       description: a.description, comparator: a.comparator, threshold: a.threshold, consecutiveDays: a.consecutiveDays,
-      owner: a.owner, actor, correlationId,
+      owner: a.owner, observesFrom, actor, correlationId,
     });
     return { indicatorId };
   }
@@ -238,7 +245,9 @@ export class ScenariosService {
       return row === undefined ? null : foldControls([row]);
     };
     const last = dayOf(ind['last_observation_at']);
-    const fresh = assembled.points.filter((p) => last === null || p.date > last);
+    // Only observations the indicator watches (0059): on or after its declared first day, and newer than the last seen.
+    const from = dayOf(ind['observes_from']);
+    const fresh = assembled.points.filter((p) => (last === null || p.date > last) && (from === null || p.date >= from));
     const flips: Flip[] = [];
     let breached = ind['breached'] === true; let streak = Number(ind['streak'] ?? 0);
     for (const p of fresh) {

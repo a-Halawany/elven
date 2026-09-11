@@ -629,6 +629,12 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const ind = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
       { payload: { seriesKey, description: 'transits fall below 40 per day for five consecutive days (C-022 case)', comparator: '<',
                    threshold: 40, consecutiveDays: 5, owner: ownerId } }) as { indicator: { indicatorId: string } };
+    // RECOVERY IS "ABOVE A LEVEL AFTER THE COLLAPSE" (migration 0059): the upside branch watches its
+    // own indicator, bounded to observations from the day the disruption ended; the other flipping
+    // branches share the deterioration indicator.
+    const rec = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits back above 50 per day for five consecutive days after the disruption', comparator: '>',
+                   threshold: 50, consecutiveDays: 5, owner: ownerId, observesFrom: DISRUPTION_TO } }) as { indicator: { indicatorId: string } };
     const flipping = (name: string, kind: string, extra: Record<string, unknown> = {}) => ({
       name, kind, statement: `${name}: transits stay below 40/day for five days`, indicatorId: ind.indicator.indicatorId,
       signpost: 'five consecutive days under 40', owner: ownerId, consequence: 'rebook the third shipment before the window closes',
@@ -647,7 +653,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const scn = await declare([
       { name: 'Baseline', kind: 'baseline', statement: 'transits at seasonal level', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72,
         assumptions: [{ statement: 'the corridor stays open', basis: 'no closure notice on file' }] },
-      flipping('Upside', 'upside', { divergence: null }),
+      flipping('Upside', 'upside', { divergence: null, indicatorId: rec.indicator.indicatorId, statement: 'Upside: transits back above 50/day for five days after the disruption', signpost: 'five consecutive days above 50 once the disruption has ended' }),
       flipping('Downside', 'downside'),
       flipping('Disruption', 'disruption', { assumptions: [{ statement: 'a closure lasts at least a week' }] }),
       flipping('Stress', 'stress', { assumptions: [{ statement: 'two corridors close at once', basis: 'stress design' }] }),
@@ -674,16 +680,45 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     // A stray row with a kind outside the vocabulary is refused by the database itself.
     await expect(sql`update prediction.branches_current set kind = 'wildcard' where branch_id = ${blockade === undefined ? uuidv7() : (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId}::uuid`.execute(su)).rejects.toThrow(/kind_check|immutable|append-only/);
 
-    // The user-defined disruption FLIPS on its indicator like any other branch (the seven flipping
-    // branches share the indicator, so the evaluation flips them all and raises one warning each).
+    // The user-defined disruption FLIPS on the deterioration indicator like any other branch (the six
+    // branches that share it flip together, one warning each); the upside branch does NOT — it
+    // watches the recovery indicator.
     const ev = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', ind.indicator.indicatorId), fx.tenantId, fx.domainId,
       ind.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { flips: Array<{ branchId?: string; branch_id?: string }> }; warnings: Array<{ branchId: string }> };
     const flippedIds = new Set(ev.warnings.map((w) => w.branchId));
-    const blockadeId = (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId;
-    expect(flippedIds.has(blockadeId), 'the user-defined disruption did not flip on its indicator').toBe(true);
-    const flipped = (await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${blockadeId}::uuid`.execute(su)).rows[0];
-    expect(flipped?.state).toBe('flipped');
-  }, 120_000);
+    const idOf = (kind: string) => (scn.scenario.branches.find((b) => b.kind === kind) as { branchId: string }).branchId;
+    expect(flippedIds.has(idOf('user-defined')), 'the user-defined disruption did not flip on its indicator').toBe(true);
+    expect(flippedIds.has(idOf('upside')), 'the upside branch flipped on the DETERIORATION indicator').toBe(false);
+    expect((await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${idOf('user-defined')}::uuid`.execute(su)).rows[0]?.state).toBe('flipped');
+    expect((await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${idOf('upside')}::uuid`.execute(su)).rows[0]?.state).toBe('open');
+
+    // The RECOVERY: the bounded indicator sees nothing before the disruption ended and flips the
+    // upside branch on the fifth day above 50 AFTER it — 2023-12-01.
+    const rv = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', rec.indicator.indicatorId), fx.tenantId, fx.domainId,
+      rec.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { evaluated: number; flips: Array<{ branchId: string; observationAt: string }> }; warnings: Array<{ branchId: string }> };
+    expect(rv.evaluation.evaluated, 'the bounded indicator evaluated observations before its first day').toBe(35); // 2023-11-27 … 2023-12-31
+    expect(rv.evaluation.flips.map((f) => f.branchId)).toEqual([idOf('upside')]);
+    expect(rv.evaluation.flips[0]?.observationAt).toBe('2023-12-01');
+    expect(rv.warnings.length).toBe(1);
+    expect((await sql<{ state: string; observes_from: string }>`select b.state, i.observes_from::text from prediction.branches_current b
+      join prediction.indicators_current i on i.indicator_id = b.indicator_id where b.branch_id = ${idOf('upside')}::uuid`.execute(su)).rows[0])
+      .toEqual({ state: 'flipped', observes_from: DISRUPTION_TO });
+
+    // CONTROL: the same recovery level WITHOUT the bound is satisfied by pre-disruption data and
+    // "recovers" in January 2021 — the defect the bound exists for.
+    const unbounded = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits above 50 per day for five consecutive days (no first day declared)', comparator: '>', threshold: 50, consecutiveDays: 5, owner: ownerId } }) as { indicator: { indicatorId: string } };
+    const cscn = await declare([
+      { name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 },
+      flipping('Unbounded recovery', 'upside', { divergence: null, indicatorId: unbounded.indicator.indicatorId }),
+    ]) as { scenario: { branches: Array<{ branchId: string; kind: string }> } };
+    const cv = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', unbounded.indicator.indicatorId), fx.tenantId, fx.domainId,
+      unbounded.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { evaluated: number; flips: Array<{ observationAt: string }> } };
+    expect(cv.evaluation.evaluated).toBe(1095);
+    const unboundedFlip = cv.evaluation.flips[0]?.observationAt ?? '';
+    expect(unboundedFlip < DISRUPTION_FROM, `an unbounded "recovery" flips before the disruption it is meant to follow (flipped ${unboundedFlip})`).toBe(true);
+    expect(cscn.scenario.branches.length).toBe(2);
+  }, 180_000);
 
   it('D6 · a warning nobody acknowledged before its window closed is recorded as EXPIRED, not left silent', async () => {
     const wid = uuidv7();

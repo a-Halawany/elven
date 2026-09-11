@@ -296,7 +296,7 @@ export class PredictionController {
   @Post('/indicators/define')
   async defineIndicator(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
-    @Body() body: { payload?: { seriesKey?: string; description?: string; comparator?: string; threshold?: number; consecutiveDays?: number; owner?: string } },
+    @Body() body: { payload?: { seriesKey?: string; description?: string; comparator?: string; threshold?: number; consecutiveDays?: number; owner?: string; observesFrom?: string | null } },
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
@@ -310,6 +310,7 @@ export class PredictionController {
         const r = await this.scenarios.defineIndicator(cap, scope, {
           seriesKey: p.seriesKey as string, description: p.description as string, comparator: p.comparator as string,
           threshold: Number(p.threshold), consecutiveDays: Number(p.consecutiveDays ?? 1), owner: p.owner ?? principal.principalId,
+          observesFrom: p.observesFrom ?? null,
         }, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'IND', targetId: r.indicatorId, targetVersion: '1', outboxEvent: null };
       });

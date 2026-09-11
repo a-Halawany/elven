@@ -133,8 +133,10 @@ export interface ScenarioWrites extends PredictionReads {
 export interface IndicatorWrites extends PredictionReads {
   defineIndicator(a: {
     indicatorId: string; tenantId: string; domainId: string; seriesKey: string; description: string;
-    comparator: string; threshold: number; consecutiveDays: number; owner: string; actor: string;
-    correlationId: string;
+    comparator: string; threshold: number; consecutiveDays: number; owner: string;
+    /** The first observation day the indicator watches (migration 0059); null watches from the series' beginning. */
+    observesFrom: string | null;
+    actor: string; correlationId: string;
   }): Promise<void>;
 }
 
@@ -305,8 +307,8 @@ class PredictionCapabilityImpl extends PredictionCore
   async defineIndicator(a: Parameters<IndicatorWrites['defineIndicator']>[0]): Promise<void> {
     await this.call(sql`select prediction.define_indicator(
       ${a.indicatorId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.seriesKey}, ${a.description},
-      ${a.comparator}, ${a.threshold}, ${a.consecutiveDays}, ${a.owner}::uuid, ${a.actor}::uuid,
-      ${a.correlationId}::uuid)`);
+      ${a.comparator}, ${a.threshold}, ${a.consecutiveDays}, ${a.owner}::uuid, ${a.observesFrom}::date,
+      ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async evaluateIndicator(a: Parameters<EvaluationWrites['evaluateIndicator']>[0]) {
