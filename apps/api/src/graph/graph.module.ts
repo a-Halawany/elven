@@ -11,6 +11,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
+import { IdentityModule } from '../identity/identity.module.js';
 import { ObservationModule } from '../observation/observation.module.js';
 import { IntelligenceModule } from '../intelligence/intelligence.module.js';
 import { GraphController } from './graph.controller.js';
@@ -22,10 +23,19 @@ import { EdgesService } from './edges/edges.service.js';
 import { StrategyService } from './strategy/strategy.service.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
+import { PropagationAgentSessionService } from './propagation/propagation-agent-session.service.js';
+import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
+import { PropagationConsumerService } from './propagation/propagation-consumer.service.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
+/*
+ * CP-6 B1 (0060): the propagation consumer lives here — it is the graph's walk, run by the
+ * graph's agent. It imports the identity module for the agent's principal and session (as
+ * the executive module does) and the observation module's scheduler for its queue; the
+ * observation layer still imports nothing from Phase 3.
+ */
 @Module({
-  imports: [PipelineModule, ObservationModule, IntelligenceModule],
+  imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
   controllers: [GraphController],
   providers: [
     GraphOrchestrator,
@@ -36,11 +46,14 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     StrategyService,
     ImpactService,
     SearchService,
+    PropagationAgentSessionService,
+    PropagationAgentsService,
+    PropagationConsumerService,
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [GraphOrchestrator, ImpactService, EntitiesService, ResolutionService,
-            EdgesService, StrategyService, SearchService],
+            EdgesService, StrategyService, SearchService, PropagationAgentsService, PropagationConsumerService],
 })
 export class GraphModule {}

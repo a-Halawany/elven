@@ -651,10 +651,15 @@ export class CollectionOrchestrator {
               propagationScope: { resolved: r.superseded, unresolved: UNRESOLVED_PROPAGATION },
             },
             targetType: 'COR', targetId: a.caseId, targetVersion: '1',
+            // The APPLIED correction is its own event (CP-6 B1, 0060): until 0060 the apply
+            // path re-used the submission's name, `CorrectionReceived`, and the consumer every
+            // review named could never have fired on it. The propagation consumer subscribes
+            // to this event; the submission keeps its name.
             outboxEvent: isLast ? {
-              eventType: 'CorrectionReceived',
+              eventType: 'CorrectionApplied',
               payload: {
                 case_id: a.caseId, source_id: caseRow.source_id, kind: caseRow.kind,
+                applied_by: a.principal.principalId,
                 propagation_scope: {
                   resolved: [...superseded, ...r.superseded],
                   unresolved: UNRESOLVED_PROPAGATION,

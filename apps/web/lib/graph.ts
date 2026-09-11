@@ -297,8 +297,12 @@ export const graph = {
     g<{ invalidations: Array<Record<string, unknown>>; receipt: Receipt }>(
       s, '/impact/list', 'graph.read', 'INV', { limit: 200 }),
 
+  /** Each row carries the latest AUTOMATIC attempt (CP-6 B1, migration 0060) beside the case's own status, or null where no consumer has seen it. */
   awaitingPropagation: (s: Scope, cursor?: string) =>
-    g<{ awaiting: Array<Record<string, unknown>>; total: number; nextCursor: string | null;
+    g<{ awaiting: Array<Record<string, unknown> & { propagation_status: string;
+          automatic: { state: 'received' | 'walking' | 'complete' | 'partial' | 'failed'; deliveries: number; attempts: number;
+                       last_error: string | null; last_delivered_at: string | null; agent_id: string | null; event_id: string | null } | null }>;
+        total: number; nextCursor: string | null;
         note: string; receipt: Receipt }>(
       s, '/impact/awaiting', 'graph.read', 'COR',
       cursor === undefined ? { limit: 100 } : { limit: 100, cursor }),

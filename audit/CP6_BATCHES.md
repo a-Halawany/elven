@@ -9,7 +9,7 @@ never verifies a `profiles = all` unit; hosted CI on a fresh database verifies t
 | Batch | Scope | Units | State (2026-09-11) |
 |---|---|---|---|
 | **B3 — scenario kinds** | the eight kinds of Volume 0 ch. 14 as a versioned vocabulary; divergence and per-branch assumptions | AU-PRD-0021 | **implemented** on `phase6-decisions` (migration 0058; harness case C-022 in `phase4-acceptance`, 16/16 locally); `verified:ci` once the hosted run at the implementing head is green |
-| **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-… (propagation), AU-OBS-… (correction lifecycle) — see §B1 | defined; not implemented |
+| **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-0108–0111 (new; the consumer's own properties), AU-DP-0043 (partial-walk visibility, re-verified); AU-DP-0041 narrowed — see §B1 | **implemented** on `phase6-decisions` (migration 0060; harness `phase6-propagation-consumer`, 15/15 locally on real Redis and the real outbox); `verified:ci` once the hosted run at the implementing head is green; exercised on the demonstration (§B1) |
 | **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-… (warning severity) — §B2 | defined; not implemented |
 | **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | defined; audit-side work |
 | **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | defined; audit-side work |
@@ -48,31 +48,88 @@ warning. Profiles: all; evidence class: harness → `verified:ci` at the first g
 yet linked to Knowledge Graph assumption objects (AU-MEM); the simulation engine's method families
 (AU-TWN-0028) are unrelated to this vocabulary.
 
-## B1 — the `CorrectionApplied` consumer (defined)
+## B1 — the `CorrectionApplied` consumer (implemented)
 
-**Today.** `graph.controller.ts`: propagation is operator-initiated; the outbox publishes
-`CorrectionApplied`; `impact.awaitingPropagation` makes the unpropagated queue visible; migration 0034
-records the walk's reach into twins and simulations. Nothing subscribes.
+**Two findings that changed the batch as first defined (2026-09-11).**
+1. **The acceptance-unit ids first reserved here, AU-MEM-0091–0094, were already taken** —
+   `audit/acceptance-units/group-b-memory-prediction-twins.csv` lines 92–95 carry them with
+   unrelated statements (the strategic-graph moat diligence claim, the model training cut-off,
+   agent execution-memory isolation, the reusable-experience lesson lifecycle). Those rows and
+   their histories are preserved untouched. The consumer's units are **AU-MEM-0108–0111**
+   (the highest existing AU-MEM was 0107; ids are contiguous), mapped to the existing
+   requirements they serve (V7 DP-24-001/-005, DP-29-001/-005, DP-43-003/-005, DAT-SM-08,
+   DCN-09/-13; V8 PR-24-001/-003/-005, CAP-UM-12; V3 L1-I05, V03-T-271/-300/-302/-303;
+   V0 V00-T-045; V2 V02-T-129; V5 AI-29-005, AG-014; V4 ES-30-002; V6 MS-01/-04/-06).
+   The parent unit AU-DP-0041 stays open, narrowed to what B1 does not deliver (TT-04
+   reassessment of inferred relationships; derivative coverage beyond graph, twins,
+   forecasts, scenarios, simulations and warnings; escalation of a stalled consumer beyond the
+   visible queue). Partial-walk visibility is AU-DP-0043's existing statement, re-verified
+   with the automatic walk rather than duplicated.
+2. **No event named `CorrectionApplied` was ever enqueued.** The apply path re-used the
+   submission's event name, `CorrectionReceived` (`orchestrator.service.ts`), distinguishable
+   from a submission only by a non-empty `propagation_scope.resolved`. A consumer filtered on
+   the documented name would never have fired. From 0060 the apply path enqueues
+   `CorrectionApplied` (with `applied_by`); the submission keeps `CorrectionReceived`. Rows
+   applied before 0060 keep the old name and are walked only when an agent is registered with
+   `backlog: 'walk'`.
 
-**Change.**
-1. A `propagation` agent principal kind and grant (forward migration): the consumer runs under a
-   governed agent session exactly as scheduled collection does (`agent_session_open`, extended by
-   progress — 0057), never under a person's session and never as a system bypass. The grant is
-   registered per domain by an administrator (`observation.agent.register` pattern), revocable.
-2. A BullMQ worker on `domain-events` filtered to `CorrectionApplied` (job id = outbox row id, so a
-   redelivery is a no-op): for each event it opens an agent session, runs the SAME walk the operator
-   route runs (`graph.impact.propagate`), records the impact (0034's `record_impact`), and closes.
-   A refused grant, an expired session or a walk failure is recorded on the case (`propagation:
-   failed, reason`) and retried on the next tick; it never ends the process (the 0057 publisher rule).
-3. The case moves out of `awaitingPropagation` only when the walk records `complete`; a truncated
-   walk stays `partial` and visible, as today.
+**Change (migration `0060_propagation_consumer.sql`; `apps/api/src/graph/propagation/*`;
+`outbox.publisher.ts`; `scheduler.service.ts`; `graph.controller.ts`; `pdp.service.ts`).**
+1. A **propagation agent** — role `propagation_agent` (DOMAIN), a principal of kind `agent`
+   created on the identity authority, a registration on the commit authority
+   (`graph.propagation_agents`, one active per domain, owner a human, budgets
+   `max_roots_per_event` 64 / `max_elapsed_ms` 600 000 / `backlog_policy`), registered by a
+   tenant or platform administrator (`POST …/graph/impact/propagation/agents/register`),
+   revocable (`…/agents/:id/revoke`, also the domain administrator's). The walker's identity
+   (`PROPAGATION_WALKER`: version 1.0.0, a code digest of the walk's method) is the code's,
+   never the request's. PDP: `propagation_agent` holds `graph.impact.propagate` and nothing
+   else. Its session is opened by `graph.propagation_agent_session_open` under the
+   identity-operation capability (registration active, version and digest as registered,
+   principal an active agent) and extended only by walk progress
+   (`graph.propagation_agent_session_extend`, one extension per committed root — 0057's rule).
+2. **Routing, not a consumer on `domain-events`**: the publisher adds a `CorrectionApplied`
+   row to the domain's own queue `graph:<tenant>:<domain>:propagation` (Redis name derived as
+   every scoped queue is) before acknowledging the row, with the outbox row id as the job id
+   on both queues. `domain-events` stays the global, unconsumed log. A per-domain worker
+   (`SchedulerService.startPropagationWorker`, concurrency 1) refuses a job whose payload
+   scope disagrees with the queue (unrecoverable, never retried).
+3. **The attempt ledger** `graph.propagation_attempts`, keyed by the outbox row id, written
+   OUTSIDE the agent's authority under the scheduler's bounded machine capability
+   (`propagation_attempt_receive` / `_finish`) so a refused grant is still recorded; the
+   **per-root checkpoint** (`propagation_root_begin` / `_done`) taken FOR UPDATE inside the
+   walk's own transaction under the agent's authority and committed with 0034's
+   `record_impact`, so a redelivery, a restart or a second worker never walks a root twice.
+   Roots are the case's own `affected_resolved` (0027), never the payload's.
+4. **Coverage is the database's** (0027 §2): after every root the attempt mirrors the case's
+   `propagation_state` — `complete`, or `partial` when a walk was truncated or left a root
+   uncovered; a partial attempt is terminal for its event and the case stays listed by
+   `/impact/awaiting`, which now carries the latest automatic attempt under `automatic`
+   (state, deliveries, attempts, reason, agent) and states it beside the case's own status.
+5. **Failure is recorded, never fatal**: an infrastructure fault is recorded on the attempt
+   and rethrown for BullMQ's bounded retry (5 attempts, exponential back-off from 2 s), the
+   next delivery resuming from the checkpoint; a refused or absent grant, a revocation
+   mid-walk and a budget refusal are governance answers — recorded with their reason, the
+   job completes, nothing is retried, the operator route remains available. Startup and
+   every registration reconcile: workers for every domain with an active agent, and every
+   outstanding apply event with no attempt or a failed one re-driven.
 
-**Acceptance units (new, to be added to group-b with these ids reserved):** AU-MEM-0091 "an applied
-correction is propagated automatically within one consumer tick, and the impact record names the
-agent instance that walked it"; AU-MEM-0092 "a redelivered `CorrectionApplied` walks nothing twice";
-AU-MEM-0093 "a revoked propagation grant stops automatic walks, the case stays visible as awaiting,
-and the operator route still works"; AU-MEM-0094 "the consumer's failure is recorded on the case and
-retried; the API process never exits". Evidence: harness (real Redis, real outbox) → `verified:ci`.
+**Acceptance units.** AU-MEM-0108 (automatic propagation within one publisher tick; the
+impact names the agent instance), AU-MEM-0109 (redelivery, restart and crash-after-first-root
+walk nothing twice), AU-MEM-0110 (fault recorded and retried; grant, revocation and budget
+refusals recorded, not retried, visible; the process never exits), AU-MEM-0111 (the governed
+path: registration by role, one active agent per domain, session refused for a drifted walker,
+every new port refuses without its capability, unrelated events untouched, a misrouted job
+fails closed, partial walk listed and re-walkable, the operator route unchanged); AU-DP-0043
+re-verified with the automatic partial walk. Evidence:
+`apps/api/test/int/phase6-propagation-consumer.test.ts` (15 cases; real Redis, real outbox
+publisher, the process restarted mid-suite). Profiles: all; evidence class: harness →
+`verified:ci` at the first green hosted run at the implementing head. Units whose wording
+said "operator-initiated" or "consumer deferred" were re-pointed (AU-MEM-0029/-0030/-0039/
+-0041, AU-TWN-0007, AU-OBS-0124/-0126, AU-DP-0041/-0043/-0071/-0144, AU-INF-0164/-0694/
+-0783/-0811, AU-IDP-0365, AU-COM-0144, AU-GOV-0164); none was closed by the re-pointing.
+
+**On the demonstration** (`scripts/phase6/register-propagation-agent.mjs`, then a fresh
+correction applied through the governed route): see PHASE6_REPORT.md §18.
 
 ## B2 — warning levels (defined)
 
@@ -120,10 +177,8 @@ versioned alias (a check in `summarise-units.mjs` reports any that do not).
 
 ## Order and the next implementation batch
 
-B3 is done in code (this checkpoint). Next: **B1** (the consumer) — it is the one deferred item every
-review has carried, it reuses the agent-session machinery 0057 completed, and its units are
-harness-verifiable on the hosted chain. Then B2 (warning levels), then B4/B5 (audit mechanics, no
-product risk). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
+B3 and B1 are done in code (the 2026-09-11 checkpoints). Next: **B2** (warning levels), then
+B4/B5 (audit mechanics, no product risk). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
 the next demonstration step after the hosted run is green.

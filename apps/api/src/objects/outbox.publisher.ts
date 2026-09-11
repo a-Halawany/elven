@@ -11,6 +11,14 @@
  * It cannot rewrite an event, and it cannot mark anything published outside a
  * pending → published/failed transition — so publication can neither forge nor
  * suppress delivery. Event identity and content are immutable by trigger.
+ *
+ * ROUTING (CP-6 B1, migration 0060). `domain-events` stays the global log it has
+ * been since Phase 0 — one queue shared by every process on the same Redis,
+ * consumed by nobody. A `CorrectionApplied` row is ADDITIONALLY added to the
+ * domain's own propagation queue, where the propagation consumer serves it; the
+ * acknowledgement follows both adds, so delivery is at-least-once to both and
+ * exactly-once by id (the outbox row id is the job id on both). Every other
+ * event type is published exactly as before.
  */
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
@@ -19,6 +27,15 @@ import { EYE_CONFIG } from '../config/config.module.js';
 import type { EyeConfig } from '../config/config.js';
 import { PUBLISHER_DB } from '../shared/shared.module.js';
 import type { Db } from '../shared/db.js';
+import { propagationQueueNameFor, redisName } from '../shared/queues.js';
+
+/** The options a routed propagation job is added with (kept in step with the scheduler's re-drive). */
+const PROPAGATION_JOB_OPTS = { attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 500 } as const;
+
+/** Event types routed to a second, per-domain queue besides `domain-events`; the function names the queue or declines. */
+const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string | null }) => string | null> = {
+  CorrectionApplied: (r) => r.tenant_id === null || r.domain_id === null ? null : redisName(propagationQueueNameFor(r.tenant_id, r.domain_id)),
+};
 
 interface PendingRow {
   id: string;
@@ -35,6 +52,8 @@ interface PendingRow {
 export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('objects.outbox');
   private queue: Queue | null = null;
+  /** The per-domain queues a routed event was added to, opened on first use. */
+  private readonly routed = new Map<string, Queue>();
   private timer: NodeJS.Timeout | null = null;
   /** Consecutive ticks whose LEASE step failed; reported when it changes, so a stuck publisher is visible without flooding the log. */
   private leaseFailures = 0;
@@ -44,14 +63,18 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     @Inject(EYE_CONFIG) private readonly cfg: EyeConfig,
   ) {}
 
+  private connection(): { host: string; port: number; password: string } {
+    return { host: this.cfg['eye.redis.host'], port: this.cfg['eye.redis.port'], password: this.cfg['eye.redis.password'] };
+  }
+
+  private routedQueue(name: string): Queue {
+    let q = this.routed.get(name);
+    if (q === undefined) { q = new Queue(name, { connection: this.connection() }); this.routed.set(name, q); }
+    return q;
+  }
+
   onModuleInit(): void {
-    this.queue = new Queue('domain-events', {
-      connection: {
-        host: this.cfg['eye.redis.host'],
-        port: this.cfg['eye.redis.port'],
-        password: this.cfg['eye.redis.password'],
-      },
-    });
+    this.queue = new Queue('domain-events', { connection: this.connection() });
     /*
      * A BACKGROUND PUBLISHER THAT CANNOT PUBLISH REPORTS AND RETRIES; IT NEVER ENDS THE
      * PROCESS. On 2026-09-10 the tick's first transaction rejected (`capability denied:
@@ -69,6 +92,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     if (this.timer !== null) clearInterval(this.timer);
     await this.queue?.close();
+    for (const q of this.routed.values()) await q.close().catch(() => undefined);
+    this.routed.clear();
   }
 
   /** The failure of one tick, reported once per streak and once when the streak ends. */
@@ -92,19 +117,24 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     let published = 0;
     for (const row of rows) {
       try {
+        const data = {
+          event_id: row.id,
+          event_type: row.event_type,
+          payload: row.payload,
+          correlation_id: row.correlation_id,
+          causation_id: row.causation_id,
+          tenant_id: row.tenant_id,
+          domain_id: row.domain_id,
+        };
         await this.queue.add(
           row.event_type,
-          {
-            event_id: row.id,
-            event_type: row.event_type,
-            payload: row.payload,
-            correlation_id: row.correlation_id,
-            causation_id: row.causation_id,
-            tenant_id: row.tenant_id,
-            domain_id: row.domain_id,
-          },
+          data,
           { jobId: row.id }, // idempotent: duplicate publishes dedupe on job id
         );
+        // A routed event reaches its consumer's queue too, before the row is acknowledged;
+        // the same job id dedupes a redelivery there as well.
+        const target = ROUTED[row.event_type]?.(row) ?? null;
+        if (target !== null) await this.routedQueue(target).add('propagate', data, { ...PROPAGATION_JOB_OPTS, jobId: row.id });
         // Narrow compare-and-set acknowledgement — the only mutation available —
         // tied to the LEASE: without the lease id and the expected current status,
         // nothing moves. Capability and acknowledgement in one call (0057).

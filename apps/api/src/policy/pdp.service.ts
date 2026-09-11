@@ -829,9 +829,25 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    // CP-6 B1 (0060): the propagation agent — its principal on the identity authority, its
+    // grant on the commit authority — is the tenant or platform administrator's act, exactly
+    // as the collection and decision agents are; revocation is also the domain administrator's.
+    actionPrefix: 'graph.propagation.agent.register',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.propagation.agent.revoke',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
     // Propagation REPORTS; it decides nothing. It is held by the people who own
     // what it reports on — including the collection_manager, because a Phase 1
-    // correction is what most often triggers it.
+    // correction is what most often triggers it — and by the AUTOMATIC walker
+    // (0060), which holds exactly this decision and no other.
     actionPrefix: 'graph.impact.propagate',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },
@@ -839,6 +855,7 @@ const BUNDLE_V1: Rule[] = [
       { role: 'strategy_owner', atScope: 'DOMAIN' },
       { role: 'resolution_manager', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'propagation_agent', atScope: 'DOMAIN' },
     ],
     requiresPurpose: true,
   },

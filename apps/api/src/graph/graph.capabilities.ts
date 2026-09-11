@@ -92,6 +92,10 @@ export interface GraphReads {
   /** Phase 5 dependents: twins (versions marked unverified by the port) and simulation runs (surfaced). */
   readTwins(): any;
   readRuns(): any;
+  /** CP-6 B1 (0060): the domain's propagation agents and the attempts the consumer recorded. */
+  readPropagationAgents(): any;
+  readPropagationAttempts(): any;
+  readPropagationAttemptEvents(): any;
   /**
    * Edges VISIBLE at an instant, filtered in the query.
    *
@@ -237,13 +241,31 @@ export interface ImpactWrites extends GraphReads {
     objectId: string; tenantId: string; domainId: string; state: string; reason: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /**
+   * CP-6 B1 (0060): the automatic walker's per-root checkpoint, inside the walk's own
+   * transaction. `begin` locks the attempt row until the impact record commits and
+   * answers false for a root already walked for this event (a typed skip, never a
+   * second walk); `done` binds the root to the assessed invalidation it produced.
+   */
+  propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean>;
+  propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void>;
+}
+
+// ───────────────────────── propagation agent (CP-6 B1) ─────────────────────────
+
+export interface PropagationAgentWrites extends GraphReads {
+  registerPropagationAgent(a: {
+    agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
+    owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }>;
+  revokePropagationAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 // ───────────────────────── implementation ─────────────────────────
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, ImpactWrites {
+             EdgeRetractionWrites, StrategyWrites, ImpactWrites, PropagationAgentWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -280,6 +302,12 @@ class GraphCapabilityImpl extends GraphCore
   readForecasts(): any { return this.from('prediction.forecasts_current'); }
   readTwins(): any { return this.from('twin.twins_current'); }
   readRuns(): any { return this.from('simulation.runs_current'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAgents(): any { return this.from('graph.propagation_agents'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAttempts(): any { return this.from('graph.propagation_attempts'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAttemptEvents(): any { return this.from('graph.propagation_attempt_events'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -318,11 +346,21 @@ class GraphCapabilityImpl extends GraphCore
    */
   async correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    // The latest automatic attempt per case (0060) rides along, visible under the reader's own scope.
     const rows = await this.call<Record<string, unknown>>(sql`
       select c.*,
              to_char(c.received_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-               as cursor_received_at
+               as cursor_received_at,
+             pa.automatic_state, pa.automatic_deliveries, pa.automatic_attempts, pa.automatic_last_error,
+             pa.automatic_last_delivered_at, pa.automatic_agent_id, pa.automatic_event_id
         from observation.correction_current c
+        left join lateral (
+          select a.state as automatic_state, a.deliveries as automatic_deliveries, a.attempts as automatic_attempts,
+                 a.last_error as automatic_last_error, a.last_delivered_at as automatic_last_delivered_at,
+                 a.agent_id::text as automatic_agent_id, a.event_id::text as automatic_event_id
+            from graph.propagation_attempts a
+           where a.case_id = c.case_id
+           order by a.last_delivered_at desc limit 1) pa on true
        where c.state = 'applied' and c.propagation_state <> 'complete'
          and (${a.cursor === null}::boolean
               or (c.received_at, c.case_id)
@@ -508,6 +546,33 @@ class GraphCapabilityImpl extends GraphCore
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+
+  async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select graph.propagation_root_begin(
+      ${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.root}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+
+  async propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void> {
+    await this.call(sql`select graph.propagation_root_done(
+      ${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.root}::uuid, ${a.invalidationId}::uuid, ${a.truncated})`);
+  }
+
+  async registerPropagationAgent(a: {
+    agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
+    owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }> {
+    const rows = await this.call<{ r: { agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> } }>(sql`
+      select graph.register_propagation_agent(
+        ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.principalId}::uuid, ${a.version}, ${a.codeDigest},
+        ${a.owner}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> };
+  }
+
+  async revokePropagationAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.revoke_propagation_agent(
+      ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
 }
 
 export const GraphCapability = {
@@ -533,6 +598,9 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   impact(tx: Tx, action: string): ImpactWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  propagationAgents(tx: Tx, action: string): PropagationAgentWrites {
     return new GraphCapabilityImpl(tx, action);
   },
 };

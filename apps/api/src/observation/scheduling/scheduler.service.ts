@@ -32,9 +32,12 @@
  * intention in Redis and nothing executes; readiness says so (`worker_running`).
  */
 import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { Queue, Worker, type Job } from 'bullmq';
+import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import { EYE_CONFIG } from '../../config/config.module.js';
 import type { EyeConfig } from '../../config/config.js';
+import { propagationQueueNameFor, redisName } from '../../shared/queues.js';
+
+export { redisName, propagationQueueNameFor };
 
 export interface CollectionJobPayload {
   /** Scope triple — compared against the CONTRACT's registered scope at execution. */
@@ -72,17 +75,28 @@ export function schedulerIdFor(tenantId: string, domainId: string, sourceId: str
   return `obs:${tenantId}:${domainId}:src:${sourceId}`;
 }
 
-/**
- * The Redis-facing identity derived from a logical one. BullMQ 6.0.6 refuses ':'
- * in a queue name; '.' is accepted, and no scope identifier contains either
- * character, so the mapping is injective and scope-preserving.
+/*
+ * The Redis-facing identity derived from a logical one (`redisName`, shared/queues.ts):
+ * BullMQ 6.0.6 refuses ':' in a queue name; '.' is accepted, and no scope identifier
+ * contains either character, so the mapping is injective and scope-preserving.
  */
 /** How long a readiness lookup waits for Redis before answering UNKNOWN. */
 const LOOKUP_TIMEOUT_MS = 3_000;
 
-export function redisName(logical: string): string {
-  return logical.replaceAll(':', '.');
+/**
+ * CP-6 B1: the propagation consumer's job — the published outbox row, verbatim (the job id
+ * IS the outbox row id). The payload carries no authority: the worker re-resolves the case
+ * and re-authorizes the walk under the domain's registered propagation agent.
+ */
+export interface PropagationJobPayload {
+  event_id: string; event_type: string; payload: { case_id?: string; [k: string]: unknown };
+  correlation_id: string; causation_id: string; tenant_id: string | null; domain_id: string | null;
 }
+export type PropagationJobHandler = (payload: PropagationJobPayload, jobId: string, attemptsMade: number) => Promise<void>;
+/** The options every propagation job is added with — by the publisher's routing and by a re-drive alike. */
+export const PROPAGATION_JOB_OPTS = Object.freeze({
+  attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 500,
+});
 
 export interface ScheduleRuntime {
   /** The deployment executes schedule entries at all. */
@@ -105,6 +119,7 @@ export class SchedulerService implements OnModuleDestroy {
   private readonly workers = new Map<string, Worker>();
   private handler: CollectionJobHandler | null = null;
   private briefingHandler: BriefingJobHandler | null = null;
+  private propagationHandler: PropagationJobHandler | null = null;
 
   constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
 
@@ -238,6 +253,81 @@ export class SchedulerService implements OnModuleDestroy {
   async obliterateBriefingsForTests(tenantId: string, domainId: string): Promise<void> {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliterateBriefingsForTests is available only in the test runtime');
     await this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId))).obliterate({ force: true }).catch(() => undefined);
+  }
+
+  // ───────────────────────── CP-6 B1: the propagation consumer ─────────────────────────
+  registerPropagationHandler(handler: PropagationJobHandler): void { this.propagationHandler = handler; }
+
+  /**
+   * A worker for one domain's propagation queue: one job at a time, the payload's scope
+   * compared against the queue it arrived on before anything else looks at it (rule 4). A
+   * disagreement is UNRECOVERABLE — a tampered or misrouted job is not retried.
+   */
+  startPropagationWorker(tenantId: string, domainId: string): void {
+    if (!this.enabled || this.propagationHandler === null) return;
+    const handler = this.propagationHandler;
+    const name = redisName(propagationQueueNameFor(tenantId, domainId));
+    if (this.workers.has(name)) return;
+    const worker = new Worker(name, async (job: Job<PropagationJobPayload>) => {
+      const payload = job.data;
+      if (payload.tenant_id !== tenantId || payload.domain_id !== domainId) {
+        throw new UnrecoverableError('job payload scope does not match the queue it was delivered on');
+      }
+      await handler(payload, job.id ?? 'unknown', job.attemptsMade);
+    }, { connection: this.connection(), concurrency: 1 });
+    worker.on('failed', (job, err) => { this.log.warn(`propagation job ${job?.id ?? '?'} failed: ${err.message.slice(0, 200)}`); });
+    this.workers.set(name, worker);
+    this.log.log(`propagation worker started for ${name}`);
+  }
+
+  /**
+   * Re-drive one event (a startup reconciliation, a registration, a test). BullMQ ignores
+   * an add whose job id exists in ANY state, so a completed or failed job of the same id is
+   * removed first; a waiting, delayed or active one is left to run. Durability rests on
+   * graph.propagation_attempts, never on Redis state.
+   */
+  async enqueuePropagation(tenantId: string, domainId: string, data: PropagationJobPayload): Promise<string | null> {
+    if (!this.enabled) return null;
+    const q = this.queueNamed(redisName(propagationQueueNameFor(tenantId, domainId)));
+    const existing = await q.getJob(data.event_id);
+    if (existing !== undefined && existing !== null) {
+      const state = await existing.getState();
+      if (state === 'completed' || state === 'failed') await existing.remove();
+      else return existing.id ?? null;
+    }
+    const job = await q.add('propagate', data, { ...PROPAGATION_JOB_OPTS, jobId: data.event_id });
+    this.startPropagationWorker(tenantId, domainId);
+    return job.id ?? null;
+  }
+
+  /** TEST CONTROL ONLY: the propagation queue's counts, to wait for it to settle. */
+  async propagationQueueCountsForTests(tenantId: string, domainId: string): Promise<{ active: number; waiting: number; delayed: number; completed: number; failed: number }> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('propagationQueueCountsForTests is available only in the test runtime');
+    const c = await this.queueNamed(redisName(propagationQueueNameFor(tenantId, domainId))).getJobCounts('active', 'waiting', 'delayed', 'prioritized', 'completed', 'failed');
+    return { active: c['active'] ?? 0, waiting: (c['waiting'] ?? 0) + (c['prioritized'] ?? 0), delayed: c['delayed'] ?? 0, completed: c['completed'] ?? 0, failed: c['failed'] ?? 0 };
+  }
+  /** TEST CONTROL ONLY: how BullMQ ended a propagation job — whether it was retried. */
+  async propagationJobStateForTests(tenantId: string, domainId: string, jobId: string): Promise<{ state: string; attemptsMade: number; failedReason: string | null } | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('propagationJobStateForTests is available only in the test runtime');
+    const job = await this.queueNamed(redisName(propagationQueueNameFor(tenantId, domainId))).getJob(jobId);
+    if (job === undefined || job === null) return null;
+    return { state: await job.getState(), attemptsMade: job.attemptsMade, failedReason: job.failedReason ?? null };
+  }
+  /** TEST CONTROL ONLY: add a job onto a domain's propagation queue as the publisher would (scope fail-closed cases). */
+  async addPropagationJobForTests(tenantId: string, domainId: string, data: PropagationJobPayload): Promise<string | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('addPropagationJobForTests is available only in the test runtime');
+    const job = await this.queueNamed(redisName(propagationQueueNameFor(tenantId, domainId))).add('propagate', data, { ...PROPAGATION_JOB_OPTS, jobId: data.event_id });
+    return job.id ?? null;
+  }
+  async obliteratePropagationsForTests(tenantId: string, domainId: string): Promise<void> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliteratePropagationsForTests is available only in the test runtime');
+    const name = redisName(propagationQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w !== undefined) { await w.close().catch(() => undefined); this.workers.delete(name); }
+    const q = this.queueNamed(name);
+    await q.obliterate({ force: true }).catch(() => undefined);
+    await q.close().catch(() => undefined);
+    this.queues.delete(name);
   }
 
   /** Enqueue one immediate collection — the operator's "collect now". */

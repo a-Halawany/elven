@@ -25,6 +25,7 @@ import { EdgesService, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.servi
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
+import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -69,6 +70,7 @@ export class GraphController {
     private readonly strategy: StrategyService,
     private readonly impact: ImpactService,
     private readonly search: SearchService,
+    private readonly propagationAgents: PropagationAgentsService,
   ) {}
 
   private route(tenantId: string, domainId: string, action: string,
@@ -733,12 +735,14 @@ export class GraphController {
   }
 
   /**
-   * Corrections nothing has propagated yet.
+   * Corrections whose propagation is not complete.
    *
-   * Propagation is operator-initiated: the outbox publishes `CorrectionApplied`
-   * and no consumer subscribes to it, so a correction can sit with its downstream
-   * impact unassessed. This route makes that queue visible instead of leaving it
-   * to be noticed.
+   * Where the domain has a registered propagation agent (CP-6 B1, 0060) the outbox's
+   * `CorrectionApplied` is consumed and the walk runs automatically; where it has
+   * none, or the automatic walk was refused, failed or truncated, the correction sits
+   * here with its downstream impact unassessed until an operator walks it. This route
+   * makes that queue visible instead of leaving it to be noticed, each row carrying the
+   * latest automatic attempt under `automatic`.
    */
   @Post('/impact/awaiting')
   async awaitingPropagation(
@@ -764,9 +768,55 @@ export class GraphController {
       nextCursor: out.result.nextCursor,
       note: 'these corrections are applied and their downstream propagation is not complete — '
         + 'either nothing has walked them, or a walk was truncated or left corrected objects '
-        + 'uncovered. Propagation is operator-initiated; no consumer performs it automatically.',
+        + 'uncovered. Where a propagation agent is registered the walk runs automatically on '
+        + 'CorrectionApplied and its state is shown under automatic; propagation can always be '
+        + 'run by an operator through /impact/propagate.',
       receipt: receipt(out),
     };
+  }
+
+  // ───────────────────────── CP-6 B1: the propagation agent (0060) ─────────────────────────
+
+  /** Register the domain's propagation agent: its principal on the identity authority, its grant on the commit authority. */
+  @Post('/impact/propagation/agents/register')
+  async registerPropagationAgent(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { ownerPrincipalId?: string; backlog?: 'walk' | 'leave'; budgets?: { max_roots_per_event?: number; max_elapsed_ms?: number } } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    return this.propagationAgents.register(envelope, principal, tenantId, domainId,
+      { ownerPrincipalId: p.ownerPrincipalId as string, ...(p.backlog === undefined ? {} : { backlog: p.backlog }), ...(p.budgets === undefined ? {} : { budgets: p.budgets }) });
+  }
+
+  @Post('/impact/propagation/agents/:agentId/revoke')
+  async revokePropagationAgent(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('agentId') agentId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    return this.propagationAgents.revoke(envelope, principal, tenantId, domainId, agentId, body.payload?.reason as string);
+  }
+
+  /** The registry, the recent attempts and whether this process serves the domain's queue. */
+  @Post('/impact/propagation/status')
+  async propagationStatus(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      this.route(tenantId, domainId, 'graph.read', 'AGT', null),
+      GraphCapability.read,
+      async (cap) => this.propagationAgents.status(cap, tenantId, domainId));
+    return { propagation: out.result, receipt: receipt(out) };
   }
 
   @Post('/impact/list')

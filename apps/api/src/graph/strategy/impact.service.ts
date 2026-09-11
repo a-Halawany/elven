@@ -19,12 +19,27 @@
  * phase a decision package's.
  */
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { GraphReads, ImpactWrites, OutstandingCursor } from '../graph.capabilities.js';
 
 /** The walk is bounded: a dependency cycle must not become an infinite loop. */
 const MAX_HOPS = 8;
+
+/**
+ * The AUTOMATIC walker's identity (CP-6 B1, migration 0060), on the connector precedent:
+ * the propagation agent registered in a domain is bound to this version and code digest,
+ * and its session port refuses a walker whose identity has drifted from the registration.
+ * The digest names the walk's method — a change to the walk is a new walker, registered
+ * anew; it is never client-supplied.
+ */
+const WALK_METHOD_REF = `graph.impact.walk@1.0.0:evidence_correction→claim_lineage→resolutions/edges→dependencies(bfs,max_hops=${MAX_HOPS})`;
+export const PROPAGATION_WALKER = Object.freeze({
+  name: 'graph.propagation',
+  version: '1.0.0',
+  codeDigest: createHash('sha256').update(`graph.propagation@1.0.0:${WALK_METHOD_REF}`, 'utf8').digest('hex'),
+});
 
 export interface AffectedObject {
   strategy_object_id: string;
@@ -391,12 +406,13 @@ export class ImpactService {
   /**
    * Applied corrections whose propagation is NOT COMPLETE.
    *
-   * There is no consumer wiring `CorrectionApplied` to a dependency walk — the
-   * outbox publishes the event and no worker subscribes — so propagation happens
-   * only when a person asks for it. Until that consumer exists, the honest
-   * product behaviour is to make the outstanding obligation VISIBLE rather than
-   * let a correction sit silently unpropagated: this is the queue of corrections
-   * whose downstream impact nobody has finished assessing.
+   * Where a domain has a registered propagation agent (0060), `CorrectionApplied`
+   * is consumed and the walk runs automatically; where it has none, or the automatic
+   * walk was refused, failed or truncated, propagation happens when a person asks
+   * for it. Either way the outstanding obligation is VISIBLE rather than a
+   * correction sitting silently unpropagated: this is the queue of corrections
+   * whose downstream impact nothing has finished assessing, each row carrying the
+   * latest automatic attempt's state and reason under `automatic`.
    *
    * `cursor` is opaque to the caller and issued only by this method; it encodes
    * BOTH key columns of the last row so a page boundary inside a run of tied
@@ -433,17 +449,35 @@ export class ImpactService {
       const state = String(c['propagation_state'] ?? 'pending');
       const assessment = c['propagation_assessment_id'] ?? null;
       const unwalked = state === 'pending' && assessment === null;
-      const status = unwalked
+      const automatic = c['automatic_state'] === null || c['automatic_state'] === undefined ? null : {
+        state: String(c['automatic_state']),
+        deliveries: Number(c['automatic_deliveries'] ?? 0),
+        attempts: Number(c['automatic_attempts'] ?? 0),
+        last_error: (c['automatic_last_error'] as string | null) ?? null,
+        last_delivered_at: c['automatic_last_delivered_at'] ?? null,
+        agent_id: (c['automatic_agent_id'] as string | null) ?? null,
+        event_id: (c['automatic_event_id'] as string | null) ?? null,
+      };
+      const base = unwalked
         ? 'propagation incomplete: no dependency walk has run against this correction'
         : state === 'pending'
           ? `propagation state unreconciled: assessment ${String(assessment)} is linked to this `
             + 'case but its coverage has not been reconciled; treat the case as partial until it is'
           : String(c['propagation_unresolved']);
-      const { cursor_received_at: _c, ...row } = c;
+      // The automatic attempt's outcome is stated beside the case's own status, never instead of it.
+      const status = automatic === null ? base
+        : automatic.state === 'failed'
+          ? `${base}; automatic propagation failed: ${automatic.last_error ?? 'no reason recorded'}; operator-initiated propagation remains available`
+          : automatic.state === 'partial'
+            ? `${base}; automatic propagation was partial: ${automatic.last_error ?? 'the walk did not cover the case'}; operator-initiated propagation remains available`
+            : `${base}; automatic propagation ${automatic.state}`;
+      const { cursor_received_at: _c, automatic_state: _s, automatic_deliveries: _d, automatic_attempts: _a, automatic_last_error: _e,
+              automatic_last_delivered_at: _l, automatic_agent_id: _g, automatic_event_id: _v, ...row } = c;
       return {
         ...row,
         propagation_status: status,
         historical_sentence: unwalked ? String(c['propagation_unresolved']) : null,
+        automatic,
       };
     });
     const last = got.rows[got.rows.length - 1];
