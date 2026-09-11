@@ -1085,8 +1085,8 @@ second of the world's runs. The historical bundles and the demonstration are pre
 3,535 = 3,195 open + 339 verified locally + 1 verified in CI (AU-PRD-0021 at `1a99784`); S7 depends on evidence for
 every applicable profile (after B4, every leg); each stack result is bound to its own head — the local 814/814 at
 `3e8f473` (before 0058), the hosted 815/815 at `1a99784` (the 46 files plus C-022); browser coverage stated as
-measured. After B1 and B2 allocated their seven units the split is **3,542 = 3,202 open + 339 + 1**; no leg of any
-unit is accepted.
+measured. After B1 and B2 allocated their seven units the split was 3,542 = 3,202 open + 339 + 1; after the hosted run at
+`5118376` it is **3,542 = 3,195 open + 339 + 8**; no leg of any unit is accepted.
 
 **5. B2 — warning levels (`73813c2`, migration 0061).** Four levels by a versioned derivation from the branch's
 consequence class (v1: C0/C1 low, C2 normal, C3 high, C4 critical, with urgency, response and impact and the
@@ -1139,12 +1139,18 @@ runs were made; the code at `1430747` is the code this section is committed agai
 
 ### 18.2 Hosted runs at this checkpoint
 
-__HOSTED__
+| Head | Hosted `ci` | Jobs | Hosted C19 |
+|---|---|---|---|
+| `5118376` (code `1430747`; the report and the browser demonstration spec since) | 34647461349 **green** | build-test (unit, gate suites, the full integration suite on a fresh database **836/836** in 48 files, C18, the upgrade check), browser-regression, supply-chain | 34647461329 green |
+| `1a99784` (the previous checkpoint) | 34621875479 green (815/815) | — | 34621875446 green |
+
+The 836 hosted cases are the 815 of `1a99784` plus B1's fifteen and B2's six; `phase5-twins` passed on the fresh
+hosted database as before. The seven B1/B2 units are `verified:ci` at `5118376` — one artefact, no deployment leg
+— and the mandatory split reads **3,542 = 3,195 open + 339 verified on the author's harness + 8 verified on the
+hosted chain**. The records commits after `5118376` change no code; their own hosted runs are refreshes.
 
 ### 18.3 Remaining blockers and open observations
 
-- **Hosted verification of B1/B2**: the seven units stay `open` until the hosted run at the implementing head is
-  green, then `verified:ci` (one artefact, no leg).
 - **Merge** — only on the owner's instruction.
 - Open operational observations, kept open: a budget-refused propagation attempt is re-driven at every process
   start (recorded and refused again; harmless, noisy); the series assembly of a long record costs one governed
