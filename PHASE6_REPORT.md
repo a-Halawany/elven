@@ -873,3 +873,132 @@ with the lockfile regenerated there. Preparation, not merge authorisation.
 - CP-6 reconciliation, the four product decisions, the eight scenario kinds, the `CorrectionApplied` consumer, and
   3,535 unfinished mandatory acceptance units remain required. This is continued delivery work, not full-product
   acceptance.
+
+## 17. The checkpoint after the owner's acceptance (2026-09-11): the five tasks, CP-6's first batch, the prepared stack
+
+Code head `1a99784` (every hosted run below is at it or at a prepared head that contains it); records head: the commit this section is committed with. The closure of §13.6 and every earlier closed finding are
+untouched; no completed review was restarted. GHCR remains temporary; no purchase, no cadence or budget
+change; PortWatch within its granted permission; UN Comtrade deferred, key untouched.
+
+**0. The owner's acceptance, recorded (`db675a2`).** SCX-0010/0011 stand as RISK_ACCEPTED for the
+`linux/arm64` child within their scope and expiry (2026-11-05); the records name the product owner as
+approver with the date of the decision (2026-09-11), bind `docs/images/ARM64_RISK_DECISION.md` §5 and the
+arm64 govulncheck report as additional evidence, and the dispositions document says the same. Owner
+acceptance, not independent Codex verification. The gate fixture's run window and the recheck controls
+follow the acceptance date (`548a0be`, `590928f`).
+
+**1. The Linux cleanup issue (`b43977c`).** `ops_inode` tried `stat -f` first; on GNU stat `-f` is a
+file-system report, six lines, always "successful" — so on Linux every directory a run created dropped out
+of its cleanup set (reproduced on the reviewed helper in a container: `owned_dir_in_cleanup_set=false`).
+`ops_stat_format` tries the GNU form first (BSD stat rejects `-c`) and accepts one line only; `ops_inode`
+accepts one `<device>:<inode>` token; `ops_mode` uses the same helper. Three probes added — the token shape
+on this host's stat, a created directory IS in the owned set, cleanup removes it with its contents — beside
+the preservation probes. **72/72 on macOS (BSD stat, bash 3.2) and 72/72 on Linux** (GNU coreutils, bash 5.3,
+`node:24-alpine` with a stub docker for the end-to-end refusals). Evidence:
+`docs/ops/evidence/guard-probes-20260911-{macos,linux,linux-prefix-a17d77e}.txt`.
+
+**2. Functional verification in fresh, separately named environments.** Databases created for this
+checkpoint and never shared with the demonstration or the long-lived harness: `eye_verify_20260911`,
+`eye_verify2_20260911`, `eye_browser_20260911`; the demonstration (`eye_demo`) and every historical
+evidence bundle preserved.
+* Integration, `eye_verify_20260911`: first full run **809/809** (45 files, `b43977c`, before 0057);
+  second full run on the SAME database at `ab9a225`: 811/814 — the three `phase5-twins` E3 cases refused
+  `consumption.weekly` as stale; the same file alone on that database afterwards: 15/15.
+* Integration, `eye_verify2_20260911` (fresh, first run, `3e8f473`): **814/814** (46 files) — 0057's new
+  cases included.
+* **F05/F06 contamination resolved:** the fixture-opened runs of the serialisation suite now carry their
+  operation's correlation id (`da726d3`); both invariants are clean on the fresh databases. The
+  long-lived `eye` database keeps the orphans of the pre-0056 probes; it is no longer the reference.
+* **The twin staleness persists, characterised:** it is a **re-run sensitivity** — it needs a database
+  that already holds a prior full run's rows AND the full-suite ordering; a first run on a fresh database
+  and the file alone on the used database both pass. Register §7 names P5's next step.
+* Upgrade check: **PASS** — 58 migration files, Phase 0 297/297 at the 0021 ceiling and after, Phase 1+2
+  274/274 on upgraded data, schema digests equal (`docs/ops/evidence` not needed; the log is in the
+  session record). One earlier run of the checker showed three `phase3-corrections` graph-depth cases
+  failing on the upgraded database and passing on the immediate rerun; recorded as a one-off, not dismissed.
+* Browser: Phase 0/1 gate **26/26** locally on `eye_browser_20260911` (the suite bootstraps its own
+  administrator; it cannot share a database with the integration suites, whose bootstrap case consumes
+  the one-time secret); Phase 6 demonstration spec **3/3** and Phase 4/5 demonstration spec **1 failed
+  (the ECB retrospective count on the overview), 12 not run** — unchanged, against the live demonstration.
+
+**3. The live recreation (CP-4a) — done (`4ad058f`; `docs/ops/evidence/live-recreation-20260911T153804Z.md`).**
+Rollback bundle `20260911T153804Z` taken from the live deployment and VERIFIED by an isolated restore
+(61/61) first; `docker compose up -d --force-recreate --wait` on the pinned derived images with the data
+volume reused (6 s); both containers healthy — the Redis healthcheck's 5,656-failure streak ended with the
+old container — running as `70:70` / `999:1000`, every capability dropped, `NoNewPrivs 1`; digests
+recorded (postgres index `69a974ae…` → arm64 child `d3dd485b…`; redis `1ad0ff24…`); the same data
+(`eye_demo` at 0057, 29,625 canonical objects); `/readyz` ok; 12/12 human principals log in; schedules
+reconciled 6/6; **five scheduled collections finished within a minute** (PortWatch chokepoints 91 admitted,
+ports 31, ECB 12, EU sanctions 1+5, payload 0+1; World Bank timed out upstream). Reconciling into an empty
+Redis fires each `every` scheduler once — a recreation costs one request per live source, within every
+cadence and budget. The replay-mode `gdelt-discovery` schedule was not rebuilt, ending its hourly refused
+attempts.
+
+**4. The "stalled" walk and the outbox crash — diagnosed and corrected (migration 0057, `ab9a225`,
+`3e8f473`).** The walk did not stall: its agent run session had a fixed 15-minute expiry and the
+12,856-event walk outlived it — the attempt row records `failed`, "authority insufficient", finished
+exactly 900 s after opening; the terminal event was refused for the same reason and swallowed. Correction:
+the run session is extended by each committed page checkpoint (`identity.agent_session_extend`,
+re-verifying the grant, audited), and a terminal event that cannot be written is said in the attempt's
+reason. The outbox publisher issued its context one round trip before using it; a publish context expires
+60 s after issuance, so a process stalled in between (the correction was one multi-minute transaction)
+reached the lease with an expired context, and the interval callback's uncaught rejection ended the
+process. Correction: `outbox_lease_as_publisher` / `outbox_ack_as_publisher` issue and consume the
+capability in one backend call; a failed tick is reported and retried, never fatal. Regression evidence:
+`phase6-scheduled-collection` (extension per page; a session expired underneath an open run refused at its
+first effect, the attempt naming it, the next attempt taking the lease over), `phase6-outbox-publisher`
+(the mechanism reproduced with a 61 s pause; the one-call ports; role isolation), a unit test driving the
+interval with a rejecting tick. The authority matrix maps the three new ports.
+
+**5. The integration stack, prepared (`docs/ops/STACK_INTEGRATION_PLAN.md` §7).** The maintenance
+change-set landed on #39 as one product-free commit (`65c0f4d`, 179 files from `4ad058f`, #39's `if:`
+guard kept), the dependency maintenance as a second (`fd00dfe`: the pins of `038fa9f` with the lockfile
+regenerated on #39's own tree; `pnpm audit` clean; C17 bundled stack 1.3.3, 32/32; licence gate PASS),
+plus `next-env.d.ts` as next 16.3.3 writes it (`a2cb0d8`). Every later head merged its predecessor in
+the recorded order — the three `PROGRESS.md` conflicts resolved by hand (Phase 3 merged, Phase 4 and
+Phase 5 implemented, each branch keeping its own row), `ci.yml` at #46 keeping the guard — and each
+carried the pin onto its own tree with its lockfile regenerated (git's textual merge of two lockfiles
+does not satisfy the manifests). Nothing rebased, nothing squashed, no reviewed commit rewritten.
+Prepared heads and their hosted runs: §17.1. **Not merged**; the push-only C17 archive follows each
+main-branch push.
+
+**6. CP-6, first batch (`1a99784`).** `audit/CP6_BATCHES.md` defines five batches with their acceptance
+units; **B3 — the eight scenario kinds** is implemented: migration 0058 (a versioned vocabulary,
+`kind_label`, `divergence`, `assumptions`, SCN schema v2, the port enforcing every rule) with the
+AU-PRD-0021 harness case (all eight declared with their assumptions; a user-defined "regional blockade"
+disruption flips on its indicator; a ninth kind, a nameless user-defined kind and a divergence-less
+disruption refused; a stray kind refused by the database). The unit stays `open` until the hosted run at
+this head is green. Next batch: B1, the `CorrectionApplied` consumer.
+
+### 17.1 The prepared stack — heads and hosted runs
+
+| Order | PR | Prepared head | Hosted `ci` | Hosted C19 |
+|---|---|---|---|---|
+| 1 | #39 | `a2cb0d8` | 34620632427 green | green |
+| 2 | #36 | `d458b36` | 34620663921 green (attempt 2; attempt 1 flaked on the A5 timing side-channel assertion, 15 ms vs 1.3 ms) | green |
+| 3 | #38 | `1ed69ed` | 34620667803 green | green |
+| 4 | #40 | `fb18c1f` | 34620672990 green | green |
+| 5 | #41 | `9f18468` | 34620677405 green | green |
+| 6 | #43 | `34969e8` | 34620681791 green | green (delivery-chain dry run on attempt 2) |
+| 7 | #44 | `41eaa04` | 34620686380 green | green (delivery-chain dry run on attempt 2) |
+| 8 | #45 | `da47bd3` | 34620692823 green | green |
+| 9 | #46 | `1a99784` | 34621875479 green | 34621875446 green (delivery-chain dry run on attempt 2) |
+
+Nine of nine `ci` runs green — build-test (unit, gate suites, the full integration suite on a fresh
+database, C18 four stages, the upgrade check), browser-regression (Phase 0/1) and supply-chain
+(two-platform C15 FINAL, patched-image recheck, FINAL C16, manifest assertion, licence inventory, C17
+validation, both gitleaks scans) — on every prepared head. Three C19 delivery-chain dry runs failed
+their publication-fixture lookup on a first attempt within the same minute six others resolved it,
+and passed on re-run: an observation about the resolver under concurrent runs (`c19-fixture.mjs`),
+recorded in the register, not a chain failure. The C17 archive step is skipped on pull-request runs
+and produced on `main` after each merge.
+
+### 17.2 Remaining obligations
+
+- **Merge** — only on the owner's explicit instruction, in the recorded order, each followed by the
+  push-only C17 archive on `main`; the plan is preparation.
+- **B1 → B2 → B4 → B5** of CP-6; the demonstration act declaring the new scenario kinds on NORDWERK.
+- The twin re-run sensitivity (P5); the clock-skew ticks; the World Bank timeout; the arm64 acceptance's
+  expiry (2026-11-05) and the upstream recheck that would return the services to official images.
+- 3,535 unfinished mandatory acceptance units across the eleven volumes: passing this checkpoint
+  establishes no completion.

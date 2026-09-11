@@ -304,7 +304,7 @@ a dirty worktree). Two things ordering alone did not solve appeared in execution
 | 6 | #43 | `34969e8` | `6086de4` + merges of #41 + lockfile `80eb588` | 34620681791 — green |
 | 7 | #44 | `41eaa04` | `c546046` + merges of #43 + lockfile `3e8d83c` | 34620686380 — green |
 | 8 | #45 | `da47bd3` | `4f88381` + merges of #44 + lockfile `d568a37` | 34620692823 — green |
-| 9 | #46 | `1a99784` | `590928f` + merges of #45 (`ci.yml` by hand) + this checkpoint's commits (0057, 0058, CP-4a, the register) | 34621875479 — RUN46_RESULT |
+| 9 | #46 | `1a99784` | `590928f` + merges of #45 (`ci.yml` by hand) + this checkpoint's commits (0057, 0058, CP-4a, the register) | 34621875479 — green (C19 lifecycle 34621875446: green on attempt 2 — the delivery-chain dry run’s publication-fixture lookup failed on the first attempt for three branches within the same minute that six others resolved it, and succeeded on re-run; an observation about the resolver under concurrent runs, not about the chain) |
 
 Each PR's required checks run on the synthetic merge of its prepared head with its base; a head that
 contains its predecessors passes the same chain it will pass on `main`. The push-only C17 archive is
