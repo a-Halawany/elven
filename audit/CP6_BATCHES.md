@@ -131,6 +131,18 @@ said "operator-initiated" or "consumer deferred" were re-pointed (AU-MEM-0029/-0
 **On the demonstration** (`scripts/phase6/register-propagation-agent.mjs`, then a fresh
 correction applied through the governed route): see PHASE6_REPORT.md §18.
 
+**Codex finding (2026-09-12), corrected by migration 0062.** `graph.propagations_to_reconcile()`
+re-drove only events with no attempt or a failed one; an attempt stranded in `received` or `walking`
+by a process interruption — which records nothing, that being the point — with Redis lost was never
+resumed. Reproduced on the actual function (received → 0 reconciled, walking → 0); after 0062 every
+non-terminal attempt is re-driven, a job still held by a live worker is left alone (job-id dedupe;
+the reconciliation report distinguishes `reDriven` from `inFlight`), and the walk stays serialised
+per event by the attempt row's lock. Three harness cases added: a real interruption after receipt
+and after the first committed root — the worker abandoned without acknowledgement, the queue lost,
+the process restarted — resumed with no duplicate impact or twin event; and a reconciliation run
+against a live worker. AU-MEM-0109 was set back to `open` at the finding and returns to
+`verified:ci` at the first green hosted run at the correcting head.
+
 ## B2 — warning levels (implemented)
 
 **Decision.** Four levels — low, normal, high, critical — derived by a VERSIONED rule from the
@@ -196,6 +208,16 @@ identical before and after. A hand pass then gave the 23 units that name one pro
 validates the vocabulary and the rules (verified:all ⇔ every leg accepted; no accepted leg on an open
 or n/a unit; legs in canonical order; a pointer on every accepted leg) and reports the Leg table: saas
 0 of 3525, private 0 of 3524, onprem 0 of 3531, disconnected 0 of 80, air-gapped 0 of 80.
+**Codex finding (2026-09-12), corrected:** the summariser printed its problems, exited 0 and overwrote
+the summary with counts that already believed the inconsistent input (a unit marked `verified:all`
+with no leg evidence left the unfinished total; `saas=;private=;onprem=` counted as three accepted
+legs). Now each accepted leg's evidence reference is VALIDATED — a non-empty pointer to a file in the
+repository on a path that names the leg — completion is derived from validated evidence alone (a
+claimed `verified:all` without it is counted unfinished as `inconsistent`), and any problem exits 1
+and leaves the previous valid summary untouched. `audit/summarise-units.controls.mjs` runs the
+negative controls (no evidence; empty pointers; a pointer that resolves nowhere or names another
+leg), the positive control (validated evidence on every leg → finished, three legs accepted, `--check`
+agrees) and the tracked audit's own `--check`; CI runs it as a blocking step.
 `audit/SLO_CATALOGUE.md` v1 maps the 22 objectives of Volume 4 Appendix F: 12 floors (F), 5 value-
 variance (V), 5 population targets (P), each with the clause that makes it a floor or permits the
 variance, the declared-variance record a V or P leg must carry, and the leg acceptance rule; the 22
