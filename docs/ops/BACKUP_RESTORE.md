@@ -1016,3 +1016,23 @@ drill's failed check is the check this drill passes.
 **Still open.** The governed live-container recreation (CP-4a) now has its credential
 preconditions and its rollback bundle; it waits on the arm64 risk decision
 (`docs/images/ARM64_RISK_DECISION.md`), because this host runs the `linux/arm64` child.
+
+## 23. The live recreation — CP-4a (2026-09-11, 15:38–15:47 UTC)
+
+Full record: `docs/ops/evidence/live-recreation-20260911T153804Z.md`. §7 of this runbook ("restore
+in place — governed recovery") was not what happened here: the data volume stayed, only the
+containers were recreated, and the rollback point was taken and **verified by an isolated restore
+first** (61/61). In order: backup of the live deployment (bundle `20260911T153804Z`, format /2, the
+running artifact identified) → isolated restore of that bundle, torn down afterwards → API and web
+stopped, PostgreSQL checkpointed → `docker compose up -d --force-recreate --wait` from one read of
+`.eye-local/env` (6 s; both containers healthy) → API and web restarted → verification.
+
+Result: both services on the pinned derived images (`postgres@sha256:69a974ae…` → arm64 child
+`d3dd485b…`; `redis@sha256:1ad0ff24…`), running as `70:70` / `999:1000` with every capability
+dropped and `NoNewPrivs 1`, both healthy — the Redis healthcheck's 5,656-failure streak ended with
+the old container — the same data (`eye_demo` at 0057, 29,625 canonical objects), `/readyz` ok,
+12/12 human principals logging in, schedules reconciled 6/6 into the empty Redis, and five
+scheduled collections finished within a minute (PortWatch chokepoints 91 admitted, ports 31, ECB 12,
+EU sanctions 1+5, payload 0+1; World Bank timed out upstream). One thing to know: reconciling into
+an empty Redis fires each `every` scheduler once immediately — a recreation costs one request per
+live source, within every cadence and budget, and it is why the isolated drill pauses the queues.
