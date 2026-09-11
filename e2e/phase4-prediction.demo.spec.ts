@@ -123,9 +123,20 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
   test('the scenario tree shows the flipped branch with its decision deadline', async ({ page }) => {
     await page.goto('/prediction/scenarios');
     await expect(page.getByRole('columnheader', { name: 'Window · deadline' }).first()).toBeVisible();
-    const flipped = page.getByRole('row').filter({ hasText: 'FLIPPED' }).first();
+    // Act IV's own tree ("… over the next 30 days"), not the eight-kind trees the CP-6 acts declared beside it — their
+    // deterioration branches are flipped too, with no decision deadline.
+    const actIV = page.locator('section[aria-labelledby^="scn-"]').filter({ hasText: 'over the next 30 days' }).first();
+    await expect(actIV).toBeVisible();
+    const flipped = actIV.getByRole('row').filter({ hasText: 'FLIPPED' }).first();
     await expect(flipped).toBeVisible();
     await expect(flipped.getByText(/by .*2024/)).toBeVisible();
+    // The corrected eight-kind tree (CP-6, 0059): its user-defined branch names itself, and its upside watches a recovery
+    // indicator bounded to a first observed day — open while the record holds no recovery — beside six flipped branches.
+    const corrected = page.locator('section[aria-labelledby^="scn-"]').filter({ hasText: 'recovery and deterioration on their own conditions' }).first();
+    await expect(corrected).toBeVisible();
+    await expect(corrected.getByText('“regional blockade”')).toBeVisible();
+    await expect(corrected.getByRole('row').filter({ hasText: 'upside' }).first().getByText(/from 2024-01-18/).first()).toBeVisible();
+    await expect(corrected.getByRole('row').filter({ hasText: 'FLIPPED' })).toHaveCount(6);
     // The baseline branch declared no deadline: T3 is unmeasured for it, and the screen says so.
     await expect(page.getByText('no deadline · T3 unmeasured').first()).toBeVisible();
     await shot(page, '04-scenarios');

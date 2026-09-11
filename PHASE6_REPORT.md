@@ -1107,6 +1107,18 @@ population targets, each with its clause); `audit/CAP_ALIASES.md` v1 (89 = 71 de
 kept) with the `cap_alias` column resolved by `second-pass.mjs` (197 rows; 21 rows moved to branch-only because their
 evidence globs now include files that exist only on this branch) and checked by `summarise-units.mjs`.
 
+**Browser coverage, stated as measured.** Web rebuilt and restarted on the live demonstration at this head. Phase 4/5
+demonstration spec (`playwright.demo.config.ts`, serial): the first case still fails — the demonstration's two
+forecasts are both `validation_impossible` now, so "1 validated retrospective" is not on the overview (a demo-data
+drift recorded at §17, unchanged, kept open) — and serial mode runs nothing after it. Run by name: **the scenario
+screen and the warnings screen cases pass** (`e2e/phase4-prediction.demo.spec.ts` now scopes the flipped-row check
+to Act IV's own tree, covers the corrected eight-kind tree — "regional blockade", the upside's `from 2024-01-18`,
+six flipped branches — and asserts the Level column with either the derived badge or "no level — raised before
+derivation v1"); **the four action-path cases cannot complete on the live demonstration**: each seeds an unbounded
+indicator on the PortWatch series and evaluates it, which now assembles 8,645 evidence versions (~4 minutes) against
+the spec's 60-second timeout — the assembly-cost observation of item 5, kept open. The hosted browser gate (Phase 0/1)
+and the Phase 6 demonstration spec are unchanged by this checkpoint.
+
 **7. The stack.** Held for the owner's explicit merge instruction. #46's head moves from `1a99784` to this
 checkpoint's code head and its hosted checks are refreshed (§18.2); the eight earlier prepared heads are unaffected
 and preserved. Once merging is authorized: the recorded order, each main-push chain and C17 archive verified before
