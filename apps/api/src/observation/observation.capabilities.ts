@@ -97,12 +97,37 @@ export interface ObservationReads {
   evidenceByValidator(a: { sourceId: string; pollKey: string; etag: string | null; lastModified: string | null }): Promise<HeldEvidenceRow | null>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScheduledAttempts(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readSourceRunLeases(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAdmittedItems(): any;
+  /**
+   * The three separate evidence figures for a source (migration 0051 §5). Counting
+   * canonical EVD ROWS answered all three with one number, so 2,133 duplicate copies
+   * and every superseded version counted as evidence held.
+   */
+  evidenceCounts(a: { sourceId: string; tenantId: string; domainId: string }): Promise<EvidenceCounts>;
   rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
   }>>;
   replayHealth(tenantId: string, domainId: string, sourceId: string): Promise<Array<{
     evaluated_at: Date; state: string; calc_version: string; universe_version: string; reason: string;
   }>>;
+}
+
+/**
+ * What a source holds, with the three questions kept apart:
+ *  - `objects_held` — distinct EVD objects at any version; nothing is deleted, so it never falls.
+ *  - `distinct_observations` — distinct item keys observed; one window observed twice is one observation.
+ *  - `superseded_objects` — objects whose LATEST version is corrected or withdrawn: held and retrievable,
+ *    not standing as current evidence.
+ */
+export interface EvidenceCounts {
+  objects_held: number;
+  /** Canonical EVD ROWS the same predicate selects — every version of every object. */
+  rows_matched: number;
+  distinct_observations: number;
+  superseded_objects: number;
 }
 
 /**
@@ -181,6 +206,37 @@ export interface AcquisitionWrites extends ObservationReads {
     connector: string; connectorVersion: string; acquisitionMode: string; event: string;
     details: Record<string, unknown>; correlationId: string;
   }): Promise<void>;
+  /**
+   * Claim the source for this run (migration 0051 §1). One lease row per source; a
+   * second attempt — operator or scheduler — is refused with the holder named while
+   * the lease is live, and takes an EXPIRED lease over. `run.started` is refused by
+   * the database unless this run holds it, so the condition holds for every caller.
+   */
+  acquireSourceRunLease(a: {
+    tenantId: string; domainId: string; sourceId: string; contractVersion: number;
+    runId: string; trigger: 'operator' | 'scheduler' | 'sweeper'; leaseSeconds: number; correlationId: string;
+  }): Promise<SourceRunLeaseAnswer>;
+  releaseSourceRunLease(a: {
+    tenantId: string; domainId: string; sourceId: string; runId: string;
+  }): Promise<boolean>;
+  /**
+   * Claim the admission of one DETERMINISTIC item, inside the admitting transaction
+   * (migration 0051 §3). The attempt key stops one run admitting an item twice; this
+   * stops a DIFFERENT run — a crash-retry, a concurrent walk — admitting a second copy
+   * of content already held under the same item key.
+   */
+  claimItemAdmission(a: {
+    tenantId: string; domainId: string; sourceId: string; itemKey: string;
+    contentDigest: string; evdObjectId: string; obsObjectId: string;
+    objectVersion: number; contractVersion: number; runId: string;
+    /**
+     * The caller ESTABLISHED, by reading, that what is held for this key cannot be
+     * reused — withdrawn, governed-deleted, no manifest, or bytes that no longer
+     * verify. The register then follows that governed decision and records the fresh
+     * admission instead of confirming against evidence that is not there (0052).
+     */
+    readmitUnavailable: boolean;
+  }): Promise<ItemAdmissionClaim>;
   claimAttempt(a: {
     attemptId: string; tenantId: string; domainId: string; sourceId: string;
     contractVersion: number; runId: string; itemKey: string; correlationId: string;
@@ -226,6 +282,15 @@ export interface AcquisitionWrites extends ObservationReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
   recordMeasurement(a: MeasurementArgs): Promise<void>;
   appendHealthEvent(a: HealthEventArgs): Promise<void>;
+  /**
+   * A correction has taken an evidence object out of the standing record. Re-point the
+   * admission register (0051 §3) at the newest surviving admission under the same item
+   * key — or stop indexing the key when nothing survives — so a later re-walk never
+   * records "already held" against evidence a correction set aside (0053).
+   */
+  reindexAdmittedItem(a: {
+    tenantId: string; domainId: string; sourceId: string; evdObjectId: string;
+  }): Promise<{ reindexed: boolean; itemKey?: string; toEvdObjectId?: string | null }>;
   openCorrectionCase(a: {
     caseId: string; tenantId: string; domainId: string; sourceId: string; kind: string;
     channel: string; publisherRef: string | null; reason: string; eventId: string; correlationId: string;
@@ -235,6 +300,26 @@ export interface AcquisitionWrites extends ObservationReads {
     affectedResolved: unknown[]; failureReason: string | null; eventId: string; correlationId: string;
   }): Promise<void>;
 }
+
+/** The lease answer, as the port returns it. A refusal names the holder; it is never a bare "no". */
+export type SourceRunLeaseAnswer =
+  | { granted: true; runId: string; tookOverFrom: string | null; reentrant?: boolean }
+  | {
+      granted: false; refusalClass: 'source_run_in_flight';
+      holderRunId: string; holderTrigger: string; holderContractVersion: number;
+      acquiredAt: string; heartbeatAt: string; expiresAt: string;
+    };
+
+/** What the admission register answered for one deterministic item. */
+export type ItemAdmissionClaim =
+  | { outcome: 'admitted' | 'revised'; evdObjectId: string; objectVersion: number; priorDigest?: string;
+      /** What the admission displaced in the register, when the held evidence could not be reused. */
+      replacedEvdObjectId?: string; replacedObjectVersion?: number }
+  | { outcome: 'noop'; evdObjectId: string; objectVersion: number; contentDigest: string; firstAdmittedAt: string; runId: string | null }
+  | {
+      outcome: 'conflict'; heldEvdObjectId: string; heldObjectVersion: number; heldDigest: string;
+      heldRunId: string | null; claimedEvdObjectId: string; claimedObjectVersion: number;
+    };
 
 export interface MeasurementArgs {
   measurementId: string; tenantId: string; domainId: string; sourceId: string;
@@ -377,6 +462,30 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScheduledAttempts(): any { return this.from('observation.scheduled_attempts'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readSourceRunLeases(): any { return this.from('observation.source_run_leases'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAdmittedItems(): any { return this.from('observation.admitted_items'); }
+
+  async evidenceCounts(a: { sourceId: string; tenantId: string; domainId: string }): Promise<EvidenceCounts> {
+    /*
+     * THROUGH THE PORT (migration 0054). Asked as a plain statement, this scan crossed
+     * its own row-level-security context's wall-clock expiry part of the way through and
+     * answered a SMALLER number instead of an error — 336, then 314, then 320 for a
+     * source holding 4,984 objects, with nobody writing. The port establishes scope once
+     * and counts; a figure a register prints has to be a figure, not a race.
+     */
+    const rows = await this.call<{ objects_held: string; distinct_observations: string; superseded_objects: string; rows_matched: string }>(
+      sql`select * from observation.evidence_counts(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid)`);
+    const r = rows[0];
+    return {
+      objects_held: Number(r?.objects_held ?? 0),
+      distinct_observations: Number(r?.distinct_observations ?? 0),
+      superseded_objects: Number(r?.superseded_objects ?? 0),
+      rows_matched: Number(r?.rows_matched ?? 0),
+    };
+  }
+
 
   async rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
@@ -502,6 +611,76 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
       ${a.event}, ${JSON.stringify(a.details)}::jsonb, ${a.correlationId}::uuid)`);
   }
 
+  async acquireSourceRunLease(a: {
+    tenantId: string; domainId: string; sourceId: string; contractVersion: number;
+    runId: string; trigger: 'operator' | 'scheduler' | 'sweeper'; leaseSeconds: number; correlationId: string;
+  }): Promise<SourceRunLeaseAnswer> {
+    const rows = await this.call<{ answer: Record<string, unknown> }>(sql`select observation.acquire_source_run_lease(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.contractVersion},
+      ${a.runId}::uuid, ${a.trigger}, ${a.leaseSeconds}, ${a.correlationId}::uuid) as answer`);
+    const r = (rows[0]?.answer ?? {}) as Record<string, unknown>;
+    if (r['granted'] === true) {
+      return {
+        granted: true, runId: String(r['run_id']),
+        tookOverFrom: (r['took_over_from'] as string | null) ?? null,
+        ...(r['reentrant'] === true ? { reentrant: true } : {}),
+      };
+    }
+    return {
+      granted: false, refusalClass: 'source_run_in_flight',
+      holderRunId: String(r['holder_run_id']), holderTrigger: String(r['holder_trigger']),
+      holderContractVersion: Number(r['holder_contract_version']),
+      acquiredAt: String(r['acquired_at']), heartbeatAt: String(r['heartbeat_at']),
+      expiresAt: String(r['expires_at']),
+    };
+  }
+
+  async releaseSourceRunLease(a: {
+    tenantId: string; domainId: string; sourceId: string; runId: string;
+  }): Promise<boolean> {
+    const rows = await this.call<{ released: boolean }>(sql`select observation.release_source_run_lease(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.runId}::uuid) as released`);
+    return rows[0]?.released === true;
+  }
+
+  async claimItemAdmission(a: {
+    tenantId: string; domainId: string; sourceId: string; itemKey: string;
+    contentDigest: string; evdObjectId: string; obsObjectId: string;
+    objectVersion: number; contractVersion: number; runId: string; readmitUnavailable: boolean;
+  }): Promise<ItemAdmissionClaim> {
+    const rows = await this.call<{ answer: Record<string, unknown> }>(sql`select observation.claim_item_admission(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.itemKey},
+      ${a.contentDigest}, ${a.evdObjectId}::uuid, ${a.obsObjectId}::uuid,
+      ${a.objectVersion}, ${a.contractVersion}, ${a.runId}::uuid, ${a.readmitUnavailable}) as answer`);
+    const r = (rows[0]?.answer ?? {}) as Record<string, unknown>;
+    const outcome = String(r['outcome']);
+    if (outcome === 'noop') {
+      return {
+        outcome: 'noop', evdObjectId: String(r['evd_object_id']), objectVersion: Number(r['object_version']),
+        contentDigest: String(r['content_digest']), firstAdmittedAt: String(r['first_admitted_at']),
+        runId: (r['run_id'] as string | null) ?? null,
+      };
+    }
+    if (outcome === 'conflict') {
+      return {
+        outcome: 'conflict', heldEvdObjectId: String(r['held_evd_object_id']),
+        heldObjectVersion: Number(r['held_object_version']), heldDigest: String(r['held_digest']),
+        heldRunId: (r['held_run_id'] as string | null) ?? null,
+        claimedEvdObjectId: String(r['claimed_evd_object_id']),
+        claimedObjectVersion: Number(r['claimed_object_version']),
+      };
+    }
+    return {
+      outcome: outcome === 'revised' ? 'revised' : 'admitted',
+      evdObjectId: String(r['evd_object_id']), objectVersion: Number(r['object_version']),
+      ...(r['prior_digest'] === undefined || r['prior_digest'] === null ? {} : { priorDigest: String(r['prior_digest']) }),
+      ...(r['replaced_evd_object_id'] === undefined || r['replaced_evd_object_id'] === null ? {} : {
+        replacedEvdObjectId: String(r['replaced_evd_object_id']),
+        replacedObjectVersion: Number(r['replaced_object_version']),
+      }),
+    };
+  }
+
   async claimAttempt(a: {
     attemptId: string; tenantId: string; domainId: string; sourceId: string;
     contractVersion: number; runId: string; itemKey: string; correlationId: string;
@@ -621,6 +800,19 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
       ${a.prior}, ${a.next}, ${a.evaluatedAt}::timestamptz, ${a.calcVersion},
       ${a.universeVersion}, ${JSON.stringify(a.evidenceRefs)}::jsonb, ${a.reason},
       ${a.lagClass}, ${a.correlationId}::uuid)`);
+  }
+
+  async reindexAdmittedItem(a: {
+    tenantId: string; domainId: string; sourceId: string; evdObjectId: string;
+  }): Promise<{ reindexed: boolean; itemKey?: string; toEvdObjectId?: string | null }> {
+    const rows = await this.call<{ answer: Record<string, unknown> }>(sql`select observation.reindex_admitted_item(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.evdObjectId}::uuid) as answer`);
+    const r = (rows[0]?.answer ?? {}) as Record<string, unknown>;
+    return {
+      reindexed: r['reindexed'] === true,
+      ...(r['item_key'] === undefined ? {} : { itemKey: String(r['item_key']) }),
+      ...(r['to_evd_object_id'] === undefined ? {} : { toEvdObjectId: (r['to_evd_object_id'] as string | null) ?? null }),
+    };
   }
 
   async openCorrectionCase(a: {

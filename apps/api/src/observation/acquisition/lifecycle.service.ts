@@ -57,18 +57,56 @@ export interface RunRequest {
 /** What the admission transaction actually committed for one item. */
 type AdmissionResult =
   | { kind: 'admitted'; evdObjectId: string }
-  | { kind: 'noop' };
+  | { kind: 'noop'; heldEvdObjectId?: string }
+  /**
+   * A DIFFERENT evidence object already holds this item key with different bytes —
+   * another run admitted it between this run's prior-evidence read and this commit.
+   * Nothing was written. The caller re-reads what is held and admits once, correctly.
+   */
+  | { kind: 'conflict'; heldEvdObjectId: string; heldObjectVersion: number; heldDigest: string; heldRunId: string | null };
 
 export interface RunOutcome {
   runId: string;
-  state: 'finished' | 'failed' | 'cancelled' | 'budget_exceeded';
+  state: 'finished' | 'failed' | 'cancelled' | 'budget_exceeded' | 'refused';
   admitted: number;
   quarantined: number;
   noop: number;
   reason?: string;
   /** FALSE when nothing was persisted: the run id was allocated but no run.started exists. */
   opened?: boolean;
+  /**
+   * A NAMED refusal, when the product declined to open the run at all. Today the one
+   * class is `source_run_in_flight` — another attempt on this source is running — and it
+   * carries who holds the source, so the controller can say so rather than answering
+   * with a generic failure (SOURCE_INTEGRATION_STATUS.md §9.6.1).
+   */
+  refusalClass?: 'source_run_in_flight';
+  refusalDetail?: Record<string, unknown>;
 }
+
+/**
+ * The source is already being collected.
+ *
+ * Raised by the database's own lease (migration 0051), so it is the answer to an
+ * operator trigger, a scheduler tick and anything written later alike — not a check
+ * one caller performs and another forgets. `eye.connector.per_source_concurrency` is a
+ * BullMQ worker setting and could never have served for this.
+ */
+export class SourceRunInFlight extends Error {
+  readonly refusalClass = 'source_run_in_flight' as const;
+  constructor(readonly holder: {
+    holderRunId: string; holderTrigger: string; holderContractVersion: number;
+    acquiredAt: string; heartbeatAt: string; expiresAt: string;
+  }) {
+    super(
+      `collection refused: a ${holder.holderTrigger}-triggered run for this source is already in flight `
+      + `(run ${holder.holderRunId}, contract version ${holder.holderContractVersion}, started ${holder.acquiredAt}, `
+      + `last reported ${holder.heartbeatAt}). One attempt per source at a time; nothing was collected twice.`);
+    this.name = 'SourceRunInFlight';
+  }
+}
+
+
 
 /** The latest evidence held for an item or poll key — what a re-run compares against — and what must be true before it is reused. */
 interface PriorEvidence {
@@ -179,6 +217,23 @@ export class AcquisitionLifecycle {
         this.route('observation.run.start', tenantId, domainId, 'RUN', runId),
         ObservationCapability.acquisition,
         async (cap) => {
+          /*
+           * ── 0051 · ONE ATTEMPT PER SOURCE, CLAIMED BEFORE ANYTHING IS COLLECTED ──
+           *
+           * The lease is taken in the SAME transaction as run.started, so a run either
+           * holds the source and exists, or holds neither. A refusal here has written
+           * nothing at all: no run row, no evidence, no request to the publisher.
+           *
+           * The database refuses `run.started` without the lease (migration 0051 §2),
+           * so this call is how a caller ASKS rather than the check that enforces it —
+           * an important difference, because a caller can forget to ask.
+           */
+          const lease = await cap.acquireSourceRunLease({
+            tenantId, domainId, sourceId: req.sourceId, contractVersion: req.contractVersion,
+            runId, trigger: req.trigger?.kind ?? 'operator',
+            leaseSeconds: this.cfg['eye.connector.run_lease_seconds'], correlationId: req.correlationId,
+          });
+          if (!lease.granted) throw new SourceRunInFlight(lease);
           // Per-run reauthorization (§11): the agent grant is re-derived here, so
           // a revocation that landed while the job was queued stops the run.
           const agent = await cap.authorizeAgentRun({
@@ -203,7 +258,14 @@ export class AcquisitionLifecycle {
             acquisitionMode: contract.acquisition_mode,
             event: 'run.started',
             details: { agent_id: req.agentId, budgets: agent.budgets, owner: agent.owner_principal_id,
-                       trigger: req.trigger ?? { kind: 'operator' } },
+                       trigger: req.trigger ?? { kind: 'operator' },
+                       // A source taken over from a run that stopped reporting is NOT the
+                       // same fact as a source that was free. The record says which happened.
+                       lease: { held_for_seconds: this.cfg['eye.connector.run_lease_seconds'],
+                                ...(lease.granted && lease.tookOverFrom !== null
+                                    ? { took_over_from_run: lease.tookOverFrom,
+                                        note: 'the previous run stopped reporting for longer than the lease and its lease had expired' }
+                                    : {}) } },
             correlationId: req.correlationId,
           });
           fault.at('f06.at_run_start_commit');
@@ -217,11 +279,56 @@ export class AcquisitionLifecycle {
       // run; an INFRASTRUCTURE fault (a lost connection, an exhausted server) is not an
       // answer at all and propagates, so a scheduled caller records a fault and retries.
       if (isInfrastructureFault(e)) throw e;
+      /*
+       * A SOURCE ALREADY BEING COLLECTED IS ITS OWN ANSWER, not a failure. It is
+       * reported with its class and the holder named, so an operator route can answer
+       * 409 with who holds the source and a scheduled tick can record a refused attempt
+       * instead of silently double-collecting (§9.6.1).
+       */
+      if (e instanceof SourceRunInFlight) {
+        return {
+          runId, state: 'refused', admitted: 0, quarantined: 0, noop: 0,
+          reason: e.message, opened: false,
+          refusalClass: e.refusalClass, refusalDetail: e.holder,
+        };
+      }
       return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e), opened: false };
     }
     req.onOpened?.(runId);
-    fault.at('f07.after_run_start_commit');
 
+    /*
+     * A RUN THAT ESCAPES STILL ENDS.
+     *
+     * The run now holds the source's lease (0051 §1), and the lease is released by the
+     * TERMINAL run event. Every path that RETURNS an outcome appends one. An exception
+     * that ESCAPES this method — a process modelled as dying at `f07`, or a failure of
+     * the error handling itself — used to append nothing: before the lease that left a
+     * run row 'started' for the sweeper, and with the lease it would hold the source
+     * until the lease expired.
+     *
+     * So an escaping exception records `run.failed` (which releases the source) and is
+     * then RETHROWN UNCHANGED. The caller still observes a crash and no outcome, which
+     * is the honest representation of a process that died; what changes is that the run
+     * says how it ended and the next attempt is not blocked by it.
+     */
+    try {
+      fault.at('f07.after_run_start_commit');
+      return await this.walk(req, runId, contract, tenantId, domainId, scope, agentPrincipalId, codeDigest);
+    } catch (e) {
+      await this.appendEvent(
+        req, tenantId, domainId, runId, contract, 'observation.run.finish', 'run.failed',
+        { reason: describe(e), escaped: true,
+          note: 'the run did not return: the exception escaped the lifecycle and the run is recorded failed so it holds nothing' },
+      ).catch(() => undefined);
+      throw e;
+    }
+  }
+
+  /** The body of a run, from step 3 to the terminal event. Split out only so that an escaping exception has one place to be recorded. */
+  private async walk(
+    req: RunRequest, runId: string, contract: ContractRow, tenantId: string, domainId: string,
+    scope: { tenantId: string; domainId: string }, agentPrincipalId: string, codeDigest: string,
+  ): Promise<RunOutcome> {
     let admitted = 0;
     let quarantined = 0;
     let noop = 0;
@@ -292,18 +399,65 @@ export class AcquisitionLifecycle {
       const earlier = (a: string | number, b: string | number): boolean =>
         typeof a === 'number' && typeof b === 'number' ? a < b : String(a) < String(b);
 
+      /*
+       * ── A CHECKPOINT PER COMPLETED PAGE, NOT ONE PER RUN ──────────────────────
+       *
+       * The backfill checkpoint used to be written once, at run end. A walk interrupted
+       * after eight of nine pages therefore resumed from page one and re-walked
+       * everything it had already admitted — the third cause of the 2,133 second copies
+       * (§9.6.1). The connector now states, on each page's parent, the checkpoint that
+       * becomes true once THAT page is committed; this persists it after the page's last
+       * item commits, so a crash costs at most the page in progress.
+       *
+       * A QUARANTINED WINDOW IS STILL NOT A COLLECTED WINDOW. A page with anything
+       * quarantined in it is not checkpointed here at all: run end applies the rollback
+       * and writes the honest cursor.
+       */
+      let pendingPage: { checkpoint: Record<string, unknown>; quarantined: boolean } | null = null;
+
       for (const item of queue) {
+        if (item.checkpointAfter !== undefined) {
+          if (pendingPage !== null && !pendingPage.quarantined) {
+            await this.appendPageCheckpoint(req, tenantId, domainId, runId, contract, pendingPage.checkpoint);
+          }
+          pendingPage = { checkpoint: item.checkpointAfter, quarantined: false };
+        }
         await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.fetched', {
           item_key: item.itemKey, bytes: item.bytes.byteLength,
           transport: redactValue(item.transport),
         });
 
-        const result = await this.admitOrQuarantine(
+        let result = await this.admitOrQuarantine(
           req, contract, runId, item, binding,
           item.parentItemKey != null ? parentEvdByKey.get(item.parentItemKey) ?? null : null,
           item.deterministic === true ? prior.get(item.itemKey) ?? null : null,
           item.deterministic !== true && item.pollKey !== undefined ? priorByPoll.get(item.pollKey) ?? null : null,
         );
+        /*
+         * A CONFLICT IS RE-READ, NOT RE-TRIED BLINDLY. Another run admitted this item
+         * key while this page was walked, so the prior evidence this run read before the
+         * walk is stale. The register is authoritative; the key is re-read from it and
+         * the item admitted ONCE against what is actually held — as a revision when the
+         * bytes differ, as a no-op when they do not.
+         *
+         * With the per-source lease of §1 in place two runs cannot overlap on one source
+         * at all, so this path is defence in depth. A conflict that survives the re-read
+         * is not a race any more; it fails the run loudly rather than dropping an item.
+         */
+        if (result.kind === 'conflict') {
+          const fresh = await this.loadPriorEvidence(req, tenantId, domainId, [item.itemKey]);
+          result = await this.admitOrQuarantine(
+            req, contract, runId, item, binding,
+            item.parentItemKey != null ? parentEvdByKey.get(item.parentItemKey) ?? null : null,
+            fresh.get(item.itemKey) ?? null, null,
+          );
+          if (result.kind === 'conflict') {
+            throw new Error(
+              `admission conflict for item key ${item.itemKey}: it is held by evidence `
+              + `${result.heldEvdObjectId}@${result.heldObjectVersion} (run ${result.heldRunId ?? 'unknown'}) `
+              + 'and could not be resolved by re-reading. Nothing was admitted twice.');
+          }
+        }
         if (result.kind === 'admitted') {
           admitted += 1;
           bytesStored += item.bytes.byteLength;
@@ -315,11 +469,15 @@ export class AcquisitionLifecycle {
           noop += 1;
         } else if (result.kind === 'quarantined') {
           quarantined += 1;
+          if (pendingPage !== null) pendingPage.quarantined = true;
           if (item.backfillCursor !== undefined && (rollbackTo === null || earlier(item.backfillCursor, rollbackTo))) {
             rollbackTo = item.backfillCursor;
           }
         }
       }
+      // The LAST page's checkpoint is not written here: step 9 below writes the run's
+      // checkpoint, with the quarantine rollback applied, and that is the same cursor.
+
 
       /*
        * NOT MODIFIED (HTTP 304): the publisher said what is held is still current, and
@@ -422,6 +580,46 @@ export class AcquisitionLifecycle {
   }
 
   /**
+   * Commit the checkpoint a COMPLETED PAGE earned, mid-run.
+   *
+   * The same governed act as step 9 — the checkpoint port and a `run.checkpointed`
+   * event, in one transaction under `observation.run.checkpoint` — made once per page
+   * instead of once per run. It is marked `page: true` so a reader can tell a page
+   * checkpoint from the run's final one, and it never advances past a page that
+   * quarantined anything (the caller does not call it for such a page).
+   */
+  private async appendPageCheckpoint(
+    req: RunRequest, tenantId: string, domainId: string, runId: string,
+    contract: ContractRow, checkpoint: Record<string, unknown>,
+  ): Promise<void> {
+    await this.pipeline.write(
+      this.envelope(req, 'observation.run.checkpoint', 'RUN', runId, tenantId, domainId),
+      req.principal,
+      this.route('observation.run.checkpoint', tenantId, domainId, 'RUN', runId),
+      ObservationCapability.acquisition,
+      async (cap) => {
+        await cap.appendCheckpoint({
+          eventId: newId(), tenantId, domainId, sourceId: req.sourceId,
+          contractVersion: req.contractVersion, runId,
+          checkpoint, correlationId: req.correlationId,
+        });
+        await cap.appendRunEvent({
+          eventId: newId(), tenantId, domainId, runId,
+          sourceId: req.sourceId, contractVersion: req.contractVersion,
+          agentPrincipalId: req.principal.principalId, agentVersion: req.agentVersion,
+          codeDigest: req.connector.codeDigest,
+          connector: req.connector.name, connectorVersion: req.connector.version,
+          acquisitionMode: contract.acquisition_mode,
+          event: 'run.checkpointed',
+          details: { page: true, checkpoint: redactValue(checkpoint) },
+          correlationId: req.correlationId,
+        });
+        return { result: {}, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
+      },
+    );
+  }
+
+  /**
    * Steps 5–8 and 12 for ONE item.
    *
    * Returns which of the three outcomes happened: admitted, quarantined, or the
@@ -439,7 +637,8 @@ export class AcquisitionLifecycle {
     prior: PriorEvidence | null = null,
     /** What is already held for what this forward poll polled (its poll key), if anything. */
     heldForPoll: PriorEvidence | null = null,
-  ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop'; evdObjectId?: string }> {
+  ): Promise<{ kind: 'admitted'; evdObjectId: string } | { kind: 'quarantined' } | { kind: 'noop'; evdObjectId?: string }
+             | { kind: 'conflict'; heldEvdObjectId: string; heldObjectVersion: number; heldDigest: string; heldRunId: string | null }> {
     const tenantId = contract.tenant_id;
     const domainId = contract.domain_id;
     const scope = { tenantId, domainId };
@@ -607,6 +806,99 @@ export class AcquisitionLifecycle {
             targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null,
           };
         }
+        /*
+         * ── 0051 · IDEMPOTENCY ON (SOURCE, ITEM KEY), IN THIS TRANSACTION ─────────
+         *
+         * The attempt key above is (source, contract version, RUN, item key): it stops
+         * this run admitting this item twice and nothing else. A crash-retry, a re-walk
+         * after an interruption, or a concurrent walk carries a NEW run id and passes
+         * straight through it — which is how 2,133 second copies were admitted on
+         * 2026-09-10 (§9.6.1).
+         *
+         * What must not happen twice is an ADMISSION OF THE SAME CONTENT UNDER THE SAME
+         * ITEM KEY. The register is claimed here, inside the admitting transaction, so
+         * the comparison is against what is held AT COMMIT TIME rather than against a
+         * read taken before the page was walked. `loadPriorEvidence` above still does
+         * the reading that decides revision-versus-no-op for the ordinary case; this is
+         * the boundary that holds when two runs read the same "nothing held".
+         *
+         * DETERMINISTIC ITEMS ONLY. A forward poll's item key carries its retrieval
+         * instant and never repeats, and Phase 1's rule for it is the opposite one —
+         * identical bytes at a later observation time ARE a new observation (§5.12).
+         * Registering those would add a row per poll and change that rule; it does not.
+         */
+        if (item.deterministic === true) {
+          const claimed = await cap.claimItemAdmission({
+            tenantId, domainId, sourceId: req.sourceId, itemKey: item.itemKey,
+            contentDigest: candidate.contentDigest, evdObjectId, obsObjectId,
+            objectVersion: evdVersion, contractVersion: req.contractVersion, runId,
+            /*
+             * WHAT IS HELD FOR THIS KEY WAS FOUND UNAVAILABLE — withdrawn, governed-
+             * deleted, manifest gone, or bytes that no longer verify. That was
+             * established above by READING, and it is why this admission exists at all:
+             * Phase 1's rule is that such evidence is not something a later retrieval is
+             * "confirmed" against. The register is told, so it records the fresh
+             * admission instead of no-opping against something that is not there.
+             */
+            readmitUnavailable: heldUnavailable !== null,
+          });
+          if (claimed.outcome === 'noop') {
+            // These exact bytes are already held under this key — by this run's own
+            // earlier page, or by another run that committed while this page was walked.
+            // AUDITED, never silent, and naming the evidence that already stands.
+            await cap.appendRunEvent({
+              eventId: newId(), tenantId, domainId, runId,
+              sourceId: req.sourceId, contractVersion: req.contractVersion,
+              agentPrincipalId: req.principal.principalId, agentVersion: req.agentVersion,
+              codeDigest: req.connector.codeDigest,
+              connector: req.connector.name, connectorVersion: req.connector.version,
+              acquisitionMode: contract.acquisition_mode,
+              event: 'item.noop',
+              details: {
+                item_key: item.itemKey, evd_object_id: claimed.evdObjectId,
+                evd_version: claimed.objectVersion, digest: claimed.contentDigest,
+                unchanged: true,
+                held_by_run: claimed.runId, first_admitted_at: claimed.firstAdmittedAt,
+                reason: 'these bytes are already held under this item key; a re-walk records a no-op, not a second copy',
+              },
+              correlationId: req.correlationId,
+            });
+            return {
+              result: { kind: 'noop' as const, heldEvdObjectId: claimed.evdObjectId },
+              targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null,
+            };
+          }
+          if (claimed.outcome === 'conflict') {
+            // A DIFFERENT object holds this key, with different bytes. This run planned a
+            // first admission (or the wrong next version) against evidence that has since
+            // moved. Nothing is written and nothing is overwritten: the caller re-reads
+            // what is held and admits once, as a revision of the object that stands.
+            await cap.appendRunEvent({
+              eventId: newId(), tenantId, domainId, runId,
+              sourceId: req.sourceId, contractVersion: req.contractVersion,
+              agentPrincipalId: req.principal.principalId, agentVersion: req.agentVersion,
+              codeDigest: req.connector.codeDigest,
+              connector: req.connector.name, connectorVersion: req.connector.version,
+              acquisitionMode: contract.acquisition_mode,
+              event: 'item.noop',
+              details: {
+                item_key: item.itemKey, conflict: true,
+                held_evd_object_id: claimed.heldEvdObjectId, held_evd_version: claimed.heldObjectVersion,
+                held_by_run: claimed.heldRunId, claimed_evd_object_id: claimed.claimedEvdObjectId,
+                reason: 'another run admitted this item key while this page was walked; this admission was withdrawn and is retried against what is held',
+              },
+              correlationId: req.correlationId,
+            });
+            return {
+              result: {
+                kind: 'conflict' as const, heldEvdObjectId: claimed.heldEvdObjectId,
+                heldObjectVersion: claimed.heldObjectVersion, heldDigest: claimed.heldDigest,
+                heldRunId: claimed.heldRunId,
+              },
+              targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null,
+            };
+          }
+        }
         fault.at('f42.new_observation_before_obs_insert');
 
         // 8e, write 1 of 7: the blob manifest. Retrieval resolves through this row
@@ -704,13 +996,21 @@ export class AcquisitionLifecycle {
     );
     fault.at('f25.after_admission_commit');
 
-    if (committed.result.kind === 'noop') {
-      // The candidate was created before the replay was detected. It has no
-      // manifest row, so it is already unreachable; removing it now saves the
-      // sweeper a round rather than being load-bearing.
+    if (committed.result.kind === 'noop' || committed.result.kind === 'conflict') {
+      // The candidate was created before the replay, the already-held key or the
+      // conflict was detected. It has no manifest row, so it is already unreachable;
+      // removing it now saves the sweeper a round rather than being load-bearing.
       await this.vault.tombstone('evidence', scope, candidate.locator).catch(() => undefined);
       await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
-      return { kind: 'noop' };
+      if (committed.result.kind === 'conflict') {
+        return {
+          kind: 'conflict', heldEvdObjectId: committed.result.heldEvdObjectId,
+          heldObjectVersion: committed.result.heldObjectVersion,
+          heldDigest: committed.result.heldDigest, heldRunId: committed.result.heldRunId,
+        };
+      }
+      return committed.result.heldEvdObjectId === undefined
+        ? { kind: 'noop' } : { kind: 'noop', evdObjectId: committed.result.heldEvdObjectId };
     }
 
     // ── step 8f: finalize custody and tombstone the quarantine copy ──────────
@@ -1135,7 +1435,7 @@ export class AcquisitionLifecycle {
         budgets: Record<string, number>;
         expected_schema: {
           media_types: string[]; required_fields: string[]; drift_tolerance: number;
-          max_bytes?: number; item_path?: string; item_key_field?: string; item_time_field?: string;
+          max_bytes?: number; item_path?: string; item_key_field?: string | string[]; item_time_field?: string;
         };
         backfill?: {
           strategy: 'period-range' | 'arcgis-offset'; endpoint: string; from: string; to?: string | null;

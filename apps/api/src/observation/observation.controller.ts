@@ -325,6 +325,33 @@ export class ObservationController {
       triggeredBy: `principal:${principal.principalId}`,
       triggerPrincipal: principal,
     });
+    /*
+     * A REFUSAL IS ANSWERED AS A REFUSAL. Until now a trigger arriving while a
+     * scheduled walk was in flight was ACCEPTED and both walks admitted the same rows
+     * (SOURCE_INTEGRATION_STATUS.md §9.6.1). The product now declines at the database
+     * boundary, and the operator is told so — with the run that holds the source, when
+     * it started and when it last reported, so a live walk is distinguishable from a
+     * stuck one — rather than being handed a 200 with a failed run inside it.
+     */
+    if (outcome.state === 'refused') {
+      throw new HttpException(
+        {
+          ...errorBody('EYE_STA_002', envelope.correlation_id, outcome.reason ?? 'a collection run for this source is already in flight'),
+          refusal_class: outcome.refusalClass ?? 'source_run_in_flight',
+          // The HOLDER, in the wire's own spelling: which run has the source, what
+          // triggered it, when it started and when it last reported — enough for an
+          // operator to tell a walk in progress from one whose process died.
+          holder: {
+            holder_run_id: (outcome.refusalDetail?.['holderRunId'] as string) ?? null,
+            holder_trigger: (outcome.refusalDetail?.['holderTrigger'] as string) ?? null,
+            holder_contract_version: (outcome.refusalDetail?.['holderContractVersion'] as number) ?? null,
+            acquired_at: (outcome.refusalDetail?.['acquiredAt'] as string) ?? null,
+            heartbeat_at: (outcome.refusalDetail?.['heartbeatAt'] as string) ?? null,
+            expires_at: (outcome.refusalDetail?.['expiresAt'] as string) ?? null,
+          },
+        },
+        409);
+    }
     return { run: outcome };
   }
 

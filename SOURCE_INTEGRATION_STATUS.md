@@ -570,3 +570,323 @@ Unchanged: UN Comtrade deferred, key untouched; purchases zero; cadences and bud
 credential created or bound; GDELT held; the four live sources of §7 untouched; C15 and the required
 checks remain the merge gates. No file other than this one was edited in this addition; nothing was
 committed.
+
+### 9.11 The three P1 defects corrected, the duplicates reconciled, the chokepoints activated — 2026-09-11 (demonstration deployment, `eye_demo`)
+
+**Addition of 2026-09-11, after §9.10.** The three defects §9.6.1 and §9.7 routed as P1 were each
+reproduced at the real database and controller harness BEFORE being corrected, and the reproductions
+were kept as the regression (`apps/api/test/int/phase6-collection-serialisation.test.ts`, 13 cases).
+Five forward migrations, `0051`–`0055`; no applied migration was edited. Then the 2,133 duplicate
+copies were reconciled through the product's own correction path, and the chokepoints contract was
+activated within the existing permission, cadence and budgets. Governed routes only; the only SQL was
+read-only, and it is named where it happens.
+
+#### 9.11.1 P1-1 — operator and scheduled attempts are serialised at the DATABASE (migration 0051 §1–§2)
+
+**Reproduced.** With an eight-row walk held open at its second page, an operator trigger through
+`/sources/:id/collect` was ACCEPTED and both walks admitted the same rows — §9.6.1 at fixture scale.
+`eye.connector.per_source_concurrency` is a BullMQ worker setting (`scheduler.service.ts`, the
+worker's `concurrency`); the operator route runs the governed path in the API process and met no
+condition at all.
+
+**Corrected.** `observation.source_run_leases` holds ONE ROW PER SOURCE, primary-keyed by the source.
+`observation.acquire_source_run_lease` is taken inside the SAME transaction as `run.started`, and
+`observation.append_run_event` — replaced in full, its Phase 1 body otherwise unchanged — **refuses
+`run.started` outright unless the run holds the lease**, renews the lease on every run event, and
+releases it on every terminal event. The condition therefore holds for every caller, including one
+nobody has written yet, rather than for the caller that remembered to check.
+
+* A refusal names the holder: `AcquisitionLifecycle` raises `SourceRunInFlight` and returns
+  `state: 'refused'`, `refusalClass: 'source_run_in_flight'`; the controller answers **409** with the
+  holder's run, what triggered it, when it started and when it last reported — enough to tell a walk
+  in progress from one whose process died.
+* A scheduled tick that finds a run in flight does not double-collect: the outcome carries
+  `opened: false`, so `CollectionWorkerService` records the attempt `refused` with the reason and does
+  not retry it (a refusal is a governance answer, not a transient fault).
+* A LEASE IS NOT A LOCK THAT CAN BE LOST. Every run event is a heartbeat; a lease whose holder stopped
+  reporting for `eye.connector.run_lease_seconds` (default 900 s, new config key) is taken over by the
+  next attempt, and the takeover is recorded on `run.started` rather than being indistinguishable from
+  a first claim. A run whose exception ESCAPES the lifecycle now records `run.failed` and is then
+  rethrown unchanged, so the caller still observes a crash and the source is not held by a run that
+  ended (`f07`'s Phase 1 property — a crash the caller sees, a run the sweeper can reconcile — is
+  preserved and asserted).
+* Observed live: during the chokepoints walk of §9.11.5 an operator trigger was refused **409 ·
+  `source_run_in_flight`**, naming the scheduler's run as the holder.
+
+#### 9.11.2 P1-2 — admission idempotency on the identity that matters, and a checkpoint per page (0051 §3, 0052, 0053)
+
+**Reproduced.** `attempt_key_unique` is `(source_id, contract_version, run_id, item_key)`: it stops
+ONE run admitting an item twice and nothing else. A crash-retry, a re-walk after an interruption or a
+concurrent walk carries a new run id and passes straight through it.
+
+**Corrected.** `observation.admitted_items` holds one row per `(source, deterministic item key)` with
+the digest currently held under it, and `observation.claim_item_admission` is called INSIDE the
+admitting transaction, so the comparison is against what is held AT COMMIT TIME rather than against a
+read taken before the page was walked:
+
+* identical bytes under a held key → an AUDITED `item.noop` naming the evidence that already stands;
+* different bytes, next version of the same object → `revised`, exactly as the lifecycle already
+  admits a revision;
+* a DIFFERENT object claiming a held key → `conflict`: nothing is written and nothing is overwritten;
+  the run re-reads what is held and admits once. A conflict that survives the re-read fails the run
+  loudly rather than dropping an item.
+
+**Phase 1's rule is preserved, not weakened.** "Identical bytes at a later observation time are a NEW
+observation" is about a FORWARD POLL, whose item key carries the retrieval instant and never repeats.
+Only DETERMINISTIC items — a backfill window, or a row framed out of one — are registered, and for
+those the plan's rule is already the opposite (§5.12, Phase 4 §4a). The register is seeded in the
+migration from the evidence already held (`@backfill:` keys), so the first walk after it cannot admit
+a second copy of anything.
+
+**Availability still governs reuse (0052).** Evidence whose latest version is withdrawn, whose bytes
+were governed-deleted, whose manifest is gone or whose bytes no longer verify is not something a later
+retrieval may be confirmed against. The lifecycle establishes that by reading and tells the register,
+which then records the fresh admission instead of confirming against something that is not there.
+
+**A correction re-points the register (0053).** An object a correction sets aside stops being the name
+under its item key: the register moves to the newest surviving admission, or stops indexing the key
+when none survives. Called once per affected object from `CorrectionsService.apply`, in the
+correction's own transaction.
+
+**The checkpoint is committed as each page completes.** `RestConnector.backfill` now emits its output
+PAGE BY PAGE — each page's parent immediately followed by the rows framed out of it — and states on
+the parent the checkpoint that becomes true once that page's items are committed. The lifecycle
+persists it after the page's last item commits (`run.checkpointed`, `page: true`), and never for a
+page that quarantined anything: run end applies the rollback and writes the honest cursor. Measured on
+a three-page walk: two page checkpoints at cursors 4 and 8, then the run's own with `done: true`.
+Before this there was exactly one, at run end — cause (iii) of the 2,133 second copies.
+
+**The honest shape of an interruption.** The connector walks a run's pages inside step 4, before the
+lifecycle admits anything, so a page the publisher refuses ends the run with NOTHING admitted. The
+per-page checkpoint is therefore about the ADMISSION phase — six and a half minutes for 2,800 rows on
+this deployment against three seconds of fetching — and the register is what stops the repeat of an
+interrupted walk from admitting second copies. Both are asserted.
+
+#### 9.11.3 P1-3 — the composite framing key (`source-contract.ts`, `rest.connector.ts`, `sdk.ts`)
+
+`expected_schema.item_key_field` now accepts an ORDERED LIST of paths beside a single path. The child's
+key is each component's value in the declared order, joined by `|` (a separator no ArcGIS value
+contains): `<parent>#features:<date>|<portid>`. A component that is missing or empty makes the element
+unaddressable and it is skipped, rather than silently colliding with every other element missing the
+same one.
+
+* **A contract that declares a STRING is unchanged, byte for byte** — the same key, the same
+  separator, the same filename, the same poll key. Asserted, not assumed: an existing single-path
+  contract's framed keys are `…@backfill:2024-04-01..2024-04-03#0#features:2024-01-01`, with no
+  separator and no second component.
+* **A different framing is a different lineage, and says so.** A composite-framed child carries
+  `json-array-composite-framing@1.2.0`; every existing contract's children keep
+  `json-array-framing@1.2.0`. Both are asserted from the custody events of a real run.
+* **The validator** accepts an ordered list; refuses an empty list, a repeated path, and — this is the
+  §9.7 rule — a single-path key on a backfill `where` that names more than one value or uses `IN (…)`,
+  which is precisely the framing that would collide. Every existing single-path contract still
+  validates.
+* **Observed:** three chokepoints a day framed to twelve distinct keys over four days (a single-path
+  key would have made four), and a re-walk of the identical pages recorded **100 % no-ops and zero
+  revisions**.
+
+#### 9.11.4 The 2,133 duplicate copies, reconciled through the governed correction path
+
+The duplicates were identified by a READ-ONLY query of the run events — the routes expose no item key
+and `/evidence/list` caps at 500 (§9.6.1's observability gap, still open). Every one of the operator
+run's 2,133 admissions pairs with an admission of the SAME item key by the earlier scheduled run, with
+the SAME content digest: `2133 admitted · 2133 with an earlier copy · 2133 byte-identical to it ·
+2133 distinct keys`. Every WRITE went through the routes.
+
+| Act | Actor | Result | Receipt (policy decision `01a08d7c…`/`01a08d7e…`) |
+|---|---|---|---|
+| open the case | m.dvorak, `observation.correction.receive` | `received`, kind **supersession**, channel `operator`, publisher ref `duplicate-admissions:01a08c2f-dcaf…` | audit seq 20937 |
+| apply it over the 2,133 copies | m.dvorak, `observation.correction.apply` | **applied** in 105 s · superseded 2,133 · rejected claims 0 | audit seq 21006 |
+
+Nothing was deleted and nothing was edited. Each duplicate is now the next VERSION of itself, marked
+`corrected`, citing `correction-case:<id>`; version 1 stays retrievable and a known-at read positioned
+before the correction reproduces exactly what an operator saw then. The case records its propagation
+scope in the product's own words: *"downstream consumers not yet present (KG/dependency graph arrives
+Phase 3)"*. The register was re-pointed at the surviving originals (0053).
+
+**Before and after, for `imf-portwatch-ports`:**
+
+| | Canonical EVD rows | Objects held | Distinct observations | Superseded |
+|---|---|---|---|---|
+| before | 4,984 | 4,984 | 2,829 | 0 |
+| after | 7,117 | 4,984 | 2,829 | **2,133** |
+
+**How a reader now sees it.** The readiness register answered ONE number, `evidence_objects`, counted
+as canonical EVD ROWS — so a source holding 2,829 distinct observations with 2,133 duplicate copies
+reported 4,984 "evidence objects", and a governed correction, which admits a new version rather than
+deleting anything, would have pushed it to 7,117. It now reports four separate facts, because
+collapsing them is how the duplicates came to be reported as evidence: `evidence_rows` (every
+version, the custody figure — nothing is deleted, so it never falls), `evidence_objects` (distinct
+objects), `distinct_observations` (distinct item keys — one window observed twice is one observation
+of it), and `superseded_objects` (objects whose latest version is corrected or withdrawn: held,
+retrievable, and not standing as current evidence).
+
+#### 9.11.5 `imf-portwatch-chokepoints` v2 — the daily layer with the composite key: registered, approved, activated
+
+v2 is v1 with exactly what §9.7 requires. **Cadence 86,400 s and budgets (12 requests, 32 MiB per run,
+60 s timeout, 2 retries, concurrency 2) are v1's, verbatim.** No grant condition was invented: the
+rights evidence is the owner-reported string already in use, and `permitted_use` stays `internal
+analysis`.
+
+* endpoint layer **`Daily_Chokepoints_Data/FeatureServer/0`**; forward poll
+  `where=portid IN ('chokepoint1','chokepoint4','chokepoint7')&orderByFields=date DESC&resultRecordCount=90`
+  (30 days × 3 chokepoints);
+* `expected_schema.item_key_field` = **`["attributes.date","attributes.portid"]`**, `required_fields`
+  naming both, `item_time_field` `attributes.date`;
+* §4a backfill: `arcgis-offset`, from `2019-01-01`, `page_size 1000`, `order_by date,portid`,
+  `time_field date`, the same three-chokepoint filter;
+* `coverage_expectations.expected_items_per_window` 3;
+* ONE field beyond §9.7's list: the freshness threshold, 3 days → **14 days**, for the publisher's own
+  7–10 day publication lag (§4a) — the same correction ports v2 carried in §9.2, and neither a cadence
+  nor a budget. v1's 3 days would have read stale by design.
+
+| Act | Actor | Result | Receipt (policy decision `01a08d9c…`) |
+|---|---|---|---|
+| register v2 | a.hoffmann | `draft`; the validator accepted the composite key | audit seq 21062 |
+| approve v2 | m.dvorak | approved | 21063 |
+| rights on v2 | m.dvorak | `confirmed`, evidence `owner-reported IMF permission, 2026-09-10; grant text pending at docs/sources/portwatch-grant.md` | 21064 |
+| v1 → superseded | m.dvorak | done | 21065 |
+| v2 → active | m.dvorak | active at 23:17 UTC; the source's scheduler re-upserted for v2 | 21066 |
+
+No refusal on any of the five acts. The register reads **LIVE — "live under contract version 2;
+schedule entry every 86400 s; a worker serves it here"**.
+
+#### 9.11.6 Found on the way, and what was done about each
+
+1. **The readiness register's evidence figure could not be trusted at this data volume — corrected
+   (0054, 0055).** `public.eye_ctx3` — the reader every row-level policy calls — verifies an HMAC and
+   checks `clock_timestamp()` ON EVERY CALL, and expires on the wall clock ("a one-second context dies
+   one second later even inside a single long transaction"). A policy quale therefore runs that check
+   once per row, and a statement scanning thousands of rows can cross its own context's expiry PART OF
+   THE WAY THROUGH: rows scanned before it are visible, rows after it are not, and the statement
+   returns **a smaller number instead of an error**. Read back nine times against a database nobody was
+   writing to, the evidence figure for `imf-portwatch-ports` answered 336, 314, 320, 327, 332, 318,
+   316, 302 and 315 — against 4,984 objects actually held — and every source AFTER the first in the
+   register answered 0, including its schedule entry, last run and attempt counts. The three figures
+   now come from `observation.evidence_counts`, a port that establishes the caller's scope ONCE and
+   then counts; read back, the register answers 4,984 / 7,117 / 2,829 / 2,133 and every other source
+   reports its own. A read whose cost grows with the evidence held must not silently empty the
+   register that reports it.
+2. **The outbox publisher took the API process down — observed, not fixed.** During the correction the
+   process exited on an unhandled rejection from `OutboxPublisher.publishPending`: `capability denied:
+   mode publish required (context is none)`, raised by `ctx.assert_capability('publish','outbox',
+   'objects.outbox.publish')` inside `outbox_lease`. The capability is issued and then leased, and the
+   lease found no context. The correction itself had committed; the API was restarted and the record
+   read back unchanged. A background publisher that cannot publish should report and retry, not end
+   the process.
+3. **The scheduled chokepoints walk stalled mid-page and the lease is what releases the source.** The
+   run of §9.11.5 admitted six full pages and 424 rows of the seventh, then stopped: no further run
+   event, nothing in the API log, the process alive at 0 % CPU and no activity on the database. It left
+   no terminal event, so the source stayed held until its lease expired — which is exactly what the
+   expiry is for, and exactly the case a lock without one would have left blocked forever. Recorded as
+   a product observation for the collection worker (a job that stops making progress is neither
+   finished nor failed and nothing says so).
+4. **The connector's code digest does not change when framing behaviour is added.**
+   `RestConnector.codeDigest` is derived from its version and its method refs, all unchanged, so an
+   agent registered against 1.2.0 still matches although `frame()` now behaves differently for a
+   contract that declares a composite key. The LINEAGE is distinguishable — a composite-framed child
+   carries `json-array-composite-framing@1.2.0` — but the digest is not. Bumping the connector version
+   would be the honest answer and would invalidate every agent registered on this deployment (five
+   schedules), so it is named here as a governed act of its own rather than taken in passing.
+5. **The local secret handoff had drifted from the deployment.** `.eye-local/env` was regenerated at
+   2026-09-10 18:31 UTC — about two hours after the §9.6 acts — so its values no longer matched either
+   the demonstration's identity credentials (set 2026-09-09 06:57 UTC) or the database and Redis role
+   passwords. No operator could authenticate and no migration could run. The database and Redis role
+   passwords were re-aligned to the CURRENT file (the same `ALTER ROLE` the migration runner performs
+   after every migration, and a `CONFIG SET` rather than a Redis restart, which would have dropped the
+   job schedulers the demonstration runs on); the operator passwords were recovered from the
+   deployment's own backup (`scripts/ops/backup.sh` keeps a byte copy of the file; the 17:39:54 UTC
+   backup predates the regeneration). **No credential was created, rotated or printed.**
+6. **The observability gaps of §9.6.1 are still open.** `/runs/:id/get` returns the first 250 events
+   without paging, so a 6,000-item walk's terminal and checkpoint events are unreadable through the
+   route; `/evidence/list` carries no item key and caps at 500, so the duplicates had to be identified
+   by a read-only query of the run events. Both were needed again today.
+
+#### 9.11.7 The regression, and what was changed
+
+**Migrations (forward only; no applied migration was edited).**
+
+| | |
+|---|---|
+| `0051_source_run_lease_and_admission_register.sql` | the per-source run lease and its two ports; `append_run_event` replaced so `run.started` is refused without the lease, every run event renews it and every terminal event releases it; the admission register, its claim port, and the register seeded from the evidence already held |
+| `0052_admission_register_respects_availability.sql` | the register follows the lifecycle's governed reading of availability: evidence that cannot be reused is not confirmed against |
+| `0053_register_follows_corrections.sql` | a correction re-points the register at the newest surviving admission, or stops indexing the key; applied once to rows that already index superseded evidence |
+| `0054_evidence_counts_port.sql`, `0055_evidence_counts_measured.sql` | the three (now four) evidence figures behind a port that establishes scope once, so a long scan cannot lose its own context part of the way through |
+
+**Ports and services.** `ObservationReads.evidenceCounts`, `AcquisitionWrites.acquireSourceRunLease`,
+`releaseSourceRunLease`, `claimItemAdmission`, `reindexAdmittedItem`
+(`observation.capabilities.ts`); `AcquisitionLifecycle` (the lease, the register claim and its bounded
+re-read, the per-page checkpoint, the escaping-exception terminal event);
+`ObservationController.collect` (409 with the holder named); `CorrectionsService.apply` (the register
+follows the correction); `SourcesService.readiness` (four figures, not one); `RestConnector`
+(page-grouped backfill output, the per-page checkpoint it earns, the composite key and its own framing
+method ref); `source-contract.ts` (the composite key and its validation); `sdk.ts`; a new config key
+`eye.connector.run_lease_seconds`.
+
+**The suite: `apps/api/test/int/phase6-collection-serialisation.test.ts` — 13 cases, all passing.**
+
+| Case | What it asserts |
+|---|---|
+| overlap | an operator trigger through the real controller during a walk in flight is refused **409** with `refusal_class` `source_run_in_flight`, naming the holder's run, its trigger and its last heartbeat; the walk then finishes and objects held equals distinct observations — nothing collected twice |
+| lease release | the very next attempt after a finished run is accepted, and an unchanged forward poll stores no second copy |
+| per-page checkpoint | a three-page walk commits two page checkpoints (cursors 4 and 8, `done: false`) plus the run's own with `done: true`; before the correction there was exactly one |
+| interrupted walk | a page the publisher refuses ends the run with nothing admitted (the connector walks pages before the lifecycle admits), the source is released, and the repeat collects the window exactly once |
+| crash / retry | a repeat that LOST its checkpoint re-walks all three pages, admits **0** and records **15** no-ops; objects held and distinct observations are unchanged |
+| the register's own port | identical bytes offered under a held item key by a different evidence object are a `noop` naming the evidence that stands; different bytes from a different object are a `conflict`, never an overwrite |
+| composite key | 12 rows over 4 days × 3 chokepoints frame to **12 distinct keys** (a single-path key would have made 4), each carrying both components in the declared order, stamped `json-array-composite-framing@1.2.0`; a re-walk of the identical pages is **100 % no-ops with zero revisions** |
+| single-field preservation | an existing contract's keys are exactly `…#0#features:2024-01-01`, with no separator and no second component, and its children keep `json-array-framing@1.2.0` |
+| the validator (5 cases) | an ordered list is accepted; an empty list, a repeated path, a single-path key with `IN (…)`, and a single-path key whose `where` names more than one value are refused with the reason; every existing single-path contract still validates |
+
+The rest of the integration suite was run in full against the same database and passes unchanged —
+**45 files, 806 cases, all green** — including `phase1-fault-injection`, whose F07 property (the
+caller observes a crash; the run is left for the sweeper) had to be preserved while the source stopped
+being held by it. One intermediate full run, taken while the 8,400-row chokepoints walk was saturating
+the same database container, failed three `phase5-twins` cases on an input-staleness threshold
+(`required inputs are missing, unreadable or stale: consumption.weekly`); the suite passes in
+isolation and in the clean full run, and the cause is recorded here rather than dismissed.
+
+#### 9.11.8 The chokepoints collection — the whole window, once, and what the corrections did in the field
+
+| Trigger | Run | State | Requests · bytes transferred | Admitted / unchanged / quarantined |
+|---|---|---|---|---|
+| scheduler (the activation's immediate tick), 23:17:31 UTC | `01a08d9c-af19…` | **stalled** — six pages and 424 rows of the seventh, then no further event; no terminal event (§9.11.6.3) | 7 · 2,932,979 | 6,424 / 0 / 0 |
+| operator m.dvorak, `observation.run.trigger`, 23:47 UTC — accepted only once the stalled run's lease expired | `01a08db8-5e9b…` | **finished** 23:53:03 UTC | 3 · 1,011,707 | **2,003 / 418 / 0** |
+
+* **The window is complete and held exactly once.** 9 pages + **8,418 rows** — the count §9.3.1
+  measured and §9.7 predicted — as **8,427 distinct item keys**, one register row each. The
+  checkpoint reads `cursor 8418 · done true · items 8418 · requests 9`: the whole walk inside the
+  contract's own 12-request budget, 3.9 MB of 32 MiB.
+* **Every correction did its work, in the field, not only at the harness.**
+  * The **lease** refused an operator trigger during the scheduled walk — **409 ·
+    `source_run_in_flight`**, naming the holder's run and its trigger — and then let the operator run
+    through once the stalled holder's lease expired. `run.started` on the second run records the
+    takeover in its own words: `took_over_from_run 01a08d9c-af19…`, *"the previous run stopped
+    reporting for longer than the lease and its lease had expired"*. Nothing walked concurrently.
+  * The **per-page checkpoint** is why the second run cost three requests instead of nine: the stalled
+    run had committed six page checkpoints (cursors 1,000 → 6,000) as it went, so the resumption
+    started at offset 6,000. Before this correction it would have restarted at 0.
+  * The **admission register** is why re-walking page 7 admitted nothing twice: its 418 rows, already
+    admitted by the stalled run, were recorded as **418 audited no-ops**, and the remaining 2,003
+    items were admitted. Under the previous rule those 418 would have been 418 second copies — the
+    §9.6.1 defect, reproduced in the field and now prevented.
+  * The **composite key** is why there are 8,418 row keys and not 2,806: every key carries both
+    components — `…@backfill:2019-01-01..2026-09-10#6000#features:2024-11-09|chokepoint7` — and
+    **zero `item.revised` events** were recorded across both runs. Under a single-path key the three
+    chokepoints of each day would have collided, and two of every three would have been recorded as
+    revisions of the other. Each framed child is stamped `json-array-composite-framing@1.2.0`.
+* Evidence for the source: **127 objects before → 8,554 after**; distinct observations **64 → 8,491**;
+  canonical rows 8,559. Objects held equals distinct observations plus the replay set's own repeats
+  (§7.3's deliberate rule) — no duplicate copy was created.
+* The stalled run is still `started` with no terminal event and will be failed by the sweeper at
+  `eye.sweeper.run_timeout_seconds`; nothing was forced.
+
+#### 9.11.9 State left on the demonstration after §9.11
+
+| Source | Left as | Next |
+|---|---|---|
+| `imf-portwatch-ports` | **v3 live, active**, rights confirmed, LIVE; the 2019→present walk held; the 2,133 duplicate copies **superseded** through correction case `01a08d7c…` (history preserved, nothing deleted); the register reports 4,984 objects held / 7,117 rows / 2,829 distinct observations / 2,133 superseded; next tick 2026-09-11 16:35:30 UTC, a forward poll | the grant text (§9.4, §9.9) |
+| `imf-portwatch-chokepoints` | **v2 live, active**, rights confirmed, LIVE, composite key on `Daily_Chokepoints_Data`; v1 superseded; the whole 2019→present window held (8,418 rows, 8,427 keys); schedule entry every 86,400 s; next tick a forward poll of the newest 90 rows | the grant text; the sweeper will close the stalled run of §9.11.8 |
+
+Unchanged: UN Comtrade deferred and its key untouched; purchases zero; **no cadence and no budget
+value was changed**; no credential was created, rotated or printed; GDELT held; the four live sources
+of §7 untouched; C15 and the required checks remain the merge gates. Nothing was committed.
