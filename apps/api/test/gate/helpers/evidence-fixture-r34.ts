@@ -221,13 +221,14 @@ export function buildPassingR34Evidence(
    * R3.4.5 moved this to 2026-08-15 when SCX-0004 was approved 2026-08-14; the CVE-2026-14456
    * maintenance change added SCX-0006..0009 approved 2026-09-01; the 2026-09-10 re-pin to the
    * derived images re-issued SCX-0002..0005 (approved 2026-09-10) and retired the rest, so it
-   * moves again.
+   * moved again; the owner's acceptance of the arm64 records SCX-0010/0011 (approved 2026-09-11,
+   * docs/images/ARM64_RISK_DECISION.md §5) moves it to 2026-09-11.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-09-10';
+  const runDate = '2026-09-11';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;
