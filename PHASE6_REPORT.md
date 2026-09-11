@@ -766,3 +766,110 @@ refusal alone; F07's property is asserted unchanged afterwards on a source with 
   accepts that live entries do not tick.
 - The four product decisions, the eight scenario kinds and the `CorrectionApplied` consumer remain implementation
   work; scheduling does not close them.
+
+## 16. The bounded correction checkpoint after the review at `461a2b56` (2026-09-11)
+
+The reviewer's record is `audit/reviews/The_Eye_461a2b56_Bounded_Review_and_Claude_Checkpoint.md`. It closed the C18
+empty-user branch and the seven/five accounting, supported the two-platform matcher, and reproduced three defects
+(R1, R2, R3) with a fourth item of open acceptance evidence (R4). The closure of §13.6 and every earlier closed finding
+are untouched; nothing earlier was reopened. Code head `da726d3`; the commits are `26be4f4` (R3), `1c8242e` (R1, R2,
+R4 scripts), `929265b` (arm64), `24ec3fd` (fifth drill), `0c09274` (connector digest), `31d2b12` (stack plan),
+`f1f3719` (register), `4989790` (one secret-scanner false positive on the new evidence file), `da726d3` (the D2/D4
+fixture runs carry their operation's correlation id, which F06's invariant requires).
+
+**R1 — cleanup could delete a directory the run never created (`1c8242e`).** Reproduced first on the reviewed
+guards in a disposable tree (`existing_build_deleted=true`, `sentinel_survived=false`). A directory is now owned by
+CREATING it: `ops_run_create_dir` records a directory only after this run's own plain `mkdir` succeeded, with the
+inode it produced; `ops_run_owned_dirs` is the only set failure cleanup removes (recorded, still that inode, not a
+symlink); `ops_run_record dir` is refused. `backup.sh` creates the build root that way and tells the builder, and
+`build-identity.mjs --root-precreated` verifies an empty, non-symlink directory owned by this user before writing.
+Probes: the pre-existing directory and its sentinel survive refusal and cleanup; the builder refuses a non-empty or
+symlinked root without writing; two attempts at one destination — the creator owns it, the loser's cleanup removes
+nothing; a path replaced underneath the run is no longer its to remove.
+
+**R2 — an altered file-map key wrote outside the destination (`1c8242e`).** Reproduced on the reviewed script
+(`verify_passed=true open_passed=true escaped=true` for a key changed to `../../escaped.bin` with its aad retained).
+Format `eye-bundle-crypto/2`: a record's aad must equal its key, keys are canonical relative paths, the whole file
+map is authenticated (`files_tag_hex`, HMAC under a KEK-derived key) before the data key is unwrapped, and every
+output is physically contained under the resolved destination (ancestors created or verified real directories, no
+symlinked leaf or ancestor; sources verified inside the bundle). Format `/1` bundles are refused. Probes: traversal
+key, re-pointed sibling key, pruned map, symlinked destination subdirectory, format /1 — all refused with nothing
+written; the intact bundle opens byte for byte; wrong passphrase and tampered ciphertext still refused.
+
+**R3 — the run that lost its lease could still admit (`26be4f4`, migration 0056).** Reproduced at the real harness
+before the change (D4 in `phase6-collection-serialisation`: the displaced run FINISHED after the takeover; the ports
+accepted its claim and its events). `observation.assert_run_holds_source` locks the lease row FOR UPDATE — the lock
+`acquire` takes, so an effect and a takeover are ordered by the database — and raises unless the row names the
+calling run and the lease has not expired; `append_run_event` calls it for every non-terminal event and
+`claim_item_admission` before the register is read. Terminal events are not fenced, so a displaced run records its
+own `run.failed` with the refusal as its reason, touching only its own lease. An expired holder is refused too and
+must re-acquire or end. D4: paused A → expiry → B takeover → A resumes — A records exactly one event after the
+takeover (`run.failed`), B's lease is untouched (holder, heartbeat, takeover record), B finishes with 10 admissions,
+objects held = distinct; the ports refuse the displaced run's claim, admission event, checkpoint and progress while a
+holder opened as every run is holds the source, and refuse to release the holder's lease; an expired holder's first
+effect is refused and the next attempt collects cleanly. D1–D3 and F07's property unchanged; 16/16.
+
+**R4 — recovery completed against one compatible checkpoint (`1c8242e`, `24ec3fd`).** The fallback that ran the
+bundled dist against the checkout's `node_modules` is gone: every bundle carries `runtime-workspace.tar` (lockfile,
+workspace and package manifests, `packages/contracts/dist`), and without the build root `restore.sh` installs the
+artifact's production dependencies from that record with `pnpm install --frozen-lockfile --prod` or refuses before
+launch; the build identity records the artifact's migration ledger and restore refuses an artifact whose ledger does
+not end where the restored schema ends; the reconstructed tick's OUTCOME is a check of its own (only `finished`
+passes). Fifth drill (`docs/ops/evidence/restore-drill-20260911T112927Z.md`): checkpoint `1c8242e` (0056 in the
+artifact's tree and in both databases), bundle L from the live deployment, E1 driven degraded, bundle D quiesced, E2
+restored **with D's build root moved away** — 179 packages installed from the bundle's lockfile in 2.3 s, dist
+re-verified there, compatibility checked, the non-empty journal restored (`/readyz` degraded from the durable
+journal, 6 incidents) and recovered through the governed path from the runtime workspace, the boundary enumerated,
+the scheduler rebuilt into an empty Redis and **one scheduled collection completed** (`eu-sanctions-rss`, finished, 1
+admitted + 5 confirmed), the governed read passing. E1 61/61, E2 76/76, every return code 0; guards 69/69. The
+operator credential was resolved through the existing recovery process — the pre-regeneration bundle's `config/env`
+— and the product's own rotation route: `platform-admin` and the eleven demo personas rotated to the current file
+value (twelve audited `identity.credential_rotated` events; nothing reset, nothing printed). The fourth drill's
+record stands unchanged, its failed check included.
+
+**Arm64 (`929265b`).** The missing resource was obtained free: govulncheck v1.1.4 in the official Go image
+(`golang@sha256:1ae0735f…`, native arm64) on the exact binary the records govern (`3a8ef022…`): 0 called
+vulnerabilities; all 22 governed advisories present and unreachable. No approval was invented and no classification
+changed: `docs/images/ARM64_RISK_DECISION.md` states that SCX-0010/0011 have no attributable approver (the owner
+asked for the platform to be governed, not for these 22 to be accepted), and puts the one remaining decision in
+signable form (accept as RISK_ACCEPTED; re-issue as NOT_AFFECTED in new records on the arm64 analysis — recommended;
+refuse). The live recreation on this arm64 host waits on it. "Eight" corrected to seven (one under SCX-0004, six under
+SCX-0005) in the record, the dispositions document, this report and the register; the amd64 findings not reopened.
+
+**Connector code digest (`0c09274`).** `RestConnector.codeDigest` now covers the framing methods
+(`513c4d8c…` → `e27ca96f…`; version and method refs byte for byte). The governed act on the demonstration is in
+`SOURCE_INTEGRATION_STATUS.md` §9.11.10: rebuilt artifact, six REST agents registered by `platform-admin` and six
+revoked by `m.dvorak` with the reason recorded, schedules re-resolved at the next reconcile, one operator run on
+`ecb-eurusd` finished under the new digest. No contract, cadence or budget changed.
+
+**Stack plan (`31d2b12`).** Refreshed from the corrected head: 179 maintenance files including the two-platform gate
+and the provisional arm64 records; `scripts/ops` and the upgrade check excluded as schema-coupled; merge-tree of the
+synthetic set — #39 the same four conflicts, the seven others clean, #46 clean at the local head; migrations
+27 → 31 → 37 → 40 → 56; `038fa9f` not cherry-picked — its dependency halves authored as a product-free commit on #39
+with the lockfile regenerated there. Preparation, not merge authorisation.
+
+### 16.1 Checks at this checkpoint, by class
+
+| Class | Scope | Result |
+|---|---|---|
+| Hosted CI (`ci`, run 34597107866 at `da726d3`) | build-test (unit, gate suites, full integration suite on a fresh database incl. D4, C18 four stages, upgrade check through 0056), browser-regression (Phase 0/1), supply-chain (two-platform C15 FINAL with SCX-0010/0011 matched, patched-image recheck, FINAL C16, manifest assertion, licence inventory, C17 validation, both gitleaks scans) | **success** — every job green; the C17 archive packaging step `skipped` by the workflow's pull-request condition, as before |
+| Hosted C19 (run 34597107913 at `da726d3`) | lifecycle (ubuntu, macos), foreign-checkout pinning, delivery-chain dry run | **success** (all four jobs) |
+| Hosted CI at `f1f3719` (run 34595656536) and `4989790` (run 34596145466) | the same chain, two and one commits earlier | `f1f3719`: supply-chain FAILED on gitleaks (59 upstream commit URLs in the new arm64 evidence file — governed by `4989790`) and build-test FAILED on F06; `4989790`: supply-chain green (two-platform C15, 44 findings, 6 records, 0 unmatched/unused), build-test FAILED on F06 alone (the fixture runs' correlation id — corrected by `da726d3`); browser green in both; C19 green at `4989790` (34596141891) |
+| Author, real harness | `phase6-collection-serialisation` 16/16 (D4 ×3 new); phase1 acceptance/fault-injection/hostile-input, phase4 acceptance/corrections, phase6 scheduled-collection/-corrections (F07), decisions, residual ×2, scheduler-capability, review-corrections; phase5-twins, gate22 outbox-hardening and degraded-recovery | all green except `phase1-fault-injection` F05 locally: the long-lived local `eye` database carries eleven orphaned `observation.run.start` success audits left by the pre-0056 reproduction probes (a global invariant; CI's fresh database is green); recorded, not dismissed |
+| Author, real host | fifth drill (two isolated environments, real containers on the pinned images, real APIs, one real egress); guard probes 69/69; R1 and R2 pre-fix reproductions on the reviewed scripts; arm64 govulncheck in the Go image; the twelve credential rotations and the six agent re-provisionings on the live demonstration; one operator run | as recorded above |
+| Independent (Codex) | none this pass; the next review is the reviewer's | — |
+| Browser | unchanged: hosted Phase 0/1; author Phase 6 3/3; Phase 4/5 one ECB-dependent failure and twelve not run | no changed claim |
+
+### 16.2 Open, recorded rather than closed
+
+- The arm64 risk decision (`docs/images/ARM64_RISK_DECISION.md`) — the approver's; the live recreation (CP-4a)
+  waits on it, its credential preconditions now met and its rollback bundle taken.
+- The stack: push done; the `#39` four-file resolution, `PROGRESS.md` at #38/#40/#41, the product-free dependency
+  commit for #39 with its lockfile regenerated there, a fresh full chain per head and the push-only C17 archive
+  after each merge — execution, not authorisation, and not on this review alone.
+- The stalled scheduled tick (undiagnosed; consequence bounded by 0051 and 0056), the outbox publisher crash during a
+  correction (undiagnosed), and the `phase5-twins` local staleness under full-suite load — each in the register with
+  an owner; a fresh local harness database is the next step for the last and for F05's orphans.
+- CP-6 reconciliation, the four product decisions, the eight scenario kinds, the `CorrectionApplied` consumer, and
+  3,535 unfinished mandatory acceptance units remain required. This is continued delivery work, not full-product
+  acceptance.
