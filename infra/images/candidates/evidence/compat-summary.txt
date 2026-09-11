@@ -1,0 +1,323 @@
+# Compatibility and upgrade checks of the candidates (2026-09-09, local; the throwaway test password is redacted)
+
+## postgres candidate
++ set -u
++ PG=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
++ CAND=eye-cand-postgres:18-alpine-util-linux
+++ openssl rand -hex 16
++ echo '### A. candidate standalone on host port 55432, new volume eye-cand-pgdata'
+### A. candidate standalone on host port 55432, new volume eye-cand-pgdata
++ docker volume create eye-cand-pgdata
+eye-cand-pgdata
+a62979fdc386bcad85e931146f6d443900bafed84bfbdfee3caf1a09532c2ee9
++ wait_ready eye-cand-pg
+++ seq 1 60
++ for i in '$(seq 1 60)'
++ docker exec eye-cand-pg pg_isready -U postgres -q
++ sleep 1
++ for i in '$(seq 1 60)'
++ docker exec eye-cand-pg pg_isready -U postgres -q
++ docker exec eye-cand-pg psql -U postgres -tAc 'select 1'
++ echo 'eye-cand-pg ready after 2s'
+eye-cand-pg ready after 2s
++ return 0
++ echo '--- SELECT version(); SHOW server_version (in-container psql)'
+--- SELECT version(); SHOW server_version (in-container psql)
++ docker exec eye-cand-pg psql -U postgres -c 'SELECT version()' -c 'SHOW server_version'
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+ server_version 
+----------------
+ 18.4
+(1 row)
+
++ echo '--- uuid paths that use libuuid / pgcrypto (functional check of the patched library'\''s consumers)'
+--- uuid paths that use libuuid / pgcrypto (functional check of the patched library's consumers)
++ docker exec eye-cand-pg psql -U postgres -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"' -c 'SELECT uuid_generate_v4() IS NOT NULL AS ossp_v4_ok, uuid_generate_v1() IS NOT NULL AS ossp_v1_ok, gen_random_uuid() IS NOT NULL AS core_ok'
+CREATE EXTENSION
+ ossp_v4_ok | ossp_v1_ok | core_ok 
+------------+------------+---------
+ t          | t          | t
+(1 row)
+
++ docker exec eye-cand-pg sh -c 'echo "--- libuuid consumer: "; ldd /usr/local/lib/postgresql/uuid-ossp.so | grep -i uuid; ls -l /usr/lib/libuuid*'
+--- libuuid consumer: 
+	libuuid.so.1 => /usr/lib/libuuid.so.1 (0xffffa8568000)
+lrwxrwxrwx    1 root     root            16 Sep  9 19:38 /usr/lib/libuuid.so.1 -> libuuid.so.1.3.0
+-rwxr-xr-x    1 root     root         67544 Sep  5 13:01 /usr/lib/libuuid.so.1.3.0
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_final: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_init: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_error: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: errfinish: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_detoast_datum_packed: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: errstart_cold: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_update: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: errmsg_internal: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_free: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: DirectFunctionCall1Coll: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: pg_cryptohash_create: symbol not found
+Error relocating /usr/local/lib/postgresql/uuid-ossp.so: uuid_in: symbol not found
++ echo '--- host-port reachability (127.0.0.1:55432) from a throwaway client container'
+--- host-port reachability (127.0.0.1:55432) from a throwaway client container
+postgres|5432
++ echo '--- process user / data dir ownership (candidate)'
+--- process user / data dir ownership (candidate)
++ docker exec eye-cand-pg sh -c 'id; echo; ps -o pid,user,comm | head -5; echo; ls -ld /var/lib/postgresql /var/lib/postgresql/18 /var/lib/postgresql/18/docker; id postgres; grep -E "^postgres" /etc/passwd'
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+
+PID   USER     COMMAND
+    1 postgres postgres
+   67 postgres postgres
+   68 postgres postgres
+   69 postgres postgres
+
+drwxrwxrwt    3 postgres postgres      4096 Sep  9 19:40 /var/lib/postgresql
+drwxr-xr-x    3 root     root          4096 Sep  9 19:40 /var/lib/postgresql/18
+drwx------   19 postgres root          4096 Sep  9 19:40 /var/lib/postgresql/18/docker
+uid=70(postgres) gid=70(postgres) groups=70(postgres),70(postgres)
+postgres:x:70:70::/var/lib/postgresql:/bin/sh
++ docker stop eye-cand-pg
++ docker rm eye-cand-pg
++ echo 'eye-cand-pg stopped+removed'
+eye-cand-pg stopped+removed
++ echo
+
++ echo '### B. upgrade path: BASE writes into eye-cand-pgdata2, CANDIDATE reads it'
+### B. upgrade path: BASE writes into eye-cand-pgdata2, CANDIDATE reads it
++ docker volume create eye-cand-pgdata2
+eye-cand-pgdata2
+662cd85844d5d4397ee3610ad25dbb0a1007727da93a7d88a80779236c4add2f
++ wait_ready eye-cand-pg-base
+++ seq 1 60
++ for i in '$(seq 1 60)'
++ docker exec eye-cand-pg-base pg_isready -U postgres -q
++ sleep 1
++ for i in '$(seq 1 60)'
++ docker exec eye-cand-pg-base pg_isready -U postgres -q
++ docker exec eye-cand-pg-base psql -U postgres -tAc 'select 1'
++ echo 'eye-cand-pg-base ready after 2s'
+eye-cand-pg-base ready after 2s
++ return 0
++ docker exec eye-cand-pg-base psql -U postgres -c 'SELECT version()' -c 'CREATE TABLE cand_probe(id serial primary key, label text, u uuid default gen_random_uuid(), at timestamptz default now())' -c 'INSERT INTO cand_probe(label) VALUES ('\''alpha'\''),('\''beta'\''),('\''gamma'\'')' -c 'SELECT id,label FROM cand_probe ORDER BY id'
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+CREATE TABLE
+INSERT 0 3
+ id | label 
+----+-------
+  1 | alpha
+  2 | beta
+  3 | gamma
+(3 rows)
+
++ echo '--- process user / data dir ownership (base, for comparison)'
+--- process user / data dir ownership (base, for comparison)
++ docker exec eye-cand-pg-base sh -c 'id; echo; ps -o pid,user,comm | head -5; echo; ls -ld /var/lib/postgresql /var/lib/postgresql/18 /var/lib/postgresql/18/docker; id postgres'
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+
+PID   USER     COMMAND
+    1 postgres postgres
+   67 postgres postgres
+   68 postgres postgres
+   69 postgres postgres
+
+drwxrwxrwt    3 postgres postgres      4096 Sep  9 19:40 /var/lib/postgresql
+drwxr-xr-x    3 root     root          4096 Sep  9 19:40 /var/lib/postgresql/18
+drwx------   19 postgres root          4096 Sep  9 19:40 /var/lib/postgresql/18/docker
+uid=70(postgres) gid=70(postgres) groups=70(postgres),70(postgres)
++ docker stop eye-cand-pg-base
++ docker rm eye-cand-pg-base
++ echo 'eye-cand-pg-base stopped+removed (clean shutdown)'
+eye-cand-pg-base stopped+removed (clean shutdown)
+e2909328929d9aae8c2180e9e6e5d6dfaf2a5459244cb5280b8c7e5a464bbc77
++ wait_ready eye-cand-pg-upg
+++ seq 1 60
++ for i in '$(seq 1 60)'
++ docker exec eye-cand-pg-upg pg_isready -U postgres -q
++ docker exec eye-cand-pg-upg psql -U postgres -tAc 'select 1'
++ echo 'eye-cand-pg-upg ready after 1s'
+eye-cand-pg-upg ready after 1s
++ return 0
++ echo '--- rows written by BASE, read by CANDIDATE:'
+--- rows written by BASE, read by CANDIDATE:
++ docker exec eye-cand-pg-upg psql -U postgres -c 'SELECT version()' -c 'SELECT id,label,u IS NOT NULL AS has_uuid FROM cand_probe ORDER BY id' -c 'SELECT count(*) AS n FROM cand_probe'
+                                            version                                            
+-----------------------------------------------------------------------------------------------
+ PostgreSQL 18.4 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+ id | label | has_uuid 
+----+-------+----------
+  1 | alpha | t
+  2 | beta  | t
+  3 | gamma | t
+(3 rows)
+
+ n 
+---
+ 3
+(1 row)
+
++ docker exec eye-cand-pg-upg sh -c 'ls -ld /var/lib/postgresql/18/docker; ps -o pid,user,comm | head -3'
+drwx------   19 postgres root          4096 Sep  9 19:40 /var/lib/postgresql/18/docker
+PID   USER     COMMAND
+    1 postgres postgres
+   27 postgres postgres
++ echo '--- candidate log tail (look for recovery/errors)'
+--- candidate log tail (look for recovery/errors)
++ docker logs eye-cand-pg-upg
++ grep -i -E 'error|fatal|panic|recover|ready to accept'
++ tail -5
+2026-09-09 19:40:30.594 UTC [1] LOG:  database system is ready to accept connections
++ docker stop eye-cand-pg-upg
++ docker rm eye-cand-pg-upg
++ echo 'eye-cand-pg-upg stopped+removed'
+eye-cand-pg-upg stopped+removed
++ echo '### done'
+### done
+
+## redis candidate
++ set -u
++ RD=redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
++ CAND=eye-cand-redis:8-alpine-util-linux
++ echo '### A. candidate standalone on host port 56379'
+### A. candidate standalone on host port 56379
++ docker run -d --name eye-cand-redis -p 127.0.0.1:56379:6379 eye-cand-redis:8-alpine-util-linux
+79dafb666125afceaf50e373ad7467004647d21b2d1a925a3871ae0d761e6f9e
++ wait_ready eye-cand-redis
+++ seq 1 30
++ for i in '$(seq 1 30)'
+++ docker exec eye-cand-redis redis-cli ping
++ '[' PONG = PONG ']'
++ echo 'eye-cand-redis ready after 1s'
+eye-cand-redis ready after 1s
++ return 0
++ echo '--- ping / SET / GET / INFO server'
+--- ping / SET / GET / INFO server
++ docker exec eye-cand-redis redis-cli ping
+PONG
++ docker exec eye-cand-redis redis-cli SET cand:probe hello-from-candidate
+OK
++ docker exec eye-cand-redis redis-cli GET cand:probe
+hello-from-candidate
++ docker exec eye-cand-redis redis-cli INFO server
++ grep -E 'redis_version|os:|arch_bits|process_id|executable|config_file'
+redis_version:8.10.0
+os:Linux 6.10.14-linuxkit aarch64
+arch_bits:64
+process_id:1
+executable:/data/redis-server
+config_file:
++ echo '--- host-port reachability (127.0.0.1:56379) from a throwaway client container'
+--- host-port reachability (127.0.0.1:56379) from a throwaway client container
++ docker run --rm --name eye-cand-redis-client --entrypoint redis-cli eye-cand-redis:8-alpine-util-linux -h host.docker.internal -p 56379 GET cand:probe
+hello-from-candidate
++ echo '--- process user (entrypoint drops privileges through setpriv, the patched binary)'
+--- process user (entrypoint drops privileges through setpriv, the patched binary)
++ docker exec eye-cand-redis sh -c 'ps -o pid,user,comm; echo; grep -n setpriv /usr/local/bin/docker-entrypoint.sh; echo; ls -l /bin/setpriv; setpriv --version'
+PID   USER     COMMAND
+    1 redis    redis-server
+   61 root     sh
+   67 root     ps
+
+4:SETPRIV="/bin/setpriv --reuid redis --regid redis --clear-groups"
+13:	/bin/setpriv -d | grep -q 'Capability bounding set:.*\b'"$1"'\b'
+
+-rwxr-xr-x    1 root     root         67392 Sep  5 13:08 /bin/setpriv
+setpriv from util-linux 2.41.6
++ docker logs eye-cand-redis
++ grep -i -E 'warning|error'
++ head -5
+1:M 09 Sep 2026 19:40:41.629 * <bf> 	{ bf-error-rate       :      0.01 }
+1:M 09 Sep 2026 19:40:41.632 # WARNING: Redis does not require authentication and is not protected by network restrictions. Redis will accept connections from any IP address on any network interface.
++ docker stop eye-cand-redis
++ docker rm eye-cand-redis
++ echo 'eye-cand-redis stopped+removed'
+eye-cand-redis stopped+removed
++ echo
+
++ echo '### B. persistence path: BASE writes dump.rdb into eye-cand-redisdata, CANDIDATE loads it'
+### B. persistence path: BASE writes dump.rdb into eye-cand-redisdata, CANDIDATE loads it
++ docker volume create eye-cand-redisdata
+eye-cand-redisdata
++ docker run -d --name eye-cand-redis-base -v eye-cand-redisdata:/data redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+8cc31f564c29928dc5590545c04b833092ea2c1af6919294675c8082446986c7
++ wait_ready eye-cand-redis-base
+++ seq 1 30
++ for i in '$(seq 1 30)'
+++ docker exec eye-cand-redis-base redis-cli ping
++ '[' PONG = PONG ']'
++ echo 'eye-cand-redis-base ready after 1s'
+eye-cand-redis-base ready after 1s
++ return 0
++ docker exec eye-cand-redis-base redis-cli INFO server
++ grep redis_version
+redis_version:8.10.0
++ docker exec eye-cand-redis-base redis-cli MSET k1 one k2 two k3 three
+OK
++ docker exec eye-cand-redis-base redis-cli RPUSH cand:list a b c
+3
++ docker exec eye-cand-redis-base redis-cli SAVE
+OK
++ docker exec eye-cand-redis-base sh -c 'ls -l /data; ps -o pid,user,comm'
+total 4
+-rw-------    1 redis    redis          150 Sep  9 19:40 dump.rdb
+PID   USER     COMMAND
+    1 redis    redis-server
+   61 root     ps
++ docker stop eye-cand-redis-base
++ docker rm eye-cand-redis-base
++ echo 'eye-cand-redis-base stopped+removed'
+eye-cand-redis-base stopped+removed
++ docker run -d --name eye-cand-redis-upg -v eye-cand-redisdata:/data eye-cand-redis:8-alpine-util-linux
+f78dc1ce4284299468a7496685a223fdb0ab4e367c1be8fcdc3f312093a7587f
++ wait_ready eye-cand-redis-upg
+++ seq 1 30
++ for i in '$(seq 1 30)'
+++ docker exec eye-cand-redis-upg redis-cli ping
++ '[' PONG = PONG ']'
++ echo 'eye-cand-redis-upg ready after 1s'
+eye-cand-redis-upg ready after 1s
++ return 0
++ echo '--- keys written by BASE, read by CANDIDATE:'
+--- keys written by BASE, read by CANDIDATE:
++ docker exec eye-cand-redis-upg redis-cli MGET k1 k2 k3
+one
+two
+three
++ docker exec eye-cand-redis-upg redis-cli LRANGE cand:list 0 -1
+a
+b
+c
++ docker exec eye-cand-redis-upg redis-cli DBSIZE
+4
++ docker exec eye-cand-redis-upg redis-cli INFO persistence
++ grep -E 'rdb_last_load_keys_loaded|loading:|rdb_changes'
+loading:0
+async_loading:0
+rdb_changes_since_last_save:0
+rdb_last_load_keys_loaded:4
++ docker exec eye-cand-redis-upg sh -c 'ls -l /data; ps -o pid,user,comm'
+total 4
+-rw-------    1 redis    redis          150 Sep  9 19:40 dump.rdb
+PID   USER     COMMAND
+    1 redis    redis-server
+   62 root     ps
++ docker logs eye-cand-redis-upg
++ grep -i -E 'DB loaded|error|warning'
++ head -5
+1:M 09 Sep 2026 19:40:43.155 * <bf> 	{ bf-error-rate       :      0.01 }
+1:M 09 Sep 2026 19:40:43.158 * DB loaded from disk: 0.000 seconds
+1:M 09 Sep 2026 19:40:43.158 # WARNING: Redis does not require authentication and is not protected by network restrictions. Redis will accept connections from any IP address on any network interface.
++ docker stop eye-cand-redis-upg
++ docker rm eye-cand-redis-upg
++ echo 'eye-cand-redis-upg stopped+removed'
+eye-cand-redis-upg stopped+removed
++ echo '### done'
+### done

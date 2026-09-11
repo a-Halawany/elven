@@ -46,22 +46,39 @@ const runnerSource = (): string => readFileSync(join(REPO, 'scripts', 'gate', 's
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('C15-A — container scans name the exact per-platform child manifest', () => {
-  it('the runner pins the scan platform to the deployment platform, not the host', () => {
+  it('the runner pins each scan to a named platform, never to the host', () => {
     const src = runnerSource();
     expect(src).toContain("const SCAN_PLATFORM = 'linux/amd64'");
-    // The pinned digest alone is NOT what gets scanned; the resolved child is.
-    expect(src).toContain("'--platform', SCAN_PLATFORM");
+    // Every platform the gate scans, from ONE tracked definition the verifier reads too.
+    expect(src).toContain('SCAN_PLATFORMS as SCAN_PLATFORMS_SOURCE');
+    expect(src).toContain('const SCAN_PLATFORMS = [...SCAN_PLATFORMS_SOURCE]');
+    // The primary platform may not drift away from the head of that list.
+    expect(src).toContain('SCAN_PLATFORMS[0] !== SCAN_PLATFORM');
+    // Each image scan names the platform OF ITS OWN RESOLUTION, so a run cannot scan one
+    // child while labelling it another. The pinned digest alone is NOT what gets scanned;
+    // the resolved child is.
+    expect(src).toContain("'--platform', r.scan_platform");
     // C16-R3.4: resolution now crosses the execution adapter, so assert the ADAPTER call
     // rather than a direct one. The behaviour — that the resolved child, not the pinned index,
     // is what gets scanned — is proven end-to-end in c15-runner-behaviour.test.ts.
-    expect(src).toContain('ADAPTER.resolveImage(image, SCAN_PLATFORM)');
+    expect(src).toContain('ADAPTER.resolveImage(image, platform)');
     expect(src).toContain('platformPinnedRef(image, resolution)');
     expect(src).toContain('r.scan_ref');
   });
 
+  it('the tracked platform list is the one both the runner and the verifier read', () => {
+    const provenance = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'scanner-provenance.mjs'), 'utf8');
+    // ONE definition. Two copies of this list would drift, and the final-manifest verifier's
+    // whole job is to be able to disagree with the producer.
+    expect(provenance).toContain("export const SCAN_PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64'])");
+    const contract = readFileSync(join(REPO, 'scripts', 'gate', 'lib', 'verification-contract.mjs'), 'utf8');
+    expect(contract).toContain("import { SCAN_PLATFORMS } from './scanner-provenance.mjs'");
+    expect(contract).not.toMatch(/const SCAN_PLATFORMS\s*=/);
+  });
+
   it('a reference whose platform child cannot be resolved fails the gate closed', () => {
     const src = runnerSource();
-    expect(src).toContain('cannot resolve a ${SCAN_PLATFORM} child manifest');
+    expect(src).toContain('cannot resolve a ${r.scan_platform} child manifest');
     expect(src).toContain('A scan that cannot name the manifest it examined is not evidence.');
   });
 

@@ -1,0 +1,12 @@
+13c13
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+15c15
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+20c20
+< setpriv@2.41.4-r0	library	GPL-2.0-or-later
+---
+> setpriv@2.41.6-r1	library	GPL-2.0-or-later

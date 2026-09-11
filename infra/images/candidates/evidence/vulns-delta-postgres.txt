@@ -1,0 +1,8 @@
+4,10d3
+< CVE-2026-53612	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53613	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53614	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-76642	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78408	libuuid	2.42.1-r0	2.42.3-r1	HIGH
+< CVE-2026-78409	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78410	libuuid	2.42.1-r0	2.42.3-r0	HIGH

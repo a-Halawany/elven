@@ -1,0 +1,6 @@
+libuuid-2.42.1-r0 aarch64 {util-linux} (BSD-3-Clause) [installed]
+libuuid-2.42.3-r1 aarch64 {util-linux} (BSD-3-Clause) [installed]
+libuuid-2.42.3-r1 contains:
+usr/lib/libuuid.so.1
+usr/lib/libuuid.so.1.3.0
+

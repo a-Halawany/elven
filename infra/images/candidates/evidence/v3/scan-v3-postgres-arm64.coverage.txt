@@ -1,0 +1,5 @@
+2026-09-10T11:06:15+03:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-09-10T11:06:15+03:00	INFO	[misconfig] Misconfiguration scanning is enabled
+2026-09-10T11:06:16+03:00	INFO	[secret] Secret scanning is enabled
+2026-09-10T11:06:18+03:00	INFO	Detected OS	family="alpine" version="3.24.1"
+2026-09-10T11:06:18+03:00	INFO	Number of language-specific files	num=1

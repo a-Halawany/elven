@@ -1,0 +1,227 @@
+base-postgres-arm64: rc=0 vulns=32 secrets=0 misconfigurations=0 targets=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+base-postgres-amd64: rc=0 vulns=32 secrets=0 misconfigurations=0 targets=postgres@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+v1-postgres-arm64: rc=0 vulns=25 secrets=0 misconfigurations=0 targets=eye-cand-postgres:18-alpine-util-linux (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+v1-postgres-amd64: rc=0 vulns=25 secrets=0 misconfigurations=0 targets=eye-cand-postgres:amd64 (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+v2-postgres-arm64: rc=0 vulns=22 secrets=0 misconfigurations=0 targets=eye-cand2-postgres:18-alpine-maint (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+v2-postgres-amd64: rc=0 vulns=22 secrets=0 misconfigurations=0 targets=eye-cand2-postgres:amd64 (alpine 3.24.1)[os-pkgs], usr/local/bin/gosu[lang-pkgs]
+base-redis-arm64: rc=0 vulns=8 secrets=0 misconfigurations=0 targets=redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241 (alpine 3.23.5)[os-pkgs]
+base-redis-amd64: rc=0 vulns=8 secrets=0 misconfigurations=0 targets=redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)[os-pkgs]
+v1-redis-arm64: rc=0 vulns=2 secrets=0 misconfigurations=0 targets=eye-cand-redis:8-alpine-util-linux (alpine 3.23.5)[os-pkgs]
+v1-redis-amd64: rc=0 vulns=2 secrets=0 misconfigurations=0 targets=eye-cand-redis:amd64 (alpine 3.23.5)[os-pkgs]
+v2-redis-arm64: rc=0 vulns=0 secrets=0 misconfigurations=0 targets=eye-cand2-redis:8-alpine-maint (alpine 3.23.5)[os-pkgs]
+v2-redis-amd64: rc=0 vulns=0 secrets=0 misconfigurations=0 targets=eye-cand2-redis:amd64 (alpine 3.23.5)[os-pkgs]
+--- SBOMs (CycloneDX)
+base-postgres-arm64: rc=0 components=59 specVersion=1.7
+base-postgres-amd64: rc=0 components=59 specVersion=1.7
+v2-postgres-arm64: rc=0 components=59 specVersion=1.7
+v2-postgres-amd64: rc=0 components=59 specVersion=1.7
+base-redis-arm64: rc=0 components=23 specVersion=1.7
+base-redis-amd64: rc=0 components=23 specVersion=1.7
+v2-redis-arm64: rc=0 components=23 specVersion=1.7
+v2-redis-amd64: rc=0 components=23 specVersion=1.7
+--- deltas (CVE+pkg+installed+fixed+sev+target)
+## postgres arm64: base -> v1
+4,5c4,5
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+---
+> CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+> CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+11c11
+< CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+---
+> CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+21,23d20
+< CVE-2026-53612	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53613	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53614	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+29,32d25
+< CVE-2026-76642	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78408	libuuid	2.42.1-r0	2.42.3-r1	HIGH
+< CVE-2026-78409	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78410	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+## postgres arm64: v1 -> v2
+4,5d3
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+11d8
+< CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+## postgres arm64: base -> v2
+      14
+## postgres arm64: v2 remaining
+CVE-2025-61726	stdlib	v1.24.6	1.24.12, 1.25.6	HIGH	usr/local/bin/gosu
+CVE-2025-61729	stdlib	v1.24.6	1.24.11, 1.25.5	HIGH	usr/local/bin/gosu
+CVE-2025-68121	stdlib	v1.24.6	1.24.13, 1.25.7, 1.26.0-rc.3	CRITICAL	usr/local/bin/gosu
+CVE-2026-25679	stdlib	v1.24.6	1.25.8, 1.26.1	HIGH	usr/local/bin/gosu
+CVE-2026-27145	stdlib	v1.24.6	1.25.11, 1.26.4	HIGH	usr/local/bin/gosu
+CVE-2026-32280	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-32281	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-32283	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-33811	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-33814	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-33818	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-39820	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-39821	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-39822	stdlib	v1.24.6	1.25.12, 1.26.5, 1.27.0-rc.2	HIGH	usr/local/bin/gosu
+CVE-2026-39836	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-42499	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-42504	stdlib	v1.24.6	1.25.11, 1.26.4	HIGH	usr/local/bin/gosu
+CVE-2026-56853	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56858	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56859	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56860	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56862	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+## postgres arm64: SBOM delta base -> v2
+12c12
+< c-ares@1.34.6-r0	library	MIT
+---
+> c-ares@1.34.8-r0	library	MIT
+25c25
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+35c35
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+39c39
+< libuuid@2.42.1-r0	library	BSD-3-Clause
+---
+> libuuid@2.42.3-r1	library	BSD-3-Clause
+## postgres amd64: base -> v1
+4,5c4,5
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+---
+> CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+> CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+11c11
+< CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+---
+> CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+21,23d20
+< CVE-2026-53612	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53613	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-53614	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+29,32d25
+< CVE-2026-76642	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78408	libuuid	2.42.1-r0	2.42.3-r1	HIGH
+< CVE-2026-78409	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+< CVE-2026-78410	libuuid	2.42.1-r0	2.42.3-r0	HIGH
+## postgres amd64: v1 -> v2
+4,5d3
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+11d8
+< CVE-2026-33630	c-ares	1.34.6-r0	1.34.8-r0	HIGH
+## postgres amd64: base -> v2
+      14
+## postgres amd64: v2 remaining
+CVE-2025-61726	stdlib	v1.24.6	1.24.12, 1.25.6	HIGH	usr/local/bin/gosu
+CVE-2025-61729	stdlib	v1.24.6	1.24.11, 1.25.5	HIGH	usr/local/bin/gosu
+CVE-2025-68121	stdlib	v1.24.6	1.24.13, 1.25.7, 1.26.0-rc.3	CRITICAL	usr/local/bin/gosu
+CVE-2026-25679	stdlib	v1.24.6	1.25.8, 1.26.1	HIGH	usr/local/bin/gosu
+CVE-2026-27145	stdlib	v1.24.6	1.25.11, 1.26.4	HIGH	usr/local/bin/gosu
+CVE-2026-32280	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-32281	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-32283	stdlib	v1.24.6	1.25.9, 1.26.2	HIGH	usr/local/bin/gosu
+CVE-2026-33811	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-33814	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-33818	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-39820	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-39821	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-39822	stdlib	v1.24.6	1.25.12, 1.26.5, 1.27.0-rc.2	HIGH	usr/local/bin/gosu
+CVE-2026-39836	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-42499	stdlib	v1.24.6	1.25.10, 1.26.3	HIGH	usr/local/bin/gosu
+CVE-2026-42504	stdlib	v1.24.6	1.25.11, 1.26.4	HIGH	usr/local/bin/gosu
+CVE-2026-56853	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56858	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56859	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56860	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+CVE-2026-56862	stdlib	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	HIGH	usr/local/bin/gosu
+## postgres amd64: SBOM delta base -> v2
+12c12
+< c-ares@1.34.6-r0	library	MIT
+---
+> c-ares@1.34.8-r0	library	MIT
+25c25
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+35c35
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+39c39
+< libuuid@2.42.1-r0	library	BSD-3-Clause
+---
+> libuuid@2.42.3-r1	library	BSD-3-Clause
+## redis arm64: base -> v1
+1,8c1,2
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-53612	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53613	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53614	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-76642	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-78408	setpriv	2.41.4-r0	2.41.6-r1	HIGH
+< CVE-2026-78410	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+---
+> CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+> CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+## redis arm64: v1 -> v2
+1,2d0
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+## redis arm64: base -> v2
+       9
+## redis arm64: v2 remaining
+## redis arm64: SBOM delta base -> v2
+13c13
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+15c15
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+20c20
+< setpriv@2.41.4-r0	library	GPL-2.0-or-later
+---
+> setpriv@2.41.6-r1	library	GPL-2.0-or-later
+## redis amd64: base -> v1
+1,8c1,2
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-53612	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53613	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-53614	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-76642	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+< CVE-2026-78408	setpriv	2.41.4-r0	2.41.6-r1	HIGH
+< CVE-2026-78410	setpriv	2.41.4-r0	2.41.6-r0	HIGH
+---
+> CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+> CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+## redis amd64: v1 -> v2
+1,2d0
+< CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH
+< CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH
+## redis amd64: base -> v2
+       9
+## redis amd64: v2 remaining
+## redis amd64: SBOM delta base -> v2
+13c13
+< libcrypto3@3.5.7-r0	library	Apache-2.0
+---
+> libcrypto3@3.5.8-r0	library	Apache-2.0
+15c15
+< libssl3@3.5.7-r0	library	Apache-2.0
+---
+> libssl3@3.5.8-r0	library	Apache-2.0
+20c20
+< setpriv@2.41.4-r0	library	GPL-2.0-or-later
+---
+> setpriv@2.41.6-r1	library	GPL-2.0-or-later
+--- arm64 vs amd64 v2 finding sets identical?
+postgres: identical (CVE,pkg,installed,fixed,sev)
+redis: identical (CVE,pkg,installed,fixed,sev)

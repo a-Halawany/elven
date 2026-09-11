@@ -1,0 +1,18 @@
+{
+  "purpose": "Control file of .github/workflows/publish-derived-images.yml: structured inputs only; every value is validated against a strict pattern before use, and the run is bound to the approved source revision by comparing the recipe blobs.",
+  "approval": {
+    "scope": "temporary-maintenance-until-official-images-qualify",
+    "recorded_in": "docs/images/DERIVED_IMAGES_APPROVAL.md",
+    "recorded_on": "2026-09-10"
+  },
+  "approved_source_sha": "59a245938f88ad9d3abb1a0518c69645eb9c06c7",
+  "date_tag": "20260910",
+  "namespace": "a-halawany",
+  "repository": "elven",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "visibility": "public",
+  "images": {
+    "postgres": { "dockerfile": "infra/images/candidates/v2/postgres-18-alpine.Dockerfile", "base": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15", "tag_prefix": "18-alpine" },
+    "redis": { "dockerfile": "infra/images/candidates/v2/redis-8-alpine.Dockerfile", "base": "redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241", "tag_prefix": "8-alpine" }
+  }
+}
