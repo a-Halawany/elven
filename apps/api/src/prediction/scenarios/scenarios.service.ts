@@ -27,8 +27,24 @@ import { foldControls, controlsOf, type Controls } from '../controls.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * SCENARIO KIND VOCABULARY v1 (migration 0058; Volume 0 ch. 14, C-022). A branch records the
+ * version it was declared under; a later change to this set is a new version, never a rewrite.
+ */
+export const SCENARIO_KINDS_V1 = ['baseline', 'upside', 'downside', 'disruption', 'stress', 'adversarial', 'counterfactual', 'user-defined'] as const;
+export type ScenarioKind = (typeof SCENARIO_KINDS_V1)[number];
+export const SCENARIO_KIND_VOCABULARY_VERSION = 1;
+
+export interface BranchAssumption { statement: string; basis?: string | null }
+
 export interface BranchIntake {
-  name: string; kind: 'baseline' | 'upside' | 'downside'; statement: string; indicatorId: string | null;
+  name: string; kind: ScenarioKind; statement: string; indicatorId: string | null;
+  /** The name a user-defined kind gives itself (required for, and only for, `user-defined`). */
+  kindLabel?: string | null;
+  /** How this branch diverges from the baseline — required for the five kinds 0058 adds; upside and downside diverge by their flip indicator. */
+  divergence?: string | null;
+  /** The branch's own assumption set. */
+  assumptions?: BranchAssumption[];
   signpost: string | null; owner: string; reviewCadence: string; responseWindowHours: number; consequence: string;
   /**
    * The instant by which the decision the warning serves must be taken — set by
@@ -61,7 +77,25 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
   if (!branches.some((b) => b.kind === 'baseline')) bad('a scenario tree needs a baseline branch');
   for (const b of branches) {
     if (typeof b.name !== 'string' || b.name.trim().length < 2) bad('every branch needs a name');
-    if (!['baseline', 'upside', 'downside'].includes(b.kind)) bad("branch kind must be 'baseline', 'upside' or 'downside'");
+    if (!(SCENARIO_KINDS_V1 as readonly string[]).includes(b.kind)) bad(`branch kind must be one of scenario kind vocabulary v${SCENARIO_KIND_VOCABULARY_VERSION}: ${SCENARIO_KINDS_V1.join(', ')}`);
+    if (b.kind === 'user-defined' && (typeof b.kindLabel !== 'string' || b.kindLabel.trim().length < 2 || b.kindLabel.length > 64)) {
+      bad(`branch "${b.name}" is user-defined and must name its kind (kindLabel, 2-64 characters)`);
+    }
+    if (b.kind !== 'user-defined' && b.kindLabel != null) bad(`branch "${b.name}": kindLabel belongs to a user-defined kind only`);
+    // Upside and downside diverge by the indicator that flips them (0029's rule, below); the
+    // five kinds added by 0058 state their divergence from the baseline in prose.
+    const prose = !['baseline', 'upside', 'downside'].includes(b.kind);
+    if (prose && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) {
+      bad(`branch "${b.name}" (${b.kind}) must say how it diverges from the baseline (divergence, at least 8 characters)`);
+    }
+    if (b.divergence != null && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) bad(`branch "${b.name}": divergence, when given, is at least 8 characters`);
+    const assumptions = b.assumptions ?? [];
+    if (!Array.isArray(assumptions)) bad(`branch "${b.name}": assumptions must be a list`);
+    for (const a of assumptions) {
+      if (a === null || typeof a !== 'object' || typeof (a as BranchAssumption).statement !== 'string' || (a as BranchAssumption).statement.trim().length < 2) {
+        bad(`branch "${b.name}": every assumption is an object with a statement of at least 2 characters`);
+      }
+    }
     if (typeof b.statement !== 'string' || b.statement.trim().length < 2) bad('every branch needs a statement');
     if (b.kind !== 'baseline' && (typeof b.indicatorId !== 'string' || !UUID.test(b.indicatorId))) {
       bad(`branch "${b.name}" can flip and must name the indicator that flips it`);
@@ -78,6 +112,9 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
     subjectEntityId: m.subjectEntityId ?? null, owner: m.owner as string, reviewCadence: m.reviewCadence as string,
     branches: branches.map((b) => ({
       name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId ?? null, signpost: b.signpost ?? null,
+      kindLabel: b.kind === 'user-defined' ? (b.kindLabel as string).trim() : null,
+      divergence: b.divergence == null ? null : b.divergence,
+      assumptions: (b.assumptions ?? []).map((a) => ({ statement: a.statement, basis: a.basis ?? null })),
       owner: b.owner, reviewCadence: b.reviewCadence ?? (m.reviewCadence as string),
       responseWindowHours: b.responseWindowHours, consequence: b.consequence,
       decisionDeadline: b.decisionDeadline == null ? null : new Date(b.decisionDeadline).toISOString() })),
@@ -109,8 +146,10 @@ export class ScenariosService {
     const payload = {
       title: intake.title, statement: intake.statement, forecast_id: intake.forecastId,
       subject_entity_id: intake.subjectEntityId, owner: `principal:${intake.owner}`, review_cadence: intake.reviewCadence,
+      kind_vocabulary_version: SCENARIO_KIND_VOCABULARY_VERSION,
       branches: branches.map((b) => ({
-        branch_id: b.branchId, name: b.name, kind: b.kind, statement: b.statement,
+        branch_id: b.branchId, name: b.name, kind: b.kind, kind_label: b.kindLabel ?? null, divergence: b.divergence ?? null,
+        assumptions: b.assumptions ?? [], statement: b.statement,
         indicator: b.indicatorId === null ? null : { indicator_id: b.indicatorId }, signpost: b.signpost,
         owner: `principal:${b.owner}`, review_cadence: b.reviewCadence, response_window_hours: b.responseWindowHours,
         consequence: b.consequence, decision_deadline: b.decisionDeadline })),
@@ -127,7 +166,7 @@ export class ScenariosService {
       contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${intake.owner}`], classification: controls.classification,
       purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
       retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v1', ontology_ref: null,
+      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v2', ontology_ref: null,
       correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const v = validateHeader(header);
@@ -143,7 +182,8 @@ export class ScenariosService {
         branchId: b.branchId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, scenarioId,
         name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId, signpost: b.signpost,
         owner: b.owner, reviewCadence: b.reviewCadence, responseHours: b.responseWindowHours, consequence: b.consequence,
-        decisionDeadline: b.decisionDeadline, actor, eventId: newId(), correlationId,
+        decisionDeadline: b.decisionDeadline, kindLabel: b.kindLabel ?? null, divergence: b.divergence ?? null, assumptions: b.assumptions ?? [],
+        actor, eventId: newId(), correlationId,
       });
     }
     return { scenarioId, branches: branches.map((b) => ({ branchId: b.branchId, name: b.name, kind: b.kind })) };

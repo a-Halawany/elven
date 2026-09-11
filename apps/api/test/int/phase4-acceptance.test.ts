@@ -625,6 +625,66 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     expect(again.evaluation.flips.length).toBe(0);
   }, 120_000);
 
+  it('C-022 · the eight scenario kinds (vocabulary v1): every kind is declared with its divergence and its own assumptions; a user-defined disruption flips on its indicator; a ninth kind and a nameless user-defined kind are refused (AU-PRD-0021)', async () => {
+    const ind = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits fall below 40 per day for five consecutive days (C-022 case)', comparator: '<',
+                   threshold: 40, consecutiveDays: 5, owner: ownerId } }) as { indicator: { indicatorId: string } };
+    const flipping = (name: string, kind: string, extra: Record<string, unknown> = {}) => ({
+      name, kind, statement: `${name}: transits stay below 40/day for five days`, indicatorId: ind.indicator.indicatorId,
+      signpost: 'five consecutive days under 40', owner: ownerId, consequence: 'rebook the third shipment before the window closes',
+      responseWindowHours: 48, divergence: `${name} diverges from the baseline in the way its kind names`, ...extra,
+    });
+    const base = { title: 'Corridor over the next quarter — every kind', statement: 'what we expect, and what would change it', forecastId, owner: ownerId, reviewCadence: 'weekly' };
+    const declare = (branches: unknown[]) => controller.declareScenario(req(owner, 'prediction.scenario.declare', 'SCN', null), fx.tenantId, fx.domainId, { payload: { ...base, branches } } as never);
+    const status = async (p: Promise<unknown>): Promise<number> => { try { await p; return 200; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? 500; } };
+
+    // A NINTH kind is refused; a user-defined kind without its name is refused; a disruption without its divergence is refused.
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Weird', 'wildcard')]))).toBe(422);
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Nameless', 'user-defined')]))).toBe(422);
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Silent', 'disruption', { divergence: null })]))).toBe(422);
+
+    // All eight, each with its own assumptions; the user-defined one is a named disruption.
+    const scn = await declare([
+      { name: 'Baseline', kind: 'baseline', statement: 'transits at seasonal level', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72,
+        assumptions: [{ statement: 'the corridor stays open', basis: 'no closure notice on file' }] },
+      flipping('Upside', 'upside', { divergence: null }),
+      flipping('Downside', 'downside'),
+      flipping('Disruption', 'disruption', { assumptions: [{ statement: 'a closure lasts at least a week' }] }),
+      flipping('Stress', 'stress', { assumptions: [{ statement: 'two corridors close at once', basis: 'stress design' }] }),
+      flipping('Adversarial', 'adversarial', { assumptions: [{ statement: 'a counterparty withholds capacity deliberately' }] }),
+      flipping('Counterfactual', 'counterfactual', { assumptions: [{ statement: 'the third shipment had been rebooked in October' }] }),
+      flipping('Blockade', 'user-defined', { kindLabel: 'regional blockade', assumptions: [{ statement: 'naval activity halts transits', basis: 'analyst package' }, { statement: 'insurers withdraw cover' }] }),
+    ]) as { scenario: { scenarioId: string; branches: Array<{ branchId: string; kind: string; name: string }> } };
+    expect(scn.scenario.branches.map((b) => b.kind).sort()).toEqual(['adversarial', 'baseline', 'counterfactual', 'disruption', 'downside', 'stress', 'upside', 'user-defined']);
+    const rows = (await sql<{ kind: string; kind_label: string | null; divergence: string | null; assumptions: unknown[]; kind_vocabulary_version: number }>`
+      select kind, kind_label, divergence, assumptions, kind_vocabulary_version from prediction.branches_current
+       where scenario_id = ${scn.scenario.scenarioId}::uuid order by kind`.execute(su)).rows;
+    expect(rows.length).toBe(8);
+    expect(rows.every((r) => r.kind_vocabulary_version === 1)).toBe(true);
+    const blockade = rows.find((r) => r.kind === 'user-defined');
+    expect(blockade?.kind_label).toBe('regional blockade');
+    expect(blockade?.assumptions).toHaveLength(2);
+    expect(rows.filter((r) => !['baseline', 'upside', 'downside'].includes(r.kind)).every((r) => typeof r.divergence === 'string' && r.divergence.length >= 8)).toBe(true);
+    // The vocabulary is a versioned record, and the canonical object names the version and takes SCN v2.
+    const vocab = (await sql<{ kinds: string[] }>`select kinds from prediction.scenario_kind_versions where version = 1`.execute(su)).rows[0];
+    expect(vocab?.kinds).toEqual(['baseline', 'upside', 'downside', 'disruption', 'stress', 'adversarial', 'counterfactual', 'user-defined']);
+    const obj = (await sql<{ schema_ref: string; payload: Record<string, unknown> }>`select schema_ref, payload from objects.canonical_objects where object_id = ${scn.scenario.scenarioId}::uuid`.execute(su)).rows[0];
+    expect(obj?.schema_ref).toBe('SCN@v2');
+    expect(obj?.payload['kind_vocabulary_version']).toBe(1);
+    // A stray row with a kind outside the vocabulary is refused by the database itself.
+    await expect(sql`update prediction.branches_current set kind = 'wildcard' where branch_id = ${blockade === undefined ? uuidv7() : (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId}::uuid`.execute(su)).rejects.toThrow(/kind_check|immutable|append-only/);
+
+    // The user-defined disruption FLIPS on its indicator like any other branch (the seven flipping
+    // branches share the indicator, so the evaluation flips them all and raises one warning each).
+    const ev = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', ind.indicator.indicatorId), fx.tenantId, fx.domainId,
+      ind.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { flips: Array<{ branchId?: string; branch_id?: string }> }; warnings: Array<{ branchId: string }> };
+    const flippedIds = new Set(ev.warnings.map((w) => w.branchId));
+    const blockadeId = (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId;
+    expect(flippedIds.has(blockadeId), 'the user-defined disruption did not flip on its indicator').toBe(true);
+    const flipped = (await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${blockadeId}::uuid`.execute(su)).rows[0];
+    expect(flipped?.state).toBe('flipped');
+  }, 120_000);
+
   it('D6 · a warning nobody acknowledged before its window closed is recorded as EXPIRED, not left silent', async () => {
     const wid = uuidv7();
     await sql`insert into prediction.warnings_current (
@@ -717,7 +777,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const rows = (await sql<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'prediction' and c.relkind = 'r'`.execute(su)).rows;
-    expect(rows.length).toBe(12);
+    expect(rows.length).toBe(13); // 12 of 0029–0037, plus the scenario kind vocabulary of 0058
     for (const r of rows) {
       expect(r.relrowsecurity, `${r.relname} has no row-level security`).toBe(true);
       expect(r.relforcerowsecurity, `${r.relname} does not FORCE it`).toBe(true);

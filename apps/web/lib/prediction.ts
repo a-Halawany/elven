@@ -53,7 +53,7 @@ export interface BacktestRow {
 }
 
 export interface BranchRow {
-  branch_id: string; scenario_id: string; name: string; kind: 'baseline' | 'upside' | 'downside'; statement: string;
+  branch_id: string; scenario_id: string; name: string; kind: 'baseline' | 'upside' | 'downside' | 'disruption' | 'stress' | 'adversarial' | 'counterfactual' | 'user-defined'; kind_label?: string | null; divergence?: string | null; assumptions?: Array<{ statement: string; basis?: string | null }>; statement: string;
   indicator_id: string | null; signpost: string | null; owner_principal_id: string; review_cadence: string;
   response_window_hours: number; consequence: string; state: 'open' | 'flipped' | 'closed'; flipped_at: string | null;
   flip_event_id: string | null; indicator?: IndicatorRow | null;

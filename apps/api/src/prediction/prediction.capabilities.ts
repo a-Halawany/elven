@@ -124,6 +124,8 @@ export interface ScenarioWrites extends PredictionReads {
     branchId: string; tenantId: string; domainId: string; scenarioId: string; name: string; kind: string;
     statement: string; indicatorId: string | null; signpost: string | null; owner: string;
     reviewCadence: string; responseHours: number; consequence: string; decisionDeadline: string | null;
+    /** Scenario kind vocabulary v1 (migration 0058): the label of a user-defined kind, how the branch diverges from the baseline, its own assumptions. */
+    kindLabel: string | null; divergence: string | null; assumptions: Array<{ statement: string; basis?: string | null }>;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
@@ -296,6 +298,7 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.branchId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.name}, ${a.kind},
       ${a.statement}, ${a.indicatorId}::uuid, ${a.signpost}, ${a.owner}::uuid, ${a.reviewCadence},
       ${a.responseHours}, ${a.consequence}, ${a.decisionDeadline}::timestamptz,
+      ${a.kindLabel}, ${a.divergence}, ${JSON.stringify(a.assumptions)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
