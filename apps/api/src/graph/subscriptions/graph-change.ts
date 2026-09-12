@@ -25,6 +25,8 @@ export const GRAPH_CHANGE_KINDS = [
   'forecast.superseded',
   // 0065 §7: a model change (an extraction method suspended or retired) opened a reassessment on the edges its claims assert.
   'edge.reassessment_opened',
+  // 0066 §3: a memory item recorded / superseded (the item is in objects.memoryItems; what it cites are its dependencies).
+  'memory_item.recorded', 'memory_item.superseded',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -39,6 +41,8 @@ export interface ReachedObjects {
   forecasts: string[]; scenarios: string[]; warnings: string[]; twins: string[]; simulations: string[]; evidence: string[];
   /** 0065 §8: the briefings the walk reached (composed on what changed). Absent on events written before 0065. */
   briefings?: string[];
+  /** 0066 §3: the memory items the walk reached (resting on what changed). Absent on events written before 0066. */
+  memoryItems?: string[];
   /** The walker stopped at its bound before the graph was exhausted: the selection above is incomplete and says so. */
   truncated: boolean;
   /** False only where the write legitimately skipped the walk (see change-events.ts): consumers then select by their own reads. */
@@ -71,10 +75,10 @@ export interface MemoryCorrectedPayload {
 }
 export type ChangeEvent = { event_id: string; event_type: 'GraphChanged'; payload: GraphChangedPayload } | { event_id: string; event_type: 'MemoryCorrected'; payload: MemoryCorrectedPayload };
 
-export const EMPTY_REACH: ReachedObjects = Object.freeze({ claims: [], assumptions: [], objectives: [], decisions: [], commitments: [], forecasts: [], scenarios: [], warnings: [], twins: [], simulations: [], evidence: [], briefings: [], truncated: false, walked: true }) as ReachedObjects;
+export const EMPTY_REACH: ReachedObjects = Object.freeze({ claims: [], assumptions: [], objectives: [], decisions: [], commitments: [], forecasts: [], scenarios: [], warnings: [], twins: [], simulations: [], evidence: [], briefings: [], memoryItems: [], truncated: false, walked: true }) as ReachedObjects;
 
 /** The consumer kinds AU-MEM-0030 names, each with the action it holds (PDP rule + port assertion) and its identity. */
-export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings'] as const;
+export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships'] as const;
 export type ConsumerKind = (typeof CONSUMER_KINDS)[number];
 export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin.subscription.apply',
@@ -83,9 +87,11 @@ export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.fr
   decisions: 'decision.subscription.apply',
   retrieval: 'graph.retrieval.subscription.apply',
   'memory-mappings': 'graph.mapping.subscription.apply',
+  relationships: 'graph.relationship.subscription.apply',
 });
 export const CONSUMER_ROLE: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin_subscriber', forecasts: 'forecast_subscriber', scenarios: 'scenario_subscriber', decisions: 'decision_subscriber', retrieval: 'retrieval_subscriber', 'memory-mappings': 'mapping_subscriber',
+  relationships: 'relationship_subscriber',
 });
 /** The consumer's identity, the walker precedent: a changed method is a new consumer, registered anew. */
 export const CONSUMER_VERSION = '1.0.0';
@@ -96,6 +102,7 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed',
   retrieval: 'graph.rebuild_projections verified → graph.record_retrieval_check',
   'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete)',
+  relationships: 'claim.corrected → the pending edge reassessed (graph.open_edge_reassessment), the relationship re-derived for the corrected version under the builder\'s rules and asserted (graph.assert_edge supersedes the pending edge; GraphChanged/edge.asserted published); a claim the builder cannot re-derive stays unresolved (unresolved_dependency) with the builder\'s reason',
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>
   createHash('sha256').update(`graph.subscription.${kind}@${CONSUMER_VERSION}:${METHOD_REF[kind]}`, 'utf8').digest('hex');
@@ -156,5 +163,7 @@ export interface SubscriptionConsumer<C> {
                */
               unresolved?: string | { reason: string; failureClass: FailureClass; disposition: Disposition };
               /** The effect exposes a condition a person must route (an input invalidated on a committed decision): recorded on the item, the delivery still applied. */
-              exposure?: { failureClass: FailureClass; disposition: Disposition; note: string } }>;
+              exposure?: { failureClass: FailureClass; disposition: Disposition; note: string };
+              /** Events the effect's committed transition announces (0066 §2: a re-derived edge publishes GraphChanged/edge.asserted) — enqueued by the pipeline in the item's own transaction. */
+              outboxEvents?: Array<{ eventType: string; payload: Record<string, unknown> }> }>;
 }

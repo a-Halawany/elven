@@ -31,6 +31,8 @@ import { SubscriptionDispatcherService } from './subscriptions/subscription-disp
 import { SubscriptionsService } from './subscriptions/subscriptions.service.js';
 import { RetrievalConsumer } from './subscriptions/consumers/retrieval.consumer.js';
 import { MemoryMappingsConsumer } from './subscriptions/consumers/memory-mappings.consumer.js';
+import { RelationshipsConsumer } from './subscriptions/consumers/relationships.consumer.js';
+import { MemoryService } from './memory/memory.service.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
 /*
@@ -62,6 +64,8 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     SubscriptionsService,
     RetrievalConsumer,
     MemoryMappingsConsumer,
+    RelationshipsConsumer,
+    MemoryService,
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },

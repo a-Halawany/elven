@@ -452,6 +452,34 @@ export class ScenariosService {
       asOf: asOf === null ? null : new Date(asOf).toISOString(), actor, eventId: newId(), correlationId });
   }
 
+  /**
+   * 0066 §8 (interface L7-I05 ScenarioReviewed; V03-T-336/340, V04-T-032): a person reviews a scenario. The outcome is
+   * CONTINUE (the next review falls due per the cadence or the named instant), DISSENT (a position and rationale recorded
+   * on the scenario, which it does not change), RETIRE (the scenario leaves the portfolio: open branches close, flipped
+   * ones keep their history, simulation refuses its branches thereafter) or PROMOTE_TO_SIMULATION (the branch named is
+   * the simulation candidate). The port records the review on the scenario's log; the write publishes ScenarioReviewed
+   * naming the scenario's links (forecast, decisions resting on it, simulation runs) so subscribers see the reach.
+   */
+  async review(
+    cap: ScenarioWrites, ctx: ScopeContext,
+    a: { scenarioId: string; branchId: string | null; outcome: string; note: string; dissent: Record<string, unknown> | null; nextReviewBy: string | null },
+    actor: string, correlationId: string,
+  ): Promise<{ review: Record<string, unknown>; event: { eventType: string; payload: Record<string, unknown> } }> {
+    const eventId = newId();
+    const review = await cap.reviewScenario({
+      scenarioId: a.scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, branchId: a.branchId,
+      outcome: a.outcome, note: a.note, dissent: a.dissent, nextReviewBy: a.nextReviewBy, actor, eventId, correlationId,
+    });
+    const event = { eventType: 'ScenarioReviewed', payload: {
+      schema: 'ScenarioReviewed', schema_version: 'v1', scenario_id: a.scenarioId, review_event_id: eventId, outcome: a.outcome,
+      review_ordinal: review['review_ordinal'] ?? null, state_after: review['state_after'] ?? null, branch: review['branch'] ?? null,
+      note: a.note, dissent: a.dissent, next_review_due_at: review['next_review_due_at'] ?? null, branches_closed: review['branches_closed'] ?? 0,
+      links: review['links'] ?? {}, temporal: { known_at: new Date().toISOString() },
+      cause: { action: 'prediction.scenario.review', actor: `principal:${actor}`, target_type: 'SCN', target_id: a.scenarioId },
+    } };
+    return { review, event };
+  }
+
   async listScenarios(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {
     const scenarios = (await cap.readScenarios().selectAll().orderBy('declared_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
     const branches = (await cap.readBranches().selectAll().execute()) as Array<Record<string, unknown>>;
@@ -472,7 +500,15 @@ export class ScenariosService {
   }
 
   async listWarnings(cap: PredictionReads, limit = 100): Promise<Array<Record<string, unknown>>> {
-    return (await cap.readWarnings().selectAll().orderBy('raised_at' as never, 'desc').limit(Math.min(limit, 500)).execute()) as Array<Record<string, unknown>>;
+    const rows = (await cap.readWarnings().selectAll().orderBy('raised_at' as never, 'desc').limit(Math.min(limit, 500)).execute()) as Array<Record<string, unknown>>;
+    // 0066 §9: a live suppression marks the warning (its state untouched): suppressed_until, or null.
+    const now = new Date().toISOString();
+    const sup = rows.length === 0 ? [] : (await cap.readWarningSuppressions().selectAll().where('warning_id' as never, 'in', rows.map((w) => String(w['warning_id'])) as never).where('state' as never, '=', 'active' as never).execute()) as Array<Record<string, unknown>>;
+    const untilOf = (id: string): string | null => {
+      const live = sup.filter((x) => String(x['warning_id']) === id && (x['until_at'] instanceof Date ? x['until_at'].toISOString() : String(x['until_at'])) > now);
+      const u = live[0]?.['until_at']; return u === undefined ? null : (u instanceof Date ? u.toISOString() : String(u));
+    };
+    return rows.map((w) => ({ ...w, suppressed_until: untilOf(String(w['warning_id'])), suppressed: untilOf(String(w['warning_id'])) !== null }));
   }
 
   async getWarning(cap: PredictionReads, warningId: string): Promise<Record<string, unknown> | undefined> {

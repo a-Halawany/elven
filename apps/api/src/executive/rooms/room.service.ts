@@ -65,6 +65,8 @@ export class RoomService {
     const briefings = (await cap.readBriefings().select(['briefing_id', 'composed_at', 'composed_by', 'composed_via', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded'] as never).where('room_id' as never, '=', roomId as never).orderBy('composed_at' as never).execute()) as Array<Record<string, unknown>>;
     const now = await cap.now();
     const overdue = new Date(String(r['next_review_at'])).getTime() < new Date(now).getTime();
+    // 0066 §9: the delegations of standing in this room — visible, each with its window and whether it stands now.
+    const delegations = (await cap.readDelegations().selectAll().where('room_id' as never, '=', roomId as never).orderBy('from_at' as never).execute()) as Array<Record<string, unknown>>;
     return {
       ...r, next_review_at: iso(r['next_review_at']), last_review_at: iso(r['last_review_at']), opened_at: iso(r['opened_at']),
       state: roomStateOf(String(p?.['state'] ?? 'closed')), package_state: p?.['state'] ?? null, package_title: p?.['title'] ?? null,
@@ -72,6 +74,8 @@ export class RoomService {
       members: members.map((m) => ({ ...m, added_at: iso(m['added_at']), removed_at: iso(m['removed_at']), live: m['removed_at'] === null })),
       events: events.map((e) => ({ ...e, occurred_at: iso(e['occurred_at']) })),
       briefings: briefings.map((b) => ({ ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']) })),
+      delegations: delegations.map((d) => ({ ...d, from_at: iso(d['from_at']), until_at: iso(d['until_at']), revoked_at: iso(d['revoked_at']),
+        live: d['state'] === 'active' && String(iso(d['from_at'])) <= now && String(iso(d['until_at'])) > now, status: d['state'] === 'revoked' ? 'revoked' : String(iso(d['until_at'])) <= now ? 'expired' : 'live' })),
     };
   }
 }

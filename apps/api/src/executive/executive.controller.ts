@@ -8,6 +8,8 @@ import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
+import type { Envelope } from '@eye/contracts';
+import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { ExecutiveCapability } from './executive.capabilities.js';
 import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
@@ -15,6 +17,7 @@ import { AgentsService, renderReport, validateRegisterAgent, type AgentTask } fr
 import { clearanceOf } from '../decision/clearance.js';
 import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
+import { RequestsService, validateRequest } from './requests/requests.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -31,7 +34,7 @@ function instant(v: unknown, fallback: string): string {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId')
 export class ExecutiveController {
-  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -214,10 +217,112 @@ export class ExecutiveController {
     return { report: out.result, receipt: receipt(out) };
   }
 
+  /** The package's workflow steps and, since 0066 §9, the follow-ups on its agenda (overdue read against now). */
   @Post('/workflow/:packageId')
   async workflow(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string) {
     const { envelope, principal } = ctx(req);
-    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId), ExecutiveCapability.read, async (cap) => cap.workflowOf({ packageId }));
-    return { workflow: out.result, receipt: receipt(out) };
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId), ExecutiveCapability.read,
+      async (cap) => ({ workflow: await cap.workflowOf({ packageId }), follow_ups: await this.requests.followUps(cap, { packageId }) }));
+    return { workflow: out.result.workflow, follow_ups: out.result.follow_ups, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── typed requests (0066 §9, L10-I04 ExecutiveActionRequested) ─────────────────────────
+  /**
+   * A person's typed request: human-gated, idempotent on the requester's request_key under the request's digest, routed
+   * to the responsible capability or effected in the write; ExecutiveActionRequested published for a new request. An
+   * `analysis` request then runs the agent under its own session (trigger kind `request`) and the run fulfils the request.
+   */
+  @Post('/executive/requests')
+  async openRequest(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateRequest(body.payload ?? {}, envelope.correlation_id);
+    const requestId = newId();
+    // An ANALYSIS request triggers an agent run: the requester's authority to trigger one (agent.trigger — the operator's act, its own
+    // policy rule) is decided FIRST, so a role admitted to request but not to trigger is refused before any request is recorded (B9 review).
+    let agentId: string | null = null; let task: AgentTask = 'briefing';
+    if (intake.kind === 'analysis') {
+      task = (typeof intake.subject['task'] === 'string' ? intake.subject['task'] : 'briefing') as AgentTask;
+      agentId = typeof intake.subject['agent_id'] === 'string' ? intake.subject['agent_id'] : await this.activeAgent(envelope, principal, tenantId, domainId, task);
+      await this.pipeline.write({ ...envelope, action: 'agent.trigger', object_type: 'AGT', object_id: agentId, message_id: newId() } as typeof envelope, principal, this.route(tenantId, domainId, 'agent.trigger', 'AGT', agentId), ExecutiveCapability.read,
+        async () => ({ result: { agentId, task, requestId }, targetType: 'AGT', targetId: agentId as string, targetVersion: '1', outboxEvent: null }));
+    }
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.request', 'EXR', requestId), ExecutiveCapability.request,
+      async (cap, scope) => {
+        const r = await this.requests.open(cap, scope, requestId, intake, principal.principalId, envelope.correlation_id);
+        return { result: r.request, targetType: 'EXR', targetId: String(r.request['request_id']), targetVersion: '1', outboxEvent: r.event };
+      });
+    let run: Record<string, unknown> | null = null;
+    if (intake.kind === 'analysis' && out.result['repeated'] !== true && agentId !== null) {
+      // The responsible capability: the agent named, or the domain's active agent of the task's kind; its run is the agent's own governed work.
+      const roomId = intake.subject['object_type'] === 'DRM' && typeof intake.subject['object_id'] === 'string' ? intake.subject['object_id'] : null;
+      const packageId = intake.subject['object_type'] === 'DPK' && typeof intake.subject['object_id'] === 'string' ? intake.subject['object_id'] : null;
+      const version = Number.isInteger(intake.subject['version']) ? (intake.subject['version'] as number) : null;
+      let r: Awaited<ReturnType<AgentsService['run']>>;
+      try {
+        r = await this.agents.run({ agentId, tenantId, domainId, task, trigger: { kind: 'request', principalId: principal.principalId, ref: requestId }, roomId, packageId, version, correlationId: envelope.correlation_id });
+      } catch (e) {
+        // The routed act was refused (the agent's session or run port said no): the request is recorded REFUSED with that reason, never left routed (B9 review).
+        const reason = e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e as Error).message;
+        const refused = await this.pipeline.write({ ...envelope, action: 'executive.request.fulfil', object_type: 'EXR', object_id: requestId, message_id: newId() } as typeof envelope, principal,
+          this.route(tenantId, domainId, 'executive.request.fulfil', 'EXR', requestId), ExecutiveCapability.request,
+          async (cap, scope) => ({ result: await cap.refuseRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason: `the agent run was refused: ${reason}`, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: requestId, targetVersion: '2', outboxEvent: null }));
+        throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `request ${requestId} recorded and refused: ${String(refused.result['refusal'])}`), 409);
+      }
+      const fulfilled = await this.pipeline.write({ ...envelope, action: 'executive.request.fulfil', object_type: 'EXR', object_id: requestId, message_id: newId() } as typeof envelope, principal,
+        this.route(tenantId, domainId, 'executive.request.fulfil', 'EXR', requestId), ExecutiveCapability.request,
+        async (cap, scope) => ({ result: await cap.fulfilRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, routedRef: r.runId, note: `agent run ${r.outcome}${r.stopReason === null ? '' : ` (${r.stopReason})`}`, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: requestId, targetVersion: '2', outboxEvent: null }));
+      run = { run_id: r.runId, agent_id: r.agentId, outcome: r.outcome, stop_reason: r.stopReason, refusals: r.refusals, escalated_to: r.escalatedTo, fulfilment: fulfilled.result };
+    }
+    return { request: { ...out.result, ...(run === null ? {} : { state: 'fulfilled', routed_ref: run['run_id'] }) }, run, receipt: receipt(out) };
+  }
+
+  /** The domain's active agent of the kind that runs the task (0046: decision → draft; briefing → briefing, monitor; reporting → report), the newest registration first. */
+  private async activeAgent(envelope: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, task: AgentTask): Promise<string> {
+    const kind = task === 'draft' ? 'decision' : task === 'report' ? 'reporting' : 'briefing';
+    const out = await this.pipeline.consequentialRead({ ...envelope, action: 'agent.read', object_type: 'AGT', object_id: null, message_id: newId(), side_effect_class: 'none', consequence_class: 'C1' } as typeof envelope, principal, this.route(tenantId, domainId, 'agent.read', 'AGT', null), ExecutiveCapability.read,
+      async (cap) => (await cap.readAgents().select(['agent_id' as never]).where('status' as never, '=', 'active' as never).where('agent_kind' as never, '=', kind as never).orderBy('created_at' as never, 'desc').executeTakeFirst()) as { agent_id: string } | undefined);
+    if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `an analysis request for the task ${task} needs a registered active ${kind} agent in this domain (or subject.agent_id)`), 404);
+    return String(out.result.agent_id);
+  }
+
+  @Post('/executive/requests/list')
+  async listRequests(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string | null; kind?: string | null; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.request.read', 'EXR', null), ExecutiveCapability.read, async (cap) => this.requests.list(cap, body.payload ?? {}));
+    return { requests: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/requests/:requestId/get')
+  async getRequest(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('requestId') requestId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.request.read', 'EXR', requestId), ExecutiveCapability.read, async (cap) => this.requests.get(cap, requestId, envelope.correlation_id));
+    return { request: out.result, receipt: receipt(out) };
+  }
+
+  /** The responsible owner's act answered a routed request (a run, a scenario, a package): named here when the act did not carry the request itself. */
+  @Post('/executive/requests/:requestId/fulfil')
+  async fulfilRequest(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('requestId') requestId: string, @Body() body: { payload?: { routed_ref?: string; note?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const ref = String(body.payload?.routed_ref ?? '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.routed_ref names the act that answered the request'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.request.fulfil', 'EXR', requestId), ExecutiveCapability.request,
+      async (cap, scope) => ({ result: await cap.fulfilRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, routedRef: ref, note: typeof body.payload?.note === 'string' ? body.payload.note : null, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: requestId, targetVersion: '2', outboxEvent: null }));
+    return { request: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/requests/:requestId/withdraw')
+  async withdrawRequest(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('requestId') requestId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.request.withdraw', 'EXR', requestId), ExecutiveCapability.request,
+      async (cap, scope) => ({ result: await cap.withdrawRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason: String(body.payload?.reason ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: requestId, targetVersion: '2', outboxEvent: null }));
+    return { request: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/follow-ups/:followUpId/complete')
+  async completeFollowUp(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('followUpId') followUpId: string, @Body() body: { payload?: { note?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.follow_up.complete', 'EXR', followUpId), ExecutiveCapability.request,
+      async (cap, scope) => ({ result: await cap.completeFollowUp({ followUpId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: String(body.payload?.note ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: followUpId, targetVersion: '1', outboxEvent: null }));
+    return { follow_up: out.result, receipt: receipt(out) };
   }
 }

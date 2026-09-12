@@ -23,6 +23,7 @@ import { EntitiesService } from './entities/entities.service.js';
 import { ResolutionService } from './entities/resolution.service.js';
 import { EdgesService, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
+import { MemoryService, validateMemoryItem } from './memory/memory.service.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
@@ -75,6 +76,7 @@ export class GraphController {
     private readonly search: SearchService,
     private readonly propagationAgents: PropagationAgentsService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly memory: MemoryService,
   ) {}
 
   private route(tenantId: string, domainId: string, action: string,
@@ -603,6 +605,174 @@ export class GraphController {
       note: notes.length === 0 ? null : notes.join(' — '),
       receipt: receipt(out),
     };
+  }
+
+
+
+  // ───────────────────────── ontology (0066 §7, L4-I05 OntologyChangeProposed) ─────────────────────────
+
+  /** A change to the domain's vocabulary is PROPOSED as the next version with its rationale and alternatives; the compatibility analysis is the write's; the event announces the proposal and its reviews. */
+  @Post('/ontology/propose')
+  async proposeOntology(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { namespace?: string; entityTypes?: string[]; predicates?: Array<Record<string, unknown>>; rationale?: string; alternatives?: unknown[]; migrationPlan?: string | null } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const entityTypes = Array.isArray(p.entityTypes) ? p.entityTypes.map(String) : [];
+    const predicates = Array.isArray(p.predicates) ? p.predicates : [];
+    const rationale = String(p.rationale ?? '').trim();
+    if (entityTypes.length === 0 || predicates.length === 0) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'an ontology version lists its entityTypes and predicates'), 422);
+    if (rationale.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a proposal states its rationale (at least 8 characters)'), 422);
+    const versionId = newId();
+    const namespace = String(p.namespace ?? 'domain');
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.ontology.propose', 'ONT', versionId), GraphCapability.ontology,
+      async (cap) => {
+        const r = await cap.proposeOntologyVersion({ versionId, tenantId, domainId, namespace, entityTypes, predicates, rationale, alternatives: Array.isArray(p.alternatives) ? p.alternatives : [], migrationPlan: p.migrationPlan ?? null, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType: 'ONT', targetId: versionId, targetVersion: String(r['to_version'] ?? 1),
+                 outboxEvent: { eventType: 'OntologyChangeProposed', payload: {
+                   schema: 'OntologyChangeProposed', schema_version: 'v1', proposal_id: versionId, namespace, from_version: r['from_version'] ?? null, to_version: r['to_version'] ?? null,
+                   change: r['change'] ?? null, rationale, alternatives: Array.isArray(p.alternatives) ? p.alternatives : [], compatibility: r['analysis'] ?? null, migration: { plan: p.migrationPlan ?? null, rollback: 'the prior version stays recorded and is restored by a new proposal' },
+                   review: { required: ['compatibility', 'migration', 'domain', 'governance'], state: r['reviews'] ?? null, steward_role: 'ontology_steward' },
+                   temporal: { known_at: new Date().toISOString() }, cause: { action: 'graph.ontology.propose', actor: principal.principalId, target_type: 'ONT', target_id: versionId },
+                 } } };
+      });
+    return { ontology: out.result, receipt: receipt(out) };
+  }
+
+  /** The steward's decision (never the proposer's): approval activates the version; a breaking change is refused while it would strand asserted edges. */
+  @Post('/ontology/:versionId/decide')
+  async decideOntology(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('versionId') versionId: string, @Body() body: { payload?: { decision?: string; reason?: string; reviews?: Record<string, unknown> } }) {
+    const { envelope, principal } = ctx(req);
+    const decision = String(body.payload?.decision ?? ''); const reason = String(body.payload?.reason ?? '').trim();
+    if (decision !== 'approve' && decision !== 'reject') throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'decision is approve or reject'), 422);
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a decision states its reason (at least 8 characters)'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.ontology.decide', 'ONT', versionId), GraphCapability.ontology,
+      async (cap) => ({ result: await cap.decideOntologyProposal({ versionId, tenantId, domainId, decision, reason, reviews: body.payload?.reviews ?? {}, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'ONT', targetId: versionId, targetVersion: null, outboxEvent: null }));
+    return { ontology: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/ontology/list')
+  async listOntology(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'ONT', null), GraphCapability.read,
+      async (cap) => ({ versions: (await cap.readOntologyVersions().selectAll().orderBy('namespace' as never).orderBy('version' as never).execute()) as Array<Record<string, unknown>> }));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── Enterprise Memory workspace (0066 §3, AU-MEM-0065) ─────────────────────────
+
+  /** OBJ-14 RECORD: the knowledge owner records a memory item — its first canonical version, its projection, its cites as dependencies. */
+  @Post('/memory/record')
+  async recordMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateMemoryItem((body.payload ?? {}) as never, envelope.correlation_id, false);
+    const itemId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { ...this.route(tenantId, domainId, 'memory.item.record', 'MEM', itemId), writableTargets: [itemId] },
+      GraphCapability.memory,
+      async (cap, scope) => {
+        const r = await this.memory.write(cap, scope, { itemId, version: 1, intake, owner: principal.principalId, actor: principal.principalId, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'memory' });
+        // GraphChanged/memory_item.recorded: the item is its own reach; the entities it cites are identities it rests on.
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'memory_item.recorded',
+          identities: intake.cites.filter((c) => c.kind === 'entity').map((c) => ({ entity_id: c.id, role: 'rests_on' })),
+          dependencies: intake.cites.map((c) => ({ dependent_object_id: itemId, dependent_type: 'MEM', depends_on_kind: c.kind, depends_on_id: c.id })),
+          reach: { reach: { ...EMPTY_REACH, memoryItems: [itemId], claims: intake.cites.filter((c) => c.kind === 'claim').map((c) => c.id) } },
+          cause: { action: 'memory.item.record', actor: principal.principalId, target_type: 'MEM', target_id: itemId },
+        });
+        return { result: r, targetType: 'MEM', targetId: itemId, targetVersion: '1', outboxEvent: changed };
+      });
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  /** OBJ-16 SUPERSEDE: the record authority records the next version with its reason; the prior version stays replayable. */
+  @Post('/memory/:itemId/supersede')
+  async supersedeMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateMemoryItem((body.payload ?? {}) as never, envelope.correlation_id, true);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { ...this.route(tenantId, domainId, 'memory.item.supersede', 'MEM', itemId), writableTargets: [itemId] },
+      GraphCapability.memory,
+      async (cap, scope) => {
+        const current = await this.memory.current(cap, itemId);
+        if (current === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
+        const version = Number(current['object_version']) + 1;
+        const r = await this.memory.write(cap, scope, { itemId, version, intake, owner: String(current['owner_principal_id']), actor: principal.principalId, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'memory' });
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'memory_item.superseded',
+          identities: intake.cites.filter((c) => c.kind === 'entity').map((c) => ({ entity_id: c.id, role: 'rests_on' })),
+          dependencies: intake.cites.map((c) => ({ dependent_object_id: itemId, dependent_type: 'MEM', depends_on_kind: c.kind, depends_on_id: c.id })),
+          reach: { reach: { ...EMPTY_REACH, memoryItems: [itemId] } },
+          cause: { action: 'memory.item.supersede', actor: principal.principalId, target_type: 'MEM', target_id: itemId },
+        });
+        return { result: { ...r, priorVersion: version - 1 }, targetType: 'MEM', targetId: itemId, targetVersion: String(version), outboxEvent: changed };
+      });
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/memory/:itemId/withdraw')
+  async withdrawMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      this.route(tenantId, domainId, 'memory.item.supersede', 'MEM', itemId),
+      GraphCapability.memory,
+      async (cap) => {
+        await cap.withdrawMemoryItem({ itemId, tenantId, domainId, reason, actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
+        return { result: { itemId, state: 'withdrawn' }, targetType: 'MEM', targetId: itemId, targetVersion: null, outboxEvent: null };
+      });
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * OBJ-15 RETRIEVE: a purpose-authorised read of the version current at `asOf` (the record's replay), no mutation, the
+   * access audited — the ledger row is written inside the read's transaction and the AUD row names the version served.
+   */
+  @Post('/memory/:itemId/retrieve')
+  async retrieveMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: { asOf?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const purpose = envelope.purpose_id ?? '';
+    const asOfRaw = body.payload?.asOf === undefined || body.payload.asOf === null ? null : String(body.payload.asOf);
+    if (asOfRaw !== null && Number.isNaN(Date.parse(asOfRaw))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.asOf must be an instant (ISO 8601)'), 422);
+    const asOf = asOfRaw === null ? null : new Date(asOfRaw).toISOString();
+    const out = await this.pipeline.consequentialReadEvidenced(
+      envelope, principal,
+      this.route(tenantId, domainId, 'memory.item.retrieve', 'MEM', itemId),
+      GraphCapability.memory,
+      async (cap, scope) => {
+        const r = await this.memory.retrieve(cap, principal, scope, { itemId, purpose, asOf, correlationId: envelope.correlation_id });
+        if (r === null) return null;
+        const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: r.versionServed, purpose, reader: principal.principalId, asOf, correlationId: envelope.correlation_id });
+        return { ...r, accessId };
+      },
+      (r) => ({ outcome: r === null ? 'failure' : 'success', resultCode: r === null ? 'EYE_STA_001' : 'OK',
+                metadata: r === null ? { found: false } : { version_served: r.versionServed, purpose, as_of: asOf, access_id: r.accessId } }));
+    if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/memory/list')
+  async listMemoryItems(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', null), GraphCapability.read,
+      async (cap) => this.memory.list(cap, body.payload?.limit ?? 200));
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  /** The item's record: events, access history, what it rests on (no content of a version — that is a retrieval). */
+  @Post('/memory/:itemId/get')
+  async getMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', itemId), GraphCapability.read,
+      async (cap) => {
+        const item = await this.memory.current(cap, itemId);
+        if (item === null) return null;
+        return { item: MemoryService.record(item), events: await this.memory.events(cap, itemId), access: await this.memory.accessHistory(cap, itemId), dependencies: await this.memory.dependencies(cap, itemId) };
+      });
+    if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
+    return { ...out.result, receipt: receipt(out) };
   }
 
   // ───────────────────────── strategy graph ─────────────────────────

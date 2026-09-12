@@ -58,6 +58,12 @@ export interface ExecutiveReads {
   readSourceContractEvents(): any;
   readTombstones(): any;
   readManifests(): any;
+  /** 0066 §9 (L10-I04): the typed requests, their log, the delegations, follow-ups and warning suppressions they effected. */
+  readRequests(): any;
+  readRequestEvents(): any;
+  readDelegations(): any;
+  readFollowUps(): any;
+  readWarningSuppressions(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -72,6 +78,16 @@ export interface AgentWrites extends ExecutiveReads {
   closeAgentRun(a: { runId: string; tenantId: string; domainId: string; outcome: string; spent: unknown; stopReason: string | null; refusals: unknown[]; outputs: unknown; correlationId: string }): Promise<{ run_id: string; outcome: string; escalated_to: string | null }>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** 0066 §9 (L10-I04 ExecutiveActionRequested): the ports of a typed request. */
+export interface RequestWrites extends ExecutiveReads {
+  openRequest(a: { requestId: string; tenantId: string; domainId: string; kind: string; requestKey: string; requestDigest: string; subject: Record<string, unknown>; instruction: string; delegate: string | null; owner: string | null; dueAt: string | null; until: string | null; requester: string; correlationId: string }): Promise<Record<string, unknown>>;
+  fulfilRequest(a: { requestId: string; tenantId: string; domainId: string; routedRef: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  withdrawRequest(a: { requestId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /** 0067 §2: a routed request whose act was refused — recorded refused with the reason. */
+  refuseRequest(a: { requestId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  completeFollowUp(a: { followUpId: string; tenantId: string; domainId: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
 
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
@@ -119,6 +135,34 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readSourceContractEvents(): any { return this.from('observation.source_contract_events'); }
   readTombstones(): any { return this.from('observation.blob_tombstones'); }
   readManifests(): any { return this.from('observation.blob_manifests'); }
+
+  readRequests(): any { return this.from('executive.requests'); }
+  readRequestEvents(): any { return this.from('executive.request_events'); }
+  readDelegations(): any { return this.from('executive.delegations'); }
+  readFollowUps(): any { return this.from('executive.follow_ups'); }
+  readWarningSuppressions(): any { return this.from('prediction.warning_suppressions'); }
+
+  async openRequest(a: Parameters<RequestWrites['openRequest']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.open_request(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.kind}, ${a.requestKey}, ${a.requestDigest}, ${JSON.stringify(a.subject)}::jsonb, ${a.instruction},
+      ${a.delegate}::uuid, ${a.owner}::uuid, ${a.dueAt}::timestamptz, ${a.until}::timestamptz, ${a.requester}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('open_request returned no row'); return r;
+  }
+  async fulfilRequest(a: Parameters<RequestWrites['fulfilRequest']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.fulfil_request(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.routedRef}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('fulfil_request returned no row'); return r;
+  }
+  async withdrawRequest(a: Parameters<RequestWrites['withdrawRequest']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.withdraw_request(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('withdraw_request returned no row'); return r;
+  }
+  async refuseRequest(a: Parameters<RequestWrites['refuseRequest']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.refuse_request(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('refuse_request returned no row'); return r;
+  }
+  async completeFollowUp(a: Parameters<RequestWrites['completeFollowUp']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.complete_follow_up(${a.followUpId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('complete_follow_up returned no row'); return r;
+  }
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -191,4 +235,5 @@ export const ExecutiveCapability = {
   room(tx: Tx, action: string): RoomWrites { return new ExecutiveCapabilityImpl(tx, action); },
   briefing(tx: Tx, action: string): BriefingWrites { return new ExecutiveCapabilityImpl(tx, action); },
   agent(tx: Tx, action: string): AgentWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  request(tx: Tx, action: string): RequestWrites { return new ExecutiveCapabilityImpl(tx, action); },
 };

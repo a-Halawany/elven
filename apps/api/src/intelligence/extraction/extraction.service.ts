@@ -22,6 +22,7 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { ExtractionWrites, MethodPin } from '../intelligence.capabilities.js';
 import { ModelGatewayService, extractionIdentityOf, type ExtractedClaim,
   type GatewayRequest } from '../gateway/model-gateway.service.js';
+import { ContradictionService, type Conflict } from '../contradictions/contradiction.service.js';
 
 const sha256 = (s: string | Buffer): string =>
   createHash('sha256').update(typeof s === 'string' ? Buffer.from(s, 'utf8') : s).digest('hex');
@@ -130,7 +131,7 @@ export interface ExtractionOutcome {
 
 @Injectable()
 export class ExtractionService {
-  constructor(private readonly gateway: ModelGatewayService) {}
+  constructor(private readonly gateway: ModelGatewayService, private readonly contradictions: ContradictionService) {}
 
   /**
    * ONE evidence unit, inside ONE governed operation.
@@ -155,6 +156,8 @@ export class ExtractionService {
     abstained: boolean; idempotent: boolean; calls: number; queued: number;
     /** Candidates the method was not approved to produce, refused and reported. */
     undeclared: Array<{ kind: string; objectType: string }>;
+    /** 0066 §5: the ContradictionDetected events of this admission (one per incompatible prior assertion), for the write's outbox. */
+    contradictions: Array<{ eventType: string; payload: Record<string, unknown> }>;
   }> {
     const tenantId = ctx.tenantId as string;
     const domainId = ctx.domainId as string;
@@ -174,7 +177,7 @@ export class ExtractionService {
     });
     if (claimed.decision === 'idempotent') {
       return { admitted: [], abstained: claimed.prior_outcome === 'abstained',
-               idempotent: true, calls: 0, queued: 0, undeclared: [] };
+               idempotent: true, calls: 0, queued: 0, undeclared: [], contradictions: [] };
     }
 
     const excerpt = a.unit.bytes.toString('utf8').slice(0, 8_000);
@@ -222,16 +225,17 @@ export class ExtractionService {
           actor: a.agentPrincipalId, eventId: newId(), correlationId: a.correlationId,
         });
         return { admitted: [], abstained: true, idempotent: false, calls: 1, queued: 1,
-                 undeclared: [] };
+                 undeclared: [], contradictions: [] };
       }
       return { admitted: [], abstained: false, idempotent: false, calls: 1, queued: 0,
-               undeclared: [] };
+               undeclared: [], contradictions: [] };
     }
 
     const floor = Number(a.pin.confidence_floor);
     const reviewBelow = Number(a.pin.review_below);
     const admitted: Array<{ objectId: string; type: string; confidence: number; review: string }> = [];
     const admittedIds: string[] = [];
+    const contradictionEvents: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
     const undeclared: Array<{ kind: string; objectType: string }> = [];
     let queued = 0;
 
@@ -256,7 +260,11 @@ export class ExtractionService {
         undeclared.push({ kind: c.claim_kind, objectType });
         continue;
       }
-      const needsReview = c.confidence < reviewBelow;
+      // 0066 §5: an admitted assertion with the same subject and predicate and an incompatible value is a CONTRADICTION —
+      // found BEFORE the admission so the new claim is queued for review with that reason and names the other in its header.
+      const conflicts: Conflict[] = await this.contradictions.findConflicts(cap, { claimKind: c.claim_kind, subject: c.subject, predicate: c.predicate, objectValue: c.object_value });
+      const needsReview = c.confidence < reviewBelow || conflicts.length > 0;
+      const reviewReason = conflicts.length > 0 ? `contradicts ${conflicts.length} admitted assertion(s) about the same subject and predicate` : 'confidence below the method review threshold';
       const now = new Date().toISOString();
       const payload = {
         claim_kind: c.claim_kind,
@@ -289,7 +297,7 @@ export class ExtractionService {
         },
         review: {
           state: needsReview ? 'queued' : 'not_required',
-          reason: needsReview ? 'confidence below the method review threshold' : null,
+          reason: needsReview ? reviewReason : null,
           decider: null,
         },
       };
@@ -329,7 +337,7 @@ export class ExtractionService {
         evidence_refs: [`EVD:${a.unit.evdObjectId}`, `call:${result.callId}`],
         provenance_ref: `SRC:${a.unit.sourceId}@extraction:${a.pin.method_key}`,
         method_ref: `${a.pin.method_key}@${a.pin.prompt_version}/${a.pin.model_id}#${a.pin.gateway_mode}`,
-        contradiction_refs: [],
+        contradiction_refs: conflicts.map((x) => `${x.objectType}:${x.objectId}@${x.version}`),
         corroboration_refs: [],
         human_refs: [],
         classification: a.unit.inherited.classification,
@@ -367,12 +375,20 @@ export class ExtractionService {
         correlationId: a.correlationId,
       });
       if (needsReview) {
+        const caseId = newId();
         await cap.queueReview({
-          caseId: newId(), tenantId, domainId, claimId: objectId, version: 1,
-          runId: a.runId, methodId: a.methodId, reason: 'below_review_threshold',
+          caseId, tenantId, domainId, claimId: objectId, version: 1,
+          runId: a.runId, methodId: a.methodId, reason: conflicts.length > 0 ? 'contradiction' : 'below_review_threshold',
           confidence: c.confidence, actor: a.agentPrincipalId, eventId: newId(),
           correlationId: a.correlationId,
         });
+        // Each incompatible prior assertion is LINKED to the new claim; neither is rewritten; the case adjudicates.
+        for (const rec of this.contradictions.records({ objectId, version: 1, subject: c.subject, predicate: c.predicate, value: c.object_value }, conflicts)) {
+          const inserted = await cap.recordContradiction({ ...rec, tenantId, domainId, reviewCaseId: caseId, actor: a.agentPrincipalId, correlationId: a.correlationId });
+          if (!inserted) continue;
+          const prior = ((await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', rec.a.objectId as never).where('object_version' as never, '=', rec.a.version as never).execute()) as Array<Record<string, unknown>>)[0];
+          if (prior !== undefined) contradictionEvents.push(this.contradictions.event({ tenantId, domainId, record: rec, assertions: [prior, { ...header, payload } as unknown as Record<string, unknown>], reviewCaseId: caseId, action: 'intelligence.claim.admit', actor: a.agentPrincipalId }));
+        }
         queued += 1;
       }
       admittedIds.push(objectId);
@@ -389,7 +405,7 @@ export class ExtractionService {
     });
 
     return { admitted, abstained: false, idempotent: false, calls: 1, queued,
-             undeclared };
+             undeclared, contradictions: contradictionEvents };
   }
 
   /** The canonical digest of a result set, used for the attempt record. */

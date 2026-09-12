@@ -407,6 +407,26 @@ export class SchedulerService implements OnModuleDestroy {
     this.log.log(`subscription worker stopped for ${name}`);
     return true;
   }
+  /**
+   * Stop serving one domain's subscription queue WITHOUT waiting for it (0066 §1, B8-F1): the worker leaves the map at
+   * once (a later claim starts a fresh worker), takes no further job, and its graceful close — which waits for the job
+   * in flight — proceeds detached, tracked so that shutdown still awaits it. Called from inside a job: that job must
+   * never await the close that waits for it.
+   */
+  stopSubscriptionWorkerDetached(tenantId: string, domainId: string): boolean {
+    const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w === undefined) return false;
+    this.workers.delete(name);
+    const closing = w.close().catch(() => undefined).then(() => { this.closing.delete(closing); this.log.log(`subscription worker stopped for ${name} (detached)`); });
+    this.closing.add(closing);
+    return true;
+  }
+  /** Test runtime only: the detached closes still in flight. */
+  detachedClosesForTests(): number {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('detachedClosesForTests is available only in the test runtime');
+    return this.closing.size;
+  }
 
   async subscriptionQueueCountsForTests(tenantId: string, domainId: string): Promise<{ active: number; waiting: number; delayed: number; completed: number; failed: number }> {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('subscriptionQueueCountsForTests is available only in the test runtime');
@@ -583,9 +603,12 @@ export class SchedulerService implements OnModuleDestroy {
 
   /** The domains this process runs a worker for (Redis-facing queue names). */
   runningWorkers(): string[] { return [...this.workers.keys()]; }
+  /** Worker closes detached from the job that lost its domain (0066 §1); shutdown awaits them. */
+  private readonly closing = new Set<Promise<void>>();
 
   async onModuleDestroy(): Promise<void> {
     for (const w of this.workers.values()) await w.close().catch(() => undefined);
+    await Promise.allSettled([...this.closing]);
     for (const q of this.queues.values()) await q.close().catch(() => undefined);
     this.workers.clear();
     this.queues.clear();

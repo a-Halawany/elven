@@ -84,6 +84,8 @@ export interface ImpactResult {
   simulations: AffectedObject[];
   /** 0065 §8 (AU-MEM-0031): briefings composed on what changed — re-flagged by event through the port, never rewritten. */
   briefings: AffectedObject[];
+  /** 0066 §3 (AU-MEM-0031, AU-MEM-0065): memory items resting on what changed — marked for the owner's attention through the port, never rewritten. */
+  memoryItems: AffectedObject[];
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -152,6 +154,9 @@ export class ImpactService {
     const briefings = new Map<string, Record<string, unknown>>(
       ((await cap.readBriefings().select(['briefing_id', 'room_id', 'known_at', 'composed_at'] as never).execute()) as Array<Record<string, unknown>>)
         .map((b) => [String(b['briefing_id']), b]));
+    const memoryItems = new Map<string, Record<string, unknown>>(
+      ((await cap.readMemoryItems().select(['item_id', 'title', 'record_class', 'state', 'recorded_at'] as never).execute()) as Array<Record<string, unknown>>)
+        .map((m) => [String(m['item_id']), m]));
 
     /*
      * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
@@ -304,6 +309,14 @@ export class ImpactService {
               reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
             });
           }
+          // A memory item resting on what changed (0066 §3): terminal — a record cites, nothing rests on it.
+          const mi = memoryItems.get(dependent);
+          if (mi !== undefined && String(mi['state']) === 'active') {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'MEM', title: `${String(mi['record_class'])} memory item "${String(mi['title'])}"`,
+              reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
+            });
+          }
         }
       }
       frontier = next;
@@ -335,6 +348,7 @@ export class ImpactService {
       twins: of('TWN'),
       simulations: of('SIM'),
       briefings: of('BRF'),
+      memoryItems: of('MEM'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -409,6 +423,7 @@ export class ImpactService {
       simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
       warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop })),
       briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop })),
+      memoryItems: walked.memoryItems.map((m) => ({ item_id: m.strategy_object_id, reached_via: m.reached_via, hop: m.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -530,14 +545,15 @@ function buildStatement(
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
-    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length;
+    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length + w.memoryItems.length;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
     : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) reported, ${w.warnings.length} warning(s) marked for attention`;
   const phase5 = w.twins.length + w.simulations.length === 0 ? ''
     : `; ${w.twins.length} twin(s) whose citing versions are marked unverified and ${w.simulations.length} simulation run(s) surfaced`;
-  const phase6 = w.briefings.length === 0 ? '' : `; ${w.briefings.length} briefing(s) composed on what changed re-flagged`;
+  const phase6 = (w.briefings.length === 0 ? '' : `; ${w.briefings.length} briefing(s) composed on what changed re-flagged`)
+    + (w.memoryItems.length === 0 ? '' : `; ${w.memoryItems.length} memory item(s) resting on what changed marked for attention`);
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *

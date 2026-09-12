@@ -14,25 +14,25 @@
     "V10": 441
   },
   "impl": {
-    "implemented": 935,
-    "missing": 2574,
+    "implemented": 950,
+    "missing": 2561,
     "not-applicable": 26,
-    "partial": 2729
+    "partial": 2727
   },
   "verif": {
     "not-applicable": 422,
     "passed:browser": 360,
     "passed:ci": 196,
     "passed:ci+browser": 3,
-    "passed:harness": 1880,
+    "passed:harness": 1896,
     "passed:harness+browser": 22,
     "passed:harness+ci": 5,
-    "unverified": 3376
+    "unverified": 3360
   },
   "release": {
-    "branch-only": 1734,
-    "merged": 1905,
-    "none": 2625
+    "branch-only": 1770,
+    "merged": 1882,
+    "none": 2612
   },
   "phase": {
     "not-applicable": 358,
@@ -47,12 +47,12 @@
     "phase7": 1006
   },
   "packages": {
-    "P1": 223,
-    "P2": 232,
-    "P3": 351,
-    "P4": 278,
+    "P1": 222,
+    "P2": 230,
+    "P3": 342,
+    "P4": 276,
     "P5": 123,
-    "P6": 268,
+    "P6": 267,
     "P7-A": 315,
     "P7-B": 255,
     "P7-C": 97,
@@ -63,5 +63,16 @@
   },
   "families": 220,
   "familiesWithoutRows": 0,
-  "problems": []
+  "problems": [
+    "v00-v01.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v02.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v03.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v04.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v05.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v06.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v07.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v08.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v09.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias",
+    "v10.csv: header differs: id,volume,chapter,page,clause,family_seed,capability_area,impl_status,verif_status,release_status,phase_origin,package,evidence,remaining_work,notes,source_ref,evidence_scope,cap_alias"
+  ]
 }

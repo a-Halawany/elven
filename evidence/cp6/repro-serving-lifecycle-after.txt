@@ -1,0 +1,19 @@
+# CP-6 B9 — Codex's B8-F1 and B8-F2 AFTER the correction (0066 §1: the claim's generation, graph.subscription_serving_fence in every governed write of a delivery, the detached worker close); the same five cases as the before-file (evidence/cp6/repro-serving-lifecycle-before.txt at the hook head a081001): the two normal-operation controls and the three defect cases now pass. Database eye_verify46_20260913 created empty and migrated 0001–0066 from the final 0066 file; the second application context as the second process; serving TTL 10 s for the cases.
+# command: EYE_DB_NAME=eye_verify46_20260913 npx vitest run --config vitest.int.config.ts --reporter=verbose --silent=false test/int/phase6-repro-serving-lifecycle.test.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · controls: the serving lifecycle in normal operation > CONTROL: under a live claim a delivery is applied by the holder; the ledger names the holder of every effect (0066) and the claim is renewed while it runs 1084ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · controls: the serving lifecycle in normal operation > CONTROL: a hand-over between deliveries (stand-down, take-over, hand back) leaves nothing stranded and every delivery applied by the holder of its moment 878ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > A DELIVERY CROSSES THE EXPIRY: item 1 applied by the first process; the claim lapses and the second takes over while item 2 waits; item 2 and the finish are the SECOND process's — the first is refused, its job returned, nothing of its written after the take-over 15297ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > COMPLETION ACCOUNTING: every item applied by the first process, the take-over lands before its finish — the stale finish is refused; the new holder re-drives, skips the applied item and finishes; the applied event is the new holder's 15108ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F1: an expired handler must settle without waiting for its own worker to drain > THE FENCE AT ENTRY on a lapsed belief: the job is refused promptly and returned, the worker closes, the process keeps working; the next reconciliation re-serves the domain and the job is delivered 2717ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  00:48:17
+   Duration  36.21s (transform 481ms, setup 15ms, import 787ms, tests 35.34s, environment 0ms)
+

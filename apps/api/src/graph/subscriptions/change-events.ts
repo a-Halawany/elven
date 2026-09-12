@@ -39,12 +39,12 @@ type Row = Record<string, unknown>;
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
 
 /** A walk's result (or an assessed impact record) as the event's `objects`. */
-export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[]; briefings?: Array<{ strategy_object_id: string }> }): ReachedObjects {
+export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[]; briefings?: Array<{ strategy_object_id: string }>; memoryItems?: Array<{ strategy_object_id: string }> }): ReachedObjects {
   const ids = (xs: Array<{ strategy_object_id: string }>): string[] => xs.map((x) => x.strategy_object_id);
   return {
     claims: [...w.reachedClaims], assumptions: ids(w.assumptions), objectives: ids(w.objectives), decisions: ids(w.decisions), commitments: ids(w.commitments),
     forecasts: ids(w.forecasts), scenarios: ids(w.scenarios), warnings: ids(w.warnings), twins: ids(w.twins), simulations: ids(w.simulations),
-    evidence: [...(w.reachedEvidence ?? [])], briefings: ids(w.briefings ?? []), truncated: w.truncated, walked: true,
+    evidence: [...(w.reachedEvidence ?? [])], briefings: ids(w.briefings ?? []), memoryItems: ids(w.memoryItems ?? []), truncated: w.truncated, walked: true,
   };
 }
 
@@ -217,9 +217,9 @@ const CHANGED_ROLES = new Set(['created', 'origin', 'successor', 'resolved_to', 
 
 /** Every stable id an event touches, by kind — the selection key set every consumer starts from. */
 export function touchedIds(event: { event_type: 'GraphChanged'; payload: GraphChangedPayload } | { event_type: 'MemoryCorrected'; payload: MemoryCorrectedPayload }): {
-  entities: Set<string>; changedEntities: Set<string>; edges: Set<string>; claims: Set<string>; evidence: Set<string>; strategy: Set<string>; forecasts: Set<string>; scenarios: Set<string>; twins: Set<string>; runs: Set<string>; walked: boolean; truncated: boolean;
+  entities: Set<string>; changedEntities: Set<string>; edges: Set<string>; claims: Set<string>; evidence: Set<string>; strategy: Set<string>; forecasts: Set<string>; scenarios: Set<string>; twins: Set<string>; runs: Set<string>; memoryItems: Set<string>; walked: boolean; truncated: boolean;
 } {
-  const s = { entities: new Set<string>(), changedEntities: new Set<string>(), edges: new Set<string>(), claims: new Set<string>(), evidence: new Set<string>(), strategy: new Set<string>(), forecasts: new Set<string>(), scenarios: new Set<string>(), twins: new Set<string>(), runs: new Set<string>(), walked: false, truncated: false };
+  const s = { entities: new Set<string>(), changedEntities: new Set<string>(), edges: new Set<string>(), claims: new Set<string>(), evidence: new Set<string>(), strategy: new Set<string>(), forecasts: new Set<string>(), scenarios: new Set<string>(), twins: new Set<string>(), runs: new Set<string>(), memoryItems: new Set<string>(), walked: false, truncated: false };
   if (event.event_type === 'GraphChanged') {
     const p = event.payload;
     for (const i of p.identities) { s.entities.add(i.entity_id); if (CHANGED_ROLES.has(i.role)) s.changedEntities.add(i.entity_id); }
@@ -234,10 +234,12 @@ export function touchedIds(event: { event_type: 'GraphChanged'; payload: GraphCh
     for (const x of o.twins) s.twins.add(x);
     for (const x of o.simulations) s.runs.add(x);
     for (const x of o.evidence) s.evidence.add(x);
+    for (const x of o.memoryItems ?? []) s.memoryItems.add(x);
     s.walked = o.walked; s.truncated = o.truncated;
   } else {
     const p = event.payload;
-    for (const o of p.objects) { if (o.object_type === 'EVD') s.evidence.add(o.object_id); else s.claims.add(o.object_id); }
+    // 0066 §3: a memory item (MEM) is its own key — a corrected or superseded item is neither evidence nor a claim (B9 review G9).
+    for (const o of p.objects) { if (o.object_type === 'EVD') s.evidence.add(o.object_id); else if (o.object_type === 'MEM') s.memoryItems.add(o.object_id); else s.claims.add(o.object_id); }
     for (const c of p.claims) s.claims.add(c);
   }
   return s;

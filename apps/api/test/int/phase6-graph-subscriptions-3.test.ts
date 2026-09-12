@@ -555,7 +555,8 @@ describe('B8 · the flows\' telemetry (AU-MEM-0041) and the interface register w
     expect(byState['bound']! + byState['partial']! + byState['unbound']!).toBe(50);
     // The event interfaces this product publishes carry their schema version; the ones it does not publish say so.
     expect(r.interfaces.find((i) => i['interface_id'] === 'L4-I03')).toMatchObject({ name: 'GraphChanged', transport: 'event', binding_state: 'bound', schema_version: 'v1' });
-    expect(r.interfaces.find((i) => i['interface_id'] === 'L2-I03')).toMatchObject({ name: 'ContradictionDetected', binding_state: 'unbound', schema_version: null });
+    expect(r.interfaces.find((i) => i['interface_id'] === 'L2-I03')).toMatchObject({ name: 'ContradictionDetected', binding_state: 'bound', schema_version: 'v1' }); // bound by 0066 §5 (B9)
+    expect(r.interfaces.find((i) => i['interface_id'] === 'L9-I04')).toMatchObject({ binding_state: 'partial' }); // a partial binding says so
     // eslint-disable-next-line no-console
     console.log('INTERFACE REGISTER', JSON.stringify(byState));
   }, 60_000);

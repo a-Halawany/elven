@@ -120,6 +120,13 @@ export interface GraphReads {
   readInterfaceRegister(): any;
   /** 0065 §8: the briefings the walk may reach (AU-MEM-0031). */
   readBriefings(): any;
+  /** 0066 §7: the domain's ontology versions and their events. */
+  readOntologyVersions(): any;
+  readOntologyEvents(): any;
+  /** 0066 §3: memory items — the current version of each, their events and their access ledger (AU-MEM-0065, AU-MEM-0031). */
+  readMemoryItems(): any;
+  readMemoryItemEvents(): any;
+  readMemoryItemAccess(): any;
   /**
    * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
    * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
@@ -228,6 +235,24 @@ export interface EdgeRetractionWrites extends GraphReads {
   }): Promise<void>;
 }
 
+// ───────────────────────── ontology (0066 §7) ─────────────────────────
+
+export interface OntologyWrites extends GraphReads {
+  proposeOntologyVersion(a: { versionId: string; tenantId: string; domainId: string; namespace: string; entityTypes: string[]; predicates: Array<Record<string, unknown>>; rationale: string; alternatives: unknown[]; migrationPlan: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  decideOntologyProposal(a: { versionId: string; tenantId: string; domainId: string; decision: 'approve' | 'reject'; reason: string; reviews: Record<string, unknown>; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
+// ───────────────────────── memory items (0066 §3) ─────────────────────────
+
+export interface MemoryWrites extends GraphReads {
+  /** A memory item's version is a canonical MEM object, admitted through the same path every canonical object takes. */
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  recordMemoryItem(a: { itemId: string; tenantId: string; domainId: string; version: number; record: Record<string, unknown>; cites: Array<{ kind: string; id: string; rationale: string }>; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  withdrawMemoryItem(a: { itemId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  /** OBJ-15: the access ledger row of a retrieval, written inside the read's own transaction. */
+  recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
+}
+
 // ───────────────────────── strategy ─────────────────────────
 
 export interface StrategyWrites extends GraphReads {
@@ -265,8 +290,8 @@ export interface ImpactWrites extends GraphReads {
     forecasts: unknown[];
     /** Phase 5: twins whose citing versions the port marks unverified, and runs it surfaces. */
     twins: unknown[]; simulations: unknown[];
-    /** 0065 §8: warnings the port marks for attention and briefings it re-flags (AU-MEM-0031). */
-    warnings?: unknown[]; briefings?: unknown[];
+    /** 0065 §8: warnings the port marks for attention and briefings it re-flags (AU-MEM-0031); 0066 §3: memory items marked for attention. */
+    warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -302,6 +327,8 @@ export interface SubscriptionWrites extends GraphReads {
 }
 
 /** The retrieval and memory-mapping consumers' effects (graph-side), driven by the subscriber's own action. */
+/** What the relationships consumer holds under its one action: the subscriber's ports and the builder's assert (0066 §2). */
+export type RelationshipSubscriberWrites = GraphSubscriberWrites & EdgeWrites;
 export interface GraphSubscriberWrites extends GraphReads {
   recordRetrievalCheck(a: { checkId: string; eventId: string; subscriptionId: string; tenantId: string; domainId: string; touched: Record<string, unknown>; actor: string; correlationId: string }):
     Promise<{ check_id: string; projections: unknown[]; mismatched: number }>;
@@ -325,7 +352,7 @@ export interface PropagationAgentWrites extends GraphReads {
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites {
+             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -387,6 +414,11 @@ class GraphCapabilityImpl extends GraphCore
   readRunTelemetry(): any { return this.from('simulation.run_telemetry'); }
   readInterfaceRegister(): any { return this.from('objects.interface_register'); }
   readBriefings(): any { return this.from('executive.briefings'); }
+  readOntologyVersions(): any { return this.from('graph.ontology_versions'); }
+  readOntologyEvents(): any { return this.from('graph.ontology_events'); }
+  readMemoryItems(): any { return this.from('memory.items_current'); }
+  readMemoryItemEvents(): any { return this.from('memory.item_events'); }
+  readMemoryItemAccess(): any { return this.from('memory.item_access'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
@@ -464,6 +496,24 @@ class GraphCapabilityImpl extends GraphCore
                                 mismatched::text from graph.rebuild_projections()`);
   }
 
+  async proposeOntologyVersion(a: Parameters<OntologyWrites['proposeOntologyVersion']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.propose_ontology_version(${a.versionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.namespace}, ${a.entityTypes}::text[], ${JSON.stringify(a.predicates)}::jsonb, ${a.rationale}, ${JSON.stringify(a.alternatives)}::jsonb, ${a.migrationPlan}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async decideOntologyProposal(a: Parameters<OntologyWrites['decideOntologyProposal']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.decide_ontology_proposal(${a.versionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.reason}, ${JSON.stringify(a.reviews)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordMemoryItem(a: Parameters<MemoryWrites['recordMemoryItem']>[0]): Promise<void> {
+    await this.call(sql`select memory.record_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${JSON.stringify(a.record)}::jsonb, ${JSON.stringify(a.cites)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async withdrawMemoryItem(a: Parameters<MemoryWrites['withdrawMemoryItem']>[0]): Promise<void> {
+    await this.call(sql`select memory.withdraw_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordMemoryAccess(a: Parameters<MemoryWrites['recordMemoryAccess']>[0]): Promise<string> {
+    const rows = await this.call<{ id: string }>(sql`select memory.record_access(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${a.purpose}, ${a.reader}::uuid, ${a.asOf}::timestamptz, ${a.correlationId}::uuid) as id`);
+    return rows[0]?.id ?? '';
+  }
   async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
     const rows = await this.call<{ content_digest: string }>(
       sql`select content_digest from objects.admit_version(
@@ -621,8 +671,8 @@ class GraphCapabilityImpl extends GraphCore
     forecasts: unknown[]; twins: unknown[]; simulations: unknown[];
     statement: string; truncated: boolean; unexplored: unknown[];
     actor: string; eventId: string; correlationId: string;
-    /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment. */
-    warnings?: unknown[]; briefings?: unknown[];
+    /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment; 0066 §3: the memory items marked. */
+    warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
@@ -631,7 +681,7 @@ class GraphCapabilityImpl extends GraphCore
       ${JSON.stringify(a.forecasts)}::jsonb, ${JSON.stringify(a.twins)}::jsonb, ${JSON.stringify(a.simulations)}::jsonb,
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
-      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb)`);
+      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb, ${JSON.stringify(a.memoryItems ?? [])}::jsonb)`);
   }
 
   async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
@@ -726,6 +776,12 @@ export const GraphCapability = {
   strategy(tx: Tx, action: string): StrategyWrites {
     return new GraphCapabilityImpl(tx, action);
   },
+  memory(tx: Tx, action: string): MemoryWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  ontology(tx: Tx, action: string): OntologyWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
   impact(tx: Tx, action: string): ImpactWrites {
     return new GraphCapabilityImpl(tx, action);
   },
@@ -736,6 +792,10 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   graphSubscriber(tx: Tx, action: string): GraphSubscriberWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /** The relationships consumer (0066 §2): a subscriber that also asserts edges through the builder's port. */
+  relationshipSubscriber(tx: Tx, action: string): RelationshipSubscriberWrites {
     return new GraphCapabilityImpl(tx, action);
   },
 };

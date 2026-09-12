@@ -1,0 +1,7 @@
+# CP-6 B9 — the full integration suite at the final B9 file (0066 with §11; the refusal mapping) on a fresh database (eye_verify48_20260913 created empty and migrated 0001–0066): the 890 of 661c2fb plus B9's twenty-four (phase6-graph-subscriptions-4), seven (phase6-executive-requests) and the reproduction's five (phase6-repro-serving-lifecycle), on the B6 harness kept to its six kinds.
+# command: EYE_DB_NAME=eye_verify48_20260913 pnpm --filter @eye/api test:int:all
+ Test Files  56 passed (56)
+      Tests  926 passed (926)
+   Start at  01:41:34
+   Duration  418.31s (transform 967ms, setup 246ms, import 13.17s, tests 400.78s, environment 2ms)
+EXIT 0

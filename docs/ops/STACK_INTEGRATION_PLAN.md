@@ -311,3 +311,32 @@ contains its predecessors passes the same chain it will pass on `main`. The push
 produced on `main` after each merge and is not part of these runs. **No merge has been made; merging
 waits for the owner's explicit instruction**, in this order, one at a time, with the archive verified
 after each.
+
+## 8. The stack, EXECUTED (2026-09-12 → 2026-09-13) — the owner's conditional merge authorization
+
+The owner's directive of 2026-09-12 replaced the blanket hold: merge the reviewed stack in the recorded order, each
+merge followed by the delivery-profile C17 archive verified on `main`, #46 only after the two B8 findings receive
+focused closure and the candidate passes a bounded independent review; #42 is not in the order and stays open.
+Every merge is a merge commit (no squash, no rebase); every branch is preserved; each candidate was checked against
+its reviewed head (the prepared head of §7 equals the PR head; over `main` the candidate carries only its own files;
+`PROGRESS.md` is the only hand-resolved content). The chain on `main` after each merge — `ci` (push; the C17 archive
+packaged, verified, uploaded), `C19 lifecycle` (push), `C17 finalize` (workflow_run, cross-host), `C19 anchor` — had
+to be green before the next merge; a red push run was re-run as the ENTIRE workflow.
+
+| Step | PR | Head | Merge on `main` | `ci` (push) | C17 finalize | C19 anchor |
+|---|---|---|---|---|---|---|
+| 1 | #39 | `a2cb0d8` | `d675707` | 34714055388 green | 34714543911 green | 34714595878 green |
+| 2 | #36 | `d458b36` | `5b0d667` | 34714766782 green | 34715204263 green | 34715254309 green |
+| 3 | #38 | `1ed69ed` | `fed90fe` | 34715494412 — attempt 1 red (the A5 timing side-channel assertion on the runner), attempt 2 green | 34716566659 green | 34716617298 green |
+| 4 | #40 | `fb18c1f` | `ae54e2d` | 34716840197 green | 34717383911 green | 34717430352 green |
+| 5 | #41 | `9f18468` | `48a01b4` | 34717734013 — attempt 1 red (browser-regression: the Phase 0 control "6. known-at query", a `datetime-local` fill on a whole minute — a determinism defect of the control), attempt 2 green | 34719532376 green | 34719580814 green |
+| 6 | #43 | `34969e8` | `4642856` | 34719853823 green | 34720424456 green | 34720462423 green |
+| 7 | #44 | `41eaa04` | `cbe1790` | 34720646497 green | 34721192292 green | 34721231086 green |
+| 8 | #45 | `da47bd3` | `e0c5025` | recorded in PHASE6_REPORT §22.1 when its chain completes | | |
+| 9 | #46 | — | — | **not merged** — the B9 candidate goes to Codex's bounded review first | | |
+
+#39 was marked ready first (`gh pr ready 39`) after the C15 recheck dispatch 34713621090 confirmed that no compatible
+fixed official image exists yet for any service and the derived images remain the pinned route. #43 and #44 were
+retargeted to `main` after their base PRs landed. Each push run's archive artefact
+(`c17-evidence-archive-a<n>-<sha256>`) and the finalized artefact (`c17-evidence-finalized-a<n>-<sha256>`) are on the
+runs named. No production deployment was made.

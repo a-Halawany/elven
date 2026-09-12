@@ -190,12 +190,13 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0029: forecast_owner, forecast_agent · 0032: twin_owner, simulation_operator
   // 0041: decision_owner, decision_approver, decision_authority, executive, decision_agent, briefing_agent, reporting_agent
   // 0060: propagation_agent · 0063: twin_subscriber, forecast_subscriber, scenario_subscriber, decision_subscriber, retrieval_subscriber, mapping_subscriber
-  'identity.roles': 25,
+  // 0066: relationship_subscriber, knowledge_owner, record_authority, retention_steward, retention_authority, ontology_steward
+  'identity.roles': 31,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
-  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2
-  'objects.schema_registry': 27, // + SCN v2 (0058), SCN v3 and WRN v2 (0061)
-  // one ledger line per migration applied above the ceiling (0022–0064)
-  'public.schema_migrations': 44,
+  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1
+  'objects.schema_registry': 28, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066)
+  // one ledger line per migration applied above the ceiling (0022–0067)
+  'public.schema_migrations': 46,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

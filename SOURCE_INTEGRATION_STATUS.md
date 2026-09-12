@@ -89,7 +89,7 @@ payload), and the World Bank attribution names the WTO as provider of the mercha
 | **A** | **EU Financial Sanctions — live** (`eu-sanctions-rss` polled hourly; `eu-sanctions-payload` polled every six hours, independently — the RSS connector follows no link and the scheduler schedules each source on its own) | European Commission reuse notice, Commission Decision 2011/833/EU (reuse permitted, source acknowledged); the dataset record on data.europa.eu lists the RSS and the CSV 1.1 distributions under COM_REUSE, access PUBLIC — read 2026-09-07; the feed is the publisher's own correction channel | v2 contracts declaring `live`, the verified endpoints (feed 200 text/xml; CSV 1.1 200 **text/plain**, 25,166,172 bytes; `…&version=2` verified byte-identical, sha256 `049cb95c…`, and dropped), media types and byte cap as observed, the attribution line; approved by a second operator; activated | No credential, no purchase, no new connector; the replay sets stay as fixtures; classification stays `internal` | `scripts/integrations/proposals/eu-sanctions-live.mjs` |
 | **B** | **World Bank Indicators — live** (weekly) | CC-BY-4.0 under the World Bank Dataset Terms (read 2026-09-07): attribution to the Bank **and its data providers** as "The World Bank: Dataset name: Data source (if known)"; the indicator metadata names the **World Trade Organization (WTO)** as source organisation of TX.VAL.MRCH.CD.WT, and both indicator pages show CC BY-4.0 | v2 contract declaring `live`, the same two indicator endpoints (both 200 application/json), the attribution line naming the WTO for merchandise exports and national sources for NE.IMP.GNFS.ZS; weekly poll | Not a forecast driver (annual grain); structural context only — no forecast promise, no blanket backfill; no credential | `scripts/integrations/proposals/worldbank-indicators-live.mjs` |
 | — | GDELT | Held: the readiness plan asks for a lawful-collection and attention-signal design first | — | — | not proposed |
-| — | UN Comtrade automated access | Decision 3: deferred, key untouched | — | — | not proposed; §6 states what it would take |
+| — | UN Comtrade automated access | Decision 3: deferred, key untouched — **superseded 2026-09-12 by the owner's authorization (§10)**: the existing key may be used within the source's permissions and the existing budgets and cadences; no activation act performed yet | — | — | not proposed; §6 states what it would take |
 | — | PortWatch live | Decision 1: permission first; the request is drafted on #36 for the owner to send. **2026-09-10: permission owner-reported as GRANTED** (grant text pending at `docs/sources/portwatch-grant.md`); rights confirmed on both contracts, `imf-portwatch-ports` v2 registered, approved and activated, the chokepoints v2 stopped before registration — §9 | — | — | `scripts/integrations/activate-portwatch.mjs` (§9) |
 
 The drafts are validated by the product's own contract validator (`node scripts/integrations/check-proposals.mjs`);
@@ -926,3 +926,30 @@ in the ledger (`observation.agent.register` ×6, `observation.agent.revoke` ×6,
 Unchanged: UN Comtrade deferred and its key untouched; purchases zero; **no cadence and no budget
 value was changed**; no credential was created, rotated or printed; GDELT held; the four live sources
 of §7 untouched; C15 and the required checks remain the merge gates. Nothing was committed.
+
+## 10. The owner's authorization of 2026-09-12 — existing UN keys / Comtrade and live PortWatch
+
+**What the owner authorised** (the directive continuing THE EYE from `661c2fb`/`3932207`): "Existing UN
+keys/Comtrade and live PortWatch are authorized within source permissions and existing budgets/cadences. Preserve
+historical decisions; no new purchases or budget/cadence changes." This supersedes, from that date, the deferral
+recorded in §4's table (Decision 3, "deferred, key untouched"), the "Unchanged: UN Comtrade deferred and its key
+untouched" lines of §7.7, §9.5, §9.6 and §9.11 (which stay as the record of what stood when they were written), and
+the register's hold row. It does not change any rights finding: the Comtrade terms as recorded in §3 still say the
+automated use is **UNVERIFIED — read the full policy before any redistribution claim**, so an activation stays within
+the manual-export permission already confirmed unless the full policy is read and recorded first.
+
+**What was done under it in this batch (B9, 2026-09-13): nothing on the sources.** No credential was bound, created,
+rotated or printed; no contract was registered, approved or activated; no cadence or budget value changed; nothing
+was purchased. PortWatch stands as §9.6 left it (`imf-portwatch-ports` v3 live, active; the chokepoints contract in
+replay pending the grant text and the daily-layer version).
+
+**What an activation under this authorization takes, when it is performed** (all through the governed routes, no
+SQL; the deployment's environment file only): bind the owner's free-tier key as `EYE_SRC_COMTRADE_KEY` in
+`.eye-local/env` on the demonstration host (never in the repository); a `un-comtrade` v2 live contract on the
+Comtrade Plus API under the terms as read and recorded (rights, attribution, the cadence and budget of the existing
+upload contract carried over — no new values), `credential_ref` naming the variable; register (a.hoffmann), approve
+and record rights (m.dvorak), transition to active, one operator-triggered run, the readiness register read back;
+the act recorded here as §11 with its receipts, in the shape of §7 and §9.
+
+Unchanged: purchases zero; cadences and budgets as before; GDELT held; the live sources of §7 and §9 untouched; C15
+and the required checks remain the merge gates.

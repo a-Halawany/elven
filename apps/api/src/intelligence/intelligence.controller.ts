@@ -152,6 +152,36 @@ export class IntelligenceController {
     return { method: out.result, receipt: receipt(out) };
   }
 
+  /** 0066 §6 (L2-I05 TransformationEvaluated): the producing version evaluated — measures from the ledgers, the fitness verdict constraining downstream use. */
+  @Post('/methods/:methodId/evaluate')
+  async evaluateMethod(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('methodId') methodId: string,
+                       @Body() body: { payload?: { windowFrom?: string | null; windowTo?: string | null; fitness?: string; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const fitness = String(p.fitness ?? '');
+    if (!['fit', 'unfit', 'indeterminate'].includes(fitness)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'fitness is fit, unfit or indeterminate'), 422);
+    const reason = String(p.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'an evaluation states its reason (at least 8 characters)'), 422);
+    const iso = (v: unknown): string | null => v === undefined || v === null || v === '' ? null : new Date(String(v)).toISOString();
+    const evaluationId = newId();
+    const out = await this.pipeline.write(envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'intelligence.method.evaluate', objectType: 'MTH', objectId: methodId },
+      IntelligenceCapability.methods,
+      async (cap) => {
+        const measures = await cap.evaluateMethod({ evaluationId, tenantId, domainId, methodId, windowFrom: iso(p.windowFrom), windowTo: iso(p.windowTo), fitness: fitness as 'fit' | 'unfit' | 'indeterminate', reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        const method = ((await cap.readMethods().selectAll().where('method_id' as never, '=', methodId as never).execute()) as Array<Record<string, unknown>>)[0] ?? {};
+        return { result: { evaluationId, methodId, fitness, measures }, targetType: 'MTH', targetId: methodId, targetVersion: String(method['method_version'] ?? '1'),
+                 outboxEvent: { eventType: 'TransformationEvaluated', payload: {
+                   schema: 'TransformationEvaluated', schema_version: 'v1', evaluation_id: evaluationId,
+                   method: { method_id: methodId, method_key: method['method_key'] ?? null, method_version: method['method_version'] ?? null, model_id: method['model_id'] ?? null, model_weights_digest: method['model_weights_digest'] ?? null, runtime_version: method['runtime_version'] ?? null, prompt_version: method['prompt_version'] ?? null, prompt_digest: method['prompt_digest'] ?? null, decoding_digest: method['decoding_digest'] ?? null },
+                   window: measures['window'] ?? null, quality: measures['quality'] ?? null, safety: measures['safety'] ?? null, cost: measures['cost'] ?? null, latency: measures['latency'] ?? null,
+                   fitness: { state: fitness, reason, evaluated_by: principal.principalId },
+                   temporal: { known_at: new Date().toISOString() }, cause: { action: 'intelligence.method.evaluate', actor: principal.principalId, target_type: 'MTH', target_id: methodId },
+                 } } };
+      });
+    return { evaluation: out.result, receipt: receipt(out) };
+  }
+
   @Post('/methods/list')
   async listMethods(
     @Req() req: EyeRequest,
@@ -478,13 +508,66 @@ export class IntelligenceController {
           subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'claim.corrected' }),
           cause: { action: 'intelligence.review.decide', actor: principal.principalId, target_type: 'REV', target_id: caseId },
         })] : [];
-        return { result: r, targetType: 'REV', targetId: caseId, targetVersion: '1',
+        return { result: { caseId: r.caseId, state: r.state, newVersion: r.newVersion, contradictions: r.contradictions.length }, targetType: 'REV', targetId: caseId, targetVersion: '1',
                  outboxEvent: { eventType: 'ClaimReviewed',
                                 payload: { schema_version: 'v1', case_id: caseId, state: r.state,
                                            claim_object_id: claimId, new_version: r.newVersion } },
-                 outboxEvents: corrected };
+                 outboxEvents: [...corrected, ...r.contradictions] };
       });
     return { review: out.result, receipt: receipt(out) };
+  }
+
+
+  // ───────────────────────── contradictions and challenges (0066 §5, L2-I03) ─────────────────────────
+
+  /** A CHALLENGE: a person opens a review case on an admitted claim version (V00-T-037); a correction there re-derives what rests on it. */
+  @Post('/review/request')
+  async requestReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { claimObjectId?: string; claimVersion?: number; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const claimId = String(p.claimObjectId ?? ''); const version = Number(p.claimVersion ?? 1); const reason = String(p.reason ?? '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(claimId) || !Number.isInteger(version) || version < 1) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'claimObjectId and claimVersion name the admitted claim version'), 422);
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a challenge states its reason (at least 8 characters)'), 422);
+    const caseId = newId();
+    const out = await this.pipeline.write(envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'intelligence.review.request', objectType: 'REV', objectId: caseId },
+      IntelligenceCapability.review,
+      async (cap) => {
+        await cap.requestReview({ caseId, tenantId, domainId, claimId, version, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { caseId, claimObjectId: claimId, claimVersion: version, state: 'queued', reason: 'challenged' }, targetType: 'REV', targetId: caseId, targetVersion: '1', outboxEvent: null };
+      });
+    return { review: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/contradictions/list')
+  async listContradictions(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: 'open' | 'adjudicated'; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'intelligence.read', objectType: 'CTR', objectId: null },
+      IntelligenceCapability.read,
+      async (cap) => {
+        let q = cap.readContradictions().selectAll();
+        if (body.payload?.state !== undefined) q = q.where('state' as never, '=', body.payload.state as never);
+        return (await q.orderBy('detected_at' as never, 'desc').limit(body.payload?.limit ?? 200).execute()) as Array<Record<string, unknown>>;
+      });
+    return { contradictions: out.result, receipt: receipt(out) };
+  }
+
+  /** The ADJUDICATION (V03-T-286): a person records how the incompatible assertions stand; neither is deleted by this act. */
+  @Post('/contradictions/:contradictionId/adjudicate')
+  async adjudicateContradiction(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('contradictionId') contradictionId: string, @Body() body: { payload?: { adjudication?: string; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const adjudication = String(body.payload?.adjudication ?? ''); const reason = String(body.payload?.reason ?? '').trim();
+    if (!['both_stand', 'a_withdrawn', 'b_withdrawn', 'superseded'].includes(adjudication)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'adjudication is both_stand, a_withdrawn, b_withdrawn or superseded'), 422);
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'an adjudication states its reason (at least 8 characters)'), 422);
+    const out = await this.pipeline.write(envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'intelligence.review.decide', objectType: 'CTR', objectId: contradictionId },
+      IntelligenceCapability.review,
+      async (cap) => {
+        await cap.adjudicateContradiction({ contradictionId, tenantId, domainId, adjudication, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { contradictionId, state: 'adjudicated', adjudication }, targetType: 'CTR', targetId: contradictionId, targetVersion: null, outboxEvent: null };
+      });
+    return { contradiction: out.result, receipt: receipt(out) };
   }
 
   // ───────────────────────── overview and projections ─────────────────────────

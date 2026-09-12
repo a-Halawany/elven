@@ -672,11 +672,122 @@ recomputation compares the cited and the superseding central estimates as issued
 re-issue's cut-off). One superseded forecast is announced per issue. A rejected mapping proposal closes the edge's
 reassessment as decided:rejected (the relationship stands).
 
+## B9 — ownership across in-flight writes (Codex B8-F1/F2); automatic re-derivation; memory items; governed retention; contradictions; method evaluation; ontology; scenario review; executive requests; the register's six (implemented)
+
+**Migration 0066** (`apps/api/migrations/0066_serving_ownership_and_reach.sql`), one file, eleven sections; **0067** (`0067_b9_review_corrections.sql`) carries the adversarial review's corrections (PHASE6_REPORT §22.7).
+
+**§1 the serving generation and the fence (B8-F1, B8-F2).** `graph.subscription_domain_serving.generation` and
+`graph.subscription_domain_generations` (a counter per domain: monotonic across releases, so a re-claim after a
+release is a new generation); `subscription_domain_claim` returns the generation (renewal `FOR NO KEY UPDATE`; a
+take-over re-locks `FOR UPDATE`); `graph.subscription_serving_fence(tenant, domain, holder, generation)` — in
+schedule mode `ctx.assert_capability`, otherwise `observation.assert_scope`; `FOR KEY SHARE` on the claim row;
+`P0S01 serving lost` when the holder or the generation is not the claim's; the holder and generation set on the
+transaction so the delivery-events trigger writes `served_by`/`serving_generation`. The dispatcher (TypeScript)
+keeps `{holder, generation}` per domain, fences the receipt, each item's effect (the capability factory's `fence()`
+is the first statement of every effect transaction) and the finish; `ServingLostError` at the handler's entry calls
+`lostServing()` — the belief dropped, the worker closed DETACHED (`scheduler.stopSubscriptionWorkerDetached`, tracked
+in a `closing` set awaited at shutdown) — and the job is returned; a serving-lost handler never finishes. Test hooks:
+`pauseRenewalsForTests`, `expireServingForTests`, `armFaultForTests` (`slow_before_item` with the item index,
+`slow_before_finish`). `eye.subscriptions.serving_seconds` (5–3600, default 150).
+
+**§2 the relationships consumer.** `graph.subscription_consumer_actions` (seven rows: the action, role and method
+reference per kind; a platform vocabulary under FORCE RLS with a shared SELECT policy), `relationship_subscriber`;
+`subscription_delivery_items/item_begin/item_unresolved` read the table; `graph.assert_edge` accepts
+`graph.relationship.subscription.apply`; `open_edge_reassessment` widened. `derive.ts`: `entitiesByName`,
+`deriveEdgeFromClaim` (the run's rules, `validFrom` from the claim's `recorded_at` when the claim gives none) —
+`runEdgeBuild` refactored onto it. The consumer resolves the asserted edges of corrected REL claims with a lower
+version; per item: `openEdgeReassessment(trigger 'claim')` → read the corrected version → derive → `assertEdge`
+(method and run from the lineage) → `GraphChanged/edge.asserted` through `outboxEvents`; effects `edge.re_derived`,
+`derivation.blocked` (`unresolved_dependency` → `human_review`), `basis.unchanged`.
+
+**§3 memory items.** Roles `knowledge_owner`, `record_authority`; schema `memory` (`items_current`, `item_events`,
+`item_access`; RLS `memory_isolation`); `memory.record_item` (v1 under `memory.item.record`, n+1 under
+`memory.item.supersede`; the cites written to `graph.dependencies` as `MEM` rows, retired rows removed),
+`memory.withdraw_item`, `memory.record_access`; `objects.schema_registry` MEM@v1; `dependency_dependent_exists` MEM
+branch; `invalidations_current.affected_memory_items`; `graph.record_impact` (19 arguments) marks
+`memory.attention` once per cause. TypeScript: `memory.service.ts` (the canonical header: `CP-MEM-01`, `MEM@v1`,
+`supersedes MEM:<id>@<n-1>`; retrieval under an audience purpose with `assertClearance`, as-of by `recorded_at`
+millisecond-exact), the routes, the impact bucket and statement phrase, `touchedIds.memoryItems`.
+
+**§4 governed retention.** Roles `retention_steward` (domain), `retention_authority` (tenant); schema `retention`
+(`schedules`, `actions_current`, `action_events`, `scope_items`, `approvals`, `executions`, `residual_inventory`,
+`verifications`); ports `declare_schedule`, `open_action`, `evaluate_schedules`, `resolve_scope` (evidence: the
+manifests whose LATEST version is corrected/superseded/withdrawn — the current excluded; a hold by manifest or
+through the EVD object → `held`; residuals `claim_lineage`/`dependency`/`canonical_version`; `log_partition`: the
+partition's unpublished rows and every subscription cursor below `to_seq` → `paused`; the scope digest sha256),
+`record_approval` (the digest must match; opener ≠ approver; actor = `eye_principal()`), `begin_execution`
+(a live approval; approver ≠ executor), `record_execution`, `finish_execution`, `verify_action` (each item checked
+against the observed bytes; `verified` | `verified_with_residuals`; the `DeletionVerified` payload),
+`withdraw_action`; `objects.outbox_declare_floor(partition, to_seq, action_id)` (asserts
+`retention.action.execute`; the tenant's own partition; the executing `log_floor` action must name the move;
+monotone, ≤ `next_seq`); `observation.tombstone_blob` re-declared with the hold refusal (`P0R01`). The module
+`apps/api/src/retention/` (service: execution under savepoints per item, bytes removed after commit, verification
+observations; the controller's routes).
+
+**§5 contradictions.** `intelligence.contradictions` (adjudicate-only trigger), `review_current.queued_reason` +
+`contradiction`/`challenged`; `record_contradiction`, `adjudicate_contradiction`, `request_review` (the challenge →
+`review_events 'case.queued'`). `contradiction.service.ts`: `valuesConflict`, `findConflicts` (same claim kind,
+subject and predicate; a different value; the latest active/corrected version; not rejected); the extraction detects
+BEFORE admission (queued with reason `contradiction`; header `contradiction_refs`); the review's correction detects
+too; both publish `ContradictionDetected`.
+
+**§6 method evaluation.** `intelligence.method_evaluations`, `methods_current.fitness_state/fitness_evaluation_id`,
+`method_events` + `method.evaluated`; `evaluate_method` (the measures from `gateway_calls`, `runs_current`,
+`review_current`, `claim_lineage`, `contradictions`); `lock_active_method` refuses an unfit version;
+`transition_method` refuses activating one; `rebuild_projections` excludes `method.evaluated`.
+
+**§7 ontology.** Role `ontology_steward`; `graph.ontology_versions`, `ontology_events`; `propose_ontology_version`
+(the diff against the active version; the analysis: removed/narrowed predicates × asserted edges, the strategy
+resting on them, entity counts; additive/breaking; the four reviews; a version number never reused),
+`decide_ontology_proposal` (separation of duties; a breaking change refused while impacted edges stand and until the
+compatibility and migration reviews passed; approval activates and supersedes); `graph.assert_edge` (final body)
+checks the active version's predicates.
+
+**§8 scenario review.** `scenarios_current.state` + `retired`, `last_reviewed_at`, `next_review_due_at`, `reviews`,
+`retired_at`, `retirement_reason`; `branches_current.simulation_candidate_at`; `scenario_events` +
+`scenario.reviewed`, `scenario.retired`; `prediction.review_scenario` (continue / dissent / retire / promote_to_simulation;
+retirement closes OPEN branches only — a flipped branch keeps its flip so the projection rebuild's `branches_current(flipped)`
+check stays consistent; the links: forecast, decision objects, dependents, simulation runs); `simulation.open_run`
+re-declared from 0037 refusing a retired scenario; the service refuses it too.
+
+**§9 executive requests.** `executive.requests` (UNIQUE on requester + `request_key`; `request_digest` sha256 over
+the canonical request), `request_events`, `delegations`, `follow_ups`, `prediction.warning_suppressions`;
+`agent_runs.trigger_kind` + `request`; `executive.open_request` (the request row first, then the effect; a repeat with
+the same digest returns the row and publishes nothing; a different digest refused; stale version, committed package,
+non-member delegator, closed warning refused), `fulfil_request` (the owner's act — the scenario declaration names
+`requestId` and fulfils in the same write), `withdraw_request` (reverses an in-write effect; an act done stands),
+`complete_follow_up`; `executive.is_member` honours a live delegation; the briefing lists suppressed warnings,
+follow-ups and delegations as windows; the warnings list marks `suppressed_until`; `/workflow/:packageId` returns the
+follow-ups.
+
+**§10 the register.** `bound_at`, `bound_in`; seven rows bound — the six unbound and L3-I05 (partial) — with `bound_to` naming the
+publishing surface; a check that the register reads 26/24/0 (the migration's own §10 header says "six"; 0067 §6 re-comments the column).
+
+**§11 a pre-0061 warning stays updatable.** `wrn_level_derived` (0061, NOT VALID) dropped; the trigger
+`wrn_level_required_on_raise` refuses an INSERT without a level. Found on the demonstration's rehearsal: the 0065 §8
+walk could not mark the record's one legacy warning and the propagation of correction `01a0968b` failed on every
+restart.
+
+**The HTTP refusals of the new ports** (`observation-errors.ts` `B9_REFUSALS`): the port's reason answered with 422 /
+404 / 403 / 409 by the kind of refusal, `P0R01` admitted; the executive agent-run refusals (0046) and the
+retired-scenario run refusal (§8) as named rules ahead of the twin run's generic one.
+
+**Harness.** `phase6-repro-serving-lifecycle.test.ts` (5), `phase6-graph-subscriptions-4.test.ts` (23),
+`phase6-executive-requests.test.ts` (7); the B6 harness kept to its six kinds; `codex-corrections` unit double with
+the contradiction service; the upgrade proof at 45 migrations, 31 roles, 28 registry rows; gate22
+`LATER_SCENARIO_COVERAGE` for `objects.outbox_declare_floor`.
+
+**Demonstration.** `scripts/phase6/demo-b9-capabilities.mjs` (seven scenes with the personas K. Müller, R. Adler,
+P. Novák, H. Bergmann, O. Steiner added; the relationships kind registered by the act, selecting
+`MemoryCorrected/claim.corrected`; `register-subscriptions.mjs` reconciles seven kinds) — `evidence/cp6/act-b9.txt`,
+every scene with its effect (PHASE6_REPORT §22.5).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
-(2026-09-12, after Codex's third finding). The
+(2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings) and B9 (2026-09-13, after
+Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

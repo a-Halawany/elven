@@ -186,7 +186,7 @@ export class AgentsService {
    * thing its contract allows, spends its budget, and closes the run — finished,
    * stopped (escalated), refused (escalated) or faulted (escalated).
    */
-  async run(a: { agentId: string; tenantId: string; domainId: string; task: AgentTask; trigger: { kind: 'operator' | 'scheduler'; principalId: string | null; ref: string | null };
+  async run(a: { agentId: string; tenantId: string; domainId: string; task: AgentTask; trigger: { kind: 'operator' | 'scheduler' | 'request'; principalId: string | null; ref: string | null };
                  roomId: string | null; packageId: string | null; version: number | null; correlationId: string }): Promise<RunOutcome> {
     const T = a.tenantId; const D = a.domainId;
     let principal: AuthenticatedPrincipal; let registration: Awaited<ReturnType<DecisionAgentSessionService['openRunSession']>>['registration'];

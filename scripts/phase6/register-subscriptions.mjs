@@ -45,7 +45,11 @@ const op = (over) => as(operator, scope, { purposeId: 'observation', ...over });
 const fo = (over) => as(forecastOwner, scope, { purposeId: 'prediction', ...over });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const short = (id) => `${String(id).slice(0, 8)}…`;
-const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings'];
+// B9 (0066 §2): the seventh consumer — the relationships subscriber re-deriving pending inferred edges on a corrected REL claim.
+const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships'];
+// The relationships subscriber selects by MemoryCorrected/claim.corrected only (a corrected REL claim); the six others take both events.
+const SELECTION = { relationships: { eventTypes: ['MemoryCorrected'], filter: { change_kinds: ['claim.corrected'] } } };
+const BROAD = KINDS.filter((k) => SELECTION[k] === undefined);
 
 const status = async () => (await call(`${G}/subscriptions/status`, so({ action: 'graph.read', objectType: 'SUB', sideEffect: 'none' }), {}, strategyOwner.token)).body.subscriptions;
 const deliveryOf = async (eventId) => (await call(`${G}/subscriptions/deliveries/${eventId}/get`, so({ action: 'graph.read', objectType: 'SUB', objectId: eventId, sideEffect: 'none' }), {}, strategyOwner.token)).body;
@@ -79,7 +83,7 @@ async function newestEvent(eventType, changeKind, notBefore) {
 
 console.log('\n=== CP-6 batch B6 · GraphChanged / MemoryCorrected subscriptions on the demonstration ===\n');
 
-/* ── 1. the six subscribers ─────────────────────────────────────────────── */
+/* ── 1. the subscribers (six of B6/B8, the relationships subscriber of B9) ───── */
 console.log('1. the subscribers');
 let st = await status();
 for (const kind of KINDS) {
@@ -94,7 +98,7 @@ for (const kind of KINDS) {
     note(`${kind}: subscription ${short(live.subscription_id)} was registered for consumer ${live.consumer_version} ${String(live.code_digest).slice(0, 12)}…; this process's ${kind} consumer is ${current.version} ${String(current.codeDigest).slice(0, 12)}… — revoked, registered anew`);
   } else if (live !== undefined) { ok(`${kind}: subscription ${short(live.subscription_id)} already active (consumer ${live.consumer_version} ${String(live.code_digest).slice(0, 12)}…)`); continue; }
   const r = await call(`${G}/subscriptions/register`, adm({ action: 'graph.subscription.register', objectType: 'SUB', consequence: 'C2' }),
-    { consumerKind: kind, ownerPrincipalId: strategyOwner.principalId, backlog: 'leave' }, admin.token);
+    { consumerKind: kind, ownerPrincipalId: strategyOwner.principalId, backlog: 'leave', ...(SELECTION[kind] ?? {}) }, admin.token);
   if (!r.ok) { bad(`${kind}: registration refused (${r.status}) ${r.body?.message ?? JSON.stringify(r.body).slice(0, 300)}`); continue; }
   const s = r.body.subscription;
   ok(`${kind}: registered subscription ${short(s.subscriptionId)}, principal ${short(s.principalId)} (role ${s.role}), consumer ${s.consumer.version} ${s.consumer.codeDigest.slice(0, 12)}…, budgets ${JSON.stringify(s.budgets)}; worker running ${r.body.served.workerRunning}`);
@@ -110,7 +114,7 @@ for (const kind of KINDS) {
 }
 st = await status();
 const consumers = (st.consumers ?? []).filter((c) => c.registeredInThisProcess).map((c) => c.kind);
-if (consumers.length === 6) ok('all six consumers are registered into the dispatcher by their own modules'); else bad(`consumers registered in this process: ${consumers.join(', ')}`);
+if (consumers.length === KINDS.length) ok(`all ${KINDS.length} consumers are registered into the dispatcher by their own modules`); else bad(`consumers registered in this process: ${consumers.join(', ')}`);
 if (st.runtime.worker_running) ok(`the domain queue ${st.runtime.redis_queue} is served by this process`); else bad('this process runs no worker for the domain subscription queue');
 
 /* ── 2. the live act: a fresh correction applied through the route ───────── */
@@ -136,14 +140,14 @@ const applied = await call(`${O}/corrections/${caseId}/apply`, cm({ action: 'obs
 if (!applied.ok) { bad(`apply refused (${applied.status}) ${applied.body?.message ?? ''}`); process.exit(1); }
 ok(`correction case ${short(caseId)} applied by the collection manager: evidence ${short(evd)} superseded — nobody marks anything`);
 
-/* ── 3. MemoryCorrected delivered to the six ──────────────────────────────── */
+/* ── 3. MemoryCorrected delivered to every subscriber of the event ───────────── */
 console.log('\n3. MemoryCorrected — delivered to every subscriber within the publisher\'s tick');
 const mc = await newestEvent('MemoryCorrected', 'evidence.corrected', t0 - 5000);
 if (mc === null) bad('no MemoryCorrected delivery was recorded for the apply');
 else {
   const ds = await settled(mc);
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
-  if (ds.length === 6 && ds.every((d) => d.state === 'applied')) ok(`event ${short(mc)}: six deliveries applied ${secs}s after the apply`); else bad(`event ${short(mc)}: ${ds.map((d) => `${d.consumer_kind}:${d.state}`).join(', ')}`);
+  if (ds.length === BROAD.length && ds.every((d) => d.state === 'applied')) ok(`event ${short(mc)}: ${ds.length} deliveries applied ${secs}s after the apply`); else bad(`event ${short(mc)}: ${ds.map((d) => `${d.consumer_kind}:${d.state}`).join(', ')}`);
   showDeliveries(ds);
   const ev = (await deliveryOf(mc)).events ?? [];
   note(`ledger events: ${ev.map((e) => e.event).join(' → ')}`);
@@ -168,7 +172,7 @@ else {
     if (gc === null) bad('no GraphChanged delivery was recorded for the retraction');
     else {
       const ds = await settled(gc);
-      if (ds.length === 6 && ds.every((d) => d.state === 'applied')) ok(`event ${short(gc)}: six deliveries applied ${((Date.now() - t1) / 1000).toFixed(1)}s after the retraction`); else bad(`event ${short(gc)}: ${ds.map((d) => `${d.consumer_kind}:${d.state}`).join(', ')}`);
+      if (ds.length === BROAD.length && ds.every((d) => d.state === 'applied')) ok(`event ${short(gc)}: ${ds.length} deliveries applied ${((Date.now() - t1) / 1000).toFixed(1)}s after the retraction`); else bad(`event ${short(gc)}: ${ds.map((d) => `${d.consumer_kind}:${d.state}`).join(', ')}`);
       showDeliveries(ds);
     }
   }

@@ -231,6 +231,13 @@ export class BriefingService {
       for (const e of events) stateAsOf.set(String(e.warning_id), WARNING_STATE_OF[e.event] ?? 'closed');
     }
     const warningState = (w: Record<string, unknown>): string => stateAsOf.get(String(w['warning_id'])) ?? 'raised';
+    // 0066 §9: a suppression under policy as it stood at known_at — created by then, not lifted by then, not yet expired at known_at. The warning's own state is untouched.
+    reserve('the warning suppressions');
+    const suppressions = warnings.length === 0 ? [] : (await cap.readWarningSuppressions().selectAll().where('warning_id' as never, 'in', warnings.map((w) => String(w['warning_id'])) as never).where('created_at' as never, '<=', knownAt as never).execute()) as Array<Record<string, unknown>>;
+    const suppressedUntil = (warningId: string): string | null => {
+      const live = suppressions.filter((x) => String(x['warning_id']) === warningId && iso(x['until_at']) > knownAt && (x['lifted_at'] === null || x['lifted_at'] === undefined || iso(x['lifted_at']) > knownAt));
+      return live.length === 0 ? null : iso(live[0]!['until_at']);
+    };
     for (const w of warnings) {
       const raisedIn = inWindow(w['raised_at']);
       const ackIn = w['acknowledged_at'] !== null && w['acknowledged_at'] !== undefined && inWindow(w['acknowledged_at']);
@@ -239,7 +246,8 @@ export class BriefingService {
       if (raisedIn) push({ kind: 'warning', id: String(w['warning_id']), version: null, title: `raised: ${String(w['title'])}`, at: iso(w['raised_at']), truth_state: 'inferred', synthetic_state: wc?.synthetic_state !== false,
         source_state: 'internal', source: null, owner: String(w['routed_to']), details: { state: warningState(w), consequence: w['consequence'], response_window_closes_at: isoOrNull(w['response_window_closes_at']),
           // B2 (0061): the level the warning carried, and the class it was derived from; null for a warning raised before a derivation existed.
-          level: w['level'] ?? null, level_version: w['level_version'] ?? null, urgency: w['urgency'] ?? null, consequence_class: w['consequence_class'] ?? null, consequence_class_source: w['consequence_class_source'] ?? null } });
+          level: w['level'] ?? null, level_version: w['level_version'] ?? null, urgency: w['urgency'] ?? null, consequence_class: w['consequence_class'] ?? null, consequence_class_source: w['consequence_class_source'] ?? null,
+          suppressed: suppressedUntil(String(w['warning_id'])) !== null, suppressed_until: suppressedUntil(String(w['warning_id'])) } });
       if (ackIn) push({ kind: 'warning-acknowledged', id: String(w['warning_id']), version: null, title: `acknowledged: ${String(w['title'])}`, at: iso(w['acknowledged_at']), truth_state: 'asserted', synthetic_state: wc?.synthetic_state !== false,
         source_state: 'internal', source: null, owner: String(w['acknowledged_by']), details: { acknowledgement: w['acknowledgement'] } });
     }
@@ -281,7 +289,9 @@ export class BriefingService {
     for (const w of warnings) {
       if (warningState(w) === 'raised' && w['response_window_closes_at'] !== null) {
         const c = iso(w['response_window_closes_at']);
-        windows.push({ kind: 'warning-response', id: String(w['warning_id']), title: String(w['title']), closes_at: c, time_left_seconds: secondsLeft(c), overdue: c < knownAt, owner: String(w['routed_to']) });
+        const su = suppressedUntil(String(w['warning_id']));
+        // a suppressed warning keeps its window but is listed as suppressed (V8: visible, reversible, expiring) — the window is titled so, and closes with the suppression if that is sooner
+        windows.push({ kind: su === null ? 'warning-response' : 'warning-suppressed', id: String(w['warning_id']), title: su === null ? String(w['title']) : `suppressed until ${su}: ${String(w['title'])}`, closes_at: c, time_left_seconds: secondsLeft(c), overdue: c < knownAt, owner: String(w['routed_to']) });
         // a warning shown for its open window is a contributor whatever its age (residual review R3a): its controls enter the fold and it is a cited source
         if (!sources.has(`warning:${String(w['warning_id'])}`)) {
           sources.add(`warning:${String(w['warning_id'])}`);
@@ -298,6 +308,25 @@ export class BriefingService {
       const next = last?.details['next_review_at'];
       const c = iso(typeof next === 'string' ? next : room['next_review_at']);
       windows.push({ kind: 'review', id: String(room['room_id']), title: `next review of ${String(room['title'])}`, closes_at: c, time_left_seconds: secondsLeft(c), overdue: c < knownAt, owner: String(room['owner_principal_id']) });
+    }
+    // 0066 §9: the follow-ups on the agenda (open at known_at, created by then) and the delegations standing at known_at — each a window
+    reserve('the follow-ups and delegations');
+    let fu = cap.readFollowUps().selectAll().where('created_at' as never, '<=', knownAt as never).orderBy('due_at' as never);
+    if (pkg !== null) fu = fu.where('package_id' as never, '=', String(pkg['package_id']) as never);
+    for (const f of (await fu.execute()) as Array<Record<string, unknown>>) {
+      const doneBy = f['done_at'] === null || f['done_at'] === undefined ? null : iso(f['done_at']);
+      if (f['state'] === 'withdrawn' || (doneBy !== null && doneBy <= knownAt)) continue;
+      const c = iso(f['due_at']);
+      windows.push({ kind: 'follow-up', id: String(f['follow_up_id']), title: `follow-up: ${String(f['instruction'])}`, closes_at: c, time_left_seconds: secondsLeft(c), overdue: c < knownAt, owner: String(f['owner_principal_id']) });
+    }
+    if (room !== null) {
+      const dl = (await cap.readDelegations().selectAll().where('room_id' as never, '=', String(room['room_id']) as never).where('from_at' as never, '<=', knownAt as never).execute()) as Array<Record<string, unknown>>;
+      for (const d of dl) {
+        const revokedBy = d['revoked_at'] === null || d['revoked_at'] === undefined ? null : iso(d['revoked_at']);
+        if ((revokedBy !== null && revokedBy <= knownAt) || iso(d['until_at']) <= knownAt) continue;
+        const c = iso(d['until_at']);
+        windows.push({ kind: 'delegation', id: String(d['delegation_id']), title: `${String(d['action'])} delegated to principal:${String(d['to_principal_id'])}`, closes_at: c, time_left_seconds: secondsLeft(c), overdue: false, owner: String(d['from_principal_id']) });
+      }
     }
     let versionAsOf: number | null = null;
     if (pkg !== null) {

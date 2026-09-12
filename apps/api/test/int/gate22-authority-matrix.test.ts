@@ -104,6 +104,8 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   // 0065: the halted tail given back with its attempt refunded (the publisher's third port); covered where the ordering is proved.
   'objects.outbox_release_untried': 'phase6-repro-event-delivery.test.ts', // 0065
   'objects.outbox_release_untried_as_publisher': 'phase6-repro-event-delivery.test.ts', // 0065
+  // 0066 §4: the log's retained floor moved by an executing retention action (the governed act 0065 §6 declared); covered where the act is proved.
+  'objects.outbox_declare_floor': 'phase6-graph-subscriptions-4.test.ts', // 0066
 };
 
 /**

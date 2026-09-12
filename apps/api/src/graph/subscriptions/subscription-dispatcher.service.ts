@@ -60,6 +60,23 @@ export interface SubscriptionReconcileReport {
   inFlight: Array<{ tenantId: string; domainId: string; eventId: string; jobState: string }>;
   outboxFailures: Array<{ tenantId: string; domainId: string; eventId: string; eventType: string }>;
 }
+/** The ownership a delivery was admitted under: every effect transaction of the delivery is fenced on it (0066 §1). */
+export type ServingOwnership = { holder: string; generation: number };
+/** Thrown when the serving fence refuses a transaction: the job is returned to the queue for the holder of record. */
+export class ServingLostError extends Error {
+  constructor(message: string, override readonly cause?: unknown) { super(message); this.name = 'ServingLostError'; }
+}
+/** Whether an error is the fence's refusal (SQLSTATE P0S01 'serving lost'), however wrapped. */
+export function isServingLost(e: unknown): boolean {
+  let x: unknown = e;
+  for (let depth = 0; x !== null && x !== undefined && depth < 6; depth += 1) {
+    if (x instanceof ServingLostError) return true;
+    const o = x as { code?: unknown; message?: unknown; cause?: unknown };
+    if (o.code === 'P0S01' || (typeof o.message === 'string' && o.message.startsWith('serving lost'))) return true;
+    x = o.cause;
+  }
+  return false;
+}
 export type DispatcherFault = 'before_item' | 'after_first_item' | 'interrupt_after_receipt' | 'interrupt_after_first_item' | 'slow_before_item' | 'slow_before_finish';
 /** A slow fault's shape (test runtime): how long it sleeps, and before which item (1-based) it fires. */
 export type DispatcherFaultShape = { ms?: number; item?: number };
@@ -89,8 +106,8 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   private readonly recent: Array<{ at: string; eventId: string; subscriptionId: string; kind: string; outcome: string; reason: string | null }> = [];
   /** This process, as the serving ledger names it (host, pid and an instance nonce — two application contexts in one process are two holders). */
   private readonly holder = `${hostname()}/${process.pid}/${newId().slice(-8)}`;
-  /** The domains whose serving claim this process holds (their workers run here) and until when this process BELIEVES it holds them (the fence). */
-  private readonly serving = new Map<string, { tenantId: string; domainId: string; claimedUntil: number }>();
+  /** The domains whose serving claim this process holds (their workers run here), the claim's GENERATION, and until when this process BELIEVES it holds them (the local fence). */
+  private readonly serving = new Map<string, { tenantId: string; domainId: string; claimedUntil: number; generation: number }>();
   /** Test runtime only: this process claims no domain (as one that lost every election would) and still enqueues re-drives. */
   private standDown = false;
   /** Set at shutdown: a reconciliation still in flight starts no worker and keeps no claim after this. */
@@ -216,16 +233,16 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     const claimedAt = Date.now();
     const { domains, rows, failures } = await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability(${reason}, 60)`.execute(tx);
-      const found = (await sql<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null }>`select * from graph.subscription_domains_to_serve()`.execute(tx)).rows;
+      const found = (await sql<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null; generation: string | null }>`select * from graph.subscription_domains_to_serve()`.execute(tx)).rows;
       // THE SERVING CLAIM (0065 §3): claim or renew each domain; a live claim by another process is honoured — its worker
       // runs there, not here — unless that holder is a process of THIS host whose pid is gone (a crash without a release):
       // then the claim is taken over at once, the reason recorded. A process standing down claims nothing.
-      const domains: Array<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null; mine: boolean; taken_over: boolean }> = [];
+      const domains: Array<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null; generation: number; mine: boolean; taken_over: boolean }> = [];
       for (const d of found) {
-        if (standDown) { domains.push({ ...d, mine: false, taken_over: false }); continue; }
+        if (standDown) { domains.push({ ...d, generation: Number(d.generation ?? 0), mine: false, taken_over: false }); continue; }
         const dead = d.holder !== null && d.holder !== this.holder && this.holderIsDeadOnThisHost(d.holder) ? d.holder : null;
-        const c = (await sql<{ holder: string; claimed_until: Date; mine: boolean; taken_over: boolean }>`select * from graph.subscription_domain_claim(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, ${this.servingSeconds()}, ${dead})`.execute(tx)).rows[0]!;
-        domains.push({ ...d, holder: c.holder, claimed_until: c.claimed_until, mine: c.mine, taken_over: c.taken_over });
+        const c = (await sql<{ holder: string; claimed_until: Date; mine: boolean; taken_over: boolean; generation: string }>`select * from graph.subscription_domain_claim(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, ${this.servingSeconds()}, ${dead})`.execute(tx)).rows[0]!;
+        domains.push({ ...d, holder: c.holder, claimed_until: c.claimed_until, generation: Number(c.generation), mine: c.mine, taken_over: c.taken_over });
       }
       const rows = (await sql<{ tenant_id: string; domain_id: string; event_id: string; event_type: string; change_kind: string; outbox_created_at: Date; correlation_id: string; causation_id: string; subscription_id: string; delivery_state: string | null; partition_seq: string | null }>`
         select * from graph.subscription_deliveries_to_reconcile(${includeRefused}, interval '24 hours', ${recheck}::interval)`.execute(tx)).rows;
@@ -251,7 +268,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
         if (d.taken_over) this.log.warn(`serving of ${d.tenant_id}/${d.domain_id} taken over from ${d.holder === this.holder ? 'a lapsed or dead holder' : d.holder}`);
         this.scheduler.startSubscriptionWorker(d.tenant_id, d.domain_id);
         // The fence: this process serves the domain only while it believes its claim live (the claim's instant, less a margin for clocks).
-        this.serving.set(key, { tenantId: d.tenant_id, domainId: d.domain_id, claimedUntil: claimedAt + this.servingSeconds() * 1000 - Math.min(5_000, this.servingSeconds() * 200) });
+        this.serving.set(key, { tenantId: d.tenant_id, domainId: d.domain_id, generation: d.generation, claimedUntil: claimedAt + this.servingSeconds() * 1000 - Math.min(5_000, this.servingSeconds() * 200) });
       } else {
         // Another process serves the domain (or this one stands down): no worker here; re-drives are still enqueued below.
         if (this.serving.delete(key)) this.log.log(`serving of ${d.tenant_id}/${d.domain_id} passed to ${d.holder ?? 'nobody'}`);
@@ -299,25 +316,32 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
 
   // ───────────────────────── one delivery ─────────────────────────
 
-  private async loadEvent(eventId: string, tenantId: string, domainId: string): Promise<{ event_type: string; payload: Record<string, unknown>; created_at: Date } | null> {
+  /** The fence (0066 §1): the serving row taken FOR KEY SHARE under the ownership the job was admitted with; 'serving lost' otherwise. */
+  private fence(tx: Tx, tenantId: string, domainId: string, owned: ServingOwnership): Promise<unknown> {
+    return sql`select graph.subscription_serving_fence(${tenantId}::uuid, ${domainId}::uuid, ${owned.holder}, ${owned.generation})`.execute(tx);
+  }
+  private async loadEvent(eventId: string, tenantId: string, domainId: string, owned: ServingOwnership): Promise<{ event_type: string; payload: Record<string, unknown>; created_at: Date } | null> {
     // The published outbox row is the event; the job carried only its id (a re-drive carries no payload at all).
     const rows = await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability('subscription delivery: read the event', 60)`.execute(tx);
+      await this.fence(tx, tenantId, domainId, owned);
       return (await sql<{ event_type: string; payload: Record<string, unknown>; created_at: Date }>`select event_type, payload, created_at from graph.subscription_event_row(${eventId}::uuid, ${tenantId}::uuid, ${domainId}::uuid)`.execute(tx)).rows;
     });
     return rows[0] ?? null;
   }
-  private async receive(a: { eventId: string; tenantId: string; domainId: string; eventType: string; changeKind: string; createdAt: Date; only: string[] | null }): Promise<DeliveryRow[]> {
+  private async receive(a: { eventId: string; tenantId: string; domainId: string; eventType: string; changeKind: string; createdAt: Date; only: string[] | null }, owned: ServingOwnership): Promise<DeliveryRow[]> {
     return this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability('subscription delivery received', 60)`.execute(tx);
+      await this.fence(tx, a.tenantId, a.domainId, owned);
       const rows = await sql<{ r: DeliveryRow[] }>`select graph.subscription_delivery_receive(${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}, ${a.createdAt}, ${a.only}::uuid[], ${newId()}::uuid) as r`.execute(tx);
       return rows.rows[0]?.r ?? [];
     });
   }
   private async finish(a: { eventId: string; subscriptionId: string; kind: string; tenantId: string; domainId: string; outcome: 'applied' | 'failed' | 'refused' | 'unresolved'; reason: string | null;
-                            failureClass?: FailureClass; disposition?: Disposition }): Promise<string> {
+                            failureClass?: FailureClass; disposition?: Disposition; owned: ServingOwnership }): Promise<string> {
     const state = await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability('subscription delivery finished', 60)`.execute(tx);
+      await this.fence(tx, a.tenantId, a.domainId, a.owned);
       const rows = await sql<{ s: string }>`select graph.subscription_delivery_finish(${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.outcome}, ${a.reason}, ${a.failureClass ?? null}, ${a.disposition ?? null}) as s`.execute(tx);
       return rows.rows[0]?.s ?? 'failed';
     });
@@ -341,35 +365,55 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     if ((p.event_type !== 'GraphChanged' && p.event_type !== 'MemoryCorrected') || tenantId === null || domainId === null) {
       throw new UnrecoverableError(`job ${jobId} is not a scoped GraphChanged or MemoryCorrected event`);
     }
-    // THE FENCE (0065 §3): a job is served only while this process still believes its serving claim live. A claim it could
-    // not renew (the reconciliation failing, the process stalled) lapses here too: the worker stops and the job is left,
-    // unstarted, to the holder that took the domain over.
+    // THE LOCAL FENCE (0065 §3, settled without a self-wait since 0066 §1): a job is served only while this process still
+    // believes its serving claim live. A claim it could not renew (the reconciliation failing, the process stalled) lapses
+    // here too: the job is refused at once and returned to the queue for the holder of record, and the worker's close is
+    // DETACHED — awaited by nobody inside the job it would wait for (B8-F1).
     const claim = this.serving.get(`${tenantId}/${domainId}`);
     if (claim === undefined || claim.claimedUntil < Date.now()) {
-      this.serving.delete(`${tenantId}/${domainId}`);
-      await this.scheduler.stopSubscriptionWorker(tenantId, domainId).catch(() => undefined);
-      throw new Error(`job ${jobId}: this process no longer holds the serving claim of ${tenantId}/${domainId}; the job is left to the holder`);
+      this.lostServing(tenantId, domainId, `job ${jobId}: this process no longer believes it holds the serving claim`);
+      throw new ServingLostError(`job ${jobId}: this process no longer holds the serving claim of ${tenantId}/${domainId}; the job is left to the holder`);
     }
-    const row = await this.loadEvent(p.event_id, tenantId, domainId);
-    if (row === null) throw new UnrecoverableError(`job ${jobId}: outbox row ${p.event_id} is not a published event of this domain`);
-    const changeKind = String((row.payload['change'] as Record<string, unknown> | undefined)?.['kind'] ?? '');
-    const event = { event_id: p.event_id, event_type: row.event_type, payload: row.payload } as unknown as ChangeEvent;
-    const deliveries = await this.receive({ eventId: p.event_id, tenantId, domainId, eventType: row.event_type, changeKind, createdAt: row.created_at, only: p.only ?? null });
-    if (this.fault === 'interrupt_after_receipt') { this.fault = null; await INTERRUPTED(); }
-    let rethrow: unknown = null;
-    for (const d of deliveries) {
-      if (d.state === 'applied') continue; // a redelivery of an applied delivery: a durable no-op
-      try {
-        await this.deliverOne(event, d, tenantId, domainId, attemptsMade + 1);
-      } catch (e) {
-        rethrow = rethrow ?? e; // an infrastructure fault: every other subscription still gets its delivery, then the queue retries
+    // THE OWNERSHIP BOUNDARY (0066 §1): the holder and generation this job was admitted under travel with every effect
+    // transaction of the delivery; the database refuses any of them once another holder or generation serves the domain.
+    const owned: ServingOwnership = { holder: this.holder, generation: claim.generation };
+    try {
+      const row = await this.loadEvent(p.event_id, tenantId, domainId, owned);
+      if (row === null) throw new UnrecoverableError(`job ${jobId}: outbox row ${p.event_id} is not a published event of this domain`);
+      const changeKind = String((row.payload['change'] as Record<string, unknown> | undefined)?.['kind'] ?? '');
+      const event = { event_id: p.event_id, event_type: row.event_type, payload: row.payload } as unknown as ChangeEvent;
+      const deliveries = await this.receive({ eventId: p.event_id, tenantId, domainId, eventType: row.event_type, changeKind, createdAt: row.created_at, only: p.only ?? null }, owned);
+      if (this.fault === 'interrupt_after_receipt') { this.fault = null; await INTERRUPTED(); }
+      let rethrow: unknown = null;
+      for (const d of deliveries) {
+        if (d.state === 'applied') continue; // a redelivery of an applied delivery: a durable no-op
+        try {
+          await this.deliverOne(event, d, tenantId, domainId, attemptsMade + 1, owned);
+        } catch (e) {
+          if (isServingLost(e)) throw e; // nothing further of this job is this process's
+          rethrow = rethrow ?? e; // an infrastructure fault: every other subscription still gets its delivery, then the queue retries
+        }
       }
+      if (rethrow !== null) throw rethrow;
+    } catch (e) {
+      if (isServingLost(e)) {
+        // The domain passed to another holder (or the claim lapsed) while this delivery was in flight: the transaction that
+        // noticed was rolled back, the ledger's checkpoint stands, the job returns to the queue and the holder resumes it.
+        this.lostServing(tenantId, domainId, `job ${jobId}: ${(e as Error).message.slice(0, 200)}`);
+        throw e instanceof ServingLostError ? e : new ServingLostError(`job ${jobId}: ${(e as Error).message.slice(0, 300)}`, e);
+      }
+      throw e;
     }
-    if (rethrow !== null) throw rethrow;
+  }
+  /** This process stops serving the domain: its belief is dropped, the worker's close is detached (never awaited by a job). */
+  private lostServing(tenantId: string, domainId: string, why: string): void {
+    this.serving.delete(`${tenantId}/${domainId}`);
+    this.log.warn(`serving of ${tenantId}/${domainId} lost: ${why}`);
+    this.scheduler.stopSubscriptionWorkerDetached(tenantId, domainId);
   }
 
-  private async deliverOne(event: ChangeEvent, d: DeliveryRow, tenantId: string, domainId: string, attempt: number): Promise<void> {
-    const base = { eventId: event.event_id, subscriptionId: d.subscription_id, kind: d.consumer_kind, tenantId, domainId };
+  private async deliverOne(event: ChangeEvent, d: DeliveryRow, tenantId: string, domainId: string, attempt: number, owned: ServingOwnership): Promise<void> {
+    const base = { eventId: event.event_id, subscriptionId: d.subscription_id, kind: d.consumer_kind, tenantId, domainId, owned };
     const consumer = this.consumers.get(d.consumer_kind);
     if (consumer === undefined) { await this.finish({ ...base, outcome: 'refused', reason: `no ${d.consumer_kind} consumer is registered in this process`, failureClass: 'consumer_unavailable', disposition: 'retry' }); return; }
     const action = CONSUMER_ACTION[d.consumer_kind];
@@ -385,7 +429,8 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       throw e;
     }
     const scope = { tenantId, domainId };
-    const factory = (tx: Tx, act: string) => ({ cap: consumer.capability(tx, act), ledger: new SubscriptionLedger(tx, act) });
+    // Every effect transaction is fenced first (0066 §1): the serving row FOR KEY SHARE under this job's ownership, or 'serving lost'.
+    const factory = (tx: Tx, act: string) => ({ cap: consumer.capability(tx, act), ledger: new SubscriptionLedger(tx, act), fence: () => this.fence(tx, tenantId, domainId, owned) });
     // The governed target of an item's write is the object the item names (its uuid), or the delivery's event when the
     // item names none (retrieval's "projections"); the item key itself is carried on the ledger, never as a target.
     const targetOf = (item: string): string => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(item)?.[0] ?? event.event_id;
@@ -394,13 +439,15 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     let items: string[];
     try {
       items = (await this.pipeline.write(this.env(principal, tenantId, domainId, action, consumer.purpose, consumer.objectType, event.event_id, correlationId), principal, route(event.event_id), factory,
-        async ({ cap, ledger }): Promise<WriteEffect<string[]>> => {
+        async ({ cap, ledger, fence }): Promise<WriteEffect<string[]>> => {
+          await fence();
           const resolved = d.items.length > 0 ? d.items : await consumer.resolveItems(cap, scope, event);
           if (resolved.length > maxItems) throw new BudgetRefused(`budget: ${resolved.length} item(s) exceed max_items_per_event ${maxItems}`);
           const recorded = await ledger.setItems({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, items: resolved });
           return { result: recorded, targetType: consumer.objectType, targetId: null, targetVersion: null, outboxEvent: null };
         })).result;
     } catch (e) {
+      if (isServingLost(e)) throw e; // no finish: the delivery is the new holder's to resume
       if (e instanceof BudgetRefused) { await this.finish({ ...base, outcome: 'refused', reason: e.message, failureClass: 'budget', disposition: 'human_review' }); return; }
       if (e instanceof HttpException && e.getStatus() === 403) { await this.finish({ ...base, outcome: 'refused', reason: 'authority refused: the subscription grant does not cover this delivery', failureClass: 'authority_disputed', disposition: 'human_review' }); return; }
       await this.finish({ ...base, outcome: 'failed', reason: `fault resolving items: ${(e as Error).message.slice(0, 200)}`, failureClass: 'infrastructure', disposition: 'retry' });
@@ -422,7 +469,8 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       let outcome: { unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition };
       try {
         outcome = (await this.pipeline.write(this.env(principal, tenantId, domainId, action, consumer.purpose, consumer.objectType, targetOf(item), correlationId), principal, route(targetOf(item)), factory,
-          async ({ cap, ledger }): Promise<WriteEffect<{ unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition }>> => {
+          async ({ cap, ledger, fence }): Promise<WriteEffect<{ unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition }>> => {
+            await fence();
             const begun = await ledger.itemBegin({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item });
             if (!begun) return { result: { unresolved: null }, targetType: consumer.objectType, targetId: null, targetVersion: null, outboxEvent: null };
             const r = await consumer.applyItem(cap, scope, event, item, principal.principalId, correlationId, d.subscription_id, d.budgets as Record<string, unknown>);
@@ -435,9 +483,11 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
               return { result: { unresolved: `${item}: ${u.reason} (check ${checks})`, failureClass: u.failureClass, disposition: u.disposition }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null };
             }
             await ledger.itemDone({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item, effect: r.effect, effectRef: r.effectRef, details });
-            return { result: { unresolved: null }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null };
+            // The effect's own events (0066 §2) ride the item's transaction: published only if the item commits.
+            return { result: { unresolved: null }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null, ...(r.outboxEvents !== undefined && r.outboxEvents.length > 0 ? { outboxEvents: r.outboxEvents } : {}) };
           })).result;
       } catch (e) {
+        if (isServingLost(e)) throw e; // the item's transaction rolled back; the checkpoint stands for the new holder
         if (e instanceof HttpException && e.getStatus() === 403) { await this.finish({ ...base, outcome: 'refused', reason: 'authority refused mid-delivery: the subscription grant no longer covers it', failureClass: 'authority_disputed', disposition: 'human_review' }); return; }
         await this.finish({ ...base, outcome: 'failed', reason: `fault: ${(e as Error).message.slice(0, 200)}`, failureClass: 'infrastructure', disposition: 'retry' });
         throw e;

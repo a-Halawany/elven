@@ -48,6 +48,8 @@ export interface PredictionReads {
   readIndicators(): any;
   readIndicatorEvaluations(): any;
   readWarnings(): any;
+  /** 0066 §9: the suppressions under policy on warnings (the warning's state untouched). */
+  readWarningSuppressions(): any;
   readWarningEvents(): any;
   readStrategy(): any;
   /** CP-6 B6 (0063): the dependency rows a forecast or scenario rests on, so the subscriber selects by them. */
@@ -141,6 +143,13 @@ export interface ScenarioWrites extends PredictionReads {
     kindLabel: string | null; divergence: string | null; assumptions: Array<{ statement: string; basis?: string | null }>;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /** 0066 §9 (L10-I04): the owner's act answered a routed executive request — fulfilled in the same write. */
+  fulfilExecutiveRequest(a: { requestId: string; tenantId: string; domainId: string; routedRef: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /** 0066 §8 (L7-I05): the human review of a scenario — continue, dissent, retire (open branches close; simulation refuses the retired branch) or promote a branch to simulation. */
+  reviewScenario(a: {
+    scenarioId: string; tenantId: string; domainId: string; branchId: string | null; outcome: string; note: string;
+    dissent: Record<string, unknown> | null; nextReviewBy: string | null; actor: string; eventId: string; correlationId: string;
+  }): Promise<Record<string, unknown>>;
 }
 
 export interface IndicatorWrites extends PredictionReads {
@@ -211,6 +220,7 @@ class PredictionCapabilityImpl extends PredictionCore
   readIndicators(): any { return this.from('prediction.indicators_current'); }
   readIndicatorEvaluations(): any { return this.from('prediction.indicator_evaluations'); }
   readWarnings(): any { return this.from('prediction.warnings_current'); }
+  readWarningSuppressions(): any { return this.from('prediction.warning_suppressions'); }
   readWarningEvents(): any { return this.from('prediction.warning_events'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
   readDependencies(): any { return this.from('graph.dependencies'); }
@@ -334,6 +344,19 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.responseHours}, ${a.consequence}, ${a.consequenceClass}, ${a.decisionDeadline}::timestamptz,
       ${a.kindLabel}, ${a.divergence}, ${JSON.stringify(a.assumptions)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+
+  async fulfilExecutiveRequest(a: Parameters<ScenarioWrites['fulfilExecutiveRequest']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.fulfil_request(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.routedRef}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+
+  async reviewScenario(a: Parameters<ScenarioWrites['reviewScenario']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select prediction.review_scenario(
+      ${a.scenarioId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.branchId}::uuid, ${a.outcome}, ${a.note},
+      ${a.dissent === null ? null : JSON.stringify(a.dissent)}::jsonb, ${a.nextReviewBy}::timestamptz,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
 
   async defineIndicator(a: Parameters<IndicatorWrites['defineIndicator']>[0]): Promise<void> {

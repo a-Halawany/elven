@@ -1,0 +1,128 @@
+=== CP-6 batch B9 on the demonstration (NORDWERK, eye_demo) — 2026-09-12T22:30:24Z, head 96c0a76 ===
+
+0. the demonstration database migrated with 0066 (rehearsed first on a restored copy, eye_demo_b9, with its own Redis and API on :3411 — the act script corrected there; the copy is disposable)
+   backup before the migration (pg_dump -Fc, kept outside the repository):
+     47431940 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/8704aca5-efd0-4164-8e07-dbc1322f9c20/scratchpad/b9/demo/eye_demo-pre-0066-20260912T223024Z.dump
+   before:
+     [{"filename":"0065_ordered_publication_and_replay_reach.sql","digest":"39e1d6cb448e7a66","applied_at":"2026-09-12T16:54:09.170Z"}]
+     [{"binding_state":"bound","count":"19"},{"binding_state":"partial","count":"25"},{"binding_state":"unbound","count":"6"}]
+   the demonstration API stopped for the migration (pid 20917)
+   migrate (0066 through the migrator):
+     applying 0066_serving_ownership_and_reach.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+   after:
+     [{"filename":"0065_ordered_publication_and_replay_reach.sql","digest":"39e1d6cb448e7a66","applied_at":"2026-09-12T16:54:09.170Z"},{"filename":"0066_serving_ownership_and_reach.sql","digest":"f5cd8beff6284b3b","applied_at":"2026-09-12T22:30:29.542Z"}]
+     [{"binding_state":"bound","count":"26"},{"binding_state":"partial","count":"24"}]
+     [{"code":"knowledge_owner"},{"code":"ontology_steward"},{"code":"record_authority"},{"code":"relationship_subscriber"},{"code":"retention_authority"},{"code":"retention_steward"}]
+
+   the demonstration API restarted on the B9 build (dist built at this head):
+     dist already built at this head; no rebuild
+     {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"de
+     
+     (the restart runner's pipe did not close after the API came up; the act continued from here by hand, same steps)
+{"status":"ok","db":true,"audit":"ok","auditIncidents":0,"de
+
+   the re-driven correction 01a0968b, which failed on every restart since B8 (the pre-0061 warning could not be updated under wrn_level_derived; 0066 §11):
+     [Nest] 58806  - 09/13/2026, 1:30:31 AM     LOG [graph.propagation-consumer] correction 01a0968b event 01a0968b: automatic propagation complete
+     (before the migration, the same job had failed with wrn_level_derived this many times on the previous API process: 10)
+     [{"warning_id":"01a084f5-d010-7ee1-a50d-5329e7248b3f","state":"acknowledged","level":null,"attention_state":"input_unverified","attention_reason":"invalidation 01a097be-619a-7179-8b83-46bd251ed6bc: rests on scenario \"Bab el-Mandeb Strait"}]
+
+
+=== CP-6 batch B9 · the 0066 capabilities on the demonstration ===
+
+0. the personas
+  ✓ K. Müller — knowledge owner created (knowledge_owner)
+  ✓ R. Adler — record authority created (record_authority)
+  ✓ P. Novák — retention steward created (retention_steward)
+  ✓ H. Bergmann — retention authority created (retention_authority, tenant scope)
+  ✓ O. Steiner — ontology steward created (ontology_steward)
+  · the inventory record 01a084f5…@1; the corridor assumption 01a084f5… "The Cape of Good Hope corridor stays open"
+  ✓ relationships: registered subscription 01a097c8… (role relationship_subscriber; MemoryCorrected/claim.corrected only); worker running true
+  · consumers registered in this process: twins, forecasts, scenarios, decisions, retrieval, memory-mappings, relationships
+
+1. a memory item — recorded, retrieved under a purpose, superseded, replayed
+  ✓ K. Müller recorded memory item 01a097c8… v1 citing 2 object(s) (MEM@v1 canonical version, retention institutional-record-10y)
+  ✓ L. Brandt retrieved v1 under purpose decision — access 26834af6… recorded in the read's own transaction
+  ✓ the same item under purpose observation (not in the audience) refused: a memory item is read under the purpose it was admitted for (memory) or one it declares for its audience (memory, decision, graph); this read states observation
+  ✓ R. Adler superseded it: v2 (prior v1 replayable)
+  ✓ as of 2026-09-12T22:41:04.448Z the item reads v1 (statement: "…")
+  ✓ GraphChanged/memory_item.superseded published (01a097c8…); its deliveries:
+  · twins            applied    items [] → (nothing to do)
+  · forecasts        applied    items [] → (nothing to do)
+  · scenarios        applied    items [] → (nothing to do)
+  · retrieval        applied    items ["projections"] → projections.verified
+  · decisions        applied    items [] → (nothing to do)
+  · memory-mappings  applied    items [] → (nothing to do)
+  · non-empty work: retrieval; no work (nothing of theirs reached): twins, forecasts, scenarios, decisions, memory-mappings
+  · the access ledger of 01a097c8…: 2 read(s) under ["decision"]
+
+2. a challenge on the "stocks" relationship claim, decided with a correction — the relationships subscriber re-derives the inferred edge
+  · edge 01a084f5…: NORDWERK ANTRIEBSTECHNIK GmbH stocks SYN-PART-MAG (claim 01a084f5…@1, reassessment none); the challenge names SYN-PART-BRG
+  ✓ A. Hoffmann challenged the claim: review case 01a097c8… queued (challenged)
+  ✓ L. Ferreira corrected the claim → version 2 (corrected)
+  ✓ MemoryCorrected/claim.corrected published (01a097c8…); its deliveries:
+  · twins            applied    items [] → (nothing to do)
+  · forecasts        applied    items [] → (nothing to do)
+  · scenarios        applied    items [] → (nothing to do)
+  · retrieval        applied    items ["projections"] → projections.verified
+  · decisions        applied    items [] → (nothing to do)
+  · memory-mappings  applied    items ["edge:01a084f5-ade5-7e26-8dba-b8627cc7f4e2"] → reconciliation.proposed
+  · relationships    applied    items ["edge:01a084f5-ade5-7e26-8dba-b8627cc7f4e2"] → edge.re_derived
+  · non-empty work: retrieval, memory-mappings, relationships; no work (nothing of theirs reached): twins, forecasts, scenarios, decisions
+  ✓ the edge was RE-DERIVED: 01a084f5… superseded (reassessment reassessed/superseded) → successor 01a097c8… NORDWERK ANTRIEBSTECHNIK GmbH stocks SYN-PART-BRG under claim version 2, asserted by the subscription's principal 01a097c8…
+
+3. the NORDWERK records method evaluated (TransformationEvaluated)
+  ✓ method corridor-supply-relationships v1 evaluated: fitness fit; measures {"cost":{"runs":1,"calls":3,"budget_calls":40,"evidence_read":3,"claims_admitted":14},"safety":{"refused":0,"failed_runs":0,"failed_calls":0},"window":{"to":"2026-09-12T22:41:09.746688+00:00","from":"2026-09-09T06:58:08.104683+00:00"},"fitness":{"state":"fit","reason":"the recorded set replays; the review yield and the contradictions entered are within what the corridor work tolerates","evaluated_
+  ✓ TransformationEvaluated published (01a097c8…) — schema v1, fitness {"state":"fit","reason":"the recorded set replays; the review yield and the contradictions entered are within what the c
+
+4. the domain vocabulary versioned: proposed by J. Weber, decided by O. Steiner
+  ✓ J. Weber proposed version 1 (additive; from none); analysis: {"count":0,"sample":[]}; reviews {"domain":"open","migration":"not_required","governance":"open","compatibility":"passed"}
+  ✓ the proposer's own approval refused (403: no qualifying role binding for action in resolved scope)
+  ✓ O. Steiner approved: version 1 active
+  ✓ OntologyChangeProposed published (01a097c8…), review required ["compatibility","migration","domain","governance"]
+  ✓ a breaking proposal (version 2, breaking) analysed: 1 asserted stocks edge(s) would be stranded; reviews {"domain":"open","migration":"open","governance":"open","compatibility":"open"}
+  ✓ the steward's approval refused while the edges stand: proposal refused: a breaking change with 1 asserted edge(s) still on the predicates it removes or narrows; retract or re-derive them (the migration) before approval
+  ✓ rejected by the steward; the active version stands
+
+5. governed retention: a superseded PortWatch evidence version — its bytes tombstoned, removed and the deletion verified
+  · the target: evidence 01a084f5…@2 (eu-sanctions-payload, profile "24 months", 282 bytes at manifest 01a084f5…)
+  ✓ the administrator declared a schedule: profile "24 months", evidence of eu-sanctions-payload, a review action due after 730 days
+  ✓ P. Novák evaluated the schedules: 0 action(s) opened (nothing deletes on evaluation)
+  ✓ P. Novák opened deletion action 01a097c8… (opened)
+  ✓ RetentionActionDue published (01a097c8…)
+  ✓ scope resolved: state scope_resolved, 1 item(s) — 1 to execute, 0 held, 0 blocking; residuals [{"kind":"canonical_version","count":2,"status":"retained_by_policy"}]; digest a23815faff44…
+  ·   manifest: 1 execute
+  ✓ the opener's own approval refused (403)
+  ✓ H. Bergmann approved on the scope digest
+  ✓ executed: 1 tombstoned, 0 held, 0 refused; bytes removed 1, failed 0
+  ✓ verified: verified; residuals []
+  ✓ DeletionVerified published (01a097c8…)
+
+6. a scenario reviewed by N. Eriksen — dissent, promotion to simulation, retirement; the retired branch refused by simulation
+  · scenario 01a084f5… "Bab el-Mandeb Strait over the next 30 days" (cadence weekly; 2 branch(es))
+  ✓ dissent recorded (review 1); next review due 2026-09-19T22:41:14.146373+00:00
+  ✓ branch "Corridor collapse" promoted to simulation (review 2)
+  ✓ retired: 1 open branch(es) closed, state retired; links {"dependents":[{"id":"01a084f5-cd34-7107-90b8-6329986852f8","type":"SCN"}],"forecast_id":"01a084f5-ca54-7463-85d7-696ebd1e7692","simulation_runs":["01a084f6-447b-7298-88a7-351b9d6301a8","01a084f6-44b4
+  ✓ ScenarioReviewed published for each review (the retirement: 01a097c8…)
+  ✓ T. Nakamura's run bound to the retired branch refused: scenario 01a084f5-cd34-7107-90b8-6329986852f8 was retired by review (the scenario is superseded by the Suez-return scenario declared this week; its history stays); a retired branch is not simulated — declare a successor scenario
+
+7. S. Okafor's typed requests (ExecutiveActionRequested)
+  ✓ analysis request 01a097c8… → agent.run:briefing; the briefing agent ran under its own session: run 01a097c8… finished; request fulfilled
+  ✓ the same request repeated under the same key returned request 01a097c8… — no second run, no second event (exactly once)
+  ✓ the same key with a different request refused: request rejected: request key b9-2026-09-12T22:41-brief was already used by this requester for a different request (digest 8e229ebc592e recorded, d97dccf450f9 offered); a new request takes a new key
+  ✓ warning "Browser check · in time · mtxg3z8o — branch "Corridor collapse" flipped" suppressed until 2026-09-19T22:41:15.513Z: its state stays raised, the list marks suppressed=true (until 2026-09-19T22:41:15.513Z)
+  ✓ follow-up "confirm SYN-SHIP-4468 rebooked" owned by L. Brandt, due 2024-01-22T17:00:00.000Z: status overdue on the package's workflow
+  ✓ L. Brandt completed it (was overdue: true)
+  ✓ delegation to M. Dvořák live (until 2026-09-15T22:41:15.549Z); M. Dvořák's review of the room recorded (next review 2026-09-19T22:41:15.559Z)
+  ✓ scenario request 01a097c8… routed to prediction.scenario.declare (routed) — waits on N. Eriksen
+  ✓ N. Eriksen declared scenario 01a097c8… naming the request → request fulfilled (answer 01a097c8…)
+  · ExecutiveActionRequested rows published in this act: 5 (one per new request; none for the repeat)
+  · the register reads L10-I04 bound v1
+
+=== the act completed with every scene producing its effect ===
+
+=== 2026-09-12T22:41:15Z ===
+
+=== after the adversarial review (2026-09-12T23:37Z): eye_demo migrated with 0067 through the migrator (backup taken before: pg_dump -Fc, kept outside the repository); the demonstration API restarted on the corrected build and left running. The act's effects above stand; 0067 changes no row of them (the ports it re-declares are the same ports with the one correction each named in PHASE6_REPORT §22.7). ===
+     [{"filename":"0066_serving_ownership_and_reach.sql","digest":"f5cd8beff6284b3b","applied_at":"2026-09-12T22:30:29.542Z"},{"filename":"0067_b9_review_corrections.sql","digest":"295d9aaa34264bc7","applied_at":"2026-09-12T23:37:06.488Z"}]

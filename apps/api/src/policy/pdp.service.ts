@@ -113,6 +113,12 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
+      { role: 'knowledge_owner', atScope: 'DOMAIN' },
+      { role: 'record_authority', atScope: 'DOMAIN' },
+      { role: 'retention_steward', atScope: 'DOMAIN' },
+      { role: 'retention_authority', atScope: 'TENANT' },
+      { role: 'ontology_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -252,6 +258,18 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    // B9 (0066 §6): the producing version's evaluation (quality, safety, cost, latency, fitness) — the extraction manager's act.
+    actionPrefix: 'intelligence.method.evaluate',
+    exact: true,
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
     actionPrefix: 'intelligence.run',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },
@@ -299,6 +317,21 @@ const BUNDLE_V1: Rule[] = [
     ],
     requiresPurpose: true,
   },
+  {
+    // B9 (0066 §5): a CHALLENGE opens a review case on an admitted claim (V00-T-037) — the people who read claims and rest work on them.
+    actionPrefix: 'intelligence.review.request',
+    exact: true,
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'extraction_manager', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
   // ───────────────────────── Phase 3: the graph layer ─────────────────────────
   //
   // THE EIGHT RESOLVER AUTHORITY RULES DIVIDE THIS SURFACE.
@@ -334,6 +367,12 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
+      { role: 'knowledge_owner', atScope: 'DOMAIN' },
+      { role: 'record_authority', atScope: 'DOMAIN' },
+      { role: 'retention_steward', atScope: 'DOMAIN' },
+      { role: 'retention_authority', atScope: 'TENANT' },
+      { role: 'ontology_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -739,6 +778,12 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
+      { role: 'knowledge_owner', atScope: 'DOMAIN' },
+      { role: 'record_authority', atScope: 'DOMAIN' },
+      { role: 'retention_steward', atScope: 'DOMAIN' },
+      { role: 'retention_authority', atScope: 'TENANT' },
+      { role: 'ontology_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -895,6 +940,48 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.subscription.apply', exact: true, requiredAnyRole: [{ role: 'decision_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'graph.retrieval.subscription.apply', exact: true, requiredAnyRole: [{ role: 'retrieval_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'graph.mapping.subscription.apply', exact: true, requiredAnyRole: [{ role: 'mapping_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B9 (0066 §2): the relationships consumer re-derives a pending inferred relationship for a corrected claim — one exact action, its own role.
+  { actionPrefix: 'graph.relationship.subscription.apply', exact: true, requiredAnyRole: [{ role: 'relationship_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /*
+   * B9 (0066 §3): the Enterprise Memory workspace. Recording is the knowledge owner's (a strategy owner may record too —
+   * the strategic record is theirs to keep); superseding and withdrawing are the record authority's, human-gated (PR-20:
+   * humans govern the strategic record); retrieval is purpose-declared and audited (audit_access) for every reader who
+   * reads the graph, plus the executive and briefing roles that consult memory — the item's own audience and
+   * classification are enforced at read time in the service.
+   */
+  { actionPrefix: 'memory.item.record', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'memory.item.supersede', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B9 (0066 §9): a typed executive request is a person's command (human-gated) — the executive, the decision and strategy owners, the decision authority, the domain administrator; the responsible owners fulfil; the requester withdraws; a follow-up's owner completes.
+  { actionPrefix: 'executive.request', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.request.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.request.fulfil', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.follow_up.complete', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.request.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B9 (0066 §8): a scenario's review is a person's (human-gated); the strategy and forecast owners and the domain administrator.
+  { actionPrefix: 'prediction.scenario.review', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B9 (0066 §7): ontology change proposals (the people who shape the graph) and the steward's decision (human-gated; the port refuses the proposer).
+  { actionPrefix: 'graph.ontology.propose', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'graph.ontology.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /*
+   * B9 (0066 §4): governed retention. The steward opens, resolves, executes and verifies; the retention authority (a
+   * tenant role: the accountable lifecycle authority of DC-14/DZ-18) approves, on the resolved scope's digest; both the
+   * approval and the execution are human-gated (a destructive act is a person's, twice); the schedule is the domain
+   * administrator's; the ports refuse an opener approving or an approver executing.
+   */
+  { actionPrefix: 'retention.schedule.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.schedule.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.action.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.action.resolve', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.action.approve', exact: true, requiredAnyRole: [{ role: 'retention_authority', atScope: 'TENANT' }, { role: 'tenant_admin', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.action.execute', exact: true, requiredAnyRole: [{ role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.action.verify', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'auditor', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'retention_authority', atScope: 'TENANT' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'memory.item.retrieve', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
     // AUD are durable before any byte moves, and it is not folded into the
@@ -924,6 +1011,12 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
+      { role: 'knowledge_owner', atScope: 'DOMAIN' },
+      { role: 'record_authority', atScope: 'DOMAIN' },
+      { role: 'retention_steward', atScope: 'DOMAIN' },
+      { role: 'retention_authority', atScope: 'TENANT' },
+      { role: 'ontology_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,

@@ -230,6 +230,10 @@ export class SimulationService {
     if (intake.scenarioId !== null && intake.scenarioBranchId !== null) {
       const scn = (await cap.readScenarios().selectAll().where('scenario_id' as never, '=', intake.scenarioId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
       if (scn === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `scenario ${intake.scenarioId} is not an authorized scenario in this domain`), 404);
+      // 0066 §8 (V04-T-032): a scenario retired by review is not simulated — its branches closed with it; the port refuses too.
+      if (String(scn['state']) === 'retired') {
+        throw new HttpException(errorBody('EYE_REQ_001', correlationId, `scenario ${intake.scenarioId} was retired by review (${String(scn['retirement_reason'] ?? 'no reason recorded')}); a retired branch is not simulated — declare a successor scenario`), 422);
+      }
       const branch = (await cap.readBranches().selectAll().where('branch_id' as never, '=', intake.scenarioBranchId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
       if (branch === undefined || String(branch['scenario_id']) !== intake.scenarioId) {
         throw new HttpException(errorBody('EYE_REQ_001', correlationId, `branch ${intake.scenarioBranchId} is not a branch of scenario ${intake.scenarioId}`), 422);

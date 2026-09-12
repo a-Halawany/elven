@@ -28,6 +28,7 @@ import { GraphCapability, type GraphReads, type ResolverWrites, type EdgeWrites 
 import { ResolverService, RESOLVER_RULE_VERSION, mentionOf, normalizeName,
   type EntityCandidate, type Mention, type ResolverOutcome } from './entities/resolver.service.js';
 import { EdgesService } from './edges/edges.service.js';
+import { deriveEdgeFromClaim, entitiesByName } from './edges/derive.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { graphChangedEvent } from './subscriptions/change-events.js';
 
@@ -573,26 +574,11 @@ export class GraphOrchestrator {
     });
 
     /*
-     * A DISPLAY NAME IS NOT AN IDENTITY.
-     *
-     * This map previously collapsed every accepted resolution onto its normalised
-     * mention text, last write winning — so two separately accepted entities that
-     * normalise the same (an organisation and its subsidiary written the same way,
-     * a split that has not been renamed) silently shared a slot, and WHICH of them
-     * received a relationship depended on row order. Row order is not a governance
-     * decision.
-     *
-     * The map now records EVERY entity a name resolves to. One entity is a
-     * lookup; more than one is an ambiguity, and an ambiguity is refused with a
-     * named reason rather than settled by iteration order.
+     * A DISPLAY NAME IS NOT AN IDENTITY: every entity a name resolves to is recorded; more than one is an ambiguity the
+     * builder refuses with a named reason (never settled by row order). The rules live in edges/derive.ts, shared with
+     * the relationships consumer (0066 §2) so the automatic re-derivation and the operator's run refuse identically.
      */
-    const byName = new Map<string, Set<string>>();
-    for (const r of world.accepted) {
-      const key = normalizeName(String(r['mention_text']));
-      const set = byName.get(key) ?? new Set<string>();
-      set.add(String(r['entity_id']));
-      byName.set(key, set);
-    }
+    const byName = entitiesByName(world.accepted);
     /*
      * IDEMPOTENCY IS PER CLAIM VERSION, NOT PER CLAIM.
      *
@@ -623,81 +609,11 @@ export class GraphOrchestrator {
       if (alreadyBuilt.has(`${claimId}@${claimVersion}`)) continue;
       outcome.relClaimsRead += 1;
 
-      const payload = (claim['payload'] ?? {}) as Record<string, unknown>;
-      const lineage = (payload['lineage'] ?? {}) as Record<string, unknown>;
-
-      /*
-       * A CLAIM STILL AWAITING REVIEW IS NOT A FACT ABOUT THE WORLD.
-       *
-       * Phase 2 queues low-confidence output precisely so a person decides it.
-       * Building an edge from a queued claim promotes it into the graph — where
-       * traversals, paths and the Strategy Graph all treat it as settled — while
-       * the queue still shows it as undecided. The review state is checked here
-       * because this is the boundary the claim crosses.
-       */
-      const review = (payload['review'] ?? {}) as Record<string, unknown>;
-      const reviewState = String(review['state'] ?? 'not_required');
-      if (reviewState === 'queued' || reviewState === 'rejected') {
-        outcome.skipped.push({
-          claimObjectId: claimId,
-          reason: reviewState === 'queued'
-            ? 'this relationship is still queued for review; a claim a person has not '
-              + 'decided is not promoted into the graph'
-            : 'this relationship was rejected in review and is not admitted to the graph',
-        });
-        continue;
-      }
-
-      const subjectName = normalizeName(String(payload['subject'] ?? ''));
-      const objectName = normalizeName(String(payload['object_value'] ?? ''));
-      const subjectSet = byName.get(subjectName);
-      const objectSet = byName.get(objectName);
-      if (subjectSet === undefined || objectSet === undefined) {
-        outcome.skipped.push({
-          claimObjectId: claimId,
-          reason: subjectSet === undefined && objectSet === undefined
-            ? 'neither end of this relationship resolves to an entity yet'
-            : subjectSet === undefined
-              ? `the subject "${String(payload['subject'] ?? '')}" does not resolve to an entity yet`
-              : `the object "${String(payload['object_value'] ?? '')}" does not resolve to an entity yet`,
-        });
-        continue;
-      }
-      if (subjectSet.size > 1 || objectSet.size > 1) {
-        const which = subjectSet.size > 1
-          ? `"${String(payload['subject'] ?? '')}"` : `"${String(payload['object_value'] ?? '')}"`;
-        const n = subjectSet.size > 1 ? subjectSet.size : objectSet.size;
-        outcome.skipped.push({
-          claimObjectId: claimId,
-          reason: `${which} is ambiguous: more than one accepted entity (${n}) carries that `
-            + 'normalised name, and an endpoint is not chosen by row order — resolve or split '
-            + 'them before this relationship can be asserted',
-        });
-        continue;
-      }
-      const subject = [...subjectSet][0] as string;
-      const object = [...objectSet][0] as string;
-      if (subject === object) {
-        outcome.skipped.push({
-          claimObjectId: claimId,
-          reason: 'both ends resolve to the same entity; a self-edge is not a relationship',
-        });
-        continue;
-      }
-
-      const q = (payload['qualifiers'] ?? {}) as Record<string, unknown>;
-      const validFrom = isoOr(q['valid_from'])
-        ?? isoOr(claim['event_time']) ?? String(claim['recorded_at']);
-      const validTo = isoOr(q['valid_to']);
-      const evidenceObjectId = String(lineage['evidence_object_id'] ?? '');
-      const evidenceDigest = String(lineage['evidence_digest'] ?? '');
-      if (evidenceObjectId === '' || !/^[0-9a-f]{64}$/.test(evidenceDigest)) {
-        outcome.skipped.push({
-          claimObjectId: claimId,
-          reason: 'the claim carries no evidence lineage; an edge without provenance is not admissible',
-        });
-        continue;
-      }
+      // A claim still awaiting review is not a fact about the world; an end that does not resolve, or resolves to more
+      // than one entity, is not an endpoint; a self-edge is not a relationship; no lineage, no edge (derive.ts).
+      const derived = deriveEdgeFromClaim(claim, byName);
+      if (!derived.ok) { outcome.skipped.push({ claimObjectId: claimId, reason: derived.reason }); continue; }
+      const { subject, object, predicate, validFrom, validTo, evidenceObjectId, evidenceDigest, runId: lineageRunId, mode, confidence } = derived.edge;
 
       const edgeId = newId();
       const out = await this.pipeline.write<{ edgeId: string }, EdgeWrites>(
@@ -709,14 +625,14 @@ export class GraphOrchestrator {
         async (cap, ctx) => {
           await cap.assertEdge({
             edgeId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
-            subject, predicate: String(payload['predicate'] ?? 'related_to'), object,
+            subject, predicate, object,
             validFrom, validTo,
             claimObjectId: claimId, claimVersion,
             evidenceObjectId, evidenceDigest,
             methodId: null,
-            runId: typeof lineage['run_id'] === 'string' ? (lineage['run_id'] as string) : null,
-            mode: typeof lineage['mode'] === 'string' ? (lineage['mode'] as string) : 'replay',
-            confidence: Number(payload['confidence'] ?? 0),
+            runId: lineageRunId,
+            mode,
+            confidence,
             actor: a.principal.principalId, eventId: newId(), correlationId,
           });
           // GraphChanged (B6): the asserted edge with its world interval and both ends; walked only for a live subscription.
@@ -724,7 +640,7 @@ export class GraphOrchestrator {
           const changed = await graphChangedEvent(cap, this.impact, {
             tenantId: a.tenantId, domainId: a.domainId, kind: 'edge.asserted',
             identities: [{ entity_id: subject, role: 'subject' }, { entity_id: object, role: 'object' }],
-            edges: [{ edge_id: edgeId, state: 'asserted', predicate: String(payload['predicate'] ?? 'related_to'), subject_entity_id: subject, object_entity_id: object, valid_from: validFrom, valid_to: validTo, claim_object_id: claimId }],
+            edges: [{ edge_id: edgeId, state: 'asserted', predicate, subject_entity_id: subject, object_entity_id: object, valid_from: validFrom, valid_to: validTo, claim_object_id: claimId }],
             reach: live ? { kind: 'claim', id: claimId } : null, validFrom, validTo,
             cause: { action: 'graph.edge.assert', actor: a.principal.principalId, target_type: 'EDG', target_id: edgeId },
           });
@@ -733,8 +649,7 @@ export class GraphOrchestrator {
         });
       outcome.edgesAsserted += 1;
       outcome.edges.push({
-        edgeId: out.result.edgeId, subject, object,
-        predicate: String(payload['predicate'] ?? 'related_to'),
+        edgeId: out.result.edgeId, subject, object, predicate,
         policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq,
       });
       void this.edges;
@@ -744,8 +659,3 @@ export class GraphOrchestrator {
   }
 }
 
-function isoOr(v: unknown): string | null {
-  if (v === null || v === undefined) return null;
-  const d = new Date(v as string);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}

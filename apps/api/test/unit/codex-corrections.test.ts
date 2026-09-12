@@ -18,6 +18,7 @@ import { jcsCanonicalize, type CanonicalHeader } from '@eye/contracts';
 import { isForbiddenAddress } from '../../src/observation/connectors/http-client.js';
 import { ModelGatewayService, requestDigestOf, type GatewayRequest }
   from '../../src/intelligence/gateway/model-gateway.service.js';
+import { ContradictionService } from '../../src/intelligence/contradictions/contradiction.service.js';
 import { ExtractionService, inheritedControlsOf }
   from '../../src/intelligence/extraction/extraction.service.js';
 import type { MethodPin } from '../../src/intelligence/intelligence.capabilities.js';
@@ -86,6 +87,7 @@ function graphCap(w: WorldRows) {
     readTwins: () => relation([]),
     readRuns: () => relation([]),
     readBriefings: () => relation([]),
+    readMemoryItems: () => relation([]),
     // CP-6 B6 (0063): no subscription is live in these worlds, so the emitter walks nothing and the event
     // is written unwalked; the contract (subscriptionsMatching is total) is modelled, not the SQL.
     subscriptionsMatching: async () => [],
@@ -330,7 +332,8 @@ async function runExtraction(claims: Array<Record<string, unknown>>, pin: Method
   const { cap, admitted } = extractionCap([
     { request_digest: requestDigestOf(req), response: { claims } },
   ]);
-  const svc = new ExtractionService(new ModelGatewayService());
+  // 0066 §5: the contradiction detector reads the admitted assertions through the same capability (none in this double: no conflicts).
+  const svc = new ExtractionService(new ModelGatewayService(), new ContradictionService());
   const out = await svc.extractOne(cap,
     { scope: 'DOMAIN', tenantId: uuid(90), domainId: uuid(91) }, {
     pin, methodId: uuid(1), runId: uuid(2), agentPrincipalId: uuid(3),

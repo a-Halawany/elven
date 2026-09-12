@@ -69,3 +69,33 @@ describe('P5 · port refusals are translated, not swallowed', () => {
     expect(answer('22023', 'version rejected: branch actual already has an open draft')?.body).not.toBeInstanceOf(HttpException);
   });
 });
+
+describe('B9 (0066) — the refusals of the memory, retention, contradiction, evaluation, ontology, scenario-review and executive-request ports answer with the port\'s reason and a status, never as a 500', () => {
+  const mapped = (code: string, message: string) => {
+    const r = asObservationRefusal(pg(code, message), 'corr');
+    if (r === null) return null;
+    const body = r.getResponse() as { message?: string };
+    return { status: r.getStatus(), message: body.message };
+  };
+  it('standing → 403, absence → 404, the record\'s state → 409, the caller\'s request → 422 — the message the port wrote', () => {
+    expect(mapped('42501', 'request rejected (stale_authority): only a member of room 01a0 lends their standing in it')).toMatchObject({ status: 403 });
+    expect(mapped('42501', 'the proposer of an ontology change does not decide it')).toMatchObject({ status: 403 });
+    expect(mapped('42501', 'retention approval rejected: the opener of an action does not approve it')).toMatchObject({ status: 403 });
+    expect(mapped('23503', 'withdrawal rejected: no request 01a0 in this domain')).toMatchObject({ status: 404 });
+    expect(mapped('23503', 'no scenario 01a0 in this domain')).toMatchObject({ status: 404 });
+    expect(mapped('22023', 'request rejected: request key brief-1 was already used by this requester for a different request (digest ab recorded, cd offered); a new request takes a new key')).toMatchObject({ status: 409, message: expect.stringMatching(/request key brief-1/) });
+    expect(mapped('22023', 'request rejected (stale_version): subject DPK:01a0 stands at version 2, the request names version 9')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'proposal refused: a breaking change with 3 asserted edge(s) still on the predicates it removes is not approved until they are migrated')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'scenario 01a0 is retired; a retired scenario is not reviewed again (declare a successor)')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'run rejected: scenario 01a0 was retired by review; a retired branch is not simulated (declare a successor scenario)')).toMatchObject({ status: 409 });
+    expect(mapped('P0R01', 'tombstone refused: manifest 01a0 is under a legal hold (hold 01a1); the hold takes precedence over retention')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'retention approval rejected: the digest approved (ab) is not the resolved scope (cd)')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'a dissent states its position and rationale')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'request rejected: a delegation names the delegate')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'memory item rejected: a retention profile is declared at record time')).toMatchObject({ status: 422 });
+    expect(mapped('23514', 'warning rejected: a warning raised since 0061 carries its derived level (level, level_version, urgency, consequence_class, op_class)')).toMatchObject({ status: 422 });
+    // an unknown text under a known code still answers as a conflict (the fallback), and an unknown code stays internal
+    expect(mapped('23514', 'something the ports never say')).toMatchObject({ status: 409 });
+    expect(mapped('XX000', 'request rejected: a delegation names the delegate')).toBeNull();
+  });
+});

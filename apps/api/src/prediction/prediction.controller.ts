@@ -419,15 +419,50 @@ export class PredictionController {
   ) {
     const { envelope, principal } = ctx(req);
     const intake = validateScenario((body.payload ?? {}) as never, envelope.correlation_id);
+    // 0066 §9 (L10-I04): a declaration that answers a routed executive request names it and fulfils it in the same write.
+    const requestId = typeof body.payload?.['requestId'] === 'string' ? String(body.payload['requestId']) : null;
+    if (requestId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'requestId must be an executive request id'), 422);
     const scenarioId = newId();
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'prediction.scenario.declare', 'SCN', scenarioId),
       PredictionCapability.scenario,
       async (cap, scope) => {
         const r = await this.scenarios.declare(cap, scope, intake, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', scenarioId);
-        return { result: r, targetType: 'SCN', targetId: r.scenarioId, targetVersion: '1', outboxEvent: null };
+        const fulfilled = requestId === null ? null : await cap.fulfilExecutiveRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, routedRef: scenarioId, note: 'scenario declared', actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { ...r, fulfilled_request: fulfilled }, targetType: 'SCN', targetId: r.scenarioId, targetVersion: '1', outboxEvent: null };
       });
     return { scenario: out.result, receipt: receipt(out) };
+  }
+
+  /** 0066 §8 (L7-I05): a person's review of a scenario — human-gated; the port records the outcome on the scenario's log. */
+  @Post('/scenarios/:scenarioId/review')
+  async reviewScenario(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('scenarioId') scenarioId: string,
+    @Body() body: { payload?: { outcome?: string; branch_id?: string | null; note?: string; dissent?: Record<string, unknown> | null; next_review_by?: string | null } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const outcome = String(p.outcome ?? '');
+    if (!['continue', 'dissent', 'retire', 'promote_to_simulation'].includes(outcome)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.outcome is continue, dissent, retire or promote_to_simulation'), 422);
+    }
+    const note = String(p.note ?? '').trim();
+    if (note.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.note states the review (8+ characters)'), 422);
+    const branchId = p.branch_id === undefined || p.branch_id === null || p.branch_id === '' ? null : String(p.branch_id);
+    if (branchId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.branch_id must be a uuid'), 422);
+    const nextReviewBy = p.next_review_by === undefined || p.next_review_by === null ? null : String(p.next_review_by);
+    if (nextReviewBy !== null && Number.isNaN(Date.parse(nextReviewBy))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.next_review_by must be an instant'), 422);
+    const dissent = p.dissent === undefined || p.dissent === null ? null : (typeof p.dissent === 'object' ? p.dissent : null);
+    if (outcome === 'dissent' && dissent === null) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a dissent carries payload.dissent {position, rationale}'), 422);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.scenario.review', 'SCN', scenarioId),
+      PredictionCapability.scenario,
+      async (cap, scope) => {
+        const r = await this.scenarios.review(cap, scope, { scenarioId, branchId, outcome, note, dissent, nextReviewBy }, principal.principalId, envelope.correlation_id);
+        return { result: r.review, targetType: 'SCN', targetId: scenarioId, targetVersion: String(r.review['review_ordinal'] ?? '1'), outboxEvent: r.event };
+      });
+    return { review: out.result, receipt: receipt(out) };
   }
 
   @Post('/scenarios/list')

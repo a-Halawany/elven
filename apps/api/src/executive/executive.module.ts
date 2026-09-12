@@ -15,10 +15,11 @@ import { ExecutiveController } from './executive.controller.js';
 import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
 
+import { RequestsService } from './requests/requests.service.js';
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule],
   controllers: [ExecutiveController],
-  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService],
-  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService],
+  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService],
+  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService],
 })
 export class ExecutiveModule {}

@@ -1566,7 +1566,9 @@ artefact on a fresh database; it is not a profile leg (S7).
   next browser-evidence refresh.
 - **AU-DP-0041**: the automatic re-derivation of a pending edge (the builder's run without an operator); **AU-MEM-0031**:
   memory items and evaluation datasets (their tables first, AU-MEM-0065); **AU-DP-0071**: a governed retention act
-  moving the floor (ES-29-004) and the 28 interfaces bound partially or not at all; **AU-MEM-0041**: trust state
+  moving the floor (ES-29-004) and the **31** interfaces bound partially or not at all (25 partial and 6 unbound at
+  `661c2fb` — the earlier "28" here was an arithmetic slip, corrected 2026-09-12; §22 records B9's binding of the
+  six); **AU-MEM-0041**: trust state
   joined per instance and the per-profile captures (P7-D).
 - **Demonstration scope**: the act's six deliveries per event include those that found nothing of theirs; the record
   says which did work (`act-b8.txt`: retrieval only, for both events — the corrected evidence and the retracted edge
@@ -1605,3 +1607,262 @@ milliseconds, which every earlier runner met and this slower one did not (the sa
 the same commit). The C18 gate is frozen (closed at `a8d34c4`, its closure record at `3d9c80c`); the control's
 determinism is routed to C19 (§21.5) and nothing in C18 is edited here. A records-only commit binding these ids
 follows; its own refresh changes no status.
+
+## 22. The consolidated checkpoint after `3932207` (2026-09-13): the accepted stack integrated in order, Codex's two B8 findings corrected, B9 implemented
+
+Continued from `661c2fb` (code) / `3932207` (records). Codex closed B7-F1 and B7-F2 at `661c2fb` and found two
+bounded serving-lifecycle defects (B8-F1, B8-F2), incorporated into this batch with §21.6's implementation slice. The
+owner's directive of 2026-09-12 replaced the blanket merge hold with a conditional authorization: merge the reviewed
+stack in the recorded order, each merge followed by the delivery-profile C17 archive verified on `main`, #46 only
+after the two findings receive focused closure and the candidate passes a bounded independent review. Every earlier
+closed finding, the frozen criteria and the failed C18 attempt (its determinism issue in assigned maintenance) are
+preserved. The evidence classes stay apart: **Codex's focused checks**, **the author's demonstrations**
+(`evidence/cp6/`), **the hosted results** (GitHub Actions on a fresh database — the only chain that verifies a
+harness unit).
+
+### 22.1 The integration campaign — merges on `main`, in the recorded order, with the archive verified after each
+
+Merge commits (no squash, no rebase; branches and history preserved), each verified against its reviewed head by the
+stack verification of 2026-09-11 (`docs/ops/STACK_INTEGRATION_PLAN.md` §7: every candidate head equals the prepared
+head; no product path changed after the review; the hand-resolved content is `PROGRESS.md` only). The chain on
+`main` after each merge: `ci` (push; the delivery-profile C17 archive packaged, verified and uploaded), `C19
+lifecycle` (push), `C17 finalize` (workflow_run, cross-host), `C19 anchor` — the next merge waited for the whole
+chain to be green. A red push run was re-run as the ENTIRE workflow, never failed-jobs-only.
+
+| Step | PR | Candidate head | `main` | `ci` | C17 finalize | C19 anchor | Note |
+|---|---|---|---|---|---|---|---|
+| 1 | #39 | `a2cb0d8` | `d675707` | 34714055388 green | 34714543911 green | 34714595878 green | marked ready after the C15 recheck (dispatch 34713621090: no compatible fixed official image yet; the derived images remain the pinned route) |
+| 2 | #36 | `d458b36` | `5b0d667` | 34714766782 green | 34715204263 green | 34715254309 green | |
+| 3 | #38 | `1ed69ed` | `fed90fe` | 34715494412 attempt 1 red (the A5 timing side-channel assertion, `phase1-acceptance`, on a slow runner); attempt 2 green (whole workflow re-run) | 34716566659 green | 34716617298 green | |
+| 4 | #40 | `fb18c1f` | `ae54e2d` | 34716840197 green | 34717383911 green | 34717430352 green | |
+| 5 | #41 | `9f18468` | `48a01b4` | 34717734013 attempt 1 red (browser-regression: `e2e/phase0.spec.ts` "6. known-at query" — Playwright's fill of a `datetime-local` value refused as malformed when `tAfterV1 + 1 s` fell on a whole minute; a determinism defect of that Phase 0 browser control, not of the merged content — assigned to maintenance with the C18.1.11 control); attempt 2 green (whole workflow re-run) | 34719532376 green | 34719580814 green | the attempt-1 C17 finalize (34718302147) skipped as designed while `ci` was red |
+| 6 | #43 | `34969e8` | `4642856` | 34719853823 green | 34720424456 green | 34720462423 green | retargeted from `phase5-twins` to `main` after #41 |
+| 7 | #44 | `41eaa04` | `cbe1790` | 34720646497 green | 34721192292 green | 34721231086 green | retargeted from `integrations/source-readiness-2026-09` to `main` after #43 |
+| 8 | #45 | `da47bd3` | `e0c5025` | 34721784881 green | 34722387128 green | 34722425076 green | documentation only |
+| 9 | #46 | `c93cdad` → the corrected candidate (§22.7) | — | **not merged**: the B9 candidate goes to Codex's bounded review first; retargeted to `main` | | | |
+
+#42 is not in the authorized order and stays open. No production deployment was made; the archives are the
+repository's normal CI/evidence workflow. `docs/ops/STACK_INTEGRATION_PLAN.md` §8 records the executed stack.
+
+### 22.2 B8-F1 and B8-F2 — before → after
+
+The reproduction (`apps/api/test/int/phase6-repro-serving-lifecycle.test.ts`; five cases, a second application
+context as the second process; `evidence/cp6/repro-serving-lifecycle-before.txt` at the hook head `a081001`): the
+two controls pass and the three defect cases fail as the findings say — **F2**: a delivery crossing the serving
+expiry has its second item and its finish written by the process that lost the domain (the subscriber's own session
+grant is enough for the write; ownership was checked only at the handler's entry); the completion accounting lets a
+stale finish land after a take-over; **F1**: an expired handler awaits the worker's close, which waits for the handler
+— the job stays active for ever.
+
+After (0066 §1): the claim carries a **generation** (monotonic per domain across releases, kept in
+`graph.subscription_domain_generations`), every governed write of a delivery — the receipt, each item's effect and the
+finish — first calls `graph.subscription_serving_fence(tenant, domain, holder, generation)` inside its own
+transaction (`FOR KEY SHARE` on the claim row; `P0S01 serving lost` when the holder or the generation is not the
+claim's; the ledger's events carry `served_by` and `serving_generation` through a trigger), so an in-flight write
+after a take-over is refused at the database and the new holder re-drives, skips the applied item and finishes; a
+serving-lost handler never calls finish. The expired handler no longer waits for its worker: `lostServing()` drops
+the belief and stops the worker DETACHED (`stopSubscriptionWorkerDetached`, its close tracked and awaited only at
+shutdown), the job is returned promptly and the next reconciliation re-serves the domain. After: 5/5
+(`repro-serving-lifecycle-after.txt`); the take-over case asserts two distinct generations across the hand-over, the
+generation's monotonicity across releases is the counter's construction (`subscription_domain_generations`), not a
+harness assertion.
+
+### 22.3 What B9 implements (migration 0066) — `audit/CP6_BATCHES.md` §B9 for the mechanism
+
+- **§2 automatic re-derivation** (AU-DP-0176; AU-DP-0041's clause; V7:TT-04): the seventh consumer,
+  `relationships`, its own principal and action (`graph.relationship.subscription.apply`, from
+  `graph.subscription_consumer_actions`), re-derives a pending inferred edge on `MemoryCorrected/claim.corrected`
+  through the builder's rules — one function, `apps/api/src/graph/edges/derive.ts`, shared with the operator's run —
+  and the builder's port; the successor asserted under the corrected version, the pending edge superseded, its
+  reassessment closed with the event, `GraphChanged/edge.asserted` from the item's transaction; an end that resolves
+  to no entity leaves the item unresolved with the builder's reason.
+- **§3 memory items** (AU-MEM-0065; OBJ-14/15/16; AU-MEM-0031's clause): schema `memory`, the canonical `MEM@v1`
+  version, the knowledge owner's record, the purpose-authorized retrieval as an evidenced consequential read with the
+  access in the read's own transaction, the record authority's human-gated supersession with the prior version
+  replayable as of an instant, the item's citations as dependencies so a correction walk reaches and marks it.
+- **§4 governed retention** (ES-29-004; AU-MEM-0059/0060/0061, AU-DP-0090/0091/0094, AU-MEM-0121): schedules,
+  actions as durable workflows — scope resolution with holds honoured (a held manifest is never executable; the
+  tombstone port refuses it with the hold cited) and residuals recorded, the authority's approval on the scope
+  digest (never the opener), the steward's execution through the ports (never an approver) with evidence per item,
+  the residual inventory, verification (`DeletionVerified`), withdrawal; the outbox floor moved only by an executing
+  `log_floor` action (`objects.outbox_declare_floor`), paused while a served point lies below it; `RetentionActionDue`
+  from an opened action and from the evaluation.
+- **§5 contradictions** (L2-I03; AU-INT-0025's clause): incompatible assertions on one subject and predicate linked at
+  admission (before the claim is admitted: queued with reason `contradiction`, `contradiction_refs` on its header)
+  and on a review correction, never collapsed; the challenge route; the adjudication as the row's only mutation.
+- **§6 method evaluation** (L2-I05; AU-INT-0112's clause): `TransformationEvaluated` per producing version from the
+  ledgers (calls, latency, runs, review yield, contradictions, confidence) with the manager's fitness verdict; an
+  unfit version admits no claims and is not activated.
+- **§7 ontology** (L4-I05; AU-MEM-0026's clause; V03-T-105): versioned vocabulary, the proposal's analysis over the
+  asserted edges, strategy and entities, the four reviews, the steward's decision (never the proposer's), a breaking
+  change refused while its edges stand, the active version honoured by `graph.assert_edge`.
+- **§8 scenario review** (L7-I05; AU-PRD-0064; V03-T-336/340, V04-T-032): continue, dissent, retire (open branches
+  closed, history and links kept, simulation refusing the retired branch at the service and at `simulation.open_run`),
+  promote to simulation; human-gated; `ScenarioReviewed` each time.
+- **§9 executive requests** (L10-I04; AU-EXO-0051): the seven typed kinds under one human-gated route, exactly once
+  under the requester's `request_key` and the request digest; analysis routed to an agent run (trigger kind
+  `request`), scenario/simulation/decision to the owner's act which names and fulfils the request, delegation at
+  membership level (the delegate stands as a member of the room within the window; the policy still decides the act
+  — the limit stated), suppression (the warning stays raised, listed and briefed as suppressed until the instant),
+  follow-up on the package's agenda (overdue after its date, completed by its owner); stale version, committed
+  package, agent and workload principals refused; `ExecutiveActionRequested`.
+- **§10 the register**: the six unbound interfaces and L3-I05 bound — **26 bound, 24 partial, 0 unbound**
+  (`bound_at`, `bound_in`).
+- **§11 a warning raised before 0061 stays updatable** (found on the demonstration during the act's rehearsal): 0061's
+  `wrn_level_derived` was a NOT VALID check, which PostgreSQL enforces on every updated row, so the record's one
+  pre-0061 warning could never be updated — the 0065 §8 walk marking it for attention failed and the propagation of
+  correction `01a0968b` had failed on every restart of the demonstration since B8 (ten times in its log). The rule is
+  kept where it belongs: a raise (an insert) without its derived level is refused by a trigger; an update of a legacy
+  row is admitted. On the restart after 0066 the re-driven job completed and the legacy warning is marked.
+- **The HTTP surface of the new ports**: their refusals (retention, memory, contradiction, evaluation, ontology,
+  scenario review, executive requests; the tombstone port's legal-hold refusal `P0R01`) were reaching callers as
+  `500 internal integrity or processing failure` — the harness calls the controllers directly and never saw it; the
+  rehearsal did. `asObservationRefusal` now answers them with the port's reason and the kind of refusal (422 the
+  caller's request, 404 absence, 403 standing, 409 the record's state); the executive agent-run refusals and the
+  retired-scenario run refusal have their own named rules (they had matched the twin run's generic rule and answered
+  with the twin's message). Unit cases in `phase5-refusals.test.ts`.
+
+### 22.4 Local results at the B9 head
+
+`phase6-graph-subscriptions-4` 23/23 (`b9-run31.txt`, on `eye_verify44`) and 24/24 with §11's case after the
+demonstration's finding;
+`phase6-executive-requests` 7/7 (`b9-run29.txt`); `phase6-repro-serving-lifecycle` 5/5 after (before: 2/5 as the
+findings say); `phase6-graph-subscriptions` 13/13 with its harness kept to the six kinds it was written for; the full
+integration suite on a fresh database **925/925 in 56 files** (`b9-int-all-2.txt`, `eye_verify45`, 456 s) at the
+head before §11 and the refusal mapping, and **926/926 in 56 files** at the final file (`b9-int-all-3.txt`,
+`eye_verify48`, 418 s); the upgrade proof with 0066
+(`upgrade-0066.txt`: 45 migrations, 31 roles, 28 registry rows; 275/275 on the upgraded data); unit **2148/2148** and
+the hermetic meta suite 9/9 (`b9-unit.txt`); boundaries clean; the web typecheck clean. After the review's corrections
+(§22.7): `phase6-graph-subscriptions-4` 25/25 and `phase6-executive-requests` 9/9 on `eye_verify49` migrated 0001–0067;
+the full integration suite **929/929 in 56 files** on `eye_verify50` (fresh, 0001–0067; `b9-int-all-4.txt`); the upgrade
+proof with 0067 (`upgrade-0067.txt`, 46 migrations); unit 2148/2148 again.
+The first full run had fourteen failures, every one a pin or a harness assumption, not a runtime defect: the C7
+control found two new graph tables (the consumer-actions vocabulary, the generations counter) outside FORCE
+row-level security — put under it; D8's count of prediction tables (sixteen with the warning suppressions); the B6
+harness registering all `CONSUMER_KINDS` (seven since 0066) and asserting six; the contradiction cases counting every
+row of the domain while the re-derivation cases had recorded their own link (a corrected relationship claim's value
+contradicting the other seeded claim's — detection working as specified). A local pass verifies nothing (S7).
+
+### 22.5 The NORDWERK demonstration — `evidence/cp6/act-b9.txt` (2026-09-12T22:30–22:41Z)
+
+The act ran at the last WIP head before the squash (`96c0a76`, which survives only in the reflog — the file's header
+names it) with the act script as committed in `c93cdad` (the one uncommitted difference at run time was the script's
+own check of the memory event's type, corrected before the run and committed with the batch; the API code was the
+batch's). The act's output, not the header, is the evidence.
+
+Rehearsed first on a restored copy of `eye_demo` with its own Redis and API (an isolated environment; the act script
+was corrected there — three iterations — and the copy discarded); a `pg_dump -Fc` backup of `eye_demo` taken before
+the migration and kept outside the repository; `eye_demo` migrated with the final 0066 through the migrator; the
+demonstration API restarted on the B9 build and left running. What the act produced, each a real row, event or
+delivery on the demonstration:
+
+- **Personas** created through the identity route: K. Müller (knowledge owner), R. Adler (record authority),
+  P. Novák (retention steward), H. Bergmann (retention authority, tenant scope), O. Steiner (ontology steward);
+  the `relationships` subscriber registered (MemoryCorrected/claim.corrected only); seven consumers in the process.
+- **0066 §11's effect first**: on the restart the re-driven correction `01a0968b` — "automatic propagation failed:
+  … `wrn_level_derived`" ten times in the previous process's log — completed, and the pre-0061 warning reads
+  `attention_state input_unverified` with the invalidation named.
+- **Memory item** `01a097c8…`: recorded by K. Müller citing the corridor assumption and the inventory record;
+  retrieved by L. Brandt under `decision` (access recorded), refused under `observation`; superseded by R. Adler
+  (v2), v1 served as of the earlier instant; `GraphChanged/memory_item.superseded` delivered — the retrieval consumer
+  verified its projections, the five others correctly idle (nothing of theirs rests on the item).
+- **Re-derivation**: A. Hoffmann's challenge of the `stocks` claim queued a review case (reason `challenged`);
+  L. Ferreira's correction (SYN-PART-MAG → SYN-PART-BRG) published `MemoryCorrected/claim.corrected`; the
+  relationships subscriber re-derived the edge — `01a084f5…` superseded (reassessment `reassessed/superseded`),
+  successor `01a097c8…` asserted under claim version 2 by the subscription's own principal; the memory-mappings
+  subscriber proposed the reconciliation of the same edge; retrieval verified; four consumers idle. Three of seven
+  did non-empty work — the first demonstration event on which a consumer beyond retrieval did.
+- **Method evaluation**: `corridor-supply-relationships` v1 evaluated `fit` with the measures from the ledgers (1
+  run, 3 calls, 14 claims admitted, 0 refusals); `TransformationEvaluated` v1 published.
+- **Ontology**: version 1 proposed by J. Weber (the predicates the graph asserts; additive), his own approval refused,
+  approved and activated by O. Steiner; a breaking version 2 removing `stocks` analysed (one asserted edge stranded),
+  the steward's approval refused with the reason, rejected — version 1 stands.
+- **Retention**: a schedule declared on the `24 months` profile; the evaluation opened nothing; a deletion opened by
+  P. Novák on the oldest superseded evidence version without a hold (an `eu-sanctions-payload` page, 282 bytes — the
+  act's heading said PortWatch; the target line names the source), scope resolved (1 to execute, residuals: the two
+  canonical versions retained by policy), the opener's approval refused, H. Bergmann's approval on the digest, executed
+  (1 tombstoned, the bytes removed), verified — `RetentionActionDue` and `DeletionVerified` published.
+- **Scenario review**: the corridor scenario dissented (position and rationale), its collapse branch promoted to
+  simulation, then retired (one open branch closed, the links named: the forecast, the dependent scenario, the
+  simulation runs); T. Nakamura's run bound to the retired branch refused with the reason; the act reads back the
+  retirement's `ScenarioReviewed` row (the harness asserts one per review).
+- **Executive requests** by S. Okafor: `analysis` ran the briefing agent under its own session (the run finished and
+  fulfilled the request; the trigger kind `request` is the harness's assertion, the act prints the run and its outcome); the same request repeated under the same key returned the
+  same request with no second run and no second event; a different request under the key refused with the reason;
+  `suppression` of the corridor warning until 2026-09-19 (its state stays `raised`; the list marks it suppressed);
+  `follow_up` "confirm SYN-SHIP-4468 rebooked" owned by L. Brandt, overdue on the package's workflow, completed by him;
+  `delegation` of `decision.review` to M. Dvořák live for three days and his review of the room recorded under it;
+  `scenario` routed to N. Eriksen, whose declaration named the request and fulfilled it. Five
+  `ExecutiveActionRequested` rows for five new requests, none for the repeat; the register reads L10-I04 bound v1.
+
+The act's runner paused once (the restart step's pipe did not close after the API came up) and was continued by hand
+from the same step; the file says so at that line.
+
+### 22.6 Recorded, assigned forward
+
+- **AU-DP-0175**: the ownership work remaining after the fence — the ledger records `served_by` per effect, but a
+  consumer's own writes outside the dispatcher's three governed writes (none today) would need the same fence; the
+  worker's detached close is awaited at shutdown only; recorded in the unit's prose without discarding B8's evidence.
+- **Browser**: the memory, retention, ontology, contradiction, scenario-review and request surfaces have routes and
+  no pages; the subscriptions page lists the seventh kind — the next browser-evidence refresh.
+- **Maintenance (determinism)**: the C18.1.11 five-millisecond drift control (§21.5) and now the Phase 0 browser
+  control "6. known-at query" (a `datetime-local` value on a whole minute) — both properties of the controls, not of
+  the content; both re-ran green as whole workflows.
+- **UN Comtrade and PortWatch**: the owner's authorization of 2026-09-12 (existing keys, live PortWatch, within source
+  permissions and the existing budgets and cadences; no purchase, no cadence or budget change) is recorded in
+  `SOURCE_INTEGRATION_STATUS.md` §10; no activation act was performed in this batch.
+- **G2 (observation)**: a claim approved in review is never graphed by the builder (its run reads queued claims only)
+  — a latent builder gap, recorded for the next intelligence batch.
+
+### 22.7 The adversarial review of the candidate and its corrections (migration 0067)
+
+Before the candidate went to Codex, a six-dimension adversarial review (ownership and the fence; retention safety;
+executive requests; the intelligence and graph ports; scenario review and memory items; the records) with two
+independent refuters per finding was run on `c93cdad` (58 agents; `evidence/cp6/b9-adversarial-review.txt`).
+Twenty-four findings were confirmed by both refuters; the fence dimension found no defect (five observations). The
+confirmed defects and their corrections, each a re-declared port in **`0067_b9_review_corrections.sql`** or a
+TypeScript change, with a harness case where the case is bounded:
+
+- **Retention** — an execution with a refused item (a hold placed after the approval) committed the other items'
+  tombstones and removed their bytes under an action no route could move again: now the execution rolls back whole
+  and the action is PAUSED with its approvals revoked, resolved again (`retention.pause_action`; the case); a removal
+  the vault refuses after the commit was recorded nowhere: now a pending bytes residual on the action
+  (`retention.record_bytes_residual`), retried by the execute route, closed by verification; an approved `review`,
+  `archive` or `customer_export` action executed exactly as a deletion: now `review` records and removes nothing,
+  `archive`/`customer_export` are refused at execution (the case); the outbox floor's served-point check ran only at
+  resolution: now re-checked at the move; a floor moved further by a later action could never verify: `>=`; the
+  executor is the acting principal.
+- **Executive requests** — a request whose agent run was refused stayed `routed` for ever: now recorded `refused`
+  with the port's reason (`executive.refuse_request`; the case); a strategy owner or decision authority could trigger
+  an agent run through an analysis request without `agent.trigger`: now that act is decided first, before any request
+  is recorded (the case); `fulfil_request` accepted any uuid for any kind: now the answering act must be of the
+  request's kind and of the domain (the case); a delegation outlived its lender's membership: now it stands only
+  while the lender owns or is a member of the room (the case); `subject.agent_id` validated.
+- **Memory items** — `/memory/list` and `/:id/get` returned an item's statement under `graph.read`, outside the
+  purpose, audience, clearance and the access ledger: now they return the record without the content; the as-of
+  retrieval enforced the current version's audience on a historical version: now the served version's; an
+  unparseable `asOf` was a 500: now 422.
+- **Scenario review** — the retirement's loop overwrote the branch the review named, so the returned and published
+  branch was the last closed one: a separate loop variable.
+- **The ports** — the relationships consumer re-opened a reassessment a person had decided and appended a duplicate
+  cause on every re-drive: the consumer leaves a decided reassessment alone and `open_edge_reassessment` is
+  idempotent per cause; the builder's port refusing the derivation (ontology, review state) was classed an
+  infrastructure fault and retried: now unresolved for a person; contradiction detection scanned the 2,000 newest
+  claim versions and missed the rest, and counted a claim a person had REJECTED (the decision lives on the review
+  case): now selected in the database by subject and predicate with no window, rejected claims excluded;
+  `decide_ontology_proposal` checked the proposer against the caller's actor: now the acting principal.
+- **Records** — §22.1's table completed; AU-DP-0176's statement and condition say what the cases exercise (the
+  builder's refusal, the decided reassessment and the second cause are code-reviewed, harness owed); AU-EXO-0051 says
+  which kinds fulfil in the owner's write and which through the fulfilment route; AU-MEM-0059 moved back to `open`
+  (archive and customer-export do not execute; a legal hold is a precedence, not a kind); AU-DP-0091's condition
+  updated; AU-MEM-0121's condition matched to its cases; §22.2's monotonicity and §22.4's unit count corrected;
+  CP6_BATCHES §B9 counts eleven sections; the evidence index carries the B9 files.
+
+Recorded, not corrected (observations): the `both_stand`/`superseded` adjudication stamps the link and changes no
+assertion (by design — the withdrawal is the reviewer's own act); the stale holder's identity-session and audit rows
+after a take-over (unfenced by design: they are its own record); the fence asserts scope only in commit mode; a
+serving TTL below the tick; a bounced older job retried after a hand-over; the four ontology reviews self-attested by
+the decider; `assert_edge` honouring predicate names only (not the declared subject/object types); a challenge on a
+superseded claim version; a follow-up's owner not checked as an active principal; the briefing's as-of view of
+withdrawn follow-ups. The split after the corrections reads **3,555 = 3,190 open + 345 local + 20 CI** (AU-MEM-0059
+back to open).

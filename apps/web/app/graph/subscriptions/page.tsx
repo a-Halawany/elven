@@ -20,7 +20,7 @@ import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, UnknownNote, GovernedBut
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
 type Status = NonNullable<Awaited<ReturnType<typeof graph.subscriptionStatus>>['data']>['subscriptions'];
-const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings'] as const;
+const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships'] as const;
 const short = (v: unknown) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}…` : String(v ?? '—'));
 const str = (v: unknown) => (v === null || v === undefined ? '—' : String(v));
 

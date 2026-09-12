@@ -206,13 +206,17 @@ afterAll(async () => {
   await h?.close();
 }, 120_000);
 
+// B6's six consumer kinds. B9 (0066 §2) added a seventh, `relationships`, which selects by MemoryCorrected/claim.corrected and is
+// exercised by its own harness (phase6-graph-subscriptions-4); this file keeps the six it was written for.
+const B6_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+
 describe('B6 · six subscriptions, each a registered, revocable grant holding exactly its own action', () => {
   it('registration is the tenant administrator\'s: a principal of the kind\'s role on the identity authority, the subscription on the commit authority, the domain served; one live subscription per kind (AU-MEM-0112)', async () => {
     expect((await failure(register(owner, { consumerKind: 'twins', ownerPrincipalId: ownerId }))).status).toBe(403);
     expect((await failure(register(domainAdmin, { consumerKind: 'twins', ownerPrincipalId: ownerId }))).status).toBe(403);
     expect((await failure(register(tenantAdmin, { consumerKind: 'weather', ownerPrincipalId: ownerId }))).status).toBe(400);
     expect((await failure(register(tenantAdmin, { consumerKind: 'twins' }))).status).toBe(400);
-    for (const kind of CONSUMER_KINDS) {
+    for (const kind of B6_KINDS) {
       const r = await register(tenantAdmin, { consumerKind: kind, ownerPrincipalId: ownerId });
       subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
       expect(r.subscription.role).toBe(CONSUMER_ROLE[kind]);
@@ -262,7 +266,7 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     expect(p.objects).toMatchObject({ walked: true, truncated: false, assumptions: [A1], decisions: [D1], forecasts: [F1], scenarios: [S1] });
     expect(p.temporal).toMatchObject({ valid_from: '2024-01-01T00:00:00.000Z', valid_to: null });
     expect(typeof p.temporal['known_at']).toBe('string');
-    expect(new Set(p.subscriptions.map((s) => s.consumer_kind))).toEqual(new Set(CONSUMER_KINDS));
+    expect(new Set(p.subscriptions.map((s) => s.consumer_kind))).toEqual(new Set(B6_KINDS));
     expect(p.cause).toMatchObject({ action: 'graph.edge.retract', actor: ownerId, target_type: 'EDG', target_id: X1 });
     // Six deliveries, each applied by its own subscriber principal.
     const ds = await waitFor('the six deliveries applied', () => deliveriesFor(gcEvent), (rows) => allApplied(rows, 6), 120_000);
@@ -309,7 +313,7 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     const aud = (await sql<{ actor: string; action: string }>`select distinct actor, action from audit.audit_events where action like '%.subscription.apply' and tenant_id = ${T()}::uuid and occurred_at::timestamptz >= ${since}`.execute(h.su)).rows;
     expect(new Set(aud.map((a) => a.action))).toEqual(new Set(['twin.subscription.apply', 'prediction.forecast.subscription.apply', 'prediction.scenario.subscription.apply', 'decision.subscription.apply', 'graph.retrieval.subscription.apply', 'graph.mapping.subscription.apply']));
     expect(aud.every((a) => Object.values(subs).some((s) => `principal:${s!.principalId}` === a.actor))).toBe(true);
-    for (const kind of CONSUMER_KINDS) expect(aud.some((a) => a.actor === `principal:${subs[kind]!.principalId}`), `${kind}: its own principal acted`).toBe(true);
+    for (const kind of B6_KINDS) expect(aud.some((a) => a.actor === `principal:${subs[kind]!.principalId}`), `${kind}: its own principal acted`).toBe(true);
   }, 180_000);
 
   it('EVIDENCE CORRECTED: the apply publishes MemoryCorrected in the same transaction as CorrectionApplied; the citing twin version goes unverified; a mapping reconciliation is PROPOSED and a person decides it; CorrectionApplied still reaches its own path (AU-MEM-0114)', async () => {
@@ -403,7 +407,7 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     expect(report?.domains.find((d) => d.tenantId === T() && d.domainId === D())?.subscriptions).toBe(6);
     expect(report?.reDriven.filter((e) => e.tenantId === T() && e.domainId === D())).toEqual([]);
     expect(scheduler.runningWorkers()).toContain(redisName(subscriptionQueueNameFor(T(), D())));
-    expect(dispatcher.registeredKinds().length).toBe(6);
+    expect(dispatcher.registeredKinds().length).toBe(CONSUMER_KINDS.length); // every consumer module registers its kind (seven since 0066)
     expect((await deliveriesFor(gcEvent)).every((d) => d.state === 'applied' && d.deliveries === 2)).toBe(true);
   }, 180_000);
 
