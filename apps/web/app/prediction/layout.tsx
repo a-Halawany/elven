@@ -50,6 +50,7 @@ const NAV = [
   { href: '/prediction/scenarios', label: 'Scenarios', glyph: '⑂' },
   { href: '/prediction/warnings', label: 'Warnings', glyph: '⚑' },
   { href: '/prediction/calibration', label: 'Calibration', glyph: '◐' },
+  { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
   { href: '/observation', label: 'Observation', glyph: '⛁' },

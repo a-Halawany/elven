@@ -24,7 +24,9 @@ import { AgentSessionService } from '../../src/observation/agents/agent-session.
 import { ObservationCapability } from '../../src/observation/observation.capabilities.js';
 import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
 import type { EgressResult } from '../../src/observation/connectors/http-client.js';
-import { seedPhase1Domain, fixtureContract, type Phase1Fixture } from './phase1-helpers.js';
+import { createHash } from 'node:crypto';
+import { UploadConnector } from '../../src/observation/connectors/upload.connector.js';
+import { seedPhase1Domain, fixtureContract, inCommitContext, type Phase1Fixture } from './phase1-helpers.js';
 
 export const BASE = 'https://backfill.example/series?format=jsondata';
 export const SERIES_START = '2021-01-01';
@@ -234,4 +236,130 @@ export class Phase4Harness {
       where source_id = ${this.fx.sourceId}::uuid order by occurred_at desc limit 1`.execute(this.su)
       .then((r) => r.rows[0]?.checkpoint);
   }
+
+  /* ───────────── Phase 5 · uploaded records through the real file path ───────────── */
+
+  private uploadSourceId: string | null = null;
+
+  /**
+   * An UPLOAD source (the demonstration's NORDWERK shape), registered through the real
+   * route, approved by the other operator, activated, with an upload agent registered
+   * for the operator-upload connector — once per harness.
+   */
+  async uploadSource(): Promise<string> {
+    if (this.uploadSourceId !== null) return this.uploadSourceId;
+    const { ObservationController } = await import('../../src/observation/observation.controller.js');
+    const controller = this.app.get(ObservationController);
+    const sourceKey = `fixture-uploads-${uuidv7().slice(-8)}`;
+    const r = await controller.registerSource(
+      this.req(this.registrar, 'observation.source.register', 'SRC', null, 'observation'), this.fx.tenantId, this.fx.domainId,
+      { payload: { contract: uploadContract(sourceKey) } }) as { source: { sourceId: string } };
+    const sourceId = r.source.sourceId;
+    await this.pipeline.write(
+      this.env(this.manager, 'observation.source.approve', 'SRC', sourceId), this.manager,
+      { scope: 'DOMAIN', tenantId: this.fx.tenantId, domainId: this.fx.domainId, action: 'observation.source.approve', objectType: 'SRC', objectId: sourceId },
+      ObservationCapability.registry,
+      async (cap) => {
+        await cap.approveSource({ sourceId, contractVersion: 1, tenantId: this.fx.tenantId, domainId: this.fx.domainId,
+          decision: 'approve', reason: 'phase 5 upload fixture', eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: {}, targetType: 'SRC', targetId: sourceId, targetVersion: '1', outboxEvent: null };
+      });
+    await this.pipeline.write(
+      this.env(this.manager, 'observation.source.transition', 'SRC', sourceId), this.manager,
+      { scope: 'DOMAIN', tenantId: this.fx.tenantId, domainId: this.fx.domainId, action: 'observation.source.transition', objectType: 'SRC', objectId: sourceId },
+      ObservationCapability.registry,
+      async (cap) => {
+        await cap.transitionContract({ sourceId, contractVersion: 1, tenantId: this.fx.tenantId, domainId: this.fx.domainId,
+          target: 'active', reason: 'phase 5 upload fixture: active', eventId: uuidv7(), correlationId: uuidv7() });
+        return { result: {}, targetType: 'SRC', targetId: sourceId, targetVersion: '1', outboxEvent: null };
+      });
+    // The upload agent: an agent principal, bound as collection_agent, registered for the operator-upload connector.
+    const connector = new UploadConnector([]);
+    const agentPrincipalId = uuidv7(); const agentId = uuidv7(); const run = agentId.slice(-8);
+    await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
+              values (${agentPrincipalId}::uuid, 'agent', 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid, ${`agent:${connector.name}@${connector.version}-${run}`}, null, 'active')`.execute(this.su);
+    await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
+              values (${uuidv7()}::uuid, ${agentPrincipalId}::uuid, 'collection_agent', 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid)`.execute(this.su);
+    const commitDb = this.app.get<Db>(COMMIT_DB);
+    await inCommitContext(commitDb, { sessionId: this.manager.sessionId, contextKey: this.manager.contextKey }, { tenantId: this.fx.tenantId, domainId: this.fx.domainId },
+      'observation.agent.register', agentId, async (tx) => {
+        await sql`select observation.register_agent(
+          ${agentId}::uuid, ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid, ${agentPrincipalId}::uuid,
+          'observation', ${connector.name}, ${connector.version}, ${connector.codeDigest},
+          ${this.fx.registrarId}::uuid, ${sourceId}::uuid,
+          ${JSON.stringify({ maxRequestsPerRun: 25, maxBytesPerRun: 33554432, maxConcurrency: 1, timeoutMs: 60000, maxRetries: 0 })}::jsonb,
+          ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);
+      });
+    this.uploadSourceId = sourceId;
+    return sourceId;
+  }
+
+  /**
+   * Upload text records through the upload route (the same §5 path as a polled response)
+   * and return the EVIDENCE objects the run admitted for them, found by the item key the
+   * connector derives from the filename and the bytes — never by a name someone typed.
+   */
+  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>):
+    Promise<Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }>> {
+    const sourceId = await this.uploadSource();
+    const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
+    const controller = this.app.get(UploadController);
+    await controller.upload(this.req(this.registrar, 'observation.run.trigger', 'RUN', null, 'observation'), this.fx.tenantId, this.fx.domainId,
+      { payload: { sourceId, contractVersion: 1, files: files.map((f) => ({ filename: f.filename, mediaType: 'text/csv', base64: Buffer.from(f.text, 'utf8').toString('base64'), documentTime: f.documentTime ?? null })) } });
+    const out: Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }> = [];
+    for (const f of files) {
+      const itemKey = `upload:${f.filename}@${createHash('sha256').update(Buffer.from(f.text, 'utf8')).digest('hex').slice(0, 16)}`;
+      const row = (await sql<{ id: string; version: number; digest: string; recorded_at: string }>`
+        select e.object_id::text id, e.object_version::int version, e.content_digest digest, e.recorded_at::text recorded_at
+          from objects.canonical_objects e
+          join objects.canonical_objects o on o.object_type = 'OBS' and e.source_object_ids @> to_jsonb(array['OBS:' || o.object_id::text])
+         where e.object_type = 'EVD' and e.tenant_id = ${this.fx.tenantId}::uuid and e.domain_id = ${this.fx.domainId}::uuid
+           and o.tenant_id = ${this.fx.tenantId}::uuid and o.payload ->> 'item_key' = ${itemKey}
+         order by e.recorded_at desc, e.object_version desc limit 1`.execute(this.su)).rows[0];
+      if (row === undefined) throw new Error(`upload of ${f.filename} admitted no evidence object`);
+      out.push({ filename: f.filename, id: row.id, version: row.version, digest: row.digest, recordedAt: row.recorded_at });
+    }
+    return out;
+  }
+}
+
+/** The demonstration's NORDWERK-shaped upload contract, under a fixture key. */
+function uploadContract(sourceKey: string): Record<string, unknown> {
+  return {
+    source_key: sourceKey,
+    name: 'Fixture uploaded records (SYNTHETIC)',
+    publisher: 'Fixture plant (synthetic)',
+    authority_class: 'authoritative',
+    connector_kind: 'upload',
+    acquisition_mode: 'replay',
+    data_origin: 'synthetic',
+    identity: { source_identity: sourceKey, publisher_identity: 'fixture (synthetic entity; does not exist)', endpoints: [], scheme_allowlist: ['https'],
+                cadence_seconds: 86_400, jitter_seconds: 0, collection_window: null },
+    authority_and_rights: {
+      owner: 'observation.operations', steward: 'fixture', authority: 'Internal records (synthetic)', legal_basis: 'Internal synthetic data created for tests',
+      rights_state: 'confirmed', licence: 'internal', permitted_use: ['internal analysis'], robots_policy: 'not applicable', purposes: ['observation'],
+      classification_ceiling: 'internal', residency: 'EU', retention: '24 months', deletion_obligation: 'none',
+    },
+    security_and_operations: {
+      credential_ref: null,
+      authentication_method: 'operator upload under an authenticated session',
+      authenticity_method: {
+        transport_endpoint: 'not applicable — no transport was performed by this system',
+        byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
+        source_origin: 'operator attestation only',
+        content_authenticity: 'not applicable — the records are synthetic and marked as such at object level',
+      },
+      budgets: { max_requests_per_run: 25, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 60_000, max_retries: 0 },
+      expected_schema: { media_types: ['text/csv'], required_fields: [], drift_tolerance: 0, max_bytes: 16_777_216 },
+      freshness_expectation: { threshold_seconds: 604_800, expected_interval: 'weekly' },
+      coverage_expectations: {
+        universe_version: 'v1', denominator_derivation: 'one upload set per reporting period', expected_items_per_window: null,
+        not_applicable_dimensions: ['latency', 'correction_lag', 'authenticity'],
+        not_applicable_reason: 'the records are synthetic internal data supplied by an operator: there is no publisher to lag behind, no corrections channel, and no external origin to authenticate',
+      },
+      correction_channel: 'a corrected upload supplied by the operator',
+      replay_set: 'nordwerk-uploads',
+    },
+    lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
+  };
 }

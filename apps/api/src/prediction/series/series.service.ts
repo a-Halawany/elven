@@ -171,37 +171,52 @@ export class SeriesService {
   private async load(
     r: Reader, v: EvidenceVersionRow, parse: ReturnType<typeof parserFor>, series: SeriesRow,
   ): Promise<LoadedVersion | string> {
-    let bytes: Buffer;
+    const got = await this.retrieveBytes(r, v.object_id, v.object_version,
+      { read_for: 'prediction.series', series_key: series.series_key, parser: series.parser_ref, version: String(v.object_version) });
+    // A POLICY DENIAL is the reader's answer, not a gap in the series: it is
+    // raised, so an unauthorised reader is refused rather than handed an
+    // empty history that looks like one. Withdrawn, governed-deleted or
+    // unverifiable bytes are disclosed as unreadable and yield no point.
+    if ('refused' in got) {
+      if (got.status === 403) throw got.error;
+      return got.refused;
+    }
+    return {
+      rows: parse(got.bytes, series.value_field, series.selector), digest: v.content_digest,
+      recordedAt: v.recorded_at, isFragment: v.is_fragment,
+    };
+  }
+
+  /**
+   * ONE GOVERNED RETRIEVAL of an exact evidence version for this reader: authorised,
+   * custody-recorded, integrity-checked, at the moment it is served. Shared by the
+   * series assembly, by twin grounding (a value is established from the record that
+   * states it) and by reproduction (an artefact a run rests on is either still
+   * available to this reader, or the run is unreproducible for them). A refusal —
+   * policy, withdrawal, governed deletion, integrity — comes back as what it is; the
+   * caller decides what a refusal means for its own answer.
+   */
+  async retrieveBytes(
+    r: Reader, objectId: string, version: number, context: Readonly<Record<string, string>>,
+  ): Promise<{ bytes: Buffer } | { refused: string; status: number | null; error: unknown }> {
     try {
       const got = await this.pipeline.write<{ base64: string }, AcquisitionWrites>(
-        this.envelope(r, 'observation.evidence.retrieve', 'EVD', v.object_id), r.principal,
+        this.envelope(r, 'observation.evidence.retrieve', 'EVD', objectId), r.principal,
         { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId,
-          action: 'observation.evidence.retrieve', objectType: 'EVD', objectId: v.object_id },
+          action: 'observation.evidence.retrieve', objectType: 'EVD', objectId },
         ObservationCapability.acquisition,
         async (cap, scope) => {
           const res = await this.evidence.retrieve(
-            cap, scope, `principal:${r.principal.principalId}`, v.object_id, r.correlationId,
-            { read_for: 'prediction.series', series_key: series.series_key, parser: series.parser_ref,
-              version: String(v.object_version) },
-            v.object_version);
-          return { result: { base64: res.base64 }, targetType: 'EVD', targetId: v.object_id,
-                   targetVersion: String(v.object_version), outboxEvent: null };
+            cap, scope, `principal:${r.principal.principalId}`, objectId, r.correlationId, context, version);
+          return { result: { base64: res.base64 }, targetType: 'EVD', targetId: objectId,
+                   targetVersion: String(version), outboxEvent: null };
         });
-      bytes = Buffer.from(got.result.base64, 'base64');
+      return { bytes: Buffer.from(got.result.base64, 'base64') };
     } catch (e) {
-      // A POLICY DENIAL is the reader's answer, not a gap in the series: it is
-      // raised, so an unauthorised reader is refused rather than handed an
-      // empty history that looks like one. Withdrawn, governed-deleted or
-      // unverifiable bytes are disclosed as unreadable and yield no point.
-      if (e instanceof HttpException && e.getStatus() === 403) throw e;
       const status = e instanceof HttpException ? e.getStatus() : null;
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');
-      return `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`;
+      return { refused: `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`, status, error: e };
     }
-    return {
-      rows: parse(bytes, series.value_field, series.selector), digest: v.content_digest,
-      recordedAt: v.recorded_at, isFragment: v.is_fragment,
-    };
   }
 
   private envelope(r: Reader, action: string, objectType: string, objectId: string | null): Envelope {
