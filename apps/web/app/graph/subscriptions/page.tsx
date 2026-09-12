@@ -141,26 +141,59 @@ export default function SubscriptionsPage() {
         <Receipt receipt={receipt} />
       </section>
 
+      <section aria-labelledby="open-h" style={cardStyle}>
+        <h2 id="open-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Deliveries in a failure state ({status.telemetry.open_failure_states.length})</h2>
+        <p style={{ color: 'var(--eye-color-ink-muted)' }}>
+          Each carries its class and the route it is sent down: <strong>unresolved</strong> work (a projection mismatch) is re-checked at every
+          re-drive and applied only when a check passes after the operator's repair; a <strong>refused</strong> delivery is a governance answer
+          (authority disputed, consumer unavailable, budget) re-driven by a registration, a resume or a replay; a <strong>failed</strong> one is
+          infrastructure, retried.
+        </p>
+        {status.telemetry.open_failure_states.length === 0 ? <Empty>None open.</Empty> : (
+          <ScrollBox label="open failure states">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Event</Th><Th>Consumer</Th><Th>State</Th><Th>Class</Th><Th>Disposition</Th><Th>Unresolved items</Th><Th>Since</Th><Th>Retries</Th></tr></thead>
+              <tbody>
+                {status.telemetry.open_failure_states.map((o) => (
+                  <tr key={`${String(o['event_id'])}:${String(o['consumer_kind'])}`}>
+                    <Td mono>{short(o['event_id'])}</Td>
+                    <Td>{str(o['consumer_kind'])}</Td>
+                    <Td>{str(o['state'])}</Td>
+                    <Td>{str(o['failure_class'])}</Td>
+                    <Td>{str(o['disposition'])}</Td>
+                    <Td mono>{str(o['items_unresolved'])}</Td>
+                    <Td>{o['unresolved_since'] === null || o['unresolved_since'] === undefined ? '—' : fmtInstant(o['unresolved_since'])}</Td>
+                    <Td mono>{str(o['retries'])}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollBox>
+        )}
+      </section>
+
       <section aria-labelledby="deliveries-h" style={cardStyle}>
         <h2 id="deliveries-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Recent deliveries ({status.deliveries.length})</h2>
         {status.deliveries.length === 0 ? <Empty>Nothing has been delivered yet.</Empty> : (
           <ScrollBox label="deliveries">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Event</Th><Th>Type</Th><Th>Change</Th><Th>Consumer</Th><Th>State</Th><Th>Deliveries</Th><Th>Items</Th><Th>Applied</Th><Th>Last</Th></tr></thead>
+              <thead><tr><Th>Seq</Th><Th>Event</Th><Th>Type</Th><Th>Change</Th><Th>Consumer</Th><Th>State</Th><Th>Deliveries</Th><Th>Items</Th><Th>Applied</Th><Th>Unresolved</Th><Th>Last</Th></tr></thead>
               <tbody>
                 {status.deliveries.map((d) => {
                   const key = `${String(d['event_id'])}:${String(d['subscription_id'])}`;
                   return (
                     <tr key={key}>
+                      <Td mono>{str(d['partition_seq'])}</Td>
                       <Td mono><button type="button" style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0 }}
                         onClick={() => { const id = String(d['event_id']); setLedgerFor(id); void graph.subscriptionDelivery(scope, id).then((r) => { if (r.ok && r.data !== undefined) setLedger({ deliveries: r.data.deliveries, events: r.data.events }); }); }}>{short(d['event_id'])}</button></Td>
                       <Td>{str(d['event_type'])}</Td>
                       <Td>{str(d['change_kind'])}</Td>
                       <Td>{str(d['consumer_kind'])}</Td>
-                      <Td>{str(d['state'])}{d['last_error'] !== null && d['last_error'] !== undefined ? ` — ${String(d['last_error'])}` : ''}</Td>
+                      <Td>{str(d['state'])}{d['failure_class'] ? ` (${String(d['failure_class'])} → ${String(d['disposition'])})` : ''}{d['last_error'] !== null && d['last_error'] !== undefined ? ` — ${String(d['last_error'])}` : ''}</Td>
                       <Td mono>{str(d['deliveries'])} / {str(d['attempts'])}</Td>
                       <Td mono>{Array.isArray(d['items']) ? (d['items'] as unknown[]).length : 0}</Td>
                       <Td mono>{Array.isArray(d['items_applied']) ? (d['items_applied'] as unknown[]).length : 0}</Td>
+                      <Td mono>{Array.isArray(d['items_unresolved']) ? (d['items_unresolved'] as unknown[]).length : 0}</Td>
                       <Td>{fmtInstant(d['last_delivered_at'])}</Td>
                     </tr>
                   );

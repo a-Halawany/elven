@@ -262,7 +262,7 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
             });
             return { result: { skipped: false, invalidationId: r.invalidationId }, targetType: 'INV', targetId: r.invalidationId, targetVersion: '1',
                      outboxEvent: { eventType: 'DependencyInvalidated',
-                                    payload: { invalidation_id: r.invalidationId, trigger: root, assumptions: r.assumptions.length, objectives: r.objectives.length,
+                                    payload: { schema_version: 'v1', invalidation_id: r.invalidationId, trigger: root, assumptions: r.assumptions.length, objectives: r.objectives.length,
                                                automatic: true, event_id: p.event_id, agent_id: rec.agent?.agent_id, agent_version: rec.agent?.agent_version, code_digest: rec.agent?.code_digest } },
                      outboxEvents: [changed] };
           });

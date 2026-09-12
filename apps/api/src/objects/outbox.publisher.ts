@@ -50,6 +50,10 @@ interface PendingRow {
   causation_id: string;
   tenant_id: string | null;
   domain_id: string | null;
+  /** 0064: the declared ordering scope and the row's ordinal in it (commit order), and the payload's schema version. */
+  partition_key: string;
+  partition_seq: string;
+  schema_version: string;
 }
 
 @Injectable()
@@ -108,7 +112,16 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     else if (this.leaseFailures % 60 === 0) this.log.warn(`publish tick has failed ${this.leaseFailures} times in a row: ${msg}`);
   }
 
+  /** One tick at a time (0064): two overlapping ticks would interleave a partition's sequences on the queues. */
+  private ticking = false;
+
   async publishPending(): Promise<number> {
+    if (this.queue === null || this.ticking) return 0;
+    this.ticking = true;
+    try { return await this.publishBatch(); } finally { this.ticking = false; }
+  }
+
+  private async publishBatch(): Promise<number> {
     if (this.queue === null) return 0;
     // The capability is issued and the lease taken in ONE backend call (migration 0057),
     // so no time can elapse between them on this side.
@@ -119,7 +132,12 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     }
 
     let published = 0;
+    // A partition's rows are published in sequence order; a row that fails to publish HALTS its partition for this
+    // tick (its later sequences stay leased and are re-leased in order), so a failure never lets a later sequence
+    // overtake an earlier one on a queue (0064).
+    const halted = new Set<string>();
     for (const row of rows) {
+      if (halted.has(row.partition_key)) continue;
       try {
         const data = {
           event_id: row.id,
@@ -129,6 +147,9 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
           causation_id: row.causation_id,
           tenant_id: row.tenant_id,
           domain_id: row.domain_id,
+          partition_key: row.partition_key,
+          partition_seq: Number(row.partition_seq),
+          schema_version: row.schema_version,
         };
         await this.queue.add(
           row.event_type,
@@ -147,7 +168,9 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         if (ok) published += 1;
       } catch (e) {
         // Redis unavailable, or the acknowledgement refused → the row stays leased until
-        // its lease lapses and is retried (at-least-once). Reported, never fatal.
+        // its lease lapses and is retried (at-least-once). Reported, never fatal; the
+        // partition's later rows wait behind it (order before throughput).
+        halted.add(row.partition_key);
         this.reportTick(e);
       }
     }

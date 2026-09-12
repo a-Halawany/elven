@@ -180,7 +180,7 @@ export class PredictionController {
           refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
         return { result: r, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
-                 outboxEvent: { eventType: 'ForecastIssued', payload: { forecast_id: r.forecastId, series_key: p.seriesKey,
+                 outboxEvent: { eventType: 'ForecastIssued', payload: { schema_version: 'v1', forecast_id: r.forecastId, series_key: p.seriesKey,
                                 horizon: p.horizon, method: r.method, validation_state: r.validationState, label } } };
       });
     return { forecast: out.result, receipt: receipt(out) };
@@ -384,7 +384,7 @@ export class PredictionController {
             const r = await this.scenarios.warnForFlip(cap, scope, flip, confidence, principal.principalId,
               envelope.correlation_id, envelope.purpose_id ?? 'prediction', timing, new Date(), warningId, String(envelope.consequence_class ?? 'C1'));
             return { result: r, targetType: 'WRN', targetId: r.warningId, targetVersion: '1',
-                     outboxEvent: { eventType: 'EarlyWarningRaised', payload: { warning_id: r.warningId, routed_to: r.routedTo,
+                     outboxEvent: { eventType: 'EarlyWarningRaised', payload: { schema_version: 'v1', warning_id: r.warningId, routed_to: r.routedTo,
                                     raised_as_of: r.raisedAsOf, closes_at: r.closesAt, timing_mode: r.timingMode, timely: r.timely, decision_missed: r.decisionMissed,
                                     branch_id: flip.branchId, flip_event_id: flip.flipEventId,
                                     level: r.level, level_version: r.levelVersion, urgency: r.urgency, consequence_class: r.consequenceClass,

@@ -513,7 +513,7 @@ export class GraphOrchestrator {
           targetType: 'RES', targetId: resolutionId, targetVersion: '1',
           outboxEvent: r.auto_accepted ? {
             eventType: 'EntityResolved',
-            payload: { resolution_id: resolutionId, entity_id: entityId,
+            payload: { schema_version: 'v1', resolution_id: resolutionId, entity_id: entityId,
                        claim_object_id: mention.claimObjectId, method },
           } : null,
           outboxEvents: changes,

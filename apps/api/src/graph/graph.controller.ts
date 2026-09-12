@@ -345,7 +345,7 @@ export class GraphController {
         return { result: r, targetType: 'RES', targetId: resolutionId, targetVersion: '1',
                  outboxEvent: {
                    eventType: 'EntityResolved',
-                   payload: { resolution_id: resolutionId, decided_by: principal.principalId },
+                   payload: { schema_version: 'v1', resolution_id: resolutionId, decided_by: principal.principalId },
                  },
                  outboxEvents: [changed] };
       });
@@ -397,7 +397,7 @@ export class GraphController {
         });
         return { result: r, targetType: 'ENT', targetId: r.newEntityId, targetVersion: '1',
                  outboxEvent: { eventType: 'EntitySplit',
-                                payload: { from: entityId, to: r.newEntityId, moved: r.moved } },
+                                payload: { schema_version: 'v1', from: entityId, to: r.newEntityId, moved: r.moved } },
                  outboxEvents: [changed] };
       });
     return { split: out.result, receipt: receipt(out) };
@@ -784,7 +784,7 @@ export class GraphController {
         });
         return { result: r, targetType: 'INV', targetId: r.invalidationId, targetVersion: '1',
                  outboxEvent: { eventType: 'DependencyInvalidated',
-                                payload: { invalidation_id: r.invalidationId,
+                                payload: { schema_version: 'v1', invalidation_id: r.invalidationId,
                                            trigger: p.triggerObjectId,
                                            assumptions: r.assumptions.length,
                                            objectives: r.objectives.length } },
@@ -910,10 +910,10 @@ export class GraphController {
   /** Move the subscription's cursor back and re-drive the events after it — to this subscription alone. */
   @Post('/subscriptions/:subscriptionId/replay')
   async replaySubscription(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string,
-    @Body() body: { payload?: { fromCreatedAt?: string | null; fromEventId?: string | null; reason?: string } }) {
+    @Body() body: { payload?: { fromCreatedAt?: string | null; fromEventId?: string | null; fromSeq?: number | null; reason?: string } }) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
-    return this.subscriptions.replay(envelope, principal, tenantId, domainId, subscriptionId, { fromCreatedAt: p.fromCreatedAt ?? null, fromEventId: p.fromEventId ?? null, reason: p.reason as string });
+    return this.subscriptions.replay(envelope, principal, tenantId, domainId, subscriptionId, { fromCreatedAt: p.fromCreatedAt ?? null, fromEventId: p.fromEventId ?? null, fromSeq: p.fromSeq ?? null, reason: p.reason as string });
   }
 
   /** The registry, the delivery ledger, the retrieval checks, the mapping proposals, and whether this process serves the domain. */

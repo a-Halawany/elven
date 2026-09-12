@@ -963,6 +963,23 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    // 0064 (AU-MEM-0039): a LEGAL HOLD on evidence is placed and lifted by the people who answer for the
+    // record's retention — the administrators — never by a collection agent or a correction; a withdrawal
+    // against a held object fails the case before any object is touched.
+    actionPrefix: 'observation.legal_hold.place',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'observation.legal_hold.lift',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
     actionPrefix: 'observation.correction.apply',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },

@@ -82,6 +82,9 @@ export interface ObservationReads {
    */
   changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   claimsDerivedFrom(evidenceObjectIds: string[]): Promise<string[]>;
+  /** 0064: legal holds placed on evidence after admission (append-only; a lift is its own row change under its own action). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readLegalHolds(): any;
   /**
    * The LATEST evidence held for each deterministic item key of a source — what
    * a backfill re-run compares its bytes against (Phase 4 §4a). One query per
@@ -195,6 +198,13 @@ export interface RegistryWrites extends ObservationReads {
     agentId: string; tenantId: string; domainId: string; reason: string;
     eventId: string; correlationId: string;
   }): Promise<void>;
+}
+
+// ───────────────────────── legal holds (0064) ─────────────────────────
+
+export interface LegalHoldWrites extends ObservationReads {
+  placeLegalHold(a: { holdId: string; tenantId: string; domainId: string; evdObjectId: string; reason: string; actor: string; correlationId: string }): Promise<string>;
+  liftLegalHold(a: { holdId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
 }
 
 // ───────────────────────── acquisition writes ─────────────────────────
@@ -346,7 +356,7 @@ export interface HealthEventArgs {
 
 // ───────────────────────── the implementation ─────────────────────────
 
-class ObservationCapabilityImpl extends ObservationCore implements RegistryWrites, AcquisitionWrites {
+class ObservationCapabilityImpl extends ObservationCore implements RegistryWrites, AcquisitionWrites, LegalHoldWrites {
   constructor(tx: Tx, action: string) {
     super(tx, action);
   }
@@ -389,6 +399,14 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'MemoryCorrected', ${a.changeKind}) as s`);
     return rows[0]?.s ?? [];
+  }
+  readLegalHolds(): any { return this.from('observation.legal_holds'); }
+  async placeLegalHold(a: { holdId: string; tenantId: string; domainId: string; evdObjectId: string; reason: string; actor: string; correlationId: string }): Promise<string> {
+    const rows = await this.call<{ m: string }>(sql`select observation.place_legal_hold(${a.holdId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.evdObjectId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)::text as m`);
+    return String(rows[0]?.m);
+  }
+  async liftLegalHold(a: { holdId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select observation.lift_legal_hold(${a.holdId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
   async claimsDerivedFrom(evidenceObjectIds: string[]): Promise<string[]> {
     if (evidenceObjectIds.length === 0) return [];
@@ -865,6 +883,9 @@ export const ObservationCapability = {
     return new ObservationCapabilityImpl(tx, action);
   },
   acquisition(tx: Tx, action: string): AcquisitionWrites {
+    return new ObservationCapabilityImpl(tx, action);
+  },
+  legalHold(tx: Tx, action: string): LegalHoldWrites {
     return new ObservationCapabilityImpl(tx, action);
   },
 };

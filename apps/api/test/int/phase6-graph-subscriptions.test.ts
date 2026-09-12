@@ -469,8 +469,8 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     expect((await twinEvents(v4)).length, 'the first item was applied twice').toBe(1);
     expect((await twinEvents(v5)).length).toBe(1);
     expect(await deliveryEvents(row.id, 'twins')).toEqual(['received', 'applying', 'item.applied', 'received', 'item.applied', 'applied']);
-    // The five deliveries applied before the interruption were re-received and skipped as terminal.
-    for (const d of r.after.filter((d) => d.consumer_kind !== 'twins')) expect(d, d.consumer_kind).toMatchObject({ state: 'applied', deliveries: 2, attempts: d.items.length > 0 ? 1 : 0 });
+    // The five deliveries applied before the interruption were NOT re-received: the re-drive is scoped to the stranded subscription (0064).
+    for (const d of r.after.filter((d) => d.consumer_kind !== 'twins')) expect(d, d.consumer_kind).toMatchObject({ state: 'applied', deliveries: 1, attempts: d.items.length > 0 ? 1 : 0 });
     expect((await sql<{ n: string }>`select count(*)::text n from graph.retrieval_checks where outbox_event_id = ${row.id}::uuid`.execute(h.su)).rows[0]?.n).toBe('1');
   }, 300_000);
 
@@ -555,7 +555,7 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     expect((await bare(sql`select graph.register_subscription(${uuidv7()}::uuid, ${T()}::uuid, ${D()}::uuid, 'twins', array['GraphChanged'], '{}'::jsonb, ${ownerId}::uuid, '1.0.0', ${'a'.repeat(64)}, ${ownerId}::uuid, '{}'::jsonb, ${ownerId}::uuid, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`)).code).toBe('42501');
     expect((await bare(sql`select graph.set_subscription_status(${tw.subscriptionId}::uuid, ${T()}::uuid, ${D()}::uuid, 'revoked', 'not authorised', ${ownerId}::uuid, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`)).code).toBe('42501');
     expect((await bare(sql`select graph.subscription_replay(${tw.subscriptionId}::uuid, ${T()}::uuid, ${D()}::uuid, null, null, 'not authorised', ${ownerId}::uuid, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`)).code).toBe('42501');
-    expect((await bare(sql`select graph.subscription_delivery_receive(${gcEvent}::uuid, ${T()}::uuid, ${D()}::uuid, 'GraphChanged', 'edge.retracted', now(), null, null, ${uuidv7()}::uuid)`)).code).toBe('42501');
+    expect((await bare(sql`select graph.subscription_delivery_receive(${gcEvent}::uuid, ${T()}::uuid, ${D()}::uuid, 'GraphChanged', 'edge.retracted', now(), null::uuid[], ${uuidv7()}::uuid)`)).code).toBe('42501');
     expect((await bare(sql`select graph.subscription_delivery_finish(${gcEvent}::uuid, ${tw.subscriptionId}::uuid, ${T()}::uuid, ${D()}::uuid, 'applied', null)`)).code).toBe('42501');
     expect((await bare(sql`select graph.subscription_delivery_items(${gcEvent}::uuid, ${tw.subscriptionId}::uuid, ${T()}::uuid, ${D()}::uuid, '["x"]'::jsonb, 'twin.subscription.apply')`)).code).toBe('42501');
     expect((await bare(sql`select graph.subscription_delivery_items(${gcEvent}::uuid, ${tw.subscriptionId}::uuid, ${T()}::uuid, ${D()}::uuid, '["x"]'::jsonb, 'graph.read')`)).code).toBe('22023');

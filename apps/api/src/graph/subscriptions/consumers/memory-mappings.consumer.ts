@@ -8,6 +8,10 @@
  * manager's authority (graph.decide_mapping_reconciliation asserts graph.resolution.decide). Resolver rule 7,
  * kept: nothing is forced onto an entity automatically.
  *
+ * Under GraphChanged the basis moves by a split or a resolution accepted elsewhere; under MemoryCorrected it moves for
+ * the resolutions of a corrected claim, the edges a corrected claim asserted (or that rest on corrected evidence) and
+ * the identifiers sourced from either — all three mappings, on both branches (AU-MEM-0114).
+ *
  * Items are `identifier:<id>`, `edge:<id>`, `resolution:<id>`; each effect is one proposal.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
@@ -70,12 +74,28 @@ export class MemoryMappingsConsumer implements SubscriptionConsumer<GraphSubscri
       }
       return out;
     }
-    // MemoryCorrected: every accepted resolution and every identifier whose claim (or the evidence behind it) was corrected.
+    // MemoryCorrected: every accepted resolution, every asserted edge and every identifier whose claim (or the evidence
+    // behind it) was corrected — the three mappings memory holds into the graph, each with the basis that moved.
     const m = event.payload;
     const claims = new Set<string>(m.claims);
     const evidence = new Set<string>();
     for (const o of m.objects) { if (o.object_type === 'EVD') evidence.add(o.object_id); else claims.add(o.object_id); }
     const versions = new Map(m.objects.map((o) => [o.object_id, o]));
+    const edgeBasis = (e: Row): string | null => {
+      const claimId = String(e['claim_object_id']); const v = versions.get(claimId);
+      if (v !== undefined) return `edge ${String(e['predicate'])} was asserted by v${String(e['claim_version'])} of a claim corrected to v${v.to_version} (${m.change.kind}); the relationship may no longer hold as asserted`;
+      if (claims.has(claimId)) return `edge ${String(e['predicate'])} was asserted by a claim derived from evidence corrected in case ${m.change.correction_case_id ?? '?'} (${m.change.kind})`;
+      if (evidence.has(String(e['evidence_object_id']))) return `edge ${String(e['predicate'])} rests on evidence corrected in case ${m.change.correction_case_id ?? '?'} (${m.change.kind})`;
+      return null;
+    };
+    if (claims.size > 0 || evidence.size > 0) {
+      const edges = (await cap.readEdges().selectAll().where('state' as never, '=', 'asserted' as never).execute()) as Row[];
+      for (const e of edges) {
+        const basis = edgeBasis(e);
+        if (basis === null) continue;
+        add({ subjectKind: 'edge', subjectId: String(e['edge_id']), fromEntityId: String(e['subject_entity_id']), toEntityId: String(e['object_entity_id']), basis });
+      }
+    }
     if (claims.size > 0) {
       const res = (await cap.readResolutions().selectAll().where('state' as never, '=', 'accepted' as never).where('claim_object_id' as never, 'in', [...claims] as never).execute()) as Row[];
       for (const r of res) {

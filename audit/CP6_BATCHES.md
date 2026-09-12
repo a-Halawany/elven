@@ -12,6 +12,7 @@ never verifies a `profiles = all` unit; hosted CI on a fresh database verifies t
 | **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-0108–0111 (new; the consumer's own properties), AU-DP-0043 (partial-walk visibility, re-verified); AU-DP-0041 narrowed — see §B1 | **implemented** on `phase6-decisions` (migration 0060; harness `phase6-propagation-consumer`, 15/15 locally on real Redis and the real outbox); **`verified:ci`** at `5118376` (ci run 34647461329/34647461349, 836/836 on a fresh database); exercised on the demonstration (§B1) |
 | **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-0061–0063 (new); AU-PRD-0034/-0037/-0039, AU-DP-0164 re-pointed — §B2 | **implemented** on `phase6-decisions` (migration 0061; harness `phase4-warning-levels`, 6/6 locally); `verified:ci` once the hosted run at the implementing head is green |
 | **B6 — GraphChanged / MemoryCorrected subscriptions** | the events with affected identities, relationships, temporal scopes and subscriptions; a durable subscription registry and delivery ledger; six consumers (twins, forecasts, scenarios, decisions, retrieval, memory mappings) | AU-MEM-0112–0117 (new); AU-MEM-0030 (the parent, its full statement retained) — §B6 | **implemented** on `phase6-decisions` (migration 0063; harness `phase6-graph-subscriptions`, 13 cases on real Redis and the real outbox, the process restarted three times mid-suite); **`verified:ci`** at `fcbdefc` (ci run 34663012651, 852/852 in 49 files on a fresh database; C19 34663012694); exercised on the demonstration (§B6) |
+| **B7 — unresolved work, the declared partition, failure classes, telemetry, legal holds** | Codex finding 3 corrected (a mismatched retrieval check stays unresolved); `claim.corrected` through the review route and the edge mapping under MemoryCorrected; backlog served once; the outbox's declared partition and sequence as the cursor; failure classes and dispositions; execution-state telemetry; legal holds on evidence | AU-MEM-0118, AU-MEM-0119 (new); AU-MEM-0114 (its remaining clause), AU-MEM-0029 (reconciled to `verified:ci`), AU-MEM-0039, AU-MEM-0041, AU-DP-0071 (concrete checkpoints, remaining clauses stated) — §B7 | **implemented** on `phase6-decisions` (migration 0064; harness `phase6-graph-subscriptions-2`, 14 cases, and the reproduction file; two consecutive passes locally); `verified:ci` once the hosted run at the implementing head is green |
 | **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | **applied** (2026-09-11): leg vector + `legs_verified` on every unit; `audit/SLO_CATALOGUE.md` v1; no leg accepted |
 | **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | **applied** (2026-09-11): `audit/CAP_ALIASES.md` v1; `cap_alias` on the requirement CSVs; 89 = 71 + 18, unresolved 0 |
 
@@ -375,10 +376,117 @@ and every consumer then selects by its own reads (the retrieval check and the ma
 reach; the twin, forecast, scenario and decision consumers read citations, subjects, assumptions and
 dependencies themselves).
 
+## B7 — unresolved work stays unresolved; the declared partition; failure classes; telemetry; legal holds (implemented)
+
+**Codex finding 3 (2026-09-12), reproduced at the database/queue boundary and corrected by migration 0064.**
+Codex reproduced with the actual consumer and dispatcher on doubles that a projection mismatch produced `failed`
+and a retry produced `applied` with no second check: the mismatched check had been checkpointed as an APPLIED item
+inside the effect's transaction, so the re-drive skipped it and the failure was cleared. The author reproduced it on
+real Redis, the real publisher and the real database (`apps/api/test/int/phase6-repro-retrieval-retry.test.ts`;
+`evidence/cp6/repro-retrieval-before.txt`): healthy `applied` with its check; drift → `failed` with the item in
+`items_applied` as `projections.mismatched`; the reconciliation's re-drive → `applied`, `deliveries 2`, one check,
+the projection still drifted. After 0064 (`evidence/cp6/repro-retrieval-after.txt`): drift → `unresolved`
+(`unresolved_dependency` → `human_review`), the item in `items_unresolved` with `checks 1`, `items_applied []`; the
+re-drive → `unresolved` again with a SECOND check (`checks 2`). The correction: an effect that finds operator work
+returns `unresolved`; the dispatcher records it through `graph.subscription_item_unresolved` inside the same
+transaction as the check (the check is evidence and commits; the item is never added to `items_applied`), finishes
+the delivery `unresolved`, and every re-drive begins the item again; `subscription_item_done` resolves it when a
+check passes (`resolved_after_checks` on the ledger); the checkpoint never advances over it. The periodic tick
+re-checks an unresolved delivery only after `10 minutes`; a start, a registration, a resume and a replay re-check at
+once. Ordinary items keep their idempotency (applied once, skipped after) and the operator's repair stays the
+operator's (a subscriber never repairs a projection).
+
+**Change (migration `0064_subscription_resolution_and_partition_order.sql`; the dispatcher, the retrieval,
+memory-mappings and decision consumers; the correction apply; the publisher; the subscriptions service; the PDP).**
+1. **`claim.corrected` through the review route and the edge mapping under MemoryCorrected** (AU-MEM-0114's
+   remaining clause): a claim corrected by review publishes `MemoryCorrected` beside `ClaimReviewed` (same
+   transaction, same correlation); the memory-mappings consumer now proposes, under MemoryCorrected, the EDGE a
+   corrected claim asserted (or an edge resting on corrected evidence) beside the resolution of its mention and the
+   identifier sourced from it — the three mappings on both branches. Demonstrated through the actual review route
+   (`intelligence.review.decide`, decision `correct`) and the actual correction route.
+2. **Backlog served once** (AU-MEM-0119): `graph.subscriptions.served_from` — the registration instant for
+   `backlog: 'leave'`, the beginning for `'replay'`; the reconciliation re-drives only rows at or after it, so a
+   replayed backlog is delivered ONCE (0063 re-drove it twice: the replay's own jobs beside the reconciliation's).
+3. **The declared partition and sequence** (AU-DP-0071): `objects.object_outbox.partition_key` is the audit
+   chain's partition (`platform` | `tenant:<id>`) and `partition_seq` its ordinal, assigned at enqueue under the
+   partition row's lock — after the AUD row under the same partition's chain-head lock, both held to commit — so
+   the sequence IS the commit order (demonstrated under six concurrent writers against the audit chain's own
+   order); every row carries its `schema_version` (the seventeen legacy event payloads are stamped `v1`); the
+   publisher leases in sequence order (0015's `created_at` was the transaction's start, which put a later-started,
+   earlier-committed write behind: the domain queue received rows out of order); the subscription CURSOR is the
+   sequence (`checkpoint_seq`; the reconciliation and the contiguous-prefix advance compare sequences, never
+   timestamps; the served point is a sequence too), and a replay names a sequence (`fromSeq`). The immutability
+   trigger covers the new columns; the lease is round-robin across partitions and ordered within each.
+4. **Failure classes** (AU-MEM-0039): every non-applied delivery carries `failure_class` and `disposition` —
+   `authority_disputed` → `human_review` (a grant refused, or paused/revoked mid-delivery — the pause lands at the
+   next item, the first applied, the second not, a resume re-drives), `consumer_unavailable` → `retry` (no consumer
+   in the process; a registration re-drives), `budget` → `human_review`, `infrastructure` → `retry`,
+   `unresolved_dependency` → `human_review`. The decision consumer EXPOSES an input invalidated on an executed
+   (committed, monitoring) package as `executed_action` → `compensation` on the package note and the item — the
+   package untouched (C-004). A **legal hold** conflicting with a deletion: `observation.legal_holds`, an
+   append-only ledger placed and lifted only by administrators (`observation.legal_hold.place|lift`, exact PDP
+   rules; routes `…/observation/evidence/:evdId/legal-hold`, `…/legal-holds/:id/lift`), read beside the manifest's
+   admission-time flag; a withdrawal against a held object FAILS the case before any object is touched
+   (`legal_hold` → `challenge`, `CorrectionFailed` published, the held objects named, partial work: none).
+5. **Telemetry** (AU-MEM-0041): `graph.subscription_delivery_telemetry` and `graph.propagation_attempt_telemetry`
+   — security-invoker views over the ledgers (a tenant reads its own; the first cut ran as the owner and would have
+   read every tenant's — caught by the harness's isolation check) — with queue wait, apply/walk time, end-to-end age,
+   retries, items, unresolved dependencies, failure class; the status route carries `telemetry.deliveries` and
+   `telemetry.open_failure_states`. One operating measurement captured on the local profile
+   (`evidence/cp6/b7-telemetry-measurement.txt`).
+
+**Acceptance units.** AU-MEM-0118 (unresolved work: the reproduction before/after, the re-drive and restart
+re-checks, the tick's interval, the positive control, twin idempotency intact), AU-MEM-0119 (backlog once; replay
+from a sequence), AU-MEM-0114 (the claim.corrected and edge-mapping clause), AU-MEM-0029 (reconciled to
+`verified:ci` at `fcbdefc`: every named case runs on the hosted chain), AU-MEM-0039 (four of six conditions with a
+fault case each; the remaining two stated), AU-MEM-0041 (the subscription and propagation flows' telemetry; the
+other flows and the per-profile captures stated), AU-DP-0071 (schema version, declared partition/sequence, replay;
+the cross-process guarantee and the interface register stated). Evidence: `apps/api/test/int/phase6-graph-subscriptions-2.test.ts`
+(14 cases) and `phase6-repro-retrieval-retry.test.ts`; two consecutive passes locally (`evidence/cp6/b7-run9.txt`,
+`b7-run10.txt`); the affected suites and the full integration suite on a database created and migrated from the final
+file (`b7-regress-b1.txt`, `b7-int-all-2.txt`); the upgrade proof (`upgrade-0064.txt`). Profiles: all; evidence class:
+harness → `verified:ci` at the first green hosted run at the implementing head.
+
+**The second pass (an adversarial review of the batch before its commit — fifteen skeptics over five claims, forty
+findings verified independently; `evidence/cp6/README.md`).** Confirmed and corrected before the commit: the receive
+port fanned every re-driven event out to every active subscription, so a subscription registered to leave its backlog
+received past events by someone else's re-drive and one subscription's re-check reopened another's refused or
+unresolved delivery — a re-drive now NAMES the subscriptions it is for (`only`) and the receive port touches no other,
+while a live job reaches only subscriptions served from at or before the row's sequence; the served point was an
+instant compared with the transaction's start — it is now a SEQUENCE (`served_from_seq`, the partition's next at
+registration) and a delivery that exists is reconciled by its state wherever its row lies; a replay's point beyond
+the cursor moved it forward over open work — the cursor now only moves back; a replay's own `<id>.r<seq>` jobs raced
+the reconciliation's plain jobs — a replay now reopens the rows and the reconciliation re-drives them, scoped, one
+job kind; dead-lettered rows were invisible (`subscription_outbox_failures` looked for `failed`, the publisher writes
+`dead_letter`); a worker that won the race with the publisher's acknowledgement refused the job as "not published" —
+the event row is readable once leased; the publisher's ticks could overlap and a failed row let a later sequence
+overtake it — one tick at a time, a failed row halts its partition for the tick; a partition with a sustained backlog
+starved the others under a sequence-first lease — the lease is now round-robin across partitions, ordered within; an
+infrastructure fault at the session extension left a delivery `received` with no finish — classified now; refused
+deliveries were never re-driven automatically — a start re-drives them; the open failure states were a window over
+the hundred most recent deliveries — their own query now; the telemetry views ran as their owner and would have read
+every tenant's rows — security-invoker, with the harness asserting the isolation; the legal-hold check was a pre-read
+outside the applying transaction keyed on an unordered version — inside the transaction now, on the latest version's
+manifest, per batch, the earlier batches' supersessions recorded as the partial work they are.
+
+**Known limits, recorded.** The ordering guarantee is per publisher process (two publisher processes could interleave a
+partition's rows) — the cross-process routing gap of B6 widened by one clause, assigned forward with it; the
+audit-then-enqueue lock order is the pipeline's convention, not a database invariant (a seed script that enqueues
+first is not serialised by it). The `provenance_incomplete` and `material_change` conditions of AU-MEM-0039 have no
+fault case yet. The retrieval check reports what 0024's rebuild measures (rows present in both with a differing
+state); a missing or extra projection row passes it. A hold binds to the manifest of the version current when it is
+placed; a later revision with a new manifest is not held by it. A revoked subscription's unresolved deliveries are
+not re-checked by its replacement unless the replacement is registered to replay its backlog. A budget refusal of a
+one-item twins subscription recurs at every later event with two verified versions (visible as open failure states;
+the owner raises the budget or the versions are re-verified) — the harness shows two such refusals, by design. The
+`max_elapsed_ms` budget ends `failed`/`budget → retry` (the next delivery resumes from the checkpoint), unlike the
+`max_items_per_event` budget, which is `refused`/`budget → human_review`.
+
 ## Order and the next implementation batch
 
-B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints) and B6 done in
-code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding). The
+B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
+code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
+(2026-09-12, after Codex's third finding). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

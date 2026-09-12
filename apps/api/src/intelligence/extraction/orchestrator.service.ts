@@ -296,7 +296,7 @@ export class ExtractionOrchestrator {
                      targetId: declaredClaimIds[0] as string, targetVersion: '1',
                      outboxEvent: r.admitted.length === 0 ? null : {
                        eventType: 'ClaimsExtracted',
-                       payload: { run_id: runId, method_id: a.methodId, mode,
+                       payload: { schema_version: 'v1', run_id: runId, method_id: a.methodId, mode,
                                   claims: r.admitted.map((x) => x.objectId) },
                      } };
           });

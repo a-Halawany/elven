@@ -54,10 +54,12 @@ const EMPTY_PAYLOAD_DIGEST = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310
  */
 interface CorrectionApplyResult {
   caseId: string;
-  state: 'applied' | 'rejected';
+  state: 'applied' | 'rejected' | 'failed';
   superseded?: Array<{ object_id: string; from: number; to: number }>;
   rejectedClaims: Array<{ object_id: string; reason: string }>;
   propagationScope?: { resolved: Array<{ object_id: string; from: number; to: number }>; unresolved: string };
+  /** 0064 (AU-MEM-0039): the failure state of a case that could not be applied, with its class and the route it is sent down. */
+  failure?: { failure_class: string; disposition: string; held: string[]; reason: string };
 }
 
 interface ContractRow {
@@ -523,7 +525,7 @@ export class CollectionOrchestrator {
           result: r, targetType: 'EVD', targetId: r.evdObjectId, targetVersion: '1',
           outboxEvent: {
             eventType: 'ObservationRecorded',
-            payload: {
+            payload: { schema_version: 'v1',
               evd_object_id: r.evdObjectId, source_id: contract.source_id,
               released_from_quarantine_case: a.caseId,
             },
@@ -636,6 +638,36 @@ export class CollectionOrchestrator {
               latest.set(id, row);
             }
           }
+          /*
+           * A LEGAL HOLD CONFLICTING WITH A DELETION (AU-MEM-0039, 0064) — checked INSIDE the applying transaction,
+           * on the manifest of each object's LATEST version (the row this batch would supersede), against the
+           * manifest's admission-time flag and the holds placed since (observation.legal_holds, not lifted). A
+           * withdrawal that would supersede held evidence FAILS the case here, before this batch touches any object:
+           * the failure state is exposed with its class, the held objects named, the disposition a CHALLENGE (the
+           * hold's owner lifts it or the correction is withdrawn); earlier batches' supersessions stand as the
+           * partial work they are and the case records them. Nothing in the correction path lifts a hold.
+           */
+          if (caseRow.kind === 'withdrawal') {
+            const manifestOf = new Map([...latest.entries()].map(([id, row]) => [id, String((row['payload'] as Record<string, unknown> | undefined)?.['manifest_id'] ?? '')]));
+            const manifestIds = [...new Set([...manifestOf.values()].filter((m) => m !== ''))];
+            const heldManifests = new Set<string>();
+            if (manifestIds.length > 0) {
+              for (const m of (await cap.readManifests().select(['manifest_id'] as never).where('manifest_id' as never, 'in', manifestIds as never).where('legal_hold' as never, '=', true as never).execute()) as Array<{ manifest_id: string }>) heldManifests.add(String(m.manifest_id));
+              for (const h of (await cap.readLegalHolds().select(['manifest_id'] as never).where('manifest_id' as never, 'in', manifestIds as never).where('lifted_at' as never, 'is', null).execute()) as Array<{ manifest_id: string }>) heldManifests.add(String(h.manifest_id));
+            }
+            const held = [...manifestOf.entries()].filter(([, m]) => heldManifests.has(m)).map(([id]) => id);
+            if (held.length > 0) {
+              const reason = `legal hold: ${held.length} of ${batch.length} object(s) in this batch are under legal hold and cannot be withdrawn (${held.join(', ')}); the hold's owner lifts it or the correction is withdrawn — this batch applied nothing${superseded.length > 0 ? `; ${superseded.length} object(s) of earlier batches stand superseded` : ''}`;
+              await cap.closeCorrectionCase({ caseId: a.caseId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, outcome: 'failed', affectedResolved: superseded,
+                failureReason: reason, eventId: newId(), correlationId: a.envelope.correlation_id });
+              return {
+                result: { caseId: a.caseId, state: 'failed', superseded: [], rejectedClaims: verification.rejected, failure: { failure_class: 'legal_hold', disposition: 'challenge', held, reason },
+                          propagationScope: { resolved: superseded, unresolved: UNRESOLVED_PROPAGATION } },
+                targetType: 'COR', targetId: a.caseId, targetVersion: '1',
+                outboxEvent: { eventType: 'CorrectionFailed', payload: { schema_version: 'v1', case_id: a.caseId, source_id: caseRow.source_id, kind: caseRow.kind, failure_class: 'legal_hold', disposition: 'challenge', held, applied_by: a.principal.principalId } },
+              };
+            }
+          }
           const r = await this.corrections.apply(
             cap, scope, `principal:${a.principal.principalId}`, a.envelope.correlation_id,
             a.caseId, caseRow.kind as 'correction' | 'withdrawal' | 'supersession',
@@ -676,7 +708,7 @@ export class CollectionOrchestrator {
             // to this event; the submission keeps its name.
             outboxEvent: isLast ? {
               eventType: 'CorrectionApplied',
-              payload: {
+              payload: { schema_version: 'v1',
                 case_id: a.caseId, source_id: caseRow.source_id, kind: caseRow.kind,
                 applied_by: a.principal.principalId,
                 propagation_scope: {
@@ -689,6 +721,9 @@ export class CollectionOrchestrator {
         });
       superseded.push(...(out.result.superseded ?? []));
       lastReceipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+      if (out.result.state === 'failed') {
+        return { correction: out.result, receipt: lastReceipt };
+      }
     }
 
     return {
@@ -778,7 +813,7 @@ export class CollectionOrchestrator {
           targetType: 'SRC', targetId: a.sourceId, targetVersion: String(contract.contract_version),
           outboxEvent: prior === health.state ? null : {
             eventType: 'SourceHealthChanged',
-            payload: {
+            payload: { schema_version: 'v1',
               source_id: a.sourceId, prior_state: prior, new_state: health.state,
               evaluated_at: evaluatedAt, reason: health.reason, lag_class: health.lagClass,
               decision_use_constraint: constraint,

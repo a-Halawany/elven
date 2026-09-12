@@ -70,11 +70,10 @@ export class SubscriptionsService {
         return { result: { subscriptionId, consumerKind: kind, principalId: r.principal_id, role: CONSUMER_ROLE[kind], consumer: { version: r.version, codeDigest: r.code_digest }, eventTypes, filter, budgets: r.budgets },
                  targetType: 'SUB', targetId: subscriptionId, targetVersion: '1', outboxEvent: null };
       });
-    // Served from this moment; the backlog is replayed from the beginning of the outbox when the policy says so.
-    let reDriven = 0;
-    if (backlog === 'replay') reDriven = (await this.replay(envelope, actor, tenantId, domainId, subscriptionId, { fromCreatedAt: null, fromEventId: null, reason: 'backlog replay at registration' })).replayed;
+    // Served from the subscription's own point (0064): 'leave' from its registration, 'replay' from the beginning —
+    // the reconciliation re-drives each past row ONCE (0063 re-drove a replayed backlog twice: the replay's jobs and its own).
     const served = await this.dispatcher.reconcile('subscription registered', true);
-    return { subscription: out.result, served: { workerRunning: served.workers.includes(redisName(subscriptionQueueNameFor(tenantId, domainId))), reDriven: served.reDriven.filter((e) => e.tenantId === tenantId && e.domainId === domainId).length + reDriven },
+    return { subscription: out.result, served: { workerRunning: served.workers.includes(redisName(subscriptionQueueNameFor(tenantId, domainId))), reDriven: served.reDriven.filter((e) => e.tenantId === tenantId && e.domainId === domainId).length },
              receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -90,23 +89,28 @@ export class SubscriptionsService {
     return { subscription: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
-  /** Move the cursor back and re-drive this subscription's events after it; the outbox and every other subscription untouched. */
-  async replay(envelope: Envelope, actor: AuthenticatedPrincipal, tenantId: string, domainId: string, subscriptionId: string, a: { fromCreatedAt: string | null; fromEventId: string | null; reason: string }) {
+  /**
+   * Move the cursor back and re-drive this subscription's events after it; the outbox and every other subscription
+   * untouched. The point is (fromCreatedAt, fromEventId), or a sequence in the declared partition (0064), or neither
+   * for the beginning.
+   */
+  async replay(envelope: Envelope, actor: AuthenticatedPrincipal, tenantId: string, domainId: string, subscriptionId: string, a: { fromCreatedAt: string | null; fromEventId: string | null; fromSeq?: number | null; reason: string }) {
     if (typeof a.reason !== 'string' || a.reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a replay states its reason (at least 8 characters)'), 400);
-    if ((a.fromCreatedAt === null) !== (a.fromEventId === null)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a replay point is (fromCreatedAt, fromEventId) together, or neither for the beginning'), 400);
+    if ((a.fromCreatedAt === null) !== (a.fromEventId === null)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a replay point is (fromCreatedAt, fromEventId) together, a fromSeq, or none for the beginning'), 400);
+    const fromSeq = a.fromSeq ?? null;
+    if (fromSeq !== null && (a.fromCreatedAt !== null || !Number.isInteger(fromSeq) || fromSeq < 0)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'fromSeq is a non-negative integer and excludes (fromCreatedAt, fromEventId)'), 400);
     const out = await this.pipeline.write({ ...envelope, action: 'graph.subscription.replay', message_id: newId() }, actor, this.route(tenantId, domainId, 'graph.subscription.replay', 'SUB', subscriptionId), GraphCapability.subscriptions,
       async (cap) => {
-        const rows = await cap.replaySubscription({ subscriptionId, tenantId, domainId, fromCreatedAt: a.fromCreatedAt, fromEventId: a.fromEventId, reason: a.reason, actor: actor.principalId, eventId: newId(), correlationId: envelope.correlation_id });
+        const rows = fromSeq !== null
+          ? await cap.replaySubscriptionFromSeq({ subscriptionId, tenantId, domainId, fromSeq, reason: a.reason, actor: actor.principalId, eventId: newId(), correlationId: envelope.correlation_id })
+          : await cap.replaySubscription({ subscriptionId, tenantId, domainId, fromCreatedAt: a.fromCreatedAt, fromEventId: a.fromEventId, reason: a.reason, actor: actor.principalId, eventId: newId(), correlationId: envelope.correlation_id });
         return { result: rows, targetType: 'SUB', targetId: subscriptionId, targetVersion: '1', outboxEvent: null };
       });
-    let replayed = 0;
-    for (const r of out.result) {
-      const q = await this.scheduler.enqueueSubscriptionDelivery(tenantId, domainId, {
-        event_id: r.event_id, event_type: r.event_type, payload: { replay: a.reason }, correlation_id: r.correlation_id, causation_id: r.causation_id,
-        tenant_id: tenantId, domain_id: domainId, replay: { subscription_id: subscriptionId, replay_seq: r.replay_seq },
-      });
-      if (q.added) replayed += 1;
-    }
+    // The port reopened this subscription's deliveries after the point (and moved its cursor back); the reconciliation
+    // re-drives them — and the rows it never received — as jobs scoped to this subscription alone (0064): one job kind,
+    // no replay job racing a plain re-drive of the same event, no other subscription touched.
+    const served = await this.dispatcher.reconcile('subscription replayed', true);
+    const replayed = served.reDriven.filter((e) => e.tenantId === tenantId && e.domainId === domainId && e.subscriptionIds.includes(subscriptionId)).length;
     return { subscriptionId, replayed, events: out.result.map((r) => r.event_id), receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -115,10 +119,15 @@ export class SubscriptionsService {
     const deliveries = (await cap.readSubscriptionDeliveries().selectAll().orderBy('last_delivered_at' as never, 'desc').limit(100).execute()) as Array<Record<string, unknown>>;
     const checks = (await cap.readRetrievalChecks().selectAll().orderBy('checked_at' as never, 'desc').limit(20).execute()) as Array<Record<string, unknown>>;
     const proposals = (await cap.readMappingReconciliations().selectAll().orderBy('proposed_at' as never, 'desc').limit(100).execute()) as Array<Record<string, unknown>>;
+    // Execution-state telemetry (AU-MEM-0041, 0064): the recent deliveries, and EVERY delivery in a failure state (its own query: an
+    // open refusal never ages out of a window of the most recent rows).
+    const telemetry = (await cap.readSubscriptionTelemetry().selectAll().orderBy('last_delivered_at' as never, 'desc').limit(100).execute()) as Array<Record<string, unknown>>;
+    const open = (await cap.readSubscriptionTelemetry().selectAll().where('state' as never, 'in', ['unresolved', 'failed', 'refused'] as never).orderBy('last_delivered_at' as never, 'desc').limit(500).execute()) as Array<Record<string, unknown>>;
     const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
     return {
       consumers: CONSUMER_KINDS.map((k) => ({ kind: k, version: CONSUMER_VERSION, codeDigest: consumerCodeDigest(k), registeredInThisProcess: this.dispatcher.registeredKinds().includes(k) })),
       subscriptions, deliveries, retrieval_checks: checks, mapping_reconciliations: proposals,
+      telemetry: { deliveries: telemetry, open_failure_states: open.map((t) => ({ event_id: t['event_id'], consumer_kind: t['consumer_kind'], state: t['state'], failure_class: t['failure_class'], disposition: t['disposition'], unresolved_since: t['unresolved_since'], items_unresolved: t['items_unresolved'], retries: t['retries'] })) },
       runtime: { scheduler_enabled: this.scheduler.enabled, worker_running: this.scheduler.runningWorkers().includes(name), redis_queue: name,
                  last_reconciliation: this.dispatcher.lastReconciliation(), last_failure: this.dispatcher.lastFailureSeen() },
     };

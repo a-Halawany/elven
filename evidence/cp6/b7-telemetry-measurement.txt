@@ -1,0 +1,2 @@
+TELEMETRY MEASUREMENT (author harness, local profile): {"consumer_kind":"retrieval","event_type":"GraphChanged","change_kind":"edge.retracted","partition_seq":"26","queue_wait_ms":"6","apply_ms":"13","end_to_end_ms":"751","deliveries":1,"retries":0,"items":1,"items_applied":1}
+TELEMETRY OPEN FAILURE STATES: [["twins","refused","budget","human_review"],["twins","refused","budget","human_review"]]

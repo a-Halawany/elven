@@ -1315,3 +1315,114 @@ the retention of inferred relationships under TT-04 reassessment, the escalation
 visible queue) and AU-DP-0071 (event schema versions on the remaining Phase 1 events, partition-ordered replay),
 each now a bounded extension of the subscription machinery rather than new infrastructure. This remains progress
 toward all eleven volumes: 3,548 mandatory units are unfinished and no deployment leg is accepted.
+
+## 20. The consolidated checkpoint after `fcbdefc` / `cb014a9` (2026-09-12): Codex's third finding corrected, B7 implemented
+
+Continued from `fcbdefc` (code) / `cb014a9` (records). Codex closes the B1 interrupted-recovery and B4 accounting
+findings; those closures, `2e83945`, every earlier closed finding and the frozen criteria are preserved. The stack
+stays unmerged (PR #46 held). The evidence classes stay apart: **Codex's focused checks**, **the author's
+demonstrations** (`evidence/cp6/`), **the hosted results** (GitHub Actions on a fresh database — the only chain that
+verifies a harness unit).
+
+### 20.1 Finding 3 — retrieval retry cleared a mismatch without a second check (before → after)
+
+**Codex's check** (the actual TypeScript consumer and dispatcher with explicit doubles): a projection mismatch
+produced `failed`; a retry produced `applied` with no second check — the mismatched check had been checkpointed as an
+applied item, so the retry skipped it and cleared the failure.
+
+**Reproduced at the database/queue boundary** (`apps/api/test/int/phase6-repro-retrieval-retry.test.ts` — real Redis, the
+real outbox publisher, the real dispatcher and retrieval consumer on a fresh domain; the entities created with their
+events so the projection has a log; the drift injected as an operator-side corruption):
+
+| | before (`fcbdefc`, database at 0063 — `evidence/cp6/repro-retrieval-before.txt`) | after (0064 — `evidence/cp6/repro-retrieval-after.txt`) |
+|---|---|---|
+| healthy change | `applied`, `projections.verified`, check `mismatched 0` | same |
+| drifted projection | `failed`; `items_applied [projections.mismatched]`; 1 check | `unresolved` (`unresolved_dependency → human_review`); `items_applied []`; `items_unresolved [{projections, checks 1}]`; 1 check |
+| the reconciliation's re-drive | `applied`, `deliveries 2`, **still 1 check**, projection still drifted — the failure cleared | `unresolved`, `deliveries 2`, **a second check** (`checks 2`), projection still drifted — the failure preserved |
+
+The harness (`phase6-graph-subscriptions-2`, `evidence/cp6/b7-run9.txt`) carries it further: a restart with the
+queue lost re-drives it (`previous: unresolved`) and makes a third check; the tick inside its 10-minute re-check
+interval leaves it alone; the twin item of the same event was applied once through all three re-drives; then the
+operator repairs the projection (under the operator's authority — no subscriber repairs) and the next re-drive's
+check passes: `applied`, `resolved_after_checks 3`, the cursor advanced to that sequence, no open failure state left.
+
+### 20.2 What B7 implements (migration 0064) — `audit/CP6_BATCHES.md` §B7 for the mechanism
+
+- **`claim.corrected` through the review route** and the **edge mapping under MemoryCorrected** (AU-MEM-0114's
+  remaining clause): a claim corrected by `intelligence.review.decide` publishes MemoryCorrected beside ClaimReviewed;
+  the mappings consumer proposes the edge the claim asserted (`from E2 to E1`, "asserted by v1 of a claim corrected to
+  v2"), the resolution of its mention and the identifier sourced from it — nothing moved; an edge resting on corrected
+  evidence is proposed on the correction route.
+- **Backlog once** (AU-MEM-0119): `served_from`; a `replay` registration after four events → four deliveries of one
+  delivery each; a `leave` registration → none of them, the next new event yes.
+- **The declared partition and sequence** (AU-DP-0071): six retractions committed concurrently carry unique
+  sequences in the tenant's partition in the audit chain's own order (the AUD row and the outbox row of a write are
+  serialised by the same partition's locks, held to commit); the lease hands rows out in sequence order and the domain
+  queue receives them so (0015's `created_at` order did not — a later-started, earlier-committed write was received
+  behind); the cursor is the sequence; a replay from the fourth of six re-applies exactly the two after it.
+- **Failure states with their class and route** (AU-MEM-0039): consumer unavailable (`refused`,
+  `consumer_unavailable → retry`; re-registration re-drives), authority disputed by a pause mid-delivery (the first
+  item applied, the second not; `authority_disputed → human_review`; a resume re-drives, no duplicate), budget
+  (`budget → human_review`), an input invalidated on a COMMITTED decision (exposed `executed_action → compensation`;
+  the package untouched), a withdrawal against a LEGAL HOLD (the case `failed` before any object is touched,
+  `legal_hold → challenge`, `CorrectionFailed`; the hold placed and lifted only by an administrator through the new
+  append-only ledger; the unheld document withdraws; the held one withdraws after the lift).
+- **Telemetry** (AU-MEM-0041): per-delivery execution state through the status route; the measurement captured:
+  a retrieval delivery, queue wait 6 ms from publication, apply 13 ms, end-to-end 751 ms from the writer's
+  transaction start (publication latency separated as `publish_ms`), 0 retries
+  (`evidence/cp6/b7-telemetry-measurement.txt`); the views are security-invoker (the first cut ran as the owner and
+  would have read every tenant's rows — the harness's isolation check caught it before the commit).
+- **An adversarial review before the commit** (fifteen skeptics over five claims, forty findings verified
+  independently) drove a second pass recorded in `audit/CP6_BATCHES.md` §B7: re-drives scoped to the subscriptions
+  they are for, the served point a sequence, the replay cursor moving back only, one job kind, dead letters visible,
+  the event row readable once leased, one publisher tick at a time with a failed row halting its partition, a
+  round-robin lease, the extension fault classified, refused deliveries re-driven at a start, the failure states
+  their own query, the legal-hold check inside the applying transaction.
+- **The evidence reference repaired**: `evidence/cp6/act-b6.log` was cited at `cb014a9` but excluded by the
+  repository's `*.log` ignore rule; the retained NORDWERK log is committed as `evidence/cp6/act-b6.txt`.
+
+### 20.3 Local results at the B7 head
+
+On `eye_verify8_20260912`, created and migrated 0001–0064 from the final file: `phase6-graph-subscriptions-2` 14/14
+(`b7-run16.txt`, with the measurement) and again beside `phase6-graph-subscriptions` 13/13, the reproduction file,
+`phase6-propagation-consumer` and `gate22-outbox-hardening` (50/50, `b7-run15.txt`); the full integration suite
+(`b7-int-all-4.txt`, 867/867 in 51 files — the 852 of `fcbdefc` plus B7's fourteen and the reproduction) and the
+upgrade proof (`upgrade-0064.txt`: 64 files; roles +25; migrations +43; the three outbox columns added above the
+ceiling declared and the pre-existing rows digested over the ceiling's columns; 275/275 on the upgraded data); the B1
+suite's legacy-row fixture now places its row in its partition as enqueue would; unit 2156/2156; boundaries clean.
+A local pass verifies nothing (S7).
+
+### 20.4 Heads, hosted results, reconciled statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `fcbdefc` / `cb014a9` | B6 and its records | 34663012651 green (852/852) | 34663012694 green |
+| the B7 head (this commit) | 0064; the consumers, the correction path, the publisher, the ledger; the harness; the evidence repair | pending — the run at this head verifies AU-MEM-0118/-0119 and the B7 clauses of AU-MEM-0039/-0041/-0114 and AU-DP-0071 | pending |
+
+Statuses: AU-MEM-0118, AU-MEM-0119 `open` until the hosted run at the B7 head is green; AU-MEM-0029 reconciled
+`verified:local` → `verified:ci` at `fcbdefc` (every named case runs on the hosted chain); AU-MEM-0114 keeps
+`verified:ci` at `fcbdefc` with its completed clause bound to the B7 head; AU-MEM-0039, AU-MEM-0041 and AU-DP-0071
+stay `open` with their delivered clauses and their remaining clauses stated in their own prose. The register's §5.2a
+reads **3,550 = 3,197 open + 338 local + 15 CI** at the B7 head before its hosted run — two more than `cb014a9` by
+the allocation of the two new units, one moved from local to CI, none by regression; no accepted deployment leg.
+
+### 20.5 Recorded, assigned forward
+
+- **Browser gaps** (unchanged from §19.5): the subscriptions view, the mapping decision and now the failure states and
+  telemetry are not on the browser-regression spec — the next browser-evidence refresh.
+- **Cross-process routing and ordering**: the publisher routes to a subscription queue only when the dispatcher in
+  the same process serves the domain (delivery otherwise by the 60 s reconciliation), and the sequence-order guarantee
+  is per publisher process — one assigned checkpoint for both, the next batch after the hosted run.
+- **AU-MEM-0039**: `provenance_incomplete` and `material_change` have no fault case; **AU-MEM-0041**: the forecast,
+  scenario, reconciliation and simulation flows' own telemetry and the per-profile captures; **AU-DP-0071**: the
+  interface register (L1-I01..L9-I05) and the log's retention window — each stated in its unit.
+- Earlier open observations unchanged; **not started, by instruction**: no merge; the completed monitor not re-armed;
+  GHCR temporary; PortWatch permission, the Comtrade deferral and the purchase/cadence/budget constraints stand.
+
+### 20.6 The next implementation batch
+
+The cross-process routing/ordering checkpoint (a shared routing decision rather than a process-local set, or a
+single elected publisher); the two remaining AU-MEM-0039 conditions with fault cases; the other four flows' telemetry
+views (AU-MEM-0041); then the register's next open memory obligations (AU-DP-0041's reassessment of inferred
+relationships under TT-04; AU-MEM-0031's derivative coverage). This remains progress toward all eleven volumes:
+3,550 mandatory units are unfinished and no deployment leg is accepted.

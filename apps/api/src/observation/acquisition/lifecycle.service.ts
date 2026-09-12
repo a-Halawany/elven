@@ -1013,7 +1013,7 @@ export class AcquisitionLifecycle {
           targetType: 'EVD', targetId: evdObjectId, targetVersion: String(evdVersion),
           outboxEvent: {
             eventType: 'ObservationRecorded',
-            payload: {
+            payload: { schema_version: 'v1',
               obs_object_id: obsObjectId, evd_object_id: evdObjectId,
               evd_version: evdVersion, revision: revisionOf !== null,
               source_id: req.sourceId, contract_version: req.contractVersion,

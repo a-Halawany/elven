@@ -113,7 +113,19 @@ export class SubscriptionLedger {
   async itemDone(a: { eventId: string; subscriptionId: string; tenantId: string; domainId: string; item: string; effect: string; effectRef: string | null; details?: Record<string, unknown> }): Promise<void> {
     await sql`select graph.subscription_item_done(${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.item}, ${this.action}, ${a.effect}, ${a.effectRef}::uuid, ${JSON.stringify(a.details ?? {})}::jsonb)`.execute(this.tx);
   }
+  /**
+   * The effect found OPERATOR WORK (0064): what it recorded is committed with this call — a check is evidence — but the
+   * item is NOT applied; it stays open, re-checked at every re-drive until a check passes. Returns how many checks so far.
+   */
+  async itemUnresolved(a: { eventId: string; subscriptionId: string; tenantId: string; domainId: string; item: string; effect: string; effectRef: string | null; reason: string; details?: Record<string, unknown> }): Promise<number> {
+    const r = await sql<{ n: number }>`select graph.subscription_item_unresolved(${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.item}, ${this.action}, ${a.effect}, ${a.effectRef}::uuid, ${a.reason}, ${JSON.stringify(a.details ?? {})}::jsonb) as n`.execute(this.tx);
+    return Number(r.rows[0]?.n ?? 1);
+  }
 }
+
+/** AU-MEM-0039: the class of a delivery's failure state and the route it is sent down. */
+export type FailureClass = 'authority_disputed' | 'consumer_unavailable' | 'provenance_incomplete' | 'executed_action' | 'legal_hold' | 'material_change' | 'unresolved_dependency' | 'budget' | 'infrastructure';
+export type Disposition = 'retry' | 'compensation' | 'challenge' | 'human_review';
 
 /** What a registered consumer supplies to the dispatcher: how to read its world, what an event means for it, and one effect per item. */
 export interface SubscriptionConsumer<C> {
@@ -127,6 +139,12 @@ export interface SubscriptionConsumer<C> {
   /** One bounded, idempotent effect for one item; returns what it did and the effect's reference for the ledger. */
   applyItem(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string):
     Promise<{ effect: string; effectRef: string | null; details?: Record<string, unknown>;
-              /** The item was recorded but what it found is operator work (a projection mismatch): the delivery ends failed with this reason. */
-              failure?: string }>;
+              /**
+               * What the effect found is OPERATOR WORK (a projection mismatch): the effect's record is committed, the item is
+               * left UNRESOLVED (never checkpointed as applied) and re-checked at every re-drive; the delivery ends
+               * `unresolved` with this reason (0064, Codex finding 3).
+               */
+              unresolved?: string;
+              /** The effect exposes a condition a person must route (an input invalidated on a committed decision): recorded on the item, the delivery still applied. */
+              exposure?: { failureClass: FailureClass; disposition: Disposition; note: string } }>;
 }

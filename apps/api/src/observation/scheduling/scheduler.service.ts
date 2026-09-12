@@ -91,15 +91,19 @@ const LOOKUP_TIMEOUT_MS = 3_000;
 export interface PropagationJobPayload {
   event_id: string; event_type: string; payload: { case_id?: string; [k: string]: unknown };
   correlation_id: string; causation_id: string; tenant_id: string | null; domain_id: string | null;
+  /** 0064: the outbox row's declared partition and ordinal (commit order) and its schema version, when the publisher routed it. */
+  partition_key?: string; partition_seq?: number; schema_version?: string;
 }
 export type PropagationJobHandler = (payload: PropagationJobPayload, jobId: string, attemptsMade: number) => Promise<void>;
 /**
- * CP-6 B6 (0063): a GraphChanged / MemoryCorrected delivery — the published outbox row, verbatim, plus (for a replay)
- * the one subscription it is replayed to and the replay sequence. The job id is the outbox row id (`<id>.r<seq>` for
- * a replay so an in-flight live job is never shadowed).
+ * CP-6 B6 (0063): a GraphChanged / MemoryCorrected delivery — the published outbox row, verbatim. The publisher's LIVE
+ * job names no subscription (the receive port fans it out to every active subscription served from at or before the
+ * row's sequence); a RE-DRIVE (a reconciliation, a registration, a resume, a replay — 0064) names the subscriptions it
+ * is for in `only`, and the receive port touches no other. The job id is the outbox row id: a re-drive of an event a
+ * live job still holds is left to that job.
  */
 export interface SubscriptionJobPayload extends PropagationJobPayload {
-  replay?: { subscription_id: string; replay_seq: number } | null;
+  only?: string[] | null;
 }
 export type SubscriptionJobHandler = (payload: SubscriptionJobPayload, jobId: string, attemptsMade: number) => Promise<void>;
 /** The options every propagation job is added with — by the publisher's routing and by a re-drive alike. */
@@ -381,7 +385,7 @@ export class SchedulerService implements OnModuleDestroy {
   async enqueueSubscriptionDelivery(tenantId: string, domainId: string, data: SubscriptionJobPayload): Promise<{ jobId: string | null; added: boolean; inFlight: string | null }> {
     if (!this.enabled) return { jobId: null, added: false, inFlight: null };
     const q = this.queueNamed(redisName(subscriptionQueueNameFor(tenantId, domainId)));
-    const jobId = data.replay ? `${data.event_id}.r${data.replay.replay_seq}` : data.event_id;
+    const jobId = data.event_id;
     const existing = await q.getJob(jobId);
     if (existing !== undefined && existing !== null) {
       const state = await existing.getState();

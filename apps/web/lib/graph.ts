@@ -313,6 +313,8 @@ export const graph = {
           consumers: Array<{ kind: string; version: string; codeDigest: string; registeredInThisProcess: boolean }>;
           subscriptions: Array<Record<string, unknown>>; deliveries: Array<Record<string, unknown>>;
           retrieval_checks: Array<Record<string, unknown>>; mapping_reconciliations: Array<Record<string, unknown>>;
+          /** 0064 (AU-MEM-0041): execution state per delivery, and the deliveries in a failure state with their class and route. */
+          telemetry: { deliveries: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>> };
           runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_queue: string;
                      last_reconciliation: Record<string, unknown> | null; last_failure: { at: string; where: string; message: string } | null } };
         receipt: Receipt }>(
@@ -326,9 +328,9 @@ export const graph = {
     g<{ subscription: { subscriptionId: string; status: string }; receipt: Receipt }>(
       s, `/subscriptions/${subscriptionId}/${to}`, 'graph.subscription.control', 'SUB', { reason }, subscriptionId),
 
-  replaySubscription: (s: Scope, subscriptionId: string, reason: string) =>
+  replaySubscription: (s: Scope, subscriptionId: string, reason: string, fromSeq: number | null = null) =>
     g<{ subscriptionId: string; replayed: number; events: string[]; receipt: Receipt }>(
-      s, `/subscriptions/${subscriptionId}/replay`, 'graph.subscription.replay', 'SUB', { reason }, subscriptionId),
+      s, `/subscriptions/${subscriptionId}/replay`, 'graph.subscription.replay', 'SUB', fromSeq === null ? { reason } : { reason, fromSeq }, subscriptionId),
 
   subscriptionDelivery: (s: Scope, eventId: string) =>
     g<{ deliveries: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; receipt: Receipt }>(

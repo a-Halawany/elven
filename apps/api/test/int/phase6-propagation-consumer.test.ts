@@ -557,8 +557,11 @@ describe('B1 · automatic propagation, durable idempotency, failure and retry, p
     await sql`insert into observation.correction_current (case_id, scope, tenant_id, domain_id, source_id, kind, state, received_at, channel, publisher_ref, reason, affected_resolved, propagation_unresolved)
       values (${legacy}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${h.fx.sourceId}::uuid, 'correction', 'applied', now(), 'test', null, 'applied before the consumer existed',
         ${JSON.stringify([{ object_id: legacyRoot, from: 1, to: 2 }])}::jsonb, 'downstream consumers not yet present (KG/dependency graph arrives Phase 3)')`.execute(h.su);
-    await sql`insert into objects.object_outbox (id, scope, tenant_id, domain_id, event_type, payload, correlation_id, causation_id, status, published_at)
-      values (${legacyEvent}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'CorrectionReceived', ${JSON.stringify({ case_id: legacy, kind: 'correction', propagation_scope: { resolved: [{ object_id: legacyRoot, from: 1, to: 2 }], unresolved: 'x' } })}::jsonb, ${uuidv7()}::uuid, ${uuidv7()}::uuid, 'published', now())`.execute(h.su);
+    // A published row of the pre-0060 shape, placed in its partition as 0064 places every row (the fixture takes the next sequence as enqueue would).
+    await sql`with pk as (insert into objects.outbox_partitions (partition_key) values (${`tenant:${T()}`}) on conflict (partition_key) do nothing),
+                   seq as (update objects.outbox_partitions set next_seq = next_seq + 1 where partition_key = ${`tenant:${T()}`} returning next_seq - 1 as n)
+      insert into objects.object_outbox (id, scope, tenant_id, domain_id, event_type, payload, correlation_id, causation_id, status, published_at, partition_key, partition_seq, schema_version)
+      select ${legacyEvent}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'CorrectionReceived', ${JSON.stringify({ case_id: legacy, kind: 'correction', propagation_scope: { resolved: [{ object_id: legacyRoot, from: 1, to: 2 }], unresolved: 'x' } })}::jsonb, ${uuidv7()}::uuid, ${uuidv7()}::uuid, 'published', now(), ${`tenant:${T()}`}, seq.n, 'v1' from seq`.execute(h.su);
     const left = await consumer.reconcile('backlog check under leave');
     expect(left.reDriven.map((e) => e.caseId)).not.toContain(legacy);
     expect((await attemptsFor(legacy)).length).toBe(0);

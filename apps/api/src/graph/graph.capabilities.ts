@@ -104,6 +104,9 @@ export interface GraphReads {
   readRetrievalChecks(): any;
   readMappingReconciliations(): any;
   readEntityIdentifiers(): any;
+  /** 0064 (AU-MEM-0041): execution-state telemetry per delivery and per propagation attempt, from the ledgers. */
+  readSubscriptionTelemetry(): any;
+  readPropagationTelemetry(): any;
   /**
    * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
    * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
@@ -276,6 +279,9 @@ export interface SubscriptionWrites extends GraphReads {
   setSubscriptionStatus(a: { subscriptionId: string; tenantId: string; domainId: string; to: 'active' | 'paused' | 'revoked'; reason: string; actor: string; eventId: string; correlationId: string }): Promise<string>;
   replaySubscription(a: { subscriptionId: string; tenantId: string; domainId: string; fromCreatedAt: string | null; fromEventId: string | null; reason: string; actor: string; eventId: string; correlationId: string }):
     Promise<Array<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>>;
+  /** 0064: a replay from a sequence in the declared partition (the cursor's ordinal) — the same act, the point named by its ordinal. */
+  replaySubscriptionFromSeq(a: { subscriptionId: string; tenantId: string; domainId: string; fromSeq: number; reason: string; actor: string; eventId: string; correlationId: string }):
+    Promise<Array<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>>;
 }
 
 /** The retrieval and memory-mapping consumers' effects (graph-side), driven by the subscriber's own action. */
@@ -351,6 +357,8 @@ class GraphCapabilityImpl extends GraphCore
   readRetrievalChecks(): any { return this.from('graph.retrieval_checks'); }
   readMappingReconciliations(): any { return this.from('graph.mapping_reconciliations'); }
   readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
+  readSubscriptionTelemetry(): any { return this.from('graph.subscription_delivery_telemetry'); }
+  readPropagationTelemetry(): any { return this.from('graph.propagation_attempt_telemetry'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
@@ -636,6 +644,11 @@ class GraphCapabilityImpl extends GraphCore
     return this.call<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>(sql`
       select event_id::text, event_type, change_kind, outbox_created_at::text, correlation_id::text, causation_id::text, replay_seq from graph.subscription_replay(
         ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromCreatedAt}::timestamptz, ${a.fromEventId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async replaySubscriptionFromSeq(a: Parameters<SubscriptionWrites['replaySubscriptionFromSeq']>[0]) {
+    return this.call<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>(sql`
+      select event_id::text, event_type, change_kind, outbox_created_at::text, correlation_id::text, causation_id::text, replay_seq from graph.subscription_replay_from_seq(
+        ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromSeq}::bigint, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
   async recordRetrievalCheck(a: Parameters<GraphSubscriberWrites['recordRetrievalCheck']>[0]) {
     const rows = await this.call<{ r: { check_id: string; projections: unknown[]; mismatched: number } }>(sql`select graph.record_retrieval_check(

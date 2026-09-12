@@ -146,19 +146,38 @@ const LATER_PHASE_SUITES = ['test/int/phase1-acceptance.test.ts',
  * aggregate digest cannot tell those apart, so this keeps the set and lets the
  * caller assert preservation and additions separately.
  */
-async function dataRows(c) {
+/**
+ * A ROW IS DIGESTED OVER THE COLUMNS IT HAD AT THE CEILING. A later migration may ADD a column to a
+ * governed table (0064 adds the declared partition, sequence and schema version to the outbox) exactly
+ * as it may add a row; what it may not do is lose or rewrite a value a row already carried. So the
+ * column set is captured at the ceiling and the same projection is digested after the upgrade; any
+ * column added above the ceiling is reported and must be declared below, like a row addition.
+ */
+async function dataRows(c, columnsAt = null) {
   const { rows: tables } = await c.query(`
     select table_schema||'.'||table_name as t from information_schema.tables
      where table_type = 'BASE TABLE'
        and table_schema in ('identity','tenancy','policy','audit','objects','ctx','canon','config','public')
      order by 1`);
   const out = new Map();
+  const columns = new Map();
   for (const { t } of tables) {
-    const { rows } = await c.query(`select md5(r::text) x from ${t} r`);
+    const [schema, table] = t.split('.');
+    const { rows: cols } = await c.query(`select column_name from information_schema.columns where table_schema = $1 and table_name = $2 order by ordinal_position`, [schema, table]);
+    const now = cols.map((r) => r.column_name);
+    columns.set(t, now);
+    const project = (columnsAt?.get(t) ?? now).filter((col) => now.includes(col)).map((col) => `"${col}"`).join(', ');
+    const { rows } = await c.query(`select md5(x::text) x from (select ${project} from ${t}) x`);
     out.set(t, new Set(rows.map((r) => r.x)));
   }
+  out.columns = columns;
   return out;
 }
+/** Columns the migrations above the ceiling are DECLARED to add to a governed table populated at the ceiling. */
+const INTENDED_COLUMN_ADDITIONS = Object.freeze({
+  // 0064: the declared partition and sequence (the cursor), and the payload's schema version
+  'objects.object_outbox': ['partition_key', 'partition_seq', 'schema_version'],
+});
 
 /**
  * What migration 0022 is DECLARED to add, per table. Anything else added, and
@@ -175,8 +194,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2
   'objects.schema_registry': 27, // + SCN v2 (0058), SCN v3 and WRN v2 (0061)
-  // one ledger line per migration applied above the ceiling (0022–0063)
-  'public.schema_migrations': 42,
+  // one ledger line per migration applied above the ceiling (0022–0064)
+  'public.schema_migrations': 43,
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
@@ -334,13 +353,22 @@ const at22 = migrate(UPGRADED, null);
 ok(`migration set applied in full (${at22} files present)`);
 
 console.log('\n3. the data, the roles and Phase 0 authority behaviour survive the upgrade');
-const after = await withDb(UPGRADED, dataRows);
+const after = await withDb(UPGRADED, (c) => dataRows(c, before.columns));
 let problems = 0;
 let preserved = 0;
 const additions = [];
 for (const [t, b] of before) {
   const a = after.get(t);
   if (a === undefined) { bad(`table ${t} disappeared across 0022`); problems += 1; continue; }
+  const colsBefore = before.columns.get(t); const colsAfter = after.columns.get(t) ?? [];
+  const lostCols = colsBefore.filter((col) => !colsAfter.includes(col));
+  if (lostCols.length > 0) { bad(`table ${t} lost column(s) ${lostCols.join(', ')}`); problems += 1; continue; }
+  const addedCols = colsAfter.filter((col) => !colsBefore.includes(col));
+  if (addedCols.length > 0 && b.size > 0) {
+    const want = INTENDED_COLUMN_ADDITIONS[t] ?? [];
+    if (JSON.stringify(addedCols) === JSON.stringify(want)) ok(`${t}: column(s) ${addedCols.join(', ')} added above the ceiling, exactly as declared; the pre-existing values are digested over the ceiling's columns`);
+    else { bad(`${t}: column(s) ${addedCols.join(', ')} added above the ceiling; declared: ${want.join(', ') || 'none'}`); problems += 1; }
+  }
   const lostRows = [...b].filter((x) => !a.has(x));
   if (lostRows.length > 0) {
     bad(`table ${t} lost or rewrote ${lostRows.length} of its ${b.size} pre-existing row(s)`);

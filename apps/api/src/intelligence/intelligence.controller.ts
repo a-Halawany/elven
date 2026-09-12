@@ -475,7 +475,7 @@ export class IntelligenceController {
         })] : [];
         return { result: r, targetType: 'REV', targetId: caseId, targetVersion: '1',
                  outboxEvent: { eventType: 'ClaimReviewed',
-                                payload: { case_id: caseId, state: r.state,
+                                payload: { schema_version: 'v1', case_id: caseId, state: r.state,
                                            claim_object_id: claimId, new_version: r.newVersion } },
                  outboxEvents: corrected };
       });

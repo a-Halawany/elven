@@ -190,7 +190,7 @@ export class ObservationController {
           result: r, targetType: 'SRC', targetId: sourceId,
           targetVersion: String(p?.contractVersion), outboxEvent: {
             eventType: 'SourceHealthChanged',
-            payload: {
+            payload: { schema_version: 'v1',
               source_id: sourceId, contract_version: p?.contractVersion,
               state: p?.target === 'suspended' ? 'suspended' : p?.target,
               reason: p?.reason ?? '',
@@ -597,7 +597,7 @@ export class ObservationController {
           targetType: 'COR', targetId: r.caseId, targetVersion: '1',
           outboxEvent: {
             eventType: 'CorrectionReceived',
-            payload: {
+            payload: { schema_version: 'v1',
               case_id: r.caseId, source_id: p?.sourceId, kind: p?.kind,
               propagation_scope: { resolved: [], unresolved: UNRESOLVED_PROPAGATION },
             },
@@ -631,6 +631,54 @@ export class ObservationController {
       affectedEvdIds: p?.affectedEvdIds ?? [],
       reason: p?.reason ?? '',
     });
+  }
+
+  // ───────────────────────── legal holds (0064, AU-MEM-0039) ─────────────────────────
+
+  /** Place a legal hold on an evidence object's manifest: an administrator's act; a withdrawal against it fails before any object is touched. */
+  @Post('/evidence/:evdId/legal-hold')
+  async placeLegalHold(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('evdId') evdId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const reason = body.payload?.reason ?? '';
+    if (reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a legal hold states its reason (at least 8 characters)'), 400);
+    const holdId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.legal_hold.place', objectType: 'LGH', objectId: holdId },
+      ObservationCapability.legalHold,
+      async (cap, scope) => {
+        const manifestId = await cap.placeLegalHold({ holdId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, evdObjectId: evdId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { holdId, evdObjectId: evdId, manifestId, reason }, targetType: 'LGH', targetId: holdId, targetVersion: '1', outboxEvent: null };
+      });
+    return { hold: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/legal-holds/:holdId/lift')
+  async liftLegalHold(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('holdId') holdId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const reason = body.payload?.reason ?? '';
+    if (reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'lifting a legal hold states its reason (at least 8 characters)'), 400);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.legal_hold.lift', objectType: 'LGH', objectId: holdId },
+      ObservationCapability.legalHold,
+      async (cap, scope) => {
+        await cap.liftLegalHold({ holdId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { holdId, lifted: true }, targetType: 'LGH', targetId: holdId, targetVersion: '1', outboxEvent: null };
+      });
+    return { hold: out.result, receipt: receipt(out) };
   }
 
   @Post('/corrections/list')
