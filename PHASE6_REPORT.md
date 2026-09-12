@@ -1397,14 +1397,15 @@ A local pass verifies nothing (S7).
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `fcbdefc` / `cb014a9` | B6 and its records | 34663012651 green (852/852) | 34663012694 green |
-| the B7 head (this commit) | 0064; the consumers, the correction path, the publisher, the ledger; the harness; the evidence repair | pending — the run at this head verifies AU-MEM-0118/-0119 and the B7 clauses of AU-MEM-0039/-0041/-0114 and AU-DP-0071 | pending |
+| `a852c65` | 0064; the consumers, the correction path, the publisher, the ledger; the harness; the evidence repair — **the B7 head** | **34693808238 green** (16 m 44 s; build-test: unit 2147, the full integration suite on a fresh database **867/867 in 51 files** — the 852 of `fcbdefc` plus B7's fourteen and the reproduction, `phase6-graph-subscriptions-2` 14/14 in 17 s on the hosted runner; the upgrade proof PASS with 0064 and the declared column additions; browser-regression; supply-chain — `evidence/cp6/hosted-a852c65-build-test-summary.txt`) | 34693808173 green |
 
-Statuses: AU-MEM-0118, AU-MEM-0119 `open` until the hosted run at the B7 head is green; AU-MEM-0029 reconciled
-`verified:local` → `verified:ci` at `fcbdefc` (every named case runs on the hosted chain); AU-MEM-0114 keeps
-`verified:ci` at `fcbdefc` with its completed clause bound to the B7 head; AU-MEM-0039, AU-MEM-0041 and AU-DP-0071
-stay `open` with their delivered clauses and their remaining clauses stated in their own prose. The register's §5.2a
-reads **3,550 = 3,197 open + 338 local + 15 CI** at the B7 head before its hosted run — two more than `cb014a9` by
-the allocation of the two new units, one moved from local to CI, none by regression; no accepted deployment leg.
+Statuses: AU-MEM-0118 and AU-MEM-0119 `verified:ci` at `a852c65` (S7: the local passes never verified them; the hosted
+run did) — one artefact, no deployment leg; AU-MEM-0029 reconciled `verified:local` → `verified:ci` at `fcbdefc`
+(every named case runs on the hosted chain); AU-MEM-0114 keeps `verified:ci` with its completed clause bound to
+`a852c65`; AU-MEM-0039, AU-MEM-0041 and AU-DP-0071 stay `open` with their delivered clauses bound to `a852c65` and
+their remaining clauses stated in their own prose. The register's §5.2a reads **3,550 = 3,195 open + 338 local +
+17 CI** — two more than `cb014a9` by the allocation of the two new units, one moved from local to CI, none by
+regression; no accepted deployment leg. The records commit after `a852c65` changes no code; its hosted run is a refresh.
 
 ### 20.5 Recorded, assigned forward
 
