@@ -60,7 +60,9 @@ export interface SubscriptionReconcileReport {
   inFlight: Array<{ tenantId: string; domainId: string; eventId: string; jobState: string }>;
   outboxFailures: Array<{ tenantId: string; domainId: string; eventId: string; eventType: string }>;
 }
-export type DispatcherFault = 'before_item' | 'after_first_item' | 'interrupt_after_receipt' | 'interrupt_after_first_item' | 'slow_before_item';
+export type DispatcherFault = 'before_item' | 'after_first_item' | 'interrupt_after_receipt' | 'interrupt_after_first_item' | 'slow_before_item' | 'slow_before_finish';
+/** A slow fault's shape (test runtime): how long it sleeps, and before which item (1-based) it fires. */
+export type DispatcherFaultShape = { ms?: number; item?: number };
 const INTERRUPTED = (): Promise<never> => new Promise<never>(() => { /* a killed process never returns */ });
 const RECONCILE_TICK_MS = 60_000;
 /** An unresolved delivery (operator work) is re-checked on the tick only after this long; at once at a start, a registration, a resume or a replay. */
@@ -68,9 +70,8 @@ const UNRESOLVED_RECHECK = '10 minutes';
 /**
  * ONE SERVER PER DOMAIN (0065 §3): a domain's queue is consumed by the process holding its serving claim — renewed on
  * every reconciliation (the tick), released at shutdown, taken over by another process once it lapses. Two and a half
- * ticks: a process that stops renewing loses the domain within that.
+ * ticks by default (`eye.subscriptions.serving_seconds`, 150): a process that stops renewing loses the domain within that.
  */
-const SERVING_CLAIM_SECONDS = 150;
 
 @Injectable()
 export class SubscriptionDispatcherService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -81,6 +82,9 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   private fault: DispatcherFault | null = null;
   /** A per-item fault fires only for deliveries of this kind (null: the first delivery that reaches the point). */
   private faultKind: ConsumerKind | null = null;
+  private faultShape: DispatcherFaultShape = {};
+  /** Test runtime only: the reconciliation tick renews nothing (a process whose renewals fail while it believes its claim live). */
+  private renewalsPaused = false;
   private tick: NodeJS.Timeout | null = null;
   private readonly recent: Array<{ at: string; eventId: string; subscriptionId: string; kind: string; outcome: string; reason: string | null }> = [];
   /** This process, as the serving ledger names it (host, pid and an instance nonce — two application contexts in one process are two holders). */
@@ -125,7 +129,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       this.log.log(`serving ${r.domains.length} domain(s) with subscriptions (consumers: ${this.registeredKinds().join(', ') || 'none'}); re-drove ${r.reDriven.length} event(s)`);
     } catch (e) { this.note('startup reconciliation', e); }
     // A stranded delivery never waits for a restart: the tick re-drives non-terminal and failed deliveries.
-    this.tick = setInterval(() => { this.reconcile('periodic reconciliation', false, UNRESOLVED_RECHECK).catch((e) => this.note('periodic reconciliation', e)); }, RECONCILE_TICK_MS);
+    this.tick = setInterval(() => { if (!this.renewalsPaused) this.reconcile('periodic reconciliation', false, UNRESOLVED_RECHECK).catch((e) => this.note('periodic reconciliation', e)); }, RECONCILE_TICK_MS);
     this.tick.unref();
   }
   async onModuleDestroy(): Promise<void> {
@@ -170,10 +174,24 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   }
   lastFailureSeen(): { at: string; where: string; message: string } | null { return this.lastFailure; }
   recentDeliveries(): ReadonlyArray<{ at: string; eventId: string; subscriptionId: string; kind: string; outcome: string; reason: string | null }> { return this.recent; }
-  armFaultForTests(kind: DispatcherFault | null, forKind: ConsumerKind | null = null): void {
+  armFaultForTests(kind: DispatcherFault | null, forKind: ConsumerKind | null = null, shape: DispatcherFaultShape = {}): void {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('armFaultForTests is available only in the test runtime');
-    this.fault = kind; this.faultKind = forKind;
+    this.fault = kind; this.faultKind = forKind; this.faultShape = shape;
   }
+  /** Test runtime only: this process stops renewing its claims (the tick does nothing) while still believing them live — the stalled process. */
+  pauseRenewalsForTests(v: boolean): void {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('pauseRenewalsForTests is available only in the test runtime');
+    this.renewalsPaused = v;
+  }
+  /** Test runtime only: this process's belief in its claim of the domain lapses now (the database claim untouched) — the fence at the next job. */
+  expireServingForTests(tenantId: string, domainId: string): boolean {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('expireServingForTests is available only in the test runtime');
+    const c = this.serving.get(`${tenantId}/${domainId}`);
+    if (c === undefined) return false;
+    c.claimedUntil = 0;
+    return true;
+  }
+  private servingSeconds(): number { return this.cfg['eye.subscriptions.serving_seconds']; }
   private faultArmed(kind: DispatcherFault, consumerKind: ConsumerKind): boolean {
     return this.fault === kind && (this.faultKind === null || this.faultKind === consumerKind);
   }
@@ -206,7 +224,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       for (const d of found) {
         if (standDown) { domains.push({ ...d, mine: false, taken_over: false }); continue; }
         const dead = d.holder !== null && d.holder !== this.holder && this.holderIsDeadOnThisHost(d.holder) ? d.holder : null;
-        const c = (await sql<{ holder: string; claimed_until: Date; mine: boolean; taken_over: boolean }>`select * from graph.subscription_domain_claim(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, ${SERVING_CLAIM_SECONDS}, ${dead})`.execute(tx)).rows[0]!;
+        const c = (await sql<{ holder: string; claimed_until: Date; mine: boolean; taken_over: boolean }>`select * from graph.subscription_domain_claim(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, ${this.servingSeconds()}, ${dead})`.execute(tx)).rows[0]!;
         domains.push({ ...d, holder: c.holder, claimed_until: c.claimed_until, mine: c.mine, taken_over: c.taken_over });
       }
       const rows = (await sql<{ tenant_id: string; domain_id: string; event_id: string; event_type: string; change_kind: string; outbox_created_at: Date; correlation_id: string; causation_id: string; subscription_id: string; delivery_state: string | null; partition_seq: string | null }>`
@@ -233,7 +251,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
         if (d.taken_over) this.log.warn(`serving of ${d.tenant_id}/${d.domain_id} taken over from ${d.holder === this.holder ? 'a lapsed or dead holder' : d.holder}`);
         this.scheduler.startSubscriptionWorker(d.tenant_id, d.domain_id);
         // The fence: this process serves the domain only while it believes its claim live (the claim's instant, less a margin for clocks).
-        this.serving.set(key, { tenantId: d.tenant_id, domainId: d.domain_id, claimedUntil: claimedAt + SERVING_CLAIM_SECONDS * 1000 - 5_000 });
+        this.serving.set(key, { tenantId: d.tenant_id, domainId: d.domain_id, claimedUntil: claimedAt + this.servingSeconds() * 1000 - Math.min(5_000, this.servingSeconds() * 200) });
       } else {
         // Another process serves the domain (or this one stands down): no worker here; re-drives are still enqueued below.
         if (this.serving.delete(key)) this.log.log(`serving of ${d.tenant_id}/${d.domain_id} passed to ${d.holder ?? 'nobody'}`);
@@ -400,7 +418,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       if (applied.has(item)) continue;
       if (Date.now() - started > maxElapsed) { await this.finish({ ...base, outcome: 'failed', reason: `budget: max_elapsed_ms ${maxElapsed} reached; the next delivery resumes from the checkpoint`, failureClass: 'budget', disposition: 'retry' }); return; }
       if (this.faultArmed('before_item', d.consumer_kind)) { this.fault = null; await this.finish({ ...base, outcome: 'failed', reason: 'fault: injected infrastructure fault before the item (test)', failureClass: 'infrastructure', disposition: 'retry' }); throw new Error('injected infrastructure fault before the item (test)'); }
-      if (this.faultArmed('slow_before_item', d.consumer_kind)) { this.fault = null; await new Promise((r) => setTimeout(r, 4000)); }
+      if (this.faultArmed('slow_before_item', d.consumer_kind) && (this.faultShape.item ?? 1) === appliedNow + unresolved.length + 1) { this.fault = null; await new Promise((r) => setTimeout(r, this.faultShape.ms ?? 4000)); }
       let outcome: { unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition };
       try {
         outcome = (await this.pipeline.write(this.env(principal, tenantId, domainId, action, consumer.purpose, consumer.objectType, targetOf(item), correlationId), principal, route(targetOf(item)), factory,
@@ -443,6 +461,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       if (until === null) { await this.finish({ ...base, outcome: 'refused', reason: 'subscription paused or revoked during the delivery; the remaining items were not applied', failureClass: 'authority_disputed', disposition: 'human_review' }); return; }
     }
     // The database decides: applied only when every item was applied; unresolved while any item is operator work.
+    if (this.faultArmed('slow_before_finish', d.consumer_kind)) { this.fault = null; await new Promise((r) => setTimeout(r, this.faultShape.ms ?? 4000)); }
     if (unresolved.length > 0) { await this.finish({ ...base, outcome: 'unresolved', reason: unresolved.join('; ').slice(0, 500), failureClass: unresolvedClass?.failureClass ?? 'unresolved_dependency', disposition: unresolvedClass?.disposition ?? 'human_review' }); return; }
     await this.finish({ ...base, outcome: 'applied', reason: null });
   }

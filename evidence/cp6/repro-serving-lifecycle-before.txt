@@ -1,0 +1,52 @@
+# CP-6 B9 — Codex's B8-F1 and B8-F2 reproduced at the database/queue boundary, BEFORE the correction (the hook head: the serving TTL made configurable, test hooks for a stalled process and a lapsed local belief, no behaviour change). Database eye_verify20_20260912 created and migrated 0001–0065; real PostgreSQL, real Redis and BullMQ; a second application context as the second process; EYE_SUBSCRIPTION_SERVING_SECONDS=10.
+# command: EYE_DB_NAME=eye_verify20_20260912 npx vitest run --config vitest.int.config.ts --reporter=verbose --silent=false test/int/phase6-repro-serving-lifecycle.test.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · controls: the serving lifecycle in normal operation > CONTROL: under a live claim a delivery is applied by the holder; the ledger names the holder of every effect (0066) and the claim is renewed while it runs 1057ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts > B9 · controls: the serving lifecycle in normal operation > CONTROL: a hand-over between deliveries (stand-down, take-over, hand back) leaves nothing stranded and every delivery applied by the holder of its moment 876ms
+ × test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > A DELIVERY CROSSES THE EXPIRY: item 1 applied by the first process; the claim lapses and the second takes over while item 2 waits; item 2 and the finish are the SECOND process's — the first is refused, its job returned, nothing of its written after the take-over 13254ms
+   → item.applied at 2026-09-12T19:30:44.396Z after the take-over at 2026-09-12T19:30:42.136Z must be the second process's: expected null to be 'Ahmeds-MacBook-Pro.local/45297/340196…' // Object.is equality
+ × test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > COMPLETION ACCOUNTING: every item applied by the first process, the take-over lands before its finish — the stale finish is refused; the new holder re-drives, skips the applied item and finishes; the applied event is the new holder's 12858ms
+   → the applied event must be the second process's: expected null to be 'Ahmeds-MacBook-Pro.local/45297/340196…' // Object.is equality
+ × test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F1: an expired handler must settle without waiting for its own worker to drain > THE FENCE AT ENTRY on a lapsed belief: the job is refused promptly and returned, the worker closes, the process keeps working; the next reconciliation re-serves the domain and the job is delivered 20877ms
+   → the refused job out of the active state did not happen within 20000 ms; last: {"active":1,"waiting":0,"delayed":0,"completed":4,"failed":0}; dispatcher: null
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > A DELIVERY CROSSES THE EXPIRY: item 1 applied by the first process; the claim lapses and the second takes over while item 2 waits; item 2 and the finish are the SECOND process's — the first is refused, its job returned, nothing of its written after the take-over
+AssertionError: item.applied at 2026-09-12T19:30:44.396Z after the take-over at 2026-09-12T19:30:42.136Z must be the second process's: expected null to be 'Ahmeds-MacBook-Pro.local/45297/340196…' // Object.is equality
+- Expected:
+"Ahmeds-MacBook-Pro.local/45297/3401967c"
++ Received:
+null
+ ❯ test/int/phase6-repro-serving-lifecycle.test.ts:242:185
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+ FAIL  test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F2: ownership across in-flight governed writes and a take-over > COMPLETION ACCOUNTING: every item applied by the first process, the take-over lands before its finish — the stale finish is refused; the new holder re-drives, skips the applied item and finishes; the applied event is the new holder's
+AssertionError: the applied event must be the second process's: expected null to be 'Ahmeds-MacBook-Pro.local/45297/340196…' // Object.is equality
+- Expected:
+"Ahmeds-MacBook-Pro.local/45297/3401967c"
++ Received:
+null
+ ❯ test/int/phase6-repro-serving-lifecycle.test.ts:274:86
+    272|     expect(applied).toHaveLength(1);
+    273|     expect(applied[0]!.occurred_at.getTime()).toBeGreaterThan(takenOve…
+    274|     expect(servedBy(applied[0]!), 'the applied event must be the secon…
+       |                                                                                      ^
+    275|     expect(done.deliveries).toBeGreaterThanOrEqual(2);
+    276|     } finally { await handBack(); }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+ FAIL  test/int/phase6-repro-serving-lifecycle.test.ts > B9 · B8-F1: an expired handler must settle without waiting for its own worker to drain > THE FENCE AT ENTRY on a lapsed belief: the job is refused promptly and returned, the worker closes, the process keeps working; the next reconciliation re-serves the domain and the job is delivered
+Error: the refused job out of the active state did not happen within 20000 ms; last: {"active":1,"waiting":0,"delayed":0,"completed":4,"failed":0}; dispatcher: null
+ ❯ waitFor test/int/phase6-repro-serving-lifecycle.test.ts:58:35
+     56|     last = await probe();
+     57|     if (ok(last)) return last;
+     58|     if (Date.now() > until) throw new Error(`${what} did not happen wi…
+       |                                   ^
+     59|     await sleep(200);
+     60|   }
+ ❯ test/int/phase6-repro-serving-lifecycle.test.ts:288:20
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+ Test Files  1 failed (1)
+      Tests  3 failed | 2 passed (5)
+   Start at  22:30:28
+   Duration  50.18s (transform 477ms, setup 16ms, import 882ms, tests 49.21s, environment 0ms)
