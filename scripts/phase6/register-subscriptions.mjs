@@ -49,7 +49,13 @@ const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'mem
 
 const status = async () => (await call(`${G}/subscriptions/status`, so({ action: 'graph.read', objectType: 'SUB', sideEffect: 'none' }), {}, strategyOwner.token)).body.subscriptions;
 const deliveryOf = async (eventId) => (await call(`${G}/subscriptions/deliveries/${eventId}/get`, so({ action: 'graph.read', objectType: 'SUB', objectId: eventId, sideEffect: 'none' }), {}, strategyOwner.token)).body;
-const showDeliveries = (ds) => { for (const d of ds) note(`${d.consumer_kind.padEnd(16)} ${d.state.padEnd(9)} deliveries ${d.deliveries}, attempts ${d.attempts}, items ${JSON.stringify(d.items)} → ${(d.items_applied ?? []).map((x) => x.effect).join(', ') || '(nothing to do)'}${d.last_error ? ` — ${d.last_error}` : ''}`); };
+const showDeliveries = (ds) => {
+  for (const d of ds) note(`${d.consumer_kind.padEnd(16)} ${d.state.padEnd(9)} deliveries ${d.deliveries}, attempts ${d.attempts}, items ${JSON.stringify(d.items)} → ${(d.items_applied ?? []).map((x) => x.effect).join(', ') || '(nothing to do)'}${d.last_error ? ` — ${d.last_error}` : ''}`);
+  // WHICH DELIVERIES DID NON-EMPTY WORK: a delivery with no items applied nothing (the event reached nothing this consumer holds).
+  const worked = ds.filter((d) => (d.items ?? []).length > 0).map((d) => `${d.consumer_kind} (${(d.items_applied ?? []).length} applied${(d.items_unresolved ?? []).length > 0 ? `, ${(d.items_unresolved ?? []).length} unresolved` : ''})`);
+  const idle = ds.filter((d) => (d.items ?? []).length === 0).map((d) => d.consumer_kind);
+  note(`non-empty work: ${worked.length === 0 ? 'none' : worked.join(', ')}; no work (nothing of theirs reached): ${idle.join(', ') || 'none'}`);
+};
 /** Wait for every delivery of an event to be terminal. */
 async function settled(eventId, seconds = 90) {
   let ds = [];
@@ -78,12 +84,29 @@ console.log('1. the subscribers');
 let st = await status();
 for (const kind of KINDS) {
   const live = (st.subscriptions ?? []).find((s) => s.consumer_kind === kind && s.status === 'active');
-  if (live !== undefined) { ok(`${kind}: subscription ${short(live.subscription_id)} already active (consumer ${live.consumer_version} ${String(live.code_digest).slice(0, 12)}…)`); continue; }
+  const current = (st.consumers ?? []).find((c) => c.kind === kind);
+  if (live !== undefined && current !== undefined && (live.code_digest !== current.codeDigest || live.consumer_version !== current.version)) {
+    // A CHANGED METHOD IS A NEW CONSUMER, registered anew (0063 doctrine; B8 changed the decisions and memory-mappings methods):
+    // the live subscription's identity no longer matches this process's consumer — it is revoked and the kind re-registered.
+    const rv = await call(`${G}/subscriptions/${live.subscription_id}/revoke`, adm({ action: 'graph.subscription.control', objectType: 'SUB', objectId: live.subscription_id, consequence: 'C2' }),
+      { reason: `B8: the ${kind} consumer's method changed (${String(live.code_digest).slice(0, 12)}… → ${String(current.codeDigest).slice(0, 12)}…); a changed method is a new consumer` }, admin.token);
+    if (!rv.ok) { bad(`${kind}: the outdated subscription could not be revoked (${rv.status}) ${rv.body?.message ?? ''}`); continue; }
+    note(`${kind}: subscription ${short(live.subscription_id)} was registered for consumer ${live.consumer_version} ${String(live.code_digest).slice(0, 12)}…; this process's ${kind} consumer is ${current.version} ${String(current.codeDigest).slice(0, 12)}… — revoked, registered anew`);
+  } else if (live !== undefined) { ok(`${kind}: subscription ${short(live.subscription_id)} already active (consumer ${live.consumer_version} ${String(live.code_digest).slice(0, 12)}…)`); continue; }
   const r = await call(`${G}/subscriptions/register`, adm({ action: 'graph.subscription.register', objectType: 'SUB', consequence: 'C2' }),
     { consumerKind: kind, ownerPrincipalId: strategyOwner.principalId, backlog: 'leave' }, admin.token);
   if (!r.ok) { bad(`${kind}: registration refused (${r.status}) ${r.body?.message ?? JSON.stringify(r.body).slice(0, 300)}`); continue; }
   const s = r.body.subscription;
   ok(`${kind}: registered subscription ${short(s.subscriptionId)}, principal ${short(s.principalId)} (role ${s.role}), consumer ${s.consumer.version} ${s.consumer.codeDigest.slice(0, 12)}…, budgets ${JSON.stringify(s.budgets)}; worker running ${r.body.served.workerRunning}`);
+  if (live !== undefined) {
+    // The replacement takes up where the revoked subscription's cursor stood: the events between the deploy and this act
+    // (delivered to nobody) are replayed to it — from the old cursor, or from the retained beginning when it had none.
+    const from = live.checkpoint_seq === null || live.checkpoint_seq === undefined ? {} : { fromSeq: Number(live.checkpoint_seq) };
+    const rp = await call(`${G}/subscriptions/${s.subscriptionId}/replay`, adm({ action: 'graph.subscription.replay', objectType: 'SUB', objectId: s.subscriptionId, consequence: 'C2' }),
+      { ...from, reason: `B8: the ${kind} consumer changed; the replacement replays from the revoked subscription's cursor` }, admin.token);
+    if (!rp.ok) bad(`${kind}: the replacement's replay was refused (${rp.status}) ${rp.body?.message ?? ''}`);
+    else note(`${kind}: replayed ${rp.body.replayed} event(s) to the replacement from ${from.fromSeq === undefined ? 'the retained beginning' : `sequence ${from.fromSeq}`}`);
+  }
 }
 st = await status();
 const consumers = (st.consumers ?? []).filter((c) => c.registeredInThisProcess).map((c) => c.kind);
@@ -157,4 +180,10 @@ st = await status();
 note(`${(st.subscriptions ?? []).length} subscription(s); ${(st.deliveries ?? []).length} recent deliveries; ${(st.retrieval_checks ?? []).length} retrieval check(s) (mismatched: ${(st.retrieval_checks ?? []).map((c) => c.mismatched).join(',') || '—'}); ${(st.mapping_reconciliations ?? []).length} mapping reconciliation(s) proposed`);
 for (const m of (st.mapping_reconciliations ?? []).slice(0, 5)) note(`proposal ${short(m.reconciliation_id)} (${m.subject_kind} ${short(m.subject_id)}, ${m.state}): ${m.basis}`);
 if (st.runtime.last_failure) note(`last dispatcher failure: ${st.runtime.last_failure.where} — ${st.runtime.last_failure.message}`);
+// B8: who serves the domain, the tenant's outbox partition and its retention contract, the open failure states.
+const sv = st.runtime.serving ?? {};
+note(`serving: holder ${sv.holder ?? '—'} (this process ${sv.this_process}, served here: ${sv.served_here}), claimed until ${sv.claimed_until ?? '—'}, renewals ${sv.renewals ?? '—'}`);
+for (const p of (st.telemetry?.partitions ?? [])) note(`partition ${p.partition_key}: last seq ${p.last_seq}, pending ${p.pending}, blocked ${p.blocked}, dead letters ${p.dead_letters}, retained from seq ${p.retained_from_seq} (${p.retention_policy})`);
+const open = st.telemetry?.open_failure_states ?? [];
+note(`open failure states: ${open.length === 0 ? 'none' : open.map((o) => `${o.consumer_kind} ${short(o.event_id)} ${o.state} (${o.failure_class} → ${o.disposition})`).join('; ')}`);
 process.exit(failureCount() === 0 ? 0 : 1);

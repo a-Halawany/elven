@@ -82,6 +82,8 @@ export interface ImpactResult {
    */
   twins: AffectedObject[];
   simulations: AffectedObject[];
+  /** 0065 §8 (AU-MEM-0031): briefings composed on what changed — re-flagged by event through the port, never rewritten. */
+  briefings: AffectedObject[];
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -147,6 +149,9 @@ export class ImpactService {
     const runs = new Map<string, Record<string, unknown>>(
       ((await cap.readRuns().selectAll().execute()) as Array<Record<string, unknown>>)
         .map((r) => [String(r['run_id']), r]));
+    const briefings = new Map<string, Record<string, unknown>>(
+      ((await cap.readBriefings().select(['briefing_id', 'room_id', 'known_at', 'composed_at'] as never).execute()) as Array<Record<string, unknown>>)
+        .map((b) => [String(b['briefing_id']), b]));
 
     /*
      * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
@@ -268,6 +273,8 @@ export class ImpactService {
               strategy_object_id: dependent, object_type: 'WRN', title: String(w['title']),
               reached_via: seed.via, hop,
             });
+            // What cites the warning (a briefing, 0065 §8) rests on it.
+            next.push({ kind: 'warning', id: dependent, via: `rests on warning "${String(w['title'])}"` });
             continue;
           }
           const tw = twins.get(dependent);
@@ -287,6 +294,15 @@ export class ImpactService {
               reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
             });
             next.push({ kind: 'run', id: dependent, via: 'compared against a run that rests on changed state' });
+            continue;
+          }
+          // A briefing composed on what changed (0065 §8): terminal — it cites, nothing rests on it.
+          const br = briefings.get(dependent);
+          if (br !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'BRF', title: `briefing composed ${String(br['composed_at'] instanceof Date ? (br['composed_at'] as Date).toISOString() : br['composed_at'])} (known at ${String(br['known_at'] instanceof Date ? (br['known_at'] as Date).toISOString() : br['known_at'])})`,
+              reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
+            });
           }
         }
       }
@@ -318,6 +334,7 @@ export class ImpactService {
       warnings: of('WRN'),
       twins: of('TWN'),
       simulations: of('SIM'),
+      briefings: of('BRF'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -390,6 +407,8 @@ export class ImpactService {
       forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
       twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, via_ids: t.via_ids ?? (t.via_id ? [t.via_id] : []), reached_via: t.reached_via, hop: t.hop })),
       simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
+      warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop })),
+      briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -511,14 +530,14 @@ function buildStatement(
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
-    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length;
+    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
-    : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) and `
-      + `${w.warnings.length} warning(s) reported`;
+    : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) reported, ${w.warnings.length} warning(s) marked for attention`;
   const phase5 = w.twins.length + w.simulations.length === 0 ? ''
     : `; ${w.twins.length} twin(s) whose citing versions are marked unverified and ${w.simulations.length} simulation run(s) surfaced`;
+  const phase6 = w.briefings.length === 0 ? '' : `; ${w.briefings.length} briefing(s) composed on what changed re-flagged`;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *
@@ -538,7 +557,7 @@ function buildStatement(
   return `dependency propagation assessed by invalidation ${invalidationId}: `
     + `${w.assumptions.length} assumption(s) marked unverified; `
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
-    + `${w.commitments.length} commitment(s) reported for human review${phase4}${phase5}; `
+    + `${w.commitments.length} commitment(s) reported for human review${phase4}${phase5}${phase6}; `
     + reach + truncation;
 }
 

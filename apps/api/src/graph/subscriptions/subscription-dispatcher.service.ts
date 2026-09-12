@@ -37,7 +37,7 @@ import type { EyeConfig } from '../../config/config.js';
 import { COMMIT_DB } from '../../shared/shared.module.js';
 import type { Db, Tx } from '../../shared/db.js';
 import { newId } from '../../shared/ids.js';
-import { markSubscribedDomain } from '../../shared/queues.js';
+import { hostname } from 'node:os';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService, type WriteEffect } from '../../pipeline/pipeline.service.js';
 import { SchedulerService, type SubscriptionJobPayload } from '../../observation/scheduling/scheduler.service.js';
@@ -53,7 +53,8 @@ interface DeliveryRow {
 }
 export interface SubscriptionReconcileReport {
   at: string; reason: string;
-  domains: Array<{ tenantId: string; domainId: string; subscriptions: number }>;
+  /** Every domain with an active subscription, who serves it (the holder of its serving claim) and whether that is this process. */
+  domains: Array<{ tenantId: string; domainId: string; subscriptions: number; servedBy: string | null; mine: boolean; claimedUntil: string | null; takenOver: boolean }>;
   workers: string[];
   reDriven: Array<{ tenantId: string; domainId: string; eventId: string; subscriptionIds: string[]; previous: Array<string | null>; partitionSeq: number | null }>;
   inFlight: Array<{ tenantId: string; domainId: string; eventId: string; jobState: string }>;
@@ -64,6 +65,12 @@ const INTERRUPTED = (): Promise<never> => new Promise<never>(() => { /* a killed
 const RECONCILE_TICK_MS = 60_000;
 /** An unresolved delivery (operator work) is re-checked on the tick only after this long; at once at a start, a registration, a resume or a replay. */
 const UNRESOLVED_RECHECK = '10 minutes';
+/**
+ * ONE SERVER PER DOMAIN (0065 §3): a domain's queue is consumed by the process holding its serving claim — renewed on
+ * every reconciliation (the tick), released at shutdown, taken over by another process once it lapses. Two and a half
+ * ticks: a process that stops renewing loses the domain within that.
+ */
+const SERVING_CLAIM_SECONDS = 150;
 
 @Injectable()
 export class SubscriptionDispatcherService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -76,6 +83,14 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   private faultKind: ConsumerKind | null = null;
   private tick: NodeJS.Timeout | null = null;
   private readonly recent: Array<{ at: string; eventId: string; subscriptionId: string; kind: string; outcome: string; reason: string | null }> = [];
+  /** This process, as the serving ledger names it (host, pid and an instance nonce — two application contexts in one process are two holders). */
+  private readonly holder = `${hostname()}/${process.pid}/${newId().slice(-8)}`;
+  /** The domains whose serving claim this process holds (their workers run here) and until when this process BELIEVES it holds them (the fence). */
+  private readonly serving = new Map<string, { tenantId: string; domainId: string; claimedUntil: number }>();
+  /** Test runtime only: this process claims no domain (as one that lost every election would) and still enqueues re-drives. */
+  private standDown = false;
+  /** Set at shutdown: a reconciliation still in flight starts no worker and keeps no claim after this. */
+  private stopped = false;
 
   constructor(
     @Inject(COMMIT_DB) private readonly commitDb: Db,
@@ -113,9 +128,46 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     this.tick = setInterval(() => { this.reconcile('periodic reconciliation', false, UNRESOLVED_RECHECK).catch((e) => this.note('periodic reconciliation', e)); }, RECONCILE_TICK_MS);
     this.tick.unref();
   }
-  onModuleDestroy(): void { if (this.tick !== null) clearInterval(this.tick); }
+  async onModuleDestroy(): Promise<void> {
+    if (this.tick !== null) clearInterval(this.tick);
+    // The workers close first (an in-flight job finishes), then the claims are released: the next holder never
+    // consumes the queue beside this one.
+    await this.releaseAll('shutdown');
+  }
+  private async releaseAll(reason: string): Promise<void> {
+    if (reason === 'shutdown') this.stopped = true;
+    // In the order the claim port locks rows (tenant, domain), so a release never crosses another process's reconciliation.
+    const held = [...this.serving.values()].sort((a, b) => a.tenantId.localeCompare(b.tenantId) || a.domainId.localeCompare(b.domainId));
+    this.serving.clear();
+    for (const d of held) await this.scheduler.stopSubscriptionWorker(d.tenantId, d.domainId).catch(() => undefined);
+    if (held.length === 0) return;
+    try {
+      await this.commitDb.transaction().execute(async (tx) => {
+        await sql`select observation.issue_schedule_capability(${`subscription serving released: ${reason}`}, 60)`.execute(tx);
+        for (const d of held) await sql`select graph.subscription_domain_release(${d.tenantId}::uuid, ${d.domainId}::uuid, ${this.holder}, ${reason})`.execute(tx);
+      });
+    } catch (e) { this.note(`serving release (${reason})`, e); }
+  }
 
   lastReconciliation(): SubscriptionReconcileReport | null { return this.lastReconcile; }
+  /** The holder identity this process claims domains under. */
+  holderId(): string { return this.holder; }
+  /** A holder of THIS host whose process is gone (its pid does not exist): a crash without a release. Other hosts are never judged. */
+  private holderIsDeadOnThisHost(holder: string): boolean {
+    const m = /^(.*)\/(\d+)\/[0-9a-f]+$/.exec(holder);
+    if (m === null || m[1] !== hostname()) return false;
+    const pid = Number(m[2]);
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return false;
+    try { process.kill(pid, 0); return false; } catch (e) { return (e as NodeJS.ErrnoException).code === 'ESRCH'; }
+  }
+  /** Whether this process holds the serving claim of the domain (its worker runs here). */
+  serves(tenantId: string, domainId: string): boolean { return this.serving.has(`${tenantId}/${domainId}`); }
+  /** Test runtime only: claim no domain (release any held) until told otherwise — the process that lost the election. */
+  async standDownForTests(v: boolean): Promise<void> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('standDownForTests is available only in the test runtime');
+    this.standDown = v;
+    if (v) await this.releaseAll('stand-down');
+  }
   lastFailureSeen(): { at: string; where: string; message: string } | null { return this.lastFailure; }
   recentDeliveries(): ReadonlyArray<{ at: string; eventId: string; subscriptionId: string; kind: string; outcome: string; reason: string | null }> { return this.recent; }
   armFaultForTests(kind: DispatcherFault | null, forKind: ConsumerKind | null = null): void {
@@ -135,26 +187,79 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
    * Serve every domain with an active subscription; re-drive every outstanding delivery. `includeRefused` is true at a
    * registration, a resume or a replay (the governance answer may have changed); false at startup and on the tick.
    */
-  async reconcile(reason: string, includeRefused: boolean, recheck: string = '0'): Promise<SubscriptionReconcileReport> {
+  /**
+   * Serve every domain with an active subscription; re-drive every outstanding delivery. `includeRefused` is true at a
+   * registration, a resume or a replay (the governance answer may have changed); false at startup and on the tick. `only`
+   * scopes the re-drives (and the refused re-drives) to one domain — a registration, a resume or a replay acts on its own.
+   */
+  async reconcile(reason: string, includeRefused: boolean, recheck: string = '0', only: { tenantId: string; domainId: string } | null = null): Promise<SubscriptionReconcileReport> {
+    // A process that cannot serve (the scheduler disabled — no worker can run here) or stands down claims nothing; it still enqueues re-drives.
+    const standDown = this.standDown || this.stopped || !this.scheduler.enabled;
+    const claimedAt = Date.now();
     const { domains, rows, failures } = await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability(${reason}, 60)`.execute(tx);
-      const domains = (await sql<{ tenant_id: string; domain_id: string; subscriptions: number }>`select * from graph.subscription_domains_to_serve()`.execute(tx)).rows;
+      const found = (await sql<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null }>`select * from graph.subscription_domains_to_serve()`.execute(tx)).rows;
+      // THE SERVING CLAIM (0065 §3): claim or renew each domain; a live claim by another process is honoured — its worker
+      // runs there, not here — unless that holder is a process of THIS host whose pid is gone (a crash without a release):
+      // then the claim is taken over at once, the reason recorded. A process standing down claims nothing.
+      const domains: Array<{ tenant_id: string; domain_id: string; subscriptions: number; holder: string | null; claimed_until: Date | null; mine: boolean; taken_over: boolean }> = [];
+      for (const d of found) {
+        if (standDown) { domains.push({ ...d, mine: false, taken_over: false }); continue; }
+        const dead = d.holder !== null && d.holder !== this.holder && this.holderIsDeadOnThisHost(d.holder) ? d.holder : null;
+        const c = (await sql<{ holder: string; claimed_until: Date; mine: boolean; taken_over: boolean }>`select * from graph.subscription_domain_claim(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, ${SERVING_CLAIM_SECONDS}, ${dead})`.execute(tx)).rows[0]!;
+        domains.push({ ...d, holder: c.holder, claimed_until: c.claimed_until, mine: c.mine, taken_over: c.taken_over });
+      }
       const rows = (await sql<{ tenant_id: string; domain_id: string; event_id: string; event_type: string; change_kind: string; outbox_created_at: Date; correlation_id: string; causation_id: string; subscription_id: string; delivery_state: string | null; partition_seq: string | null }>`
         select * from graph.subscription_deliveries_to_reconcile(${includeRefused}, interval '24 hours', ${recheck}::interval)`.execute(tx)).rows;
       const failures = (await sql<{ tenant_id: string; domain_id: string; event_id: string; event_type: string }>`select tenant_id, domain_id, event_id, event_type from graph.subscription_outbox_failures()`.execute(tx)).rows;
       return { domains, rows, failures };
     });
     const report: SubscriptionReconcileReport = { at: new Date().toISOString(), reason, domains: [], workers: [], reDriven: [], inFlight: [], outboxFailures: [] };
-    const served = new Set<string>();
-    for (const d of domains) {
-      this.scheduler.startSubscriptionWorker(d.tenant_id, d.domain_id);
-      markSubscribedDomain(d.tenant_id, d.domain_id, true);
-      served.add(`${d.tenant_id}/${d.domain_id}`);
-      report.domains.push({ tenantId: d.tenant_id, domainId: d.domain_id, subscriptions: d.subscriptions });
+    // Claimed during a stand-down or a shutdown that began meanwhile: given back at once, no worker started.
+    if ((this.standDown || this.stopped) && !standDown && domains.some((d) => d.mine)) {
+      try {
+        await this.commitDb.transaction().execute(async (tx) => {
+          await sql`select observation.issue_schedule_capability('subscription serving released: stood down meanwhile', 60)`.execute(tx);
+          for (const d of domains.filter((x) => x.mine)) await sql`select graph.subscription_domain_release(${d.tenant_id}::uuid, ${d.domain_id}::uuid, ${this.holder}, 'stand-down')`.execute(tx);
+        });
+      } catch (e) { this.note('serving release (stood down meanwhile)', e); }
+      for (const d of domains) { d.mine = false; d.holder = null; }
     }
-    // One job per event: the receive port fans it out to every subscription it matches.
+    const seen = new Set<string>();
+    for (const d of domains) {
+      const key = `${d.tenant_id}/${d.domain_id}`;
+      seen.add(key);
+      if (d.mine) {
+        if (d.taken_over) this.log.warn(`serving of ${d.tenant_id}/${d.domain_id} taken over from ${d.holder === this.holder ? 'a lapsed or dead holder' : d.holder}`);
+        this.scheduler.startSubscriptionWorker(d.tenant_id, d.domain_id);
+        // The fence: this process serves the domain only while it believes its claim live (the claim's instant, less a margin for clocks).
+        this.serving.set(key, { tenantId: d.tenant_id, domainId: d.domain_id, claimedUntil: claimedAt + SERVING_CLAIM_SECONDS * 1000 - 5_000 });
+      } else {
+        // Another process serves the domain (or this one stands down): no worker here; re-drives are still enqueued below.
+        if (this.serving.delete(key)) this.log.log(`serving of ${d.tenant_id}/${d.domain_id} passed to ${d.holder ?? 'nobody'}`);
+        await this.scheduler.stopSubscriptionWorker(d.tenant_id, d.domain_id).catch((e) => this.note('worker stop', e));
+      }
+      report.domains.push({ tenantId: d.tenant_id, domainId: d.domain_id, subscriptions: d.subscriptions, servedBy: d.holder, mine: d.mine, claimedUntil: d.claimed_until?.toISOString() ?? null, takenOver: d.taken_over });
+    }
+    // A domain this process served that has no active subscription any more: its worker stops and its claim is released
+    // (a scoped reconciliation saw only its own domain and releases nothing).
+    const gone = only === null ? [...this.serving.entries()].filter(([k]) => !seen.has(k)) : [];
+    if (gone.length > 0) {
+      for (const [k, d] of gone) { this.serving.delete(k); await this.scheduler.stopSubscriptionWorker(d.tenantId, d.domainId).catch(() => undefined); }
+      try {
+        await this.commitDb.transaction().execute(async (tx) => {
+          await sql`select observation.issue_schedule_capability('subscription serving released: no active subscription', 60)`.execute(tx);
+          for (const [, d] of gone) await sql`select graph.subscription_domain_release(${d.tenantId}::uuid, ${d.domainId}::uuid, ${this.holder}, 'no active subscription')`.execute(tx);
+        });
+      } catch (e) { this.note('serving release', e); }
+    }
+    // One job per event: the receive port fans it out to every subscription it matches. A scoped reconciliation re-drives
+    // its own domain's rows only (a replay of one subscription does not re-drive every tenant's refused deliveries).
     const byEvent = new Map<string, typeof rows>();
-    for (const r of rows) { const k = r.event_id; if (!byEvent.has(k)) byEvent.set(k, []); byEvent.get(k)!.push(r); }
+    for (const r of rows) {
+      if (only !== null && (r.tenant_id !== only.tenantId || r.domain_id !== only.domainId)) continue;
+      const k = r.event_id; if (!byEvent.has(k)) byEvent.set(k, []); byEvent.get(k)!.push(r);
+    }
     for (const [eventId, group] of byEvent) {
       const e = group[0]!;
       try {
@@ -218,6 +323,15 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     if ((p.event_type !== 'GraphChanged' && p.event_type !== 'MemoryCorrected') || tenantId === null || domainId === null) {
       throw new UnrecoverableError(`job ${jobId} is not a scoped GraphChanged or MemoryCorrected event`);
     }
+    // THE FENCE (0065 §3): a job is served only while this process still believes its serving claim live. A claim it could
+    // not renew (the reconciliation failing, the process stalled) lapses here too: the worker stops and the job is left,
+    // unstarted, to the holder that took the domain over.
+    const claim = this.serving.get(`${tenantId}/${domainId}`);
+    if (claim === undefined || claim.claimedUntil < Date.now()) {
+      this.serving.delete(`${tenantId}/${domainId}`);
+      await this.scheduler.stopSubscriptionWorker(tenantId, domainId).catch(() => undefined);
+      throw new Error(`job ${jobId}: this process no longer holds the serving claim of ${tenantId}/${domainId}; the job is left to the holder`);
+    }
     const row = await this.loadEvent(p.event_id, tenantId, domainId);
     if (row === null) throw new UnrecoverableError(`job ${jobId}: outbox row ${p.event_id} is not a published event of this domain`);
     const changeKind = String((row.payload['change'] as Record<string, unknown> | undefined)?.['kind'] ?? '');
@@ -279,24 +393,28 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     const started = Date.now();
     const applied = new Set(d.items_applied.map((x) => x.item));
     const unresolved: string[] = [];
+    // The delivery's class is the first unresolved item's (a consumer names it; a plain reason is an unresolved dependency).
+    let unresolvedClass: { failureClass: FailureClass; disposition: Disposition } | null = null;
     let appliedNow = 0;
     for (const item of items) {
       if (applied.has(item)) continue;
       if (Date.now() - started > maxElapsed) { await this.finish({ ...base, outcome: 'failed', reason: `budget: max_elapsed_ms ${maxElapsed} reached; the next delivery resumes from the checkpoint`, failureClass: 'budget', disposition: 'retry' }); return; }
       if (this.faultArmed('before_item', d.consumer_kind)) { this.fault = null; await this.finish({ ...base, outcome: 'failed', reason: 'fault: injected infrastructure fault before the item (test)', failureClass: 'infrastructure', disposition: 'retry' }); throw new Error('injected infrastructure fault before the item (test)'); }
       if (this.faultArmed('slow_before_item', d.consumer_kind)) { this.fault = null; await new Promise((r) => setTimeout(r, 4000)); }
-      let outcome: { unresolved: string | null };
+      let outcome: { unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition };
       try {
         outcome = (await this.pipeline.write(this.env(principal, tenantId, domainId, action, consumer.purpose, consumer.objectType, targetOf(item), correlationId), principal, route(targetOf(item)), factory,
-          async ({ cap, ledger }): Promise<WriteEffect<{ unresolved: string | null }>> => {
+          async ({ cap, ledger }): Promise<WriteEffect<{ unresolved: string | null; failureClass?: FailureClass; disposition?: Disposition }>> => {
             const begun = await ledger.itemBegin({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item });
             if (!begun) return { result: { unresolved: null }, targetType: consumer.objectType, targetId: null, targetVersion: null, outboxEvent: null };
-            const r = await consumer.applyItem(cap, scope, event, item, principal.principalId, correlationId, d.subscription_id);
+            const r = await consumer.applyItem(cap, scope, event, item, principal.principalId, correlationId, d.subscription_id, d.budgets as Record<string, unknown>);
             const details = { ...(r.details ?? {}), ...(r.exposure === undefined ? {} : { exposure: r.exposure }) };
             if (r.unresolved !== undefined) {
               // The effect's record (a check) commits with this write; the item does not: it stays open for the next re-drive.
-              const checks = await ledger.itemUnresolved({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item, effect: r.effect, effectRef: r.effectRef, reason: r.unresolved, details });
-              return { result: { unresolved: `${item}: ${r.unresolved} (check ${checks})` }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null };
+              const u = typeof r.unresolved === 'string' ? { reason: r.unresolved, failureClass: 'unresolved_dependency' as const, disposition: 'human_review' as const } : r.unresolved;
+              const checks = await ledger.itemUnresolved({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item, effect: r.effect, effectRef: r.effectRef, reason: u.reason,
+                                                            details: { ...details, failure_class: u.failureClass, disposition: u.disposition } });
+              return { result: { unresolved: `${item}: ${u.reason} (check ${checks})`, failureClass: u.failureClass, disposition: u.disposition }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null };
             }
             await ledger.itemDone({ eventId: event.event_id, subscriptionId: d.subscription_id, tenantId, domainId, item, effect: r.effect, effectRef: r.effectRef, details });
             return { result: { unresolved: null }, targetType: consumer.objectType, targetId: r.effectRef, targetVersion: null, outboxEvent: null };
@@ -306,7 +424,11 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
         await this.finish({ ...base, outcome: 'failed', reason: `fault: ${(e as Error).message.slice(0, 200)}`, failureClass: 'infrastructure', disposition: 'retry' });
         throw e;
       }
-      if (outcome.unresolved !== null) { unresolved.push(outcome.unresolved); continue; }
+      if (outcome.unresolved !== null) {
+        unresolved.push(outcome.unresolved);
+        if (unresolvedClass === null) unresolvedClass = { failureClass: outcome.failureClass ?? 'unresolved_dependency', disposition: outcome.disposition ?? 'human_review' };
+        continue;
+      }
       appliedNow += 1;
       if (this.faultArmed('interrupt_after_first_item', d.consumer_kind) && appliedNow === 1) { this.fault = null; await INTERRUPTED(); }
       if (this.faultArmed('after_first_item', d.consumer_kind) && appliedNow === 1) { this.fault = null; await this.finish({ ...base, outcome: 'failed', reason: 'fault: injected infrastructure fault after the first item (test)', failureClass: 'infrastructure', disposition: 'retry' }); throw new Error('injected infrastructure fault after the first item (test)'); }
@@ -321,7 +443,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       if (until === null) { await this.finish({ ...base, outcome: 'refused', reason: 'subscription paused or revoked during the delivery; the remaining items were not applied', failureClass: 'authority_disputed', disposition: 'human_review' }); return; }
     }
     // The database decides: applied only when every item was applied; unresolved while any item is operator work.
-    if (unresolved.length > 0) { await this.finish({ ...base, outcome: 'unresolved', reason: unresolved.join('; ').slice(0, 500), failureClass: 'unresolved_dependency', disposition: 'human_review' }); return; }
+    if (unresolved.length > 0) { await this.finish({ ...base, outcome: 'unresolved', reason: unresolved.join('; ').slice(0, 500), failureClass: unresolvedClass?.failureClass ?? 'unresolved_dependency', disposition: unresolvedClass?.disposition ?? 'human_review' }); return; }
     await this.finish({ ...base, outcome: 'applied', reason: null });
   }
 }

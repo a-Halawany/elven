@@ -15,13 +15,15 @@ import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { SchedulerService, redisName, subscriptionQueueNameFor } from '../../observation/scheduling/scheduler.service.js';
 import { GraphCapability, type GraphReads } from '../graph.capabilities.js';
 import { CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from './graph-change.js';
-import { SubscriptionDispatcherService } from './subscription-dispatcher.service.js';
+import { SubscriptionDispatcherService, type SubscriptionReconcileReport } from './subscription-dispatcher.service.js';
 
-export interface SubscriptionBudgets { max_items_per_event: number; max_elapsed_ms: number; backlog_policy: 'replay' | 'leave' }
+export interface SubscriptionBudgets { max_items_per_event: number; max_elapsed_ms: number; backlog_policy: 'replay' | 'leave';
+  /** 0065: the decisions consumer's materiality rule for a recomputation (AU-MEM-0039) — relative shift of the central estimate; leaving the old band. */
+  materiality?: { relative_q50: number; band: boolean } }
 const DEFAULT_BUDGETS: SubscriptionBudgets = { max_items_per_event: 200, max_elapsed_ms: 600_000, backlog_policy: 'leave' };
 export interface RegisterSubscriptionIntake {
   consumerKind: ConsumerKind; ownerPrincipalId: string; eventTypes?: Array<'GraphChanged' | 'MemoryCorrected'>; filter?: { change_kinds?: string[] };
-  backlog?: 'replay' | 'leave'; budgets?: Partial<Pick<SubscriptionBudgets, 'max_items_per_event' | 'max_elapsed_ms'>>;
+  backlog?: 'replay' | 'leave'; budgets?: Partial<Pick<SubscriptionBudgets, 'max_items_per_event' | 'max_elapsed_ms'>> & { materiality?: { relative_q50?: number; band?: boolean } };
 }
 
 @Injectable()
@@ -52,6 +54,11 @@ export class SubscriptionsService {
       max_elapsed_ms: clamp(intake.budgets?.max_elapsed_ms, DEFAULT_BUDGETS.max_elapsed_ms),
       backlog_policy: backlog,
     };
+    if (intake.budgets?.materiality !== undefined) {
+      const m = intake.budgets.materiality;
+      if (typeof m !== 'object' || m === null || (m.relative_q50 !== undefined && (typeof m.relative_q50 !== 'number' || !(m.relative_q50 > 0) || m.relative_q50 > 10)) || (m.band !== undefined && typeof m.band !== 'boolean')) bad('budgets.materiality is { relative_q50: a positive number (a fraction of the central estimate), band: boolean }');
+      budgets.materiality = { relative_q50: m.relative_q50 ?? 0.10, band: m.band ?? true };
+    }
     const kind = intake.consumerKind; const digest = consumerCodeDigest(kind);
     const principalId = newId(); const subscriptionId = newId();
     await this.pipeline.write({ ...envelope, action: 'identity.principal.create', message_id: newId() }, actor,
@@ -72,7 +79,7 @@ export class SubscriptionsService {
       });
     // Served from the subscription's own point (0064): 'leave' from its registration, 'replay' from the beginning —
     // the reconciliation re-drives each past row ONCE (0063 re-drove a replayed backlog twice: the replay's jobs and its own).
-    const served = await this.dispatcher.reconcile('subscription registered', true);
+    const served = await this.dispatcher.reconcile('subscription registered', true, '0', { tenantId, domainId });
     return { subscription: out.result, served: { workerRunning: served.workers.includes(redisName(subscriptionQueueNameFor(tenantId, domainId))), reDriven: served.reDriven.filter((e) => e.tenantId === tenantId && e.domainId === domainId).length },
              receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
@@ -85,7 +92,7 @@ export class SubscriptionsService {
         return { result: { subscriptionId, status: s }, targetType: 'SUB', targetId: subscriptionId, targetVersion: '1', outboxEvent: null };
       });
     // A resume re-drives what was refused while paused; a revocation stops nothing in flight (the next item refuses).
-    if (to === 'active') await this.dispatcher.reconcile('subscription resumed', true);
+    if (to === 'active') await this.dispatcher.reconcile('subscription resumed', true, '0', { tenantId, domainId });
     return { subscription: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
@@ -109,7 +116,7 @@ export class SubscriptionsService {
     // The port reopened this subscription's deliveries after the point (and moved its cursor back); the reconciliation
     // re-drives them — and the rows it never received — as jobs scoped to this subscription alone (0064): one job kind,
     // no replay job racing a plain re-drive of the same event, no other subscription touched.
-    const served = await this.dispatcher.reconcile('subscription replayed', true);
+    const served = await this.dispatcher.reconcile('subscription replayed', true, '0', { tenantId, domainId });
     const replayed = served.reDriven.filter((e) => e.tenantId === tenantId && e.domainId === domainId && e.subscriptionIds.includes(subscriptionId)).length;
     return { subscriptionId, replayed, events: out.result.map((r) => r.event_id), receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
@@ -123,15 +130,49 @@ export class SubscriptionsService {
     // open refusal never ages out of a window of the most recent rows).
     const telemetry = (await cap.readSubscriptionTelemetry().selectAll().orderBy('last_delivered_at' as never, 'desc').limit(100).execute()) as Array<Record<string, unknown>>;
     const open = (await cap.readSubscriptionTelemetry().selectAll().where('state' as never, 'in', ['unresolved', 'failed', 'refused'] as never).orderBy('last_delivered_at' as never, 'desc').limit(500).execute()) as Array<Record<string, unknown>>;
+    // Who serves the domain (0065 §3) and the state of the tenant's outbox partition (0065 §1) — the operator's view of delivery.
+    const serving = ((await cap.readSubscriptionServing().selectAll().where('domain_id' as never, '=', domainId as never).execute()) as Array<Record<string, unknown>>)[0] ?? null;
+    const servingEvents = (await cap.readSubscriptionServingEvents().selectAll().where('domain_id' as never, '=', domainId as never).orderBy('occurred_at' as never, 'desc').limit(20).execute()) as Array<Record<string, unknown>>;
+    const partitions = await cap.outboxPartitionTelemetry();
     const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
     return {
       consumers: CONSUMER_KINDS.map((k) => ({ kind: k, version: CONSUMER_VERSION, codeDigest: consumerCodeDigest(k), registeredInThisProcess: this.dispatcher.registeredKinds().includes(k) })),
       subscriptions, deliveries, retrieval_checks: checks, mapping_reconciliations: proposals,
-      telemetry: { deliveries: telemetry, open_failure_states: open.map((t) => ({ event_id: t['event_id'], consumer_kind: t['consumer_kind'], state: t['state'], failure_class: t['failure_class'], disposition: t['disposition'], unresolved_since: t['unresolved_since'], items_unresolved: t['items_unresolved'], retries: t['retries'] })) },
+      telemetry: { deliveries: telemetry, open_failure_states: open.map((t) => ({ event_id: t['event_id'], consumer_kind: t['consumer_kind'], state: t['state'], failure_class: t['failure_class'], disposition: t['disposition'], unresolved_since: t['unresolved_since'], items_unresolved: t['items_unresolved'], retries: t['retries'] })),
+                  partitions },
       runtime: { scheduler_enabled: this.scheduler.enabled, worker_running: this.scheduler.runningWorkers().includes(name), redis_queue: name,
-                 last_reconciliation: this.dispatcher.lastReconciliation(), last_failure: this.dispatcher.lastFailureSeen() },
+                 serving: { holder: serving?.['holder'] ?? null, claimed_until: serving?.['claimed_until'] ?? null, renewals: serving?.['renewals'] ?? null, this_process: this.dispatcher.holderId(), served_here: this.dispatcher.serves(tenantId, domainId), events: servingEvents },
+                 // the process's last reconciliation, THIS domain's part of it (the process serves other tenants' domains too; they are theirs to read)
+                 last_reconciliation: scopeReport(this.dispatcher.lastReconciliation(), tenantId, domainId, name), last_failure: this.dispatcher.lastFailureSeen() },
     };
   }
+}
+
+/**
+ * The flows' telemetry (AU-MEM-0041, 0065 §5): the forecast, scenario (warning), reconciliation and simulation flows'
+ * execution, product and recovery state as their views carry it — the recent rows of each and every row in a failure
+ * state (its own query, as for the subscription flow).
+ */
+export type FlowName = 'forecasts' | 'warnings' | 'reconciliations' | 'simulations';
+export async function flowTelemetry(cap: GraphReads, flows: FlowName[] = ['forecasts', 'warnings', 'reconciliations', 'simulations']): Promise<Record<string, { recent: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>> }>> {
+  const read = async (q: any, orderBy: string) => ({
+    recent: (await q().selectAll().orderBy(orderBy as never, 'desc').limit(100).execute()) as Array<Record<string, unknown>>,
+    open_failure_states: (await q().selectAll().where('failure_class' as never, 'is not', null).orderBy(orderBy as never, 'desc').limit(500).execute()) as Array<Record<string, unknown>>,
+  });
+  const sources: Record<FlowName, [() => any, string]> = {
+    forecasts: [() => cap.readForecastTelemetry(), 'issued_at'], warnings: [() => cap.readWarningTelemetry(), 'raised_at'],
+    reconciliations: [() => cap.readReconciliationTelemetry(), 'recorded_at'], simulations: [() => cap.readRunTelemetry(), 'opened_at'],
+  };
+  const out: Record<string, { recent: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>> }> = {};
+  for (const f of flows) out[f] = await read(sources[f][0], sources[f][1]);
+  return out;
+}
+
+/** A reconciliation report reduced to one domain: a domain reader sees its own domain's serving, re-drives and failures, not every tenant's. */
+function scopeReport(r: SubscriptionReconcileReport | null, tenantId: string, domainId: string, queue: string): SubscriptionReconcileReport | null {
+  if (r === null) return null;
+  const mine = <T extends { tenantId: string; domainId: string }>(xs: T[]): T[] => xs.filter((x) => x.tenantId === tenantId && x.domainId === domainId);
+  return { at: r.at, reason: r.reason, domains: mine(r.domains), workers: r.workers.filter((w) => w === queue), reDriven: mine(r.reDriven), inFlight: mine(r.inFlight), outboxFailures: mine(r.outboxFailures) };
 }
 
 function clamp(v: unknown, dflt: number): number {

@@ -31,6 +31,8 @@ export interface ExecutiveReads {
   readMembers(): any;
   readRoomEvents(): any;
   readBriefings(): any;
+  /** 0065 §8: what reached a briefing after its composition. */
+  readBriefingEvents(): any;
   readAgents(): any;
   readAgentRuns(): any;
   readPackages(): any;
@@ -91,6 +93,7 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readMembers(): any { return this.from('executive.room_members'); }
   readRoomEvents(): any { return this.from('executive.room_events'); }
   readBriefings(): any { return this.from('executive.briefings'); }
+  readBriefingEvents(): any { return this.from('executive.briefing_events'); }
   readAgents(): any { return this.from('executive.agents'); }
   readAgentRuns(): any { return this.from('executive.agent_runs'); }
   readPackages(): any { return this.from('decision.packages_current'); }

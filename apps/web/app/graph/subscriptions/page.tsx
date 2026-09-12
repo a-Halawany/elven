@@ -72,6 +72,19 @@ export default function SubscriptionsPage() {
           consumers registered here: {status.consumers.filter((c) => c.registeredInThisProcess).map((c) => c.kind).join(', ') || 'none'}
           {status.runtime.last_failure !== null && <> · last failure {fmtInstant(status.runtime.last_failure.at)}: {status.runtime.last_failure.where} — {status.runtime.last_failure.message}</>}
         </p>
+        {status.runtime.serving !== undefined && (
+          <p style={{ color: 'var(--eye-color-ink-muted)' }}>
+            served by <Mono>{status.runtime.serving.holder ?? 'nobody'}</Mono>{status.runtime.serving.served_here ? ' (this process)' : ` (this process is ${status.runtime.serving.this_process})`}
+            {status.runtime.serving.claimed_until !== null && <> · claim until {fmtInstant(String(status.runtime.serving.claimed_until))}, renewed {String(status.runtime.serving.renewals ?? 0)} time(s)</>}
+          </p>
+        )}
+        {(status.telemetry.partitions ?? []).map((p) => (
+          <p key={String(p['partition_key'])} style={{ color: 'var(--eye-color-ink-muted)' }}>
+            partition <Mono>{String(p['partition_key'])}</Mono>: last sequence {String(p['last_seq'])}, pending {String(p['pending'])}
+            {p['blocked'] === true ? <>, <strong>waiting behind its head</strong> (sequence {String(p['head_seq'])}, attempt {String(p['head_attempts'])})</> : null}
+            , dead letters {String(p['dead_letters'])}, retained from sequence {String(p['retained_from_seq'])} ({String(p['retention_policy'])})
+          </p>
+        ))}
       </section>
 
       <section aria-labelledby="subs-h" style={cardStyle}>

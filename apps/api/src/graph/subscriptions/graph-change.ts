@@ -21,6 +21,10 @@ import type { Tx } from '../../shared/db.js';
 
 export const GRAPH_CHANGE_KINDS = [
   'entity.created', 'entity.resolved', 'entity.split', 'edge.asserted', 'edge.retracted', 'strategy.declared', 'invalidation.assessed',
+  // 0065: a recomputation replaced an issued forecast (the superseded forecast is in objects.forecasts; the cause names the new one).
+  'forecast.superseded',
+  // 0065 §7: a model change (an extraction method suspended or retired) opened a reassessment on the edges its claims assert.
+  'edge.reassessment_opened',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -33,6 +37,8 @@ export interface AffectedDependency { dependency_id?: string; dependent_object_i
 export interface ReachedObjects {
   claims: string[]; assumptions: string[]; objectives: string[]; decisions: string[]; commitments: string[];
   forecasts: string[]; scenarios: string[]; warnings: string[]; twins: string[]; simulations: string[]; evidence: string[];
+  /** 0065 §8: the briefings the walk reached (composed on what changed). Absent on events written before 0065. */
+  briefings?: string[];
   /** The walker stopped at its bound before the graph was exhausted: the selection above is incomplete and says so. */
   truncated: boolean;
   /** False only where the write legitimately skipped the walk (see change-events.ts): consumers then select by their own reads. */
@@ -65,7 +71,7 @@ export interface MemoryCorrectedPayload {
 }
 export type ChangeEvent = { event_id: string; event_type: 'GraphChanged'; payload: GraphChangedPayload } | { event_id: string; event_type: 'MemoryCorrected'; payload: MemoryCorrectedPayload };
 
-export const EMPTY_REACH: ReachedObjects = Object.freeze({ claims: [], assumptions: [], objectives: [], decisions: [], commitments: [], forecasts: [], scenarios: [], warnings: [], twins: [], simulations: [], evidence: [], truncated: false, walked: true }) as ReachedObjects;
+export const EMPTY_REACH: ReachedObjects = Object.freeze({ claims: [], assumptions: [], objectives: [], decisions: [], commitments: [], forecasts: [], scenarios: [], warnings: [], twins: [], simulations: [], evidence: [], briefings: [], truncated: false, walked: true }) as ReachedObjects;
 
 /** The consumer kinds AU-MEM-0030 names, each with the action it holds (PDP rule + port assertion) and its identity. */
 export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings'] as const;
@@ -87,9 +93,9 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'citing or boundary-bound admitted versions → twin.apply_subscription_mark (once per cause)',
   forecasts: 'subject, assumption or evidence affected → prediction.mark_forecast_attention (once)',
   scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once)',
-  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause)',
+  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed',
   retrieval: 'graph.rebuild_projections verified → graph.record_retrieval_check',
-  'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides)',
+  'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete)',
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>
   createHash('sha256').update(`graph.subscription.${kind}@${CONSUMER_VERSION}:${METHOD_REF[kind]}`, 'utf8').digest('hex');
@@ -136,15 +142,19 @@ export interface SubscriptionConsumer<C> {
   capability: (tx: Tx, action: string) => C;
   /** The items this event affects for this consumer, resolved under the consumer's own capability (its reads, under RLS). Each item is a stable string key. */
   resolveItems(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent): Promise<string[]>;
-  /** One bounded, idempotent effect for one item; returns what it did and the effect's reference for the ledger. */
-  applyItem(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string):
+  /**
+   * One bounded, idempotent effect for one item; returns what it did and the effect's reference for the ledger. `policy` is
+   * the subscription's declared budgets (0065: a consumer's own rule — a materiality threshold — is read from there).
+   */
+  applyItem(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string, policy?: Record<string, unknown>):
     Promise<{ effect: string; effectRef: string | null; details?: Record<string, unknown>;
               /**
-               * What the effect found is OPERATOR WORK (a projection mismatch): the effect's record is committed, the item is
-               * left UNRESOLVED (never checkpointed as applied) and re-checked at every re-drive; the delivery ends
-               * `unresolved` with this reason (0064, Codex finding 3).
+               * What the effect found is OPERATOR WORK (a projection mismatch, an unestablishable provenance path): the effect's
+               * record is committed, the item is left UNRESOLVED (never checkpointed as applied) and re-checked at every re-drive;
+               * the delivery ends `unresolved` with this reason (0064, Codex finding 3) — classified as the consumer says (0065:
+               * provenance_incomplete → human_review) or, for a plain reason, unresolved_dependency → human_review.
                */
-              unresolved?: string;
+              unresolved?: string | { reason: string; failureClass: FailureClass; disposition: Disposition };
               /** The effect exposes a condition a person must route (an input invalidated on a committed decision): recorded on the item, the delivery still applied. */
               exposure?: { failureClass: FailureClass; disposition: Disposition; note: string } }>;
 }

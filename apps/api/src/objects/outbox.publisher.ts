@@ -17,8 +17,18 @@
  * consumed by nobody. A `CorrectionApplied` row is ADDITIONALLY added to the
  * domain's own propagation queue, where the propagation consumer serves it; the
  * acknowledgement follows both adds, so delivery is at-least-once to both and
- * exactly-once by id (the outbox row id is the job id on both). Every other
- * event type is published exactly as before.
+ * exactly-once by id (the outbox row id is the job id on both). A GraphChanged or
+ * MemoryCorrected row of a domain with an active subscription of its type is added
+ * to the domain's subscription queue — the decision is the LEASE's, computed from
+ * the registry in the database (0065), so every publisher process routes the same
+ * way. Every other event type is published exactly as before.
+ *
+ * ORDER (0064/0065). A partition's rows are handed out in sequence and published in
+ * sequence; a row that fails to publish keeps its lease (the retry backoff) and the
+ * database refuses to lease anything behind it — in this process or another — until
+ * it is published or its lease lapses; the tail this tick leased but never tried is
+ * given back at once with its attempt refunded (B7-F1: before 0065 the next tick
+ * published the never-leased tail ahead of the failed row).
  */
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
@@ -27,18 +37,18 @@ import { EYE_CONFIG } from '../config/config.module.js';
 import type { EyeConfig } from '../config/config.js';
 import { PUBLISHER_DB } from '../shared/shared.module.js';
 import type { Db } from '../shared/db.js';
-import { isSubscribedDomain, propagationQueueNameFor, redisName, subscriptionQueueNameFor } from '../shared/queues.js';
+import { propagationQueueNameFor, redisName, subscriptionQueueNameFor } from '../shared/queues.js';
 
 /** The options a routed propagation job is added with (kept in step with the scheduler's re-drive). */
 const PROPAGATION_JOB_OPTS = { attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 500 } as const;
 
 /** Event types routed to a second, per-domain queue besides `domain-events`; the function names the queue or declines. */
-const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string | null }) => string | null> = {
+const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => string | null> = {
   CorrectionApplied: (r) => r.tenant_id === null || r.domain_id === null ? null : redisName(propagationQueueNameFor(r.tenant_id, r.domain_id)),
-  // 0063: graph and memory changes reach the domain's subscription queue when this process serves the domain;
-  // otherwise the outbox row stays the durable log the dispatcher's reconciliation reads (shared/queues.ts).
-  GraphChanged: (r) => r.tenant_id === null || r.domain_id === null || !isSubscribedDomain(r.tenant_id, r.domain_id) ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
-  MemoryCorrected: (r) => r.tenant_id === null || r.domain_id === null || !isSubscribedDomain(r.tenant_id, r.domain_id) ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
+  // 0065: graph and memory changes reach the domain's subscription queue when the domain has an active subscription of the
+  // type — the lease says so, from the registry; the outbox row stays the durable log the dispatcher's reconciliation reads.
+  GraphChanged: (r) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
+  MemoryCorrected: (r) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
 };
 
 interface PendingRow {
@@ -54,6 +64,8 @@ interface PendingRow {
   partition_key: string;
   partition_seq: string;
   schema_version: string;
+  /** 0065: the registry's routing decision — the domain has an active subscription of this event's type. */
+  subscribed: boolean;
 }
 
 @Injectable()
@@ -67,6 +79,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private leaseFailures = 0;
   /** Test runtime only: a transient queue fault armed at one row (the B8 ordering reproduction). */
   private publishFault: { eventId: string; remaining: number } | null = null;
+  /** Test runtime only: this publisher publishes nothing while paused (another process's publisher does). */
+  private paused = false;
 
   constructor(
     @Inject(PUBLISHER_DB) private readonly db: Db,
@@ -112,6 +126,12 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     this.publishFault = { eventId, remaining: times };
   }
 
+  /** Test runtime only: pause or resume this process's publisher (the other process's keeps publishing the shared outbox). */
+  pauseForTests(v: boolean): void {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('pauseForTests is available only in the test runtime');
+    this.paused = v;
+  }
+
   /** The failure of one tick, reported once per streak and once when the streak ends. */
   private reportTick(e: unknown): void {
     this.leaseFailures += 1;
@@ -124,7 +144,7 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private ticking = false;
 
   async publishPending(): Promise<number> {
-    if (this.queue === null || this.ticking) return 0;
+    if (this.queue === null || this.ticking || this.paused) return 0;
     this.ticking = true;
     try { return await this.publishBatch(); } finally { this.ticking = false; }
   }
@@ -140,12 +160,13 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     }
 
     let published = 0;
-    // A partition's rows are published in sequence order; a row that fails to publish HALTS its partition for this
-    // tick (its later sequences stay leased and are re-leased in order), so a failure never lets a later sequence
-    // overtake an earlier one on a queue (0064).
+    // A partition's rows are published in sequence order; a row that fails to publish HALTS its partition: its later
+    // sequences are not tried this tick and are GIVEN BACK at the end of it (their attempt refunded), and the database
+    // leases nothing of the partition behind the failed row until it is published or its lease lapses (0065).
     const halted = new Set<string>();
+    const untried: string[] = [];
     for (const row of rows) {
-      if (halted.has(row.partition_key)) continue;
+      if (halted.has(row.partition_key)) { untried.push(row.id); continue; }
       try {
         const data = {
           event_id: row.id,
@@ -178,6 +199,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         const ok = (await sql<{ ok: boolean }>`select objects.outbox_ack_as_publisher(
           ${row.id}::uuid, ${row.lease_id}::uuid, 'pending', 'published') as ok`.execute(this.db)).rows[0]?.ok === true;
         if (ok) published += 1;
+        // An acknowledgement refused means the lease is no longer this tick's: nothing behind the row is published on it.
+        else halted.add(row.partition_key);
       } catch (e) {
         // Redis unavailable, or the acknowledgement refused → the row stays leased until
         // its lease lapses and is retried (at-least-once). Reported, never fatal; the
@@ -185,6 +208,12 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         halted.add(row.partition_key);
         this.reportTick(e);
       }
+    }
+    if (untried.length > 0) {
+      // The halted tail: leased this tick, never tried — released now with the attempt refunded (0065). The lease id is the
+      // batch's; a release that fails leaves the rows to lapse as before (reported through the tick's own failure path).
+      const lease = rows[0]!.lease_id;
+      await sql`select objects.outbox_release_untried_as_publisher(${lease}::uuid, ${untried}::uuid[])`.execute(this.db).catch((e: unknown) => this.reportTick(e));
     }
     return published;
   }

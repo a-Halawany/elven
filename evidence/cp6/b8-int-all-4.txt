@@ -1,0 +1,7 @@
+# Full integration suite on eye_verify19_20260912 — a database created and migrated 0001–0065 from the final migration file, alone on the machine, after every correction of the adversarial review
+# command: EYE_DB_NAME=eye_verify19_20260912 npx vitest run --config vitest.int.config.ts
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  53 passed (53)
+      Tests  890 passed (890)
+   Start at  19:13:48
+   Duration  345.22s (transform 936ms, setup 229ms, import 11.96s, tests 329.23s, environment 2ms)

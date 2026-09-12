@@ -39,12 +39,12 @@ type Row = Record<string, unknown>;
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
 
 /** A walk's result (or an assessed impact record) as the event's `objects`. */
-export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[] }): ReachedObjects {
+export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[]; briefings?: Array<{ strategy_object_id: string }> }): ReachedObjects {
   const ids = (xs: Array<{ strategy_object_id: string }>): string[] => xs.map((x) => x.strategy_object_id);
   return {
     claims: [...w.reachedClaims], assumptions: ids(w.assumptions), objectives: ids(w.objectives), decisions: ids(w.decisions), commitments: ids(w.commitments),
     forecasts: ids(w.forecasts), scenarios: ids(w.scenarios), warnings: ids(w.warnings), twins: ids(w.twins), simulations: ids(w.simulations),
-    evidence: [...(w.reachedEvidence ?? [])], truncated: w.truncated, walked: true,
+    evidence: [...(w.reachedEvidence ?? [])], briefings: ids(w.briefings ?? []), truncated: w.truncated, walked: true,
   };
 }
 
@@ -141,6 +141,59 @@ export async function graphChangedEvent(cap: GraphReads, impact: ImpactService, 
  * the corrected objects, the derived claims it can read (claim lineage) and the matching subscriptions through
  * its own capability's ports; the consumers select by those and by their own reads.
  */
+/**
+ * A RECOMPUTATION replaced an issued forecast (0065, AU-MEM-0039 "recomputation changes recommendation materially"): a
+ * GraphChanged of kind forecast.superseded, written inside the issue, naming the SUPERSEDED forecast in objects.forecasts
+ * (the consumers that rest on it select by it: a scenario tree, a decision package citing it) and the new forecast as the
+ * cause's target. No identities are carried on purpose: the entity did not change, the product about it did.
+ */
+export function forecastSupersededEvent(a: { supersededForecastId: string; newForecastId: string; subjectEntityId: string | null; occurredAt?: string; subscriptions: SubscriptionRef[]; actor: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'forecast.superseded', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, forecasts: [a.supersededForecastId], walked: true },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'prediction.forecast.issue', actor: a.actor, target_type: 'FCT', target_id: a.newForecastId },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+/**
+ * A MODEL CHANGE opened reassessments (0065 §7, TT-04): an extraction method was suspended or retired and the edges its
+ * claims assert are pending reassessment — GraphChanged/edge.reassessment_opened, written inside the transition, carrying
+ * the edges (with their ends as subject/object identities, so a twin bounded by them or a forecast resting on the edge
+ * re-verifies as it would on a retraction) and the method as the cause.
+ */
+export function edgeReassessmentEvent(a: { tenantId: string; domainId: string; methodId: string; edges: Array<{ edge_id: string; subject_entity_id: string; object_entity_id: string; predicate: string; claim_object_id: string; claim_version: number; valid_from: string | null; valid_to: string | null;
+                                                                                                        dependencies?: Array<{ dependency_id: string; dependent_object_id: string; dependent_type: string; depends_on_kind: string; depends_on_id: string }> }>;
+                                            occurredAt?: string; subscriptions: SubscriptionRef[]; actor: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const identities: AffectedIdentity[] = [];
+  const seen = new Set<string>();
+  for (const e of a.edges) {
+    for (const [id, role] of [[e.subject_entity_id, 'subject'], [e.object_entity_id, 'object']] as const) {
+      if (!seen.has(`${id}/${role}`)) { seen.add(`${id}/${role}`); identities.push({ entity_id: id, role }); }
+    }
+  }
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'edge.reassessment_opened', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities,
+    relationships: { edges: a.edges.map((e) => ({ edge_id: e.edge_id, state: 'asserted', predicate: e.predicate, subject_entity_id: e.subject_entity_id, object_entity_id: e.object_entity_id, valid_from: str(e.valid_from), valid_to: str(e.valid_to), claim_object_id: e.claim_object_id })), resolutions: [],
+                     // what declares it rests on a reassessed edge (a decision, a forecast): the consumers select by it as they would on a retraction
+                     dependencies: a.edges.flatMap((e) => (e.dependencies ?? []).map((d) => ({ dependency_id: d.dependency_id, dependent_object_id: d.dependent_object_id, dependent_type: d.dependent_type, depends_on_kind: d.depends_on_kind, depends_on_id: d.depends_on_id }))) },
+    objects: { ...EMPTY_REACH, walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'intelligence.method.activate', actor: a.actor, target_type: 'MTH', target_id: a.methodId },
+  };
+  return asRow('GraphChanged', payload);
+}
+
 export function memoryCorrectedEvent(a: {
   kind: MemoryChangeKind; occurredAt?: string; objects: CorrectedObject[]; claims: string[];
   correctionCaseId?: string | null; reviewCaseId?: string | null; subscriptions: SubscriptionRef[]; cause: ChangeCause;

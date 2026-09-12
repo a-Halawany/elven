@@ -63,6 +63,8 @@ export interface DecisionReads {
   readReconciliations(): any;
   readCanonicalObjects(): any;
   readRooms(): any;
+  /** 0065: the forecasts a package's options cite, for the materiality judgement of a recomputation. */
+  readForecasts(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
@@ -156,6 +158,7 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readEvents(): any { return this.from('decision.package_events'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
   readRuns(): any { return this.from('simulation.runs_current'); }
+  readForecasts(): any { return this.from('prediction.forecasts_current'); }
   readTwins(): any { return this.from('twin.twins_current'); }
   readTwinVersions(): any { return this.from('twin.twin_versions'); }
   readIndicators(): any { return this.from('prediction.indicators_current'); }

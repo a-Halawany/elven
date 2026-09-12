@@ -101,6 +101,9 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   'objects.outbox_lease_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
   'objects.outbox_ack_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
   'identity.agent_session_extend': 'phase6-scheduled-collection.test.ts', // 0057
+  // 0065: the halted tail given back with its attempt refunded (the publisher's third port); covered where the ordering is proved.
+  'objects.outbox_release_untried': 'phase6-repro-event-delivery.test.ts', // 0065
+  'objects.outbox_release_untried_as_publisher': 'phase6-repro-event-delivery.test.ts', // 0065
 };
 
 /**

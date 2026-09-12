@@ -18,6 +18,7 @@ import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
+import { edgeReassessmentEvent } from '../graph/subscriptions/change-events.js';
 import { IntelligenceCapability } from './intelligence.capabilities.js';
 import { memoryCorrectedEvent } from '../graph/subscriptions/change-events.js';
 import { MethodsService, validateMethod } from './methods/methods.service.js';
@@ -141,8 +142,12 @@ export class IntelligenceController {
       async (cap, scope) => {
         const r = await this.methods.transition(cap, scope, envelope.correlation_id,
           methodId, target, principal.principalId, body.payload?.reason ?? '');
+        // 0065 §7 (TT-04): a suspension or retirement opened reassessments on the edges this method's claims assert — the
+        // derivatives resting on them learn of the model change through GraphChanged/edge.reassessment_opened, in this write.
+        const events = r.edgesReassessmentOpened.length === 0 ? [] : [edgeReassessmentEvent({ tenantId, domainId, methodId, edges: r.edgesReassessmentOpened,
+          subscriptions: await cap.graphChangeSubscriptions({ tenantId, domainId, changeKind: 'edge.reassessment_opened' }), actor: principal.principalId })];
         return { result: r, targetType: 'MTH', targetId: methodId, targetVersion: '1',
-                 outboxEvent: null };
+                 outboxEvent: null, outboxEvents: events };
       });
     return { method: out.result, receipt: receipt(out) };
   }

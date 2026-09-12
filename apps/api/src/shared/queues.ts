@@ -25,19 +25,3 @@ export function propagationQueueNameFor(tenantId: string, domainId: string): str
 export function subscriptionQueueNameFor(tenantId: string, domainId: string): string {
   return `graph:${tenantId}:${domainId}:subscriptions`;
 }
-
-/*
- * WHICH DOMAINS ARE SUBSCRIBED, as this process knows it. The publisher routes a GraphChanged/MemoryCorrected row
- * to a domain's subscription queue only when the dispatcher in this process serves that domain — otherwise the
- * queue of an unsubscribed domain would grow one job per graph write forever. The outbox row is the durable log
- * either way: a subscription registered later is served from its checkpoint by the dispatcher's reconciliation,
- * which reads the outbox, not the queue, so a row this process did not route is never lost.
- */
-const subscribedDomains = new Set<string>();
-export function markSubscribedDomain(tenantId: string, domainId: string, subscribed: boolean): void {
-  const k = `${tenantId}/${domainId}`;
-  if (subscribed) subscribedDomains.add(k); else subscribedDomains.delete(k);
-}
-export function isSubscribedDomain(tenantId: string, domainId: string): boolean {
-  return subscribedDomains.has(`${tenantId}/${domainId}`);
-}

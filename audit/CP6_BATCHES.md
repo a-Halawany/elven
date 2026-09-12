@@ -482,6 +482,183 @@ the owner raises the budget or the versions are re-verified) — the harness sho
 `max_elapsed_ms` budget ends `failed`/`budget → retry` (the next delivery resumes from the checkpoint), unlike the
 `max_items_per_event` budget, which is `refused`/`budget → human_review`.
 
+## B8 — ordered publication across ticks and processes; replay reaches skipped history; one server per domain; the remaining failure conditions; the flows' telemetry; the interface register and the retention contract; inferred relationships reassessed; warnings and briefings in the impact set (implemented)
+
+**Codex's two B7 findings (2026-09-12), reproduced at the database/queue boundary and corrected by migration 0065.**
+Codex executed the actual publisher and the unmodified 0064 SQL on doubles and found (B7-F1) that with 51 rows in
+partition A and one in B and a single transient queue fault on A:1 the first tick leased A:1–49 and B:1, A:1 failed,
+B:1 published, and the NEXT tick leased the never-leased A:50 and A:51 and published them while A:1 was still pending
+under its live lease — the successful order B:1, A:50, A:51 — within one publisher process (a single elected
+publisher would not have repaired it); and (B7-F2) that a subscription registered to LEAVE its backlog
+(`served_from_seq` = the partition's next sequence at registration), later replayed from the beginning, had the whole
+history returned and its cursor rewound, but the reconciliation — bounded by the served point for rows never
+received — re-drove only what the subscription had already received: events 1–2 stayed excluded. The author
+reproduced both on real Redis, the real publisher, the real dispatcher and the real database
+(`apps/api/test/int/phase6-repro-event-delivery.test.ts`; `evidence/cp6/repro-event-delivery-before.txt`, code at the
+reproduction head `6fc52c9` = `a852c65` + a test-runtime publish-fault hook and a configurable lease, database at 0064):
+F1 — `later rows of A were published while A:1 was still pending: ['A:50', 'A:51']`, `rows of A published before A:1:
+['A:50', 'A:51']`, and a further symptom Codex did not name — every halted row had consumed an attempt it was never
+tried on (`A:2×2 … A:49×2`: ten such ticks would have dead-lettered rows never tried); F2 — `the replay re-drove … :
+expected 1 to be 3`, `the served point must move back … : expected 3 to be 0`, the skipped history never delivered in
+30 s. After 0065 (`evidence/cp6/repro-event-delivery-after.txt`): B:1 proceeds, nothing of A is published while A:1 is
+pending, after the lease lapses A publishes in sequence with A:1's two attempts and every other row's one, A's jobs
+sit in sequence order on the queue; the replay re-drives the three, the served point reads 0, the two skipped
+events are delivered once each with `replay_seq 1`, the tick afterwards re-drives nothing.
+
+**Change (migration `0065_ordered_publication_and_replay_reach.sql`; the publisher, the dispatcher, the scheduler,
+the subscriptions service, the memory-mappings and decision consumers, the forecast issue, the method transition, the
+walk, the briefing read; the web view).**
+1. **The lease is partition-ordered across time and processes** (B7-F1, AU-DP-0175): `objects.outbox_lease` takes
+   an advisory transaction lock (one lease at a time across every publisher process, so the rule below is decided on
+   one consistent view), computes per partition — ordered by sequence — whether any earlier pending row (itself
+   included) is held by a LIVE lease, and leases only the unblocked prefix, round-robin across partitions as before;
+   the claim is `FOR UPDATE` without `SKIP LOCKED` (a row an acknowledgement is committing is waited for, never
+   skipped — skipping a head would lease the row behind it). The publisher halts a partition on a failed add AND on a
+   refused acknowledgement (the lease is no longer this tick's), and at the end of the tick gives the halted tail back
+   through the new port `objects.outbox_release_untried` with the attempt REFUNDED — the attempt budget (0015: ten,
+   then dead letter) counts real attempts only; the failed row keeps its lease as its retry backoff
+   (`eye.outbox.lease_seconds`, default 60 as before). A dead-lettered head still releases its partition — the gap is
+   reported by the reconciliation (0064), never silently passed — the policy B7 recorded, kept. The routing decision
+   (`subscribed`) is computed IN THE LEASE from `graph.subscriptions`, so whichever process publishes routes the same
+   way; the process-local set of served domains is gone. `objects.outbox_partition_telemetry` (security-invoker,
+   the invoker's partition) shows the head, whether the partition is waiting behind it, dead letters, the oldest
+   pending age and the retention contract; the status route and the web view carry it.
+2. **A replay moves the served point** (B7-F2, AU-MEM-0120): `graph.subscription_replay` lowers `served_from_seq` to
+   the replayed point (`v_from_seq + 1`, or 0 from the beginning) and never raises it, records
+   `served_from_seq_before/after` and how many rows were never received; the reconciliation's scoped re-drive then
+   delivers the rows the subscription never received; a restart after the replay is recorded (the queue lost) still
+   delivers them — the served point is the durable record. Ordinary operation is untouched: a `leave` registration
+   serves from its registration; other subscriptions are not reopened.
+3. **One server per domain** (AU-DP-0175, the cross-process routing/ordering gap of B6/B7):
+   `graph.subscription_domain_serving` and `subscription_domain_claim/release` — a bounded claim (150 s) renewed on
+   every reconciliation (the 60 s tick), released at shutdown after the workers close (so the next holder never
+   consumes the queue beside the last), taken over once lapsed, every hand-over on `subscription_serving_events`; a
+   process that does not hold the claim runs no worker for the domain and still enqueues re-drives (the scheduler's
+   enqueue no longer starts a worker). The harness runs a SECOND application context on the same database and Redis
+   as the second process.
+4. **The remaining AU-MEM-0039 conditions**: *provenance path incomplete* — the memory-mappings consumer checks, for
+   every edge a memory change reaches, that the claim version the edge names has its lineage on the corrected
+   evidence (a lineage row exists; under `evidence.corrected` it names the corrected evidence; it names the edge's
+   own evidence); an edge whose path cannot be established stays UNRESOLVED with the class `provenance_incomplete`
+   (human review), re-checked at every re-drive, the sibling edge with a complete path proposed (partial work
+   preserved); the operator's recorded lineage resolves it (`resolved_after_checks`). The dispatcher now carries a
+   consumer-named class and route on an unresolved item to the delivery. *Recomputation changing a recommendation
+   materially* — a forecast re-issued for the same question supersedes the previous one and the issue publishes
+   `GraphChanged/forecast.superseded` beside `ForecastIssued`; the decisions consumer MEASURES the change of the
+   central estimate against the subscription's declared rule (`budgets.materiality`: `relative_q50`, default 0.10;
+   the q10–q90 band) — measured against the forecast the option CITES, found by following the supersession chain
+   back from the one just superseded, so every recomputation after the citation reaches the package — and exposes
+   `material_change` → `human_review` (`compensation` when the decision was executed) with the measure on the package
+   note — the choice, the options and the state never rewritten; an immaterial re-issue is noted with its measure and
+   no failure state; an unmeasurable one is routed as material and says so. The two consumers' methods changed, so their identities
+   changed: an existing decisions or memory-mappings subscription is a different consumer's and is revoked and
+   registered anew (the demonstration act does so); the other four kinds' identities are unchanged.
+5. **The flows' telemetry** (AU-MEM-0041): `prediction.forecast_telemetry`, `prediction.warning_telemetry`,
+   `twin.reconciliation_telemetry`, `simulation.run_telemetry` — security-invoker views with execution state (step
+   durations, end-to-end age, retries, completion, unresolved dependency), product state (freshness as age and
+   cut-offs, coverage, uncertainty, invalidation, affected consumers, decision-active) and recovery state (last
+   durable transition, causation, accountable owner); `POST …/graph/telemetry/flows` returns the recent rows and every
+   row in a failure state per flow; one measurement per flow captured on the local profile
+   (`evidence/cp6/b8-flow-telemetry-measurement.txt`).
+6. **The interface register and the retention contract** (AU-DP-0071): `objects.interface_register` — the fifty
+   canonical interfaces of Volume 3 App C / Volume 4 App C under their identities L1-I01..L10-I05 (ten layers of
+   five; the requirement rows write the range as L1-I01 … L9-I05), each with its contract, transport profile,
+   reliability and failure semantics, and what this product binds to it today — 19 bound, 25 partial, 6 unbound, the
+   audit's own judgement, never more than the requirement rows claim (an event interface is bound only where the
+   event is published); `POST …/graph/interfaces`. The log's retention
+   is DECLARED where its sequence is declared: `objects.outbox_partitions.retained_from_seq` (1) and
+   `retention_policy` (`lifetime`: nothing purges the log, no role holds DELETE, the rows are immutable by trigger;
+   the partition table itself is granted to no runtime role — the telemetry is a security-definer function scoped to
+   the invoker's tenant);
+   a replay from before a partition's floor is REFUSED with the discontinuity named (the point, the floor, the range
+   not retained), a replay from the floor on accepted, a replay from the beginning replayed from the floor (the
+   beginning of what is retained), a replay registration served from the floor.
+7. **Inferred relationships reassessed on evidence or model change** (AU-DP-0041, V7 TT-04): an edge carries
+   `reassessment_state` (none | pending | reassessed) with its trigger (evidence | claim | model), reason, cause and
+   outcome; the memory-mappings consumer opens the reassessment when it proposes the edge's reconciliation under a
+   memory change; `intelligence.transition_method` (suspend, retire) opens it on every asserted edge whose claim
+   version's lineage names the method and the transition publishes `GraphChanged/edge.reassessment_opened` — the
+   forecast resting on the edge is marked for attention through its subscription, no operator walk; the
+   reassessment closes when the relationship is re-derived (superseded by the builder's next assertion, 0026),
+   retracted, or decided by a person — on its mapping proposal, or on the relationship itself
+   (`POST …/edges/:id/reassessment/keep`: it stands, decided:kept — the route a model-change reassessment closes
+   by); a second cause while one is pending accumulates on the edge and is published like the first. The
+   projections' rebuild (the retrieval check) ignores the two non-state events.
+8. **The impact set reaches warnings and briefings** (AU-MEM-0031): a raised warning rests on its forecast and on
+   the evidence that flipped its branch (dependency rows at the raise); a composed briefing rests on what it cites
+   (dependency rows from its recorded sources, in the composing transaction — evidence, claims, runs, the warnings
+   themselves and their forecasts); the walk reaches both and continues from a warning to what cites it; the assessment
+   marks the warning for attention (`warning.attention`; the rows stay immutable) and RE-FLAGS the briefing by event
+   (`briefing.re_flagged`; the snapshot keeps its digest and its known-at), lists both on the invalidation, and the
+   briefing read reports the cited versions corrected after its composition. Commitments and simulation runs were
+   reached before (0035/0042).
+
+**Acceptance units.** AU-DP-0175 (ordered publication across ticks, lease recovery and processes; one server per
+domain) and AU-MEM-0120 (a replay reaches the retained history; the retention floor) allocated, `verified:local`
+at the B8 head; AU-MEM-0039 to `verified:local` (all six conditions with a fault case each); AU-MEM-0041, AU-DP-0071,
+AU-DP-0041, AU-MEM-0031 stay `open` with their delivered clauses bound to the B8 head and their remaining clauses
+stated in their own prose. Evidence: `apps/api/test/int/phase6-graph-subscriptions-3.test.ts` (19 cases) and
+`phase6-repro-event-delivery.test.ts` (4: the two reproductions with their controls); the affected suites and the
+full integration suite on databases created and migrated from the final file; the upgrade proof
+(`evidence/cp6/upgrade-0065.txt`). Profiles: all; evidence class: harness → `verified:ci` at the hosted run of the
+B8 head, recorded at the next records commit.
+
+**The second pass (an adversarial review of the batch before its commit — fifteen skeptics over five claims, 103
+distinct findings verified independently, 68 confirmed; `evidence/cp6/b8-adversarial-review.txt` lists each with its
+disposition).** Confirmed and corrected before the commit: the serving claim was advisory — a holder whose renewals
+failed kept consuming after a take-over — a LOCAL FENCE now: a job is served only while the process believes its
+claim live (checked per job; the worker stops and leaves the job to the holder); a same-host holder whose process is
+gone is taken over at once (recorded), a scheduler-disabled process claims nothing, the first claim of a domain no
+longer races, a stand-down or shutdown that begins during a reconciliation gives back what it claimed, the release
+locks in the claim port's order; `objects.outbox_partitions` was granted to the runtime roles without row-level
+security (every tenant's key and counter readable) — the grant is gone and the partition telemetry is a
+security-definer function scoped to the invoker's tenant, computed over the WHOLE partition (a domain reader of a
+multi-domain tenant saw its own visible head, not the partition's); `intelligence.transition_method` (re-emitted)
+looked the method up by id alone — a cross-tenant write — now by tenant and domain; the flows' telemetry route read
+prediction, twin and simulation state under `graph.read` — each flow reads under its own action now; the decisions
+consumer measured a recomputation between consecutive forecasts and reached a package only on the first re-issue
+after its citation — it now follows the supersession chain back to the forecast the option CITES and measures
+against it, and an unmeasurable change says so; the replay-by-sequence form applied the floor to two different points
+(off by one; a domain's first retained rows unreachable) — one replay core takes the sequence point itself, the
+(created_at, id) form resolves to it, from the beginning means from the floor; a replay moved a NULL cursor forward
+to its point — a NULL cursor stays NULL; never-received rows inside a replayed range were stranded once the cursor
+passed them (the 24-hour look-back) — never-received rows at or after the served point are always reconciled; a
+replay of one subscription re-drove every tenant's refused deliveries — scoped to its domain now; the status route
+reported every tenant's domains, holders and re-drives — this domain's part only; a second reassessment cause on a
+pending edge was dropped — accumulated and published now; the model-change event carried no dependency rows — it
+carries them, so a decision package resting on the edge is noted; a model-change reassessment had no route for a
+person to decide — `POST …/edges/:id/reassessment/keep` (decided:kept); a briefing citing a warning was not reached
+when the warning's flip evidence was corrected — a briefing rests on the warning it cites and the walk continues from
+a warning; a briefing composed on the corrected version was re-flagged by the correction it already saw — re-flagged
+only when the object has a version recorded after the briefing's known-at; the register called three interfaces
+'bound' whose events are not published and named six routes as they do not exist — corrected; the forecast
+telemetry's publish latency scanned the outbox per row — indexed; the demonstration act's re-registration stranded
+the events between the deploy and the act — the replacement replays from the revoked subscription's cursor; the
+reviewed diff's version bump (1.1.0) would have refused all six kinds — the version stays, the two changed methods'
+digests change. Recorded as limits (below): the attempt refund on a crash mid-tick, the dead-letter gap, the
+routing decision between a lease and its add, the deferred closing event's correlation, the lock-order windows,
+a long drain at shutdown, the cross-host lapse.
+
+**Known limits, recorded.** A process that dies holding a lease leaves its partition waiting for the lease's
+lapse (≤ 60 s) — order before throughput, by design; the harness suites that share one database saw it as a
+longer wait for a quiet outbox. A dead-lettered head releases its partition (the gap reported). A model change is a
+method suspension or retirement; a new method under a new key is a new extraction, not a change to the old edges'
+record. The automatic RE-DERIVATION of a pending edge (the builder's run without an operator) remains: the
+reassessment is opened automatically and closed by the builder's next run, a retraction or a decision. The retention
+floor is declared, not moved by a governed act (ES-29-004 remains). Memory items and evaluation datasets are not in
+the impact set (their tables do not exist: AU-MEM-0065). The flows' telemetry carries method and digest lineage, not
+the policy decision per instance; per-profile measurements are the comprehensive campaign's. The interface register
+records six interfaces as unbound and twenty-five as partial. A crash mid-tick charges the leased batch one attempt
+that is not refunded (bounded by the budget of ten). A registration that lands between a row's lease and its add
+leaves that one row to the reconciliation, delivered after its successors. The closing `edge.reassessed` event written
+at commit carries the edge row's correlation, not the closing write's. Lock-order windows exist between a replay and a
+finishing delivery, and between a release and another process's lease when a tick outlives its TTL — Postgres aborts
+one side and the tick or the replay retries. A long drain at shutdown lets claims lapse before the release; a holder
+on ANOTHER host that dies without a release keeps its domain unserved for the claim's lapse (150 s). The measure of a
+recomputation compares the cited and the superseding central estimates as issued (their targets may differ by the
+re-issue's cut-off). One superseded forecast is announced per issue. A rejected mapping proposal closes the edge's
+reassessment as decided:rejected (the relationship stands).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

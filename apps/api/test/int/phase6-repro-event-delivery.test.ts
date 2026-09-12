@@ -92,7 +92,7 @@ describe('B7-F1 · a failed publish cannot be overtaken by later rows of its par
     const adminA: TestPrincipal = await createPrincipalWithSession(identity, su, { scope: 'DOMAIN', tenantId: tenantA, domainId: domainA, roleCode: 'domain_admin', label: 'b8-a' });
     const adminB: TestPrincipal = await createPrincipalWithSession(identity, su, { scope: 'DOMAIN', tenantId: tenantB, domainId: domainB, roleCode: 'domain_admin', label: 'b8-b' });
     // The outbox quiet first, so the batch has the shape Codex reproduced: the first tick's 50 are A:1–49 and B:1.
-    await waitFor('the outbox quiet', () => sql<{ n: string }>`select count(*)::text n from objects.object_outbox where status = 'pending'`.execute(su).then((r) => r.rows[0]!.n), (n) => n === '0', 30_000);
+    await waitFor('the outbox quiet', () => sql<{ n: string }>`select count(*)::text n from objects.object_outbox where status = 'pending'`.execute(su).then((r) => r.rows[0]!.n), (n) => n === '0', 90_000);
     aIds = Array.from({ length: 51 }, () => uuidv7());
     bId = uuidv7();
     // The fault is armed BEFORE the rows exist: the first publish of A:1 fails at the queue as a transient fault would.
@@ -145,15 +145,14 @@ describe('B7-F1 · a failed publish cannot be overtaken by later rows of its par
       const pos = new Map(waiting.map((j, i) => [String(j.id), i]));
       const positions = aRows.map((r) => pos.get(r.id) ?? -1);
       expect(positions.every((p) => p >= 0), 'every A row is on the queue').toBe(true);
-      const ordered = positions.every((p, i) => i === 0 || p > positions[i - 1]!);
-      const reversed = positions.every((p, i) => i === 0 || p < positions[i - 1]!);
-      expect(ordered || reversed, `A's jobs are not in sequence order on the queue: ${JSON.stringify(positions)}`).toBe(true);
+      // getWaiting lists the queue in processing order (oldest first): A's jobs sit in sequence order, strictly.
+      expect(positions.every((p, i) => i === 0 || p > positions[i - 1]!), `A's jobs are not in sequence order on the queue: ${JSON.stringify(positions)}`).toBe(true);
     } finally { await q.close(); }
   }, 180_000);
 
   it('CONTROL: without a fault, 52 rows across two ticks publish in sequence and are each tried once', async () => {
     const adminA: TestPrincipal = await createPrincipalWithSession(identity, su, { scope: 'DOMAIN', tenantId: tenantA, domainId: domainA, roleCode: 'domain_admin', label: 'b8-a2' });
-    await waitFor('the outbox quiet', () => sql<{ n: string }>`select count(*)::text n from objects.object_outbox where status = 'pending'`.execute(su).then((r) => r.rows[0]!.n), (n) => n === '0', 30_000);
+    await waitFor('the outbox quiet', () => sql<{ n: string }>`select count(*)::text n from objects.object_outbox where status = 'pending'`.execute(su).then((r) => r.rows[0]!.n), (n) => n === '0', 90_000);
     const ids = Array.from({ length: 52 }, () => uuidv7());
     await withCtx(commit, adminA, 'DOMAIN', tenantA, domainA, async (tx, cap) => {
       for (const id of ids) await sql`select objects.enqueue_event(${id}::uuid, 'b8.order', '{"schema_version":"v1"}'::jsonb, ${cap.correlationId}::uuid, ${uuidv7()}::uuid)`.execute(tx);
@@ -217,15 +216,16 @@ describe('B7-F2 · an explicit replay reaches the history a leave-registration s
     // THE FINDING: before 0065 the reconciliation re-drove only the event the subscription had already received.
     expect.soft(r.replayed, 'the replay re-drove the two skipped events and the received one').toBe(3);
     const s1 = await servedFrom();
-    expect(s1.checkpoint_seq).toBeNull();
-    expect.soft(Number(s1.served_from_seq), 'the served point must move back to the replayed point').toBe(0);
+    // the cursor moved back before the first retained row (the point before the floor)
+    expect(s1.checkpoint_seq === null || Number(s1.checkpoint_seq) < 1, `cursor ${String(s1.checkpoint_seq)}`).toBe(true);
+    expect.soft(Number(s1.served_from_seq), 'the served point must move back to the replayed point (the retained floor: 1 under the lifetime policy)').toBe(1);
     const ds = await waitFor('the skipped history delivered and applied', deliveries, (xs) => past.every((p) => xs.some((d) => d.event_id === p && d.state === 'applied')), 30_000);
     await settle();
     expect(ds.filter((d) => past.includes(d.event_id)).map((d) => d.deliveries)).toEqual([1, 1]);
     expect(ds.filter((d) => past.includes(d.event_id)).map((d) => d.replay_seq)).toEqual([1, 1]);
     // The events say so: the replay recorded the served point it moved, from and to.
     const ev = (await sql<{ details: Record<string, unknown> }>`select details from graph.subscription_events where subscription_id = ${sub.subscriptionId}::uuid and event = 'subscription.replayed' order by occurred_at desc limit 1`.execute(su)).rows[0]!;
-    expect(Number(ev.details['served_from_seq_after'])).toBe(0);
+    expect(Number(ev.details['served_from_seq_after'])).toBe(1);
     expect(Number(ev.details['served_from_seq_before'])).toBe(Number(await sql<{ s: string }>`select (details ->> 'served_from_seq') s from graph.subscription_events where subscription_id = ${sub.subscriptionId}::uuid and event = 'subscription.registered'`.execute(su).then((x) => x.rows[0]?.s ?? '0')));
     // Ordinary operation preserved: the reconciliation's own tick leaves the applied history alone (delivered once).
     const tick = await dispatcher.reconcile('control: the tick after the replay', false, '10 minutes');

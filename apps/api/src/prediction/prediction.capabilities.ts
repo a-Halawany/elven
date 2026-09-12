@@ -96,6 +96,10 @@ export interface ForecastWrites extends PredictionReads {
     skill: unknown | null; statement: string; backtestId: string | null; controls: unknown;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /** 0065: the forecast this issue superseded (the previous issued one for the same question), if any. */
+  supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null>;
+  /** 0065: what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority. */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 
 export interface BacktestWrites extends PredictionReads {
@@ -285,6 +289,16 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.label}, ${a.skill === null ? null : JSON.stringify(a.skill)}::jsonb, ${a.statement},
       ${a.backtestId}::uuid, ${JSON.stringify(a.controls ?? {})}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+
+  async supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null> {
+    const rows = await this.call<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null }>(sql`
+      select forecast_id::text, quantiles, subject_entity_id::text from prediction.forecasts_current where superseded_by = ${a.forecastId}::uuid and state = 'superseded' order by known_at desc limit 1`);
+    return rows[0] ?? null;
+  }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
   }
 
   async recordBacktest(a: Parameters<BacktestWrites['recordBacktest']>[0]): Promise<void> {

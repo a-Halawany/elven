@@ -37,6 +37,7 @@ const uuid = (n: number): string =>
 function relation(rows: Array<Record<string, unknown>>) {
   const build = (current: Array<Record<string, unknown>>): Record<string, unknown> => ({
     selectAll: () => build(current),
+    select: () => build(current),
     where: (col: string, op: string, val: unknown) => build(current.filter((r) => {
       if (op === 'in') return (val as unknown[]).includes(r[col]);
       return r[col] === val;
@@ -84,6 +85,7 @@ function graphCap(w: WorldRows) {
     readWarnings: () => relation([]),
     readTwins: () => relation([]),
     readRuns: () => relation([]),
+    readBriefings: () => relation([]),
     // CP-6 B6 (0063): no subscription is live in these worlds, so the emitter walks nothing and the event
     // is written unwalked; the contract (subscriptionsMatching is total) is modelled, not the SQL.
     subscriptionsMatching: async () => [],

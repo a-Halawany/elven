@@ -1427,3 +1427,130 @@ single elected publisher); the two remaining AU-MEM-0039 conditions with fault c
 views (AU-MEM-0041); then the register's next open memory obligations (AU-DP-0041's reassessment of inferred
 relationships under TT-04; AU-MEM-0031's derivative coverage). This remains progress toward all eleven volumes:
 3,550 mandatory units are unfinished and no deployment leg is accepted.
+
+## 21. The consolidated checkpoint after `a852c65` / `e298323` (2026-09-12): Codex's two B7 findings corrected, B8 implemented
+
+Continued from `a852c65` (code) / `e298323` (records). Codex closed the retrieval-retry finding at that head and
+found the claim-correction/edge-mapping follow-up addressed; its two bounded event-delivery defects (B7-F1, B7-F2)
+were incorporated into the planned batch. The closures at `2e83945`, the B1 recovery and B4 accounting closures, every
+earlier closed finding and the frozen criteria are preserved. The stack stays unmerged (PR #46 held). The evidence
+classes stay apart: **Codex's focused checks**, **the author's demonstrations** (`evidence/cp6/`), **the hosted
+results** (GitHub Actions on a fresh database — the only chain that verifies a harness unit).
+
+### 21.1 B7-F1 and B7-F2 — before → after
+
+**Codex's checks** (the actual publisher and the unmodified 0064 SQL on doubles; the actual review of the corrections
+at `a852c65`): F1 — with 51 rows in partition A and one in B and a transient queue fault on A:1, one publisher
+process published B:1, A:50, A:51 while A:1 was still pending under its live lease (the halted set lived one tick;
+the lease excluded live-leased rows and handed out the never-leased tail); F2 — a `leave` registration replayed from
+the beginning had the whole history returned and its cursor rewound, but the reconciliation, bounded by the served
+point, re-drove only what the subscription had already received.
+
+**Reproduced at the database/queue boundary** (`apps/api/test/int/phase6-repro-event-delivery.test.ts` — real Redis,
+the real publisher, dispatcher and database; the reproduction head `6fc52c9` is `a852c65` plus a test-runtime
+publish-fault hook and a configurable lease, no behaviour change; database at 0064):
+
+| | before (`6fc52c9`, database at 0064 — `evidence/cp6/repro-event-delivery-before.txt`) | after (0065 — `evidence/cp6/repro-event-delivery-after.txt`) |
+|---|---|---|
+| F1: 51 in A, 1 in B, a transient fault on A:1 | B:1 published; **A:50 and A:51 published while A:1 pending**, before A:1 — `later rows of A were published while A:1 was still pending: ['A:50', 'A:51']`; every halted row charged an attempt it was never tried on (`A:2×2 … A:49×2`); A's jobs out of sequence on the queue | B:1 published; **nothing of A published while A:1 is pending**; after the lease lapses A publishes in sequence — A:1 with two attempts, every other row with one; A's jobs in sequence order on the queue |
+| F1 control: 52 rows, no fault | in sequence across two ticks, each tried once | same |
+| F2: `leave` after two events; a third delivered; replay from the beginning | the replay returns the three; **re-drives 1**; served point stays **3**; the two skipped events never delivered | the replay returns the three; **re-drives 3**; served point **0**, recorded as `served_from_seq_before/after`; the two skipped events delivered once each (`replay_seq 1`); the tick afterwards re-drives nothing |
+
+The harness (`phase6-graph-subscriptions-3`, `evidence/cp6/b8-run8.txt`) carries both further: the replay recorded
+while no process serves the domain, the queue lost, the process restarted — the startup reconciliation delivers the
+skipped history once each; two publishers on one outbox with the fault landing in whichever leases the head — the
+partition waits in both, the other progresses, the order holds.
+
+### 21.2 What B8 implements (migration 0065) — `audit/CP6_BATCHES.md` §B8 for the mechanism
+
+- **Ordered publication across ticks, lease recovery and processes** (AU-DP-0175): the lease serialises on an
+  advisory lock and leases a partition only up to its first row still held by a live lease; a failed add or a
+  refused acknowledgement halts the partition; the untried tail is given back with its attempt refunded; the routing
+  decision is the registry's, computed in the lease. The register's single-process ordering claim is corrected.
+- **One server per domain** (the cross-process routing/ordering gap of B6/B7): a serving claim per domain, renewed on
+  the tick, released at shutdown after the workers close, taken over when lapsed; the harness's second application
+  context (own publisher, own dispatcher, own holder identity, the same database and Redis) stands in for a second
+  process: it finds the domain claimed and starts no worker, a stand-down hands it over, a lapsed claim is taken over,
+  the process that does not serve still routes a live event to the domain's queue.
+- **A replay reaches the retained history** (AU-MEM-0120): the served point moves back to the replayed point,
+  durably; a declared retained floor per partition (lifetime; nothing purges the log) refuses a replay from before it
+  with the discontinuity named and serves a replay registration from it.
+- **The remaining AU-MEM-0039 conditions**: `provenance_incomplete` (an edge whose claim carries no lineage on the
+  corrected evidence stays unresolved, human review, re-checked per re-drive; the sibling applied; the operator's
+  recorded lineage resolves it — `resolved_after_checks 2`) and `material_change` (a forecast re-issued through the
+  disruption episode moves the central estimate 55 % against the forecast the package CITES two re-issues back, under
+  a declared 10 % rule → exposed on the package with the measure; a re-issue on the same observations, 0 %, noted with
+  no failure state); all six conditions now carry a fault case; AU-MEM-0039 to `verified:local`.
+- **The flows' telemetry** (AU-MEM-0041): four security-invoker views and one governed route; one measurement per
+  flow on the local profile (`evidence/cp6/b8-flow-telemetry-measurement.txt`: forecast issue lag 51 ms, publish
+  566 ms, end-to-end 1.9 s; warning evaluate 624 ms, flip→raise 36 ms, window 48 h; reconciliation basis age 249 ms,
+  observation lag 106 ms; simulation execute 15 ms, information age 115 ms).
+- **The interface register** (AU-DP-0071): the fifty canonical interfaces under L1-I01..L10-I05 — 19 bound, 25
+  partial, 6 unbound after the review's correction (`evidence/cp6/b8-interface-register.txt`).
+- **An adversarial review before the commit** (fifteen skeptics over five claims, 103 distinct findings verified
+  independently, 68 confirmed — `evidence/cp6/b8-adversarial-review.txt`) drove a second pass recorded in
+  `audit/CP6_BATCHES.md` §B8: the serving fence, the partition table's grant, the method's tenant check, the flows'
+  read authority, the cited-basis measure, the replay core and the unbounded never-received rows, the scoped
+  reconciliations and status, the accumulated reassessment causes and the keep decision, the briefing–warning
+  dependency, the register's bindings, the act's replay from the revoked cursor.
+- **Inferred relationships reassessed** (AU-DP-0041, TT-04): pending on the relationship under an evidence or claim
+  change (with the mapping proposal) and under a model change (a method suspended or retired, published to the
+  derivatives — the forecast resting on the edge marked for attention with no operator walk); closed by re-derivation,
+  retraction or the person's decision.
+- **Warnings and briefings in the impact set** (AU-MEM-0031): a warning rests on its forecast and flip evidence and is
+  marked for attention by the walk; a briefing rests on what it cites and is re-flagged by event, its snapshot
+  unchanged, the corrected cited versions reported on the read.
+- **The demonstration act** (`scripts/phase6/register-subscriptions.mjs`) revokes and re-registers a subscription
+  whose consumer's method changed (decisions, memory-mappings — "a changed method is a new consumer"), and reports
+  per event which deliveries did NON-EMPTY work and which found nothing of theirs (Codex's demonstration limit, kept
+  visible), the serving holder, the partition state and the open failure states.
+
+### 21.3 Local results at the B8 head
+
+`phase6-graph-subscriptions-3` 19/19 and the reproduction 4/4 (`b8-run8.txt` before the adversarial review,
+`b8-run9.txt`/`b8-run10.txt` after its corrections) on databases created and migrated 0001–0065 from the final file;
+the full integration suite **890/890 in 53 files** three times (`b8-int-all-2.txt` before the review on
+`eye_verify15_20260912`, `b8-int-all-3.txt` after its corrections on `eye_verify17`, `b8-int-all-4.txt` on the final
+file on `eye_verify19`: the 867 of `a852c65` plus B8's nineteen and the reproduction's four); the first full run
+(with the upgrade proof running beside it and before two corrections) had eight failures — a concurrently held
+lease keeping a partition waiting, the projection rebuilds (edges, warnings) reading the new non-state events as
+state transitions, a new publisher port without matrix coverage — corrected and re-run (`b8-regress-3.txt` 51/51,
+`b8-regress-2.txt` 57/57); unit 2147/2147; boundaries clean; the web typecheck clean; the upgrade proof
+(`upgrade-0065.txt`). A local pass verifies nothing (S7).
+
+### 21.4 Heads, hosted results, reconciled statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `a852c65` / `e298323` | B7 and its records | 34693808238 green (867/867) | 34693808173 green |
+| `6fc52c9` | the reproduction head (the hook and the configurable lease; the reproduction file failing as the finding says) | not run (a reproduction, not a candidate) | — |
+| the B8 head | 0065; the publisher, the dispatcher, the consumers, the routes; the harness; the act; the web view | recorded at the next records commit | recorded at the next records commit |
+
+Statuses: AU-DP-0175 and AU-MEM-0120 allocated `verified:local` at the B8 head; AU-MEM-0039 `open` → `verified:local`
+(all six conditions); AU-MEM-0041, AU-DP-0071, AU-DP-0041 and AU-MEM-0031 stay `open` with their delivered clauses
+bound to the B8 head and their remaining clauses stated in their own prose. The register's §5.2a reads
+**3,552 = 3,194 open + 341 local + 17 CI** — two more than `e298323` by the allocation of the two new units, one moved
+from open to local, none by regression; no accepted deployment leg. The hosted run of the B8 head moves the three
+`verified:local` harness units to `verified:ci` at the records commit that binds it.
+
+### 21.5 Recorded, assigned forward
+
+- **Browser gaps**: the subscriptions view gained the serving holder and the partition state; the failure states,
+  the flow telemetry, the interface register and the edge reassessment are not on the browser-regression spec — the
+  next browser-evidence refresh.
+- **AU-DP-0041**: the automatic re-derivation of a pending edge (the builder's run without an operator); **AU-MEM-0031**:
+  memory items and evaluation datasets (their tables first, AU-MEM-0065); **AU-DP-0071**: a governed retention act
+  moving the floor (ES-29-004) and the 28 interfaces bound partially or not at all; **AU-MEM-0041**: trust state
+  joined per instance and the per-profile captures (P7-D).
+- **Demonstration scope**: the act's six deliveries per event include those that found nothing of theirs; the record
+  says which did work. No standalone demonstration campaign was started.
+- Earlier open observations unchanged; **not started, by instruction**: no merge; the completed monitor not re-armed;
+  GHCR temporary; PortWatch permission, the Comtrade deferral and the purchase/cadence/budget constraints stand.
+
+### 21.6 The next implementation slice
+
+The automatic re-derivation of a pending inferred relationship (the edge builder's governed run for the corrected
+claim, triggered by the reassessment, closing it by supersession); the memory item object (AU-MEM-0065) so the
+impact set reaches memory items; a governed retention act on the outbox floor (ES-29-004); then the interface
+binding gaps in the register's order (the six unbound event interfaces first). This remains progress toward all
+eleven volumes: 3,552 mandatory units are unfinished and no deployment leg is accepted.

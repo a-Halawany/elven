@@ -346,9 +346,12 @@ describe('B7 · claim.corrected through the review route; the edge, resolution a
   it('an edge resting on corrected EVIDENCE is proposed on the correction route (evidence.corrected)', async () => {
     const up = await h.upload([{ filename: 'terms-e.csv', text: TERMS_CSV.replace('assumption', 'assumption (e)'), documentTime: '2024-01-13T00:00:00Z' }]);
     const evdE = up[0] as { id: string; version: number };
-    const edgeId = uuidv7();
+    const edgeId = uuidv7(); const claimE = uuidv7();
     await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
-      values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, 'insures', ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${uuidv7()}::uuid, 1, ${evdE.id}::uuid, ${sha256(evdE.id)}, 'replay', 0.8, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+      values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, 'insures', ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${claimE}::uuid, 1, ${evdE.id}::uuid, ${sha256(evdE.id)}, 'replay', 0.8, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    // The provenance path is ESTABLISHED (0065): the claim the edge names has its lineage on the evidence the edge rests on.
+    await sql`insert into intelligence.claim_lineage (claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id, method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end, confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id, correlation_id)
+      values (${claimE}::uuid, 1, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'REL', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${evdE.id}::uuid, ${sha256(evdE.id)}, 0, 4, 0.8, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
     const since = await mark();
     const caseId = await submitCorrection([evdE.id], 'correction', 'document e restated');
     await applyCase(caseId, [evdE.id], 'restatement verified against the publisher');
@@ -358,7 +361,7 @@ describe('B7 · claim.corrected through the review route; the edge, resolution a
     expect(ds.find((d) => d.consumer_kind === 'memory-mappings')?.items).toEqual([`edge:${edgeId}`]);
     const prop = (await sql<{ basis: string; from_entity_id: string; to_entity_id: string }>`select basis, from_entity_id::text, to_entity_id::text from graph.mapping_reconciliations where cause_event_id = ${row.id}::uuid`.execute(h.su)).rows[0]!;
     expect(prop).toMatchObject({ from_entity_id: E2, to_entity_id: E1 });
-    expect(prop.basis).toMatch(new RegExp(`rests on evidence corrected in case ${caseId}`));
+    expect(prop.basis).toMatch(new RegExp(`derived from evidence corrected in case ${caseId}`));
   }, 180_000);
 });
 

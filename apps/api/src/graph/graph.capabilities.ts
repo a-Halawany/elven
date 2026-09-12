@@ -107,6 +107,19 @@ export interface GraphReads {
   /** 0064 (AU-MEM-0041): execution-state telemetry per delivery and per propagation attempt, from the ledgers. */
   readSubscriptionTelemetry(): any;
   readPropagationTelemetry(): any;
+  /** 0065: who serves the domain's subscription queue, the hand-over ledger, and the outbox partitions' state. */
+  readSubscriptionServing(): any;
+  readSubscriptionServingEvents(): any;
+  outboxPartitionTelemetry(): Promise<Array<Record<string, unknown>>>;
+  /** 0065 §5: the forecast, scenario (warning), reconciliation and simulation flows' telemetry views (AU-MEM-0041). */
+  readForecastTelemetry(): any;
+  readWarningTelemetry(): any;
+  readReconciliationTelemetry(): any;
+  readRunTelemetry(): any;
+  /** 0065 §6: the fifty canonical layer interfaces under their identities (AU-DP-0071). */
+  readInterfaceRegister(): any;
+  /** 0065 §8: the briefings the walk may reach (AU-MEM-0031). */
+  readBriefings(): any;
   /**
    * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
    * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
@@ -176,6 +189,8 @@ export interface ResolverWrites extends GraphReads {
 export interface ResolutionDecisionWrites extends GraphReads {
   /** CP-6 B6 (0063): a person decides a memory-mapping reconciliation the subscriber proposed. */
   decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void>;
+  /** 0065 §7 (TT-04): a person decides that a relationship pending reassessment STANDS under its changed basis (a model retired, evidence corrected). */
+  keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
   decideResolution(a: {
     resolutionId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected';
     decider: string; reason: string;
@@ -250,6 +265,8 @@ export interface ImpactWrites extends GraphReads {
     forecasts: unknown[];
     /** Phase 5: twins whose citing versions the port marks unverified, and runs it surfaces. */
     twins: unknown[]; simulations: unknown[];
+    /** 0065 §8: warnings the port marks for attention and briefings it re-flags (AU-MEM-0031). */
+    warnings?: unknown[]; briefings?: unknown[];
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -290,6 +307,8 @@ export interface GraphSubscriberWrites extends GraphReads {
     Promise<{ check_id: string; projections: unknown[]; mismatched: number }>;
   proposeMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null;
     basis: string; causeEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<string | null>;
+  /** 0065 §7 (TT-04): open a reassessment on an edge whose inference record's basis moved (evidence or claim); false when already pending or not asserted. */
+  openEdgeReassessment(a: { edgeId: string; tenantId: string; domainId: string; trigger: 'evidence' | 'claim' | 'model'; reason: string; causeId: string; actor: string; correlationId: string }): Promise<boolean>;
 }
 
 // ───────────────────────── propagation agent (CP-6 B1) ─────────────────────────
@@ -359,6 +378,15 @@ class GraphCapabilityImpl extends GraphCore
   readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
   readSubscriptionTelemetry(): any { return this.from('graph.subscription_delivery_telemetry'); }
   readPropagationTelemetry(): any { return this.from('graph.propagation_attempt_telemetry'); }
+  readSubscriptionServing(): any { return this.from('graph.subscription_domain_serving'); }
+  readSubscriptionServingEvents(): any { return this.from('graph.subscription_serving_events'); }
+  async outboxPartitionTelemetry(): Promise<Array<Record<string, unknown>>> { return this.call<Record<string, unknown>>(sql`select * from objects.outbox_partition_telemetry()`); }
+  readForecastTelemetry(): any { return this.from('prediction.forecast_telemetry'); }
+  readWarningTelemetry(): any { return this.from('prediction.warning_telemetry'); }
+  readReconciliationTelemetry(): any { return this.from('twin.reconciliation_telemetry'); }
+  readRunTelemetry(): any { return this.from('simulation.run_telemetry'); }
+  readInterfaceRegister(): any { return this.from('objects.interface_register'); }
+  readBriefings(): any { return this.from('executive.briefings'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
@@ -593,6 +621,8 @@ class GraphCapabilityImpl extends GraphCore
     forecasts: unknown[]; twins: unknown[]; simulations: unknown[];
     statement: string; truncated: boolean; unexplored: unknown[];
     actor: string; eventId: string; correlationId: string;
+    /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment. */
+    warnings?: unknown[]; briefings?: unknown[];
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
@@ -600,7 +630,8 @@ class GraphCapabilityImpl extends GraphCore
       ${JSON.stringify(a.decisions)}::jsonb, ${JSON.stringify(a.commitments)}::jsonb,
       ${JSON.stringify(a.forecasts)}::jsonb, ${JSON.stringify(a.twins)}::jsonb, ${JSON.stringify(a.simulations)}::jsonb,
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
-      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
+      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb)`);
   }
 
   async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
@@ -655,6 +686,10 @@ class GraphCapabilityImpl extends GraphCore
       ${a.checkId}::uuid, ${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.touched)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r as { check_id: string; projections: unknown[]; mismatched: number };
   }
+  async openEdgeReassessment(a: Parameters<GraphSubscriberWrites['openEdgeReassessment']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select graph.open_edge_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.trigger}, ${a.reason}, ${a.causeId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
   async proposeMappingReconciliation(a: Parameters<GraphSubscriberWrites['proposeMappingReconciliation']>[0]): Promise<string | null> {
     const rows = await this.call<{ id: string | null }>(sql`select graph.propose_mapping_reconciliation(
       ${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.fromEntityId}::uuid, ${a.toEntityId}::uuid,
@@ -663,6 +698,9 @@ class GraphCapabilityImpl extends GraphCore
   }
   async decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void> {
     await this.call(sql`select graph.decide_mapping_reconciliation(${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.keep_edge_under_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 }
 

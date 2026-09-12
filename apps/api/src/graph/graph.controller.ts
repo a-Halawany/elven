@@ -12,7 +12,7 @@
  * one.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
-import { errorBody } from '@eye/contracts';
+import { errorBody, type Envelope } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
@@ -27,7 +27,7 @@ import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
 import { graphChangedEvent } from './subscriptions/change-events.js';
-import { SubscriptionsService, type RegisterSubscriptionIntake } from './subscriptions/subscriptions.service.js';
+import { SubscriptionsService, flowTelemetry, type RegisterSubscriptionIntake } from './subscriptions/subscriptions.service.js';
 import { EMPTY_REACH, type ReachedObjects } from './subscriptions/graph-change.js';
 
 function ctx(req: EyeRequest) {
@@ -916,6 +916,28 @@ export class GraphController {
     return this.subscriptions.replay(envelope, principal, tenantId, domainId, subscriptionId, { fromCreatedAt: p.fromCreatedAt ?? null, fromEventId: p.fromEventId ?? null, fromSeq: p.fromSeq ?? null, reason: p.reason as string });
   }
 
+  /** 0065 §5 (AU-MEM-0041): the forecast, scenario, reconciliation and simulation flows' telemetry — recent rows and open failure states per flow. */
+  @Post('/telemetry/flows')
+  async flowTelemetry(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    // Each flow's state is read under ITS OWN read authority (prediction, twin, simulation), never widened by the graph's.
+    const under = async (action: string, objectType: string, flowsOf: (cap: Parameters<typeof flowTelemetry>[0]) => Promise<Record<string, unknown>>) =>
+      (await this.pipeline.consequentialRead({ ...envelope, message_id: newId(), action } as Envelope, principal, this.route(tenantId, domainId, action, objectType, null), GraphCapability.read, flowsOf)).result;
+    const prediction = await under('prediction.read', 'FCT', (cap) => flowTelemetry(cap, ['forecasts', 'warnings']));
+    const twin = await under('twin.read', 'TWN', (cap) => flowTelemetry(cap, ['reconciliations']));
+    const simulation = await under('simulation.read', 'SIM', (cap) => flowTelemetry(cap, ['simulations']));
+    return { flows: { ...prediction, ...twin, ...simulation } };
+  }
+
+  /** 0065 §6 (AU-DP-0071): the fifty canonical layer interfaces under their L<n>-I<nn> identities, with what this product binds to each. */
+  @Post('/interfaces')
+  async interfaces(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'SUB', null), GraphCapability.read,
+      async (cap) => (await cap.readInterfaceRegister().selectAll().orderBy('interface_id' as never).execute()) as Array<Record<string, unknown>>);
+    return { interfaces: out.result, receipt: receipt(out) };
+  }
+
   /** The registry, the delivery ledger, the retrieval checks, the mapping proposals, and whether this process serves the domain. */
   @Post('/subscriptions/status')
   async subscriptionStatus(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
@@ -948,6 +970,20 @@ export class GraphController {
   }
 
   /** A person decides a proposed reconciliation under the resolution manager's authority (rule 7: never automatic). */
+  /** 0065 §7 (TT-04): the person's decision that a relationship pending reassessment STANDS — the route a model-change reassessment (no mapping proposal) closes by. */
+  @Post('/edges/:edgeId/reassessment/keep')
+  async keepEdge(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('edgeId') edgeId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = body.payload?.reason;
+    if (typeof reason !== 'string' || reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a reassessment decision needs a reason of at least 8 characters'), 400);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.resolution.decide', 'EDG', edgeId), GraphCapability.decision,
+      async (cap) => {
+        await cap.keepEdgeUnderReassessment({ edgeId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { edgeId, reassessment: 'decided:kept' }, targetType: 'EDG', targetId: edgeId, targetVersion: '1', outboxEvent: null };
+      });
+    return { edge: out.result, receipt: receipt(out) };
+  }
+
   @Post('/mappings/:reconciliationId/decide')
   async decideMapping(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('reconciliationId') reconciliationId: string,
     @Body() body: { payload?: { decision?: 'accept' | 'reject'; reason?: string } }) {

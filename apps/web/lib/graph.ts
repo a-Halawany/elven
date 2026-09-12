@@ -314,8 +314,12 @@ export const graph = {
           subscriptions: Array<Record<string, unknown>>; deliveries: Array<Record<string, unknown>>;
           retrieval_checks: Array<Record<string, unknown>>; mapping_reconciliations: Array<Record<string, unknown>>;
           /** 0064 (AU-MEM-0041): execution state per delivery, and the deliveries in a failure state with their class and route. */
-          telemetry: { deliveries: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>> };
+          telemetry: { deliveries: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>>;
+                       /** 0065: the tenant's outbox partitions — the head, whether it is held (blocked), dead letters, the retained floor. */
+                       partitions?: Array<Record<string, unknown>> };
           runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_queue: string;
+                     /** 0065: who serves the domain's queue (one process at a time) and this process's identity. */
+                     serving?: { holder: string | null; claimed_until: string | null; renewals: number | null; this_process: string; served_here: boolean; events: Array<Record<string, unknown>> };
                      last_reconciliation: Record<string, unknown> | null; last_failure: { at: string; where: string; message: string } | null } };
         receipt: Receipt }>(
       s, '/subscriptions/status', 'graph.read', 'SUB'),

@@ -18,6 +18,7 @@ import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
+import { forecastSupersededEvent } from '../graph/subscriptions/change-events.js';
 import { PredictionCapability } from './prediction.capabilities.js';
 import { SeriesService, type Reader } from './series/series.service.js';
 import { ForecastingService, HORIZONS } from './forecasting/forecasting.service.js';
@@ -179,9 +180,15 @@ export class PredictionController {
           assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter((x): x is string => typeof x === 'string') : [],
           refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
-        return { result: r, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
+        // 0065: a re-issue that superseded the previous forecast for the same question publishes GraphChanged/forecast.superseded
+        // beside ForecastIssued, in the same transaction — the consumers resting on the old forecast learn of the recomputation.
+        const superseded = await cap.supersededBy({ forecastId: r.forecastId });
+        const events = superseded === null ? [] : [forecastSupersededEvent({ supersededForecastId: superseded.forecast_id, newForecastId: r.forecastId, subjectEntityId: superseded.subject_entity_id,
+          subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'forecast.superseded' }), actor: principal.principalId })];
+        return { result: { ...r, supersededForecastId: superseded?.forecast_id ?? null }, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
                  outboxEvent: { eventType: 'ForecastIssued', payload: { schema_version: 'v1', forecast_id: r.forecastId, series_key: p.seriesKey,
-                                horizon: p.horizon, method: r.method, validation_state: r.validationState, label } } };
+                                horizon: p.horizon, method: r.method, validation_state: r.validationState, label, superseded_forecast_id: superseded?.forecast_id ?? null } },
+                 outboxEvents: events };
       });
     return { forecast: out.result, receipt: receipt(out) };
   }

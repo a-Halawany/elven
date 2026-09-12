@@ -392,9 +392,20 @@ export class SchedulerService implements OnModuleDestroy {
       if (state === 'completed' || state === 'failed') await existing.remove();
       else return { jobId: existing.id ?? null, added: false, inFlight: state };
     }
+    // The worker is the serving claim holder's (0065 §3): a re-drive is enqueued from any process and served by that one.
     const job = await q.add('deliver', data, { ...PROPAGATION_JOB_OPTS, jobId });
-    this.startSubscriptionWorker(tenantId, domainId);
     return { jobId: job.id ?? null, added: true, inFlight: null };
+  }
+
+  /** Stop serving one domain's subscription queue (the claim passed elsewhere, or no subscription is left): the in-flight job finishes first. */
+  async stopSubscriptionWorker(tenantId: string, domainId: string): Promise<boolean> {
+    const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w === undefined) return false;
+    this.workers.delete(name);
+    await w.close().catch(() => undefined);
+    this.log.log(`subscription worker stopped for ${name}`);
+    return true;
   }
 
   async subscriptionQueueCountsForTests(tenantId: string, domainId: string): Promise<{ active: number; waiting: number; delayed: number; completed: number; failed: number }> {

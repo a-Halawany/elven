@@ -390,8 +390,11 @@ export class BriefingService {
   }
 
   /** Availability NOW of the sources a stored snapshot cites — apart from the content, which keeps its digest. */
-  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>> }> {
+  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>>; corrected: Array<Record<string, unknown>> }> {
     const unavailable: Array<Record<string, unknown>> = [];
+    // 0065 §8 (AU-MEM-0031): a cited version CORRECTED after the composition is reported beside the unavailable ones — the
+    // snapshot keeps what it cited; the reader learns a later version exists and which.
+    const corrected: Array<Record<string, unknown>> = [];
     const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0, sources: 0 };
     for (const s of (b['sources'] as string[]) ?? []) {
       // a source contract the snapshot rested on: its reuse rights and lifecycle NOW (residual review R5c) — the content keeps what they were then
@@ -432,6 +435,8 @@ export class BriefingService {
         unavailable.push({ kind: m[1], id, version, reason: 'withdrawn', by_version: later === undefined ? version : Number(later.object_version), withdrawal_reason: (later ?? cited).withdrawal_reason ?? null });
         continue;
       }
+      const correctedLater = rows.filter((r) => Number(r.object_version) > version && r.lifecycle_state === 'corrected');
+      if (correctedLater.length > 0) corrected.push({ kind: m[1], id, version, by_version: Number(correctedLater[correctedLater.length - 1]!.object_version), reason: 'corrected after the composition' });
       // a governed deletion of the bytes is a tombstone on the blob manifest, not a canonical lifecycle state
       const manifestId = typeof cited.payload?.['manifest_id'] === 'string' ? String(cited.payload['manifest_id']) : null;
       if (manifestId !== null) {
@@ -440,7 +445,7 @@ export class BriefingService {
       }
       if (!covers(clearance, cited.classification)) unavailable.push({ kind: m[1], id, version, reason: `classified ${cited.classification}, above the reader's clearance ${clearance}` });
     }
-    return { checked_at: new Date().toISOString(), checked, unavailable };
+    return { checked_at: new Date().toISOString(), checked, unavailable, corrected };
   }
 
   /**
@@ -460,7 +465,10 @@ export class BriefingService {
     if (purpose !== null) assertPurpose(purpose, admitted.purpose_scope, 'briefing', correlationId);
     const clearance = typeof reader === 'string' ? 'restricted' : assertClearance(reader, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) }, admitted.classification, 'briefing', correlationId);
     const availability = await this.availability(cap, b, clearance);
-    return { ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability };
+    // 0065 §8: what reached the briefing after its composition (re-flagged by an assessment) — the snapshot itself unchanged.
+    const reFlagged = (await cap.readBriefingEvents().selectAll().where('briefing_id' as never, '=', briefingId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
+    return { ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability,
+             re_flagged: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })) };
   }
 
   async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, roomId: string | null, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Array<Record<string, unknown>>> {

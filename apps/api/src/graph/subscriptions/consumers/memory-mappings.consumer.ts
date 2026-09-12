@@ -12,6 +12,14 @@
  * the resolutions of a corrected claim, the edges a corrected claim asserted (or that rest on corrected evidence) and
  * the identifiers sourced from either — all three mappings, on both branches (AU-MEM-0114).
  *
+ * PROVENANCE PATH INCOMPLETE (AU-MEM-0039, 0065). A proposal about an edge says what moved under it; that requires the
+ * path corrected evidence → claim lineage → the claim the edge names to be ESTABLISHED. An edge that names the corrected
+ * evidence as its basis while the claim it names carries no lineage on that evidence (no lineage row for the claim
+ * version, or a lineage naming other evidence) has an incomplete provenance path: the item is left UNRESOLVED with the
+ * class `provenance_incomplete` (human review), the check recorded, and is re-checked at every re-drive — the edge is
+ * neither proposed nor touched until the path is established (the lineage recorded, or the edge retracted) or a person
+ * decides. Partial work is preserved: the other items of the delivery apply.
+ *
  * Items are `identifier:<id>`, `edge:<id>`, `resolution:<id>`; each effect is one proposal.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
@@ -21,7 +29,9 @@ import type { ChangeEvent, SubscriptionConsumer } from '../graph-change.js';
 import { SubscriptionDispatcherService } from '../subscription-dispatcher.service.js';
 
 type Row = Record<string, unknown>;
-interface Proposal { subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null; basis: string }
+interface Proposal { subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null; basis: string;
+  /** 0065: the provenance path from the corrected object to this subject could NOT be established — the reason, with what was expected. */
+  provenance?: { reason: string; expected: Record<string, unknown> } }
 
 @Injectable()
 export class MemoryMappingsConsumer implements SubscriptionConsumer<GraphSubscriberWrites>, OnModuleInit {
@@ -90,10 +100,26 @@ export class MemoryMappingsConsumer implements SubscriptionConsumer<GraphSubscri
     };
     if (claims.size > 0 || evidence.size > 0) {
       const edges = (await cap.readEdges().selectAll().where('state' as never, '=', 'asserted' as never).execute()) as Row[];
-      for (const e of edges) {
-        const basis = edgeBasis(e);
-        if (basis === null) continue;
-        add({ subjectKind: 'edge', subjectId: String(e['edge_id']), fromEntityId: String(e['subject_entity_id']), toEntityId: String(e['object_entity_id']), basis });
+      const candidates = edges.map((e) => ({ e, basis: edgeBasis(e) })).filter((x): x is { e: Row; basis: string } => x.basis !== null);
+      // THE PROVENANCE PATH, checked for every candidate edge: the lineage of the claim version the edge names.
+      const lineage = candidates.length === 0 ? [] : (await cap.readClaimLineage().select(['claim_object_id', 'claim_version', 'evidence_object_id', 'evidence_digest'] as never)
+        .where('claim_object_id' as never, 'in', [...new Set(candidates.map((c) => String(c.e['claim_object_id'])))] as never).execute()) as Row[];
+      const lineageOf = (claimId: string, version: number) => lineage.find((l) => String(l['claim_object_id']) === claimId && Number(l['claim_version']) === version) ?? null;
+      for (const { e, basis } of candidates) {
+        const claimId = String(e['claim_object_id']); const version = Number(e['claim_version']); const edgeEvidence = String(e['evidence_object_id']);
+        const l = lineageOf(claimId, version);
+        let provenance: Proposal['provenance'];
+        if (l === null) {
+          provenance = { reason: `provenance path incomplete: the edge names claim ${claimId} v${version} as its assertion, but no lineage records which evidence that claim version was extracted from — the path from the corrected object to this edge cannot be established`,
+                         expected: { claim_object_id: claimId, claim_version: version, lineage: 'a row in intelligence.claim_lineage for this claim version', edge_evidence_object_id: edgeEvidence } };
+        } else if (m.change.kind === 'evidence.corrected' && !evidence.has(String(l['evidence_object_id']))) {
+          provenance = { reason: `provenance path incomplete: the edge names evidence ${edgeEvidence} as its basis, but the lineage of claim ${claimId} v${version} names evidence ${String(l['evidence_object_id'])} — the corrected evidence does not reach this edge through its claim`,
+                         expected: { claim_object_id: claimId, claim_version: version, lineage_evidence_object_id: String(l['evidence_object_id']), edge_evidence_object_id: edgeEvidence, corrected_evidence: [...evidence] } };
+        } else if (String(l['evidence_object_id']) !== edgeEvidence) {
+          provenance = { reason: `provenance path incomplete: the edge names evidence ${edgeEvidence} but the lineage of the claim it names records evidence ${String(l['evidence_object_id'])} — the edge's provenance contradicts its claim's`,
+                         expected: { claim_object_id: claimId, claim_version: version, lineage_evidence_object_id: String(l['evidence_object_id']), edge_evidence_object_id: edgeEvidence } };
+        }
+        add({ subjectKind: 'edge', subjectId: String(e['edge_id']), fromEntityId: String(e['subject_entity_id']), toEntityId: String(e['object_entity_id']), basis, ...(provenance === undefined ? {} : { provenance }) });
       }
     }
     if (claims.size > 0) {
@@ -127,10 +153,22 @@ export class MemoryMappingsConsumer implements SubscriptionConsumer<GraphSubscri
   async applyItem(cap: GraphSubscriberWrites, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string) {
     const p = (await this.proposals(cap, event)).find((x) => `${x.subjectKind}:${x.subjectId}` === item);
     if (p === undefined) return { effect: 'basis.unchanged', effectRef: null, details: { item, note: 'the basis this item was resolved on no longer holds at apply' } };
+    if (p.provenance !== undefined) {
+      // The check is the effect's record; the item stays open (re-checked on every re-drive) with its class and route.
+      return { effect: 'provenance.incomplete', effectRef: null, details: { subject: item, basis: p.basis, expected: p.provenance.expected },
+               unresolved: { reason: p.provenance.reason, failureClass: 'provenance_incomplete' as const, disposition: 'human_review' as const } };
+    }
     const reconciliationId = newId();
     const id = await cap.proposeMappingReconciliation({ reconciliationId, tenantId: scope.tenantId, domainId: scope.domainId, subjectKind: p.subjectKind, subjectId: p.subjectId,
       fromEntityId: p.fromEntityId, toEntityId: p.toEntityId, basis: p.basis, causeEventId: event.event_id, subscriptionId, actor, correlationId });
     if (id === null) return { effect: 'reconciliation.already_proposed', effectRef: null, details: { subject: item } };
-    return { effect: 'reconciliation.proposed', effectRef: id, details: { subject: item, from: p.fromEntityId, to: p.toEntityId } };
+    // 0065 §7 (TT-04): an edge whose inference record's basis moved under a MEMORY change is opened for REASSESSMENT on the
+    // relationship itself — closed when the builder re-derives it, a person retracts it or decides this proposal.
+    let reassessment: boolean | null = null;
+    if (p.subjectKind === 'edge' && event.event_type === 'MemoryCorrected') {
+      reassessment = await cap.openEdgeReassessment({ edgeId: p.subjectId, tenantId: scope.tenantId, domainId: scope.domainId, trigger: event.payload.change.kind === 'claim.corrected' ? 'claim' : 'evidence',
+        reason: `${p.basis}; reconciliation ${id} proposed`, causeId: event.event_id, actor, correlationId });
+    }
+    return { effect: 'reconciliation.proposed', effectRef: id, details: { subject: item, from: p.fromEntityId, to: p.toEntityId, ...(reassessment === null ? {} : { reassessment_opened: reassessment }) } };
   }
 }
