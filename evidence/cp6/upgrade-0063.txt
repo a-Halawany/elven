@@ -1,0 +1,25 @@
+  ✓ never walked: 0 reconciliation record(s), as expected
+  ✓ one root, walked clean: complete — "dependency propagation assessed by invalidation 2a471ad6-6054-49e7-a154-1e625edc8015: 1 assumpti…"
+  ✓ one root, walked clean: 1 reconciliation record(s), as expected
+  ✓ one root, truncated: partial — "propagation incomplete: every one of the 1 corrected object(s) has been walked, but the latest w…"
+  ✓ one root, truncated: 1 reconciliation record(s), as expected
+  ✓ two roots, one walked: partial — "propagation incomplete: 1 of 2 corrected object(s) have been walked; 1 remain unassessed"
+  ✓ two roots, one walked: 1 reconciliation record(s), as expected
+  ✓ wrong-kind walk: partial — "propagation incomplete: 1 assessment(s) are linked to this case but none walked one of its 1 cor…"
+  ✓ wrong-kind walk: 1 reconciliation record(s), as expected
+  ✓ no roots, walked clean: complete — "dependency propagation assessed by invalidation 300614a8-a6ec-4b9d-a0aa-85c4681279d3: 1 assumpti…"
+  ✓ no roots, walked clean: 1 reconciliation record(s), as expected
+  ✓ no roots, never walked: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ no roots, never walked: 0 reconciliation record(s), as expected
+  ✓ rejected: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ rejected: 0 reconciliation record(s), as expected
+
+4. the upgraded schema equals a virgin full-set schema
+  ✓ virgin database migrated from empty (63 files)
+  ✓ schema digests match exactly: e7c704d3dd938930…
+
+5. the later-phase suites against the UPGRADED database
+  ✓ Phase 1 and Phase 2 suites on upgraded data: 275/275 passed
+
+=== PASS ===
+

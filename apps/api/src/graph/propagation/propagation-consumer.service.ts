@@ -47,6 +47,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService, type WriteEffect } from '../../pipeline/pipeline.service.js';
 import { SchedulerService, type PropagationJobPayload } from '../../observation/scheduling/scheduler.service.js';
 import { GraphCapability } from '../graph.capabilities.js';
+import { graphChangedEvent } from '../subscriptions/change-events.js';
 import { ImpactService } from '../strategy/impact.service.js';
 import { PropagationAgentSessionService, PropagationGrantRefused } from './propagation-agent-session.service.js';
 
@@ -254,10 +255,16 @@ export class PropagationConsumerService implements OnApplicationBootstrap {
             if (!begun) return { result: { skipped: true, invalidationId: null }, targetType: 'INV', targetId: null, targetVersion: null, outboxEvent: null };
             const r = await this.impact.propagate(cap, scope, { triggerKind: 'evidence_correction', triggerObjectId: root, correctionCaseId: caseId, actor: principal.principalId, correlationId });
             await cap.propagationRootDone({ eventId: p.event_id, tenantId, domainId, root, invalidationId: r.invalidationId, truncated: r.truncated });
+            // GraphChanged (B6): the assessed walk carried as the reach, in the same transaction, never walked twice.
+            const changed = await graphChangedEvent(cap, this.impact, {
+              tenantId, domainId, kind: 'invalidation.assessed', identities: [], reach: { walked: r }, invalidationId: r.invalidationId, correctionCaseId: caseId,
+              cause: { action: 'graph.impact.propagate', actor: principal.principalId, target_type: 'INV', target_id: r.invalidationId },
+            });
             return { result: { skipped: false, invalidationId: r.invalidationId }, targetType: 'INV', targetId: r.invalidationId, targetVersion: '1',
                      outboxEvent: { eventType: 'DependencyInvalidated',
                                     payload: { invalidation_id: r.invalidationId, trigger: root, assumptions: r.assumptions.length, objectives: r.objectives.length,
-                                               automatic: true, event_id: p.event_id, agent_id: rec.agent?.agent_id, agent_version: rec.agent?.agent_version, code_digest: rec.agent?.code_digest } } };
+                                               automatic: true, event_id: p.event_id, agent_id: rec.agent?.agent_id, agent_version: rec.agent?.agent_version, code_digest: rec.agent?.code_digest } },
+                     outboxEvents: [changed] };
           });
       } catch (e) {
         if (e instanceof HttpException && e.getStatus() === 403) {

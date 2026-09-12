@@ -26,6 +26,9 @@ import { StrategyService, validateStrategy } from './strategy/strategy.service.j
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
+import { graphChangedEvent } from './subscriptions/change-events.js';
+import { SubscriptionsService, type RegisterSubscriptionIntake } from './subscriptions/subscriptions.service.js';
+import { EMPTY_REACH, type ReachedObjects } from './subscriptions/graph-change.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -71,6 +74,7 @@ export class GraphController {
     private readonly impact: ImpactService,
     private readonly search: SearchService,
     private readonly propagationAgents: PropagationAgentsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   private route(tenantId: string, domainId: string, action: string,
@@ -325,11 +329,25 @@ export class GraphController {
                         ? p.targetEntityId : null },
           decider: principal.principalId, correlationId: envelope.correlation_id,
         });
+        if (r.state !== 'accepted') {
+          return { result: r, targetType: 'RES', targetId: resolutionId, targetVersion: '1', outboxEvent: null };
+        }
+        // GraphChanged (B6): the accepted resolution, its claim and entity, and what rests on them — in this transaction.
+        const row = (await cap.readResolutions().selectAll().where('resolution_id' as never, '=', resolutionId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+        const entityId = String(row?.['entity_id'] ?? p.targetEntityId ?? ''); const claimId = String(row?.['claim_object_id'] ?? '');
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'entity.resolved',
+          identities: entityId === '' ? [] : [{ entity_id: entityId, role: 'resolved_to' }],
+          resolutions: row === undefined ? [] : [{ resolution_id: resolutionId, state: 'accepted', claim_object_id: claimId, claim_version: Number(row['claim_version']), entity_id: entityId }],
+          reach: claimId === '' ? null : { kind: 'claim', id: claimId },
+          cause: { action: 'graph.resolution.decide', actor: principal.principalId, target_type: 'RES', target_id: resolutionId },
+        });
         return { result: r, targetType: 'RES', targetId: resolutionId, targetVersion: '1',
-                 outboxEvent: r.state !== 'accepted' ? null : {
+                 outboxEvent: {
                    eventType: 'EntityResolved',
                    payload: { resolution_id: resolutionId, decided_by: principal.principalId },
-                 } };
+                 },
+                 outboxEvents: [changed] };
       });
     return { resolution: out.result, receipt: receipt(out) };
   }
@@ -368,9 +386,19 @@ export class GraphController {
           decider: principal.principalId, reason: p.reason as string,
           correlationId: envelope.correlation_id,
         });
+        // GraphChanged (B6): origin and successor identities, the resolutions that moved, and what rests on the origin.
+        const moved = (await cap.readResolutions().selectAll().where('entity_id' as never, '=', r.newEntityId as never).execute()) as Array<Record<string, unknown>>;
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'entity.split',
+          identities: [{ entity_id: entityId, role: 'origin' }, { entity_id: r.newEntityId, role: 'successor', split_from: entityId }],
+          resolutions: moved.map((m) => ({ resolution_id: String(m['resolution_id']), state: String(m['state']), claim_object_id: String(m['claim_object_id']), claim_version: Number(m['claim_version']), entity_id: r.newEntityId })),
+          reach: { kind: 'entity', id: entityId },
+          cause: { action: 'graph.entity.split', actor: principal.principalId, target_type: 'ENT', target_id: entityId },
+        });
         return { result: r, targetType: 'ENT', targetId: r.newEntityId, targetVersion: '1',
                  outboxEvent: { eventType: 'EntitySplit',
-                                payload: { from: entityId, to: r.newEntityId, moved: r.moved } } };
+                                payload: { from: entityId, to: r.newEntityId, moved: r.moved } },
+                 outboxEvents: [changed] };
       });
     return { split: out.result, receipt: receipt(out) };
   }
@@ -446,8 +474,19 @@ export class GraphController {
         const r = await this.edges.retract(cap, scope, {
           edgeId, actor: principal.principalId, reason,
           correlationId: envelope.correlation_id });
+        // GraphChanged (B6): the retracted edge with its intervals, both ends, and what rests on the edge.
+        const row = (await cap.readEdges().selectAll().where('edge_id' as never, '=', edgeId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'edge.retracted',
+          identities: row === undefined ? [] : [{ entity_id: String(row['subject_entity_id']), role: 'subject' }, { entity_id: String(row['object_entity_id']), role: 'object' }],
+          edges: [{ edge_id: edgeId, state: 'retracted' }],
+          reach: { kind: 'edge', id: edgeId },
+          validFrom: row === undefined ? null : new Date(String(row['valid_from'])).toISOString(),
+          validTo: row?.['valid_to'] == null ? null : new Date(String(row['valid_to'])).toISOString(),
+          cause: { action: 'graph.edge.retract', actor: principal.principalId, target_type: 'EDG', target_id: edgeId },
+        });
         return { result: r, targetType: 'EDG', targetId: edgeId, targetVersion: '1',
-                 outboxEvent: null };
+                 outboxEvent: changed };
       });
     return { edge: out.result, receipt: receipt(out) };
   }
@@ -592,8 +631,21 @@ export class GraphController {
           correlationId: envelope.correlation_id,
           purposeId: envelope.purpose_id ?? 'graph',
         });
+        // GraphChanged (B6): the declared object, the entities it rests on and its dependencies; the object is its own reach.
+        const restsOnEntities = intake.restsOn.filter((x) => x.kind === 'entity').map((x) => ({ entity_id: x.id, role: 'rests_on' }));
+        const own: ReachedObjects = { ...EMPTY_REACH };
+        const bucket = ({ ASU: 'assumptions', OBJ: 'objectives', DEC: 'decisions', CMT: 'commitments' } as Record<string, keyof ReachedObjects | undefined>)[intake.objectType];
+        if (bucket !== undefined) (own as unknown as Record<string, string[]>)[bucket] = [objectId];
+        own.claims = intake.restsOn.filter((x) => x.kind === 'claim').map((x) => x.id);
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'strategy.declared',
+          identities: restsOnEntities,
+          dependencies: intake.restsOn.map((x) => ({ dependent_object_id: objectId, dependent_type: intake.objectType, depends_on_kind: x.kind, depends_on_id: x.id })),
+          reach: { reach: own },
+          cause: { action: 'graph.strategy.declare', actor: principal.principalId, target_type: intake.objectType, target_id: objectId },
+        });
         return { result: r, targetType: intake.objectType, targetId: objectId,
-                 targetVersion: '1', outboxEvent: null };
+                 targetVersion: '1', outboxEvent: changed };
       });
     return { strategy: out.result, receipt: receipt(out) };
   }
@@ -724,12 +776,19 @@ export class GraphController {
           correctionCaseId: typeof p.correctionCaseId === 'string' ? p.correctionCaseId : null,
           actor: principal.principalId, correlationId: envelope.correlation_id,
         });
+        // GraphChanged (B6): the assessed walk is carried as the reach — never walked a second time.
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'invalidation.assessed',
+          identities: [], reach: { walked: r }, invalidationId: r.invalidationId, correctionCaseId: r.correctionCaseId,
+          cause: { action: 'graph.impact.propagate', actor: principal.principalId, target_type: 'INV', target_id: r.invalidationId },
+        });
         return { result: r, targetType: 'INV', targetId: r.invalidationId, targetVersion: '1',
                  outboxEvent: { eventType: 'DependencyInvalidated',
                                 payload: { invalidation_id: r.invalidationId,
                                            trigger: p.triggerObjectId,
                                            assumptions: r.assumptions.length,
-                                           objectives: r.objectives.length } } };
+                                           objectives: r.objectives.length } },
+                 outboxEvents: [changed] };
       });
     return { impact: out.result, receipt: receipt(out) };
   }
@@ -817,6 +876,91 @@ export class GraphController {
       GraphCapability.read,
       async (cap) => this.propagationAgents.status(cap, tenantId, domainId));
     return { propagation: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── CP-6 B6: GraphChanged / MemoryCorrected subscriptions (0063) ─────────────────────────
+
+  /** Register a subscriber of one kind: its principal on the identity authority, its subscription on the commit authority. */
+  @Post('/subscriptions/register')
+  async registerSubscription(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: RegisterSubscriptionIntake },
+  ) {
+    const { envelope, principal } = ctx(req);
+    return this.subscriptions.register(envelope, principal, tenantId, domainId, (body.payload ?? {}) as RegisterSubscriptionIntake);
+  }
+
+  @Post('/subscriptions/:subscriptionId/pause')
+  async pauseSubscription(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    return this.subscriptions.control(envelope, principal, tenantId, domainId, subscriptionId, 'paused', body.payload?.reason as string);
+  }
+  @Post('/subscriptions/:subscriptionId/resume')
+  async resumeSubscription(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    return this.subscriptions.control(envelope, principal, tenantId, domainId, subscriptionId, 'active', body.payload?.reason as string);
+  }
+  @Post('/subscriptions/:subscriptionId/revoke')
+  async revokeSubscription(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    return this.subscriptions.control(envelope, principal, tenantId, domainId, subscriptionId, 'revoked', body.payload?.reason as string);
+  }
+  /** Move the subscription's cursor back and re-drive the events after it — to this subscription alone. */
+  @Post('/subscriptions/:subscriptionId/replay')
+  async replaySubscription(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string,
+    @Body() body: { payload?: { fromCreatedAt?: string | null; fromEventId?: string | null; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    return this.subscriptions.replay(envelope, principal, tenantId, domainId, subscriptionId, { fromCreatedAt: p.fromCreatedAt ?? null, fromEventId: p.fromEventId ?? null, reason: p.reason as string });
+  }
+
+  /** The registry, the delivery ledger, the retrieval checks, the mapping proposals, and whether this process serves the domain. */
+  @Post('/subscriptions/status')
+  async subscriptionStatus(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'SUB', null), GraphCapability.read,
+      async (cap) => this.subscriptions.status(cap, tenantId, domainId));
+    return { subscriptions: out.result, receipt: receipt(out) };
+  }
+
+  /** The delivery ledger of one event: every subscription it reached, the items and their effects. */
+  @Post('/subscriptions/deliveries/:eventId/get')
+  async subscriptionDelivery(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('eventId') eventId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'SUB', eventId), GraphCapability.read,
+      async (cap) => ({
+        deliveries: await cap.readSubscriptionDeliveries().selectAll().where('event_id' as never, '=', eventId as never).execute(),
+        events: await cap.readSubscriptionDeliveryEvents().selectAll().where('outbox_event_id' as never, '=', eventId as never).orderBy('occurred_at' as never).execute(),
+      }));
+    return { ...(out.result as Record<string, unknown>), receipt: receipt(out) };
+  }
+
+  /** Mapping reconciliations proposed by the memory-mappings consumer, awaiting a person. */
+  @Post('/mappings/list')
+  async listMappings(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: 'proposed' | 'accepted' | 'rejected'; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const state = body.payload?.state ?? 'proposed';
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MRC', null), GraphCapability.read,
+      async (cap) => cap.readMappingReconciliations().selectAll().where('state' as never, '=', state as never).orderBy('proposed_at' as never, 'desc').limit(Math.min(body.payload?.limit ?? 100, 500)).execute());
+    return { mappings: out.result, receipt: receipt(out) };
+  }
+
+  /** A person decides a proposed reconciliation under the resolution manager's authority (rule 7: never automatic). */
+  @Post('/mappings/:reconciliationId/decide')
+  async decideMapping(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('reconciliationId') reconciliationId: string,
+    @Body() body: { payload?: { decision?: 'accept' | 'reject'; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    if (p.decision !== 'accept' && p.decision !== 'reject') throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, "decision must be 'accept' or 'reject'"), 400);
+    if (typeof p.reason !== 'string' || p.reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a mapping decision needs a reason of at least 8 characters'), 400);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.resolution.decide', 'MRC', reconciliationId), GraphCapability.decision,
+      async (cap) => {
+        await cap.decideMappingReconciliation({ reconciliationId, tenantId, domainId, state: p.decision === 'accept' ? 'accepted' : 'rejected', reason: p.reason as string, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { reconciliationId, state: p.decision === 'accept' ? 'accepted' : 'rejected' }, targetType: 'MRC', targetId: reconciliationId, targetVersion: '1', outboxEvent: null };
+      });
+    return { mapping: out.result, receipt: receipt(out) };
   }
 
   @Post('/impact/list')

@@ -53,6 +53,8 @@ export interface IntelligenceReads {
   readAttempts(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readLineage(): any;
+  /** CP-6 B6 (0063): what is subscribed to a memory change at PUBLICATION — evidence the event carries, never authority. */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readReviewCases(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,6 +195,10 @@ class IntelligenceCapabilityImpl extends IntelligenceCore
   readAttempts(): any { return this.from('intelligence.extraction_attempts'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readLineage(): any { return this.from('intelligence.claim_lineage'); }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'MemoryCorrected', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readReviewCases(): any { return this.from('intelligence.review_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

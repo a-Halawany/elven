@@ -76,6 +76,13 @@ export interface ObservationReads {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any;
   /**
+   * CP-6 B6 (0063): what is subscribed to a memory change at PUBLICATION — evidence the MemoryCorrected event
+   * carries, never authority (the dispatcher re-resolves at delivery) — and the claims derived from corrected
+   * evidence (intelligence.claim_lineage, read under RLS), so the event names the memory the correction reaches.
+   */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
+  claimsDerivedFrom(evidenceObjectIds: string[]): Promise<string[]>;
+  /**
    * The LATEST evidence held for each deterministic item key of a source — what
    * a backfill re-run compares its bytes against (Phase 4 §4a). One query per
    * run, not one per item.
@@ -379,6 +386,15 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   readSchedulerEntries(): any { return this.from('observation.scheduler_entries'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'MemoryCorrected', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
+  async claimsDerivedFrom(evidenceObjectIds: string[]): Promise<string[]> {
+    if (evidenceObjectIds.length === 0) return [];
+    const rows = await this.call<{ claim_object_id: string }>(sql`select distinct claim_object_id::text from intelligence.claim_lineage where evidence_object_id = any(${evidenceObjectIds}::uuid[]) order by 1`);
+    return rows.map((r) => r.claim_object_id);
+  }
 
   async latestEvidenceByItemKeys(a: { sourceId: string; itemKeys: string[] }): Promise<Array<HeldEvidenceRow>> {
     if (a.itemKeys.length === 0) return [];

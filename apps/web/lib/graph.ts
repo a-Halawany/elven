@@ -307,6 +307,41 @@ export const graph = {
       s, '/impact/awaiting', 'graph.read', 'COR',
       cursor === undefined ? { limit: 100 } : { limit: 100, cursor }),
 
+  /** CP-6 B6 (0063): the GraphChanged/MemoryCorrected subscription registry, the delivery ledger, the retrieval checks and the mapping proposals. */
+  subscriptionStatus: (s: Scope) =>
+    g<{ subscriptions: {
+          consumers: Array<{ kind: string; version: string; codeDigest: string; registeredInThisProcess: boolean }>;
+          subscriptions: Array<Record<string, unknown>>; deliveries: Array<Record<string, unknown>>;
+          retrieval_checks: Array<Record<string, unknown>>; mapping_reconciliations: Array<Record<string, unknown>>;
+          runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_queue: string;
+                     last_reconciliation: Record<string, unknown> | null; last_failure: { at: string; where: string; message: string } | null } };
+        receipt: Receipt }>(
+      s, '/subscriptions/status', 'graph.read', 'SUB'),
+
+  registerSubscription: (s: Scope, consumerKind: string, ownerPrincipalId: string, backlog: 'replay' | 'leave') =>
+    g<{ subscription: Record<string, unknown>; served: { workerRunning: boolean; reDriven: number } }>(
+      s, '/subscriptions/register', 'graph.subscription.register', 'SUB', { consumerKind, ownerPrincipalId, backlog }),
+
+  controlSubscription: (s: Scope, subscriptionId: string, to: 'pause' | 'resume' | 'revoke', reason: string) =>
+    g<{ subscription: { subscriptionId: string; status: string }; receipt: Receipt }>(
+      s, `/subscriptions/${subscriptionId}/${to}`, 'graph.subscription.control', 'SUB', { reason }, subscriptionId),
+
+  replaySubscription: (s: Scope, subscriptionId: string, reason: string) =>
+    g<{ subscriptionId: string; replayed: number; events: string[]; receipt: Receipt }>(
+      s, `/subscriptions/${subscriptionId}/replay`, 'graph.subscription.replay', 'SUB', { reason }, subscriptionId),
+
+  subscriptionDelivery: (s: Scope, eventId: string) =>
+    g<{ deliveries: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; receipt: Receipt }>(
+      s, `/subscriptions/deliveries/${eventId}/get`, 'graph.read', 'SUB', {}, eventId),
+
+  listMappings: (s: Scope, state: 'proposed' | 'accepted' | 'rejected' = 'proposed') =>
+    g<{ mappings: Array<Record<string, unknown>>; receipt: Receipt }>(
+      s, '/mappings/list', 'graph.read', 'MRC', { state, limit: 200 }),
+
+  decideMapping: (s: Scope, reconciliationId: string, decision: 'accept' | 'reject', reason: string) =>
+    g<{ mapping: { reconciliationId: string; state: string }; receipt: Receipt }>(
+      s, `/mappings/${reconciliationId}/decide`, 'graph.resolution.decide', 'MRC', { decision, reason }, reconciliationId),
+
   verifyProjections: (s: Scope) =>
     g<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string;
                              mismatched: string }>; receipt: Receipt }>(

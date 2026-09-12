@@ -26,6 +26,7 @@ import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { PrincipalsService } from '../../identity/principals.service.js';
+import { memoryCorrectedEvent } from '../../graph/subscriptions/change-events.js';
 import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites, type ObservationReads, type RegistryWrites } from '../observation.capabilities.js';
 import { AcquisitionLifecycle, type RunOutcome } from './lifecycle.service.js';
@@ -645,12 +646,30 @@ export class CollectionOrchestrator {
             // closing batch records every supersession the whole apply produced,
             // including the earlier batches'.
             isLast, superseded);
+          /*
+           * MemoryCorrected (CP-6 B6, 0063): the memory this batch corrected — each superseded object with its
+           * versions and lifecycle — and the claims derived from it (claim lineage), as a second outbox row of
+           * the SAME transaction. Per batch, because each batch is its own transaction and the event must be
+           * the change's own; the case-level CorrectionApplied stays on the last batch.
+           */
+          const corrected = memoryCorrectedEvent({
+            kind: 'evidence.corrected', correctionCaseId: a.caseId,
+            objects: r.superseded.map((x) => {
+              const prior = latest.get(x.object_id);
+              return { object_id: x.object_id, object_type: String(prior?.['object_type'] ?? 'EVD'), from_version: x.from, to_version: x.to, lifecycle_state: 'superseded',
+                       event_time: iso(prior?.['event_time']), observation_time: iso(prior?.['observation_time']), valid_from: iso(prior?.['valid_from']), valid_to: iso(prior?.['valid_to']) };
+            }),
+            claims: await cap.claimsDerivedFrom(r.superseded.map((x) => x.object_id)),
+            subscriptions: await cap.changeSubscriptions({ tenantId: a.tenantId, domainId: a.domainId, changeKind: 'evidence.corrected' }),
+            cause: { action: 'observation.correction.apply', actor: a.principal.principalId, target_type: 'COR', target_id: a.caseId },
+          });
           return {
             result: {
               ...r, rejectedClaims: verification.rejected,
               propagationScope: { resolved: r.superseded, unresolved: UNRESOLVED_PROPAGATION },
             },
             targetType: 'COR', targetId: a.caseId, targetVersion: '1',
+            outboxEvents: r.superseded.length > 0 ? [corrected] : [],
             // The APPLIED correction is its own event (CP-6 B1, 0060): until 0060 the apply
             // path re-used the submission's name, `CorrectionReceived`, and the consumer every
             // review named could never have fired on it. The propagation consumer subscribes
@@ -964,3 +983,9 @@ function round2(n: number): number {
 }
 
 export { EMPTY_PAYLOAD_DIGEST };
+
+function iso(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const d = new Date(v as string);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}

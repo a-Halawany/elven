@@ -141,7 +141,12 @@ export interface WithdrawWrites extends DecisionReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites {
+/** CP-6 B6 (0063): the decision SUBSCRIBER's effect — an invalidated input is recorded on the package once per cause; nothing else moves. */
+export interface DecisionSubscriberWrites extends DecisionReads {
+  noteInputInvalidated(a: { packageId: string; tenantId: string; domainId: string; details: Record<string, unknown>; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+}
+
+class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites, DecisionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -296,10 +301,15 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   async withdrawPackage(a: Parameters<WithdrawWrites['withdrawPackage']>[0]): Promise<void> {
     await this.call(sql`select decision.withdraw_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+  async noteInputInvalidated(a: Parameters<DecisionSubscriberWrites['noteInputInvalidated']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select decision.note_input_invalidated(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.details)}::jsonb, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const DecisionCapability = {
+  subscriber(tx: Tx, action: string): DecisionSubscriberWrites { return new DecisionCapabilityImpl(tx, action); },
   read(tx: Tx, action: string): DecisionReads { return new DecisionCapabilityImpl(tx, action); },
   declare(tx: Tx, action: string): DeclareWrites { return new DecisionCapabilityImpl(tx, action); },
   version(tx: Tx, action: string): VersionWrites { return new DecisionCapabilityImpl(tx, action); },

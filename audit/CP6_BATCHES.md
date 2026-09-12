@@ -11,6 +11,7 @@ never verifies a `profiles = all` unit; hosted CI on a fresh database verifies t
 | **B3 — scenario kinds** | the eight kinds of Volume 0 ch. 14 as a versioned vocabulary; divergence and per-branch assumptions | AU-PRD-0021 | **implemented** on `phase6-decisions` (migration 0058; harness case C-022 in `phase4-acceptance`, 16/16 locally); **`verified:ci`** at `5118376` (ci run 34647461349, 836/836 on a fresh database) |
 | **B1 — `CorrectionApplied` consumer** | the automatic dependency walk on an applied correction | AU-MEM-0108–0111 (new; the consumer's own properties), AU-DP-0043 (partial-walk visibility, re-verified); AU-DP-0041 narrowed — see §B1 | **implemented** on `phase6-decisions` (migration 0060; harness `phase6-propagation-consumer`, 15/15 locally on real Redis and the real outbox); **`verified:ci`** at `5118376` (ci run 34647461329/34647461349, 836/836 on a fresh database); exercised on the demonstration (§B1) |
 | **B2 — warning levels** | four levels by a versioned derivation; C0–C4 unchanged | AU-PRD-0061–0063 (new); AU-PRD-0034/-0037/-0039, AU-DP-0164 re-pointed — §B2 | **implemented** on `phase6-decisions` (migration 0061; harness `phase4-warning-levels`, 6/6 locally); `verified:ci` once the hosted run at the implementing head is green |
+| **B6 — GraphChanged / MemoryCorrected subscriptions** | the events with affected identities, relationships, temporal scopes and subscriptions; a durable subscription registry and delivery ledger; six consumers (twins, forecasts, scenarios, decisions, retrieval, memory mappings) | AU-MEM-0112–0117 (new); AU-MEM-0030 (the parent, its full statement retained) — §B6 | **implemented** on `phase6-decisions` (migration 0063; harness `phase6-graph-subscriptions`, 12 cases on real Redis and the real outbox, the process restarted three times mid-suite); `verified:ci` once the hosted run at the implementing head is green |
 | **B4 — profile legs and SLO floors** | three acceptance legs per profile row; SLO floors with declared variance | register mechanics (audit rows), P7-D units — §B4 | **applied** (2026-09-11): leg vector + `legs_verified` on every unit; `audit/SLO_CATALOGUE.md` v1; no leg accepted |
 | **B5 — CAP aliases** | versioned subject-based aliases, lossless | audit CP-6 mapping — §B5 | **applied** (2026-09-11): `audit/CAP_ALIASES.md` v1; `cap_alias` on the requirement CSVs; 89 = 71 + 18, unresolved 0 |
 
@@ -266,9 +267,118 @@ definition or its subject-based alias, and the obligations mapped; the requireme
 **Acceptance units:** the 89 CAP bindings of Volume 9 each resolve to a defined capability or a
 versioned alias (a check in `summarise-units.mjs` reports any that do not).
 
+## B6 — GraphChanged / MemoryCorrected subscriptions and their consumers (implemented)
+
+**The obligation, in full (AU-MEM-0030).** "Graph and memory changes publish a
+GraphChanged/MemoryCorrected event with affected identities, relationships, temporal scopes and
+subscriptions; durable subscriptions and consumers for twins, forecasts, scenarios, decisions,
+retrieval and memory mappings." The remaining-work prose carried before this batch named four
+consumers; the statement names six. All six are delivered here.
+
+**Change (migration `0063_graph_subscriptions.sql`; `apps/api/src/graph/subscriptions/*`; the
+emitters in `graph.controller.ts`, `graph.orchestrator.ts`, `propagation-consumer.service.ts`,
+`observation/acquisition/orchestrator.service.ts`, `intelligence.controller.ts`; the consumers in
+`twin/twins/`, `prediction/subscriptions/`, `decision/subscriptions/`, `graph/subscriptions/consumers/`;
+`outbox.publisher.ts`; `scheduler.service.ts`; `pipeline.service.ts` (`outboxEvents[]`); `pdp.service.ts`).**
+1. **The events.** `GraphChanged@v1` is written as a second outbox row of the SAME transaction as
+   the change it announces — an accepted resolution (`entity.resolved`, operator or automatic), a
+   created entity, a split, an asserted or retracted edge, a declared strategy object, an assessed
+   invalidation (operator or the B1 walker). It carries `identities` (entity id, role, canonical
+   name, lifecycle, split lineage — enriched under RLS in the write), `relationships` (edges with
+   `valid_from`/`valid_to`/`asserted_at`/`retracted_at` and their claim, resolutions, dependencies —
+   the rows changed plus the one-hop rows that rest on what changed), `objects` (the reach of the
+   dependency walk — `ImpactService.walk`, the invalidation's own walker, never a second one;
+   `truncated` carried as the walker reports it; `walked: false` only on the resolver's bulk path when
+   no subscription is live, and every consumer selects by its own reads then), `temporal`
+   (`known_at`; the world interval when the change has one), `subscriptions` (what
+   `graph.subscriptions_matching` answered at publication — evidence, never authority: the dispatcher
+   re-resolves at delivery) and `cause`. `MemoryCorrected@v1` is written per apply batch beside
+   `CorrectionApplied` (which keeps its own path) with the superseded objects and their versions, the
+   claims derived from them (claim lineage), and by the review route for a corrected claim.
+2. **Six subscriber roles** (`twin_subscriber`, `forecast_subscriber`, `scenario_subscriber`,
+   `decision_subscriber`, `retrieval_subscriber`, `mapping_subscriber`), each holding EXACTLY one
+   action at the policy boundary (`exact` rules: `twin.subscription.apply`,
+   `prediction.forecast.subscription.apply`, `prediction.scenario.subscription.apply`,
+   `decision.subscription.apply`, `graph.retrieval.subscription.apply`,
+   `graph.mapping.subscription.apply`) and at the ports, which assert the same action — so a
+   subscriber of one kind cannot drive another kind's effect even inside its own governed write.
+   Registration (`POST …/graph/subscriptions/register`, tenant or platform administrator) creates the
+   principal on the identity authority and the subscription on the commit authority
+   (`graph.subscriptions`: kind, event types, change-kind filter, consumer version and code digest,
+   owner, budgets, status, checkpoint, replay sequence; one live per domain and kind); pause, resume,
+   revoke (`…/:id/pause|resume|revoke`, also the domain administrator's) and replay
+   (`…/:id/replay`) are governed writes. The subscriber's session is opened by
+   `graph.subscription_session_open` under the identity-operation capability and extended only by
+   delivery progress (one extension per applied item), each extension re-verifying the grant.
+3. **Routing**: the publisher adds a `GraphChanged`/`MemoryCorrected` row to the domain's own queue
+   `graph:<tenant>:<domain>:subscriptions` when this process serves the domain (a domain with an
+   active subscription), before acknowledging the row; `domain-events` stays the global, unconsumed
+   log; the propagation queue never sees a subscription event and the subscription queue never sees
+   `CorrectionApplied`. One job per event; the worker (concurrency 1) refuses a misrouted payload.
+4. **The delivery ledger** `graph.subscription_deliveries`, keyed (event, subscription), states
+   `received | applied | failed | refused`, written OUTSIDE the subscriber's authority under the
+   scheduler's bounded capability (`subscription_delivery_receive` fans an event out to every active
+   subscription it matches — or the one a replay names — and never reopens an applied delivery;
+   `subscription_delivery_finish` decides the outcome and advances the subscription's checkpoint over
+   the contiguous applied prefix); the consumer's item list set once under its own action
+   (`subscription_delivery_items`, the applying principal checked against the delivery's); the
+   **per-item checkpoint** (`subscription_item_begin` / `_done`) taken FOR UPDATE inside the effect's
+   own transaction and committed with it. A refused or absent grant, a budget refusal, a missing
+   consumer and a revocation mid-delivery are governance answers (`refused`, not retried); an
+   infrastructure fault is `failed` and rethrown for the queue's bounded retry; a retrieval mismatch is
+   `failed` visibly (operator work). Startup, every registration/resume and a 60 s tick reconcile —
+   the 0062 lesson from the start: every `received` (never applied, or interrupted mid-apply) and
+   `failed` delivery is re-driven, `refused` ones on a registration/resume/replay, a row published out
+   of order behind the checkpoint is found by a 24 h look-back, a job a live worker holds is left alone.
+5. **The consumers**, each registered into the graph's dispatcher by its own module at init (the
+   graph imports none of them): **twins** — an admitted, verified version whose elements cite what
+   changed or whose boundary names an affected entity goes unverified once per cause
+   (`twin.apply_subscription_mark`); **forecasts** — an issued forecast whose subject, assumption,
+   dependency or evidence basis changed is marked for attention once, never re-issued
+   (`prediction.mark_forecast_attention`); **scenarios** — an active scenario whose subject or forecast
+   changed is marked for attention (`prediction.mark_scenario_attention`; `scenarios_current` gains
+   `attention_state`); **decisions** — an invalidated input (the reached DEC object, a cited run,
+   forecast, claim, evidence, assumption or warning) is recorded on the package once per cause
+   (`decision.note_input_invalidated`; state, approvals and commitment untouched, C-004); **retrieval**
+   — the projections retrieval reads are re-verified from their event logs
+   (`graph.rebuild_projections`, now accepting the retrieval subscriber's action) and the check recorded
+   with what the change touched (`graph.retrieval_checks`); **memory mappings** — an identifier, edge
+   or resolution whose basis moved (a split, a resolution accepted elsewhere, a corrected claim or
+   evidence) is PROPOSED for reconciliation once per subject and cause (`graph.mapping_reconciliations`),
+   decided by a person under `graph.resolution.decide` (`…/graph/mappings/list`, `…/:id/decide`) —
+   resolver rule 7 kept: nothing is moved automatically.
+
+**Acceptance units.** AU-MEM-0112 (registration by role, one live per kind, the session the
+registry's), AU-MEM-0113 (GraphChanged with identities, relationships, reach, temporal scope and
+subscriptions; all six consumers update with no operator act), AU-MEM-0114 (MemoryCorrected in the
+apply transaction beside CorrectionApplied; the mapping proposal decided by a person; unrelated
+delivery preserved), AU-MEM-0115 (redelivery, restart with an empty Redis, a real interruption after
+receipt and after the first committed item, a live worker left alone), AU-MEM-0116 (replay, pause,
+resume, revoke, backlog replay at registration), AU-MEM-0117 (the governed path: every port refuses
+without its action, a kind cannot drive another kind's port, forced RLS, a misrouted job fails
+closed). AU-MEM-0030's remaining work now names what is left (the hosted run, a dedicated
+`claim.corrected` harness case, the demonstration act, the web view, P7-D). Evidence:
+`apps/api/test/int/phase6-graph-subscriptions.test.ts` (12 cases; real Redis, real outbox publisher,
+the process restarted three times mid-suite). Profiles: all; evidence class: harness →
+`verified:ci` at the first green hosted run at the implementing head.
+
+**Known limits, recorded.** The publisher routes a change to a domain's subscription queue only when the
+dispatcher in the SAME process serves the domain (a process-local set); in a deployment where the publisher and
+the dispatcher run in different processes an event is delivered by the dispatcher's reconciliation from the outbox
+(within its 60 s tick, or at once at a registration/resume), not by the publisher's routing — delivery is preserved,
+its latency is the tick's. A registration with `backlog: 'replay'` re-drives the backlog twice
+(the replay jobs and the reconciliation's own jobs; the second delivery of an applied delivery is a
+durable no-op — noisy, not wrong). The `claim.corrected` leg is emitted and consumed by the same
+code but has no dedicated harness case yet. The resolver's bulk path publishes unwalked events when
+no subscription is live; a later subscription registered with a backlog replay receives them unwalked
+and every consumer then selects by its own reads (the retrieval check and the mapping consumer need no
+reach; the twin, forecast, scenario and decision consumers read citations, subjects, assumptions and
+dependencies themselves).
+
 ## Order and the next implementation batch
 
-B3, B1 and B2 are done in code and B4/B5 applied to the audit (the 2026-09-11 checkpoints). The
+B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints) and B6 done in
+code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

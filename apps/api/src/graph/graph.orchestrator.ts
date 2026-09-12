@@ -28,6 +28,8 @@ import { GraphCapability, type GraphReads, type ResolverWrites, type EdgeWrites 
 import { ResolverService, RESOLVER_RULE_VERSION, mentionOf, normalizeName,
   type EntityCandidate, type Mention, type ResolverOutcome } from './entities/resolver.service.js';
 import { EdgesService } from './edges/edges.service.js';
+import { ImpactService } from './strategy/impact.service.js';
+import { graphChangedEvent } from './subscriptions/change-events.js';
 
 /** One run reads a bounded slice. An unbounded resolver run is a batch job. */
 const MAX_MENTIONS = 500;
@@ -67,6 +69,7 @@ export class GraphOrchestrator {
     private readonly resolver: ResolverService,
     private readonly gateway: ModelGatewayService,
     private readonly edges: EdgesService,
+    private readonly impact: ImpactService,
   ) {}
 
   private envelope(
@@ -484,6 +487,27 @@ export class GraphOrchestrator {
           matchEvidence, candidateSet, identifierSystem, identifierValue,
           ...model,
         });
+        /*
+         * GraphChanged (B6): a created entity and an automatically accepted resolution are graph changes
+         * like any other. A resolve run writes one operation per mention, so the dependency walk — the
+         * costly part — runs only when a subscription is live for the change at the write; the event is
+         * written regardless, immutable, and says whether it was walked (`objects.walked`).
+         */
+        const changes = [];
+        const live = async (kind: 'entity.created' | 'entity.resolved') =>
+          (await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: kind })).length > 0;
+        const cause = { action: 'graph.resolve', actor: a.read.principal.principalId, target_type: 'RES', target_id: resolutionId };
+        if (created) {
+          changes.push(await graphChangedEvent(cap, this.impact, {
+            tenantId, domainId, kind: 'entity.created', identities: [{ entity_id: entityId, role: 'created' }],
+            reach: (await live('entity.created')) ? { kind: 'claim', id: mention.claimObjectId } : null, cause }));
+        }
+        if (r.auto_accepted) {
+          changes.push(await graphChangedEvent(cap, this.impact, {
+            tenantId, domainId, kind: 'entity.resolved', identities: [{ entity_id: entityId, role: 'resolved_to' }],
+            resolutions: [{ resolution_id: resolutionId, state: 'accepted', claim_object_id: mention.claimObjectId, claim_version: mention.claimVersion, entity_id: entityId }],
+            reach: (await live('entity.resolved')) ? { kind: 'claim', id: mention.claimObjectId } : null, cause }));
+        }
         return {
           result: { entityId, method, score, state: r.state, created },
           targetType: 'RES', targetId: resolutionId, targetVersion: '1',
@@ -492,6 +516,7 @@ export class GraphOrchestrator {
             payload: { resolution_id: resolutionId, entity_id: entityId,
                        claim_object_id: mention.claimObjectId, method },
           } : null,
+          outboxEvents: changes,
         };
       });
 
@@ -694,8 +719,17 @@ export class GraphOrchestrator {
             confidence: Number(payload['confidence'] ?? 0),
             actor: a.principal.principalId, eventId: newId(), correlationId,
           });
+          // GraphChanged (B6): the asserted edge with its world interval and both ends; walked only for a live subscription.
+          const live = (await cap.subscriptionsMatching({ tenantId: a.tenantId, domainId: a.domainId, eventType: 'GraphChanged', changeKind: 'edge.asserted' })).length > 0;
+          const changed = await graphChangedEvent(cap, this.impact, {
+            tenantId: a.tenantId, domainId: a.domainId, kind: 'edge.asserted',
+            identities: [{ entity_id: subject, role: 'subject' }, { entity_id: object, role: 'object' }],
+            edges: [{ edge_id: edgeId, state: 'asserted', predicate: String(payload['predicate'] ?? 'related_to'), subject_entity_id: subject, object_entity_id: object, valid_from: validFrom, valid_to: validTo, claim_object_id: claimId }],
+            reach: live ? { kind: 'claim', id: claimId } : null, validFrom, validTo,
+            cause: { action: 'graph.edge.assert', actor: a.principal.principalId, target_type: 'EDG', target_id: edgeId },
+          });
           return { result: { edgeId }, targetType: 'EDG', targetId: edgeId,
-                   targetVersion: '1', outboxEvent: null };
+                   targetVersion: '1', outboxEvent: changed };
         });
       outcome.edgesAsserted += 1;
       outcome.edges.push({

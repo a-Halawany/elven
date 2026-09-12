@@ -26,6 +26,11 @@ import { SearchService } from './search/search.service.js';
 import { PropagationAgentSessionService } from './propagation/propagation-agent-session.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
 import { PropagationConsumerService } from './propagation/propagation-consumer.service.js';
+import { SubscriptionSessionService } from './subscriptions/subscription-session.service.js';
+import { SubscriptionDispatcherService } from './subscriptions/subscription-dispatcher.service.js';
+import { SubscriptionsService } from './subscriptions/subscriptions.service.js';
+import { RetrievalConsumer } from './subscriptions/consumers/retrieval.consumer.js';
+import { MemoryMappingsConsumer } from './subscriptions/consumers/memory-mappings.consumer.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
 /*
@@ -49,11 +54,20 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     PropagationAgentSessionService,
     PropagationAgentsService,
     PropagationConsumerService,
+    // CP-6 B6 (0063): the subscription registry, the dispatcher and the two graph-side consumers
+    // (retrieval, memory mappings). The twin, prediction and decision consumers live in their own
+    // modules and register themselves into the dispatcher — the graph imports none of them.
+    SubscriptionSessionService,
+    SubscriptionDispatcherService,
+    SubscriptionsService,
+    RetrievalConsumer,
+    MemoryMappingsConsumer,
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [GraphOrchestrator, ImpactService, EntitiesService, ResolutionService,
-            EdgesService, StrategyService, SearchService, PropagationAgentsService, PropagationConsumerService],
+            EdgesService, StrategyService, SearchService, PropagationAgentsService, PropagationConsumerService,
+            SubscriptionDispatcherService, SubscriptionsService],
 })
 export class GraphModule {}

@@ -19,6 +19,7 @@ import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { IntelligenceCapability } from './intelligence.capabilities.js';
+import { memoryCorrectedEvent } from '../graph/subscriptions/change-events.js';
 import { MethodsService, validateMethod } from './methods/methods.service.js';
 import { ExtractionOrchestrator } from './extraction/orchestrator.service.js';
 import { ReviewService, type ReviewDecision } from './review/review.service.js';
@@ -463,10 +464,20 @@ export class IntelligenceController {
           purposeId: envelope.purpose_id ?? 'intelligence',
           claim: resolved.result.claim, lineage: resolved.result.lineage,
         });
+        // MemoryCorrected (CP-6 B6, 0063): a corrected claim is a memory change — its versions, in this transaction.
+        const corrected = p.decision === 'correct' && claimId !== null && r.newVersion !== null ? [memoryCorrectedEvent({
+          kind: 'claim.corrected', reviewCaseId: caseId,
+          objects: [{ object_id: claimId, object_type: String(resolved.result.claim?.['object_type'] ?? 'CLM'), from_version: Number(resolved.result.claim?.['object_version'] ?? r.newVersion - 1), to_version: r.newVersion, lifecycle_state: 'superseded',
+                      event_time: isoOrNull(resolved.result.claim?.['event_time']), observation_time: isoOrNull(resolved.result.claim?.['observation_time']) }],
+          claims: [claimId],
+          subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'claim.corrected' }),
+          cause: { action: 'intelligence.review.decide', actor: principal.principalId, target_type: 'REV', target_id: caseId },
+        })] : [];
         return { result: r, targetType: 'REV', targetId: caseId, targetVersion: '1',
                  outboxEvent: { eventType: 'ClaimReviewed',
                                 payload: { case_id: caseId, state: r.state,
-                                           claim_object_id: claimId, new_version: r.newVersion } } };
+                                           claim_object_id: claimId, new_version: r.newVersion } },
+                 outboxEvents: corrected };
       });
     return { review: out.result, receipt: receipt(out) };
   }
@@ -536,4 +547,10 @@ export class IntelligenceController {
       async (cap) => cap.rebuildProjections());
     return { projections: out.result, receipt: receipt(out) };
   }
+}
+
+function isoOrNull(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const d = new Date(v as string);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

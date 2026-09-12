@@ -6,16 +6,20 @@
  */
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
+import { GraphModule } from '../graph/graph.module.js';
 import { DecisionController } from './decision.controller.js';
 import { PackageService } from './packages/package.service.js';
 import { ApprovalService } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
 import { MonitoringService } from './monitoring/monitoring.service.js';
+import { DecisionSubscriptionConsumer } from './subscriptions/decision-subscription.consumer.js';
 
+// CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
+// imports nothing from here.
 @Module({
-  imports: [PipelineModule],
+  imports: [PipelineModule, GraphModule],
   controllers: [DecisionController],
-  providers: [PackageService, ApprovalService, ReplayService, MonitoringService],
+  providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer],
   exports: [PackageService, ApprovalService, ReplayService, MonitoringService],
 })
 export class DecisionModule {}

@@ -27,7 +27,7 @@ import { EYE_CONFIG } from '../config/config.module.js';
 import type { EyeConfig } from '../config/config.js';
 import { PUBLISHER_DB } from '../shared/shared.module.js';
 import type { Db } from '../shared/db.js';
-import { propagationQueueNameFor, redisName } from '../shared/queues.js';
+import { isSubscribedDomain, propagationQueueNameFor, redisName, subscriptionQueueNameFor } from '../shared/queues.js';
 
 /** The options a routed propagation job is added with (kept in step with the scheduler's re-drive). */
 const PROPAGATION_JOB_OPTS = { attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 500 } as const;
@@ -35,6 +35,10 @@ const PROPAGATION_JOB_OPTS = { attempts: 5, backoff: { type: 'exponential', dela
 /** Event types routed to a second, per-domain queue besides `domain-events`; the function names the queue or declines. */
 const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string | null }) => string | null> = {
   CorrectionApplied: (r) => r.tenant_id === null || r.domain_id === null ? null : redisName(propagationQueueNameFor(r.tenant_id, r.domain_id)),
+  // 0063: graph and memory changes reach the domain's subscription queue when this process serves the domain;
+  // otherwise the outbox row stays the durable log the dispatcher's reconciliation reads (shared/queues.ts).
+  GraphChanged: (r) => r.tenant_id === null || r.domain_id === null || !isSubscribedDomain(r.tenant_id, r.domain_id) ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
+  MemoryCorrected: (r) => r.tenant_id === null || r.domain_id === null || !isSubscribedDomain(r.tenant_id, r.domain_id) ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
 };
 
 interface PendingRow {
@@ -134,7 +138,7 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         // A routed event reaches its consumer's queue too, before the row is acknowledged;
         // the same job id dedupes a redelivery there as well.
         const target = ROUTED[row.event_type]?.(row) ?? null;
-        if (target !== null) await this.routedQueue(target).add('propagate', data, { ...PROPAGATION_JOB_OPTS, jobId: row.id });
+        if (target !== null) await this.routedQueue(target).add(row.event_type === 'CorrectionApplied' ? 'propagate' : 'deliver', data, { ...PROPAGATION_JOB_OPTS, jobId: row.id });
         // Narrow compare-and-set acknowledgement — the only mutation available —
         // tied to the LEASE: without the lease id and the expected current status,
         // nothing moves. Capability and acknowledgement in one call (0057).

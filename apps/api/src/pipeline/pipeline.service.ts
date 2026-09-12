@@ -66,6 +66,12 @@ export interface WriteEffect<T> {
   targetId: string | null;
   targetVersion: string | null;
   outboxEvent?: { eventType: string; payload: Record<string, unknown> } | null;
+  /**
+   * Further events the same committed transition announces (CP-6 B6, 0063): a graph write publishes
+   * its business event AND a GraphChanged; an applied correction publishes CorrectionApplied AND a
+   * MemoryCorrected. Each is its own outbox row, enqueued by the pipeline in the same transaction.
+   */
+  outboxEvents?: Array<{ eventType: string; payload: Record<string, unknown> }>;
 }
 
 function deny(code: 'EYE_AUT_001' | 'EYE_AUT_002' | 'EYE_TEN_001', correlationId: string, message?: string): HttpException {
@@ -176,11 +182,11 @@ export class PipelineService {
           target: { type: effect.targetType, id: effect.targetId, version: effect.targetVersion },
           metadata: { assurance: principal.assurance },
         });
-        if (effect.outboxEvent != null) {
-          // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
-          // DESCRIBED the event; no business capability can reach this port.
+        // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
+        // DESCRIBED the event(s); no business capability can reach this port.
+        for (const ev of [...(effect.outboxEvent == null ? [] : [effect.outboxEvent]), ...(effect.outboxEvents ?? [])]) {
           await OutboxCapability.forPipeline(tx, route.action).enqueue(
-            newId(), effect.outboxEvent.eventType, effect.outboxEvent.payload,
+            newId(), ev.eventType, ev.payload,
             envelope.correlation_id, envelope.message_id,
           );
         }

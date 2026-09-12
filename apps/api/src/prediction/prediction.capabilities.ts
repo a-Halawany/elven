@@ -50,6 +50,8 @@ export interface PredictionReads {
   readWarnings(): any;
   readWarningEvents(): any;
   readStrategy(): any;
+  /** CP-6 B6 (0063): the dependency rows a forecast or scenario rests on, so the subscriber selects by them. */
+  readDependencies(): any;
   /**
    * The evidence VERSIONS a series can read at an instant: for every evidence
    * object of the source, the highest version recorded at or before `knownAt`.
@@ -183,9 +185,15 @@ export interface AcknowledgeWrites extends PredictionReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/** CP-6 B6 (0063): the forecast and scenario SUBSCRIBERS' effects — attention marked once per object, never re-issued. */
+export interface PredictionSubscriberWrites extends PredictionReads {
+  markForecastAttention(a: { forecastId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+  markScenarioAttention(a: { scenarioId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+}
+
 class PredictionCapabilityImpl extends PredictionCore
   implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, ScenarioWrites,
-             IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites {
+             IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites, PredictionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readSeries(): any { return this.from('prediction.series_registry'); }
@@ -201,6 +209,7 @@ class PredictionCapabilityImpl extends PredictionCore
   readWarnings(): any { return this.from('prediction.warnings_current'); }
   readWarningEvents(): any { return this.from('prediction.warning_events'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
+  readDependencies(): any { return this.from('graph.dependencies'); }
 
   async evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]> {
     return this.call<EvidenceVersionRow>(sql`
@@ -364,10 +373,19 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.eventId}::uuid, ${a.correlationId}::uuid) as s`);
     return String(rows[0]?.s ?? 'acknowledged');
   }
+  async markForecastAttention(a: Parameters<PredictionSubscriberWrites['markForecastAttention']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select prediction.mark_forecast_attention(${a.forecastId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+  async markScenarioAttention(a: Parameters<PredictionSubscriberWrites['markScenarioAttention']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select prediction.mark_scenario_attention(${a.scenarioId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const PredictionCapability = {
+  subscriber(tx: Tx, action: string): PredictionSubscriberWrites { return new PredictionCapabilityImpl(tx, action); },
   read(tx: Tx, action: string): PredictionReads { return new PredictionCapabilityImpl(tx, action); },
   series(tx: Tx, action: string): SeriesWrites { return new PredictionCapabilityImpl(tx, action); },
   forecast(tx: Tx, action: string): ForecastWrites { return new PredictionCapabilityImpl(tx, action); },

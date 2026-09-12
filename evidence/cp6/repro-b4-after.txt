@@ -1,0 +1,1 @@
+exit=1; problems: 5; units 3891; rows covered 6264/6264; mandatory unfinished 3542 (open 3194 + verified:local 338 + verified:ci 8 + inconsistent 2; with accepted legs 0); verified:all 0; mandatory n/a 0; legs saas 0/3525, private 0/3524, onprem 0/3531, disconnected 0/80, air-gapped 0/80; CAP bindings 89 (71 defined + 18 alias), unresolved 0; problems 5; SUMMARY.md untouched

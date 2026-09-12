@@ -96,6 +96,19 @@ export interface GraphReads {
   readPropagationAgents(): any;
   readPropagationAttempts(): any;
   readPropagationAttemptEvents(): any;
+  /** CP-6 B6 (0063): the subscription registry, the delivery ledger, the retrieval checks and the mapping proposals. */
+  readSubscriptions(): any;
+  readSubscriptionEvents(): any;
+  readSubscriptionDeliveries(): any;
+  readSubscriptionDeliveryEvents(): any;
+  readRetrievalChecks(): any;
+  readMappingReconciliations(): any;
+  readEntityIdentifiers(): any;
+  /**
+   * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
+   * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
+   */
+  subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   /**
    * Edges VISIBLE at an instant, filtered in the query.
    *
@@ -158,6 +171,8 @@ export interface ResolverWrites extends GraphReads {
 // ───────────────────────── resolution decisions ─────────────────────────
 
 export interface ResolutionDecisionWrites extends GraphReads {
+  /** CP-6 B6 (0063): a person decides a memory-mapping reconciliation the subscriber proposed. */
+  decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void>;
   decideResolution(a: {
     resolutionId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected';
     decider: string; reason: string;
@@ -251,6 +266,26 @@ export interface ImpactWrites extends GraphReads {
   propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void>;
 }
 
+// ───────────────────────── subscriptions (CP-6 B6) ─────────────────────────
+
+export interface SubscriptionWrites extends GraphReads {
+  registerSubscription(a: {
+    subscriptionId: string; tenantId: string; domainId: string; consumerKind: string; eventTypes: string[]; filter: Record<string, unknown>;
+    principalId: string; version: string; codeDigest: string; owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }>;
+  setSubscriptionStatus(a: { subscriptionId: string; tenantId: string; domainId: string; to: 'active' | 'paused' | 'revoked'; reason: string; actor: string; eventId: string; correlationId: string }): Promise<string>;
+  replaySubscription(a: { subscriptionId: string; tenantId: string; domainId: string; fromCreatedAt: string | null; fromEventId: string | null; reason: string; actor: string; eventId: string; correlationId: string }):
+    Promise<Array<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>>;
+}
+
+/** The retrieval and memory-mapping consumers' effects (graph-side), driven by the subscriber's own action. */
+export interface GraphSubscriberWrites extends GraphReads {
+  recordRetrievalCheck(a: { checkId: string; eventId: string; subscriptionId: string; tenantId: string; domainId: string; touched: Record<string, unknown>; actor: string; correlationId: string }):
+    Promise<{ check_id: string; projections: unknown[]; mismatched: number }>;
+  proposeMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null;
+    basis: string; causeEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<string | null>;
+}
+
 // ───────────────────────── propagation agent (CP-6 B1) ─────────────────────────
 
 export interface PropagationAgentWrites extends GraphReads {
@@ -265,7 +300,7 @@ export interface PropagationAgentWrites extends GraphReads {
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, ImpactWrites, PropagationAgentWrites {
+             EdgeRetractionWrites, StrategyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -308,6 +343,19 @@ class GraphCapabilityImpl extends GraphCore
   readPropagationAttempts(): any { return this.from('graph.propagation_attempts'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readPropagationAttemptEvents(): any { return this.from('graph.propagation_attempt_events'); }
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  readSubscriptions(): any { return this.from('graph.subscriptions'); }
+  readSubscriptionEvents(): any { return this.from('graph.subscription_events'); }
+  readSubscriptionDeliveries(): any { return this.from('graph.subscription_deliveries'); }
+  readSubscriptionDeliveryEvents(): any { return this.from('graph.subscription_delivery_events'); }
+  readRetrievalChecks(): any { return this.from('graph.retrieval_checks'); }
+  readMappingReconciliations(): any { return this.from('graph.mapping_reconciliations'); }
+  readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -573,6 +621,36 @@ class GraphCapabilityImpl extends GraphCore
     await this.call(sql`select graph.revoke_propagation_agent(
       ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+
+  async registerSubscription(a: Parameters<SubscriptionWrites['registerSubscription']>[0]) {
+    const rows = await this.call<{ r: { subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> } }>(sql`
+      select graph.register_subscription(${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.consumerKind}, ${a.eventTypes}::text[], ${JSON.stringify(a.filter)}::jsonb,
+        ${a.principalId}::uuid, ${a.version}, ${a.codeDigest}, ${a.owner}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> };
+  }
+  async setSubscriptionStatus(a: Parameters<SubscriptionWrites['setSubscriptionStatus']>[0]): Promise<string> {
+    const rows = await this.call<{ s: string }>(sql`select graph.set_subscription_status(${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.to}, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as s`);
+    return rows[0]?.s ?? a.to;
+  }
+  async replaySubscription(a: Parameters<SubscriptionWrites['replaySubscription']>[0]) {
+    return this.call<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>(sql`
+      select event_id::text, event_type, change_kind, outbox_created_at::text, correlation_id::text, causation_id::text, replay_seq from graph.subscription_replay(
+        ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromCreatedAt}::timestamptz, ${a.fromEventId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordRetrievalCheck(a: Parameters<GraphSubscriberWrites['recordRetrievalCheck']>[0]) {
+    const rows = await this.call<{ r: { check_id: string; projections: unknown[]; mismatched: number } }>(sql`select graph.record_retrieval_check(
+      ${a.checkId}::uuid, ${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.touched)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { check_id: string; projections: unknown[]; mismatched: number };
+  }
+  async proposeMappingReconciliation(a: Parameters<GraphSubscriberWrites['proposeMappingReconciliation']>[0]): Promise<string | null> {
+    const rows = await this.call<{ id: string | null }>(sql`select graph.propose_mapping_reconciliation(
+      ${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.fromEntityId}::uuid, ${a.toEntityId}::uuid,
+      ${a.basis}, ${a.causeEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid)::text as id`);
+    return rows[0]?.id ?? null;
+  }
+  async decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.decide_mapping_reconciliation(${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
 }
 
 export const GraphCapability = {
@@ -601,6 +679,12 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   propagationAgents(tx: Tx, action: string): PropagationAgentWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  subscriptions(tx: Tx, action: string): SubscriptionWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  graphSubscriber(tx: Tx, action: string): GraphSubscriberWrites {
     return new GraphCapabilityImpl(tx, action);
   },
 };

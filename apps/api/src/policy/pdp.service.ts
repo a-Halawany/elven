@@ -859,6 +859,42 @@ const BUNDLE_V1: Rule[] = [
     ],
     requiresPurpose: true,
   },
+  // ───────────────────────── CP-6 B6 (0063): GraphChanged / MemoryCorrected subscriptions ─────────────────────────
+  //   * Registering a subscriber (its principal on the identity authority, its grant on the
+  //     commit authority) is the tenant or platform administrator's act, as every agent
+  //     registration is; pause, resume and revocation are also the domain administrator's;
+  //     a replay is the same set — it moves a cursor and re-drives events, nothing else.
+  //   * Each CONSUMER holds EXACTLY its own apply action (exact match, no prefix): the twin
+  //     subscriber marks twin versions, the forecast subscriber marks forecasts, …, and none
+  //     of them holds any other decision. The ports assert the same action, so a capability
+  //     of one kind cannot drive another kind's effect even inside the process.
+  {
+    actionPrefix: 'graph.subscription.register',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.subscription.control',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.subscription.replay',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  { actionPrefix: 'twin.subscription.apply', exact: true, requiredAnyRole: [{ role: 'twin_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.forecast.subscription.apply', exact: true, requiredAnyRole: [{ role: 'forecast_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.scenario.subscription.apply', exact: true, requiredAnyRole: [{ role: 'scenario_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.subscription.apply', exact: true, requiredAnyRole: [{ role: 'decision_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'graph.retrieval.subscription.apply', exact: true, requiredAnyRole: [{ role: 'retrieval_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'graph.mapping.subscription.apply', exact: true, requiredAnyRole: [{ role: 'mapping_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
     // AUD are durable before any byte moves, and it is not folded into the

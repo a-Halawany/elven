@@ -35,9 +35,9 @@ import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common
 import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import { EYE_CONFIG } from '../../config/config.module.js';
 import type { EyeConfig } from '../../config/config.js';
-import { propagationQueueNameFor, redisName } from '../../shared/queues.js';
+import { propagationQueueNameFor, redisName, subscriptionQueueNameFor } from '../../shared/queues.js';
 
-export { redisName, propagationQueueNameFor };
+export { redisName, propagationQueueNameFor, subscriptionQueueNameFor };
 
 export interface CollectionJobPayload {
   /** Scope triple — compared against the CONTRACT's registered scope at execution. */
@@ -93,6 +93,15 @@ export interface PropagationJobPayload {
   correlation_id: string; causation_id: string; tenant_id: string | null; domain_id: string | null;
 }
 export type PropagationJobHandler = (payload: PropagationJobPayload, jobId: string, attemptsMade: number) => Promise<void>;
+/**
+ * CP-6 B6 (0063): a GraphChanged / MemoryCorrected delivery — the published outbox row, verbatim, plus (for a replay)
+ * the one subscription it is replayed to and the replay sequence. The job id is the outbox row id (`<id>.r<seq>` for
+ * a replay so an in-flight live job is never shadowed).
+ */
+export interface SubscriptionJobPayload extends PropagationJobPayload {
+  replay?: { subscription_id: string; replay_seq: number } | null;
+}
+export type SubscriptionJobHandler = (payload: SubscriptionJobPayload, jobId: string, attemptsMade: number) => Promise<void>;
 /** The options every propagation job is added with — by the publisher's routing and by a re-drive alike. */
 export const PROPAGATION_JOB_OPTS = Object.freeze({
   attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: 1000, removeOnFail: 500,
@@ -120,6 +129,7 @@ export class SchedulerService implements OnModuleDestroy {
   private handler: CollectionJobHandler | null = null;
   private briefingHandler: BriefingJobHandler | null = null;
   private propagationHandler: PropagationJobHandler | null = null;
+  private subscriptionHandler: SubscriptionJobHandler | null = null;
 
   constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
 
@@ -338,6 +348,79 @@ export class SchedulerService implements OnModuleDestroy {
   async obliteratePropagationsForTests(tenantId: string, domainId: string): Promise<void> {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliteratePropagationsForTests is available only in the test runtime');
     const name = redisName(propagationQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w !== undefined) { await w.close().catch(() => undefined); this.workers.delete(name); }
+    const q = this.queueNamed(name);
+    await q.obliterate({ force: true }).catch(() => undefined);
+    await q.close().catch(() => undefined);
+    this.queues.delete(name);
+  }
+
+  // ───────────────────────── CP-6 B6: the subscription dispatcher ─────────────────────────
+  registerSubscriptionHandler(handler: SubscriptionJobHandler): void { this.subscriptionHandler = handler; }
+
+  /** A worker for one domain's subscription queue: one job at a time, the payload's scope checked against the queue. */
+  startSubscriptionWorker(tenantId: string, domainId: string): void {
+    if (!this.enabled || this.subscriptionHandler === null) return;
+    const handler = this.subscriptionHandler;
+    const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
+    if (this.workers.has(name)) return;
+    const worker = new Worker(name, async (job: Job<SubscriptionJobPayload>) => {
+      const payload = job.data;
+      if (payload.tenant_id !== tenantId || payload.domain_id !== domainId) {
+        throw new UnrecoverableError('job payload scope does not match the queue it was delivered on');
+      }
+      await handler(payload, job.id ?? 'unknown', job.attemptsMade);
+    }, { connection: this.connection(), concurrency: 1 });
+    worker.on('failed', (job, err) => { this.log.warn(`subscription delivery ${job?.id ?? '?'} failed: ${err.message.slice(0, 200)}`); });
+    this.workers.set(name, worker);
+    this.log.log(`subscription worker started for ${name}`);
+  }
+
+  /** Re-drive one event (a reconciliation, a registration, a replay): a job of the same id still waiting, delayed or active is left to its worker. */
+  async enqueueSubscriptionDelivery(tenantId: string, domainId: string, data: SubscriptionJobPayload): Promise<{ jobId: string | null; added: boolean; inFlight: string | null }> {
+    if (!this.enabled) return { jobId: null, added: false, inFlight: null };
+    const q = this.queueNamed(redisName(subscriptionQueueNameFor(tenantId, domainId)));
+    const jobId = data.replay ? `${data.event_id}.r${data.replay.replay_seq}` : data.event_id;
+    const existing = await q.getJob(jobId);
+    if (existing !== undefined && existing !== null) {
+      const state = await existing.getState();
+      if (state === 'completed' || state === 'failed') await existing.remove();
+      else return { jobId: existing.id ?? null, added: false, inFlight: state };
+    }
+    const job = await q.add('deliver', data, { ...PROPAGATION_JOB_OPTS, jobId });
+    this.startSubscriptionWorker(tenantId, domainId);
+    return { jobId: job.id ?? null, added: true, inFlight: null };
+  }
+
+  async subscriptionQueueCountsForTests(tenantId: string, domainId: string): Promise<{ active: number; waiting: number; delayed: number; completed: number; failed: number }> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('subscriptionQueueCountsForTests is available only in the test runtime');
+    const c = await this.queueNamed(redisName(subscriptionQueueNameFor(tenantId, domainId))).getJobCounts('active', 'waiting', 'delayed', 'prioritized', 'completed', 'failed');
+    return { active: c['active'] ?? 0, waiting: (c['waiting'] ?? 0) + (c['prioritized'] ?? 0), delayed: c['delayed'] ?? 0, completed: c['completed'] ?? 0, failed: c['failed'] ?? 0 };
+  }
+  async subscriptionJobStateForTests(tenantId: string, domainId: string, jobId: string): Promise<{ state: string; attemptsMade: number; failedReason: string | null } | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('subscriptionJobStateForTests is available only in the test runtime');
+    const job = await this.queueNamed(redisName(subscriptionQueueNameFor(tenantId, domainId))).getJob(jobId);
+    if (job === undefined || job === null) return null;
+    return { state: await job.getState(), attemptsMade: job.attemptsMade, failedReason: job.failedReason ?? null };
+  }
+  async addSubscriptionJobForTests(tenantId: string, domainId: string, data: SubscriptionJobPayload): Promise<string | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('addSubscriptionJobForTests is available only in the test runtime');
+    const job = await this.queueNamed(redisName(subscriptionQueueNameFor(tenantId, domainId))).add('deliver', data, { ...PROPAGATION_JOB_OPTS, jobId: data.event_id });
+    return job.id ?? null;
+  }
+  async abandonSubscriptionWorkerForTests(tenantId: string, domainId: string): Promise<boolean> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('abandonSubscriptionWorkerForTests is available only in the test runtime');
+    const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w === undefined) return false;
+    await w.close(true).catch(() => undefined);
+    this.workers.delete(name);
+    return true;
+  }
+  async obliterateSubscriptionsForTests(tenantId: string, domainId: string): Promise<void> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliterateSubscriptionsForTests is available only in the test runtime');
+    const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
     const w = this.workers.get(name);
     if (w !== undefined) { await w.close().catch(() => undefined); this.workers.delete(name); }
     const q = this.queueNamed(name);

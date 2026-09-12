@@ -1166,3 +1166,151 @@ CP-6's five batches are implemented or applied; what remains of CP-6 is verifica
 batch is the register's next open product work with harness-verifiable units on the hosted chain: the
 `GraphChanged`/`MemoryCorrected` subscription registry and consumers (AU-MEM-0030), which B1's consumer machinery
 now makes a bounded extension rather than new infrastructure.
+
+## 19. The consolidated checkpoint after `1430747` / `da088cd` (2026-09-12): Codex's two findings corrected, B6 implemented
+
+Continued from `1430747` (code) / `da088cd` (records). The closure at `2e83945`, every earlier closed finding and the
+frozen criteria are preserved; nothing here reopens a closed review. The stack stays unmerged (PR #46 held on
+`scheduling/automatic-collection-2026-09`). The three classes of evidence are kept apart throughout: **Codex's focused
+checks** (the reviewer's own reproductions, quoted where they were the trigger), **the author's demonstrations** (the
+harness on real Redis, the real outbox publisher and a fresh local database; the acts on the NORDWERK demonstration)
+and **the hosted results** (GitHub Actions on a fresh database; the only chain that verifies a harness unit).
+
+### 19.1 Finding 1 — recovery missed interrupted attempts (B1)
+
+**Codex's check.** `graph.propagations_to_reconcile()` (0060) selected only attempts that were missing or `failed`. A
+process interruption records nothing — that is what an interruption is — so an attempt stranded in `received` or
+`walking` with Redis lost was never resumed; the earlier "crash" case recorded `failed` before throwing and the
+"queue-loss" case started from a completed event, so neither exercised it.
+
+**Before, on the actual function** (`evidence/cp6/repro-b1.mjs`, a rolled-back transaction on the verify database
+that pointed one attempt at each state and called the function): `no attempt: reconciled=1 · received: 0 ·
+walking: 0 · failed: 1`. **After 0062** (`637233f`): `1 · 1 · 1 · 1`. The correction: every non-terminal attempt
+(`received`, `walking`, `failed`) is re-driven; a job a live worker still holds is left alone by job-id dedupe and
+the reconciliation report distinguishes `reDriven` from `inFlight`; the walk stays serialised per event by the
+attempt row's lock. Three cases were added to `phase6-propagation-consumer` that stop the handler dead at the fault
+point (a never-resolving promise), abandon the worker without acknowledgement, obliterate the queue, restart the
+process and require the stranded attempt re-driven with its `previous` state named: after receipt (attempt events
+`received, received, walking, root.walked, complete`; one invalidation; one twin event), after the first committed
+root (`received, walking, root.walked, received, walking, root.walked, complete`; exactly two invalidations, one per
+root; the one twin version citing both documents marked once), and a reconciliation against a live worker (its job
+reported `inFlight: active`, not re-driven; the walk completes once). Author harness: 18/18 twice
+(`evidence/cp6/b1-suite-run1.txt`, `-run2.txt`). AU-MEM-0109 was set back to `open` at the finding with the
+finding in its own prose, and returned to `verified:ci` only at the first green hosted run at the correcting head
+(§19.4).
+
+### 19.2 Finding 2 — S7 did not enforce evidence-backed completion (B4)
+
+**Codex's check.** `audit/summarise-units.mjs` derived completion from the `status` and `legs_verified` columns as
+written: a unit marked `verified:all` with no leg evidence, or with `saas=;private=;onprem=`, counted as finished and
+its empty pointers as accepted legs, and the summariser exited 0 and overwrote `SUMMARY.md`.
+
+**Before** (`evidence/cp6/repro-b4-before.txt`, a scratch copy of the tracked audit with two such units):
+`exit=0; unfinished 3542→3540; verified:all 2; legs saas 1/3525 counted from empty pointers; problems 1; SUMMARY.md
+overwritten`. **After** (`4145a16`, `evidence/cp6/repro-b4-after.txt`): `exit=1; problems 5; unfinished 3542 (… + inconsistent 2);
+verified:all 0; no leg counted; SUMMARY.md untouched`. The correction: each applicable leg's evidence reference is
+validated (a non-empty pointer to a repository file, on a path that names the leg), completion is derived from
+validated evidence alone, any problem leaves the previous valid summary in place and exits 1, `--check` compares the
+committed section with the units. Controls (`audit/summarise-units.controls.mjs`, a blocking CI step since `40a3a40`
+/ `94d66f8`): N1 no `legs_verified`, N2 empty pointers, N3 a pointer that resolves nowhere and one naming another leg
+— all refused; P1 validated evidence on every leg — finished, three legs accepted, `--check` agrees; P2 the tracked
+audit's own `--check`. The committed total was correct throughout: 3,542 = 3,195 open + 339 local + 8 CI at
+`da088cd`, no accepted deployment leg.
+
+### 19.3 B6 — GraphChanged / MemoryCorrected subscriptions and their six consumers (AU-MEM-0030, in full)
+
+The obligation as stated — "affected identities, relationships, temporal scopes and subscriptions; durable
+subscriptions and consumers for twins, forecasts, scenarios, decisions, retrieval and memory mappings" — is delivered
+in one batch on the corrected recovery machinery (`audit/CP6_BATCHES.md` §B6 for the mechanism; migration 0063;
+`apps/api/src/graph/subscriptions/*`; the consumers in their own modules). What the author's harness demonstrates
+(`apps/api/test/int/phase6-graph-subscriptions.test.ts`, 13 cases, real Redis and the real outbox publisher, the
+process restarted three times mid-suite; two consecutive passes 13/13 at the implementing head,
+`evidence/cp6/b6-run7.txt`, `b6-run8.txt`, ~18 s each on `eye_verify3_20260912`, a database created and migrated
+0001–0063 for this checkpoint):
+
+- **the event** — an edge retraction through the route publishes, in the same transaction, a `GraphChanged@v1` row
+  whose identities are the edge's two ends (named, with lifecycle), whose relationships carry the edge with its
+  `valid_from`/`valid_to`/`retracted_at` and claim and the dependency that rests on it, whose reach is the walker's
+  (`assumptions [A1], decisions [D1], forecasts [F1], scenarios [S1]`, `walked: true, truncated: false`), whose temporal
+  scope is the record instant and the edge's world interval, whose subscriptions are the six live at publication,
+  and whose cause names the action, the actor and the edge; a strategy declaration publishes itself as the reach with
+  its dependencies and touches no twin or forecast (an entity it merely rests on is not a changed identity — a
+  distinction the first cut of the consumers got wrong and the harness now pins);
+- **the six consumers, with no operator act** — the twin version bounded by the entity unverified (one event, naming
+  the outbox row and the subscription), the forecast on the entity marked for attention and not re-issued, the
+  scenario on that forecast marked, the invalidated input recorded on the decision package with its state untouched,
+  the projections re-verified and the check recorded with what the change touched (`mismatched 0`), the mapping
+  consumer applied with nothing to propose; every effect made by the subscriber principal of its own kind under its
+  own action, seen on the audit chain;
+- **MemoryCorrected** — a correction applied through the route publishes `CorrectionApplied` and `MemoryCorrected`
+  together (same transaction, same correlation); the version citing the corrected evidence goes unverified; the
+  identifier sourced from that evidence is **proposed** for reconciliation, not moved, and a person decides it under
+  the resolution manager's authority (a forecast owner is refused, 403); `CorrectionApplied` is not on the subscription
+  queue and `MemoryCorrected` is not on the propagation queue — unrelated delivery preserved;
+- **durability on the 0062 machinery** — a redelivery: deliveries 2, attempts 1, every effect count unchanged; a
+  restart with an empty Redis: the domain served again, nothing finished re-driven; an interruption after receipt
+  (six deliveries `received`, attempts 0, the process dead, the queue lost): re-driven at the next start with
+  `previous: received ×6`, every effect once; an interruption after the first committed item (the twins delivery with
+  two items: the first version unverified, the second still verified while the process was dead, the other five
+  deliveries already applied): resumed at the second item, `attempts 1` (one apply continued from its checkpoint),
+  ledger `received, applying, item.applied, received, item.applied, applied`, one twin event per version, the five
+  applied deliveries re-received and skipped; a reconciliation against a live worker leaves its job alone;
+- **replay, pause, resume, revoke** — the twins subscription replayed from the beginning re-applies every delivery
+  (`replay_seq 1`) with no new twin event and no change to the other subscriptions' ledgers; a paused subscription
+  receives nothing and a resume re-drives what was published meanwhile; a revoked one opens no session and a new one
+  of the kind registered with `backlog: 'replay'` applies the backlog;
+- **the governed path** — every 0063 port refuses without its action (`42501`), a non-consumer action is refused
+  (`22023`), the twin subscriber's own governed write is refused at the forecast port and at the PDP for the forecast
+  action, the six tables are under forced RLS, a misrouted job fails closed and the worker lives on.
+
+Existing suites re-run after the emitters were added to their write paths: `phase6-propagation-consumer`,
+`phase3-acceptance`, `phase3-corrections` (81/81); `phase2-acceptance`, `phase4-corrections`, `phase4-corrections-2`,
+`phase5-propagation`, `phase5-twins`, `phase5-corrections`, `phase6-agents`, `gate22-outbox-hardening` (98/98); the
+upgrade proof with 0063 (63 files, roles +25, migrations +42, 275/275 on the upgraded data; the virgin and upgraded
+schema digests equal). **On the demonstration** (`scripts/phase6/register-subscriptions.mjs` on NORDWERK, `eye_demo`
+migrated 0062–0063, `evidence/cp6/act-b6.log`): the six subscribers registered by the platform administrator; a
+fresh correction applied by the collection manager reached all six 1.1 s after the apply — the scenario on the corridor
+forecast marked for attention by the scenario consumer, the projections verified (three checks, all `mismatched 0`);
+the twin and forecast consumers had nothing to do (the corridor forecast already attending from B1's automatic walk,
+which itself published a third event, `invalidation.assessed`, delivered the same way); an edge retraction by the
+strategy owner reached all six 1.1 s after the act. The mapping consumer proposed nothing on the demonstration (no
+identifier is sourced from the restated evidence); its positive case is the harness's. A minimal web view
+(`/graph/subscriptions`: registry, controls, replay, the ledger of an event, mapping proposals with accept/reject,
+retrieval checks) is added and typechecks; it is not yet on the browser-regression spec — recorded below.
+
+### 19.4 Heads and hosted results
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `637233f` | 0062, the three interruption cases (finding 1) | superseded by the next heads (the workflow file failed to parse at `40a3a40`, corrected at `94d66f8`) | — |
+| `4145a16` / `40a3a40` | evidence-backed S7, controls, upgrade count 41 (finding 2) | see `94d66f8` | — |
+| `94d66f8` | the CI step name corrected; **the corrected head for both findings** | **34655152733 green** (17 m 14 s; build-test with the full integration suite on a fresh database, browser-regression, supply-chain) | 34655152732 green |
+| the B6 head (this commit) | 0063, the six consumers, the harness, the act, the records | pending — the run at this head is the verification of AU-MEM-0112–0117 | pending |
+
+AU-MEM-0109 is `verified:ci` again at `94d66f8`. The six B6 units are `open` until the hosted run at their head is
+green (S7: a local pass never verifies). The register's §5.2a reads **3,548 = 3,201 open + 339 local + 8 CI** — six more
+than `da088cd` by allocation of the new units, none by regression; no accepted deployment leg.
+
+### 19.5 Recorded, assigned to concrete checkpoints
+
+- **Browser gaps**: the subscriptions view and the mapping decision are not on the browser-regression spec; assigned
+  to the next browser-evidence refresh (the checkpoint after the hosted run at the B6 head is green), with the
+  Phase 4 scenario/warnings cases refreshed at `da088cd` as the pattern.
+- **A dedicated `claim.corrected` harness case** (the review route emits it; the consumers are the same): the next
+  implementation batch.
+- **Backlog replay at registration re-drives twice** (the replay jobs and the reconciliation's own; the second delivery
+  of an applied delivery is a durable no-op): recorded in §B6, to be collapsed in the next batch.
+- Earlier open observations unchanged: the budget-refused propagation attempt re-driven at every start; the
+  series-assembly cost of a long record; the clock-skew ticks; the World Bank timeout; the C19 fixture lookup under
+  concurrent runs; the arm64 acceptance's expiry (2026-11-05).
+- **Not started, by instruction**: no merge; the completed monitor not re-armed; GHCR temporary; PortWatch permission,
+  the Comtrade deferral and the purchase/cadence/budget constraints stand.
+
+### 19.6 The next implementation batch
+
+The `claim.corrected` case and the double backlog re-drive (above); then the register's next open product work with
+harness-verifiable units: AU-MEM-0029/-0039/-0041 (the memory obligations B1 and B6 re-pointed but did not close —
+the retention of inferred relationships under TT-04 reassessment, the escalation of a stalled consumer beyond the
+visible queue) and AU-DP-0071 (event schema versions on the remaining Phase 1 events, partition-ordered replay),
+each now a bounded extension of the subscription machinery rather than new infrastructure. This remains progress
+toward all eleven volumes: 3,548 mandatory units are unfinished and no deployment leg is accepted.
