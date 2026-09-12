@@ -1417,6 +1417,10 @@ regression; no accepted deployment leg. The records commit after `a852c65` chang
 - **AU-MEM-0039**: `provenance_incomplete` and `material_change` have no fault case; **AU-MEM-0041**: the forecast,
   scenario, reconciliation and simulation flows' own telemetry and the per-profile captures; **AU-DP-0071**: the
   interface register (L1-I01..L9-I05) and the log's retention window — each stated in its unit.
+- **C19 (routed, not reopened)**: the C18.1.11 differential control "the rotated seed credential expiry drifts by
+  five milliseconds" depends on the genuine archive's marking→stamp gap being under 5 ms (attempt 1 of ci 34706861830
+  red, attempt 2 green on the same commit); the control should mutate by the measured gap plus one millisecond, or
+  by an amount no runner can absorb, so that its rejection is a property of the verifier and not of the runner.
 - Earlier open observations unchanged; **not started, by instruction**: no merge; the completed monitor not re-armed;
   GHCR temporary; PortWatch permission, the Comtrade deferral and the purchase/cadence/budget constraints stand.
 
@@ -1570,6 +1574,10 @@ artefact on a fresh database; it is not a profile leg (S7).
   consumer does non-empty work needs a scripted scene per consumer, not started). The demonstration database
   carries a recorded reconciliation of its 0064 (§21.2); the demonstration is not a verification leg. No standalone
   demonstration campaign was started.
+- **C19 (routed, not reopened)**: the C18.1.11 differential control "the rotated seed credential expiry drifts by
+  five milliseconds" depends on the genuine archive's marking→stamp gap being under 5 ms (attempt 1 of ci 34706861830
+  red, attempt 2 green on the same commit); the control should mutate by the measured gap plus one millisecond, or
+  by an amount no runner can absorb, so that its rejection is a property of the verifier and not of the runner.
 - Earlier open observations unchanged; **not started, by instruction**: no merge; the completed monitor not re-armed;
   GHCR temporary; PortWatch permission, the Comtrade deferral and the purchase/cadence/budget constraints stand.
 
@@ -1583,7 +1591,17 @@ eleven volumes: 3,552 mandatory units are unfinished and no deployment leg is ac
 
 ### 21.7 The records head
 
-The records commit binds the hosted run at `661c2fb` to the three harness units, records the demonstration act and
-the demonstration database's reconciliation, and regenerates the summary (`3,552 = 3,194 + 338 + 20`). Its own hosted
-refresh (records only: CSV, markdown, evidence text, one SQL script that no test runs) is recorded here with its run
-ids when it completes; nothing in that refresh changes a unit's status.
+The records commit `b3c0b4c` binds the hosted run at `661c2fb` to the three harness units, records the demonstration
+act and the demonstration database's reconciliation, and regenerates the summary (`3,552 = 3,194 + 338 + 20`). Its
+hosted refresh (records only: CSV, markdown, evidence text, one SQL script that no test runs): `ci` 34706861830 —
+**attempt 1 red** on one C18 mutation control, `C18.1.11 — DIFFERENTIAL … the rotated seed credential expiry drifts
+by five milliseconds — a424505 ACCEPTS it; C18.1.11 REJECTS it` (the integration suite 890/890, the upgrade proof,
+the accounting controls and every other step green; C19 34706861815 green); **attempt 2 green** (build-test job
+103591856069: 890/890 in 53 files, C18 612/612 including that control, the acceptance suite, the upgrade proof, the
+accounting controls). The red is a determinism defect of the control, not of this head: the mutation moves the
+rotated credential's expiry by five milliseconds and expects the verifier to place the implied marking instant after
+the audited bootstrap stamp; that holds only while the genuine archive's marking→stamp gap is under five
+milliseconds, which every earlier runner met and this slower one did not (the same control passed on the re-run of
+the same commit). The C18 gate is frozen (closed at `a8d34c4`, its closure record at `3d9c80c`); the control's
+determinism is routed to C19 (§21.5) and nothing in C18 is edited here. A records-only commit binding these ids
+follows; its own refresh changes no status.
