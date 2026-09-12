@@ -1503,7 +1503,27 @@ partition waits in both, the other progresses, the order holds.
 - **The demonstration act** (`scripts/phase6/register-subscriptions.mjs`) revokes and re-registers a subscription
   whose consumer's method changed (decisions, memory-mappings — "a changed method is a new consumer"), and reports
   per event which deliveries did NON-EMPTY work and which found nothing of theirs (Codex's demonstration limit, kept
-  visible), the serving holder, the partition state and the open failure states.
+  visible), the serving holder, the partition state and the open failure states. Run on the NORDWERK demonstration at
+  `661c2fb` (`evidence/cp6/act-b8.txt`): the decisions and memory-mappings subscriptions revoked and registered anew
+  (their replacements served from the row after the revoked cursor, 13963 → 13964; the replay re-drove nothing because
+  rows 13964–13971 are ObservationRecorded, not a subscribed type — correct, and recorded), the correction's
+  MemoryCorrected and the retraction's GraphChanged delivered to all six within the publisher's tick (1.2 s, 1.1 s);
+  per event, NON-EMPTY work by retrieval only (the projection check), nothing of theirs for twins, forecasts,
+  scenarios, decisions and memory-mappings; the serving holder this process, renewals 4; the partition at 13975,
+  pending 0, blocked false, dead letters 0, retained from 1; open failure states none.
+- **The demonstration database's 0064 — an operator act recorded honestly.** `eye_demo` had been migrated on
+  2026-09-12 11:48 UTC through a development iteration of 0064 (recorded digest `9da00200…`), not the file committed
+  at `a852c65` (`509395a8…`, unchanged since); the migrator refused 0065 ("migrations are immutable"). No verification
+  database is affected (every harness run and the upgrade proof migrate a fresh database from the committed chain).
+  `scripts/phase6/demo-reconcile-0064.sql` — guarded to that recorded digest, one transaction — applies the exact
+  difference (a schema diff of `eye_demo` against a database on the committed 0064, limited to what 0065 does not
+  itself redefine: `subscriptions.served_from_seq` derived from the recorded instant, `subscription_delivery_receive`
+  with the scoped signature, `subscription_event_row`, `subscription_outbox_failures`, the two telemetry views),
+  copied verbatim from the committed file, and sets the recorded digest to the committed file's. Rehearsed on a
+  restored copy first: reconciled + 0065 equals a fresh 0065 database to the schema dump (column order and
+  `pg_restore` ownership artefacts aside); a full dump was taken before the act; 0065 then applied through the
+  migrator (`act-b8.txt` §0 records the before and after, including a first migrator attempt that ran without the
+  migrate credential and refused). The demonstration API restarted on the B8 build and was left running.
 
 ### 21.3 Local results at the B8 head
 
@@ -1524,14 +1544,16 @@ state transitions, a new publisher port without matrix coverage — corrected an
 |---|---|---|---|
 | `a852c65` / `e298323` | B7 and its records | 34693808238 green (867/867) | 34693808173 green |
 | `6fc52c9` | the reproduction head (the hook and the configurable lease; the reproduction file failing as the finding says) | not run (a reproduction, not a candidate) | — |
-| the B8 head | 0065; the publisher, the dispatcher, the consumers, the routes; the harness; the act; the web view | recorded at the next records commit | recorded at the next records commit |
+| `661c2fb` | B8: 0065; the publisher, the dispatcher, the consumers, the routes; the harness (19 + 4 cases); the act; the web view | 34705325289 green (890/890 in 53 files on a fresh database; phase6-graph-subscriptions-3 19/19, phase6-repro-event-delivery 4/4; the upgrade proof with 0065, 65 files, schema digests equal; unit 2147/2147; the accounting controls and `--check`) — `evidence/cp6/hosted-661c2fb-build-test-summary.txt` | 34705325299 green |
+| the records head | this section's hosted binding; AU-DP-0175, AU-MEM-0120, AU-MEM-0039 → `verified:ci`; the act on the demonstration (`act-b8.txt`); the reconciliation script | the refresh at the records head is recorded in §21.7 when it completes | — |
 
-Statuses: AU-DP-0175 and AU-MEM-0120 allocated `verified:local` at the B8 head; AU-MEM-0039 `open` → `verified:local`
-(all six conditions); AU-MEM-0041, AU-DP-0071, AU-DP-0041 and AU-MEM-0031 stay `open` with their delivered clauses
-bound to the B8 head and their remaining clauses stated in their own prose. The register's §5.2a reads
-**3,552 = 3,194 open + 341 local + 17 CI** — two more than `e298323` by the allocation of the two new units, one moved
-from open to local, none by regression; no accepted deployment leg. The hosted run of the B8 head moves the three
-`verified:local` harness units to `verified:ci` at the records commit that binds it.
+Statuses: AU-DP-0175 and AU-MEM-0120 allocated `verified:local` at the B8 head and moved to **`verified:ci`** by the
+hosted run at `661c2fb` (ci 34705325289; C19 34705325299); AU-MEM-0039 `open` → `verified:local` → **`verified:ci`**
+(all six conditions, the same run); AU-MEM-0041, AU-DP-0071, AU-DP-0041 and AU-MEM-0031 stay `open` with their
+delivered clauses bound to the hosted result and their remaining clauses stated in their own prose. The register's
+§5.2a reads **3,552 = 3,194 open + 338 local + 20 CI** — two more than `e298323` by the allocation of the two new
+units, none by regression; three moved from local to CI; no accepted deployment leg. The hosted run verifies the
+artefact on a fresh database; it is not a profile leg (S7).
 
 ### 21.5 Recorded, assigned forward
 
@@ -1543,7 +1565,11 @@ from open to local, none by regression; no accepted deployment leg. The hosted r
   moving the floor (ES-29-004) and the 28 interfaces bound partially or not at all; **AU-MEM-0041**: trust state
   joined per instance and the per-profile captures (P7-D).
 - **Demonstration scope**: the act's six deliveries per event include those that found nothing of theirs; the record
-  says which did work. No standalone demonstration campaign was started.
+  says which did work (`act-b8.txt`: retrieval only, for both events — the corrected evidence and the retracted edge
+  reached no twin, forecast, scenario, decision or mapping of the demonstration's; a demonstration in which each
+  consumer does non-empty work needs a scripted scene per consumer, not started). The demonstration database
+  carries a recorded reconciliation of its 0064 (§21.2); the demonstration is not a verification leg. No standalone
+  demonstration campaign was started.
 - Earlier open observations unchanged; **not started, by instruction**: no merge; the completed monitor not re-armed;
   GHCR temporary; PortWatch permission, the Comtrade deferral and the purchase/cadence/budget constraints stand.
 
@@ -1554,3 +1580,10 @@ claim, triggered by the reassessment, closing it by supersession); the memory it
 impact set reaches memory items; a governed retention act on the outbox floor (ES-29-004); then the interface
 binding gaps in the register's order (the six unbound event interfaces first). This remains progress toward all
 eleven volumes: 3,552 mandatory units are unfinished and no deployment leg is accepted.
+
+### 21.7 The records head
+
+The records commit binds the hosted run at `661c2fb` to the three harness units, records the demonstration act and
+the demonstration database's reconciliation, and regenerates the summary (`3,552 = 3,194 + 338 + 20`). Its own hosted
+refresh (records only: CSV, markdown, evidence text, one SQL script that no test runs) is recorded here with its run
+ids when it completes; nothing in that refresh changes a unit's status.

@@ -595,13 +595,26 @@ walk, the briefing read; the web view).**
 
 **Acceptance units.** AU-DP-0175 (ordered publication across ticks, lease recovery and processes; one server per
 domain) and AU-MEM-0120 (a replay reaches the retained history; the retention floor) allocated, `verified:local`
-at the B8 head; AU-MEM-0039 to `verified:local` (all six conditions with a fault case each); AU-MEM-0041, AU-DP-0071,
-AU-DP-0041, AU-MEM-0031 stay `open` with their delivered clauses bound to the B8 head and their remaining clauses
-stated in their own prose. Evidence: `apps/api/test/int/phase6-graph-subscriptions-3.test.ts` (19 cases) and
-`phase6-repro-event-delivery.test.ts` (4: the two reproductions with their controls); the affected suites and the
-full integration suite on databases created and migrated from the final file; the upgrade proof
-(`evidence/cp6/upgrade-0065.txt`). Profiles: all; evidence class: harness → `verified:ci` at the hosted run of the
-B8 head, recorded at the next records commit.
+at the B8 head `661c2fb` and **`verified:ci`** at its hosted run (ci 34705325289: 890/890 in 53 files on a fresh
+database, phase6-graph-subscriptions-3 19/19, phase6-repro-event-delivery 4/4, the upgrade proof with 0065; C19
+34705325299 — `evidence/cp6/hosted-661c2fb-build-test-summary.txt`); AU-MEM-0039 to `verified:ci` by the same run
+(all six conditions with a fault case each); AU-MEM-0041, AU-DP-0071, AU-DP-0041, AU-MEM-0031 stay `open` with their
+delivered clauses bound to that run and their remaining clauses stated in their own prose. Evidence:
+`apps/api/test/int/phase6-graph-subscriptions-3.test.ts` (19 cases) and `phase6-repro-event-delivery.test.ts` (4:
+the two reproductions with their controls); the affected suites and the full integration suite on databases created
+and migrated from the final file; the upgrade proof (`evidence/cp6/upgrade-0065.txt`). Profiles: all; evidence
+class: harness — one artefact verification, no deployment leg (S7).
+
+**The demonstration.** `evidence/cp6/act-b8.txt`: the act at `661c2fb` on the NORDWERK demonstration — the two
+changed consumers' subscriptions revoked and registered anew, served from the row after the revoked cursor (the
+replay re-drove nothing: the rows between were ObservationRecorded, not a subscribed type); both events delivered to
+all six within the tick; NON-EMPTY work by retrieval only, nothing of theirs for the other five (stated per event);
+holder, partition and failure states from the status route. The demonstration database had been migrated through a
+development iteration of 0064 (recorded digest `9da00200…`) before the file's committed form; the migrator refused
+0065. `scripts/phase6/demo-reconcile-0064.sql` (guarded, one transaction, the exact difference copied verbatim from
+the committed file, rehearsed on a restored copy against a fresh 0065 schema, a full dump taken first) reconciled it
+and set the recorded digest to the committed file's; 0065 then applied through the migrator. An operator act on the
+demonstration database only; no verification database was ever on the iteration.
 
 **The second pass (an adversarial review of the batch before its commit — fifteen skeptics over five claims, 103
 distinct findings verified independently, 68 confirmed; `evidence/cp6/b8-adversarial-review.txt` lists each with its

@@ -1,0 +1,89 @@
+# hosted ci run 34705325289 at 661c2fb (build-test job 103584230879; browser-regression 103584230789 and supply-chain 103584230901 success; C19 lifecycle 34705325299 success) — https://github.com/a-Halawany/elven/actions/runs/34705325289
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  2 passed (2)
+apps/web test:       Tests  6 passed (6)
+apps/api test:  Test Files  40 passed (40)
+apps/api test:       Tests  2147 passed (2147)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+# migrations + acceptance suite
+applying 0065_ordered_publication_and_replay_reach.sql ... ok
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+# integration suite on a fresh database
+ ✓ test/int/phase6-graph-subscriptions-3.test.ts (19 tests) 30944ms
+ ✓ test/int/phase6-graph-subscriptions.test.ts (13 tests) 17373ms
+ ✓ test/int/phase6-graph-subscriptions-2.test.ts (14 tests) 18304ms
+ ✓ test/int/gate22-authority-matrix.test.ts (17 tests) 491ms
+ ✓ test/int/phase6-repro-event-delivery.test.ts (4 tests) 13553ms
+ ✓ test/int/phase6-repro-retrieval-retry.test.ts (1 test) 2742ms
+ ✓ test/int/gate22-outbox-hardening.test.ts (4 tests) 306ms
+ Test Files  53 passed (53)
+      Tests  890 passed (890)
+# upgrade proof
+=== post-C18 migration upgrade compatibility (C18 stays frozen at 0021) ===
+1. a 0021 database carrying representative Phase 0 data and authorities
+  ✓ migrated 0001–0021 with the tracked runner (21 files)
+  ✓ Phase 0 suite seeds and passes at 0021: 297/297 passed
+  ✓ representative data present: 1021 rows across 29 governed tables
+1b. correction cases assessed before 0026 existed, at the 0025 ceiling
+  ✓ migrated to 0025 — the last migration before propagation_state
+  ✓ 8 correction case(s) seeded in the shapes 0024 and 0025 wrote
+2. apply every migration above the C18 ceiling
+  ✓ migration set applied in full (65 files present)
+3. the data, the roles and Phase 0 authority behaviour survive the upgrade
+  ✓ objects.object_outbox: column(s) partition_key, partition_seq, schema_version added above the ceiling, exactly as declared; the pre-existing values are digested over the ceiling's columns
+  ✓ every pre-existing row survives the upgrade unchanged: 1021 rows across 29 tables
+  ✓ identity.roles: +25 row(s), exactly what these migrations declare they add
+  ✓ objects.schema_registry: +27 row(s), exactly what these migrations declare they add
+  ✓ public.schema_migrations: +44 row(s), exactly what these migrations declare they add
+  ✓ all 9 pre-existing roles unchanged in name and login posture
+  ✓ 0022 registered collection_manager and collection_agent
+  ✓ Phase 0 authority behaviour after the upgrade: 297/297 passed
+3b. the previously assessed cases are reconciled, not defaulted
+  ✓ never walked: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ never walked: 0 reconciliation record(s), as expected
+  ✓ one root, walked clean: complete — "dependency propagation assessed by invalidation 9572cb19-8635-4312-b947-0e919b4b00b3: 1 assumpti…"
+  ✓ one root, walked clean: 1 reconciliation record(s), as expected
+  ✓ one root, truncated: partial — "propagation incomplete: every one of the 1 corrected object(s) has been walked, but the latest w…"
+  ✓ one root, truncated: 1 reconciliation record(s), as expected
+  ✓ two roots, one walked: partial — "propagation incomplete: 1 of 2 corrected object(s) have been walked; 1 remain unassessed"
+  ✓ two roots, one walked: 1 reconciliation record(s), as expected
+  ✓ wrong-kind walk: partial — "propagation incomplete: 1 assessment(s) are linked to this case but none walked one of its 1 cor…"
+  ✓ wrong-kind walk: 1 reconciliation record(s), as expected
+  ✓ no roots, walked clean: complete — "dependency propagation assessed by invalidation 02c9b787-4a6d-4070-b1c2-40c38642a611: 1 assumpti…"
+  ✓ no roots, walked clean: 1 reconciliation record(s), as expected
+  ✓ no roots, never walked: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ no roots, never walked: 0 reconciliation record(s), as expected
+  ✓ rejected: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ rejected: 0 reconciliation record(s), as expected
+4. the upgraded schema equals a virgin full-set schema
+  ✓ virgin database migrated from empty (65 files)
+  ✓ schema digests match exactly: eeb6b164ef9ff2c3…
+5. the later-phase suites against the UPGRADED database
+  ✓ Phase 1 and Phase 2 suites on upgraded data: 275/275 passed
+=== PASS ===
+# accounting controls and --check
+✓ N1 exits non-zero — exit 1
+✓ N1 names the unit and the missing legs — REFUSED: 1 problem(s) — the summary was NOT written: |   - AU-XXX-0001: verified:all without validated evidence
+✓ N1 leaves the previous valid summary untouched
+✓ N1 still counts the unit as unfinished (inconsistent), not as finished — units 2; rows covered 1/1994; mandatory unfinished 2 (open 1 + verified:local 0 +
+✓ N2 exits non-zero — exit 1
+✓ N2 refuses each empty pointer by leg — REFUSED: 4 problem(s) — the summary was NOT written: |   - AU-XXX-0001: leg saas: no evidence pointer |   - AU-XX
+✓ N2 counts no accepted leg — units 2; rows covered 1/1994; mandatory unfinished 2 (open 1 + verified:local 0 + verified:ci 0 + inconsistent 1; with accepte
+✓ N2 leaves the previous valid summary untouched
+✓ N3 exits non-zero — exit 1
+✓ N3 refuses the pointer that resolves nowhere — REFUSED: 3 problem(s) — the summary was NOT written: |   - AU-XXX-0001: leg private: pointer 'docs/accept
+✓ N3 refuses the pointer whose path names another leg
+✓ N3 leaves the previous valid summary untouched
+✓ P1 exits zero — exit 0 
+✓ P1 finishes the evidenced unit and keeps the other open — units 2; rows covered 1/1994; mandatory unfinished 1 (open 1 + verified:local 0 + verified:ci 0;
+✓ P1 accepts one leg each
+✓ P1 writes the summary
+✓ P1 --check passes on the written summary — check: the committed acceptance-unit section matches the units
+units 2; rows covered 1/1994; mandatory unfinished 1 (open 1 + verified:local 0 + verified:ci 0; with accepted legs 0); verified:all 1; mandatory n/a 0; legs sa
+✓ P2 the tracked audit passes --check (no problem; the committed section is current) — check: the committed acceptance-unit section matches the units | unit
+✓ P2 the tracked split is evidence-backed (no accepted leg, no verified:all) — 3552 = 3194 + 341 + 17
