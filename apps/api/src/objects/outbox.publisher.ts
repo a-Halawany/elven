@@ -65,6 +65,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   /** Consecutive ticks whose LEASE step failed; reported when it changes, so a stuck publisher is visible without flooding the log. */
   private leaseFailures = 0;
+  /** Test runtime only: a transient queue fault armed at one row (the B8 ordering reproduction). */
+  private publishFault: { eventId: string; remaining: number } | null = null;
 
   constructor(
     @Inject(PUBLISHER_DB) private readonly db: Db,
@@ -104,6 +106,12 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     this.routed.clear();
   }
 
+  /** Test runtime only: the next `times` publishes of this row fail at the queue as a transient fault would. */
+  armPublishFaultForTests(eventId: string, times = 1): void {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('armPublishFaultForTests is available only in the test runtime');
+    this.publishFault = { eventId, remaining: times };
+  }
+
   /** The failure of one tick, reported once per streak and once when the streak ends. */
   private reportTick(e: unknown): void {
     this.leaseFailures += 1;
@@ -125,7 +133,7 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     if (this.queue === null) return 0;
     // The capability is issued and the lease taken in ONE backend call (migration 0057),
     // so no time can elapse between them on this side.
-    const rows = (await sql<PendingRow>`select * from objects.outbox_lease_as_publisher(50, 60)`.execute(this.db)).rows;
+    const rows = (await sql<PendingRow>`select * from objects.outbox_lease_as_publisher(50, ${this.cfg['eye.outbox.lease_seconds']})`.execute(this.db)).rows;
     if (this.leaseFailures > 0) {
       this.log.log(`publish tick recovered after ${this.leaseFailures} failed tick(s)`);
       this.leaseFailures = 0;
@@ -151,6 +159,10 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
           partition_seq: Number(row.partition_seq),
           schema_version: row.schema_version,
         };
+        if (this.publishFault !== null && this.publishFault.eventId === row.id && this.publishFault.remaining > 0) {
+          this.publishFault.remaining -= 1;
+          throw new Error('armed transient publish fault (test runtime)');
+        }
         await this.queue.add(
           row.event_type,
           data,

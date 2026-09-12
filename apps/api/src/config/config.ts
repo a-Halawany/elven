@@ -57,6 +57,8 @@ const schema = z.object({
   'eye.connector.max_decompressed_bytes': z.coerce.number().int().min(1024).default(64 * 1024 * 1024),
   'eye.connector.global_concurrency': z.coerce.number().int().min(1).default(4),
   'eye.connector.per_source_concurrency': z.coerce.number().int().min(1).default(2),
+  // ── CP-6 B8: the outbox publisher's lease — how long a leased row is held before a lapsed publish is retried (0015: 60 s). ──
+  'eye.outbox.lease_seconds': z.coerce.number().int().min(1).max(300).default(60),
   /*
    * How long a collection run may go without appending a run event before another
    * attempt may take its source over (migration 0051 §1). Every run event is a
@@ -123,6 +125,7 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_CONNECTOR_MAX_DECOMPRESSED_BYTES: 'eye.connector.max_decompressed_bytes',
   EYE_CONNECTOR_GLOBAL_CONCURRENCY: 'eye.connector.global_concurrency',
   EYE_CONNECTOR_PER_SOURCE_CONCURRENCY: 'eye.connector.per_source_concurrency',
+  EYE_OUTBOX_LEASE_SECONDS: 'eye.outbox.lease_seconds',
   EYE_CONNECTOR_RUN_LEASE_SECONDS: 'eye.connector.run_lease_seconds',
   EYE_CONNECTOR_REPLAY_ROOT: 'eye.connector.replay_root',
   EYE_SCHEDULER_MIN_INTERVAL: 'eye.scheduler.min_interval_seconds',
