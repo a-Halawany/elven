@@ -48,6 +48,12 @@ export interface SourceReadiness {
   };
   last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
   evidence_objects: number;
+  /** Canonical EVD rows — every version. Larger than the objects once corrections land. */
+  evidence_rows: number;
+  /** Distinct item keys observed. One window observed twice is ONE observation of it. */
+  distinct_observations: number;
+  /** Objects whose latest version is corrected or withdrawn: held and retrievable, not current evidence. */
+  superseded_objects: number;
   health: { state: string; lag_class: string | null; evaluated_at: string } | null;
 }
 
@@ -274,11 +280,16 @@ export class SourcesService {
       const health = (await cap.readHealthEvents().select(['new_state', 'lag_class', 'evaluated_at'])
         .where('source_id' as never, '=', sourceId as never)
         .orderBy('evaluated_at' as never, 'desc').orderBy('event_id' as never, 'desc').limit(1).executeTakeFirst()) as { new_state: string; lag_class: string | null; evaluated_at: Date | string } | undefined;
-      const evidence = (await cap.readCanonicalObjects()
-        .select(sql<string>`count(*)`.as('n'))
-        .where('object_type' as never, '=', 'EVD' as never)
-        .where('provenance_ref' as never, 'like', `SRC:${sourceId}@%` as never)
-        .executeTakeFirst()) as { n: string | number } | undefined;
+      /*
+       * THREE FIGURES, NOT ONE. This read counted canonical EVD ROWS, so a source
+       * holding 2,851 distinct observations with 2,133 duplicate copies reported
+       * 4,984 "evidence objects" (§9.6.1) — and a governed correction, which admits a
+       * NEW version rather than deleting anything, would have raised it further. The
+       * objects held, the distinct observations, and what no longer stands as current
+       * evidence are separate facts and are now reported separately.
+       */
+      const evidence = await cap.evidenceCounts({
+        sourceId, tenantId: String(s['tenant_id']), domainId: String(s['domain_id']) });
       // The last attempt and the last SUCCESS are looked up independently — a success
       // behind any number of failures is still the last success — and the counts cover
       // every attempt, grouped in the database, never the newest N.
@@ -341,7 +352,10 @@ export class SourcesService {
         last_run: lastRun === undefined ? null : { run_id: String(lastRun['run_id']), state: String(lastRun['state']), mode: String(lastRun['acquisition_mode']),
           finished_at: lastRun['finished_at'] === null || lastRun['finished_at'] === undefined ? null : new Date(String(lastRun['finished_at'])).toISOString(),
           admitted: Number(lastRun['items_admitted'] ?? 0), quarantined: Number(lastRun['items_quarantined'] ?? 0), noop: Number(lastRun['items_noop'] ?? 0), failure: (lastRun['failure_reason'] as string | null) ?? null },
-        evidence_objects: Number(evidence?.n ?? 0),
+        evidence_objects: evidence.objects_held,
+        evidence_rows: evidence.rows_matched,
+        distinct_observations: evidence.distinct_observations,
+        superseded_objects: evidence.superseded_objects,
         health: health === undefined ? null : { state: health.new_state, lag_class: health.lag_class, evaluated_at: new Date(String(health.evaluated_at)).toISOString() },
       } });
     }

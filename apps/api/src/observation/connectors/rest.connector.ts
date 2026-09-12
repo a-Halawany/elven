@@ -36,14 +36,40 @@ export const REST_METHOD_REF = `rest-transport-framing@${VERSION}`;
  * lineage rather than as data that quietly changed shape.
  */
 export const JSON_ARRAY_METHOD_REF = `json-array-framing@${VERSION}`;
+/**
+ * The framing method recorded on a child framed by a COMPOSITE key (§9.7).
+ *
+ * A different method is a different lineage, and it is named as one. A row addressed by
+ * date AND portid is not the same framing as a row addressed by date, and stamping both
+ * with one method ref would let a framing change look like data that quietly changed
+ * shape — the thing the method ref exists to prevent. Every existing contract declares a
+ * string and keeps `json-array-framing@1.2.0`, byte for byte.
+ */
+export const JSON_ARRAY_COMPOSITE_METHOD_REF = `json-array-composite-framing@${VERSION}`;
+
+/**
+ * THE CODE DIGEST COVERS EVERY METHOD THE CONNECTOR CAN STAMP ON AN ITEM.
+ *
+ * It used to cover the transport and the traversal only, so adding the composite
+ * framing of §9.7 left it unchanged: an agent registered against the connector before
+ * that framing existed still matched it afterwards, although `frame()` had a new
+ * behaviour (SOURCE_INTEGRATION_STATUS.md §9.11.7 item 4). The digest now names the
+ * framing methods too. A framing added later changes the digest, every agent registered
+ * against the previous digest stops matching (`authorize_agent_run`: "agent code digest
+ * mismatch"), and a new agent has to be provisioned for the source through the governed
+ * route — which is the intended effect: an agent is a grant to run ONE identified body
+ * of code, not a name. The version stays 1.2.0 and every method ref stays byte for byte:
+ * what changed is the digest's coverage, not what any existing item carries.
+ */
+const CODE_DIGEST_INPUT = [
+  `observation.rest@${VERSION}`, REST_METHOD_REF, BACKFILL_METHOD_REF, JSON_ARRAY_METHOD_REF, JSON_ARRAY_COMPOSITE_METHOD_REF,
+].join(':');
 
 export class RestConnector implements Connector {
   readonly kind = 'rest' as const;
   readonly name = 'observation.rest';
   readonly version = VERSION;
-  readonly codeDigest = createHash('sha256')
-    .update(`${this.name}@${VERSION}:${REST_METHOD_REF}:${BACKFILL_METHOD_REF}`)
-    .digest('hex');
+  readonly codeDigest = createHash('sha256').update(CODE_DIGEST_INPUT).digest('hex');
 
   private readonly egress: Egress;
   /** The calendar day an open-ended window resolves against. Injectable for tests. */
@@ -82,10 +108,14 @@ export class RestConnector implements Connector {
     if (replay === null && binding.backfill !== undefined) {
       const progress = backfillProgressOf(checkpoint, binding.backfill, binding.contractVersion, this.today());
       if (!progress.done) {
-        const walked = await this.backfill(ctx, binding.backfill, progress);
+        const walked = await this.backfill(ctx, binding.backfill, progress, checkpoint);
         nextCheckpoint['backfill'] = walked.progress;
         return {
-          items: [...walked.parents, ...walked.items],
+          // PAGE BY PAGE, IN ORDER: each page's parent immediately followed by the rows
+          // framed out of it. A parent still precedes every child that cites it, and the
+          // lifecycle can now tell where one page ends and the next begins — which is what
+          // lets it commit a checkpoint per completed page rather than only at run end.
+          items: walked.items,
           checkpoint: nextCheckpoint,
           bytesTransferred: walked.bytes, requestsMade: walked.requests,
         };
@@ -208,12 +238,13 @@ export class RestConnector implements Connector {
    */
   private async backfill(
     ctx: AcquisitionContext, decl: BackfillDeclaration, start: BackfillProgress,
-  ): Promise<{ items: AcquiredItem[]; parents: AcquiredItem[]; progress: BackfillProgress;
+    baseCheckpoint: Record<string, unknown> = {},
+  ): Promise<{ items: AcquiredItem[]; progress: BackfillProgress;
                bytes: number; requests: number }> {
     const { binding } = ctx;
     const progress: BackfillProgress = { ...start };
+    /** Page-grouped: parent, then the rows framed out of it, then the next page. */
     const items: AcquiredItem[] = [];
-    const parents: AcquiredItem[] = [];
     let bytes = 0;
     let requests = 0;
     const budget = binding.budgets.maxRequestsPerRun;
@@ -257,12 +288,7 @@ export class RestConnector implements Connector {
         },
       };
       const framed = frame(parentItem, binding.expectedSchema);
-      if (framed === null) items.push(parentItem);
-      else {
-        parents.push(parentItem);
-        // A framed child inherits determinism from the window it was cut from.
-        items.push(...framed.map((f) => ({ ...f, deterministic: true, backfillCursor: progress.cursor })));
-      }
+      const cursorOfThisPage = progress.cursor;
 
       const advanced = advance(decl, progress, step, res.body, framed?.length ?? 0);
       progress.cursor = advanced.cursor;
@@ -270,8 +296,22 @@ export class RestConnector implements Connector {
       progress.requests += 1;
       progress.items += framed?.length ?? 1;
       if (progress.done) progress.finishedAt = new Date().toISOString();
+
+      /*
+       * THE CHECKPOINT THIS PAGE EARNS, carried on the page itself. It is true only
+       * once the page's items are committed, which is the lifecycle's to decide; the
+       * connector states what would be true, and never writes it.
+       */
+      parentItem.checkpointAfter = { ...baseCheckpoint, backfill: { ...progress } };
+
+      if (framed === null) items.push(parentItem);
+      else {
+        items.push(parentItem);
+        // A framed child inherits determinism from the window it was cut from.
+        items.push(...framed.map((f) => ({ ...f, deterministic: true, backfillCursor: cursorOfThisPage })));
+      }
     }
-    return { items, parents, progress, bytes, requests };
+    return { items, progress, bytes, requests };
   }
 }
 
@@ -407,15 +447,52 @@ function advance(
  * value ADDRESSES an element and `item_time_field` says which carries the
  * publisher's own time, both named by the contract.
  *
+ * A COMPOSITE KEY (§9.7) is declared as an ORDERED LIST of paths, and the element's
+ * key is each component's value in that order, joined by `|`. The daily chokepoints
+ * layer needs it: one row per (date, portid), three chokepoints per day, which under
+ * a single `attributes.date` key would be three evidence objects under ONE key and
+ * two spurious revisions on every re-walk.
+ *
+ * A CONTRACT THAT DECLARES A STRING IS UNCHANGED. The single-path branch below
+ * produces exactly the key, filename and poll key it produced before — no separator,
+ * no join, no reordering — so every existing contract frames byte for byte as it did.
+ *
  * Returns null when the contract declares no framing, when the payload is not
  * JSON, or when the declared path is not an array — in every one of those cases
  * the response is admitted whole, which is the honest answer for a payload this
  * connector cannot address into.
  */
+/** The separator between composite key components. `|` appears in no ArcGIS value. */
+export const COMPOSITE_KEY_SEPARATOR = '|';
+
+/**
+ * The element's key, exactly as the contract declares it.
+ *
+ * A STRING declares one path and the key is that value — the pre-existing behaviour,
+ * untouched. A LIST declares an ordered composite and the key is each component's
+ * value joined by `|`. A composite with ANY component missing or empty is not an
+ * addressable element and is skipped (the caller admits the page whole if that leaves
+ * nothing), because a key built from a missing component would silently collide with
+ * every other element missing the same one.
+ */
+function elementKey(element: unknown, declared: string | string[]): string {
+  if (typeof declared === 'string') return String(readPath(element, declared) ?? '');
+  const parts: string[] = [];
+  for (const path of declared) {
+    const v = readPath(element, path);
+    if (v === null || v === undefined) return '';
+    const text = String(v);
+    if (text === '') return '';
+    parts.push(text);
+  }
+  return parts.join(COMPOSITE_KEY_SEPARATOR);
+}
+
 function frame(parent: AcquiredItem, expected: {
-  itemPath?: string; itemKeyField?: string; itemTimeField?: string;
+  itemPath?: string; itemKeyField?: string | string[]; itemTimeField?: string;
 }): AcquiredItem[] | null {
   if (expected.itemPath === undefined || expected.itemKeyField === undefined) return null;
+  if (Array.isArray(expected.itemKeyField) && expected.itemKeyField.length === 0) return null;
   const text = Buffer.from(parent.bytes).toString('utf8');
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { return null; }
@@ -429,11 +506,13 @@ function frame(parent: AcquiredItem, expected: {
   const spans = arrayElementSpans(text, expected.itemPath);
   if (spans === null || spans.length !== array.length) return null;
 
+  const composite = Array.isArray(expected.itemKeyField);
+  const methodRef = composite ? JSON_ARRAY_COMPOSITE_METHOD_REF : JSON_ARRAY_METHOD_REF;
   const out: AcquiredItem[] = [];
   for (let i = 0; i < array.length; i += 1) {
     const element = array[i];
     const span = spans[i] as { start: number; end: number };
-    const key = String(readPath(element, expected.itemKeyField) ?? '');
+    const key = elementKey(element, expected.itemKeyField);
     if (key === '') continue;
     const fragmentText = text.slice(span.start, span.end);
     const byteStart = Buffer.byteLength(text.slice(0, span.start), 'utf8');
@@ -449,9 +528,9 @@ function frame(parent: AcquiredItem, expected: {
       declaredMediaType: 'application/json',
       filename: `${key.replace(/[^A-Za-z0-9._-]+/g, '-')}.item.json`,
       publisherTime: typeof time === 'string' ? time : null,
-      transport: { ...parent.transport, methodRef: JSON_ARRAY_METHOD_REF },
+      transport: { ...parent.transport, methodRef },
       parentItemKey: parent.itemKey,
-      fragment: { byteStart, byteEnd, methodRef: JSON_ARRAY_METHOD_REF },
+      fragment: { byteStart, byteEnd, methodRef },
       // The child's stable identity across polls: its parent's poll key plus its own
       // key. Without it an unchanged child is admitted again every time its parent
       // is confirmed, parentless.

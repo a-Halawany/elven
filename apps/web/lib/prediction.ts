@@ -53,9 +53,11 @@ export interface BacktestRow {
 }
 
 export interface BranchRow {
-  branch_id: string; scenario_id: string; name: string; kind: 'baseline' | 'upside' | 'downside'; statement: string;
+  branch_id: string; scenario_id: string; name: string; kind: 'baseline' | 'upside' | 'downside' | 'disruption' | 'stress' | 'adversarial' | 'counterfactual' | 'user-defined'; kind_label?: string | null; divergence?: string | null; assumptions?: Array<{ statement: string; basis?: string | null }>; kind_vocabulary_version?: number | null; statement: string;
   indicator_id: string | null; signpost: string | null; owner_principal_id: string; review_cadence: string;
   response_window_hours: number; consequence: string; state: 'open' | 'flipped' | 'closed'; flipped_at: string | null;
+  /** B2 (0061): the C0–C4 class of the consequence the flip reaches, as declared; null = not stated (a warning assumes C2 and says so). */
+  consequence_class?: 'C0' | 'C1' | 'C2' | 'C3' | 'C4' | null;
   flip_event_id: string | null; indicator?: IndicatorRow | null;
   /** 'owed' — the flip is committed and its warning has not yet been raised. */
   warning_state?: 'none' | 'owed' | 'raised'; decision_deadline?: string | null;
@@ -71,6 +73,8 @@ export interface IndicatorRow {
   indicator_id: string; series_key: string; description: string; comparator: string; threshold: number;
   consecutive_days: number; owner_principal_id: string; state: string; last_value: number | null;
   last_observation_at: string | null; last_evaluated_at: string | null; streak: number; breached: boolean; breached_at: string | null;
+  /** The first observation day the indicator watches (migration 0059); null from the series' beginning. */
+  observes_from?: string | null;
 }
 
 export interface WarningRow {
@@ -84,6 +88,15 @@ export interface WarningRow {
   timely?: boolean | null; controls?: Controls | null;
   /** Issuance vs RESPONSE: decision_missed says the warning came at or after the deadline; response_timely says whether the answer came before the window closed. */
   decision_missed?: boolean; acknowledged_as_of?: string | null; response_timely?: boolean | null; expired_as_of?: string | null;
+  /**
+   * B2 (0061): the level derived at raise time from the consequence class under level_version, the urgency the same
+   * derivation states, the class it came from (declared on the branch, or assumed C2) and — kept apart — the C0–C4 class of
+   * the OPERATION that raised it. Null on a warning raised before the derivation existed.
+   */
+  level?: 'low' | 'normal' | 'high' | 'critical' | null; level_version?: number | null;
+  urgency?: 'routine' | 'prompt' | 'urgent' | 'immediate' | null;
+  consequence_class?: 'C0' | 'C1' | 'C2' | 'C3' | 'C4' | null; consequence_class_source?: 'declared' | 'assumed' | null;
+  op_class?: 'C0' | 'C1' | 'C2' | 'C3' | 'C4' | null;
 }
 
 export interface Calibration {
@@ -98,7 +111,7 @@ export interface Overview {
   series: number;
   forecasts: { total: number; by_state: Record<string, number>; by_validation: Record<string, number>; by_label: Record<string, number>; attention: number };
   scenarios: { total: number; branches: number; flipped: number };
-  warnings: { total: number; by_state: Record<string, number> };
+  warnings: { total: number; by_state: Record<string, number>; by_level?: Record<string, number> };
   outcomes: number; backtests: number;
 }
 

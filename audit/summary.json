@@ -1,0 +1,67 @@
+{
+  "rows": 6264,
+  "volumes": {
+    "V0": 177,
+    "V1": 47,
+    "V2": 223,
+    "V3": 673,
+    "V4": 538,
+    "V5": 609,
+    "V6": 769,
+    "V7": 794,
+    "V8": 904,
+    "V9": 1089,
+    "V10": 441
+  },
+  "impl": {
+    "implemented": 935,
+    "missing": 2574,
+    "not-applicable": 26,
+    "partial": 2729
+  },
+  "verif": {
+    "not-applicable": 422,
+    "passed:browser": 360,
+    "passed:ci": 196,
+    "passed:ci+browser": 3,
+    "passed:harness": 1880,
+    "passed:harness+browser": 22,
+    "passed:harness+ci": 5,
+    "unverified": 3376
+  },
+  "release": {
+    "branch-only": 1734,
+    "merged": 1905,
+    "none": 2625
+  },
+  "phase": {
+    "not-applicable": 358,
+    "omission": 1400,
+    "phase0": 1106,
+    "phase1": 653,
+    "phase2": 299,
+    "phase3": 319,
+    "phase4": 315,
+    "phase5": 246,
+    "phase6": 562,
+    "phase7": 1006
+  },
+  "packages": {
+    "P1": 223,
+    "P2": 232,
+    "P3": 351,
+    "P4": 278,
+    "P5": 123,
+    "P6": 268,
+    "P7-A": 315,
+    "P7-B": 255,
+    "P7-C": 97,
+    "P7-D": 1684,
+    "P7-E": 901,
+    "P7-F": 647,
+    "R0": 42
+  },
+  "families": 220,
+  "familiesWithoutRows": 0,
+  "problems": []
+}

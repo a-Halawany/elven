@@ -8,6 +8,7 @@
  * extraction identity, so changing any of them is a different method version
  * rather than a quiet change of meaning under a stable name.
  */
+import type { MethodTransition } from '../intelligence.capabilities.js';
 import { HttpException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { errorBody, jcsCanonicalize } from '@eye/contracts';
@@ -129,12 +130,12 @@ export class MethodsService {
   async transition(
     cap: MethodWrites, ctx: ScopeContext, correlationId: string,
     methodId: string, target: string, actor: string, reason: string,
-  ): Promise<{ methodId: string; state: string }> {
-    await cap.transitionMethod({
+  ): Promise<{ methodId: string; state: string; edgesReassessmentOpened: MethodTransition['edges_reassessment_opened'] }> {
+    const r = await cap.transitionMethod({
       methodId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
       target, actor, reason, eventId: newId(), correlationId,
     });
-    return { methodId, state: target };
+    return { methodId, state: target, edgesReassessmentOpened: r.edges_reassessment_opened };
   }
 
   async list(cap: IntelligenceReads, limit = 100): Promise<Array<Record<string, unknown>>> {

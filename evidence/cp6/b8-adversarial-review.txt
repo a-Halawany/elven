@@ -1,0 +1,215 @@
+# The adversarial review of CP-6 batch B8 before its commit (2026-09-12)
+# A workflow of fifteen skeptics — five claims (ordering, replay, serving, conditions, reach) × three lenses (correctness/concurrency,
+# authority/isolation/audit, conformance) — over the batch diff and the working tree, 107 findings (103 distinct), each verified
+# independently by a refuter reading the code (and, where useful, the live schema) — 68 confirmed, 35 refuted (most refutations:
+# "the working tree has moved past the diff": the author corrected the finding while the verification ran).
+# Every line: the finding, the verdict, and what the author did with it — CORRECTED (in the commit), RECORDED as a limit or design
+# (in audit/CP6_BATCHES.md §B8 and PHASE6_REPORT.md §21). The review's verdicts are the refuters' own words in the workflow journal
+# (subagents/workflows/wf_92c5c141-6cb); the dispositions are the author's.
+
+[confirmed / real / medium] conditions · register-subscriptions.mjs: The consumer-identity change strands the events published between the deploy and the re-registration: the old subscription's deliveries are refused, t
+    → CORRECTED — the act replays the replacement from the revoked subscription's cursor (or the retained beginning)
+[confirmed / real / high] ordering · subscription-dispatcher.service.ts: §3 'one server per domain' has no fencing: a holder that stops renewing keeps consuming after its claim is taken over, so two workers serve one domain
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] ordering · 0065_ordered_publication_and_replay_reach.sql: objects.outbox_partitions is granted to eye_app/eye_commit with no RLS: any tenant context can enumerate every tenant's partition key, event counter, 
+    → CORRECTED — the grant removed; the partition telemetry is a SECURITY DEFINER function scoped by eye_tenant()/PLATFORM, computed over the whole partition
+[confirmed / real / high] ordering · subscription-dispatcher.service.ts: Serving claim (§3) is a time-based lease with no fence: the displaced holder's BullMQ worker keeps consuming the domain queue beside the new holder's 
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] ordering · subscription-dispatcher.service.ts: §3 'one server per domain' is not fenced per job: a holder whose claim lapses keeps consuming the domain queue until its next successful reconcile, so
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] ordering · 0065_ordered_publication_and_replay_reach.sql: outbox_partition_telemetry reports the wrong head/blocked state to DOMAIN-scoped readers of multi-domain tenants — and the status route that ships it 
+    → CORRECTED — the telemetry computes over the whole partition (a function running as owner), scoped to the tenant
+[confirmed / real / high] ordering · 0065_ordered_publication_and_replay_reach.sql: intelligence.transition_method (re-emitted and extended in 0065 §7) changes another tenant's method lifecycle: the method row is looked up by id only,
+    → CORRECTED — the method row is looked up with the caller's tenant and domain
+[confirmed / real / medium] reach · 0065_ordered_publication_and_replay_reach.sql: A reassessment is one slot per edge: a second cause while one is pending is silently dropped (no row change, no ledger event, omitted from the publish
+    → CORRECTED — a second cause is accumulated on the edge (reassessment_causes), evented and published
+[confirmed / real / high] reach · 0065_ordered_publication_and_replay_reach.sql: A briefing that cites a warning is not reached when the warning's own basis (the flip evidence) is corrected — the BRF dependency rests only on the wa
+    → CORRECTED — a briefing rests on the warning it cites (depends_on_kind warning) and on its forecast; the walk continues from a warning
+[confirmed / real / high] reach · graph.controller.ts: POST /graph/telemetry/flows exposes prediction, twin and simulation product state under graph.read to roles that hold none of prediction.read / twin.r
+    → CORRECTED — the route reads each flow under its own action (prediction.read, twin.read, simulation.read)
+[confirmed / real / high] reach · 0065_ordered_publication_and_replay_reach.sql: forecast_telemetry.publish_ms is a correlated full scan of objects.object_outbox per forecast (RLS function per row, no index) and clock_timestamp() i
+    → CORRECTED — a partial index on (payload->>forecast_id) for ForecastIssued rows; the other subqueries are indexed on their keys
+[confirmed / real / high] replay · 0065_ordered_publication_and_replay_reach.sql: subscription_replay_from_seq applies the retained floor to two different points: a within-retention replay by sequence is refused when the resolved ro
+    → CORRECTED — one replay core taking the sequence point itself; the from-sequence form passes the point, the (created_at,id) form resolves it; from the beginning = from the floor
+[confirmed / real / high] serving · subscription-dispatcher.service.ts: No fencing on the losing side: a holder whose renewals fail keeps its workers running, so after a takeover two processes consume the same domain queue
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] serving · subscription-dispatcher.service.ts: No local fencing: a holder whose renewals fail keeps its worker running, so a takeover yields two workers on one domain queue
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] serving · subscription-dispatcher.service.ts: The renewal shares one 60 s wall-clock capability with the 24-hour scans and with cross-process FOR UPDATE waits, and holds every domain's serving row
+    → RECORDED as a limit — the reconciliation holds the serving rows for its transaction; a slow scan delays renewals within the 150 s claim
+[confirmed / real / high] serving · subscriptions.service.ts: The domain status route returns every tenant's domains, holders, re-driven event ids and queue names to a DOMAIN-scoped reader (pre-existing exposure 
+    → CORRECTED — the status route reports this domain's part of the last reconciliation only
+[confirmed / real / high] serving · subscription-dispatcher.service.ts: The serving claim is advisory: a stale holder's worker keeps consuming the domain queue after another process takes it over (no fence at delivery time
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / real / high] serving · subscriptions.service.ts: A scheduler-disabled process claims domains it can never serve (config default), refusing the worker process for 150 s per claim
+    → CORRECTED — a process whose scheduler is disabled claims nothing
+[confirmed / real / high] serving · subscription-dispatcher.service.ts: Graceful shutdown drains workers sequentially with the tick already cleared, so claims lapse while their workers are still consuming; the 'next holder
+    → RECORDED as a limit — workers close in turn before the release; a long drain lets claims lapse
+[confirmed / minor / high] conditions · register-subscriptions.mjs: Re-registration after the method change loses the interval: events published between the deploy and the script run are recorded 'refused' on the old s
+    → CORRECTED — the act replays the replacement from the revoked subscription's cursor (or the retained beginning)
+[confirmed / minor / high] conditions · memory-mappings.consumer.ts: provenance_incomplete has no 'a person decides' route: only an edge retraction clears it, and until then the delivery is re-driven every 10 minutes fo
+    → RECORDED — the person's routes are the lineage or a retraction; the failing branches guard legacy and fixture edges (the builder always records lineage)
+[confirmed / minor / high] conditions · decision-subscription.consumer.ts: Materiality compares q50 of forecasts for different target dates: a daily re-issue on a seasonal series measures the calendar, not the recomputation
+    → RECORDED as a limit — the measure compares the cited and the superseding central estimates as issued (their targets may differ by the re-issue's cut-off)
+[confirmed / minor / high] conditions · prediction.capabilities.ts: prediction.issue_forecast supersedes EVERY issued forecast of the question, but supersededBy announces only one (limit 1): a second superseded forecas
+    → RECORDED as a limit — one superseded forecast is announced (issue supersedes the current issued one; several only in legacy data)
+[confirmed / minor / high] conditions · memory-mappings.consumer.ts: provenance_incomplete promises a resolution path ('the lineage recorded') that does not exist in the product; in product data the failing branches are
+    → RECORDED — the person's routes are the lineage or a retraction; the failing branches guard legacy and fixture edges (the builder always records lineage)
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: The lease-time routing decision can be stale: a 'replay' registration made between the lease and the routed add leaves the row off the subscription qu
+    → RECORDED as a limit — a registration between the lease and the add leaves that one row to the reconciliation (delivered after its successors)
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: outbox_partition_telemetry under DOMAIN scope reports the domain's visible head, not the partition's head: `blocked=false` while the tenant partition 
+    → CORRECTED — the telemetry computes over the whole partition (a function running as owner), scoped to the tenant
+[confirmed / minor / high] ordering · outbox.publisher.ts: 'The attempt budget counts real attempts only' holds only when the tick ends normally: a crash, restart or failed release charges every never-tried ro
+    → RECORDED as a limit — the refund holds when the tick ends normally; a crash mid-tick charges the batch once (bounded by the budget of ten)
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: Routing race: a `leave` registration that overlaps an in-flight governed write can leave that write's row leased with subscribed=false; it is then del
+    → RECORDED as a limit — a registration between the lease and the add leaves that one row to the reconciliation (delivered after its successors)
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: outbox_partition_telemetry computes head_seq/head_attempts/blocked over the invoker's VISIBLE rows: in a multi-domain tenant a DOMAIN-scoped viewer is
+    → CORRECTED — the telemetry computes over the whole partition (a function running as owner), scoped to the tenant
+[confirmed / minor / medium] ordering · 0065_ordered_publication_and_replay_reach.sql: Lock-order deadlock window between outbox_release_untried and another publisher's lease once a tick outlives its TTL; the global advisory lock then tu
+    → CORRECTED — a local fence: a job is served only while this process believes its claim live (claimedUntil, checked per job); the worker stops and the job is left to the holder
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: subscription_domain_claim's first-claim path is SELECT FOR UPDATE → INSERT: two processes claiming a brand-new domain concurrently make the loser's wh
+    → CORRECTED — INSERT … ON CONFLICT DO NOTHING, then the row is locked; the loser renews or is refused, its reconciliation continues
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: 'The attempt budget counts real attempts only' is not what the code guarantees: a tick that dies or loses its lease result after the lease commits lea
+    → RECORDED as a limit — the refund holds when the tick ends normally; a crash mid-tick charges the batch once (bounded by the budget of ten)
+[confirmed / minor / high] ordering · 0065_ordered_publication_and_replay_reach.sql: Gap policy is implicit and irrecoverable: a head that exhausts its budget is dead-lettered and SKIPPED (the partition proceeds past it), no port re-dr
+    → RECORDED as design (B7): a dead-lettered head releases its partition and the gap is reported; a re-drive port for dead letters is the next slice
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: The edge.reassessed closing event carries the edge's original correlation, not the retraction's or supersession's; the supersession and model-change c
+    → RECORDED as a limit — the deferred closing event carries the edge row's correlation (the closing write's is on its own event)
+[confirmed / minor / medium] reach · 0065_ordered_publication_and_replay_reach.sql: decide_mapping_reconciliation 'rejected' closes the reassessment while the relationship stays asserted
+    → RECORDED as design — a rejected proposal is a decision that the relationship stands; the outcome says decided:rejected
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: graph.open_edge_reassessment accepts 'graph.impact.propagate' though nothing under that action calls it — an unused authority on a write port, and the
+    → CORRECTED — the unused authority removed from open_edge_reassessment; the comment corrected
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: Briefing re-flagging is unbounded in time and version: any briefing whose sources ever cited the corrected object id is re-flagged on every walk, incl
+    → CORRECTED — a briefing is re-flagged only when the corrected object has a version recorded after the briefing's known-at
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: The deferred edge.reassessed event carries the ASSERTION's correlation_id, not the retraction's or supersession's — the closing event is mis-linked in
+    → RECORDED as a limit — the deferred closing event carries the edge row's correlation (the closing write's is on its own event)
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: The interface register marks event interfaces 'bound' where no such event exists, and several bound_to entries name routes that do not exist as writte
+    → CORRECTED — the three event interfaces without a published event downgraded to partial; the route paths written as they exist
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: Model-change reassessments have no human decision route and no re-derivation route: the §7 closure claim ('re-derived, retracted, or decided by a pers
+    → CORRECTED in part — a person keeps the relationship (POST …/edges/:id/reassessment/keep → decided:kept) or retracts it; automatic re-derivation remains the next slice
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: open_edge_reassessment accepts graph.impact.propagate and §7 says 'or the propagation walk' opens reassessments, but no propagation code path does
+    → CORRECTED — the unused authority removed from open_edge_reassessment; the comment corrected
+[confirmed / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: objects.interface_register claims 'bound' for event interfaces that publish no event (L9-I02, L9-I04, L2-I04) against its own standard, and six bound_
+    → CORRECTED — the three event interfaces without a published event downgraded to partial; the route paths written as they exist
+[confirmed / minor / high] replay · 0065_ordered_publication_and_replay_reach.sql: ABBA lock order between subscription_replay and subscription_delivery_finish: a replay issued while the worker finishes an applied delivery of the sam
+    → RECORDED
+[confirmed / minor / high] replay · 0065_ordered_publication_and_replay_reach.sql: The retained floor is a bare column set by superuser only: no port, no actor, no event, no check against next_seq — the 'declared' policy has no recor
+    → RECORDED — the floor is declared, not moved by a governed act (ES-29-004 remains the next slice)
+[confirmed / minor / high] replay · 0065_ordered_publication_and_replay_reach.sql: Lock-order inversion: subscription_replay (subscription then deliveries) deadlocks with subscription_delivery_finish's applied path (delivery then sub
+    → RECORDED as a limit — a lock-order window Postgres resolves by aborting one side; the tick or the replay retries
+[confirmed / minor / high] serving · subscription-dispatcher.service.ts: Concurrent reconciles (tick vs. registration) can release a freshly claimed domain as 'no active subscription' right after its first subscription regi
+    → RECORDED as a limit — the tick may release a domain claimed a moment earlier; the registration's own reconciliation re-claims it
+[confirmed / minor / high] serving · 0065_ordered_publication_and_replay_reach.sql: Every reconcile holds FOR UPDATE on every domain's serving row for the whole reconciliation transaction, serialising all processes' ticks and delaying
+    → RECORDED as a limit — the reconciliation holds the serving rows for its transaction; a slow scan delays renewals within the 150 s claim
+[confirmed / minor / medium] serving · subscription-dispatcher.service.ts: A reconcile in flight during releaseAll (shutdown or stand-down) re-starts a worker and re-populates `serving` after the claim was released
+    → CORRECTED — a reconciliation that finds the process stood down or stopped meanwhile releases what it claimed and starts no worker
+[confirmed / minor / medium] serving · subscription-dispatcher.service.ts: releaseAll deletes claims in Map insertion order while reconcile locks rows in sorted order — a lock-order deadlock between a shutting-down process an
+    → CORRECTED — the release iterates in the claim port's lock order
+[confirmed / note / high] conditions · prediction.capabilities.ts: supersededBy names one superseded forecast although issue_forecast can supersede several; a package citing the other is never notified
+    → RECORDED as a limit — one superseded forecast is announced (issue supersedes the current issued one; several only in legacy data)
+[confirmed / note / high] conditions · graph-change.ts: Claim (c) does not match the working tree: CONSUMER_VERSION is still '1.0.0'; the identity change of the two consumers rides on METHOD_REF alone
+    → CORRECTED — CONSUMER_VERSION stays 1.0.0; only the two changed METHOD_REF digests change identity; the act re-registers those two kinds
+[confirmed / note / high] conditions · scenario-subscription.consumer.ts: Scenarios and twins consumers treat forecast.superseded as an invalidation without any materiality judgement; a routine re-issue marks every active sc
+    → RECORDED as design — a scenario tree on a superseded forecast and a twin citing it deserve attention; the materiality judgement is the decision consumer's
+[confirmed / note / high] conditions · phase6-graph-subscriptions-3.test.ts: What the harness leaves unproven for claim 4, and the hosted-gate wiring (compatible)
+    → RECORDED — the queue-order assertion tightened to processing order; the remaining unproven paths named in the record
+[confirmed / note / medium] ordering · 0065_ordered_publication_and_replay_reach.sql: When a tick outlives its lease TTL, outbox_release_untried and a concurrent outbox_lease can lock the same rows in different orders (deadlock, resolve
+    → RECORDED as a limit — a lock-order window Postgres resolves by aborting one side; the tick or the replay retries
+[confirmed / note / high] ordering · phase6-repro-event-delivery.test.ts: The repro test's queue-order assertion accepts a fully reversed order, and neither test exercises the lapse-mid-tick takeover path (FOR UPDATE wait, d
+    → RECORDED — the queue-order assertion tightened to processing order; the remaining unproven paths named in the record
+[confirmed / note / high] ordering · 0065_ordered_publication_and_replay_reach.sql: Round-robin fairness caps at p_limit partitions: with more than 50 partitions carrying pending rows every tick, the lexicographically last tenants are
+    → RECORDED as a limit (0064) — more than 50 partitions with pending rows starve the lexicographically last
+[confirmed / note / high] ordering · phase6-repro-event-delivery.test.ts: What the two tests do and do not prove about CLAIM 1: single-process cross-tick ordering, lease recovery and per-row attempts are proven; cross-proces
+    → RECORDED — the queue-order assertion tightened to processing order; the remaining unproven paths named in the record
+[confirmed / note / high] ordering · 0065_ordered_publication_and_replay_reach.sql: outbox_partition_telemetry aggregates the whole partition history per call (count published, max published_at) under per-row RLS function evaluation; 
+    → RECORDED as a limit — the partition telemetry is a per-call aggregate
+[confirmed / note / high] reach · graph-change.ts: Consumer-identity change is applied by digest only for decisions and memory-mappings; the supplied diff (1.1.0) disagrees with the working tree (1.0.0
+    → RECORDED
+[confirmed / note / high] reach · 0065_ordered_publication_and_replay_reach.sql: open_edge_reassessment accepts 'graph.impact.propagate' though no propagation path calls it, and the deferred closing event is stamped with the closed
+    → CORRECTED — the unused authority removed from open_edge_reassessment; the comment corrected
+[confirmed / note / high] reach · 0065_ordered_publication_and_replay_reach.sql: Carried forward into the rewritten port: transition_method locks and transitions the method by id with no tenant/domain filter (SECURITY DEFINER), so 
+    → CORRECTED — the method row is looked up with the caller's tenant and domain
+[confirmed / note / high] reach · 0065_ordered_publication_and_replay_reach.sql: The flow telemetry views run several correlated subqueries per row, including an unindexed scan of objects.object_outbox per forecast
+    → CORRECTED — a partial index on (payload->>forecast_id) for ForecastIssued rows; the other subqueries are indexed on their keys
+[confirmed / note / high] replay · subscriptions.service.ts: A replay of one subscription re-drives every refused and every unresolved delivery of every subscription in every tenant, immediately
+    → RECORDED
+[confirmed / note / high] replay · verify-0022-upgrade.mjs: Hosted-gate wiring is consistent for 0065 (schema_migrations 44, suite auto-included, no new Phase 0 dependency on the shipping path) — the hosted run
+    → RECORDED — the queue-order assertion tightened to processing order; the remaining unproven paths named in the record
+[confirmed / note / high] replay · phase6-graph-subscriptions-3.test.ts: The retention contract is proven only under superuser DML: no port can declare a floor, the floor is not tied to any purge, and the harness's 'from th
+    → RECORDED — the floor is declared, not moved by a governed act (ES-29-004 remains the next slice)
+[confirmed / note / high] replay · 0065_ordered_publication_and_replay_reach.sql: The 'declared' retention policy is asserted as a governed act but no port, capability or audit can produce it; the served_from_seq comment is stale in
+    → RECORDED — the floor is declared, not moved by a governed act (ES-29-004 remains the next slice)
+[confirmed / note / high] serving · scheduler.service.ts: In-flight job at an ungraceful hand-over is consumed after its successors: the new holder processes waiting jobs for ≥ 30 s before BullMQ re-queues th
+    → RECORDED as a limit — BullMQ re-queues the stalled job after its lock (30 s); its successors may be applied first at an ungraceful hand-over
+[confirmed / note / high] serving · 0065_ordered_publication_and_replay_reach.sql: The release port trusts the caller-declared holder and the serving ledger records self-declared identities only; a lapsed-then-self-renewed period lea
+    → RECORDED as a limit — holders are self-declared identities of processes on the commit authority
+[refuted / blocking / high] conditions · decision-subscription.consumer.ts: Decisions consumer hears only the first recomputation after a citation; materiality is measured between consecutive forecasts, never against the forec
+    → CORRECTED — the consumer follows the supersession chain back to the forecast the option cites and measures against it
+[refuted / blocking / high] conditions · decision-subscription.consumer.ts: Decisions consumer: a recomputation reaches a package only on the FIRST supersession of the forecast it cites; every later re-issue (the daily cadence
+    → CORRECTED — the consumer follows the supersession chain back to the forecast the option cites and measures against it
+[refuted / blocking / high] conditions · decision-subscription.consumer.ts: Materiality is measured superseded-vs-superseding and reaches a package only through the id its option cites, so only the FIRST re-issue after a citat
+    → CORRECTED — the consumer follows the supersession chain back to the forecast the option cites and measures against it
+[refuted / real / high] conditions · graph-change.ts: Claim (c) does not match the tree: CONSUMER_VERSION is still '1.0.0'; only the two METHOD_REF digests changed — and a real bump of the shared constant
+    → CORRECTED — CONSUMER_VERSION stays 1.0.0; only the two changed METHOD_REF digests change identity; the act re-registers those two kinds
+[refuted / real / high] conditions · 0065_ordered_publication_and_replay_reach.sql: A model change on an edge already pending reassessment is recorded nowhere and published to nobody; a person's decision on any proposal closes whichev
+    → CORRECTED — a second cause is accumulated on the edge (reassessment_causes), evented and published
+[refuted / real / high] reach · 0065_ordered_publication_and_replay_reach.sql: A pending reassessment is single-slot: a model change on an edge already pending for an evidence reason is silently dropped from the GraphChanged/edge
+    → CORRECTED — a second cause is accumulated on the edge (reassessment_causes), evented and published
+[refuted / real / high] reach · 0065_ordered_publication_and_replay_reach.sql: intelligence.transition_method (re-created by B8) transitions a method by id without checking it belongs to the caller's tenant/domain — a cross-tenan
+    → CORRECTED — the method row is looked up with the caller's tenant and domain
+[refuted / real / high] reach · graph.controller.ts: POST /telemetry/flows reads prediction/twin/simulation/decision product state under 'graph.read' — widens read authority past each module's own read r
+    → CORRECTED — the route reads each flow under its own action (prediction.read, twin.read, simulation.read)
+[refuted / real / high] replay · 0065_ordered_publication_and_replay_reach.sql: Floor arithmetic off by one across the two replay surfaces: subscription_replay_from_seq accepts fromSeq = floor-1 then refuses it inside, so under a 
+    → CORRECTED — one replay core taking the sequence point itself; the from-sequence form passes the point, the (created_at,id) form resolves it; from the beginning = from the floor
+[refuted / real / high] replay · 0065_ordered_publication_and_replay_reach.sql: A replay from a point moves the checkpoint FORWARD when it was NULL (NULL → K), stranding never-received rows between the served point and K that are 
+    → CORRECTED — a NULL cursor stays NULL; the cursor moves back only
+[refuted / real / high] replay · 0064_subscription_resolution_and_partition_order.sql: A replayed never-received row is lost for good once a later row applies: the checkpoint gate ignores rows without a delivery, and the 24-hour look-bac
+    → CORRECTED — never-received rows at or after the served point are always reconciled (no checkpoint/look-back gate)
+[refuted / real / high] replay · 0065_ordered_publication_and_replay_reach.sql: Replay-by-sequence from exactly the retained floor is refused whenever seq floor-1 is not this domain's row; the first retained row of a domain is the
+    → CORRECTED — one replay core taking the sequence point itself; the from-sequence form passes the point, the (created_at,id) form resolves it; from the beginning = from the floor
+[refuted / real / high] replay · 0064_subscription_resolution_and_partition_order.sql: A never-received row inside a replayed range is stranded once the checkpoint passes it: the 24-hour look-back gives old history no protection
+    → CORRECTED — never-received rows at or after the served point are always reconciled (no checkpoint/look-back gate)
+[refuted / real / high] serving · subscription-dispatcher.service.ts: A scheduler-disabled process claims (and renews) domains it can never serve
+    → CORRECTED — a process whose scheduler is disabled claims nothing
+[refuted / real / high] serving · subscriptions.service.ts: Domain status route exposes every tenant's domains, holders (host/pid), re-driven event and subscription ids via last_reconciliation
+    → CORRECTED — the status route reports this domain's part of the last reconciliation only
+[refuted / real / high] serving · subscription-dispatcher.service.ts: A process with the scheduler disabled (the default) still claims domains on register/resume/replay and can never serve them
+    → CORRECTED — a process whose scheduler is disabled claims nothing
+[refuted / minor / high] conditions · decision-subscription.consumer.ts: An unmeasurable recomputation (a missing q50 on either forecast) is recorded as material:true and the package note asserts a measurement that was not 
+    → CORRECTED — the note says the change is unmeasurable and routed as material because it cannot be shown immaterial
+[refuted / minor / high] conditions · graph-change.ts: The reviewed diff and the working tree disagree on CONSUMER_VERSION (1.1.0 in the diff, 1.0.0 in the tree two minutes after the snapshot); if the bump
+    → CORRECTED — CONSUMER_VERSION stays 1.0.0; only the two changed METHOD_REF digests change identity; the act re-registers those two kinds
+[refuted / minor / high] conditions · memory-mappings.consumer.ts: The provenance rule is applied under claim.corrected as well, where the corrected object IS the claim the edge names: an edge whose claim version lack
+    → RECORDED — under claim.corrected the check keys on the claim lineage the builder always records; legacy and fixture edges are the failing branches
+[refuted / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: objects.outbox_partitions is granted SELECT to eye_app/eye_commit with no RLS — the only tenant-keyed table readable across tenants; the telemetry vie
+    → CORRECTED — the grant removed; the partition telemetry is a SECURITY DEFINER function scoped by eye_tenant()/PLATFORM, computed over the whole partition
+[refuted / minor / high] reach · 0065_ordered_publication_and_replay_reach.sql: The interface register's bound_to text names routes that do not exist in the API for six 'bound' rows
+    → CORRECTED — the three event interfaces without a published event downgraded to partial; the route paths written as they exist
+[refuted / minor / high] reach · change-events.ts: edge.reassessment_opened carries no dependency rows, so a decision package resting on the reassessed edge is not noted by the decisions consumer, alth
+    → CORRECTED — the event carries the active dependencies resting on each edge
+[refuted / minor / high] replay · 0065_ordered_publication_and_replay_reach.sql: A replay with a NULL checkpoint moves the cursor FORWARD to the replay point, contrary to 'the cursor only moves back' and the contiguous-applied-pref
+    → CORRECTED — a NULL cursor stays NULL; the cursor moves back only
+[refuted / minor / high] replay · 0065_ordered_publication_and_replay_reach.sql: outbox_partition_telemetry reports blocked=false and the wrong head for a DOMAIN-scoped reader whenever the partition's held head belongs to another d
+    → CORRECTED — the telemetry computes over the whole partition (a function running as owner), scoped to the tenant
+[refuted / minor / high] serving · 0065_ordered_publication_and_replay_reach.sql: First-claim race: two processes both INSERT the serving row; the loser's reconcile aborts with a unique violation and a registration returns 500 after
+    → CORRECTED — INSERT … ON CONFLICT DO NOTHING, then the row is locked; the loser renews or is refused, its reconciliation continues
+[refuted / minor / high] serving · subscription-dispatcher.service.ts: Non-graceful restart of the single-process deployment leaves every domain unserved for 90-210 s (startup reconciliation refused by the dead process's 
+    → CORRECTED for the same host — a holder of this host whose pid is gone is taken over at once (recorded); across hosts the lapse (150 s) stands, recorded as a limit
+[refuted / minor / high] serving · subscription-dispatcher.service.ts: Shutdown ordering: onModuleDestroy releases claims while HTTP is still accepting, so a late registration re-claims under the dying holder and the succ
+    → RECORDED
+[refuted / minor / high] serving · 0065_ordered_publication_and_replay_reach.sql: First claim of a domain races: two reconciles reaching a never-claimed domain both INSERT, the loser fails with 23505 and its whole reconcile (all ren
+    → CORRECTED — INSERT … ON CONFLICT DO NOTHING, then the row is locked; the loser renews or is refused, its reconciliation continues
+[refuted / minor / high] serving · subscription-dispatcher.service.ts: Lock-order inversion between release (Map order) and claim (sorted order) can deadlock; if the release side loses, the stopped process's claims persis
+    → CORRECTED — the release iterates in the claim port's lock order
+[refuted / minor / high] serving · subscription-dispatcher.service.ts: Ungraceful restart leaves the domain unserved for 150–210 s: a fresh nonce cannot reclaim its own predecessor's claim; only the graceful restart is pr
+    → CORRECTED for the same host — a holder of this host whose pid is gone is taken over at once (recorded); across hosts the lapse (150 s) stands, recorded as a limit
+[refuted / minor / high] serving · 0065_ordered_publication_and_replay_reach.sql: First claim of a domain races on INSERT: the loser's entire reconcile transaction aborts (all its renewals rolled back, no re-drives)
+    → CORRECTED — INSERT … ON CONFLICT DO NOTHING, then the row is locked; the loser renews or is refused, its reconciliation continues
+[refuted / note / high] ordering · phase6-repro-event-delivery.test.ts: What the two harnesses leave unproven for the F1 claim: lease lapse mid-tick with a second publisher (ordering then rests on BullMQ jobId dedupe), the
+    → RECORDED — the queue-order assertion tightened to processing order; the remaining unproven paths named in the record
+[refuted / note / high] replay · subscription-dispatcher.service.ts: A replayed delivery re-applies the item list recorded by its original delivery rather than re-resolving it for the new generation
+    → RECORDED as design — a replayed delivery re-applies the items it resolved (idempotent; a new resolution is a new subscription)
+[refuted / note / high] replay · subscriptions.service.ts: A replay's reconciliation runs with includeRefused=true and is global: it re-drives every refused delivery of every subscription in every tenant, so '
+    → CORRECTED — a registration, resume or replay reconciles its own domain only
+[refuted / note / high] replay · 0065_ordered_publication_and_replay_reach.sql: Recorded points are inconsistent with the retention contract: a from-the-beginning replay sets served_from_seq = 0 below the floor of 1, and the repla
+    → RECORDED

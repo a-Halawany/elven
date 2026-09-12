@@ -34,6 +34,26 @@ async function enqueueClosed(eventType: string): Promise<string> {
   return id;
 }
 
+/**
+ * Lease a batch and give back every row but the one under test (0015's release). From 0065 a partition waits behind
+ * a row still held by a live lease, so a publisher that leaves rows leased blocks its partition — and so would this
+ * suite for its own later cases. `leaseSweep` leases and gives back everything, returning what was leasable.
+ */
+async function leaseOnly(id: string, ttl = 60): Promise<{ id: string; lease_id: string } | undefined> {
+  return withPublishCtx(publisher, id, async (tx) => {
+    const leased = (await sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(50, ${ttl})`.execute(tx)).rows;
+    for (const r of leased) if (r.id !== id) await sql`select objects.outbox_release(${r.id}::uuid, ${r.lease_id}::uuid)`.execute(tx);
+    return leased.find((r) => r.id === id);
+  });
+}
+async function leaseSweep(limit = 500): Promise<string[]> {
+  return withPublishCtx(publisher, null, async (tx) => {
+    const leased = (await sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(${limit}, 60)`.execute(tx)).rows;
+    for (const r of leased) await sql`select objects.outbox_release(${r.id}::uuid, ${r.lease_id}::uuid)`.execute(tx);
+    return leased.map((r) => r.id);
+  });
+}
+
 beforeAll(async () => {
   commit = commitDb(); identity = identityDb(); publisher = publisherDb(); su = superDb();
   tenant = await seedTenant(su, 'c7-t');
@@ -48,14 +68,14 @@ afterAll(async () => {
 describe('C7 — the lease TTL is bounded', () => {
   it('an extreme requested lease duration is clamped to at most 300 seconds', async () => {
     const id = await enqueueClosed('c7.ttl');
-    const leased = await withPublishCtx(publisher, null, async (tx) =>
-      sql<{ id: string }>`select id from objects.outbox_lease(50, 1000000000)`.execute(tx));
-    expect(leased.rows.map((r) => r.id)).toContain(id);
+    const mine = await leaseOnly(id, 1000000000);
+    expect(mine?.id).toBe(id);
     const row = await sql<{ leased_until: string }>`select leased_until from objects.object_outbox where id = ${id}`.execute(su);
     const leaseMs = new Date(row.rows[0]!.leased_until).getTime() - Date.now();
     // Clamped to 300s (allow a little slack for round-trip latency).
     expect(leaseMs).toBeLessThanOrEqual(301_000);
     expect(leaseMs).toBeGreaterThan(0);
+    await withPublishCtx(publisher, id, async (tx) => sql`select objects.outbox_release(${id}::uuid, ${mine!.lease_id}::uuid)`.execute(tx));
   });
 });
 
@@ -67,9 +87,7 @@ describe('C7 — the retry budget bounds re-leasing and dead-letters poison rows
     // the pool for the next attempt. After the budget (10) is spent, the next
     // lease sweep dead-letters it instead of handing it out again.
     for (let i = 0; i < 11; i += 1) {
-      const leased = await withPublishCtx(publisher, id, async (tx) =>
-        sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(50, 60)`.execute(tx));
-      const mine = leased.rows.find((r) => r.id === id);
+      const mine = await leaseOnly(id);
       if (mine === undefined) break; // dead-lettered: no longer leasable
       await withPublishCtx(publisher, id, async (tx) =>
         sql`select objects.outbox_release(${id}::uuid, ${mine.lease_id}::uuid)`.execute(tx));
@@ -78,18 +96,14 @@ describe('C7 — the retry budget bounds re-leasing and dead-letters poison rows
       select status, attempts from objects.object_outbox where id = ${id}`.execute(su);
     expect(row.rows[0]!.status).toBe('dead_letter');
     // A dead-lettered row is never handed out again.
-    const released = await withPublishCtx(publisher, null, async (tx) =>
-      sql<{ id: string }>`select id from objects.outbox_lease(500, 60)`.execute(tx));
-    expect(released.rows.map((r) => r.id)).not.toContain(id);
+    expect(await leaseSweep()).not.toContain(id);
   });
 });
 
 describe('C7 — acknowledgement is lease-bound and transition-restricted', () => {
   it('a stale/invented lease cannot acknowledge; the current lease can, exactly once', async () => {
     const id = await enqueueClosed('c7.ack');
-    const leased = await withPublishCtx(publisher, id, async (tx) =>
-      sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(50, 60)`.execute(tx));
-    const mine = leased.rows.find((r) => r.id === id)!;
+    const mine = (await leaseOnly(id))!;
 
     // Invented lease → no-op.
     const forged = await withPublishCtx(publisher, id, async (tx) =>
@@ -113,15 +127,11 @@ describe('C7 — acknowledgement is lease-bound and transition-restricted', () =
 
   it('outbox_release returns a leased row to the pool for a bounded retry', async () => {
     const id = await enqueueClosed('c7.release');
-    const leased = await withPublishCtx(publisher, id, async (tx) =>
-      sql<{ id: string; lease_id: string }>`select id, lease_id from objects.outbox_lease(50, 60)`.execute(tx));
-    const mine = leased.rows.find((r) => r.id === id)!;
+    const mine = (await leaseOnly(id))!;
     const released = await withPublishCtx(publisher, id, async (tx) =>
       (await sql<{ ok: boolean }>`select objects.outbox_release(${id}::uuid, ${mine.lease_id}::uuid) as ok`.execute(tx)).rows[0]!.ok);
     expect(released).toBe(true);
     // Immediately leasable again (lease was cleared), still pending.
-    const released2 = await withPublishCtx(publisher, null, async (tx) =>
-      sql<{ id: string }>`select id from objects.outbox_lease(500, 60)`.execute(tx));
-    expect(released2.rows.map((r) => r.id)).toContain(id);
+    expect(await leaseSweep()).toContain(id);
   });
 });

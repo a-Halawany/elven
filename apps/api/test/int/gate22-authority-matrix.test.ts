@@ -92,6 +92,21 @@ const SCENARIO_COVERAGE: Record<string, string> = {
 };
 
 /**
+ * Ports introduced by LATER migrations (above the Phase 0 ceiling this suite is also run
+ * against by scripts/phase1/verify-0022-upgrade.mjs, where they do not exist). Their
+ * coverage is consulted only when the catalogs discover them; the no-stale-coverage
+ * check applies to the base map alone, because absence at the ceiling is not staleness.
+ */
+const LATER_SCENARIO_COVERAGE: Record<string, string> = {
+  'objects.outbox_lease_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
+  'objects.outbox_ack_as_publisher': 'phase6-outbox-publisher.test.ts', // 0057
+  'identity.agent_session_extend': 'phase6-scheduled-collection.test.ts', // 0057
+  // 0065: the halted tail given back with its attempt refunded (the publisher's third port); covered where the ordering is proved.
+  'objects.outbox_release_untried': 'phase6-repro-event-delivery.test.ts', // 0065
+  'objects.outbox_release_untried_as_publisher': 'phase6-repro-event-delivery.test.ts', // 0065
+};
+
+/**
  * PORTS THAT LEGITIMATELY DO NOT REQUIRE A CAPABILITY, each with its reason and the
  * safety property this suite proves EXECUTABLY below. They are not exempted on
  * assertion — the probe verifies their success is INERT.
@@ -184,7 +199,7 @@ describe('C14 — the matrix is driven by the catalogs, not by a list', () => {
   it('every discovered port is either a machine-classified NON-MUTATOR or has scenario coverage', () => {
     const gaps = ports
       .filter((p) => p.mutates)
-      .filter((p) => SCENARIO_COVERAGE[p.key] === undefined)
+      .filter((p) => SCENARIO_COVERAGE[p.key] === undefined && LATER_SCENARIO_COVERAGE[p.key] === undefined)
       .map((p) => `${p.key} (writes: ${p.writeEvidence.trim()})`);
     expect(
       gaps,
@@ -194,7 +209,7 @@ describe('C14 — the matrix is driven by the catalogs, not by a list', () => {
   });
 
   it('every scenario file referenced by the coverage map actually exists', () => {
-    const missing = [...new Set(Object.values(SCENARIO_COVERAGE))].filter(
+    const missing = [...new Set([...Object.values(SCENARIO_COVERAGE), ...Object.values(LATER_SCENARIO_COVERAGE)])].filter(
       (f) => !existsSync(join(__dirname, f)),
     );
     expect(missing, `coverage map points at non-existent files: ${missing.join(', ')}`).toEqual([]);

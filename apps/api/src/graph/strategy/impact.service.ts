@@ -19,12 +19,27 @@
  * phase a decision package's.
  */
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { GraphReads, ImpactWrites, OutstandingCursor } from '../graph.capabilities.js';
 
 /** The walk is bounded: a dependency cycle must not become an infinite loop. */
 const MAX_HOPS = 8;
+
+/**
+ * The AUTOMATIC walker's identity (CP-6 B1, migration 0060), on the connector precedent:
+ * the propagation agent registered in a domain is bound to this version and code digest,
+ * and its session port refuses a walker whose identity has drifted from the registration.
+ * The digest names the walk's method — a change to the walk is a new walker, registered
+ * anew; it is never client-supplied.
+ */
+const WALK_METHOD_REF = `graph.impact.walk@1.0.0:evidence_correction→claim_lineage→resolutions/edges→dependencies(bfs,max_hops=${MAX_HOPS})`;
+export const PROPAGATION_WALKER = Object.freeze({
+  name: 'graph.propagation',
+  version: '1.0.0',
+  codeDigest: createHash('sha256').update(`graph.propagation@1.0.0:${WALK_METHOD_REF}`, 'utf8').digest('hex'),
+});
 
 export interface AffectedObject {
   strategy_object_id: string;
@@ -67,6 +82,8 @@ export interface ImpactResult {
    */
   twins: AffectedObject[];
   simulations: AffectedObject[];
+  /** 0065 §8 (AU-MEM-0031): briefings composed on what changed — re-flagged by event through the port, never rewritten. */
+  briefings: AffectedObject[];
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -132,6 +149,9 @@ export class ImpactService {
     const runs = new Map<string, Record<string, unknown>>(
       ((await cap.readRuns().selectAll().execute()) as Array<Record<string, unknown>>)
         .map((r) => [String(r['run_id']), r]));
+    const briefings = new Map<string, Record<string, unknown>>(
+      ((await cap.readBriefings().select(['briefing_id', 'room_id', 'known_at', 'composed_at'] as never).execute()) as Array<Record<string, unknown>>)
+        .map((b) => [String(b['briefing_id']), b]));
 
     /*
      * THE CLOSURE FROM EVIDENCE TO WHAT WAS DERIVED FROM IT.
@@ -253,6 +273,8 @@ export class ImpactService {
               strategy_object_id: dependent, object_type: 'WRN', title: String(w['title']),
               reached_via: seed.via, hop,
             });
+            // What cites the warning (a briefing, 0065 §8) rests on it.
+            next.push({ kind: 'warning', id: dependent, via: `rests on warning "${String(w['title'])}"` });
             continue;
           }
           const tw = twins.get(dependent);
@@ -272,6 +294,15 @@ export class ImpactService {
               reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
             });
             next.push({ kind: 'run', id: dependent, via: 'compared against a run that rests on changed state' });
+            continue;
+          }
+          // A briefing composed on what changed (0065 §8): terminal — it cites, nothing rests on it.
+          const br = briefings.get(dependent);
+          if (br !== undefined) {
+            found.set(dependent, {
+              strategy_object_id: dependent, object_type: 'BRF', title: `briefing composed ${String(br['composed_at'] instanceof Date ? (br['composed_at'] as Date).toISOString() : br['composed_at'])} (known at ${String(br['known_at'] instanceof Date ? (br['known_at'] as Date).toISOString() : br['known_at'])})`,
+              reached_via: seed.via, hop, via_id: seed.id, via_ids: [seed.id],
+            });
           }
         }
       }
@@ -303,6 +334,7 @@ export class ImpactService {
       warnings: of('WRN'),
       twins: of('TWN'),
       simulations: of('SIM'),
+      briefings: of('BRF'),
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -375,6 +407,8 @@ export class ImpactService {
       forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
       twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, via_ids: t.via_ids ?? (t.via_id ? [t.via_id] : []), reached_via: t.reached_via, hop: t.hop })),
       simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
+      warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop })),
+      briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop })),
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -391,12 +425,13 @@ export class ImpactService {
   /**
    * Applied corrections whose propagation is NOT COMPLETE.
    *
-   * There is no consumer wiring `CorrectionApplied` to a dependency walk — the
-   * outbox publishes the event and no worker subscribes — so propagation happens
-   * only when a person asks for it. Until that consumer exists, the honest
-   * product behaviour is to make the outstanding obligation VISIBLE rather than
-   * let a correction sit silently unpropagated: this is the queue of corrections
-   * whose downstream impact nobody has finished assessing.
+   * Where a domain has a registered propagation agent (0060), `CorrectionApplied`
+   * is consumed and the walk runs automatically; where it has none, or the automatic
+   * walk was refused, failed or truncated, propagation happens when a person asks
+   * for it. Either way the outstanding obligation is VISIBLE rather than a
+   * correction sitting silently unpropagated: this is the queue of corrections
+   * whose downstream impact nothing has finished assessing, each row carrying the
+   * latest automatic attempt's state and reason under `automatic`.
    *
    * `cursor` is opaque to the caller and issued only by this method; it encodes
    * BOTH key columns of the last row so a page boundary inside a run of tied
@@ -433,17 +468,35 @@ export class ImpactService {
       const state = String(c['propagation_state'] ?? 'pending');
       const assessment = c['propagation_assessment_id'] ?? null;
       const unwalked = state === 'pending' && assessment === null;
-      const status = unwalked
+      const automatic = c['automatic_state'] === null || c['automatic_state'] === undefined ? null : {
+        state: String(c['automatic_state']),
+        deliveries: Number(c['automatic_deliveries'] ?? 0),
+        attempts: Number(c['automatic_attempts'] ?? 0),
+        last_error: (c['automatic_last_error'] as string | null) ?? null,
+        last_delivered_at: c['automatic_last_delivered_at'] ?? null,
+        agent_id: (c['automatic_agent_id'] as string | null) ?? null,
+        event_id: (c['automatic_event_id'] as string | null) ?? null,
+      };
+      const base = unwalked
         ? 'propagation incomplete: no dependency walk has run against this correction'
         : state === 'pending'
           ? `propagation state unreconciled: assessment ${String(assessment)} is linked to this `
             + 'case but its coverage has not been reconciled; treat the case as partial until it is'
           : String(c['propagation_unresolved']);
-      const { cursor_received_at: _c, ...row } = c;
+      // The automatic attempt's outcome is stated beside the case's own status, never instead of it.
+      const status = automatic === null ? base
+        : automatic.state === 'failed'
+          ? `${base}; automatic propagation failed: ${automatic.last_error ?? 'no reason recorded'}; operator-initiated propagation remains available`
+          : automatic.state === 'partial'
+            ? `${base}; automatic propagation was partial: ${automatic.last_error ?? 'the walk did not cover the case'}; operator-initiated propagation remains available`
+            : `${base}; automatic propagation ${automatic.state}`;
+      const { cursor_received_at: _c, automatic_state: _s, automatic_deliveries: _d, automatic_attempts: _a, automatic_last_error: _e,
+              automatic_last_delivered_at: _l, automatic_agent_id: _g, automatic_event_id: _v, ...row } = c;
       return {
         ...row,
         propagation_status: status,
         historical_sentence: unwalked ? String(c['propagation_unresolved']) : null,
+        automatic,
       };
     });
     const last = got.rows[got.rows.length - 1];
@@ -477,14 +530,14 @@ function buildStatement(
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
-    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length;
+    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
-    : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) and `
-      + `${w.warnings.length} warning(s) reported`;
+    : `; ${w.forecasts.length} forecast(s) marked for attention, ${w.scenarios.length} scenario(s) reported, ${w.warnings.length} warning(s) marked for attention`;
   const phase5 = w.twins.length + w.simulations.length === 0 ? ''
     : `; ${w.twins.length} twin(s) whose citing versions are marked unverified and ${w.simulations.length} simulation run(s) surfaced`;
+  const phase6 = w.briefings.length === 0 ? '' : `; ${w.briefings.length} briefing(s) composed on what changed re-flagged`;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *
@@ -504,7 +557,7 @@ function buildStatement(
   return `dependency propagation assessed by invalidation ${invalidationId}: `
     + `${w.assumptions.length} assumption(s) marked unverified; `
     + `${w.objectives.length} objective(s), ${w.decisions.length} decision(s) and `
-    + `${w.commitments.length} commitment(s) reported for human review${phase4}${phase5}; `
+    + `${w.commitments.length} commitment(s) reported for human review${phase4}${phase5}${phase6}; `
     + reach + truncation;
 }
 

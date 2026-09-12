@@ -69,3 +69,6 @@ evidence/c17/
 # The pinned cosign the C19 controls execute. It is a BINARY, acquired by digest-verified download
 # from scripts/gate/lib/c19-cosign.json — never committed, and never trusted by version string.
 .c19-tools/
+
+# a symlink named .eye-local (a worktree convenience) is never committed either
+.eye-local

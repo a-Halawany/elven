@@ -1,0 +1,244 @@
+# Delivery packages (from the owner's full delivery register)
+## Delivery packages preserving the full scope
+
+The following packages carry forward the broader review's scope and acceptance direction. Package names are planning buckets, not newly narrowed phase contracts. Their source and exit statements retain the report's evidence references. Earlier effort estimates are not adopted as a budget or delivery promise; staffing and estimates need current work decomposition and actual resources.
+
+| Package | Dependencies | Required delivery and acceptance direction |
+| --- | --- | --- |
+| R0 · Integrate reviewed branches and repair current blockers | Existing main; preserve branch stack | Remediate C15 and C18 test timing; repair P6 authority/control inheritance, probability validation and main runtime defects; integrate each candidate with complete gates. Exit: one exact main release has every required check executed and passed. [X03] [X06] [P616] [P603] [P504] |
+| P1 · Complete World Observation and source universe | R0; common policy/storage interfaces | Add enterprise applications/database CDC, streaming/events/IoT, richer document/media/geospatial/scientific ingestion, credential binding, rights/purpose lifecycle, anti-malware/sandbox processing, scheduling, source quality and correction delivery. Exit: every specified source family has governed acquisition, custody, correction, withdrawal and operational acceptance. [M16] [M19] [M21] [M44] [P601] |
+| P2 · Complete Intelligence and model/context fabric | P1 evidence contracts; P3 retrieval interfaces | Build real document parsing/OCR/chunking, multilingual extraction, contradiction/reasoning/summarization services, provider adapters/routing, bounded context and inference, model/prompt identity and quality evaluation. Exit: held-out source/domain evaluations, calibrated uncertainty and source-grounded explanations with safe abstention. [M26] [M28] [M52] |
+| P3 · Complete Memory, KG, ontology and Strategy Graph | P1/P2 IDs, provenance and correction semantics | Implement hybrid semantic retrieval, permission-aware embeddings/indexes, ontology governance, multilingual/master identity, full objective/capability/resource/stakeholder graph, continuous dependency propagation and lawful lifecycle across derivatives. Exit: complete authorized retrieval and causally correct update/replay under corrections, deletion and revocation. [M31] [M29] [M33] [M34] |
+| P4 · Complete Prediction, Scenarios and warning intelligence | P1 data/vintages; P2 model registry; P3 context | Expand statistical/event/causal and horizon-appropriate model families, scenario disruption/custom branches and coherent constraints, weak-signal/risk/opportunity products, uncertainty/calibration/drivers and outcome scoring. Exit: per-target/horizon/domain validation, explicit unsupported forecasts and reliable owned response windows. [P401] [P402] [P404] [P405] |
+| P5 · Complete Digital Twin and Simulation portfolio | P3 grounded graph; P4 uncertainty/scenarios | Build enterprise, market, competitor, supply-chain, infrastructure and other specified twin families; coupled state/behavior, continuous reconciliation, branching, constraints, scalable experiment execution, sensitivity and reproducibility. Exit: validated domain behavior and measured real-outcome reconciliation, with all synthetic assumptions inspectable. [P501] [P502] [P504] [P506] |
+| P6 · Complete Decision Intelligence and Executive OS | P3 objectives; P4/P5 consequences; production identity | Complete option/context binding, constraints/trade-offs/second-order/value-of-information, human authority and conditional approvals, strategic planning, rooms/briefings, priorities/Strategic Health Score, monitoring and replay. Exit: every consequential decision is complete, controllable, replayable and linked to observed outcomes. [P609] [P616] [P608] [P604] [P610] |
+| P7-A · Full bounded multi-agent orchestration and specialist portfolio | P1–P6 stable capabilities; isolation and identity | Build generic Planner/Supervisor/Workflow runtime, task graphs, checkpoints, inter-agent contracts, sandboxed tools, hard budgets/escalation, specialist agents and audited approved side effects. Exit: interrupted/resumed adversarial workflows preserve scope, authority, cost/time budgets and human control. [P607] [P613] [M51] |
+| P7-B · Governed learning and continuous evaluation | P2 registry; P4 scores; P6 outcomes; P7-A traces | Build benchmark/feedback datasets, calibration/drift/safety evaluations, reviewed lessons, proposed model/prompt/threshold/ontology changes, promotion, canary, rollback and retirement. Exit: no learned change reaches production without reproducible evaluation, approval and rollback evidence. [P403] [P611] [M53] |
+| P7-C · Governed agent/scenario/domain/data marketplaces | Package contracts; P3 ontology; P7-A/B controls | Build signed package manifests, dependency compatibility, admission/testing, installation, sandbox permissions, licensing, update/revocation and customer-controlled catalogs. Exit: every package is inspectable, reversible and constrained in all three deployment modes. [G03] [M01] [X13] |
+| P7-D · Production trust, infrastructure and all three profiles | Begin immediately; certify after integrated product stabilizes | Implement IAM/SSO/MFA/workload trust, secret/KMS lifecycle, policy/privacy/residency, application packaging, network/storage isolation, HA/PITR/DR, telemetry/error budgets, workload capacity, upgrade/rollback and disconnected operation. Exit: section 7’s profile-specific acceptance evidence exists for the exact release. [M02] [M04] [M12] [M14] [M20] [G04] |
+| P7-E · Complete UX, accessibility, localization, mobile and offline | Stable P1–P6 workflows; identity/parity contracts | Unify the shell and reusable components, complete every specified workspace, keyboard/screen-reader/RTL/localization acceptance, large-display/mobile/offline state and human override/uncertainty design. Exit: complete role journeys and accessibility/translation tests on every supported profile/device class. [M36] [M38] [M54] [M55] [G17] |
+| P7-F · Commercial operation, interoperability and adoption | Stable product/data contracts; P7-C/D | Implement entitlements/licensing/metering, customer onboarding and migration, complete export/exit, enterprise integration management, support/incident service workflows, product analytics and claim-to-evidence business reporting. Exit: contract-to-install-to-operate-to-exit lifecycle is executable and measured. [M01] [M12] [X13] |
+
+## Completion work that already has concrete evidence
+
+# Historical requirement families (audit seed; map atomic ids to these by chapter)
+V00-F001 C-001 Category integrity — Appendix C, ¶814
+V00-F002 C-002 Closed Observe→Learn loop — Appendix C, ¶818
+V00-F003 C-003 Full product boundary and access modes — Appendix C, ¶822
+V00-F004 C-004 Named human decision authority — Appendix C, ¶826
+V00-F005 C-005 Explain material recommendations — Appendix C, ¶830
+V00-F006 C-006 Enterprise standard from first production — Appendix C, ¶834
+V00-F007 C-007 Universal core, governed specialization — Appendix C, ¶838
+V00-F008 C-008 Canonical ten layers — Appendix C, ¶842
+V00-F009 C-009 Knowledge Graph as shared context — Appendix C, ¶846
+V00-F010 C-010 Truth-state separation — Appendix C, ¶850
+V00-F011 C-011 Four clocks; no hindsight contamination — Appendix C, ¶854
+V00-F012 C-012 End-to-end provenance and inherited controls — Appendix C, ¶858
+V00-F013 C-013 Full observation source universe — Appendix C, ¶862
+V00-F014 C-014 Freshness, quality, expiry contracts — Appendix C, ¶866
+V00-F015 C-015 Durable institutional memory and lawful forgetting — Appendix C, ¶870
+V00-F016 C-016 Permission-aware memory; model output not truth — Appendix C, ¶874
+V00-F017 C-017 Complete Strategy Graph — Appendix C, ¶878
+V00-F018 C-018 Grounded, calibrated Digital Twins — Appendix C, ¶882
+V00-F019 C-019 Twin time travel, branches and reconciliation — Appendix C, ¶886
+V00-F020 C-020 Six canonical prediction horizons — Appendix C, ¶890
+V00-F021 C-021 Probabilistic forecasts, calibration, sensitivity — Appendix C, ¶894
+V00-F022 C-022 Baseline/upside/downside/disruption/user futures — Appendix C, ¶898
+V00-F023 C-023 Reproducible simulations — Appendix C, ¶902
+V00-F024 C-024 Complete decision packages — Appendix C, ¶906
+V00-F025 C-025 Decision Replay — Appendix C, ¶910
+V00-F026 C-026 Objective/stakeholder/risk-appetite alignment — Appendix C, ¶914
+V00-F027 C-027 Executive Operating System — Appendix C, ¶918
+V00-F028 C-028 Bounded accountable agents — Appendix C, ¶922
+V00-F029 C-029 Planner/Supervisor/Workflow orchestration — Appendix C, ¶926
+V00-F030 C-030 Model pluralism — Appendix C, ¶930
+V00-F031 C-031 No silent self-modification — Appendix C, ¶934
+V00-F032 C-032 Proactive intelligence — Appendix C, ¶938
+V00-F033 C-033 Evidence-based, deduplicated actionable warnings — Appendix C, ¶942
+V00-F034 C-034 Decomposable Strategic Health Score — Appendix C, ¶946
+V00-F035 C-035 Trust across all layers — Appendix C, ¶950
+V00-F036 C-036 Non-repudiable accountability — Appendix C, ¶954
+V00-F037 C-037 Customer retention/residency/keys/export/delete — Appendix C, ¶958
+V00-F038 C-038 Open interoperability and exit — Appendix C, ¶962
+V00-F039 C-039 Zero trust for identities, devices and workloads — Appendix C, ¶966
+V00-F040 C-040 Privacy, minimization, consent and lawful basis — Appendix C, ¶970
+V00-F041 C-041 Sovereignty, customer keys and disconnection — Appendix C, ¶974
+V00-F042 C-042 SaaS/private/on-prem semantic parity — Appendix C, ¶978
+V00-F043 C-043 Safe degradation and recovery — Appendix C, ¶982
+V00-F044 C-044 Governed outcome-learning releases — Appendix C, ¶986
+V00-F045 C-045 Continuous accuracy/calibration/safety evaluation — Appendix C, ¶990
+V00-F046 C-046 Governed signed marketplaces — Appendix C, ¶994
+V00-F047 C-047 Honest experience and uncertainty — Appendix C, ¶998
+V00-F048 C-048 Clear roles, accessibility and global use — Appendix C, ¶1002
+V00-F049 C-049 Measured operational quality — Appendix C, ¶1006
+V00-F050 C-050 Responsible-use boundary — Appendix C, ¶1010
+V00-F051 C-051 Controlled constitutional amendment — Appendix C, ¶1014
+V00-F052 C-052 Document inheritance and traceability — Appendix C, ¶1018
+V01-F001 Ch 1–5; 40–42 · category and institutional mission
+V01-F002 Ch 6 · substantive human control
+V01-F003 Ch 7 · closed strategic loop
+V01-F004 Ch 8–9 · persistent observation and understanding
+V01-F005 Ch 10–11; 26 · memory, KG and Strategy Graph
+V01-F006 Ch 12; 15 · living twins and pre-commitment simulation
+V01-F007 Ch 13–14; 27 · six horizons and multiple futures
+V01-F008 Ch 16–18 · decisions, executive work and agents
+V01-F009 Ch 19–23 · weak signals, warnings and domain intelligence
+V01-F010 Ch 24 · Strategic Health Score
+V01-F011 Ch 25; 37 · replay, learning and evaluation
+V01-F012 Ch 28–33 · sector breadth and governed specialization
+V01-F013 Ch 34–36 · trust and three deployment modes
+V01-F014 Ch 38–39 · marketplace, adoption and measurable value
+V02-F001 Slides 1–5, 16, 50 · product, loop and layers
+V02-F002 Slides 6–7, 36–37 · observation and evidence
+V02-F003 Slides 8–9, 17–19 · memory and semantics
+V02-F004 Slides 10–13, 20, 29, 32–33 · foresight
+V02-F005 Slides 14–15, 22, 34–35, 47 · decisions
+V02-F006 Slides 23–26 · agents and models
+V02-F007 Slides 21–22, 40–41, 46 · trust and authority
+V02-F008 Slides 38–43 · deployment and resilience
+V02-F009 Slides 27–28, 48 · learning, marketplaces and score
+V02-F010 Slides 30–31, 44–45, 49 · warnings and quality
+V03-F001 Ch 1–6 · boundaries, layers, trust zones
+V03-F002 Ch 7–8 · canonical objects and contract envelope
+V03-F003 Ch 9; 30 · Observe→Evidence
+V03-F004 Ch 10; 31 · Evidence→Understanding
+V03-F005 Ch 11–12; 19; 27 · memory, KG, strategy and retrieval
+V03-F006 Ch 13; 33 · twins and reconciliation
+V03-F007 Ch 14; 34 · forecast production
+V03-F008 Ch 15; 35 · scenario lifecycle
+V03-F009 Ch 16; 36 · simulation run lifecycle
+V03-F010 Ch 17; 25; 37 · decisions and human gates
+V03-F011 Ch 18; 29 · executive attention and proactive intelligence
+V03-F012 Ch 20–22 · time, custody, identity and policy
+V03-F013 Ch 23–24 · multi-agent runtime and gateway
+V03-F014 Ch 26; 38 · evaluation, replay and learning
+V03-F015 Ch 28 · marketplace packages
+V03-F016 Ch 39–43 · three deployment envelopes and sovereignty
+V03-F017 Ch 44–47 · security, resilience, observability and exit
+V03-F018 Ch 48–53 · governance, quality, release and specialization
+V04-F001 Ch 1–6 · authority and cross-volume conformance
+V04-F002 Ch 7–14 · topology, cells, ownership and parity
+V04-F003 Ch 15–21 · API/command/query/event envelopes and failures
+V04-F004 Ch 22–23 · retries, idempotency, compatibility
+V04-F005 Ch 24–28 · header, tenancy, time, truth and lineage
+V04-F006 Ch 29–30 · policy, retention, correction and rebuild
+V04-F007 Ch 31 · observation
+V04-F008 Ch 32 · intelligence
+V04-F009 Ch 33–34 · memory and graph
+V04-F010 Ch 35–38 · twins, forecasts, scenarios and simulation
+V04-F011 Ch 39–42 · decisions, executive work and durable approvals
+V04-F012 Ch 43–45 · agents, tools and inference runtime
+V04-F013 Ch 46–48 · fitness, warnings, replay and learning
+V04-F014 Ch 49–51 · authentication, authorization, isolation
+V04-F015 Ch 52–54 · keys, network, privacy, sovereignty
+V04-F016 Ch 55–56 · audit, supply chain and marketplaces
+V04-F017 Ch 57–58; SLO-001…022 · measured quality/capacity
+V04-F018 Ch 59–61 · availability, degradation, backup/DR
+V04-F019 Ch 62–64 · telemetry, incidents and data lifecycle
+V04-F020 Ch 65–67 · repository, configuration and testing
+V04-F021 Ch 68–70 · CI/CD, promotion and packaging
+V04-F022 Ch 71–72 · operational acceptance and exceptions
+V05-F001 Ch 1–6 · authority, explanation, pluralism and traceability
+V05-F002 Ch 7–14 · AI, agent, context, memory and learning planes
+V05-F003 Ch 15–18 · model/prompt identity, adapters and routing
+V05-F004 Ch 19–22 · context, structured output, inference safety/economics
+V05-F005 Ch 23–27 · hybrid retrieval, graph reasoning and memory
+V05-F006 Ch 28–29 · twin grounding and evidence binding
+V05-F007 Ch 30–38 · agent lifecycle, planner, supervisor, workflow, tools
+V05-F008 Ch 39–41 · observation, crawler, search and preparation agents
+V05-F009 Ch 42–47 · summarization, NER, relations, ontology, reasoning, governance agents
+V05-F010 Ch 48–51 · prediction, scenario, simulation and decision agents
+V05-F011 Ch 52–55 · risk/opportunity and specialist domain agents
+V05-F012 Ch 56–57 · briefing/reporting and weak-signal agents
+V05-F013 Ch 58–60 · consequence, side effects and prompt/tool attacks
+V05-F014 Ch 61–65 · privacy, safety, calibration, contestability and audit
+V05-F015 Ch 66–68 · evaluation, red teaming and drift
+V05-F016 Ch 69–70 · governed adaptation, promotion, rollback, retirement
+V05-F017 Ch 71–72 · AI deployment parity and incident continuity
+V06-F001 Ch 1–6 · authority, shared responsibility and failure domains
+V06-F002 Ch 7–14 · SaaS/private/on-prem, air gap, cells and management plane
+V06-F003 Ch 15–18 · compute, CPU/GPU and serving
+V06-F004 Ch 19–22 · workflow, batch/stream, edge and quotas
+V06-F005 Ch 23–30 · networks, ingress, service trust, DNS/time and egress
+V06-F006 Ch 31–34 · state classes, databases, evidence and graph storage
+V06-F007 Ch 35–38 · search, simulation, messaging and checkpoint state
+V06-F008 Ch 39–42 · containers, orchestration, developer platform and sandbox
+V06-F009 Ch 43–48 · inference/context/data pipelines, collaboration and APIs
+V06-F010 Ch 49–50; 54 · identities, policy and tenant isolation
+V06-F011 Ch 51–53 · keys, secrets, certificates and protection
+V06-F012 Ch 55–57 · supply chain, security monitoring and sovereignty
+V06-F013 Ch 58–60 · observability, error budgets, capacity and load
+V06-F014 Ch 61–63 · HA, restore and regional DR
+V06-F015 Ch 64–66 · incident/change/degraded continuity
+V06-F016 Ch 67–69 · IaC, release, fleet patching
+V06-F017 Ch 70–72 · FinOps, operational acceptance and governance
+V07-F001 Ch 1–8 · stewardship, ownership and domain product model
+V07-F002 Ch 9–10; 14 · source contracts, external and file/API/RSS ingestion
+V07-F003 Ch 11–13; 15 · enterprise, media, event/IoT and CDC
+V07-F004 Ch 16 · intake quarantine and raw custody
+V07-F005 Ch 17–23 · contracts, schemas, objects, identity, time and lineage
+V07-F006 Ch 24 · correction, supersession, projection rebuild
+V07-F007 Ch 25–28 · operational, lakehouse, evidence and archive tiers
+V07-F008 Ch 29–32 · events, batch/stream, query and projections
+V07-F009 Ch 33–36 · graph, ontology, identity and relationship data
+V07-F010 Ch 37–38 · institutional memory and search/vector data
+V07-F011 Ch 39–40 · twin, forecast, scenario, simulation and decision data
+V07-F012 Ch 41–44 · data products, APIs, subscriptions and analytics
+V07-F013 Ch 45–48 · training/context datasets, exchange and marketplace
+V07-F014 Ch 49–53 · catalog, policy, consent, residency and masking
+V07-F015 Ch 54–56 · legal hold, deletion, approvals and accountability
+V07-F016 Ch 57–60 · quality, freshness, lineage health, data SLOs
+V07-F017 Ch 61–64 · durability, restore, incident and housekeeping
+V07-F018 Ch 65–68 · pipeline engineering, fixtures, migrations and backfill
+V07-F019 Ch 69–72 · disconnected parity, economics and operational acceptance
+V08-F001 Ch 1–6; 8 · product authority, roles, workspaces and objects
+V08-F002 Ch 7 · accessibility/localization/global readiness
+V08-F003 Ch 9–10; 15–16 · source operations, plans, quarantine and evidence
+V08-F004 Ch 11–14 · research, documents, streams and enterprise systems
+V08-F005 Ch 17–20 · evidence, identities, graph and strategic record
+V08-F006 Ch 21–24 · contradictions, confidence, analyst work and correction
+V08-F007 Ch 25–26 · weak signals and early warning
+V08-F008 Ch 27–31 · risk, opportunity and domain intelligence
+V08-F009 Ch 32–36 · forecasts, scenarios, marketplace, simulation and twins
+V08-F010 Ch 37–40 · strategy, decisions, approvals and replay
+V08-F011 Ch 41–44 · executive home, briefings, health score and priorities
+V08-F012 Ch 45–48 · planning, collaboration, distribution and offline/mobile
+V08-F013 Ch 49–52 · agent marketplace and data/knowledge agents
+V08-F014 Ch 53–56 · strategic/domain agents and orchestration controls
+V08-F015 Ch 57–60 · trust, identity, privacy and security experience
+V08-F016 Ch 61–64 · governance console, audit, recovery, integrations/exit
+V08-F017 Ch 65–67 · deployment, entitlements and onboarding
+V08-F018 Ch 68–70 · adoption, support, analytics and economics
+V08-F019 Ch 71–72 · operational product acceptance and governance
+V09-F001 Ch 1–8 · experience doctrine, roles, context and accessibility
+V09-F002 Ch 9–12 · shell, scope switching, navigation and objects
+V09-F003 Ch 13–16 · command entry, responsive composition, deep links, multi-window
+V09-F004 Ch 17–24 · tokens, typography, forms, tables, dialogs, feedback
+V09-F005 Ch 25–28 · object header, provenance, uncertainty and time
+V09-F006 Ch 29–32 · graph, memory, media and corrections
+V09-F007 Ch 33–36 · signals, warning, risk/opportunity and domains
+V09-F008 Ch 37–40 · forecast/scenario/simulation/twin/decision workspaces
+V09-F009 Ch 41–44 · executive home, briefing, strategic score, priority queue
+V09-F010 Ch 45–48 · strategy plans, collaboration, publishing and mobile/offline
+V09-F011 Ch 49–54 · agent plans, runs, supervision, explanation, escalation
+V09-F012 Ch 55–56 · agent marketplace and incident/replay/learning UX
+V09-F013 Ch 57–60 · trust, access, policy and model/data/ontology governance
+V09-F014 Ch 61–64 · security, audit, health, recovery and integrations
+V09-F015 Ch 65–67 · profile parity, onboarding, licenses and entitlements
+V09-F016 Ch 68–70 · themes, terminology, localization and UX telemetry
+V09-F017 Ch 71–72 · acceptance, accessibility certification and governance
+V10-F001 Ch 1–6 · investment thesis, category and long-horizon outcome
+V10-F002 Ch 7–12 · customer universe, use cases and market model
+V10-F003 Ch 13–15 · product, observation, intelligence, memory and KG
+V10-F004 Ch 16–18 · twins, six horizons, scenarios, decisions, EOS and learning
+V10-F005 Ch 19–22 · agents, pluralism, data universe and explanation
+V10-F006 Ch 23–24 · security, sovereignty, deployment and disconnection
+V10-F007 Ch 25–30 · UX, adoption, specialization, integration, reliability and readiness
+V10-F008 Ch 31–36 · revenue, entitlements, pricing, metering and ecosystem economics
+V10-F009 Ch 37–42 · go-to-market, partners, enterprise/government sales
+V10-F010 Ch 43–48 · competition, moat, switching and ecosystem
+V10-F011 Ch 49–52 · financial doctrine and five-year reference case
+V10-F012 Ch 53–54 · workforce, capital and sensitivities
+V10-F013 Ch 55–56 · execution roadmap and board metrics
+V10-F014 Ch 57–58 · enterprise risks, governance and responsible AI
+V10-F015 Ch 59–60 · claim control, data room and investment baseline

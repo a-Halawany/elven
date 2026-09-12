@@ -1,0 +1,13 @@
+# Codex B7-F1 / B7-F2 reproduced at the database/queue boundary — AFTER the correction (migration 0065)
+# code: the B8 head; database: eye_verify15_20260912, created and migrated 0001–0065 from the final file; real Redis, the real publisher and dispatcher
+# command: EYE_DB_NAME=eye_verify15_20260912 npx vitest run --config vitest.int.config.ts --reporter=verbose --silent=false test/int/phase6-repro-event-delivery.test.ts
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once 14448ms
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > CONTROL: without a fault, 52 rows across two ticks publish in sequence and are each tried once 1469ms
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > SETUP: two events predate a twins subscription registered to LEAVE its backlog; the third is delivered 3011ms
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > REPRODUCTION → CORRECTION: a replay from the beginning returns the three events AND durably makes the two skipped ones eligible — they are delivered to this subscription, once each; the served point moved back 252ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  18:16:00
+   Duration  20.41s (transform 582ms, setup 17ms, import 906ms, tests 19.42s, environment 0ms)

@@ -15,7 +15,8 @@ export type Decision = 'allow' | 'deny' | 'indeterminate' | 'allow_with_obligati
 
 export type Obligation =
   | { type: 'audit_access' }                 // evidence the access itself (consequential reads)
-  | { type: 'mask_secret_metadata' };        // audit viewer must project sanitized columns only
+  | { type: 'mask_secret_metadata' }         // audit viewer must project sanitized columns only
+  | { type: 'human_gate' };                  // the PEP admits only a named human principal at session assurance (Phase 6)
 
 export interface PolicyInput {
   principal: Pick<AuthenticatedPrincipal, 'principalId' | 'kind' | 'assurance' | 'bindings'>;
@@ -42,10 +43,14 @@ export interface PolicyResult {
 
 interface Rule {
   actionPrefix: string;
+  /** Phase 6: match the action EXACTLY, not by prefix — the one C3 rule must cover one action and nothing near it. */
+  exact?: boolean;
   requiredAnyRole: Array<{ role: string; atScope: Scope }>;
   obligations?: Obligation[];
   requiresPurpose?: boolean;
   maxConsequence?: ConsequenceClass;
+  /** Phase 6: the action is meaningless below this class (a commitment is C3 or it is not a commitment). */
+  minConsequence?: ConsequenceClass;
 }
 
 /** bundle-v1 — RBAC rules in the ABAC model. Order matters: first match wins. */
@@ -77,6 +82,14 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_analyst', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
       { role: 'collection_agent', atScope: 'DOMAIN' },
+      // Phase 6 — the seven decision roles resolve their own scope like every other (the Decisions shell found it, as the Graph shell did for Phase 3).
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+      { role: 'decision_agent', atScope: 'DOMAIN' },
+      { role: 'briefing_agent', atScope: 'DOMAIN' },
+      { role: 'reporting_agent', atScope: 'DOMAIN' },
       /*
        * EVERY DOMAIN ROLE, INCLUDING THE ONES LATER PHASES ADDED.
        *
@@ -452,6 +465,229 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
 
+  // ───────────────────────── Phase 6: the authority contract (P6-M2) ─────────────────────────
+  //   * decision.commit is the ONE action above C2 in this bundle. It matches EXACTLY
+  //     (no prefix), only a decision_authority at the domain holds it, it carries the
+  //     human_gate obligation (the PEP refuses any non-human principal), and C4 is
+  //     denied: nothing in The Eye executes on the world.
+  //   * decision.approve is a named human's signature: decision_approver only, C2.
+  {
+    actionPrefix: 'decision.commit',
+    exact: true,
+    requiredAnyRole: [{ role: 'decision_authority', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    minConsequence: 'C3',
+    maxConsequence: 'C3',
+  },
+  {
+    actionPrefix: 'decision.approve',
+    requiredAnyRole: [{ role: 'decision_approver', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
+  // ───────────────────────── Phase 6: rooms and briefings (P6-M4) ─────────────────────────
+  //   * A room is the owner's (and an executive may open one for a package they own);
+  //     membership and cadence are the owner's governed writes; a review is a member's act.
+  //   * A briefing is composed by an executive, a decision owner, or the briefing agent
+  //     (its one write); every reader role reads briefings, under room membership at read time.
+  {
+    actionPrefix: 'room.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'room.',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.review',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'briefing.compose',
+    requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'briefing.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
+  // ───────────────────────── Phase 6: the bounded agents (P6-M6) ─────────────────────────
+  //   * Registration and revocation are the platform / domain administrator's; the trigger
+  //     of a run is an owner's or an executive's act; the run's own bookkeeping is the
+  //     agent's, under its own session; the decision agent's ONE write is a draft option.
+  {
+    // Registration creates the agent's principal on the identity authority: the tenant or platform administrator's act.
+    actionPrefix: 'agent.register',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.revoke',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.trigger',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.run',
+    requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'agent.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'report.render',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.draft',
+    requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
+  // ───────────────────────── Phase 6: decision packages (P6-M1) ─────────────────────────
+  //   * READ is broad: a package is for the people who decide, approve, watch and
+  //     account for it. The bounded agents read what they compose from.
+  //   * A package is declared, versioned, optioned, termed, chosen, proposed and
+  //     withdrawn by its OWNER — seven separate governed writes, every one ≤ C2. An
+  //     approver, an authority or an executive holds none of them. The decision agent
+  //     holds exactly ONE write: an option card into a DRAFT (decision.package.option).
+  //   * Dissent is a human's own act: approvers, authorities, executives and owners.
+  //   * No rule here reaches C3: the exact-action commit rule arrives with 0042.
+  {
+    actionPrefix: 'decision.read',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+      { role: 'decision_agent', atScope: 'DOMAIN' },
+      { role: 'briefing_agent', atScope: 'DOMAIN' },
+      { role: 'reporting_agent', atScope: 'DOMAIN' },
+    ],
+    obligations: [{ type: 'audit_access' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.monitor',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.outcome',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.close',
+    requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.replay',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'tenant_admin', atScope: 'TENANT' },
+      { role: 'auditor', atScope: 'TENANT' },
+      { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' },
+      { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' },
+      { role: 'simulation_operator', atScope: 'DOMAIN' },
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.option',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.package.',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'decision_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'decision.dissent',
+    requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' },
+      { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' },
+      { role: 'executive', atScope: 'DOMAIN' },
+    ],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+
   // ───────────────────────── Phase 5: simulations ─────────────────────────
   //   * A run is opened, completed and reproduced by a simulation operator or a
   //     twin owner; READ is broad. Nothing here declares or grounds a twin.
@@ -593,9 +829,25 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
   },
   {
+    // CP-6 B1 (0060): the propagation agent — its principal on the identity authority, its
+    // grant on the commit authority — is the tenant or platform administrator's act, exactly
+    // as the collection and decision agents are; revocation is also the domain administrator's.
+    actionPrefix: 'graph.propagation.agent.register',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.propagation.agent.revoke',
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
     // Propagation REPORTS; it decides nothing. It is held by the people who own
     // what it reports on — including the collection_manager, because a Phase 1
-    // correction is what most often triggers it.
+    // correction is what most often triggers it — and by the AUTOMATIC walker
+    // (0060), which holds exactly this decision and no other.
     actionPrefix: 'graph.impact.propagate',
     requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' },
@@ -603,9 +855,46 @@ const BUNDLE_V1: Rule[] = [
       { role: 'strategy_owner', atScope: 'DOMAIN' },
       { role: 'resolution_manager', atScope: 'DOMAIN' },
       { role: 'collection_manager', atScope: 'DOMAIN' },
+      { role: 'propagation_agent', atScope: 'DOMAIN' },
     ],
     requiresPurpose: true,
   },
+  // ───────────────────────── CP-6 B6 (0063): GraphChanged / MemoryCorrected subscriptions ─────────────────────────
+  //   * Registering a subscriber (its principal on the identity authority, its grant on the
+  //     commit authority) is the tenant or platform administrator's act, as every agent
+  //     registration is; pause, resume and revocation are also the domain administrator's;
+  //     a replay is the same set — it moves a cursor and re-drives events, nothing else.
+  //   * Each CONSUMER holds EXACTLY its own apply action (exact match, no prefix): the twin
+  //     subscriber marks twin versions, the forecast subscriber marks forecasts, …, and none
+  //     of them holds any other decision. The ports assert the same action, so a capability
+  //     of one kind cannot drive another kind's effect even inside the process.
+  {
+    actionPrefix: 'graph.subscription.register',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.subscription.control',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'graph.subscription.replay',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  { actionPrefix: 'twin.subscription.apply', exact: true, requiredAnyRole: [{ role: 'twin_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.forecast.subscription.apply', exact: true, requiredAnyRole: [{ role: 'forecast_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.scenario.subscription.apply', exact: true, requiredAnyRole: [{ role: 'scenario_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.subscription.apply', exact: true, requiredAnyRole: [{ role: 'decision_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'graph.retrieval.subscription.apply', exact: true, requiredAnyRole: [{ role: 'retrieval_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'graph.mapping.subscription.apply', exact: true, requiredAnyRole: [{ role: 'mapping_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
     // AUD are durable before any byte moves, and it is not folded into the
@@ -672,6 +961,23 @@ const BUNDLE_V1: Rule[] = [
       { role: 'collection_manager', atScope: 'DOMAIN' },
     ],
     requiresPurpose: true,
+  },
+  {
+    // 0064 (AU-MEM-0039): a LEGAL HOLD on evidence is placed and lifted by the people who answer for the
+    // record's retention — the administrators — never by a collection agent or a correction; a withdrawal
+    // against a held object fails the case before any object is touched.
+    actionPrefix: 'observation.legal_hold.place',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
+  },
+  {
+    actionPrefix: 'observation.legal_hold.lift',
+    exact: true,
+    requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }],
+    requiresPurpose: true,
+    maxConsequence: 'C2',
   },
   {
     actionPrefix: 'observation.correction.apply',
@@ -817,7 +1123,7 @@ export class PdpService {
       };
     }
 
-    const rule = BUNDLE_V1.find((r) => input.action.startsWith(r.actionPrefix));
+    const rule = BUNDLE_V1.find((r) => (r.exact === true ? input.action === r.actionPrefix : input.action.startsWith(r.actionPrefix)));
     if (!rule) {
       // Unknown action: cannot be safely resolved → indeterminate (deny at PEP).
       return { ...base, decision: 'indeterminate', obligations: [], reason: `no rule covers action "${input.action}"` };
@@ -832,6 +1138,16 @@ export class PdpService {
           decision: 'deny',
           obligations: [],
           reason: `consequence class ${input.consequenceClass} exceeds ${rule.maxConsequence}; human-gate runtime not available in Phase 0 (fail closed)`,
+        };
+      }
+    }
+    if (rule.minConsequence !== undefined) {
+      if (CONSEQ_ORDER.indexOf(input.consequenceClass) < CONSEQ_ORDER.indexOf(rule.minConsequence)) {
+        return {
+          ...base,
+          decision: 'deny',
+          obligations: [],
+          reason: `consequence class ${input.consequenceClass} is below ${rule.minConsequence}; ${rule.actionPrefix} is a ${rule.minConsequence} action or nothing`,
         };
       }
     }

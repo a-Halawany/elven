@@ -1,0 +1,2 @@
+synthetic,record_id,line_id,line_stop_days,window_from,window_to,note
+true,SYN-OUT-2024Q1-A1,SYN-LINE-A1,3,2024-01-11,2024-04-10,three days of line stop while the rerouted shipment cleared the Cape; SYNTHETIC — the company does not exist

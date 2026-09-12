@@ -111,11 +111,11 @@ async function bind(app: Phase4Harness['app']): Promise<void> {
 }
 
 /** Register, approve and ACTIVATE THROUGH THE ROUTE (the activation records the schedule and materializes it). */
-async function activateLiveVersion(): Promise<number> {
+async function activateLiveVersion(windowDays = 366): Promise<number> {
   const sourceKey = (await sql<{ source_key: string }>`select source_key from observation.source_contracts_current where source_id = ${h.fx.sourceId}::uuid limit 1`.execute(h.su)).rows[0]?.source_key ?? '';
   const version = h.version + 1;
   await observation.registerSource(h.req(h.registrar, 'observation.source.register', 'SRC', h.fx.sourceId, 'observation'), h.fx.tenantId, h.fx.domainId,
-    { payload: { contract: h.contract(sourceKey, { from: SERIES_START, to: '2021-01-07', windowDays: 366, supersedes: h.version, version }), sourceId: h.fx.sourceId } });
+    { payload: { contract: h.contract(sourceKey, { from: SERIES_START, to: '2021-01-07', windowDays, supersedes: h.version, version }), sourceId: h.fx.sourceId } });
   await h.pipeline.write(h.env(h.manager, 'observation.source.approve', 'SRC', h.fx.sourceId), h.manager,
     { scope: 'DOMAIN', tenantId: h.fx.tenantId, domainId: h.fx.domainId, action: 'observation.source.approve', objectType: 'SRC', objectId: h.fx.sourceId }, ObservationCapability.registry,
     async (cap) => { await cap.approveSource({ sourceId: h.fx.sourceId, contractVersion: version, tenantId: h.fx.tenantId, domainId: h.fx.domainId, decision: 'approve', reason: 'phase 6 fixture', eventId: uuidv7(), correlationId: uuidv7() }); return { result: {}, targetType: 'SRC', targetId: h.fx.sourceId, targetVersion: String(version), outboxEvent: null }; });
@@ -236,6 +236,91 @@ describe('scheduled collection through real Redis (controlled: synthetic publish
     const a = await tick();
     expect(a.outcome, a.reason ?? '').toBe('finished');
   }, 180_000);
+
+  /* ═══════════ the run's authority follows its progress (migration 0057) ═══════════ */
+
+  const agentPrincipalId = async (): Promise<string> =>
+    (await sql<{ principal_id: string }>`select principal_id::text from observation.agents where agent_id = ${h.fx.agentId}::uuid`.execute(h.su)).rows[0]?.principal_id ?? '';
+  const runSessions = async (): Promise<Array<{ id: string; created_at: Date; expires_at: Date; status: string }>> =>
+    (await sql<{ id: string; created_at: Date; expires_at: Date; status: string }>`select id::text, issued_at as created_at, expires_at, status from identity.sessions
+      where principal_id = ${await agentPrincipalId()}::uuid and assurance = 'agent_grant' order by issued_at desc`.execute(h.su)).rows;
+  const extensions = async (sessionId: string): Promise<Array<Record<string, unknown>>> =>
+    (await sql<{ metadata: Record<string, unknown> }>`select event -> 'metadata' as metadata from audit.audit_events
+      where event_type = 'identity.agent_session_extended' and event ->> 'target_id' = ${sessionId} order by occurred_at`.execute(h.su)).rows.map((r) => r.metadata);
+
+  it('the run session opens with a bounded expiry and is EXTENDED by each committed page: a walk keeps its authority as long as it keeps walking', async () => {
+    /*
+     * The demonstration's finding (2026-09-10): a 12,856-event walk outlived its session's fixed
+     * 15-minute expiry; every admission after 900 s was refused as "authority insufficient"
+     * and the run read as a stall. Here a new version opens a backfill window of several
+     * pages; each page checkpoint extends the session through identity.agent_session_extend.
+     */
+    await activateLiveVersion(2); // the same seven-day window in two-day pages: several page checkpoints
+    const a = await tick(); // a new contract version walks its window from the beginning
+    expect(a.outcome, a.reason ?? '').toBe('finished');
+    const events = await runEvents(a.run_id as string);
+    const pages = events.filter((e) => e.event === 'run.checkpointed' && e.details['page'] === true).length;
+    expect(pages, `the backfill window did not produce page checkpoints; nothing to extend on (events: ${events.map((e) => e.event).join(',')})`).toBeGreaterThanOrEqual(1);
+    const session = (await runSessions())[0];
+    expect(session).toBeDefined();
+    const ext = await extensions(session?.id ?? '');
+    expect(ext.length, 'no extension was recorded for the run session').toBe(pages);
+    expect(ext.every((m) => m['extended_by'] === 'run progress (page checkpoint)' && m['agent_id'] === h.fx.agentId), 'an extension names its cause and the agent').toBe(true);
+    // The session's expiry is the LAST extension's, past the opening expiry.
+    const opened = new Date(session?.created_at as Date).getTime();
+    const expires = new Date(session?.expires_at as Date).getTime();
+    const lastExt = new Date(String(ext[ext.length - 1]?.['expires_at'])).getTime();
+    expect(Math.abs(expires - lastExt), 'the session does not carry the expiry the last extension recorded').toBeLessThan(2_000);
+    expect(expires - opened, 'the extension did not move the expiry past the opening bound').toBeGreaterThan(900_000);
+  }, 180_000);
+
+  it('a run whose session EXPIRED mid-walk is refused at its next effect, ends failed, and the attempt says the terminal event could not be recorded — nothing reads as a stall', async () => {
+    await settle();
+    // The transport pauses on its first request, so the run has OPENED (run.started committed,
+    // the session minted) and is waiting on the publisher when its session is expired
+    // underneath it — fixture scaffolding on identity.sessions, labelled as such.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    let served = 0;
+    orchestrator.useEgressForTests(async (a) => { served += 1; if (served === 1) await gate; return egress(a); });
+    const n0 = (await attempts()).length;
+    const runsBefore = (await sql<{ run_id: string }>`select run_id::text from observation.collection_runs_current where source_id = ${h.fx.sourceId}::uuid`.execute(h.su)).rows.map((r) => r.run_id);
+    await scheduler.promoteDelayedForTests(h.fx.tenantId, h.fx.domainId);
+    let opened: { run_id: string; state: string } | undefined;
+    for (let i = 0; i < 400 && opened === undefined; i += 1) {
+      opened = (await sql<{ run_id: string; state: string }>`select run_id::text, state from observation.collection_runs_current
+        where source_id = ${h.fx.sourceId}::uuid and state = 'started'`.execute(h.su)).rows.find((r) => !runsBefore.includes(r.run_id));
+      if (opened === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(opened, 'the run did not open').toBeDefined();
+    const session = (await runSessions())[0];
+    await sql`update identity.sessions set expires_at = clock_timestamp() - interval '1 second' where id = ${session?.id ?? ''}::uuid`.execute(h.su);
+    try {
+      release();
+      const rows = await waitForAttempts(n0 + 1, 120_000);
+      await settle();
+      const a = rows.find((r) => r.run_id === opened?.run_id) ?? (await attempts())[0] as Attempt;
+      expect(a.outcome).toBe('failed');
+      expect(a.reason ?? '', 'the attempt names the refusal').toMatch(/authority insufficient/);
+      expect(a.reason ?? '', 'the attempt says the terminal event could not be recorded, and what follows').toMatch(/terminal event NOT recorded/);
+      const ev = (await runEvents(opened?.run_id as string)).map((e) => e.event);
+      expect(ev, 'a run without authority admitted something').not.toContain('item.admitted');
+      expect(ev.filter((e) => /^run\.(finished|failed|cancelled|budget_exceeded)$/.test(e)), 'a terminal event was written without authority').toEqual([]);
+      const row = (await sql<{ state: string }>`select state from observation.collection_runs_current where run_id = ${opened?.run_id as string}::uuid`.execute(h.su)).rows[0];
+      expect(row?.state, "the projection stays 'started' — the sweeper's to reconcile, and the attempt row says so").toBe('started');
+    } finally {
+      orchestrator.useEgressForTests(egress);
+      // Fixture scaffolding, no governed route: the source lease the displaced run still holds
+      // is aged past its expiry so the next attempt takes it over (0051's takeover path) instead
+      // of waiting 900 s; the run row is left for the sweeper, as it would be in the field.
+      await sql`update observation.source_run_leases set heartbeat_at = heartbeat_at - make_interval(secs => lease_seconds + 60)
+        where source_id = ${h.fx.sourceId}::uuid`.execute(h.su);
+    }
+    const next = await tick();
+    expect(next.outcome, `the next attempt did not take the expired lease over: ${next.reason ?? ''}`).toBe('finished');
+    const started = (await runEvents(next.run_id as string)).find((e) => e.event === 'run.started');
+    expect((started?.details['lease'] as Record<string, unknown> | undefined)?.['took_over_from_run'], 'the takeover of the displaced run is recorded on the next run').toBe(opened?.run_id);
+  }, 240_000);
 
   it('a FAILED run: the publisher answers 500; a run is opened, ends failed, and the attempt says so', async () => {
     await settle();

@@ -1,0 +1,3 @@
+recorded inode field: [  File: "/tmp/owned"|    ID: e92531088c0…]
+owned set: []
+owned_dir_in_cleanup_set=false

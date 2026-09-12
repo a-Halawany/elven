@@ -13,11 +13,12 @@
  * unvalidated forecast is never presented as anything else.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
-import { errorBody } from '@eye/contracts';
+import { errorBody, type Envelope } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
+import { forecastSupersededEvent } from '../graph/subscriptions/change-events.js';
 import { PredictionCapability } from './prediction.capabilities.js';
 import { SeriesService, type Reader } from './series/series.service.js';
 import { ForecastingService, HORIZONS } from './forecasting/forecasting.service.js';
@@ -179,9 +180,15 @@ export class PredictionController {
           assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter((x): x is string => typeof x === 'string') : [],
           refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
-        return { result: r, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
-                 outboxEvent: { eventType: 'ForecastIssued', payload: { forecast_id: r.forecastId, series_key: p.seriesKey,
-                                horizon: p.horizon, method: r.method, validation_state: r.validationState, label } } };
+        // 0065: a re-issue that superseded the previous forecast for the same question publishes GraphChanged/forecast.superseded
+        // beside ForecastIssued, in the same transaction — the consumers resting on the old forecast learn of the recomputation.
+        const superseded = await cap.supersededBy({ forecastId: r.forecastId });
+        const events = superseded === null ? [] : [forecastSupersededEvent({ supersededForecastId: superseded.forecast_id, newForecastId: r.forecastId, subjectEntityId: superseded.subject_entity_id,
+          subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'forecast.superseded' }), actor: principal.principalId })];
+        return { result: { ...r, supersededForecastId: superseded?.forecast_id ?? null }, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
+                 outboxEvent: { eventType: 'ForecastIssued', payload: { schema_version: 'v1', forecast_id: r.forecastId, series_key: p.seriesKey,
+                                horizon: p.horizon, method: r.method, validation_state: r.validationState, label, superseded_forecast_id: superseded?.forecast_id ?? null } },
+                 outboxEvents: events };
       });
     return { forecast: out.result, receipt: receipt(out) };
   }
@@ -296,7 +303,7 @@ export class PredictionController {
   @Post('/indicators/define')
   async defineIndicator(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
-    @Body() body: { payload?: { seriesKey?: string; description?: string; comparator?: string; threshold?: number; consecutiveDays?: number; owner?: string } },
+    @Body() body: { payload?: { seriesKey?: string; description?: string; comparator?: string; threshold?: number; consecutiveDays?: number; owner?: string; observesFrom?: string | null } },
   ) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
@@ -310,6 +317,7 @@ export class PredictionController {
         const r = await this.scenarios.defineIndicator(cap, scope, {
           seriesKey: p.seriesKey as string, description: p.description as string, comparator: p.comparator as string,
           threshold: Number(p.threshold), consecutiveDays: Number(p.consecutiveDays ?? 1), owner: p.owner ?? principal.principalId,
+          observesFrom: p.observesFrom ?? null,
         }, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'IND', targetId: r.indicatorId, targetVersion: '1', outboxEvent: null };
       });
@@ -350,17 +358,25 @@ export class PredictionController {
     if (timing !== 'live' && timing !== 'replay') {
       throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, "timing must be 'live' or 'replay'"), 400);
     }
+    // The series is assembled BEFORE the write (its governed retrievals may take minutes on a long
+    // record); the write's bounded capability then covers only the port calls.
+    const seriesKey = (await this.pipeline.consequentialRead(
+      { ...envelope, message_id: newId(), action: 'prediction.read', side_effect_class: 'none' } as Envelope, principal,
+      this.route(tenantId, domainId, 'prediction.read', 'IND', indicatorId), PredictionCapability.read,
+      async (cap) => this.scenarios.seriesKeyOf(cap, indicatorId, envelope.correlation_id))).result;
+    const assembled = await this.scenarios.assembleForEvaluation(reader, seriesKey, knownAt, envelope.correlation_id);
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'prediction.indicator.evaluate', 'IND', indicatorId),
       PredictionCapability.evaluation,
       async (cap, scope) => {
-        const r = await this.scenarios.evaluate(cap, scope, reader, indicatorId, knownAt, principal.principalId, envelope.correlation_id);
+        const r = await this.scenarios.evaluate(cap, scope, assembled, indicatorId, knownAt, principal.principalId, envelope.correlation_id);
         // Live warnings expire on the audit clock; replayed ones only against THIS evaluation's replay clock.
         const expired = await cap.expireWarnings({ tenantId, domainId, replayAsOf: timing === 'replay' ? r.replayAsOf : null,
           actor: principal.principalId, correlationId: envelope.correlation_id });
         return { result: { ...r, expiredWarnings: expired }, targetType: 'IND', targetId: indicatorId, targetVersion: '1', outboxEvent: null };
       });
-    const warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: string; branchId: string; recovered: boolean }> = [];
+    const warnings: Array<{ warningId: string; routedTo: string; raisedAsOf: string; closesAt: string; timely: boolean | null; decisionMissed: boolean; timingMode: string; branchId: string; recovered: boolean;
+                            level: string; levelVersion: number; urgency: string; response: string; consequenceClass: string; consequenceClassSource: string; opClass: string }> = [];
     const failed: Array<{ branchId: string; flipEventId: string; reason: string }> = [];
     const due = [...out.result.flips.map((f) => ({ flip: f, recovered: false })), ...out.result.owed.map((f) => ({ flip: f, recovered: true }))];
     for (const { flip, recovered } of due) {
@@ -371,12 +387,15 @@ export class PredictionController {
           this.route(tenantId, domainId, 'prediction.warning.raise', 'WRN', warningId),
           PredictionCapability.warning,
           async (cap, scope) => {
+            // The raise's authority class is the ENVELOPE's (the route sets none): recorded beside the label, never derived from it.
             const r = await this.scenarios.warnForFlip(cap, scope, flip, confidence, principal.principalId,
-              envelope.correlation_id, envelope.purpose_id ?? 'prediction', timing, new Date(), warningId);
+              envelope.correlation_id, envelope.purpose_id ?? 'prediction', timing, new Date(), warningId, String(envelope.consequence_class ?? 'C1'));
             return { result: r, targetType: 'WRN', targetId: r.warningId, targetVersion: '1',
-                     outboxEvent: { eventType: 'EarlyWarningRaised', payload: { warning_id: r.warningId, routed_to: r.routedTo,
+                     outboxEvent: { eventType: 'EarlyWarningRaised', payload: { schema_version: 'v1', warning_id: r.warningId, routed_to: r.routedTo,
                                     raised_as_of: r.raisedAsOf, closes_at: r.closesAt, timing_mode: r.timingMode, timely: r.timely, decision_missed: r.decisionMissed,
-                                    branch_id: flip.branchId, flip_event_id: flip.flipEventId } } };
+                                    branch_id: flip.branchId, flip_event_id: flip.flipEventId,
+                                    level: r.level, level_version: r.levelVersion, urgency: r.urgency, consequence_class: r.consequenceClass,
+                                    consequence_class_source: r.consequenceClassSource, op_class: r.opClass } } };
           });
         warnings.push({ ...w.result, branchId: flip.branchId, recovered });
       } catch (e) {
@@ -501,7 +520,7 @@ export class PredictionController {
           forecasts: { total: forecasts.length, by_state: count(forecasts, 'state'), by_validation: count(forecasts, 'validation_state'),
                        by_label: count(forecasts, 'label'), attention: forecasts.filter((f) => f['attention_state'] !== 'none').length },
           scenarios: { total: scenarios.length, branches: branches.length, flipped: branches.filter((b) => b['state'] === 'flipped').length },
-          warnings: { total: warnings.length, by_state: count(warnings, 'state') },
+          warnings: { total: warnings.length, by_state: count(warnings, 'state'), by_level: count(warnings, 'level') },
           outcomes: outcomes.length, backtests: backtests.length,
         };
       });

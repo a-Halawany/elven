@@ -1,0 +1,5 @@
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  3 passed (3)
+      Tests  81 passed (81)
+   Start at  03:14:43
+   Duration  38.59s (transform 487ms, setup 24ms, import 1.44s, tests 36.90s, environment 0ms)

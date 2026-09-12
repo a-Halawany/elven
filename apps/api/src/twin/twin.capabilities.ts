@@ -116,8 +116,13 @@ export interface AdmitWrites extends TwinReads {
                       actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
+/** CP-6 B6 (0063): the twin SUBSCRIBER's effect — a citing or boundary-bound admitted version goes unverified once per cause. */
+export interface TwinSubscriberWrites extends TwinReads {
+  applySubscriptionMark(a: { twinId: string; tenantId: string; domainId: string; version: number; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites {
+class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites, TwinSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readTwins(): any { return this.from('twin.twins_current'); }
@@ -138,7 +143,10 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
     const rows = await this.call<CitedObjectRow>(sql`
       select o.object_id::text, o.object_type, o.object_version::int, o.content_digest, o.lifecycle_state, o.truth_state,
              o.synthetic_state, o.classification, o.rights_profile, o.residency_profile, o.retention_profile, o.access_policy_ref,
-             to_char(o.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as recorded_at,
+             -- RECORD time at the precision the record clock keeps (microseconds): the record-time rule
+             -- is judged here exactly as twin.open_version's carry-forward judges it (0035), never a
+             -- millisecond laxer.
+             to_char(o.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as recorded_at,
              to_char(o.observation_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as observation_time,
              to_char(o.event_time at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as event_time,
              o.quality_state, o.payload
@@ -225,6 +233,11 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
     await this.call(sql`select twin.mark_unverified(${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int,
       ${a.reason}, ${a.invalidationId}::uuid, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+  async applySubscriptionMark(a: Parameters<TwinSubscriberWrites['applySubscriptionMark']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select twin.apply_subscription_mark(${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int,
+      ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -234,4 +247,5 @@ export const TwinCapability = {
   version(tx: Tx, action: string): VersionWrites { return new TwinCapabilityImpl(tx, action); },
   ground(tx: Tx, action: string): GroundWrites { return new TwinCapabilityImpl(tx, action); },
   admit(tx: Tx, action: string): AdmitWrites { return new TwinCapabilityImpl(tx, action); },
+  subscriber(tx: Tx, action: string): TwinSubscriberWrites { return new TwinCapabilityImpl(tx, action); },
 };

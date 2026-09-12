@@ -50,6 +50,8 @@ export interface PredictionReads {
   readWarnings(): any;
   readWarningEvents(): any;
   readStrategy(): any;
+  /** CP-6 B6 (0063): the dependency rows a forecast or scenario rests on, so the subscriber selects by them. */
+  readDependencies(): any;
   /**
    * The evidence VERSIONS a series can read at an instant: for every evidence
    * object of the source, the highest version recorded at or before `knownAt`.
@@ -59,6 +61,10 @@ export interface PredictionReads {
   evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]>;
   /** One exact evidence version with the controls it carries — the version a flip CITED, whatever superseded it since. */
   evidenceVersion(a: { objectId: string; version: number }): Promise<EvidenceVersionRow | undefined>;
+  /** B2 (0061): the ONE derivation, consequence class → level under the current version; the versions and rows themselves. */
+  deriveWarningLevel(consequenceClass: string): Promise<{ version: number; level: string; urgency: string; response: string; impact: string }>;
+  readWarningLevelVersions(): any;
+  readWarningLevelDerivations(): any;
   /** Flipped branches still owed a warning — the obligation a failed raise left behind. */
   owedFlips(): Promise<Array<{ branch_id: string; flip_event_id: string; observation_at: string; value: number;
                                evidence_object_id: string; evidence_version: number }>>;
@@ -90,6 +96,10 @@ export interface ForecastWrites extends PredictionReads {
     skill: unknown | null; statement: string; backtestId: string | null; controls: unknown;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /** 0065: the forecast this issue superseded (the previous issued one for the same question), if any. */
+  supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null>;
+  /** 0065: what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority. */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 
 export interface BacktestWrites extends PredictionReads {
@@ -123,7 +133,12 @@ export interface ScenarioWrites extends PredictionReads {
   addBranch(a: {
     branchId: string; tenantId: string; domainId: string; scenarioId: string; name: string; kind: string;
     statement: string; indicatorId: string | null; signpost: string | null; owner: string;
-    reviewCadence: string; responseHours: number; consequence: string; decisionDeadline: string | null;
+    reviewCadence: string; responseHours: number; consequence: string;
+    /** B2 (0061): the C0–C4 class of the consequence the flip reaches, declared by the declarer, or null (assumed at raise time). */
+    consequenceClass: string | null;
+    decisionDeadline: string | null;
+    /** Scenario kind vocabulary v1 (migration 0058): the label of a user-defined kind, how the branch diverges from the baseline, its own assumptions. */
+    kindLabel: string | null; divergence: string | null; assumptions: Array<{ statement: string; basis?: string | null }>;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
@@ -131,8 +146,10 @@ export interface ScenarioWrites extends PredictionReads {
 export interface IndicatorWrites extends PredictionReads {
   defineIndicator(a: {
     indicatorId: string; tenantId: string; domainId: string; seriesKey: string; description: string;
-    comparator: string; threshold: number; consecutiveDays: number; owner: string; actor: string;
-    correlationId: string;
+    comparator: string; threshold: number; consecutiveDays: number; owner: string;
+    /** The first observation day the indicator watches (migration 0059); null watches from the series' beginning. */
+    observesFrom: string | null;
+    actor: string; correlationId: string;
   }): Promise<void>;
 }
 
@@ -156,6 +173,8 @@ export interface WarningWrites extends PredictionReads {
     forecastId: string | null; title: string; evidence: unknown[]; consequence: string; confidence: number;
     opensAt: string; closesAt: string; routedTo: string; flipEventId: string | null; raisedAsOf: string;
     timingMode: 'live' | 'replay'; decisionDeadline: string | null; timely: boolean | null; decisionMissed: boolean; controls: unknown;
+    /** B2 (0061): what the canonical object says; the port derives the same and refuses a disagreement. */
+    consequenceClass: string; consequenceClassSource: 'declared' | 'assumed'; level: string; levelVersion: number; urgency: string; opClass: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
 }
@@ -170,9 +189,15 @@ export interface AcknowledgeWrites extends PredictionReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/** CP-6 B6 (0063): the forecast and scenario SUBSCRIBERS' effects — attention marked once per object, never re-issued. */
+export interface PredictionSubscriberWrites extends PredictionReads {
+  markForecastAttention(a: { forecastId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+  markScenarioAttention(a: { scenarioId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+}
+
 class PredictionCapabilityImpl extends PredictionCore
   implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, ScenarioWrites,
-             IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites {
+             IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites, PredictionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readSeries(): any { return this.from('prediction.series_registry'); }
@@ -188,6 +213,7 @@ class PredictionCapabilityImpl extends PredictionCore
   readWarnings(): any { return this.from('prediction.warnings_current'); }
   readWarningEvents(): any { return this.from('prediction.warning_events'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
+  readDependencies(): any { return this.from('graph.dependencies'); }
 
   async evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]> {
     return this.call<EvidenceVersionRow>(sql`
@@ -265,6 +291,16 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
+  async supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null> {
+    const rows = await this.call<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null }>(sql`
+      select forecast_id::text, quantiles, subject_entity_id::text from prediction.forecasts_current where superseded_by = ${a.forecastId}::uuid and state = 'superseded' order by known_at desc limit 1`);
+    return rows[0] ?? null;
+  }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
+
   async recordBacktest(a: Parameters<BacktestWrites['recordBacktest']>[0]): Promise<void> {
     await this.call(sql`select prediction.record_backtest(
       ${a.backtestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.seriesKey}, ${a.horizonCode},
@@ -295,15 +331,16 @@ class PredictionCapabilityImpl extends PredictionCore
     await this.call(sql`select prediction.add_branch(
       ${a.branchId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.name}, ${a.kind},
       ${a.statement}, ${a.indicatorId}::uuid, ${a.signpost}, ${a.owner}::uuid, ${a.reviewCadence},
-      ${a.responseHours}, ${a.consequence}, ${a.decisionDeadline}::timestamptz,
+      ${a.responseHours}, ${a.consequence}, ${a.consequenceClass}, ${a.decisionDeadline}::timestamptz,
+      ${a.kindLabel}, ${a.divergence}, ${JSON.stringify(a.assumptions)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async defineIndicator(a: Parameters<IndicatorWrites['defineIndicator']>[0]): Promise<void> {
     await this.call(sql`select prediction.define_indicator(
       ${a.indicatorId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.seriesKey}, ${a.description},
-      ${a.comparator}, ${a.threshold}, ${a.consecutiveDays}, ${a.owner}::uuid, ${a.actor}::uuid,
-      ${a.correlationId}::uuid)`);
+      ${a.comparator}, ${a.threshold}, ${a.consecutiveDays}, ${a.owner}::uuid, ${a.observesFrom}::date,
+      ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 
   async evaluateIndicator(a: Parameters<EvaluationWrites['evaluateIndicator']>[0]) {
@@ -328,8 +365,21 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.opensAt}::timestamptz, ${a.closesAt}::timestamptz, ${a.routedTo}::uuid,
       ${a.flipEventId}::uuid, ${a.raisedAsOf}::timestamptz, ${a.timingMode}, ${a.decisionDeadline}::timestamptz,
       ${a.timely}, ${a.decisionMissed}, ${JSON.stringify(a.controls ?? {})}::jsonb,
+      ${a.consequenceClass}, ${a.consequenceClassSource}, ${a.level}, ${a.levelVersion}, ${a.urgency}, ${a.opClass},
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+
+  async deriveWarningLevel(consequenceClass: string): Promise<{ version: number; level: string; urgency: string; response: string; impact: string }> {
+    const rows = await this.call<{ out_version: number; out_level: string; out_urgency: string; out_response: string; out_impact: string }>(
+      sql`select out_version, out_level, out_urgency, out_response, out_impact from prediction.derive_warning_level(${consequenceClass}, null)`);
+    const r = rows[0];
+    if (r === undefined) throw new Error(`no warning level derivation for class ${consequenceClass}`);
+    return { version: r.out_version, level: r.out_level, urgency: r.out_urgency, response: r.out_response, impact: r.out_impact };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readWarningLevelVersions(): any { return this.from('prediction.warning_level_versions'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readWarningLevelDerivations(): any { return this.from('prediction.warning_level_derivations'); }
 
   async acknowledgeWarning(a: Parameters<AcknowledgeWrites['acknowledgeWarning']>[0]): Promise<string> {
     const rows = await this.call<{ s: string }>(sql`select prediction.acknowledge_warning(
@@ -337,10 +387,19 @@ class PredictionCapabilityImpl extends PredictionCore
       ${a.eventId}::uuid, ${a.correlationId}::uuid) as s`);
     return String(rows[0]?.s ?? 'acknowledged');
   }
+  async markForecastAttention(a: Parameters<PredictionSubscriberWrites['markForecastAttention']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select prediction.mark_forecast_attention(${a.forecastId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+  async markScenarioAttention(a: Parameters<PredictionSubscriberWrites['markScenarioAttention']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select prediction.mark_scenario_attention(${a.scenarioId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const PredictionCapability = {
+  subscriber(tx: Tx, action: string): PredictionSubscriberWrites { return new PredictionCapabilityImpl(tx, action); },
   read(tx: Tx, action: string): PredictionReads { return new PredictionCapabilityImpl(tx, action); },
   series(tx: Tx, action: string): SeriesWrites { return new PredictionCapabilityImpl(tx, action); },
   forecast(tx: Tx, action: string): ForecastWrites { return new PredictionCapabilityImpl(tx, action); },

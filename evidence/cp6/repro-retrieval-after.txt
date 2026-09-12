@@ -1,0 +1,7 @@
+# Codex finding 3 — AFTER (0064; database eye_verify5_20260912 created and migrated 0001–0064): apps/api/test/int/phase6-repro-retrieval-retry.test.ts (as repro-retrieval-retry.test.ts when captured)
+healthy: state=applied items_applied=["projections.verified"] checks=0
+mismatch: state=unresolved items_applied=[] last_error=projections: retrieval check 01a09561-8719-706e-ad1d-f486a5c7e547: 1 projection  checks=1 events=received,applying,item.unresolved,unresolved
+re-drive: reDriven=01a09560:unresolved 01a09561:unresolved
+after re-drive: state=unresolved deliveries=2 items_applied=[] last_error=projections: retrieval check 01a09561-887f-7539-b404-975af12e9dbc: 1 projection  checks=1,1 events=received,applying,item.unresolved,unresolved,received,applying,item.unresolved,unresolved
+RESULT: projection still drifted=true · delivery unresolved · checks recorded 2 (mismatched sum 2) · second check made=true
+Tests  1 passed (1)

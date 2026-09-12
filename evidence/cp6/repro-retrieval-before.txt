@@ -1,0 +1,9 @@
+# Codex finding 3 — BEFORE (code at fcbdefc, database eye_verify3_20260912 at 0063): apps/api/test/int/phase6-repro-retrieval-retry.test.ts (as repro-retrieval-retry.test.ts when captured)
+healthy: state=applied items_applied=["projections.verified"] checks=0
+mismatch: state=failed items_applied=["projections.mismatched"] last_error=retrieval check 01a09545-4c5e-79d0-9351-2591c3cf07ae: 1 projection row(s) differ checks=1 events=received,applying,item.applied,failed
+re-drive: reDriven=01a09545:failed
+after re-drive: state=applied deliveries=2 items_applied=["projections.mismatched"] last_error=null checks=1 events=received,applying,item.applied,failed,received,applied
+RESULT: projection still drifted=true · delivery applied · checks recorded 1 (mismatched sum 1) · second check made=false
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: FINDING REPRODUCED: the re-drive cleared the failure without a second check: expected true to be false // Object.is equality
+Tests  1 failed (1)

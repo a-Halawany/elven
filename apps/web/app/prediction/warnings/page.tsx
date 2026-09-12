@@ -10,6 +10,7 @@ import { useShell } from '../layout';
 import { prediction, type WarningRow } from '../../../lib/prediction';
 import { ControlsLine } from '../forecasts/page';
 import { RESPONSE_TIMING_LABEL, RESPONSE_TIMING_TOKEN, responseTiming } from '../../../lib/warning-timing';
+import { LEVEL_TOKEN, URGENCY_LABEL, levelBadge, levelOf } from '../../../lib/warning-level';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -19,6 +20,25 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
  * warning's is. Whether the answer came before the window closed is the record's
  * `response_timely`, never inferred here.
  */
+/**
+ * The level (0061): glyph + text + colour, never colour alone; a warning raised before the derivation
+ * says so. Stated beside the class it came from and the class of the operation that raised it —
+ * the label never changes the authority a response requires.
+ */
+function LevelBadge({ w }: { w: WarningRow }) {
+  const l = levelOf(w);
+  return <span style={{ color: `var(${LEVEL_TOKEN[l]})`, fontWeight: l === 'high' || l === 'critical' ? 650 : 500, whiteSpace: 'nowrap' }}>{levelBadge(w)}</span>;
+}
+function LevelLine({ w }: { w: WarningRow }) {
+  if (levelOf(w) === 'none') return <span style={{ color: 'var(--eye-color-ink-muted)' }}>— the level is a display label derived at raise time; this warning predates derivation v1 and carries none.</span>;
+  const urgency = w.urgency ?? null;
+  return (
+    <span style={{ color: 'var(--eye-color-ink-muted)' }}>
+      — urgency {urgency ?? '?'}{urgency !== null && URGENCY_LABEL[urgency] !== undefined ? ` (${String(URGENCY_LABEL[urgency]).split(' — ')[1]})` : ''}; derived from consequence class <Mono>{w.consequence_class ?? '?'}</Mono> ({w.consequence_class_source ?? '?'}); raised under a <Mono>{w.op_class ?? '?'}</Mono> operation — the label changes no authority.
+    </span>
+  );
+}
+
 function WindowState({ w, now }: { w: WarningRow; now: number }) {
   const replay = (w.timing_mode ?? 'live') === 'replay';
   if (w.state === 'acknowledged') {
@@ -89,10 +109,11 @@ export default function WarningsPage() {
       {rows.length === 0 ? <Empty>No warning has been raised.</Empty> : (
         <table className="eye-table" style={tableStyle}>
           <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{rows.length} warning(s)</caption>
-          <thead><tr><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Issuance</Th><Th>Confidence</Th></tr></thead>
+          <thead><tr><Th>Level</Th><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Issuance</Th><Th>Confidence</Th></tr></thead>
           <tbody>
             {rows.map((w) => (
               <tr key={w.warning_id}>
+                <Td><LevelBadge w={w} /></Td>
                 <Td><button type="button" onClick={() => { setOpen(w); setNote(''); }}
                   style={{ background: 'none', border: 'none', padding: 0, color: 'var(--eye-color-accent-default)', cursor: 'pointer', textDecoration: 'underline', textAlign: 'start' }}>
                   {w.title}</button></Td>
@@ -110,11 +131,12 @@ export default function WarningsPage() {
       {open === null ? null : (
         <section aria-labelledby="wrn-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
           <h2 id="wrn-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{open.title}</h2>
+          <p><LevelBadge w={open} /> <LevelLine w={open} /></p>
           <WindowState w={open} now={now} />
           <p><Timing w={open} /></p>
           <p><ControlsLine controls={open.controls} /></p>
           <dl>
-            <DefinitionRow term="Consequence">{open.consequence}</DefinitionRow>
+            <DefinitionRow term="Consequence">{open.consequence}{open.consequence_class ? <> — class <Mono>{open.consequence_class}</Mono> ({open.consequence_class_source === 'assumed' ? 'assumed: the branch declared none, so the more restrictive plausible class applies' : 'declared on the branch'})</> : null}</DefinitionRow>
             <DefinitionRow term="Evidence">
               <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>
                 {open.evidence.map((e, i) => <li key={i}><Mono>{JSON.stringify(e)}</Mono></li>)}

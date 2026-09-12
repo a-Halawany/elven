@@ -56,21 +56,30 @@ export default function ScenariosPage() {
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
           <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th></tr></thead>
+            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th></tr></thead>
             <tbody>
               {s.branches.map((b) => {
                 const i = ind(b.indicator_id);
                 return (
                   <tr key={b.branch_id}>
                     <Td>{b.name}</Td>
-                    <Td mono>{b.kind}</Td>
+                    {/* The kind is a member of the versioned vocabulary (v1: the eight of Volume 0 ch. 14); a
+                        user-defined kind shows the name it gave itself beside the vocabulary word. */}
+                    <Td><Mono>{b.kind}</Mono>{b.kind === 'user-defined' && b.kind_label ? <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>“{b.kind_label}”</div> : null}
+                      {b.kind_vocabulary_version === undefined || b.kind_vocabulary_version === null ? null : <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>vocabulary v{b.kind_vocabulary_version}</div>}</Td>
+                    <Td>{b.divergence ? <div>{b.divergence}</div> : <div style={{ color: 'var(--eye-color-ink-muted)' }}>{b.kind === 'baseline' ? 'the baseline' : 'diverges by its indicator'}</div>}
+                      {Array.isArray(b.assumptions) && b.assumptions.length > 0 ? (
+                        <ul aria-label={`assumptions of ${b.name}`} style={{ margin: 'var(--eye-space-4) 0 0', paddingInlineStart: 'var(--eye-space-16)', fontSize: 'var(--eye-type-label-sm)' }}>
+                          {b.assumptions.map((a, k) => <li key={k}>{a.statement}{a.basis ? <span style={{ color: 'var(--eye-color-ink-muted)' }}> — {a.basis}</span> : null}</li>)}
+                        </ul>) : <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no assumptions declared</div>}</Td>
                     <Td><BranchState state={b.state} />{b.flipped_at === null ? null : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>{fmtInstant(b.flipped_at)} · event <Mono>{String(b.flip_event_id).slice(0, 8)}…</Mono></div>}
                       {b.warning_state === 'owed' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-critical)', fontWeight: 650 }}>⚠ WARNING OWED — the raise failed; the next evaluation retries it</div> : null}</Td>
-                    <Td>{i === null ? '—' : <>{i.series_key} {i.comparator} {i.threshold} for {i.consecutive_days} day(s){i.breached ? ' · BREACHED' : ` · streak ${i.streak}`}</>}</Td>
+                    <Td>{i === null ? '—' : <>{i.series_key} {i.comparator} {i.threshold} for {i.consecutive_days} day(s){i.observes_from ? ` · from ${String(i.observes_from).slice(0, 10)}` : ''}{i.breached ? ' · BREACHED' : ` · streak ${i.streak}`}</>}</Td>
                     <Td>{b.signpost ?? '—'}</Td>
                     <Td mono>{b.owner_principal_id.slice(0, 8)}…</Td>
                     <Td>{b.response_window_hours} h{b.decision_deadline === undefined || b.decision_deadline === null ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no deadline · T3 unmeasured</div> : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>by {fmtInstant(b.decision_deadline)}</div>}</Td>
-                    <Td>{b.consequence}</Td>
+                    <Td>{b.consequence}{b.consequence_class ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class <Mono>{b.consequence_class}</Mono> (declared)</div>
+                      : <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class not declared — a warning assumes C2 and says so</div>}</Td>
                   </tr>
                 );
               })}

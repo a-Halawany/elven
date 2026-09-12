@@ -612,7 +612,12 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     expect(new Date(warning?.closes as string).getTime() - new Date(warning?.opens as string).getTime()).toBe(48 * 3_600_000);
     expect((warning?.evidence as unknown[]).length).toBeGreaterThanOrEqual(2);
     const wobj = (await sql<{ schema_ref: string }>`select schema_ref from objects.canonical_objects where object_id = ${w.warningId}::uuid`.execute(su)).rows[0];
-    expect(wobj?.schema_ref).toBe('WRN@v1');
+    expect(wobj?.schema_ref).toBe('WRN@v2');
+    // B2 (0061): the branch declared no consequence class, so the warning is classed C2 ASSUMED — level normal, urgency
+    // prompt — under derivation v1; the raise ran under the envelope's C2 authority context, recorded beside the label.
+    const lvl = (await sql<{ level: string; level_version: number; urgency: string; consequence_class: string; consequence_class_source: string; op_class: string }>`
+      select level, level_version, urgency, consequence_class, consequence_class_source, op_class from prediction.warnings_current where warning_id = ${w.warningId}::uuid`.execute(su)).rows[0];
+    expect(lvl).toEqual({ level: 'normal', level_version: 1, urgency: 'prompt', consequence_class: 'C2', consequence_class_source: 'assumed', op_class: 'C2' });
 
     // Acknowledged by a person, inside the window.
     const ack = await controller.acknowledgeWarning(req(owner, 'prediction.warning.acknowledge', 'WRN', w.warningId), fx.tenantId, fx.domainId,
@@ -625,14 +630,111 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     expect(again.evaluation.flips.length).toBe(0);
   }, 120_000);
 
+  it('C-022 · the eight scenario kinds (vocabulary v1): every kind is declared with its divergence and its own assumptions; a user-defined disruption flips on its indicator; a ninth kind and a nameless user-defined kind are refused (AU-PRD-0021)', async () => {
+    const ind = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits fall below 40 per day for five consecutive days (C-022 case)', comparator: '<',
+                   threshold: 40, consecutiveDays: 5, owner: ownerId } }) as { indicator: { indicatorId: string } };
+    // RECOVERY IS "ABOVE A LEVEL AFTER THE COLLAPSE" (migration 0059): the upside branch watches its
+    // own indicator, bounded to observations from the day the disruption ended; the other flipping
+    // branches share the deterioration indicator.
+    const rec = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits back above 50 per day for five consecutive days after the disruption', comparator: '>',
+                   threshold: 50, consecutiveDays: 5, owner: ownerId, observesFrom: DISRUPTION_TO } }) as { indicator: { indicatorId: string } };
+    const flipping = (name: string, kind: string, extra: Record<string, unknown> = {}) => ({
+      name, kind, statement: `${name}: transits stay below 40/day for five days`, indicatorId: ind.indicator.indicatorId,
+      signpost: 'five consecutive days under 40', owner: ownerId, consequence: 'rebook the third shipment before the window closes',
+      responseWindowHours: 48, divergence: `${name} diverges from the baseline in the way its kind names`, ...extra,
+    });
+    const base = { title: 'Corridor over the next quarter — every kind', statement: 'what we expect, and what would change it', forecastId, owner: ownerId, reviewCadence: 'weekly' };
+    const declare = (branches: unknown[]) => controller.declareScenario(req(owner, 'prediction.scenario.declare', 'SCN', null), fx.tenantId, fx.domainId, { payload: { ...base, branches } } as never);
+    const status = async (p: Promise<unknown>): Promise<number> => { try { await p; return 200; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? 500; } };
+
+    // A NINTH kind is refused; a user-defined kind without its name is refused; a disruption without its divergence is refused.
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Weird', 'wildcard')]))).toBe(422);
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Nameless', 'user-defined')]))).toBe(422);
+    expect(await status(declare([{ name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 }, flipping('Silent', 'disruption', { divergence: null })]))).toBe(422);
+
+    // All eight, each with its own assumptions; the user-defined one is a named disruption.
+    const scn = await declare([
+      { name: 'Baseline', kind: 'baseline', statement: 'transits at seasonal level', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72,
+        assumptions: [{ statement: 'the corridor stays open', basis: 'no closure notice on file' }] },
+      flipping('Upside', 'upside', { divergence: null, indicatorId: rec.indicator.indicatorId, statement: 'Upside: transits back above 50/day for five days after the disruption', signpost: 'five consecutive days above 50 once the disruption has ended' }),
+      flipping('Downside', 'downside'),
+      flipping('Disruption', 'disruption', { assumptions: [{ statement: 'a closure lasts at least a week' }] }),
+      flipping('Stress', 'stress', { assumptions: [{ statement: 'two corridors close at once', basis: 'stress design' }] }),
+      flipping('Adversarial', 'adversarial', { assumptions: [{ statement: 'a counterparty withholds capacity deliberately' }] }),
+      flipping('Counterfactual', 'counterfactual', { assumptions: [{ statement: 'the third shipment had been rebooked in October' }] }),
+      flipping('Blockade', 'user-defined', { kindLabel: 'regional blockade', assumptions: [{ statement: 'naval activity halts transits', basis: 'analyst package' }, { statement: 'insurers withdraw cover' }] }),
+    ]) as { scenario: { scenarioId: string; branches: Array<{ branchId: string; kind: string; name: string }> } };
+    expect(scn.scenario.branches.map((b) => b.kind).sort()).toEqual(['adversarial', 'baseline', 'counterfactual', 'disruption', 'downside', 'stress', 'upside', 'user-defined']);
+    const rows = (await sql<{ kind: string; kind_label: string | null; divergence: string | null; assumptions: unknown[]; kind_vocabulary_version: number }>`
+      select kind, kind_label, divergence, assumptions, kind_vocabulary_version from prediction.branches_current
+       where scenario_id = ${scn.scenario.scenarioId}::uuid order by kind`.execute(su)).rows;
+    expect(rows.length).toBe(8);
+    expect(rows.every((r) => r.kind_vocabulary_version === 1)).toBe(true);
+    const blockade = rows.find((r) => r.kind === 'user-defined');
+    expect(blockade?.kind_label).toBe('regional blockade');
+    expect(blockade?.assumptions).toHaveLength(2);
+    expect(rows.filter((r) => !['baseline', 'upside', 'downside'].includes(r.kind)).every((r) => typeof r.divergence === 'string' && r.divergence.length >= 8)).toBe(true);
+    // The vocabulary is a versioned record, and the canonical object names the version and takes SCN v2.
+    const vocab = (await sql<{ kinds: string[] }>`select kinds from prediction.scenario_kind_versions where version = 1`.execute(su)).rows[0];
+    expect(vocab?.kinds).toEqual(['baseline', 'upside', 'downside', 'disruption', 'stress', 'adversarial', 'counterfactual', 'user-defined']);
+    const obj = (await sql<{ schema_ref: string; payload: Record<string, unknown> }>`select schema_ref, payload from objects.canonical_objects where object_id = ${scn.scenario.scenarioId}::uuid`.execute(su)).rows[0];
+    expect(obj?.schema_ref).toBe('SCN@v3');
+    expect(obj?.payload['kind_vocabulary_version']).toBe(1);
+    // A stray row with a kind outside the vocabulary is refused by the database itself.
+    await expect(sql`update prediction.branches_current set kind = 'wildcard' where branch_id = ${blockade === undefined ? uuidv7() : (scn.scenario.branches.find((b) => b.kind === 'user-defined') as { branchId: string }).branchId}::uuid`.execute(su)).rejects.toThrow(/kind_check|immutable|append-only/);
+
+    // The user-defined disruption FLIPS on the deterioration indicator like any other branch (the six
+    // branches that share it flip together, one warning each); the upside branch does NOT — it
+    // watches the recovery indicator.
+    const ev = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', ind.indicator.indicatorId), fx.tenantId, fx.domainId,
+      ind.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { flips: Array<{ branchId?: string; branch_id?: string }> }; warnings: Array<{ branchId: string }> };
+    const flippedIds = new Set(ev.warnings.map((w) => w.branchId));
+    const idOf = (kind: string) => (scn.scenario.branches.find((b) => b.kind === kind) as { branchId: string }).branchId;
+    expect(flippedIds.has(idOf('user-defined')), 'the user-defined disruption did not flip on its indicator').toBe(true);
+    expect(flippedIds.has(idOf('upside')), 'the upside branch flipped on the DETERIORATION indicator').toBe(false);
+    expect((await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${idOf('user-defined')}::uuid`.execute(su)).rows[0]?.state).toBe('flipped');
+    expect((await sql<{ state: string }>`select state from prediction.branches_current where branch_id = ${idOf('upside')}::uuid`.execute(su)).rows[0]?.state).toBe('open');
+
+    // The RECOVERY: the bounded indicator sees nothing before the disruption ended and flips the
+    // upside branch on the fifth day above 50 AFTER it — 2023-12-01.
+    const rv = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', rec.indicator.indicatorId), fx.tenantId, fx.domainId,
+      rec.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { evaluated: number; flips: Array<{ branchId: string; observationAt: string }> }; warnings: Array<{ branchId: string }> };
+    expect(rv.evaluation.evaluated, 'the bounded indicator evaluated observations before its first day').toBe(35); // 2023-11-27 … 2023-12-31
+    expect(rv.evaluation.flips.map((f) => f.branchId)).toEqual([idOf('upside')]);
+    expect(rv.evaluation.flips[0]?.observationAt).toBe('2023-12-01');
+    expect(rv.warnings.length).toBe(1);
+    expect((await sql<{ state: string; observes_from: string }>`select b.state, i.observes_from::text from prediction.branches_current b
+      join prediction.indicators_current i on i.indicator_id = b.indicator_id where b.branch_id = ${idOf('upside')}::uuid`.execute(su)).rows[0])
+      .toEqual({ state: 'flipped', observes_from: DISRUPTION_TO });
+
+    // CONTROL: the same recovery level WITHOUT the bound is satisfied by pre-disruption data and
+    // "recovers" in January 2021 — the defect the bound exists for.
+    const unbounded = await controller.defineIndicator(req(owner, 'prediction.indicator.define', 'IND', null), fx.tenantId, fx.domainId,
+      { payload: { seriesKey, description: 'transits above 50 per day for five consecutive days (no first day declared)', comparator: '>', threshold: 50, consecutiveDays: 5, owner: ownerId } }) as { indicator: { indicatorId: string } };
+    const cscn = await declare([
+      { name: 'Baseline', kind: 'baseline', statement: 'seasonal', owner: ownerId, consequence: 'keep the booked routing', responseWindowHours: 72 },
+      flipping('Unbounded recovery', 'upside', { divergence: null, indicatorId: unbounded.indicator.indicatorId }),
+    ]) as { scenario: { branches: Array<{ branchId: string; kind: string }> } };
+    const cv = await controller.evaluateIndicator(req(owner, 'prediction.indicator.evaluate', 'IND', unbounded.indicator.indicatorId), fx.tenantId, fx.domainId,
+      unbounded.indicator.indicatorId, { payload: { knownAt: knownAfterBackfill } }) as { evaluation: { evaluated: number; flips: Array<{ observationAt: string }> } };
+    expect(cv.evaluation.evaluated).toBe(1095);
+    const unboundedFlip = cv.evaluation.flips[0]?.observationAt ?? '';
+    expect(unboundedFlip < DISRUPTION_FROM, `an unbounded "recovery" flips before the disruption it is meant to follow (flipped ${unboundedFlip})`).toBe(true);
+    expect(cscn.scenario.branches.length).toBe(2);
+  }, 180_000);
+
   it('D6 · a warning nobody acknowledged before its window closed is recorded as EXPIRED, not left silent', async () => {
     const wid = uuidv7();
     await sql`insert into prediction.warnings_current (
         warning_id, scope, tenant_id, domain_id, title, evidence, consequence, confidence,
-        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id, raised_as_of, timing_mode)
+        response_window_opens_at, response_window_closes_at, routed_to, raised_by, state, correlation_id, raised_as_of, timing_mode,
+        consequence_class, consequence_class_source, level, level_version, urgency, op_class)
       values (${wid}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, 'stale warning',
         '[{"kind":"fixture"}]'::jsonb, 'this warning was never answered', 0.5,
-        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid, now() - interval '3 days', 'live')`.execute(su);
+        now() - interval '3 days', now() - interval '1 day', ${ownerId}::uuid, ${ownerId}::uuid, 'raised', ${uuidv7()}::uuid, now() - interval '3 days', 'live',
+        'C2', 'assumed', 'normal', 1, 'prompt', 'C2')`.execute(su);
     await sql`insert into prediction.warning_events (event_id, scope, tenant_id, domain_id, warning_id, event, actor_principal_id, details, correlation_id)
       values (${uuidv7()}::uuid, 'DOMAIN', ${fx.tenantId}::uuid, ${fx.domainId}::uuid, ${wid}::uuid, 'warning.raised', ${ownerId}::uuid, '{}'::jsonb, ${uuidv7()}::uuid)`.execute(su);
     const ind = (await sql<{ id: string }>`select indicator_id::text id from prediction.indicators_current where series_key = ${seriesKey} limit 1`.execute(su)).rows[0];
@@ -717,7 +819,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const rows = (await sql<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'prediction' and c.relkind = 'r'`.execute(su)).rows;
-    expect(rows.length).toBe(12);
+    expect(rows.length).toBe(15); // 12 of 0029–0037, the scenario kind vocabulary of 0058, the warning level versions and derivations of 0061
     for (const r of rows) {
       expect(r.relrowsecurity, `${r.relname} has no row-level security`).toBe(true);
       expect(r.relforcerowsecurity, `${r.relname} does not FORCE it`).toBe(true);

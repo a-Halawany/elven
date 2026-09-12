@@ -9,6 +9,9 @@
  * These sit on top of migration 0023's ports, which bind every write to the
  * context's own bound action. Both layers must agree, and both are load-bearing.
  */
+/** 0065 §7: a method transition and the edges it opened for reassessment (a suspension or retirement). */
+export interface MethodTransition { method_id: string; event: string; from: string; to: string; edges_reassessment_opened: Array<{ edge_id: string; subject_entity_id: string; object_entity_id: string; predicate: string; claim_object_id: string; claim_version: number; valid_from: string | null; valid_to: string | null;
+  dependencies?: Array<{ dependency_id: string; dependent_object_id: string; dependent_type: string; depends_on_kind: string; depends_on_id: string }> }> }
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 
@@ -53,6 +56,8 @@ export interface IntelligenceReads {
   readAttempts(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readLineage(): any;
+  /** CP-6 B6 (0063): what is subscribed to a memory change at PUBLICATION — evidence the event carries, never authority. */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readReviewCases(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,7 +93,9 @@ export interface MethodWrites extends IntelligenceReads {
   transitionMethod(a: {
     methodId: string; tenantId: string; domainId: string; target: string; actor: string;
     reason: string; eventId: string; correlationId: string;
-  }): Promise<void>;
+  }): Promise<MethodTransition>;
+  /** 0065 §7: what is subscribed to a GraphChanged of this kind at publication (the model-change event). */
+  graphChangeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 
 // ───────────────────────── extraction ─────────────────────────
@@ -193,6 +200,10 @@ class IntelligenceCapabilityImpl extends IntelligenceCore
   readAttempts(): any { return this.from('intelligence.extraction_attempts'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readLineage(): any { return this.from('intelligence.claim_lineage'); }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'MemoryCorrected', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readReviewCases(): any { return this.from('intelligence.review_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -241,10 +252,15 @@ class IntelligenceCapabilityImpl extends IntelligenceCore
   async transitionMethod(a: {
     methodId: string; tenantId: string; domainId: string; target: string; actor: string;
     reason: string; eventId: string; correlationId: string;
-  }): Promise<void> {
-    await this.call(sql`select intelligence.transition_method(
+  }): Promise<MethodTransition> {
+    const rows = await this.call<{ r: MethodTransition }>(sql`select intelligence.transition_method(
       ${a.methodId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.target},
-      ${a.actor}::uuid, ${a.reason}, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.actor}::uuid, ${a.reason}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]!.r;
+  }
+  async graphChangeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
   }
 
   async lockActiveMethod(a: { methodId: string; tenantId: string; domainId: string }): Promise<MethodPin> {
