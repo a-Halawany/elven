@@ -249,6 +249,27 @@ export class ObservationController {
     return { sources: out.result, receipt: receipt(out) };
   }
 
+  /**
+   * READINESS. Every registered source with what it is — live, replay, operator upload —
+   * and what stands between it and live collection, from stored records alone. A read;
+   * it activates nothing.
+   */
+  @Post('/sources/readiness')
+  async sourcesReadiness(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.read.sources', objectType: 'SRC', objectId: null },
+      ObservationCapability.read,
+      async (cap) => this.sources.readiness(cap, body.payload?.limit ?? 100));
+    return { sources: out.result, receipt: receipt(out) };
+  }
+
   @Post('/sources/:sourceId/get')
   async getSource(
     @Req() req: EyeRequest,

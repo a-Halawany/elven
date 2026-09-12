@@ -157,6 +157,8 @@ export class Phase4Harness {
 
   /** The live contract with a declared period-range backfill. */
   contract(sourceKey: string, over: { from: string; to: string | null; windowDays: number; supersedes: number; version: number; budget?: number;
+                                       /** A credential REFERENCE (never a value) the contract names and this deployment does not bind. */
+                                       credentialRef?: string;
                                        controls?: { data_origin?: string; classification_ceiling?: string; residency?: string; retention?: string; licence?: string } }) {
     const c = fixtureContract(sourceKey) as Record<string, unknown>;
     const so = c['security_and_operations'] as Record<string, unknown>;
@@ -170,6 +172,7 @@ export class Phase4Harness {
       authority_and_rights: { ...ar, rights_state: 'confirmed', attribution: 'Source: fixture statistics.', ...arControls },
       security_and_operations: {
         ...so,
+        ...(over.credentialRef === undefined ? {} : { credential_ref: over.credentialRef, authentication_method: 'bearer token resolved from the referenced credential' }),
         expected_schema: { media_types: ['application/json'], required_fields: ['dataSets'], drift_tolerance: 0 },
         budgets: { max_requests_per_run: over.budget ?? 12, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 60_000, max_retries: 0 },
         backfill: { strategy: 'period-range', endpoint: BASE, from: over.from, to: over.to,
@@ -193,7 +196,7 @@ export class Phase4Harness {
   }
 
   /** Register, approve and activate the next contract version through the real route and ports. */
-  async newVersion(over: { from: string; to: string | null; windowDays: number; budget?: number;
+  async newVersion(over: { from: string; to: string | null; windowDays: number; budget?: number; credentialRef?: string;
                            controls?: { data_origin?: string; classification_ceiling?: string; residency?: string; retention?: string; licence?: string } }): Promise<{ version: number; sourceKey: string }> {
     const sourceKey = (await sql<{ source_key: string }>`select source_key from observation.source_contracts_current
       where source_id = ${this.fx.sourceId}::uuid limit 1`.execute(this.su)).rows[0]?.source_key ?? '';

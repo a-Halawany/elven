@@ -1,0 +1,286 @@
+
+=== Integrations · proposals A and B — activate through the governed path ===
+
+
+━━ Proposal A · eu-sanctions-rss ━━
+  · v1 active · replay · rights confirmed
+
+1. register v2 — live (as a.hoffmann)
+  ✓ registered v2 of 01a078a1… (draft) · receipt 2adcd378-2900-4301-b623-cb75e8164cfc
+
+2. approval by a DIFFERENT operator (m.dvorak)
+  ✓ the registrar cannot approve their own registration (403)
+  ✓ approved · receipt 9dae68c0-e9a1-41c4-8db9-b6d3ef219c0c
+
+3. rights evidence recorded on v2 (the terms read at the source)
+  ✓ rights: confirmed, with the terms quoted as evidence
+
+4. activation — one active version per source
+  ✓ v1 superseded
+  ✓ v2 active · receipt 10d8f5c2-865f-43c3-9693-be8960a4a85c
+
+5. the collection agent for the current connector version
+  · agent 01a078a1… v1.0.0 active
+
+6. one governed collection, operator-triggered (m.dvorak)
+  ✓ an agent for the current connector version is registered
+  ✓ run 01a07ce9… finished: admitted 6 · noop 0 · quarantined 0 · mode live · triggered by ?
+  · run events: run.started → item.fetched → item.admitted → item.fetched → item.admitted → item.fetched → item.admitted → item.fetched → item.admitted → item.fetched → item.admitted → item.fetched → item.admitted → run.checkpointed → run.finished
+
+7. the evidence, the attribution, the register
+  ✓ 6 live evidence object(s) for eu-sanctions-rss (9 in total), 7,294 live bytes, digests verified on admission
+  · EVD 01a07ce9… · ? · 688 bytes · 
+  · EVD 01a07ce9… · ? · 700 bytes · 
+  · EVD 01a07ce9… · ? · 645 bytes · 
+  · EVD 01a07ce9… · ? · 633 bytes · 
+  · EVD 01a07ce9… · ? · 694 bytes · 
+  · EVD 01a07ce9… · ? · 3,934 bytes · 
+  ✓ register: LIVE · live under contract version 2; schedule entry every 3600 s (this deployment runs no scheduler: runs are operator-triggered)
+  · schedule entry recorded, every 3600 s · scheduler DISABLED in this deployment · last governed run live finished, 6 admitted · evidence 9
+  ✓ attribution on v2: "Source: European Commission, Financial Sanctions Files — consolidated list of persons, groups and entities subject to EU financial sanctions (reuse under Commission Decision 2011/833/EU)."
+
+━━ Proposal A · eu-sanctions-payload ━━
+  · v1 active · replay · rights confirmed
+
+1. register v2 — live (as a.hoffmann)
+  ✓ registered v2 of 01a078a1… (draft) · receipt 3971508d-06c8-44bc-aa5e-4b3b18a90da8
+
+2. approval by a DIFFERENT operator (m.dvorak)
+  ✓ the registrar cannot approve their own registration (403)
+  ✓ approved · receipt 64451265-beea-41a7-9efb-6d01b89cc043
+
+3. rights evidence recorded on v2 (the terms read at the source)
+  ✓ rights: confirmed, with the terms quoted as evidence
+
+4. activation — one active version per source
+  ✓ v1 superseded
+  ✓ v2 active · receipt edb75138-43ae-4a48-953f-c073bf4aad1b
+
+5. the collection agent for the current connector version
+  · agent 01a078a1… v1.2.0 active
+
+6. one governed collection, operator-triggered (m.dvorak)
+  ✓ an agent for the current connector version is registered
+  ✓ run 01a07ce9… finished: admitted 1 · noop 0 · quarantined 0 · mode live · triggered by ?
+  · run events: run.started → item.fetched → item.admitted → run.checkpointed → run.finished
+
+7. the evidence, the attribution, the register
+  ✓ 1 live evidence object(s) for eu-sanctions-payload (3 in total), 25,166,172 live bytes, digests verified on admission
+  · EVD 01a07ce9… · ? · 25,166,172 bytes · 
+  ✓ register: LIVE · live under contract version 2; schedule entry every 21600 s (this deployment runs no scheduler: runs are operator-triggered)
+  · schedule entry recorded, every 21600 s · scheduler DISABLED in this deployment · last governed run live finished, 1 admitted · evidence 5
+  ✓ attribution on v2: "Source: European Commission, Financial Sanctions Files — consolidated list of persons, groups and entities subject to EU financial sanctions (reuse under Commission Decision 2011/833/EU)."
+
+━━ Proposal B · worldbank-indicators ━━
+  · v1 active · replay · rights confirmed
+
+1. register v2 — live (as a.hoffmann)
+  ✓ registered v2 of 01a078a1… (draft) · receipt cb69ee11-acc1-4a48-ae5c-0288ed6d37c5
+
+2. approval by a DIFFERENT operator (m.dvorak)
+  ✓ the registrar cannot approve their own registration (403)
+  ✓ approved · receipt ea184fc9-0678-4993-99c2-15c4b378994e
+
+3. rights evidence recorded on v2 (the terms read at the source)
+  ✓ rights: confirmed, with the terms quoted as evidence
+
+4. activation — one active version per source
+  ✓ v1 superseded
+  ✓ v2 active · receipt 270e370a-ba92-4f64-90d3-9ef9df01b8a4
+
+5. the collection agent for the current connector version
+  · agent 01a078a1… v1.2.0 active
+
+6. one governed collection, operator-triggered (m.dvorak)
+  ✓ an agent for the current connector version is registered
+  ✓ run 01a07ce9… finished: admitted 2 · noop 0 · quarantined 0 · mode live · triggered by ?
+  · run events: run.started → item.fetched → item.admitted → item.fetched → item.admitted → run.checkpointed → run.finished
+
+7. the evidence, the attribution, the register
+  ✓ 2 live evidence object(s) for worldbank-indicators (4 in total), 22,679 live bytes, digests verified on admission
+  · EVD 01a07ce9… · ? · 11,089 bytes · 
+  · EVD 01a07ce9… · ? · 11,590 bytes · 
+  ✓ register: LIVE · live under contract version 2; schedule entry every 604800 s (this deployment runs no scheduler: runs are operator-triggered)
+  · schedule entry recorded, every 604800 s · scheduler DISABLED in this deployment · last governed run live finished, 2 admitted · evidence 4
+  ✓ attribution on v2: "The World Bank: World Development Indicators: Merchandise exports, current US$ (TX.VAL.MRCH.CD.WT) — data source World Trade Organization (WTO); Imports of goods and services, % of GDP (NE.IMP.GNFS.ZS) — data source national statistical offices, central banks and World Bank staff estimates. Licence CC BY-4.0."
+
+=== summary (JSON) ===
+[
+ {
+  "proposal": "A",
+  "key": "eu-sanctions-rss",
+  "sourceId": "01a078a1-089e-7856-afb6-0de0bc6efcf5",
+  "version": 2,
+  "receipts": {
+   "register": {
+    "policyDecisionId": "01a07ce9-1fb2-778a-b7b2-84f899518ca5",
+    "auditSeq": 4352
+   },
+   "approve": {
+    "policyDecisionId": "01a07ce9-1fdc-7805-b257-e6284d70a106",
+    "auditSeq": 4354
+   },
+   "rights": {
+    "policyDecisionId": "01a07ce9-1fe4-7938-8568-47f6a030a06b",
+    "auditSeq": 4355
+   },
+   "activate": {
+    "policyDecisionId": "01a07ce9-1ff8-7e55-9f21-7ec6d08ea602",
+    "auditSeq": 4357
+   }
+  },
+  "run": {
+   "runId": "01a07ce9-2023-7b90-b3f6-5f5801ea0503",
+   "state": "finished",
+   "mode": "live",
+   "admitted": 6,
+   "noop": 0,
+   "quarantined": 0,
+   "reason": null,
+   "triggeredBy": null,
+   "events": [
+    "run.started",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "run.checkpointed",
+    "run.finished"
+   ],
+   "receipt": null
+  },
+  "evidence": {
+   "live": 6,
+   "total": 9,
+   "liveBytes": 7294
+  },
+  "register": {
+   "verdict": "live",
+   "scheduled": true,
+   "cadence": 3600,
+   "scheduler_enabled": false,
+   "evidence": 9
+  }
+ },
+ {
+  "proposal": "A",
+  "key": "eu-sanctions-payload",
+  "sourceId": "01a078a1-08a8-7853-bacb-b711fa330de9",
+  "version": 2,
+  "receipts": {
+   "register": {
+    "policyDecisionId": "01a07ce9-2680-7b66-85b0-9ce5f6a18ef1",
+    "auditSeq": 4389
+   },
+   "approve": {
+    "policyDecisionId": "01a07ce9-268e-72a1-91a1-b08d86104566",
+    "auditSeq": 4391
+   },
+   "rights": {
+    "policyDecisionId": "01a07ce9-2694-7bb6-9a5e-b70751b7b2b7",
+    "auditSeq": 4392
+   },
+   "activate": {
+    "policyDecisionId": "01a07ce9-26a3-7783-8e42-8a8d3197691f",
+    "auditSeq": 4394
+   }
+  },
+  "run": {
+   "runId": "01a07ce9-26c6-776f-9537-1160eb643d44",
+   "state": "finished",
+   "mode": "live",
+   "admitted": 1,
+   "noop": 0,
+   "quarantined": 0,
+   "reason": null,
+   "triggeredBy": null,
+   "events": [
+    "run.started",
+    "item.fetched",
+    "item.admitted",
+    "run.checkpointed",
+    "run.finished"
+   ],
+   "receipt": null
+  },
+  "evidence": {
+   "live": 1,
+   "total": 3,
+   "liveBytes": 25166172
+  },
+  "register": {
+   "verdict": "live",
+   "scheduled": true,
+   "cadence": 21600,
+   "scheduler_enabled": false,
+   "evidence": 5
+  }
+ },
+ {
+  "proposal": "B",
+  "key": "worldbank-indicators",
+  "sourceId": "01a078a1-08bc-74b3-b236-b99bf72fa96f",
+  "version": 2,
+  "receipts": {
+   "register": {
+    "policyDecisionId": "01a07ce9-3254-7f72-aff5-d5b46f093699",
+    "auditSeq": 4411
+   },
+   "approve": {
+    "policyDecisionId": "01a07ce9-3262-7ec2-9478-0bca4bffd174",
+    "auditSeq": 4413
+   },
+   "rights": {
+    "policyDecisionId": "01a07ce9-3267-705e-ab38-1c952cfecd74",
+    "auditSeq": 4414
+   },
+   "activate": {
+    "policyDecisionId": "01a07ce9-3274-76f3-99f0-81014f720fb1",
+    "auditSeq": 4416
+   }
+  },
+  "run": {
+   "runId": "01a07ce9-3292-7e8c-912f-8c42ff907ee4",
+   "state": "finished",
+   "mode": "live",
+   "admitted": 2,
+   "noop": 0,
+   "quarantined": 0,
+   "reason": null,
+   "triggeredBy": null,
+   "events": [
+    "run.started",
+    "item.fetched",
+    "item.admitted",
+    "item.fetched",
+    "item.admitted",
+    "run.checkpointed",
+    "run.finished"
+   ],
+   "receipt": null
+  },
+  "evidence": {
+   "live": 2,
+   "total": 4,
+   "liveBytes": 22679
+  },
+  "register": {
+   "verdict": "live",
+   "scheduled": true,
+   "cadence": 604800,
+   "scheduler_enabled": false,
+   "evidence": 4
+  }
+ }
+]
+
+=== proposals A and B — 0 problem(s) ===
+
