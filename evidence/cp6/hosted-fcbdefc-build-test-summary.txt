@@ -1,0 +1,21 @@
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  2 passed (2)
+apps/web test:       Tests  6 passed (6)
+apps/api test:  Test Files  40 passed (40)
+apps/api test:       Tests  2147 passed (2147)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+ ✓ test/int/phase6-graph-subscriptions.test.ts (13 tests) 135562ms
+ Test Files  49 passed (49)
+      Tests  852 passed (852)
+  ✓ public.schema_migrations: +42 row(s), exactly what these migrations declare they add
+=== PASS ===
+ Test Files  7 passed (7)
+      Tests  612 passed (612)
+ Test Files  2 passed (2)
+      Tests  44 passed (44)

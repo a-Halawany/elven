@@ -1285,11 +1285,12 @@ retrieval checks) is added and typechecks; it is not yet on the browser-regressi
 | `637233f` | 0062, the three interruption cases (finding 1) | superseded by the next heads (the workflow file failed to parse at `40a3a40`, corrected at `94d66f8`) | — |
 | `4145a16` / `40a3a40` | evidence-backed S7, controls, upgrade count 41 (finding 2) | see `94d66f8` | — |
 | `94d66f8` | the CI step name corrected; **the corrected head for both findings** | **34655152733 green** (17 m 14 s; build-test with the full integration suite on a fresh database, browser-regression, supply-chain) | 34655152732 green |
-| the B6 head (this commit) | 0063, the six consumers, the harness, the act, the records | pending — the run at this head is the verification of AU-MEM-0112–0117 | pending |
+| `fcbdefc` | 0063, the six consumers, the harness, the act, the records — **the B6 head** | **34663012651 green** (18 m 16 s; build-test: unit 2147, the full integration suite on a fresh database **852/852 in 49 files** — the 836 of `5118376` plus B1's three interruption cases and B6's thirteen, `phase6-graph-subscriptions` 13/13 in 136 s on the hosted runner; the upgrade proof PASS with 0063; browser-regression; supply-chain) | 34663012694 green |
 
-AU-MEM-0109 is `verified:ci` again at `94d66f8`. The six B6 units are `open` until the hosted run at their head is
-green (S7: a local pass never verifies). The register's §5.2a reads **3,548 = 3,201 open + 339 local + 8 CI** — six more
-than `da088cd` by allocation of the new units, none by regression; no accepted deployment leg.
+AU-MEM-0109 is `verified:ci` again at `94d66f8`; the six B6 units are `verified:ci` at `fcbdefc` (S7: the local passes
+never verified them; the hosted run did) — one artefact, no deployment leg. The register's §5.2a reads
+**3,548 = 3,195 open + 339 local + 14 CI** — six more than `da088cd` by allocation of the new units, none by
+regression; no accepted deployment leg. The records commit after `fcbdefc` changes no code; its hosted run is a refresh.
 
 ### 19.5 Recorded, assigned to concrete checkpoints
 

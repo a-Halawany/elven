@@ -14,3 +14,4 @@ that verifies a harness unit). Every file is the unedited output of the named co
 | `b6-regress-1.txt`, `b6-regress-2.txt` | the suites whose write paths gained the GraphChanged/MemoryCorrected emitters, re-run at the 0063 head (81/81, 98/98) |
 | `upgrade-0063.txt` | the tail of `scripts/phase1/verify-0022-upgrade.mjs` at the 0063 head (63 files; roles +25; migrations +42; 275/275 on the upgraded data; virgin and upgraded schema digests equal) |
 | `act-b6.log` | `scripts/phase6/register-subscriptions.mjs` on the NORDWERK demonstration (`eye_demo` migrated 0062–0063) |
+| `hosted-fcbdefc-build-test-summary.txt` | the totals lines of the hosted `build-test` job at `fcbdefc` (ci run 34663012651): unit, the integration suite 852/852 in 49 files with `phase6-graph-subscriptions` 13/13, the upgrade proof PASS — the hosted result itself is GitHub's, this is its extract |
