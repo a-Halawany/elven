@@ -103,7 +103,10 @@ export class SourcesService {
       quality_profile: null,
       quality_state: null,
       freshness_state: null,
-      schema_ref: 'SRC@v1',
+      // SRC@v2 (migration 0028) adds the optional backfill declaration and the
+      // publisher's attribution notice; a contract using neither is still a v1.
+      schema_ref: c.security_and_operations.backfill !== undefined
+        || c.authority_and_rights.attribution != null ? 'SRC@v2' : 'SRC@v1',
       ontology_ref: null,
       correction_of: null,
       supersedes: c.lifecycle.supersedes_version != null

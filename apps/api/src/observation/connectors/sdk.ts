@@ -46,6 +46,63 @@ export interface SourceBinding {
   };
   budgets: RunBudgets;
   egress: EgressPolicy;
+  /**
+   * A CLOSED-RANGE BACKFILL, declared by the contract (Phase 4 §4a).
+   *
+   * The poller Phase 1 shipped polls FORWARD from a checkpoint and has no end
+   * condition. A historical backfill walks a closed `[from, to)` window in
+   * deterministic pages and terminates. Declaring it on the contract — the
+   * strategy, the window, the ordering — is what makes the traversal reviewable:
+   * an ArcGIS page order is undefined without `orderByFields`, and a contract
+   * that does not say how it pages has not said what it collects.
+   */
+  backfill?: BackfillDeclaration;
+}
+
+export type BackfillStrategy = 'period-range' | 'arcgis-offset';
+
+export interface BackfillDeclaration {
+  strategy: BackfillStrategy;
+  /** The base URL range parameters are appended to. Its host must be one of the contract's endpoints'. */
+  endpoint: string;
+  /** Inclusive start date (YYYY-MM-DD). */
+  from: string;
+  /** Exclusive end date (YYYY-MM-DD), or null for "the day the run happens". */
+  to: string | null;
+  /** period-range: days per request window. */
+  windowDays?: number;
+  /** period-range: the query parameter names carrying the window. */
+  startParam?: string;
+  endParam?: string;
+  /** arcgis-offset: rows per page (`resultRecordCount`), at most the service's maxRecordCount. */
+  pageSize?: number;
+  /** arcgis-offset: `orderByFields` — REQUIRED, because unordered paging can skip and duplicate rows. */
+  orderBy?: string;
+  /** arcgis-offset: the date field the window predicate is written against. */
+  timeField?: string;
+  /** arcgis-offset: the contract's static filter (e.g. `portid='chokepoint4'`), AND-ed with the window. */
+  where?: string;
+}
+
+/**
+ * Where a backfill stands, carried on the connector checkpoint and advanced only
+ * after the database commits (§5 step 9). A run that starts with `done: true`
+ * polls forward as before; one that starts with `done: false` continues the
+ * backfill inside its own budget and stops when either is exhausted.
+ */
+export interface BackfillProgress {
+  strategy: BackfillStrategy;
+  from: string;
+  to: string;
+  /** The contract version the walk was made under. A NEW version walks again. */
+  contractVersion: number;
+  /** period-range: the next window's inclusive start. arcgis-offset: the next `resultOffset`. */
+  cursor: string | number;
+  done: boolean;
+  requests: number;
+  items: number;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 /** Transport evidence retained for an acquired item. No semantic field exists. */
@@ -74,6 +131,24 @@ export interface AcquiredItem {
   /** For per-item framing of a parent payload (§10.1). */
   parentItemKey?: string | null;
   fragment?: { byteStart: number; byteEnd: number; methodRef: string } | null;
+  /**
+   * TRUE for an item whose key is DETERMINISTIC across runs — a backfill window
+   * or a row inside one — rather than bound to the retrieval instant.
+   *
+   * A forward poll's item is a new observation every time, by design (§5.12). A
+   * backfill window is not: retrieving 2019-01 again is the same window, and the
+   * lifecycle compares its bytes with what it already holds — identical bytes are
+   * an audited no-op, changed bytes are a REVISION admitted as the next version
+   * of the same evidence object. Without this flag a re-run over an overlapping
+   * range would admit duplicate evidence.
+   */
+  deterministic?: boolean;
+  /**
+   * For a backfilled window: the traversal cursor at which its window began, so
+   * the lifecycle can roll the checkpoint back to a window it QUARANTINED rather
+   * than let the cursor pass a window that was never collected.
+   */
+  backfillCursor?: string | number;
 }
 
 export interface AcquisitionOutput {

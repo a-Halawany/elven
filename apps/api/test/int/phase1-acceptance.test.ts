@@ -407,7 +407,7 @@ describe('A5 — cross-tenant and cross-domain isolation', () => {
     await expect(
       agentSessions.openRunSession({
         agentId: fx.agentId, tenantId: other.tenantId, domainId: other.domainId,
-        agentVersion: '1.1.0', codeDigest: new RestConnector().codeDigest,
+        agentVersion: new RestConnector().version, codeDigest: new RestConnector().codeDigest,
         correlationId: uuidv7(),
       }),
     ).rejects.toBeInstanceOf(AgentGrantRefused);
@@ -859,7 +859,7 @@ describe('A9 — agents: per-run reauthorization, revocation, budgets, instance 
   it('a CODE DIGEST MISMATCH is refused', async () => {
     await expect(agentSessions.openRunSession({
       agentId: fx.agentId, tenantId: fx.tenantId, domainId: fx.domainId,
-      agentVersion: '1.1.0', codeDigest: 'f'.repeat(64),
+      agentVersion: new RestConnector().version, codeDigest: 'f'.repeat(64),
       correlationId: uuidv7(),
     })).rejects.toBeInstanceOf(AgentGrantRefused);
   });
@@ -870,7 +870,7 @@ describe('A9 — agents: per-run reauthorization, revocation, budgets, instance 
     try {
       await expect(agentSessions.openRunSession({
         agentId: fx.agentId, tenantId: fx.tenantId, domainId: fx.domainId,
-        agentVersion: '1.1.0', codeDigest: new RestConnector().codeDigest,
+        agentVersion: new RestConnector().version, codeDigest: new RestConnector().codeDigest,
         correlationId: uuidv7(),
       })).rejects.toBeInstanceOf(AgentGrantRefused);
     } finally {

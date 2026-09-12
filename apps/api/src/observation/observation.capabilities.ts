@@ -75,6 +75,15 @@ export interface ObservationReads {
   readSchedulerEntries(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any;
+  /**
+   * The LATEST evidence held for each deterministic item key of a source — what
+   * a backfill re-run compares its bytes against (Phase 4 §4a). One query per
+   * run, not one per item.
+   */
+  latestEvidenceByItemKeys(a: { sourceId: string; itemKeys: string[] }): Promise<Array<{
+    item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
+    content_digest: string; recorded_at: string;
+  }>>;
   rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
   }>>;
@@ -258,6 +267,30 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   readSchedulerEntries(): any { return this.from('observation.scheduler_entries'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
+
+  async latestEvidenceByItemKeys(a: { sourceId: string; itemKeys: string[] }): Promise<Array<{
+    item_key: string; obs_object_id: string; evd_object_id: string; object_version: number;
+    content_digest: string; recorded_at: string;
+  }>> {
+    if (a.itemKeys.length === 0) return [];
+    // The newest OBS per item key, then the newest EVD VERSION that cites it. A
+    // revision admits a new EVD version citing a new OBS with the same item key,
+    // so "latest OBS, then its latest EVD" is the current state of that window.
+    return this.call(sql`
+      with obs as (
+        select distinct on (o.payload ->> 'item_key') o.object_id, o.payload ->> 'item_key' as item_key
+          from objects.canonical_objects o
+         where o.object_type = 'OBS' and o.payload ->> 'source_id' = ${a.sourceId}
+           and o.payload ->> 'item_key' = any(${a.itemKeys}::text[])
+         order by o.payload ->> 'item_key', o.recorded_at desc, o.object_version desc)
+      select obs.item_key, obs.object_id::text as obs_object_id, e.object_id::text as evd_object_id,
+             e.object_version::int as object_version, e.payload ->> 'content_digest' as content_digest,
+             e.recorded_at::text as recorded_at
+        from obs
+        join lateral (select * from objects.canonical_objects e
+                       where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
+                       order by e.object_version desc limit 1) e on true`);
+  }
 
   async rebuildProjections(tenantId: string, domainId: string): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched_rows: string;
