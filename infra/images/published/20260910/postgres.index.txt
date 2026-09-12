@@ -1,0 +1,12 @@
+Name:      ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7
+           
+Manifests: 
+  Name:      ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a
+  MediaType: application/vnd.oci.image.manifest.v1+json
+  Platform:  linux/amd64
+             
+  Name:      ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910@sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc
+  MediaType: application/vnd.oci.image.manifest.v1+json
+  Platform:  linux/arm64

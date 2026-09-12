@@ -1,0 +1,1 @@
+redis-amd64: HIGH/CRITICAL findings 0 (trivy 0.73.0, no ignore file, vuln+secret)

@@ -1,0 +1,8 @@
+CVE-2026-14456	libcrypto3	3.5.7-r0	3.5.8-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/libcrypto3@3.5.7-r0?arch=x86_64&distro=3.23.5
+CVE-2026-14456	libssl3	3.5.7-r0	3.5.8-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/libssl3@3.5.7-r0?arch=x86_64&distro=3.23.5
+CVE-2026-53612	setpriv	2.41.4-r0	2.41.6-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5
+CVE-2026-53613	setpriv	2.41.4-r0	2.41.6-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5
+CVE-2026-53614	setpriv	2.41.4-r0	2.41.6-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5
+CVE-2026-76642	setpriv	2.41.4-r0	2.41.6-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5
+CVE-2026-78408	setpriv	2.41.4-r0	2.41.6-r1	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5
+CVE-2026-78410	setpriv	2.41.4-r0	2.41.6-r0	HIGH	redis@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a (alpine 3.23.5)	pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5

@@ -25,6 +25,8 @@ import {
 // eslint-disable-next-line import/no-relative-packages
 import { commandIdFor } from '../../../../scripts/gate/lib/c18-contract.mjs';
 // eslint-disable-next-line import/no-relative-packages
+import { legacyImageMapping } from '../../../../scripts/gate/legacy-compose-view.mjs';
+// eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacyVerify } from './fixtures/c18-legacy-d5061b8/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { verifyEvidence as legacy8a } from './fixtures/c18-legacy-8a23526/c18-db-paths.mjs';
@@ -211,7 +213,38 @@ function setCredentialPosition(c: any, key: string, value: string) {
   argv[i] = `${key}=${value}`;
 }
 
+/**
+ * THE LEGACY IMAGE SPELLING. Every frozen verifier predates the registry-path image pins of
+ * 2026-09-10: it reads its compose seam (apps/api/test/gate/docker-compose.yml — the tracked view
+ * that scripts/gate/legacy-compose-view.mjs GENERATES from the live file) as
+ * `<service>@sha256:<digest>` and compares that spelling with the ledger — the `docker run` and
+ * `docker image inspect` argv, and the `postgres_image` / `redis_image` of each isolation receipt.
+ * An archive shown to a frozen verifier therefore carries the same spelling: every argv element
+ * and every manifest field that IS a live registry reference becomes its legacy name, digest
+ * unchanged. The mapping is the one the view generator derives from the live compose file; no
+ * digest is written here, so the live pin, the view and the downgraded ledger cannot drift apart
+ * (a stale view is a failure of `legacy-compose-view.mjs --check`, run in CI before the gate).
+ */
+const LEGACY_IMAGES: Map<string, string> = legacyImageMapping(readFileSync(join(REPO, 'docker-compose.yml'), 'utf8'));
+function legacyImageView(dir: string) {
+  const translate = (node: any): any => {
+    if (typeof node === 'string') return LEGACY_IMAGES.get(node) ?? node;
+    if (Array.isArray(node)) return node.map(translate);
+    if (node !== null && typeof node === 'object') {
+      for (const k of Object.keys(node)) node[k] = translate(node[k]);
+    }
+    return node;
+  };
+  editJson(dir, 'commands.json', (cmds: any[]) => {
+    for (const c of cmds) if (Array.isArray(c.argv)) c.argv = c.argv.map(translate);
+  });
+  editJson(dir, 'c18-manifest.json', (doc: any) => { translate(doc); });
+}
+
 function downgradeC19(dir: string) {
+  // 1 — the image spelling of the era (see legacyImageView). Every legacy downgrade passes
+  //     through here, so this is the ONE place the ledger is translated.
+  legacyImageView(dir);
 
   // 2 — translate the ledger back, and RENUMBER, because the pre-C19 producer emitted two fewer
   //     commands per instance. Command ids embed their sequence and name their raw receipt files,
@@ -223,8 +256,11 @@ function downgradeC19(dir: string) {
     for (const c of cmds) {
       const label = String(c.label ?? '');
       const argv = (c.argv ?? []) as string[];
-      // The stdin handoff did not exist before C19; its command disappears entirely.
-      if (/-(pg|redis)-secret$/.test(label)) continue;
+      // The stdin handoff did not exist before C19; its command disappears entirely. So does the
+      // image-user lookup (`docker image inspect --format {{.Config.User}}`), which exists only to
+      // hand that stdin secret to the non-root user the re-pinned images declare: no frozen
+      // producer emitted either, and no frozen command graph has a position for them.
+      if (/-(pg|redis)-(secret|user)$/.test(label)) continue;
       delete c.stdin_bytes;
       delete c.stdin_class;
 
@@ -303,9 +339,9 @@ function downgradeC19(dir: string) {
       if (existsSync(from)) renameSync(from, join(raw, `${newId}.${ext}`));
     }
   }
-  // Receipts belonging to the removed handoff commands have no place in a pre-C19 archive.
+  // Receipts belonging to the removed handoff and image-user commands have no place in a pre-C19 archive.
   for (const f of readdirSync(raw)) {
-    if (/-(pg|redis)-secret\.(stdout|stderr|exit)\.txt$/.test(f)) unlinkSync(join(raw, f));
+    if (/-(pg|redis)-(secret|user)\.(stdout|stderr|exit)\.txt$/.test(f)) unlinkSync(join(raw, f));
   }
 }
 

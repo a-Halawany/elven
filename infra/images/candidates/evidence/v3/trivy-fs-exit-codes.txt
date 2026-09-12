@@ -1,0 +1,9 @@
+trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignorefile /dev/null --no-progress --exit-code 1 --format table <target>
+trivy 0.73.0, run 2026-09-10 from the repository root (branch phase6-decisions, working tree)
+
+target                                        exit  misconfigurations
+infra/images/candidates   (before the USER edit) 1   4 x DS-0002 HIGH (v1 postgres, v1 redis, v2 postgres, v2 redis)
+infra/images/candidates   (after the USER edit)  1   2 x DS-0002 HIGH (v1 postgres-18-alpine.Dockerfile, v1 redis-8-alpine.Dockerfile); v2/* = 0
+infra/images/candidates/v2 (the v3 recipes only) 0   0
+.                         (repo root, gate form) 1   the same 2 x DS-0002 on the v1 files; pnpm-lock.yaml 0 vulnerabilities; v2/* = 0
+Files: trivy-fs-candidates-before.txt, trivy-fs-candidates-after.txt, trivy-fs-v2dir.txt, trivy-fs-repo-root.txt

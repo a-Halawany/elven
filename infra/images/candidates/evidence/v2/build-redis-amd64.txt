@@ -1,0 +1,21 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from redis-8-alpine.Dockerfile
+
+#2 [internal] load metadata for docker.io/library/redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+
+#3 [internal] load .dockerignore
+
+#4 [1/2] FROM docker.io/library/redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+
+#5 [2/2] RUN apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  && apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  && apk list -I libcrypto3 | grep -q '^libcrypto3-3.5.8-r0 '  && apk list -I libssl3    | grep -q '^libssl3-3.5.8-r0 '
+#5 1.317 (1/3) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+#5 1.725 (2/3) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+#5 1.839 (3/3) Upgrading setpriv (2.41.4-r0 -> 2.41.6-r1)
+#5 1.890 Executing busybox-1.37.0-r30.trigger
+#5 1.915 OK: 11.3 MiB in 22 packages
+
+#6 exporting to image
+#6 exporting layers 0.0s done
+#6 writing image sha256:35e9b763096bd0bd16155c8b20369c26131a72792e62e11e676b51bcd2852d51 done
+#6 naming to docker.io/library/eye-cand2-redis:amd64 done

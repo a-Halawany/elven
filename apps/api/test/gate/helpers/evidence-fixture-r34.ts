@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 import {
-  loadSourceContract, expectedStepContract, imageStepIdsFor, ARGV_TOKENS,
+  loadSourceContract, expectedStepContract, imageStepIdsFor, ARGV_TOKENS, SCAN_PLATFORMS,
 } from '../../../../../scripts/gate/lib/verification-contract.mjs';
 import { deriveC16Expectation } from '../../../../../scripts/gate/generate-closures.mjs';
 import { loadScannerExclusions } from '../../../../../scripts/gate/lib/scanner-exclusions.mjs';
@@ -33,11 +33,26 @@ import { candidateSourceManifest } from '../../../../../scripts/gate/lib/candida
 
 export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
-/** The real linux/amd64 child digests of the two configured indexes. */
-const CHILD_DIGESTS: Record<string, string> = {
-  postgres: 'sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b',
-  redis: 'sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a',
+/**
+ * The real platform children of the two configured indexes (the derived maintenance images pinned
+ * on 2026-09-10; each index has exactly these two runnable children and no attestation manifests).
+ * Keyed by the image name as it appears in docker-compose.yml, before the `@`.
+ */
+const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> = {
+  'ghcr.io/a-halawany/elven/postgres': {
+    amd64: 'sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a',
+    arm64: 'sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc',
+    size: 2189,
+  },
+  'ghcr.io/a-halawany/elven/redis': {
+    amd64: 'sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432',
+    arm64: 'sha256:c11d75cace5d4effc9524e6baa11f559440f398e6f53899332557bf455ad56dc',
+    size: 1809,
+  },
 };
+/** The child of `name` for a scanned platform — the same selection the runner makes. */
+const childDigestFor = (name: string, platform: string): string =>
+  (platform === 'linux/arm64' ? CHILDREN[name].arm64 : CHILDREN[name].amd64);
 
 export type BuiltR34 = {
   c15Dir: string;
@@ -58,11 +73,11 @@ export type BuiltR34 = {
 /**
  * R3.4.4: the image reports are the REAL captured scanner output.
  *
- * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from the
- * delivered C15 evidence - 53 alpine packages and one HIGH finding for postgres, 4 gobinary
- * packages and 15 findings for its gosu binary, 22 alpine packages for redis - with only the
- * verbose advisory prose stripped. Synthesising these would defeat the point: a control that
- * mutates invented data proves nothing about what the verifier does to a real receipt.
+ * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from a real
+ * C15 run against the images pinned on 2026-09-10 - 53 alpine packages and NO OS finding for
+ * postgres, 4 gobinary packages and 22 findings for its gosu binary, 22 alpine packages and no
+ * finding for redis. Synthesising these would defeat the point: a control that mutates invented
+ * data proves nothing about what the verifier does to a real receipt.
  *
  * Only the scan reference is substituted, because it is derived per run from the tracked
  * digest pins rather than fixed in the capture.
@@ -115,11 +130,15 @@ const TRIVY_IMAGE_BANNER = [
   '2026-01-01T00:00:00Z\tINFO\t[secret] Secret scanning is enabled',
   '',
 ].join('\n');
-const SCANNER_BANNER: Record<string, string> = {
-  'trivy-fs': TRIVY_FS_BANNER,
-  'trivy-fs-json': TRIVY_FS_BANNER,
-  'trivy-image-0': TRIVY_IMAGE_BANNER,
-  'trivy-image-1': TRIVY_IMAGE_BANNER,
+/**
+ * The stderr banner a step must carry. Derived from the step id rather than enumerated, so it
+ * does not have to be re-listed every time the image step count changes — one image step per
+ * (platform, image) pair, and every one of them announces its scanners.
+ */
+const scannerBannerFor = (id: string): string => {
+  if (id === 'trivy-fs' || id === 'trivy-fs-json') return TRIVY_FS_BANNER;
+  if (id.startsWith('trivy-image-')) return TRIVY_IMAGE_BANNER;
+  return `${id}: fixture stderr\n`;
 };
 
 /**
@@ -171,8 +190,20 @@ function derivationFor(repo: string, runDate: string) {
  * "frozen R3.4 accepted this" is an unfiltered claim about the mutation rather than a claim
  * filtered around R3.4 not knowing about the new artifacts.
  */
+/**
+ * `platforms` builds the package for a RESTRICTED platform set.
+ *
+ * The gate scans every child in `SCAN_PLATFORMS`, so that is the default and the shape the LIVE
+ * verifier expects. The FROZEN historical verifiers are byte copies written when the gate scanned
+ * one child; they are never edited, so they cannot validate a two-platform package — not because
+ * the package is wrong, but because the shape postdates them. A control that runs one mutation
+ * through both verifiers therefore builds the same evidence twice: once live-shaped, and once
+ * with `platforms: ['linux/amd64']`, which is that evidence in the shape the frozen verifier was
+ * written for. Restricting the set here is a FIXTURE affordance only; the runner and the live
+ * verifier both read the tracked list and neither can be narrowed.
+ */
 export function buildPassingR34Evidence(
-  root: string, repo: string, opts: { shape?: 'r34' | 'r341' } = {},
+  root: string, repo: string, opts: { shape?: 'r34' | 'r341'; platforms?: string[] } = {},
 ): BuiltR34 {
   const shape = opts.shape ?? 'r341';
   const c15 = join(root, 'c15');
@@ -188,13 +219,16 @@ export function buildPassingR34Evidence(
    * The final-manifest verifier re-validates the current tracked records against the evidence
    * package's own run date, and a record approved in the future of that date is correctly refused.
    * R3.4.5 moved this to 2026-08-15 when SCX-0004 was approved 2026-08-14; the CVE-2026-14456
-   * maintenance change adds SCX-0006..0009 approved 2026-09-01, so it moves again.
+   * maintenance change added SCX-0006..0009 approved 2026-09-01; the 2026-09-10 re-pin to the
+   * derived images re-issued SCX-0002..0005 (approved 2026-09-10) and retired the rest, so it
+   * moved again; the owner's acceptance of the arm64 records SCX-0010/0011 (approved 2026-09-11,
+   * docs/images/ARM64_RISK_DECISION.md §5) moves it to 2026-09-11.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-09-01';
+  const runDate = '2026-09-11';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;
@@ -224,21 +258,31 @@ export function buildPassingR34Evidence(
 
   // ── images and platform resolution, from Compose ────────────────────────────────
   const imageRefs: string[] = contract.imageRefs;
-  const scanRefs = imageRefs.map((ref) => {
+  const platforms = opts.platforms ?? [...(SCAN_PLATFORMS as readonly string[])];
+  /**
+   * One (platform, image) pair per image step, PLATFORM-MAJOR — the order the runner numbers
+   * `trivy-image-<i>` in, and the order the verifier rebuilds from tracked source.
+   */
+  const scanPairs = platforms.flatMap((platform) =>
+    imageRefs.map((ref, imageIndex) => ({ platform, ref, imageIndex })));
+  const scanRefs = scanPairs.map(({ platform, ref }) => {
     const name = ref.slice(0, ref.indexOf('@'));
-    return `${name}@${CHILD_DIGESTS[name]}`;
+    return `${name}@${childDigestFor(name, platform)}`;
   });
+  const scanPlatforms = scanPairs.map((p) => p.platform);
   if (shape === 'r341') {
+    // ONE index document per IMAGE: the same bytes whichever child is selected from them.
     imageRefs.forEach((_ref, i) => {
       writeFileSync(join(c15, `oci-index-${i}.json`), readFileSync(join(traceStreams, `oci-index-${i}.json`)));
     });
   }
-  const imagePlatformResolution = imageRefs.map((ref, i) => {
+  const imagePlatformResolution = scanPairs.map(({ platform, ref, imageIndex }, i) => {
     const digest = ref.slice(ref.indexOf('@') + 1);
     const name = ref.slice(0, ref.indexOf('@'));
     return {
       pinned_ref: ref,
-      ...(shape === 'r341' ? { raw_index_file: `oci-index-${i}.json` } : {}),
+      scan_platform: platform,
+      ...(shape === 'r341' ? { raw_index_file: `oci-index-${imageIndex}.json` } : {}),
       scan_ref: scanRefs[i],
       pinned_digest: digest,
       raw_index_digest: digest,
@@ -247,18 +291,19 @@ export function buildPassingR34Evidence(
         ref, resolved: true, kind: 'index',
         media_type: 'application/vnd.oci.image.index.v1+json',
         index_raw_sha256: digest.slice('sha256:'.length),
-        child_count: 2, runnable_platform_count: 1,
-        target_digest: CHILD_DIGESTS[name],
+        child_count: 2, runnable_platform_count: 2,
+        target_digest: childDigestFor(name, platform),
+        // Mirrors the raw index bytes copied above: two runnable children, no attestations.
         children: [
           {
-            digest: CHILD_DIGESTS[name],
+            digest: CHILDREN[name].amd64,
             media_type: 'application/vnd.oci.image.manifest.v1+json',
-            os: 'linux', architecture: 'amd64', variant: null, size: 2678, attestation: false,
+            os: 'linux', architecture: 'amd64', variant: null, size: CHILDREN[name].size, attestation: false,
           },
           {
-            digest: `sha256:${'e'.repeat(64)}`,
+            digest: CHILDREN[name].arm64,
             media_type: 'application/vnd.oci.image.manifest.v1+json',
-            os: 'unknown', architecture: 'unknown', variant: null, size: 840, attestation: true,
+            os: 'linux', architecture: 'arm64', variant: null, size: CHILDREN[name].size, attestation: false,
           },
         ],
       },
@@ -276,11 +321,11 @@ export function buildPassingR34Evidence(
     .replaceAll(ARGV_TOKENS.OUT_DIR, c15)
     .replaceAll(ARGV_TOKENS.REPO_ROOT, repo)
     .replaceAll(ARGV_TOKENS.CHECK_WARM_DIR, join(root, 'eye-trivy-checkwarm-fixture')));
-  const stepContract = expectedStepContract({ scanRefs });
+  const stepContract = expectedStepContract({ scanRefs, scanPlatforms });
 
   // ── raw outputs ────────────────────────────────────────────────────────────────
   const records = (loadScannerExclusions(repo) as { doc: { records: any[] } }).doc.records;
-  const imageStepIds = imageStepIdsFor(imageRefs.length);
+  const imageStepIds = imageStepIdsFor(imageRefs.length * platforms.length);
   const rawFor = new Map<string, string>();
   rawFor.set('pnpm-audit-human.stdout.txt', 'No known vulnerabilities found\n');
   // R3.4.4: the audit must describe the tree it audited, and its totals must agree with the
@@ -325,16 +370,22 @@ export function buildPassingR34Evidence(
       Vulnerabilities: [],
     }],
   })}\n`);
-  imageRefs.forEach((ref, i) => {
+  scanPairs.forEach(({ platform, ref }, i) => {
     const name = ref.slice(0, ref.indexOf('@'));
     rawFor.set(`${imageStepIds[i]}.stdout.txt`,
-      `${JSON.stringify(trivyReportForImage(records, ref, CHILD_DIGESTS[name], i), null, 2)}\n`);
+      `${JSON.stringify(trivyReportForImage(records, ref, childDigestFor(name, platform), i), null, 2)}\n`);
   });
   rawFor.set('trivy-acquire-db.stdout.txt', '');
   rawFor.set('trivy-acquire-checks.stdout.txt', '{}\n');
 
+  // The tracked contract's normal-step list covers every platform in SCAN_PLATFORMS; a fixture
+  // built for a restricted platform set carries only the image steps it actually has.
+  const normalStepIds = [
+    ...(contract.normalStepIds as string[]).filter((id) => !id.startsWith('trivy-image-')),
+    ...imageStepIds,
+  ];
   const allStepIds = [
-    ...(contract.normalStepIds as string[]),
+    ...normalStepIds,
     ...(contract.acquisitionStepIds as string[]),
   ];
   const makeStep = (id: string, isNormal: boolean) => {
@@ -342,7 +393,7 @@ export function buildPassingR34Evidence(
     const stdoutName = `${id}.stdout.txt`;
     const stderrName = `${id}.stderr.txt`;
     writeFileSync(join(c15, stdoutName), rawFor.get(stdoutName) ?? '');
-    writeFileSync(join(c15, stderrName), SCANNER_BANNER[id] ?? `${id}: fixture stderr\n`);
+    writeFileSync(join(c15, stderrName), scannerBannerFor(id));
     const so = readFileSync(join(c15, stdoutName));
     const se = readFileSync(join(c15, stderrName));
     const base: Record<string, unknown> = {
@@ -363,7 +414,7 @@ export function buildPassingR34Evidence(
     }
     return base;
   };
-  const steps = (contract.normalStepIds as string[]).map((id) => makeStep(id, true));
+  const steps = normalStepIds.map((id) => makeStep(id, true));
   const acquisitionSteps = (contract.acquisitionStepIds as string[]).map((id) => makeStep(id, false));
 
   // Governed reports.
@@ -374,9 +425,20 @@ export function buildPassingR34Evidence(
   const { findingsFromTrivyJson, reconcileFindings, validateRecords } =
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     require('../../../../../scripts/gate/lib/scanner-exclusions.mjs');
+  /**
+   * A package built for a RESTRICTED platform set is for a frozen verifier, and that verifier
+   * reconstructs findings by calling `findingsFromTrivyJson(text, ref)` with no platform — so
+   * its findings carry `scan_platform: null`. The fixture must match, or the equality check
+   * fails on a field that verifier's era did not have. The live-shaped package carries the real
+   * platform, which is what makes an amd64 row distinguishable from its arm64 twin.
+   */
+  const legacyShape = opts.platforms !== undefined;
   const reconstructed: unknown[] = [];
-  imageRefs.forEach((ref, i) => {
-    reconstructed.push(...findingsFromTrivyJson(rawFor.get(`${imageStepIds[i]}.stdout.txt`)!, ref));
+  scanPairs.forEach(({ platform, ref }, i) => {
+    reconstructed.push(
+      ...findingsFromTrivyJson(rawFor.get(`${imageStepIds[i]}.stdout.txt`)!, ref,
+        legacyShape ? undefined : platform),
+    );
   });
   writeFileSync(join(c15, 'image-findings.json'), `${JSON.stringify(reconstructed, null, 2)}\n`);
 
@@ -386,7 +448,8 @@ export function buildPassingR34Evidence(
     readEvidence: (rel: string) => { try { return readFileSync(join(repo, rel)); } catch { return null; } },
   });
   const disposition = reconcileFindings(exclusionDoc, reconstructed, {
-    scanPlatform: 'linux/amd64', fatalIndices: validation.fatalIndices,
+    scanPlatform: 'linux/amd64', scanPlatforms: platforms,
+    fatalIndices: validation.fatalIndices,
   });
 
   // ── cache fingerprint, built as trivy-cache.mjs builds it ───────────────────────
@@ -454,6 +517,7 @@ export function buildPassingR34Evidence(
     mode: 'final', outcome: 'PASS', source_sha: expectedSha,
     host_platform_key: hostKey,
     scan_platform: 'linux/amd64',
+    scan_platforms: [...platforms],
     digest_pinned_images: [...imageRefs],
     image_platform_resolution: imagePlatformResolution,
     trivy_cache_dir: cache,
@@ -528,4 +592,33 @@ export function rebind(dir: string, manifestName: string, rel: string) {
     const a = m.evidence_artifacts.find((x: any) => x.path === rel);
     if (a !== undefined) { a.bytes = bytes.length; a.sha256 = sha256(bytes); }
   });
+}
+
+/**
+ * Rewrite one bound artifact in EVERY copy of a package and repair every claim about it.
+ *
+ * A control that runs one mutation through the live verifier and a frozen one now has two
+ * copies of the same evidence — live-shaped, and single-platform-shaped for the frozen verifier,
+ * which was written before the gate scanned a second child. The mutation must land in both, or
+ * the two verifiers are not being shown the same thing. The manifests differ between the copies
+ * (different step sets), so each is repaired from its own bytes rather than copied.
+ */
+export function replaceBoundInAll(dirs: string[], rel: string, text: string): void {
+  for (const dir of dirs) {
+    writeFileSync(join(dir, rel), text);
+    const bytes = readFileSync(join(dir, rel));
+    const digest = sha256(bytes);
+    editManifest(dir, 'supply-chain-manifest.json', (m) => {
+      const a = m.evidence_artifacts.find((x: { path: string }) => x.path === rel);
+      if (a !== undefined) { a.bytes = bytes.length; a.sha256 = digest; }
+      for (const s of [...m.steps, ...m.trivy_cache_acquisition.steps]) {
+        for (const stream of ['stdout', 'stderr']) {
+          if (s[`${stream}_file`] === rel) {
+            s[`${stream}_bytes`] = bytes.length;
+            s[`${stream}_sha256`] = digest;
+          }
+        }
+      }
+    });
+  }
 }

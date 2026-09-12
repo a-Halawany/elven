@@ -81,7 +81,15 @@ export const PG_SECRET_PATH = '/run/secrets/pg';
 export const REDIS_SECRET_PATH = '/run/secrets/redis.conf';
 
 /** The reader side of the handoff: a shell that takes the secret from STDIN, never from argv. */
-export const SECRET_SINK = (path) => `umask 077; cat > ${path}`;
+/**
+ * The sink writes the secret from STDIN; argv names only the path. When the image runs as a non-root
+ * USER (the derived service images do), the sink is executed as root and hands the tmpfs directory and
+ * the file to that user, so the entrypoint — which polls for the file as that user — can read it.
+ * `owner` is the image's numeric or named user as `docker image inspect` reports it, never a secret.
+ */
+export const SECRET_SINK = (path, owner = null) => (owner === null || owner === ''
+  ? `umask 077; cat > ${path}`
+  : `umask 077; cat > ${path} && chown ${owner} ${path.replace(/\/[^/]+$/, '')} ${path}`);
 
 /** Entrypoints that wait for their secret to land in tmpfs before exec'ing the real server. */
 export const PG_ENTRYPOINT = `while [ ! -s ${PG_SECRET_PATH} ]; do sleep 0.05; done; exec docker-entrypoint.sh postgres`;

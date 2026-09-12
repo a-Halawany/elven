@@ -14,7 +14,18 @@ allowBuilds:
 # Security remediation of pnpm-audit findings (gate instruction 4; ADR-P0-01
 # patching policy): force patched transitive versions under next.
 overrides:
-  sharp: '>=0.35.0'
+  # C15 at 9aaf0311 (run 34343317671): sharp <0.35.4 carries GHSA-rgj7-g3m4-5g8c (HIGH — libheif
+  # GHSA-g89c-p67h-r497 / GHSA-2jg2-4ch7-h545), reached only as next's optional image dependency.
+  # EXACT REVIEWED VERSION, not a range, for the reason recorded below for nanoid: 0.35.4 is the
+  # first version carrying the fix (the advisory states "patched >=0.35.4") and stays on the 0.35
+  # line next declares (^0.35.3), so nothing is forced across a semver minor.
+  sharp: 0.35.4
+  # C15 at 9aaf0311: multer <2.3.0 carries CVE-2026-77037, CVE-2026-77078 and CVE-2026-82333 (HIGH —
+  # denial of service via a file-descriptor leak on aborted requests, crafted multipart field names
+  # and an oversized array index). Reached transitively through @nestjs/platform-express, which
+  # still declares multer 2.2.0 through its 12.0.1 release. EXACT REVIEWED VERSION: 2.3.0 is the
+  # first version carrying all three fixes and stays on the 2.x line Nest declares.
+  multer: 2.3.0
   postcss: '>=8.5.23'
   # Gate-2.2 C15/C16: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via
   # an infinite loop when a custom generator is called with size 0). Reached only
