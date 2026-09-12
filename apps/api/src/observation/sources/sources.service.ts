@@ -8,12 +8,53 @@
  * two years later; the projection is what the runtime enforces. They are written
  * together so they cannot disagree.
  */
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
+import { EYE_CONFIG } from '../../config/config.module.js';
+import type { EyeConfig } from '../../config/config.js';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ObservationReads, RegistryWrites } from '../observation.capabilities.js';
 import { validateSourceContract, type SourceContractV1 } from './source-contract.js';
+import { SchedulerService, type ScheduleRuntime } from '../scheduling/scheduler.service.js';
+
+export interface SourceReadiness {
+  /** live · live-unscheduled · replay · operator-upload · blocked-rights · blocked-credential · inactive */
+  verdict: 'live' | 'live-unscheduled' | 'replay' | 'operator-upload' | 'blocked-rights' | 'blocked-credential' | 'inactive';
+  reason: string;
+  credential: string;
+  scheduled: boolean; cadence_seconds: number | null;
+  /**
+   * Whether THIS deployment executes schedule entries at all. A schedule entry is a
+   * recorded intention; a run is an observed fact. With the scheduler disabled the
+   * entry is recorded and nothing polls, so every run shown here was operator-triggered.
+   */
+  scheduler_enabled: boolean;
+  /**
+   * Three distinct things about AUTOMATIC collection: the configured schedule entry
+   * (a stored intention), the runtime (this deployment's scheduler flag, whether this
+   * process runs a worker for the domain, the Redis scheduler and its next fire
+   * time), and the observed attempts the worker recorded — the only evidence that a
+   * scheduled run happened. A flag or an operator's collect is neither.
+   */
+  automatic: {
+    schedule_entry: { status: string; cadence_seconds: number; scheduler_id: string } | null;
+    runtime: ScheduleRuntime;
+    last_attempt: ScheduledAttempt | null;
+    last_success: ScheduledAttempt | null;
+    /** Counts over ALL recorded attempts for this contract version (`scope: 'all'`), never a window. */
+    attempts: { scope: 'all'; total: number; finished: number; failed: number; cancelled: number; budget_exceeded: number; refused: number; faulted: number };
+  };
+  last_run: { run_id: string; state: string; mode: string; finished_at: string | null; admitted: number; quarantined: number; noop: number; failure: string | null } | null;
+  evidence_objects: number;
+  health: { state: string; lag_class: string | null; evaluated_at: string } | null;
+}
+
+export interface ScheduledAttempt {
+  attempt_id: string; job_id: string; outcome: string; run_id: string | null; reason: string | null;
+  started_at: string; finished_at: string; admitted: number; noop: number; quarantined: number;
+}
 
 export interface SourceRow {
   source_id: string;
@@ -39,6 +80,7 @@ function bad(corr: string, msg: string, status = 422): HttpException {
 
 @Injectable()
 export class SourcesService {
+  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, private readonly scheduler: SchedulerService) {}
   /**
    * Register a source contract as `draft`. It cannot self-approve and it cannot
    * be activated here — both are separate governed actions with their own
@@ -207,6 +249,103 @@ export class SourcesService {
       .orderBy('created_at' as never, 'desc')
       .limit(Math.min(limit, 500))
       .execute()) as SourceRow[];
+  }
+
+  /**
+   * READINESS, per registered source, from stored records alone: what the source IS
+   * (live, replay or operator upload), what stands between it and live collection
+   * (unresolved reuse rights, a credential this deployment does not bind, a superseded
+   * or suspended contract), whether anything is scheduled, the last governed run, the
+   * evidence held, and the latest recorded health verdict. It activates nothing and
+   * consults no clock: an operator reads it to know what is real, what is replayed and
+   * what is blocked, and by what.
+   */
+  async readiness(cap: ObservationReads, limit = 100): Promise<Array<SourceRow & { readiness: SourceReadiness }>> {
+    const rows = await this.list(cap, limit);
+    const out: Array<SourceRow & { readiness: SourceReadiness }> = [];
+    for (const s of rows) {
+      const sourceId = String(s.source_id);
+      const schedule = (await cap.readSchedulerEntries().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
+        .executeTakeFirst()) as Record<string, unknown> | undefined;
+      const lastRun = (await cap.readRuns().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
+        .orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const health = (await cap.readHealthEvents().select(['new_state', 'lag_class', 'evaluated_at'])
+        .where('source_id' as never, '=', sourceId as never)
+        .orderBy('evaluated_at' as never, 'desc').orderBy('event_id' as never, 'desc').limit(1).executeTakeFirst()) as { new_state: string; lag_class: string | null; evaluated_at: Date | string } | undefined;
+      const evidence = (await cap.readCanonicalObjects()
+        .select(sql<string>`count(*)`.as('n'))
+        .where('object_type' as never, '=', 'EVD' as never)
+        .where('provenance_ref' as never, 'like', `SRC:${sourceId}@%` as never)
+        .executeTakeFirst()) as { n: string | number } | undefined;
+      // The last attempt and the last SUCCESS are looked up independently — a success
+      // behind any number of failures is still the last success — and the counts cover
+      // every attempt, grouped in the database, never the newest N.
+      const attemptQuery = () => cap.readScheduledAttempts().selectAll()
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never);
+      const lastAttemptRaw = (await attemptQuery().orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const lastSuccessRaw = (await attemptQuery().where('outcome' as never, '=', 'finished' as never).orderBy('started_at' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+      const grouped = (await cap.readScheduledAttempts().select(['outcome' as never, sql<string>`count(*)`.as('n') as never])
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', s.contract_version as never)
+        .groupBy('outcome' as never).execute()) as Array<{ outcome: string; n: string | number }>;
+      const attempt = (a: Record<string, unknown>): ScheduledAttempt => ({
+        attempt_id: String(a['attempt_id']), job_id: String(a['job_id']), outcome: String(a['outcome']),
+        run_id: (a['run_id'] as string | null) ?? null, reason: (a['reason'] as string | null) ?? null,
+        started_at: new Date(String(a['started_at'])).toISOString(), finished_at: new Date(String(a['finished_at'])).toISOString(),
+        admitted: Number(a['items_admitted'] ?? 0), noop: Number(a['items_noop'] ?? 0), quarantined: Number(a['items_quarantined'] ?? 0),
+      });
+      const counts: SourceReadiness['automatic']['attempts'] = { scope: 'all', total: 0, finished: 0, failed: 0, cancelled: 0, budget_exceeded: 0, refused: 0, faulted: 0 };
+      for (const g of grouped) {
+        const n = Number(g.n); counts.total += n;
+        const key = g.outcome as keyof typeof counts;
+        if (key !== 'scope' && key !== 'total' && key in counts) counts[key] = (counts[key] as number) + n;
+      }
+      const runtime = await this.scheduler.describe(String(s.tenant_id), String(s.domain_id), sourceId);
+      const contract = ((s.contract ?? {}) as unknown) as Record<string, unknown>;
+      const so = (contract['security_and_operations'] ?? {}) as Record<string, unknown>;
+      const credentialRef = typeof so['credential_ref'] === 'string' ? (so['credential_ref'] as string) : null;
+      const mode = String(s.acquisition_mode);
+      const lifecycle = String(s.lifecycle_state);
+      const rights = String(s.rights_state);
+      const upload = String(s.connector_kind) === 'upload';
+      const scheduled = schedule !== undefined && schedule['status'] === 'scheduled';
+      const schedulerEnabled = this.cfg['eye.scheduler.enabled'];
+      // The verdict, in the product's words. Order matters: a contract that is not active is
+      // not collecting whatever its mode says; an upload source is never polled; and a
+      // credential the deployment does not bind blocks collection BEFORE the mode is
+      // consulted — a live contract with a schedule entry and an unbound credential is
+      // blocked, not live (the review's P2: the live branch used to be consulted first).
+      // Schedule and run facts are carried separately whatever the verdict.
+      let verdict: SourceReadiness['verdict']; let reason: string;
+      if (lifecycle !== 'active') { verdict = 'inactive'; reason = `contract version ${String(s.contract_version)} is ${lifecycle}`; }
+      else if (upload) { verdict = 'operator-upload'; reason = 'records arrive only when an operator uploads them; nothing is polled'; }
+      else if (credentialRef !== null) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential${mode === 'live' ? (scheduled ? '; the schedule entry cannot be served' : '; nothing is scheduled') : ''}`; }
+      else if (mode === 'live') {
+        verdict = scheduled ? 'live' : 'live-unscheduled';
+        reason = verdict === 'live'
+          ? `live under contract version ${String(s.contract_version)}; schedule entry every ${String(schedule?.['cadence_seconds'])} s${schedulerEnabled ? (runtime.worker_running ? '; a worker serves it here' : '; scheduler enabled but no worker runs here') : ' (this deployment runs no scheduler: runs are operator-triggered)'}`
+          : 'the contract is live but no collection is scheduled for it';
+      } else if (rights !== 'confirmed') { verdict = 'blocked-rights'; reason = `reuse rights are ${rights}: the source stays in replay until the publisher's terms are resolved`; }
+      else { verdict = 'replay'; reason = 'rights confirmed and no credential needed: live collection needs a new contract version declaring it, approved and activated by a second operator'; }
+      out.push({ ...s, readiness: {
+        verdict, reason, credential: credentialRef === null ? 'none required' : `reference ${credentialRef} (not bound in this deployment)`,
+        scheduled, cadence_seconds: schedule === undefined ? null : Number(schedule['cadence_seconds']), scheduler_enabled: schedulerEnabled,
+        automatic: {
+          schedule_entry: schedule === undefined ? null : { status: String(schedule['status']), cadence_seconds: Number(schedule['cadence_seconds']), scheduler_id: String(schedule['scheduler_id']) },
+          runtime,
+          last_attempt: lastAttemptRaw === undefined ? null : attempt(lastAttemptRaw),
+          last_success: lastSuccessRaw === undefined ? null : attempt(lastSuccessRaw),
+          attempts: counts,
+        },
+        last_run: lastRun === undefined ? null : { run_id: String(lastRun['run_id']), state: String(lastRun['state']), mode: String(lastRun['acquisition_mode']),
+          finished_at: lastRun['finished_at'] === null || lastRun['finished_at'] === undefined ? null : new Date(String(lastRun['finished_at'])).toISOString(),
+          admitted: Number(lastRun['items_admitted'] ?? 0), quarantined: Number(lastRun['items_quarantined'] ?? 0), noop: Number(lastRun['items_noop'] ?? 0), failure: (lastRun['failure_reason'] as string | null) ?? null },
+        evidence_objects: Number(evidence?.n ?? 0),
+        health: health === undefined ? null : { state: health.new_state, lag_class: health.lag_class, evaluated_at: new Date(String(health.evaluated_at)).toISOString() },
+      } });
+    }
+    return out;
   }
 
   async get(cap: ObservationReads, sourceId: string, correlationId: string): Promise<SourceRow> {

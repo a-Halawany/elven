@@ -229,6 +229,48 @@ test.describe.serial('Phase 4 — Prediction screens as the forecast owner', () 
 
   /* ── Phase 5 · the Twins workspace and the Simulations action paths (Act V) ── */
 
+  /* ── the source readiness register (real-world integration status) ── */
+
+  test('SOURCES: the register says what is live, replayed, uploaded or blocked — and by what', async ({ page }) => {
+    await uiLogin(page, 'm.dvorak', required('EYE_TEST_ADMIN_PASSWORD'));
+    await page.goto('/observation/sources');
+    await expect(page.getByRole('heading', { name: 'Sources' })).toBeVisible();
+    const row = (key: string) => page.getByRole('row').filter({ hasText: key }).first();
+    // ECB is LIVE: a v2 contract with a schedule entry, backfilled through the governed connector. The register
+    // distinguishes the recorded schedule from execution: this deployment runs no scheduler, so runs are operator-triggered.
+    await expect(row('ecb-eurusd@v2').getByText('LIVE', { exact: true })).toBeVisible();
+    await expect(row('ecb-eurusd@v2').getByText(/schedule entry every 86400 s; a worker serves it here/)).toBeVisible();
+    // the AUTOMATIC column keeps three things apart: the configured entry, the runtime, the observed attempts
+    await expect(row('ecb-eurusd@v2').getByText('configured · every 86400 s')).toBeVisible();
+    await expect(row('ecb-eurusd@v2').getByText(/worker running here · next fire \d{4}-\d{2}-\d{2} \d{2}:\d{2}Z/)).toBeVisible();
+    // PortWatch stays in replay behind unresolved reuse rights — the request is the owner's to send
+    await expect(row('imf-portwatch-chokepoints@v1').getByText('BLOCKED — RIGHTS', { exact: true })).toBeVisible();
+    await expect(row('imf-portwatch-chokepoints@v1').getByText(/reuse rights are pending/)).toBeVisible();
+    // proposals A and B (owner decision 2026-09-07): v2 LIVE contracts registered, approved by a second operator and
+    // activated through the governed path; the v1 replay contracts they supersede read INACTIVE and stay on record
+    await expect(row('eu-sanctions-rss@v2').getByText('LIVE', { exact: true })).toBeVisible();
+    await expect(row('eu-sanctions-rss@v2').getByText(/schedule entry every 3600 s/)).toBeVisible();
+    await expect(row('eu-sanctions-rss@v2').getByText('configured · every 3600 s')).toBeVisible();
+    await expect(row('eu-sanctions-payload@v2').getByText('LIVE', { exact: true })).toBeVisible();
+    await expect(row('eu-sanctions-payload@v2').getByText(/schedule entry every 21600 s/)).toBeVisible();
+    await expect(row('worldbank-indicators@v2').getByText('LIVE', { exact: true })).toBeVisible();
+    await expect(row('worldbank-indicators@v2').getByText(/schedule entry every 604800 s/)).toBeVisible();
+    await expect(row('eu-sanctions-rss@v1').getByText('INACTIVE', { exact: true })).toBeVisible();
+    await expect(row('worldbank-indicators@v1').getByText('INACTIVE', { exact: true })).toBeVisible();
+    // a rights-confirmed public source nobody decided on stays REPLAY
+    await expect(row('gdelt-discovery@v1').getByText('REPLAY', { exact: true })).toBeVisible();
+    // uploads are what they are; the UN Comtrade export is an operator upload, its automated access deferred
+    await expect(row('un-comtrade-upload@v1').getByText('OPERATOR UPLOAD', { exact: true })).toBeVisible();
+    await expect(row('nordwerk-internal@v1').getByText('OPERATOR UPLOAD', { exact: true })).toBeVisible();
+    // every row carries its evidence count and its last governed run
+    await expect(row('ecb-eurusd@v2').getByText(/live · finished/)).toBeVisible();
+    // the payload's last run was the scheduler's: the 25 MB CSV transferred, compared and confirmed unchanged, stored nowhere twice
+    await expect(row('eu-sanctions-payload@v2').getByText(/live · finished · 0 admitted/)).toBeVisible();
+    await expect(row('eu-sanctions-payload@v2').getByText(/FINISHED/)).toBeVisible();
+    await expect(row('eu-sanctions-payload@v2').getByText(/0 admitted · 1 unchanged/)).toBeVisible();
+    await shot(page, '12-sources-register');
+  });
+
   test('TWINS: the NORDWERK twin shows its synthetic world, two cut-offs, element kinds and health', async ({ page }) => {
     await uiLogin(page, 't.nakamura', required('EYE_TEST_ADMIN_PASSWORD'));
     await page.goto('/twins');
