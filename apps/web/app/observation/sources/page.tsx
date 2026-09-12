@@ -26,6 +26,42 @@ const VERDICT: Record<SourceWithReadiness['readiness']['verdict'], { label: stri
   'inactive': { label: 'INACTIVE', color: 'var(--eye-color-ink-muted)' },
 };
 
+/**
+ * AUTOMATIC collection, three facts kept apart: the configured schedule (a stored
+ * intention), the runtime (scheduler flag, worker, Redis scheduler and next fire), and
+ * the observed attempts the worker recorded — the only evidence a scheduled run ran.
+ */
+function AutomaticCell({ a, mode, lifecycle }: { a: SourceWithReadiness['readiness']['automatic']; mode: string; lifecycle: string }) {
+  const muted = { fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' } as const;
+  if (lifecycle !== 'active' || mode !== 'live') return <span style={muted}>not applicable</span>;
+  const fmt = (t: string | null) => (t ? t.slice(0, 16).replace('T', ' ') + 'Z' : '—');
+  const rt = a.runtime;
+  const last = a.last_attempt;
+  return (
+    <div style={{ display: 'grid', gap: 'var(--eye-space-4)' }}>
+      <div>
+        <strong>{a.schedule_entry ? `configured · every ${a.schedule_entry.cadence_seconds} s` : 'no schedule entry'}</strong>
+      </div>
+      <div style={muted}>
+        {rt.scheduler_enabled ? (rt.worker_running ? 'worker running here' : 'scheduler on · no worker here') : 'scheduler off in this deployment'}
+        {rt.redis_scheduler.state === 'present' ? ` · next fire ${fmt(rt.redis_scheduler.next_at)}`
+          : rt.redis_scheduler.state === 'absent' ? ' · not materialized in Redis'
+          : rt.redis_scheduler.state === 'unknown' ? ' · Redis lookup failed: scheduler state unknown' : ''}
+      </div>
+      <div style={muted}>
+        {last === null
+          ? 'no automatic run observed'
+          : <>
+              <span style={{ color: last.outcome === 'finished' ? 'var(--eye-color-success)' : 'var(--eye-color-critical)', fontWeight: 600 }}>{last.outcome.toUpperCase()}</span>
+              {` ${fmt(last.finished_at)} · ${last.admitted} admitted · ${last.noop} unchanged`}
+              {last.reason ? ` · ${last.reason}` : ''}
+              {` · all ${a.attempts.total} attempts: ${a.attempts.finished} ok / ${a.attempts.failed + a.attempts.cancelled + a.attempts.budget_exceeded} failed / ${a.attempts.faulted} faulted / ${a.attempts.refused} refused`}
+            </>}
+      </div>
+    </div>
+  );
+}
+
 /** The verdict in words the operator can act on, with the reason under it. */
 function ReadinessCell({ r, lifecycle }: { r: SourceWithReadiness['readiness']; lifecycle: string }) {
   const v = VERDICT[r.verdict];
@@ -72,7 +108,7 @@ export default function SourcesPage() {
         <ScrollBox label="Registered sources">
           <table className="eye-table">
             <caption>
-              Every registered source contract, and what it is right now: LIVE (polled on a schedule), REPLAY (a frozen
+              Every registered source contract, and what it is right now: LIVE (a schedule entry exists; the Automatic column says whether anything serves it), REPLAY (a frozen
               set; live collection needs a new contract version), an OPERATOR UPLOAD, or BLOCKED — by unresolved reuse
               rights, or by a credential this deployment does not bind. Read from stored records; nothing here activates anything.
             </caption>
@@ -84,6 +120,7 @@ export default function SourcesPage() {
                 <th scope="col">Mode</th>
                 <th scope="col">Status</th>
                 <th scope="col">Last governed run</th>
+                <th scope="col">Automatic</th>
                 <th scope="col">Evidence</th>
                 <th scope="col">Health</th>
                 <th scope="col">Rights</th>
@@ -108,6 +145,7 @@ export default function SourcesPage() {
                   <td data-label="Last governed run">{s.readiness.last_run === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>never</span>
                     : <><Mono>{s.readiness.last_run.finished_at ? s.readiness.last_run.finished_at.slice(0, 16).replace('T', ' ') + 'Z' : s.readiness.last_run.state}</Mono>
                         <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>{s.readiness.last_run.mode} · {s.readiness.last_run.state} · {s.readiness.last_run.admitted} admitted{s.readiness.last_run.quarantined ? ` · ${s.readiness.last_run.quarantined} quarantined` : ''}{s.readiness.last_run.failure ? ` · ${s.readiness.last_run.failure}` : ''}</div></>}</td>
+                  <td data-label="Automatic"><AutomaticCell a={s.readiness.automatic} mode={s.acquisition_mode} lifecycle={s.lifecycle_state} /></td>
                   <td data-label="Evidence"><Mono>{s.readiness.evidence_objects}</Mono></td>
                   <td data-label="Health">{s.readiness.health === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>not evaluated</span>
                     : <>{s.readiness.health.state}{s.readiness.health.lag_class && s.readiness.health.lag_class !== 'none' && s.readiness.health.lag_class !== 'unknown' ? ` · ${s.readiness.health.lag_class}` : ''}<div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>as of {s.readiness.health.evaluated_at.slice(0, 10)}</div></>}</td>

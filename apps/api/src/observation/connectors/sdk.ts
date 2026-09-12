@@ -144,6 +144,15 @@ export interface AcquiredItem {
    */
   deterministic?: boolean;
   /**
+   * The stable identity of WHAT WAS POLLED, across runs: a REST endpoint (its
+   * redacted URL), a feed, a feed entry's guid + pubDate. A forward poll's item key
+   * is bound to the retrieval instant by design (§5.12); the poll key is what the
+   * lifecycle compares bytes against, so a poll that returns exactly what is
+   * already held is recorded as an audited, freshness-bearing confirmation and
+   * stores no second copy. Absent for items that have no stable identity.
+   */
+  pollKey?: string;
+  /**
    * For a backfilled window: the traversal cursor at which its window began, so
    * the lifecycle can roll the checkpoint back to a window it QUARANTINED rather
    * than let the cursor pass a window that was never collected.
@@ -160,6 +169,17 @@ export interface AcquisitionOutput {
   requestsMade: number;
   /** A raw parent payload preserved as its own EVD when the connector frames items out of it. */
   parent?: AcquiredItem | null;
+  /**
+   * Polls the publisher answered NOT MODIFIED (HTTP 304) to a conditional request.
+   * No bytes moved and no item exists; the lifecycle turns each into a confirmation
+   * of the held evidence for that poll key — if, and only if, that evidence is still
+   * available — and otherwise records an unbound not-modified answer.
+   */
+  revalidated?: Array<{
+    pollKey: string; endpoint: string; status: number;
+    /** The validators the conditional request carried — what the publisher's 304 actually confirms. */
+    validators: { etag?: string; lastModified?: string };
+  }>;
 }
 
 export interface AcquisitionContext {
