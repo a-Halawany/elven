@@ -1874,7 +1874,7 @@ open); the records commit below binds the hosted result and reads **3,555 = 3,19
 | `a081001` | the reproduction head (the serving TTL configurable, the test hooks; the reproduction file failing as the findings say) | not run (a reproduction, not a candidate) | — |
 | `c93cdad` | the B9 candidate before the adversarial review (0066 only) — superseded by the amended commit below; its run is recorded, not bound | 34723796714 green (926/926 in 56 files) | 34723796751 green |
 | `36ce748` | **B9: 0066 and 0067**; the harness (25 + 9 + 5 cases); the act; the records at `verified:local` | 34726253751 green — build-test job 103640765238: unit 2148/2148 and the meta suite 9/9, the acceptance suite 58/58, the integration suite **929/929 in 56 files on a fresh database**, the upgrade proof with 0066 and 0067 (46 migrations, 31 roles, 28 registry rows; 297/297 and 275/275 on the upgraded data), C18 612/612 and the four gate stages; browser-regression and supply-chain green (`hosted-36ce748-build-test-summary.txt`) | 34726253762 green |
-| the records head | this binding: the seven B9 units → `verified:ci`; the summary regenerated | the refresh at the records head is recorded in §22.9 when it completes | — |
+| `6aaae07` | the records head: the seven B9 units → `verified:ci`; the summary regenerated | 34727137207 green (attempt 1; records only) | 34727137189 green |
 
 Statuses: AU-DP-0176, AU-MEM-0121 and AU-PRD-0064 allocated `verified:local` at the batch head and moved to
 **`verified:ci`** by the hosted run at `36ce748` (ci 34726253751; C19 34726253762); AU-MEM-0065, AU-MEM-0060,
