@@ -1924,3 +1924,143 @@ access recorded names the served version. Closure evidence, the complete seriali
 written — the item falls to infrastructure retry instead of the person's disposition) and **B9-F3** (a `review`
 action's verification applies the deletion checks and can never pass) are carried into the next batch with G2 (a
 claim approved in review never graphed); their clauses stay visibly unfinished on AU-DP-0176 and AU-MEM-0059/-0061.
+
+## 23. The consolidated checkpoint after `36ce748` / `121f636` (2026-09-13): B9-F1 closed on the fixed candidate; B10 implemented — the memory workspace, the agent's retrieval, B9-F2/F3 and G2
+
+Continued from `36ce748` (code) / `121f636` (records). Codex's bounded review at `36ce748` (§22.9) verified the eight
+merges, closed B8-F1/F2 and returned B9-F1 (a merge blocker), B9-F2 and B9-F3 (implementation follow-ups) and the
+recorded G2 gap. The owner's directive of 2026-09-13: fix F1 before merging #46 and return the exact corrected
+candidate for Codex's bounded closure; once closed, merge #46 under the existing conditional authorization and complete
+its C17/C19 archive chain; carry F2, F3 and G2 into implementation on the next feature branch, keeping the merge
+candidate fixed; continue the missing capabilities starting with the usable memory workspace and the agent's
+retrieval; meaningful NORDWERK effects alongside; focused verification plus the existing gates, no broad audit and no
+repeated records-refresh chain. Every previous closure, the frozen criteria, the source/budget permissions (GHCR
+temporary with monitoring; UN Comtrade keys and live PortWatch within existing budgets and cadences; no purchase,
+no cadence or budget change; no production deployment), the backups and the demonstration services are preserved;
+completed monitors are not re-armed.
+
+### 23.1 The merge candidate — fixed at `48f7bdc` (phase6-decisions; #46 → `main`, not merged)
+
+The F1 correction (§22.9) is the one change after `36ce748`/`121f636`: `48f7bdc` = the retrieval built from the
+served version with availability metadata alone, the harness closure cases, the HTTP-path closure act on the
+demonstration, the records. Hosted at `48f7bdc`: **`ci` 34744726183 green** — unit 2148/2148 and the meta suite 9/9,
+the acceptance suite 58/58, the integration suite **932/932 in 56 files on a fresh database**
+(`phase6-graph-subscriptions-4` 28/28), the upgrade proof with 0066 and 0067 (297/297 and 275/275 on the upgraded
+data), C18 612/612 and the gate stages; **C19 34744726187 green**. #46 is `MERGEABLE`/`CLEAN` against `main` and waits
+for Codex's bounded closure of F1 on this candidate; on closure it merges under the existing authorization and its
+C17/C19 archive chain runs on the push to `main` (the PR workflow skips the archive packaging; the post-merge push run
+does it — Codex's note). No further merge permission is requested. AU-MEM-0065's F1 clause is bound to this hosted run
+(the unit's evidence column).
+
+### 23.2 What B10 implements (migration 0068, PR #47 on `phase6-b10`, base `phase6-decisions`) — `audit/CP6_BATCHES.md` §B10 for the mechanism
+
+- **B9-F2 closed in implementation**: the relationships subscriber asserts the re-derived edge under a savepoint and
+  catches the builder port's refusals as `derivation.blocked` unresolved; the unresolved checkpoint commits in the
+  same transaction the port refused in — pending reassessment on its cause, no successor, no duplicate cause or
+  opened-event on a re-drive; the person's vocabulary repair lets the next re-drive re-derive (harness: REFUSED,
+  RECORDED, REPAIRED; the demonstration: the live `stocks` edge).
+- **G2 closed**: `graph.assert_edge` and the builder's rules consult the review CASE (approved graphed though the
+  payload says queued; rejected refused; a case-corrected version superseded); the run reads the cases of the claims
+  it holds (harness: the run and the port; three unit cases on the builder's double).
+- **B9-F3 closed in implementation**: a review action verifies against its preservation contract (untouched, bytes
+  present, reviewed; no DeletionVerified) — and, found on the demonstration rehearsal, its SCOPE is resolved by the
+  same contract (0068 §6: current and held evidence reviewed in place, no residuals; a deletion of current evidence
+  stays excluded).
+- **The agent's retrieval** (AU-MEM-0065's unexercised clause): a briefing composition — a person's or the briefing
+  agent's — reads the memory items its purpose, the reader's clearance and the audience roles admit, records each read
+  on the item's ledger under `briefing.compose`, and carries them as briefing items of kind `memory`.
+- **The Enterprise Memory workspace** (`/graph/memory`): records without content; retrieval under a declared purpose
+  with the availability object; record, supersede, withdraw; refusals verbatim. `memory.item.withdraw` is its own
+  act; a withdrawn item's current retrieval is 409 EYE-STA-003 while its versions stay replayable as of an instant.
+- **The floor's re-check** aligned with the scope resolution's rule (0068 §3).
+
+Local results at `0cee439` (the B10 code head): `phase6-graph-subscriptions-4` 32/32 and `phase6-executive-requests`
+10/10 on fresh databases; the unit suite 2151/2151 in 40 files (`b10-unit.txt`); boundaries clean; web `tsc` clean and
+`next build` listing `/graph/memory`; the upgrade proof with 0022–0068 (47 migrations; 297/297 and 275/275 on the
+upgraded data — `b10-upgrade-proof.txt`); the full integration suite **937/937 in 56 files** on a fresh database at this tree
+(`b10-int-all-1.txt`).
+
+### 23.3 The NORDWERK demonstration — `evidence/cp6/act-b10.txt` (2026-09-13T08:13–08:14Z, head `0cee439`)
+
+Rehearsed three times on a restored copy of `eye_demo` (its own Redis on 6391, the API on :3411): the first rehearsal
+found two act-script errors (a listing under `graph.read` by a decision persona who holds no such role — the
+workspace's list is the knowledge owner's; a refusal code spelt with underscores) and the review-scope defect
+corrected as 0068 §6; the second found the subscription control is an administrator's act; the third ran clean. Then
+on `eye_demo`: a `pg_dump -Fc` backup (47,910,617 bytes, kept outside the repository), 0068 through the migrator
+(digest `9c324c9a0b2d2fdf`), the API restarted on the B10 build and left running. What the act produced:
+
+- **The workspace's routes** — K. Müller records; the listing and the record carry no statement; L. Brandt retrieves
+  under the memory purpose (v1 served, the seven-field availability object, the access recorded) and is refused under
+  the briefing purpose (403, the item's purposes named); a throwaway item: K. Müller's withdrawal refused 403, R. Adler
+  withdraws under `memory.item.withdraw`, the current retrieval **409 EYE-STA-003** (the complete response printed), the
+  read as of an instant before the withdrawal serves v1 with `availability.state = withdrawn`; the item's events
+  `recorded → withdrawn (reason) → retrieved`.
+- **The agent's retrieval** — three items: A (`memory, briefing`), B (`memory` only), C (`briefing`, audience role
+  `knowledge_owner`); S. Okafor's analysis request runs the briefing agent under its own session (run finished, request
+  fulfilled); S. Okafor reads the briefing: 8 items, ONE of kind memory — A with its statement, `read_under: briefing`;
+  B and C absent (their statements nowhere in the response); `memory.item_access` holds one row for A@1 under
+  `briefing` by the agent's own principal, none for B or C.
+- **B9-F2 on the live graph** — A. Hoffmann challenges the asserted `stocks` claim (v2); L. Ferreira corrects the
+  predicate to `procures`, which vocabulary version 1 does not declare; MemoryCorrected/claim.corrected published; the
+  relationships delivery `unresolved / unresolved_dependency / human_review`, the item `derivation.blocked` with the
+  port's reason (`predicate procures is not in the domain's active ontology version; propose it …`), the edge
+  asserted with reassessment pending on the event, no successor; the administrator pauses and resumes the
+  subscription — the re-drive repeats the refusal (deliveries 2, checks 2) with the edge's causes still 1; J. Weber
+  proposes version 3 (additive, `procures`), O. Steiner approves; the next re-drive **re-derives**: the `stocks` edge
+  superseded (reassessed/superseded), the successor `NORDWERK ANTRIEBSTECHNIK GmbH procures SYN-PART-BRG` under claim
+  version 3 asserted by the subscription's principal (deliveries 3, unresolved 0). **G2**: k.adeyemi's builder run
+  afterwards asserts nothing (edges 7 → 7): every current claim version already has its edge, the successor included;
+  the run is idempotent per version with the review case consulted.
+- **B9-F3** — P. Novák opens a review of the CURRENT `eu-sanctions-rss` evidence (3,934 bytes); the scope resolves to
+  the item reviewed in place (1 to execute — the rehearsal's finding, corrected); H. Bergmann approves on the digest;
+  the execution records the review (`port none, outcome done`; no tombstone; no bytes removed); the verification
+  passes on the preservation contract — the ledger's check `reviewed — untouched, its bytes present`, expected
+  `{reviewed, tombstone:false, bytes_present}` equal to the observed; no DeletionVerified; the action `verified`, the
+  manifest and the evidence version untouched.
+
+The browser leg of the workspace: the web application was rebuilt at this tree and restarted (`/graph/memory` in the
+build); the signed-in walk is the owner's — the author does not authenticate in the browser — so no screenshot of the
+page is claimed; the routes it calls are the act's scene 1.
+
+### 23.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `48f7bdc` | **the merge candidate** (#46): B9 + the F1 correction, the closure cases, the HTTP-path act, the records | 34744726183 green (932/932 in 56 files; C18 612/612) | 34744726187 green |
+| `0cee439` | **B10 code** (0068, the services, the workspace, the harness, the act script) — PR #47 | 34747248517 green — build-test job 103697312257: unit 2151/2151 and the meta suite 9/9, the acceptance suite 58/58, the integration suite **937/937 in 56 files on a fresh database** (`phase6-graph-subscriptions-4` 32/32, `phase6-executive-requests` 10/10), the upgrade proof with 0022–0068 (47 migrations; 297/297 and 275/275 on the upgraded data), C18 612/612 and the gate stages; browser-regression and supply-chain green | 34747248530 green |
+| the records head (the commit after `0cee439` on `phase6-b10`) | the B10 records (this section, §B10, the units and rows, the evidence index, the summary) | its PR run is records-only; no refresh chain is awaited or bound | — |
+
+Statuses: no unit changes status in B10 — AU-DP-0176, AU-MEM-0059, AU-MEM-0061 and AU-MEM-0065 were `verified:ci` at
+`36ce748` and stay so; their B10 clauses (F2 closed, G2, F3 closed with the scope, the agent's retrieval, the
+withdrawal, the workspace) are bound to the hosted run at `0cee439` in their evidence columns, the F1 clause to
+`48f7bdc`. The register's §5.2a still reads **3,555 = 3,190 open + 338 local + 27 CI**. The hosted run verifies the
+artefact on a fresh database; it is not a profile leg (S7). Requirement rows: V8 OBJ-15 (the agent's retrieval),
+V8 CAP-UM-07 (`missing` → `partial`: the workspace page exists, its browser walk owed), V7 TT-04 (the refusal
+contained), V4 ES-33-007 (purpose-aware retrieval and the review contract).
+
+### 23.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning (harness on a fresh database; the demonstration through the real HTTP path)** — the subscriptions and
+their seven consumers with ordered publication, replay reach and fenced serving (B6–B9); memory items recorded,
+retrieved under a purpose by a person or the briefing agent, superseded, withdrawn, replayed, with the historical
+response holding the served version only; the relationships re-derivation with durable unresolved states and the
+person's repair path; review cases deciding the graph; governed retention — schedules, deletion with holds, approval
+on the digest, execution evidence, residuals, verification; review actions by their preservation contract; the log's
+floor; contradictions linked, methods evaluated, the vocabulary versioned, scenarios reviewed, the executive's typed
+requests; the interface register; the flows' telemetry.
+
+**Partial** — the Enterprise Memory workspace (page built, its browser walk owed); retention's archive and
+customer-export kinds (open and resolve; no executor); the pause of a manifest deletion whose referential scope cannot
+be proven (recorded as residuals today); communications- and telemetry-derived memory records (source kinds exist,
+only human records recorded); the browser surfaces for retention, ontology, contradictions, scenario review and
+requests (routes, no pages); the C18.1.11 and Phase 0 "known-at" control determinism (routed to C19).
+
+**Missing** — what the delivery register lists beyond CP-6's batches: the remaining retention capabilities (archive,
+export, index-tier degradation), the remaining source integrations under the standing permissions (UN Comtrade and
+live PortWatch activation acts — authorized, not performed), the interface capabilities the register names without a
+binding, and every deployment leg (no profile carries signed evidence; S7).
+
+**Acceptance work remaining** — Codex's bounded closure of F1 on `48f7bdc` → the merge of #46 and its archive chain;
+then #47 retargeted to `main` for its own bounded review; the hosted run at `0cee439` bound in the units when green;
+the owner's walk of `/graph/memory`; the next batch from the register (retention's executors, the source activation
+acts, the pages).

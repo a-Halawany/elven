@@ -1,0 +1,6 @@
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  40 passed (40)
+      Tests  2151 passed (2151)
+   Start at  10:47:21
+   Duration  428.92s (transform 3.46s, setup 0ms, import 6.52s, tests 2113.16s, environment 2ms)
