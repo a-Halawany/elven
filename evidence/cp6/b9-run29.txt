@@ -1,0 +1,13 @@
+# CP-6 B9 — phase6-executive-requests (the seven cases of 0066 §9) on eye_verify40_20260913, created empty and migrated 0001–0066. command: EYE_DB_NAME=eye_verify40_20260913 npx vitest run --config vitest.int.config.ts test/int/phase6-executive-requests.test.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  00:04:41
+   Duration  13.54s (transform 492ms, setup 16ms, import 881ms, tests 12.57s, environment 0ms)
+

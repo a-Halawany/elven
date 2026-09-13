@@ -1,0 +1,89 @@
+=== CP-6 batch B8 on the demonstration (NORDWERK, eye_demo) — 2026-09-12T16:37:20Z, head 661c2fb ===
+
+0. the demonstration database's 0064 (an operator act on eye_demo only; scripts/phase6/demo-reconcile-0064.sql)
+   eye_demo had been migrated on 2026-09-12T11:48Z through a development iteration of 0064 (recorded digest 9da00200…),
+   not the committed file (509395a8…, unchanged since a852c65); the migrator refused 0065 ("migrations are immutable").
+   The reconciliation applies the exact difference (schema diff against a database on the committed 0064), copied
+   verbatim from the committed file, and sets the recorded digest to the committed file's. Rehearsed first on a
+   restored copy (eye_demo_recon): reconciled + 0065 = a fresh 0065 database (eye_verify19) to the schema dump,
+   up to column order and pg_restore ownership artefacts. Full dump taken before the act.
+   before:
+     [{"filename":"0064_subscription_resolution_and_partition_order.sql","digest":"9da00200dd4a4059","applied_at":"2026-09-12T11:48:33.686Z"}]
+     [{"consumer_kind":"decisions","policy":"leave","served_from":"2026-09-12T00:26:39.702Z","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"forecasts","policy":"leave","served_from":"2026-09-12T00:26:39.649Z","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"memory-mappings","policy":"leave","served_from":"2026-09-12T00:26:39.751Z","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"retrieval","policy":"leave","served_from":"2026-09-12T00:26:39.726Z","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"scenarios","policy":"leave","served_from":"2026-09-12T00:26:39.678Z","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"twins","policy":"leave","served_from":"2026-09-12T00:26:39.621Z","checkpoint_seq":"13963","replay_seq":0}]
+   the demonstration API stopped for the migration (pid 24485)
+   reconcile:
+     []
+   migrate (first attempt, without the migrate credential in the runner's environment — refused, nothing applied):
+     migrate: EYE_DB_MIGRATE_PASSWORD is required and has no default — refusing to connect.
+              Supply it from the environment (see .env.example / scripts/local-env.mjs).
+   after:
+     [{"filename":"0064_subscription_resolution_and_partition_order.sql","digest":"509395a892557bc8","applied_at":"2026-09-12T11:48:33.686Z"}]
+     [{"consumer_kind":"decisions","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"forecasts","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"memory-mappings","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"retrieval","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"scenarios","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0},{"consumer_kind":"twins","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0}]
+
+   migrate (0065 through the migrator, with the credential; 16:54:09Z):
+     applying 0065_ordered_publication_and_replay_reach.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0064_subscription_resolution_and_partition_order.sql","digest":"509395a892557bc8","applied_at":"2026-09-12T11:48:33.686Z"},{"filename":"0065_ordered_publication_and_replay_reach.sql","digest":"39e1d6cb448e7a66","applied_at":"2026-09-12T16:54:09.170Z"}]
+     [{"partition_key":"tenant:01a084f5-757f-7f03-9cf5-315d74426481","next_seq":"13972","retained_from_seq":"1"}]
+
+   the demonstration API restarted on the B8 build (661c2fb; $S/demo-start.sh, scheduler enabled):
+     build ok
+     {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"de
+     
+
+
+=== CP-6 batch B6 · GraphChanged / MemoryCorrected subscriptions on the demonstration ===
+
+1. the subscribers
+  ✓ twins: subscription 01a09302… already active (consumer 1.0.0 197ffa8c5454…)
+  ✓ forecasts: subscription 01a09302… already active (consumer 1.0.0 cbcde85317c8…)
+  ✓ scenarios: subscription 01a09302… already active (consumer 1.0.0 d2be51c5792f…)
+  · decisions: subscription 01a09302… was registered for consumer 1.0.0 fe348542fe4a…; this process's decisions consumer is 1.0.0 e4d40ace4789… — revoked, registered anew
+  ✓ decisions: registered subscription 01a0968b…, principal 01a0968b… (role decision_subscriber), consumer 1.0.0 e4d40ace4789…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  · decisions: replayed 0 event(s) to the replacement from sequence 13963
+  ✓ retrieval: subscription 01a09302… already active (consumer 1.0.0 a95b9b4246f0…)
+  · memory-mappings: subscription 01a09302… was registered for consumer 1.0.0 6b361a31d507…; this process's memory-mappings consumer is 1.0.0 058f1cedb39e… — revoked, registered anew
+  ✓ memory-mappings: registered subscription 01a0968b…, principal 01a0968b… (role mapping_subscriber), consumer 1.0.0 058f1cedb39e…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  · memory-mappings: replayed 0 event(s) to the replacement from sequence 13963
+  ✓ all six consumers are registered into the dispatcher by their own modules
+  ✓ the domain queue graph.01a084f5-757f-7f03-9cf5-315d74426481.01a084f5-759a-751f-a1dd-38fbd7933057.subscriptions is served by this process
+
+2. the live act — the publisher restates evidence the corridor forecast rests on
+  ✓ correction case 01a0968b… applied by the collection manager: evidence 01a084f5… superseded — nobody marks anything
+
+3. MemoryCorrected — delivered to every subscriber within the publisher's tick
+  ✓ event 01a0968b…: six deliveries applied 1.2s after the apply
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · non-empty work: retrieval (1 applied); no work (nothing of theirs reached): twins, forecasts, scenarios, decisions, memory-mappings
+  · ledger events: received → received → received → received → received → received → applied → applied → applied → applying → item.applied → applied → applied → applied
+  ✓ the corridor forecast says: invalidation 01a095c7-ffce-744e-9e8b-554833fed6be: a value it was fitted on was read from the corrected evidence
+
+4. GraphChanged — the strategy owner retracts an edge
+  ✓ edge 01a084f5… (transits) retracted
+  ✓ event 01a0968b…: six deliveries applied 1.1s after the retraction
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · non-empty work: retrieval (1 applied); no work (nothing of theirs reached): twins, forecasts, scenarios, decisions, memory-mappings
+
+5. the status route
+  · 8 subscription(s); 66 recent deliveries; 11 retrieval check(s) (mismatched: 0,0,0,0,0,0,0,0,0,0,0); 0 mapping reconciliation(s) proposed
+  · serving: holder Ahmeds-MacBook-Pro.local/20917/cfa83060 (this process Ahmeds-MacBook-Pro.local/20917/cfa83060, served here: true), claimed until 2026-09-12T16:57:34.096Z, renewals 4
+  · partition tenant:01a084f5-757f-7f03-9cf5-315d74426481: last seq 13975, pending 0, blocked false, dead letters 0, retained from seq 1 (lifetime)
+  · open failure states: none
+
+6. read back from the database after the act (the replacement subscriptions' served point is the row after the revoked cursor; rows 13964–13971 are ObservationRecorded — not a subscribed type — so the replay re-drove nothing, correctly)
+   [{"consumer_kind":"decisions","status":"active","served_from_seq":"13964","checkpoint_seq":"13975","replay_seq":1,"digest":"e4d40ace4789"},{"consumer_kind":"forecasts","status":"active","served_from_seq":"13942","checkpoint_seq":"13975","replay_seq":0,"digest":"cbcde85317c8"},{"consumer_kind":"memory-mappings","status":"active","served_from_seq":"13964","checkpoint_seq":"13975","replay_seq":1,"digest":"058f1cedb39e"},{"consumer_kind":"retrieval","status":"active","served_from_seq":"13942","checkpoint_seq":"13975","replay_seq":0,"digest":"a95b9b4246f0"},{"consumer_kind":"scenarios","status":"active","served_from_seq":"13942","checkpoint_seq":"13975","replay_seq":0,"digest":"d2be51c5792f"},{"consumer_kind":"twins","status":"active","served_from_seq":"13942","checkpoint_seq":"13975","replay_seq":0,"digest":"197ffa8c5454"},{"consumer_kind":"decisions","status":"revoked","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0,"digest":"fe348542fe4a"},{"consumer_kind":"memory-mappings","status":"revoked","served_from_seq":"13942","checkpoint_seq":"13963","replay_seq":0,"digest":"6b361a31d507"}]
+   [{"partition_seq":"13963","event_type":"GraphChanged","status":"published"},{"partition_seq":"13964","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13965","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13966","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13967","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13968","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13969","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13970","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13971","event_type":"ObservationRecorded","status":"published"},{"partition_seq":"13972","event_type":"CorrectionReceived","status":"published"},{"partition_seq":"13973","event_type":"CorrectionApplied","status":"published"},{"partition_seq":"13974","event_type":"MemoryCorrected","status":"published"},{"partition_seq":"13975","event_type":"GraphChanged","status":"published"}]
+   [{"consumer_kind":"decisions","partition_seq":"13974","state":"applied","replay_seq":1,"items":0},{"consumer_kind":"forecasts","partition_seq":"13974","state":"applied","replay_seq":0,"items":0},{"consumer_kind":"memory-mappings","partition_seq":"13974","state":"applied","replay_seq":1,"items":0},{"consumer_kind":"retrieval","partition_seq":"13974","state":"applied","replay_seq":0,"items":1},{"consumer_kind":"scenarios","partition_seq":"13974","state":"applied","replay_seq":0,"items":0},{"consumer_kind":"twins","partition_seq":"13974","state":"applied","replay_seq":0,"items":0},{"consumer_kind":"decisions","partition_seq":"13975","state":"applied","replay_seq":1,"items":0},{"consumer_kind":"forecasts","partition_seq":"13975","state":"applied","replay_seq":0,"items":0},{"consumer_kind":"memory-mappings","partition_seq":"13975","state":"applied","replay_seq":1,"items":0},{"consumer_kind":"retrieval","partition_seq":"13975","state":"applied","replay_seq":0,"items":1},{"consumer_kind":"scenarios","partition_seq":"13975","state":"applied","replay_seq":0,"items":0},{"consumer_kind":"twins","partition_seq":"13975","state":"applied","replay_seq":0,"items":0}]
+
+=== act complete — 2026-09-12T16:55:46Z; the demonstration API (pid 20917) left running on :3401 ===

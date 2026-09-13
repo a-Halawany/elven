@@ -296,9 +296,11 @@ export class ExtractionOrchestrator {
                      targetId: declaredClaimIds[0] as string, targetVersion: '1',
                      outboxEvent: r.admitted.length === 0 ? null : {
                        eventType: 'ClaimsExtracted',
-                       payload: { run_id: runId, method_id: a.methodId, mode,
+                       payload: { schema_version: 'v1', run_id: runId, method_id: a.methodId, mode,
                                   claims: r.admitted.map((x) => x.objectId) },
-                     } };
+                     },
+                     // 0066 §5: the contradictions this admission detected, published from the same committed transition.
+                     ...(r.contradictions.length > 0 ? { outboxEvents: r.contradictions } : {}) };
           });
         claimsAdmitted += out.result.admitted.length;
         // Each admitted claim carries the decision that ADMITTED it, which is this

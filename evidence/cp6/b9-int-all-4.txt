@@ -1,0 +1,7 @@
+# CP-6 B9 — the full integration suite at the corrected candidate (0066 + 0067; the review's TypeScript corrections) on a fresh database (eye_verify50_20260913 created empty and migrated 0001–0067): 929 = the 926 of the final 0066 + 0067's three cases (the retention roll-back and kinds; the fulfilment bound to the kind and the refused run; the delegation falling with its lender).
+# command: EYE_DB_NAME=eye_verify50_20260913 pnpm --filter @eye/api test:int:all
+ Test Files  56 passed (56)
+      Tests  929 passed (929)
+   Start at  02:35:28
+   Duration  422.36s (transform 1.10s, setup 262ms, import 15.17s, tests 395.02s, environment 2ms)
+EXIT 0

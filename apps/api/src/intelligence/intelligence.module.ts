@@ -17,6 +17,7 @@ import { ModelGatewayService } from './gateway/model-gateway.service.js';
 import { ExtractionService } from './extraction/extraction.service.js';
 import { ExtractionOrchestrator } from './extraction/orchestrator.service.js';
 import { ReviewService } from './review/review.service.js';
+import { ContradictionService } from './contradictions/contradiction.service.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
 @Module({
@@ -28,6 +29,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     ExtractionService,
     ExtractionOrchestrator,
     ReviewService,
+    ContradictionService,
     // The same filter the observation routes use. A deliberate refusal from an
     // intelligence port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },

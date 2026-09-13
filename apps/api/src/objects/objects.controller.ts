@@ -61,7 +61,7 @@ export class ObjectsController {
         targetVersion: String(row.object_version),
         outboxEvent: {
           eventType: 'IntelligenceObjectAdmitted',
-          payload: { object_id: row.object_id, object_type: row.object_type, object_version: Number(row.object_version) },
+          payload: { schema_version: 'v1', object_id: row.object_id, object_type: row.object_type, object_version: Number(row.object_version) },
         },
       };
     });
@@ -100,7 +100,7 @@ export class ObjectsController {
         targetVersion: String(row.object_version),
         outboxEvent: {
           eventType: 'IntelligenceObjectCorrected',
-          payload: {
+          payload: { schema_version: 'v1',
             object_id: row.object_id,
             object_version: Number(row.object_version),
             correction_of: `${objectId}@${expectedVersion}`,

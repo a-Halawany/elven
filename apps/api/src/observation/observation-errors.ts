@@ -376,6 +376,20 @@ const TWIN_RULES: typeof RULES = [
     message: 'a reconciliation compares admitted state in the same unit for the same target against an observation recorded AFTER the simulated or predicted value was established.',
   },
   {
+    // 0046: the executive agent-run port's refusals (an agent runs under its own session, for its own kind's tasks) — not the twin run's.
+    match: /run rejected: (no active agent|a run is opened by the agent itself|a \w+ agent does not run the task|task is draft, briefing, report or monitor)/i,
+    status: 403,
+    code: 'EYE_AUT_001',
+    message: 'the agent run was refused: the agent is not an active agent of this domain, is not running under its own session, or does not run this task (a decision agent drafts; a briefing agent briefs and monitors; a reporting agent reports).',
+  },
+  {
+    // 0066 §8: a retired scenario's branch is not simulated — a state of the record, said in the port's words.
+    match: /run rejected: scenario .* was retired by review/i,
+    status: 409,
+    code: 'EYE_STA_002',
+    message: 'the scenario was retired by review; a retired branch is not simulated — declare a successor scenario and bind the run to it.',
+  },
+  {
     match: /run rejected: /i,
     status: 422,
     code: 'EYE_REQ_001',
@@ -407,6 +421,24 @@ const TWIN_RULES: typeof RULES = [
   },
 ];
 
+/**
+ * B9 (0066): the refusals of the memory, retention, contradiction, evaluation, ontology, scenario-review and
+ * executive-request ports, and the legal-hold refusal of the tombstone port. These ports write their reason for a
+ * person (the harness asserts the texts), so the reason is answered as the message; the status says what kind of
+ * refusal it is — the caller's own request (422), no such object (404), the caller's standing (403), the record's
+ * state (409). Matched after the named rules above, before the generic conflict fallback.
+ */
+const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 'EYE_STA_001' | 'EYE_AUT_001' | 'EYE_REQ_001' }> = [
+  // standing
+  { match: /^(request|fulfilment|withdrawal|completion) rejected: recorded by the (acting|requesting) principal|^withdrawal rejected: a request is withdrawn by its requester|^completion rejected: a follow-up is completed by its owner|^request rejected \(stale_authority\)|^retention (approval|execution) rejected: (the opener of an action|the approver is the acting|an approver of the action)|^the proposer of an ontology change does not decide it/i, status: 403, code: 'EYE_AUT_001' },
+  // absence
+  { match: /^(request|fulfilment|withdrawal|completion) rejected: no (request|follow-up) .* in this domain|^request rejected \(stale_context\): .* is not (a package|a room|a warning|a recorded object)|^request rejected: delegate .* is not an active principal|^no (scenario|ontology proposal) .* in this domain|^branch .* is not a branch of scenario|^retention (action|approval|execution|verification) rejected: .* is not an (action of this domain|evidence action)|^retention action rejected: .* is not open in this domain|^memory item rejected: .* is not recorded|^challenge rejected: no claim|^evaluation rejected: no such method|^tombstone rejected: no such manifest|^contradiction .* is not open in this domain/i, status: 404, code: 'EYE_STA_001' },
+  // the record's state
+  { match: /^request rejected \(stale_(version|approval)\)|^request rejected: request key .* different request|^request rejected \(stale_context\): warning .* is .*, not open|^request rejected: warning .* is already suppressed|^fulfilment rejected: request .* is .*, not routed|^withdrawal rejected: (request .* is already|request .* was fulfilled by|the follow-up of request .* was completed)|^completion rejected: follow-up .* is |^retention (approval|execution|verification|withdrawal) rejected: .* (is .* — only|is not executing|is not withdrawable)|^retention execution rejected: no live approval|^retention approval rejected: the digest approved|^retention action rejected: .* is .*, its scope is not resolved again|^proposal refused: a breaking change|^proposal .* is .*, not open|^a proposal is already open for this namespace|^scenario .* is retired; a retired scenario is not reviewed again|^branch .* is closed; a closed branch is not promoted|^memory item rejected: .* is (already recorded|.*; a withdrawn item)|^memory item rejected: (the next version of|a later version is recorded under|version 1 is recorded under)|^challenge rejected: claim .* (is already queued|has no lineage)|^an adjudicated contradiction is not changed|^extraction rejected: method version is unfit|^method transition rejected: the version is unfit|^tombstone refused: manifest .* is under a legal hold|^floor declaration rejected: (no executing|.* must lie above the floor|partition .* has no row)|^run rejected: scenario .* was retired by review/i, status: 409, code: 'EYE_STA_002' },
+  // the caller's own request
+  { match: /^(request|fulfilment|withdrawal|completion) rejected|^retention (action|approval|execution|verification|withdrawal|schedule) rejected|^floor declaration rejected|^memory (item|retrieval) rejected|^challenge rejected|^evaluation rejected|^(a|an) (review outcome|review states|dissent states|challenge states|decision is|decision states|contradiction links|adjudication is|adjudication states|evaluation states|proposal states|ontology version lists|reassessment names|reassessment states)|^promotion to simulation names the branch|^every predicate names itself|^warning rejected: a warning raised since 0061/i, status: 422, code: 'EYE_REQ_001' },
+];
+
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {
   if (e instanceof HttpException) return e;
   const err = e as PgError;
@@ -414,14 +446,18 @@ export function asObservationRefusal(e: unknown, correlationId: string): HttpExc
   if (message === '') return null;
   // Only SQLSTATEs the observation ports actually raise are considered: a check
   // violation, a foreign-key/absence, an invalid parameter, a uniqueness clash,
-  // an explicit privilege refusal, or (twin/simulation ports) an immutability refusal.
+  // an explicit privilege refusal, or (twin/simulation ports) an immutability refusal;
+  // B9 adds the legal-hold refusal of the tombstone port (P0R01).
   const code = typeof err.code === 'string' ? err.code : '';
-  if (!['23514', '23503', '22023', '23505', '42501', '2F002'].includes(code)) return null;
+  if (!['23514', '23503', '22023', '23505', '42501', '2F002', 'P0R01'].includes(code)) return null;
 
   for (const rule of [...RULES, ...INTELLIGENCE_RULES, ...TWIN_RULES]) {
     if (rule.match.test(message)) {
       return new HttpException(errorBody(rule.code, correlationId, rule.message), rule.status);
     }
+  }
+  for (const rule of B9_REFUSALS) {
+    if (rule.match.test(message)) return new HttpException(errorBody(rule.code, correlationId, message), rule.status);
   }
   // A refusal we recognise as a rule by its SQLSTATE but not by its text still
   // answers as a conflict rather than as a crash — and says only that.

@@ -15,6 +15,8 @@ import { PredictionController } from './prediction.controller.js';
 import { SeriesService } from './series/series.service.js';
 import { ForecastingService } from './forecasting/forecasting.service.js';
 import { ScenariosService } from './scenarios/scenarios.service.js';
+import { ForecastSubscriptionConsumer } from './subscriptions/forecast-subscription.consumer.js';
+import { ScenarioSubscriptionConsumer } from './subscriptions/scenario-subscription.consumer.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
 @Module({
@@ -24,6 +26,9 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     SeriesService,
     ForecastingService,
     ScenariosService,
+    // CP-6 B6 (0063): the forecast and scenario CONSUMERS register themselves into the graph's dispatcher.
+    ForecastSubscriptionConsumer,
+    ScenarioSubscriptionConsumer,
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService],

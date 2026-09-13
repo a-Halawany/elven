@@ -24,7 +24,7 @@ import { AgentSessionService } from '../../src/observation/agents/agent-session.
 import { ObservationCapability } from '../../src/observation/observation.capabilities.js';
 import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
 import type { EgressResult } from '../../src/observation/connectors/http-client.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { UploadConnector } from '../../src/observation/connectors/upload.connector.js';
 import { seedPhase1Domain, fixtureContract, inCommitContext, type Phase1Fixture } from './phase1-helpers.js';
 
@@ -141,18 +141,49 @@ export class Phase4Harness {
   }
 
   /** A DOMAIN principal with the given roles, created as fixture scaffolding. */
-  async principalWith(roles: string[], label: string): Promise<AuthenticatedPrincipal> {
+  async principalWith(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN', inDomain?: string): Promise<AuthenticatedPrincipal> {
     const id = uuidv7();
     const run = id.slice(-8);
+    const domainId = scope === 'DOMAIN' ? (inDomain ?? this.fx.domainId) : null;
     await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
-              values (${id}::uuid, 'human', 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid,
+              values (${id}::uuid, 'human', ${scope}, ${this.fx.tenantId}::uuid, ${domainId}::uuid,
                       ${`fixture-${label}-${run}`}, ${`fx-${label.slice(0, 4)}-${run}`}, 'active')`.execute(this.su);
     for (const role of roles) {
       await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
-                values (${uuidv7()}::uuid, ${id}::uuid, ${role}, 'DOMAIN', ${this.fx.tenantId}::uuid, ${this.fx.domainId}::uuid)`.execute(this.su);
+                values (${uuidv7()}::uuid, ${id}::uuid, ${role}, ${scope}, ${this.fx.tenantId}::uuid, ${domainId}::uuid)`.execute(this.su);
     }
-    return { ...this.manager, principalId: id,
-      bindings: roles.map((roleCode) => ({ roleCode, scope: 'DOMAIN' as const, tenantId: this.fx.tenantId, domainId: this.fx.domainId })) };
+    return { ...this.manager, principalId: id, homeScope: scope, homeDomainId: domainId,
+      bindings: roles.map((roleCode) => ({ roleCode, scope, tenantId: this.fx.tenantId, domainId })) };
+  }
+
+  /**
+   * A DOMAIN principal with the given roles AND a session of its own, opened through
+   * the real identity port — so the principal the database binds (public.eye_principal())
+   * is this principal, not the manager whose session `principalWith` reuses. Phase 6
+   * ports that compare the acting principal to a named human need this.
+   */
+  async humanWithSession(roles: string[], label: string, scope: 'DOMAIN' | 'TENANT' = 'DOMAIN',
+                         opts: { domainId?: string; extraBindings?: Array<{ roleCode: string; domainId: string }> } = {}): Promise<AuthenticatedPrincipal> {
+    // Every binding is written BEFORE the session opens: Phase 0 bumps the principal's revocation epoch on any binding change.
+    const p = await this.principalWith(roles, label, scope, opts.domainId);
+    const bindings = [...p.bindings];
+    for (const b of opts.extraBindings ?? []) {
+      await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
+                values (${uuidv7()}::uuid, ${p.principalId}::uuid, ${b.roleCode}, 'DOMAIN', ${this.fx.tenantId}::uuid, ${b.domainId}::uuid)`.execute(this.su);
+      bindings.push({ roleCode: b.roleCode, scope: 'DOMAIN', tenantId: this.fx.tenantId, domainId: b.domainId });
+    }
+    const identityDb = this.app.get<Db>(IDENTITY_DB);
+    const sessionId = uuidv7();
+    const familyId = uuidv7();
+    const contextKey = randomBytes(32).toString('base64url');
+    const refresh = `${uuidv7()}.${randomBytes(24).toString('base64url')}`;
+    const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
+    await identityDb.transaction().execute(async (tx) => {
+      await sql`select ctx.issue_identity_op('identity.session.create', ${p.principalId}::uuid, ${uuidv7()}::uuid, 60)`.execute(tx);
+      await sql`select identity.session_open(${sessionId}::uuid, ${p.principalId}::uuid, 'password', ${sha256(refresh)}, ${sha256(contextKey)}, ${new Date(Date.now() + 3600_000)}, ${familyId}::uuid)`.execute(tx);
+      await sql`select audit.commit_identity_event(${p.principalId}::uuid, ${sessionId}::uuid, 'identity.login', 'identity.session.create', 'success', 'OK', ${uuidv7()}::uuid, '{"fixture":true}'::jsonb)`.execute(tx);
+    });
+    return { ...p, bindings, sessionId, contextKey };
   }
 
   /** The live contract with a declared period-range backfill. */
@@ -242,21 +273,22 @@ export class Phase4Harness {
 
   /* ───────────── Phase 5 · uploaded records through the real file path ───────────── */
 
-  private uploadSourceId: string | null = null;
+  private readonly uploadSourceIds = new Map<string, string>();
 
   /**
    * An UPLOAD source (the demonstration's NORDWERK shape), registered through the real
    * route, approved by the other operator, activated, with an upload agent registered
    * for the operator-upload connector — once per harness.
    */
-  async uploadSource(): Promise<string> {
-    if (this.uploadSourceId !== null) return this.uploadSourceId;
+  async uploadSource(ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'): Promise<string> {
+    const known = this.uploadSourceIds.get(ceiling);
+    if (known !== undefined) return known;
     const { ObservationController } = await import('../../src/observation/observation.controller.js');
     const controller = this.app.get(ObservationController);
-    const sourceKey = `fixture-uploads-${uuidv7().slice(-8)}`;
+    const sourceKey = `fixture-uploads-${ceiling === 'internal' ? '' : `${ceiling}-`}${uuidv7().slice(-8)}`;
     const r = await controller.registerSource(
       this.req(this.registrar, 'observation.source.register', 'SRC', null, 'observation'), this.fx.tenantId, this.fx.domainId,
-      { payload: { contract: uploadContract(sourceKey) } }) as { source: { sourceId: string } };
+      { payload: { contract: uploadContract(sourceKey, ceiling) } }) as { source: { sourceId: string } };
     const sourceId = r.source.sourceId;
     await this.pipeline.write(
       this.env(this.manager, 'observation.source.approve', 'SRC', sourceId), this.manager,
@@ -293,7 +325,7 @@ export class Phase4Harness {
           ${JSON.stringify({ maxRequestsPerRun: 25, maxBytesPerRun: 33554432, maxConcurrency: 1, timeoutMs: 60000, maxRetries: 0 })}::jsonb,
           ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);
       });
-    this.uploadSourceId = sourceId;
+    this.uploadSourceIds.set(ceiling, sourceId);
     return sourceId;
   }
 
@@ -302,9 +334,9 @@ export class Phase4Harness {
    * and return the EVIDENCE objects the run admitted for them, found by the item key the
    * connector derives from the filename and the bytes — never by a name someone typed.
    */
-  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>):
+  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>, ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'):
     Promise<Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }>> {
-    const sourceId = await this.uploadSource();
+    const sourceId = await this.uploadSource(ceiling);
     const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
     const controller = this.app.get(UploadController);
     await controller.upload(this.req(this.registrar, 'observation.run.trigger', 'RUN', null, 'observation'), this.fx.tenantId, this.fx.domainId,
@@ -327,7 +359,7 @@ export class Phase4Harness {
 }
 
 /** The demonstration's NORDWERK-shaped upload contract, under a fixture key. */
-function uploadContract(sourceKey: string): Record<string, unknown> {
+function uploadContract(sourceKey: string, ceiling: string = 'internal'): Record<string, unknown> {
   return {
     source_key: sourceKey,
     name: 'Fixture uploaded records (SYNTHETIC)',
@@ -341,7 +373,7 @@ function uploadContract(sourceKey: string): Record<string, unknown> {
     authority_and_rights: {
       owner: 'observation.operations', steward: 'fixture', authority: 'Internal records (synthetic)', legal_basis: 'Internal synthetic data created for tests',
       rights_state: 'confirmed', licence: 'internal', permitted_use: ['internal analysis'], robots_policy: 'not applicable', purposes: ['observation'],
-      classification_ceiling: 'internal', residency: 'EU', retention: '24 months', deletion_obligation: 'none',
+      classification_ceiling: ceiling, residency: 'EU', retention: '24 months', deletion_obligation: 'none',
     },
     security_and_operations: {
       credential_ref: null,

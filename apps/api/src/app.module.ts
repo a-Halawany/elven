@@ -13,6 +13,9 @@ import { IntelligenceModule } from './intelligence/intelligence.module.js';
 import { GraphModule } from './graph/graph.module.js';
 import { PredictionModule } from './prediction/prediction.module.js';
 import { TwinModule } from './twin/twin.module.js';
+import { DecisionModule } from './decision/decision.module.js';
+import { ExecutiveModule } from './executive/executive.module.js';
+import { RetentionModule } from './retention/retention.module.js';
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { TwinModule } from './twin/twin.module.js';
     GraphModule,
     PredictionModule,
     TwinModule,
+    DecisionModule,
+    ExecutiveModule,
+    RetentionModule,
   ],
 })
 export class AppModule {}

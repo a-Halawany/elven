@@ -1,0 +1,13 @@
+# CP-6 B9 — phase6-graph-subscriptions-4 (the twenty-three cases of 0066 §2–§8) on eye_verify44_20260913, created empty and migrated 0001–0066 from the final file. command: EYE_DB_NAME=eye_verify44_20260913 npx vitest run --config vitest.int.config.ts test/int/phase6-graph-subscriptions-4.test.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  23 passed (23)
+   Start at  00:39:38
+   Duration  15.53s (transform 486ms, setup 14ms, import 799ms, tests 14.65s, environment 0ms)
+

@@ -66,6 +66,12 @@ export interface WriteEffect<T> {
   targetId: string | null;
   targetVersion: string | null;
   outboxEvent?: { eventType: string; payload: Record<string, unknown> } | null;
+  /**
+   * Further events the same committed transition announces (CP-6 B6, 0063): a graph write publishes
+   * its business event AND a GraphChanged; an applied correction publishes CorrectionApplied AND a
+   * MemoryCorrected. Each is its own outbox row, enqueued by the pipeline in the same transaction.
+   */
+  outboxEvents?: Array<{ eventType: string; payload: Record<string, unknown> }>;
 }
 
 function deny(code: 'EYE_AUT_001' | 'EYE_AUT_002' | 'EYE_TEN_001', correlationId: string, message?: string): HttpException {
@@ -151,6 +157,16 @@ export class PipelineService {
       await this.recordDenial(envelope, principal, route, ctx, policyInput, policyResult);
       throw deny(policyResult.decision === 'deny' ? 'EYE_AUT_001' : 'EYE_AUT_002', envelope.correlation_id, policyResult.reason);
     }
+    // Phase 6 human gate (EYE-WFL-002): an obligation the PEP discharges BEFORE any
+    // capability is minted. A workload, an agent, a system or bootstrap principal —
+    // whatever roles it holds — is not a named human and cannot pass it.
+    if (policyResult.obligations.some((o) => o.type === 'human_gate')
+        && !(principal.kind === 'human' && (principal.assurance === 'password' || principal.assurance === 'break_glass'))) {
+      const gated: PolicyResult = { ...policyResult, decision: 'deny', obligations: [],
+        reason: `human gate: ${route.action} requires a named human principal at session assurance (principal kind ${principal.kind}, assurance ${principal.assurance})` };
+      await this.recordDenial(envelope, principal, route, ctx, policyInput, gated);
+      throw new HttpException(errorBody('EYE_WFL_002', envelope.correlation_id, gated.reason), 403);
+    }
 
     const polId = newId();
     try {
@@ -166,11 +182,11 @@ export class PipelineService {
           target: { type: effect.targetType, id: effect.targetId, version: effect.targetVersion },
           metadata: { assurance: principal.assurance },
         });
-        if (effect.outboxEvent != null) {
-          // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
-          // DESCRIBED the event; no business capability can reach this port.
+        // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
+        // DESCRIBED the event(s); no business capability can reach this port.
+        for (const ev of [...(effect.outboxEvent == null ? [] : [effect.outboxEvent]), ...(effect.outboxEvents ?? [])]) {
           await OutboxCapability.forPipeline(tx, route.action).enqueue(
-            newId(), effect.outboxEvent.eventType, effect.outboxEvent.payload,
+            newId(), ev.eventType, ev.payload,
             envelope.correlation_id, envelope.message_id,
           );
         }

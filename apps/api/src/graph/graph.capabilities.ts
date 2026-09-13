@@ -92,6 +92,46 @@ export interface GraphReads {
   /** Phase 5 dependents: twins (versions marked unverified by the port) and simulation runs (surfaced). */
   readTwins(): any;
   readRuns(): any;
+  /** CP-6 B1 (0060): the domain's propagation agents and the attempts the consumer recorded. */
+  readPropagationAgents(): any;
+  readPropagationAttempts(): any;
+  readPropagationAttemptEvents(): any;
+  /** CP-6 B6 (0063): the subscription registry, the delivery ledger, the retrieval checks and the mapping proposals. */
+  readSubscriptions(): any;
+  readSubscriptionEvents(): any;
+  readSubscriptionDeliveries(): any;
+  readSubscriptionDeliveryEvents(): any;
+  readRetrievalChecks(): any;
+  readMappingReconciliations(): any;
+  readEntityIdentifiers(): any;
+  /** 0064 (AU-MEM-0041): execution-state telemetry per delivery and per propagation attempt, from the ledgers. */
+  readSubscriptionTelemetry(): any;
+  readPropagationTelemetry(): any;
+  /** 0065: who serves the domain's subscription queue, the hand-over ledger, and the outbox partitions' state. */
+  readSubscriptionServing(): any;
+  readSubscriptionServingEvents(): any;
+  outboxPartitionTelemetry(): Promise<Array<Record<string, unknown>>>;
+  /** 0065 §5: the forecast, scenario (warning), reconciliation and simulation flows' telemetry views (AU-MEM-0041). */
+  readForecastTelemetry(): any;
+  readWarningTelemetry(): any;
+  readReconciliationTelemetry(): any;
+  readRunTelemetry(): any;
+  /** 0065 §6: the fifty canonical layer interfaces under their identities (AU-DP-0071). */
+  readInterfaceRegister(): any;
+  /** 0065 §8: the briefings the walk may reach (AU-MEM-0031). */
+  readBriefings(): any;
+  /** 0066 §7: the domain's ontology versions and their events. */
+  readOntologyVersions(): any;
+  readOntologyEvents(): any;
+  /** 0066 §3: memory items — the current version of each, their events and their access ledger (AU-MEM-0065, AU-MEM-0031). */
+  readMemoryItems(): any;
+  readMemoryItemEvents(): any;
+  readMemoryItemAccess(): any;
+  /**
+   * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
+   * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
+   */
+  subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   /**
    * Edges VISIBLE at an instant, filtered in the query.
    *
@@ -154,6 +194,10 @@ export interface ResolverWrites extends GraphReads {
 // ───────────────────────── resolution decisions ─────────────────────────
 
 export interface ResolutionDecisionWrites extends GraphReads {
+  /** CP-6 B6 (0063): a person decides a memory-mapping reconciliation the subscriber proposed. */
+  decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void>;
+  /** 0065 §7 (TT-04): a person decides that a relationship pending reassessment STANDS under its changed basis (a model retired, evidence corrected). */
+  keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
   decideResolution(a: {
     resolutionId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected';
     decider: string; reason: string;
@@ -189,6 +233,24 @@ export interface EdgeRetractionWrites extends GraphReads {
     edgeId: string; tenantId: string; domainId: string; actor: string; reason: string;
     eventId: string; correlationId: string;
   }): Promise<void>;
+}
+
+// ───────────────────────── ontology (0066 §7) ─────────────────────────
+
+export interface OntologyWrites extends GraphReads {
+  proposeOntologyVersion(a: { versionId: string; tenantId: string; domainId: string; namespace: string; entityTypes: string[]; predicates: Array<Record<string, unknown>>; rationale: string; alternatives: unknown[]; migrationPlan: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  decideOntologyProposal(a: { versionId: string; tenantId: string; domainId: string; decision: 'approve' | 'reject'; reason: string; reviews: Record<string, unknown>; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
+// ───────────────────────── memory items (0066 §3) ─────────────────────────
+
+export interface MemoryWrites extends GraphReads {
+  /** A memory item's version is a canonical MEM object, admitted through the same path every canonical object takes. */
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  recordMemoryItem(a: { itemId: string; tenantId: string; domainId: string; version: number; record: Record<string, unknown>; cites: Array<{ kind: string; id: string; rationale: string }>; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  withdrawMemoryItem(a: { itemId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  /** OBJ-15: the access ledger row of a retrieval, written inside the read's own transaction. */
+  recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
 }
 
 // ───────────────────────── strategy ─────────────────────────
@@ -228,6 +290,8 @@ export interface ImpactWrites extends GraphReads {
     forecasts: unknown[];
     /** Phase 5: twins whose citing versions the port marks unverified, and runs it surfaces. */
     twins: unknown[]; simulations: unknown[];
+    /** 0065 §8: warnings the port marks for attention and briefings it re-flags (AU-MEM-0031); 0066 §3: memory items marked for attention. */
+    warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -237,13 +301,58 @@ export interface ImpactWrites extends GraphReads {
     objectId: string; tenantId: string; domainId: string; state: string; reason: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /**
+   * CP-6 B1 (0060): the automatic walker's per-root checkpoint, inside the walk's own
+   * transaction. `begin` locks the attempt row until the impact record commits and
+   * answers false for a root already walked for this event (a typed skip, never a
+   * second walk); `done` binds the root to the assessed invalidation it produced.
+   */
+  propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean>;
+  propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void>;
+}
+
+// ───────────────────────── subscriptions (CP-6 B6) ─────────────────────────
+
+export interface SubscriptionWrites extends GraphReads {
+  registerSubscription(a: {
+    subscriptionId: string; tenantId: string; domainId: string; consumerKind: string; eventTypes: string[]; filter: Record<string, unknown>;
+    principalId: string; version: string; codeDigest: string; owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }>;
+  setSubscriptionStatus(a: { subscriptionId: string; tenantId: string; domainId: string; to: 'active' | 'paused' | 'revoked'; reason: string; actor: string; eventId: string; correlationId: string }): Promise<string>;
+  replaySubscription(a: { subscriptionId: string; tenantId: string; domainId: string; fromCreatedAt: string | null; fromEventId: string | null; reason: string; actor: string; eventId: string; correlationId: string }):
+    Promise<Array<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>>;
+  /** 0064: a replay from a sequence in the declared partition (the cursor's ordinal) — the same act, the point named by its ordinal. */
+  replaySubscriptionFromSeq(a: { subscriptionId: string; tenantId: string; domainId: string; fromSeq: number; reason: string; actor: string; eventId: string; correlationId: string }):
+    Promise<Array<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>>;
+}
+
+/** The retrieval and memory-mapping consumers' effects (graph-side), driven by the subscriber's own action. */
+/** What the relationships consumer holds under its one action: the subscriber's ports and the builder's assert (0066 §2). */
+export type RelationshipSubscriberWrites = GraphSubscriberWrites & EdgeWrites;
+export interface GraphSubscriberWrites extends GraphReads {
+  recordRetrievalCheck(a: { checkId: string; eventId: string; subscriptionId: string; tenantId: string; domainId: string; touched: Record<string, unknown>; actor: string; correlationId: string }):
+    Promise<{ check_id: string; projections: unknown[]; mismatched: number }>;
+  proposeMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null;
+    basis: string; causeEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<string | null>;
+  /** 0065 §7 (TT-04): open a reassessment on an edge whose inference record's basis moved (evidence or claim); false when already pending or not asserted. */
+  openEdgeReassessment(a: { edgeId: string; tenantId: string; domainId: string; trigger: 'evidence' | 'claim' | 'model'; reason: string; causeId: string; actor: string; correlationId: string }): Promise<boolean>;
+}
+
+// ───────────────────────── propagation agent (CP-6 B1) ─────────────────────────
+
+export interface PropagationAgentWrites extends GraphReads {
+  registerPropagationAgent(a: {
+    agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
+    owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }>;
+  revokePropagationAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 // ───────────────────────── implementation ─────────────────────────
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, ImpactWrites {
+             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -280,6 +389,41 @@ class GraphCapabilityImpl extends GraphCore
   readForecasts(): any { return this.from('prediction.forecasts_current'); }
   readTwins(): any { return this.from('twin.twins_current'); }
   readRuns(): any { return this.from('simulation.runs_current'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAgents(): any { return this.from('graph.propagation_agents'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAttempts(): any { return this.from('graph.propagation_attempts'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readPropagationAttemptEvents(): any { return this.from('graph.propagation_attempt_events'); }
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  readSubscriptions(): any { return this.from('graph.subscriptions'); }
+  readSubscriptionEvents(): any { return this.from('graph.subscription_events'); }
+  readSubscriptionDeliveries(): any { return this.from('graph.subscription_deliveries'); }
+  readSubscriptionDeliveryEvents(): any { return this.from('graph.subscription_delivery_events'); }
+  readRetrievalChecks(): any { return this.from('graph.retrieval_checks'); }
+  readMappingReconciliations(): any { return this.from('graph.mapping_reconciliations'); }
+  readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
+  readSubscriptionTelemetry(): any { return this.from('graph.subscription_delivery_telemetry'); }
+  readPropagationTelemetry(): any { return this.from('graph.propagation_attempt_telemetry'); }
+  readSubscriptionServing(): any { return this.from('graph.subscription_domain_serving'); }
+  readSubscriptionServingEvents(): any { return this.from('graph.subscription_serving_events'); }
+  async outboxPartitionTelemetry(): Promise<Array<Record<string, unknown>>> { return this.call<Record<string, unknown>>(sql`select * from objects.outbox_partition_telemetry()`); }
+  readForecastTelemetry(): any { return this.from('prediction.forecast_telemetry'); }
+  readWarningTelemetry(): any { return this.from('prediction.warning_telemetry'); }
+  readReconciliationTelemetry(): any { return this.from('twin.reconciliation_telemetry'); }
+  readRunTelemetry(): any { return this.from('simulation.run_telemetry'); }
+  readInterfaceRegister(): any { return this.from('objects.interface_register'); }
+  readBriefings(): any { return this.from('executive.briefings'); }
+  readOntologyVersions(): any { return this.from('graph.ontology_versions'); }
+  readOntologyEvents(): any { return this.from('graph.ontology_events'); }
+  readMemoryItems(): any { return this.from('memory.items_current'); }
+  readMemoryItemEvents(): any { return this.from('memory.item_events'); }
+  readMemoryItemAccess(): any { return this.from('memory.item_access'); }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -318,11 +462,21 @@ class GraphCapabilityImpl extends GraphCore
    */
   async correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    // The latest automatic attempt per case (0060) rides along, visible under the reader's own scope.
     const rows = await this.call<Record<string, unknown>>(sql`
       select c.*,
              to_char(c.received_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-               as cursor_received_at
+               as cursor_received_at,
+             pa.automatic_state, pa.automatic_deliveries, pa.automatic_attempts, pa.automatic_last_error,
+             pa.automatic_last_delivered_at, pa.automatic_agent_id, pa.automatic_event_id
         from observation.correction_current c
+        left join lateral (
+          select a.state as automatic_state, a.deliveries as automatic_deliveries, a.attempts as automatic_attempts,
+                 a.last_error as automatic_last_error, a.last_delivered_at as automatic_last_delivered_at,
+                 a.agent_id::text as automatic_agent_id, a.event_id::text as automatic_event_id
+            from graph.propagation_attempts a
+           where a.case_id = c.case_id
+           order by a.last_delivered_at desc limit 1) pa on true
        where c.state = 'applied' and c.propagation_state <> 'complete'
          and (${a.cursor === null}::boolean
               or (c.received_at, c.case_id)
@@ -342,6 +496,24 @@ class GraphCapabilityImpl extends GraphCore
                                 mismatched::text from graph.rebuild_projections()`);
   }
 
+  async proposeOntologyVersion(a: Parameters<OntologyWrites['proposeOntologyVersion']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.propose_ontology_version(${a.versionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.namespace}, ${a.entityTypes}::text[], ${JSON.stringify(a.predicates)}::jsonb, ${a.rationale}, ${JSON.stringify(a.alternatives)}::jsonb, ${a.migrationPlan}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async decideOntologyProposal(a: Parameters<OntologyWrites['decideOntologyProposal']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.decide_ontology_proposal(${a.versionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.reason}, ${JSON.stringify(a.reviews)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordMemoryItem(a: Parameters<MemoryWrites['recordMemoryItem']>[0]): Promise<void> {
+    await this.call(sql`select memory.record_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${JSON.stringify(a.record)}::jsonb, ${JSON.stringify(a.cites)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async withdrawMemoryItem(a: Parameters<MemoryWrites['withdrawMemoryItem']>[0]): Promise<void> {
+    await this.call(sql`select memory.withdraw_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordMemoryAccess(a: Parameters<MemoryWrites['recordMemoryAccess']>[0]): Promise<string> {
+    const rows = await this.call<{ id: string }>(sql`select memory.record_access(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${a.purpose}, ${a.reader}::uuid, ${a.asOf}::timestamptz, ${a.correlationId}::uuid) as id`);
+    return rows[0]?.id ?? '';
+  }
   async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
     const rows = await this.call<{ content_digest: string }>(
       sql`select content_digest from objects.admit_version(
@@ -499,6 +671,8 @@ class GraphCapabilityImpl extends GraphCore
     forecasts: unknown[]; twins: unknown[]; simulations: unknown[];
     statement: string; truncated: boolean; unexplored: unknown[];
     actor: string; eventId: string; correlationId: string;
+    /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment; 0066 §3: the memory items marked. */
+    warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
@@ -506,7 +680,77 @@ class GraphCapabilityImpl extends GraphCore
       ${JSON.stringify(a.decisions)}::jsonb, ${JSON.stringify(a.commitments)}::jsonb,
       ${JSON.stringify(a.forecasts)}::jsonb, ${JSON.stringify(a.twins)}::jsonb, ${JSON.stringify(a.simulations)}::jsonb,
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
-      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
+      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb, ${JSON.stringify(a.memoryItems ?? [])}::jsonb)`);
+  }
+
+  async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select graph.propagation_root_begin(
+      ${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.root}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+
+  async propagationRootDone(a: { eventId: string; tenantId: string; domainId: string; root: string; invalidationId: string; truncated: boolean }): Promise<void> {
+    await this.call(sql`select graph.propagation_root_done(
+      ${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.root}::uuid, ${a.invalidationId}::uuid, ${a.truncated})`);
+  }
+
+  async registerPropagationAgent(a: {
+    agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
+    owner: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> }> {
+    const rows = await this.call<{ r: { agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> } }>(sql`
+      select graph.register_propagation_agent(
+        ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.principalId}::uuid, ${a.version}, ${a.codeDigest},
+        ${a.owner}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> };
+  }
+
+  async revokePropagationAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.revoke_propagation_agent(
+      ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+
+  async registerSubscription(a: Parameters<SubscriptionWrites['registerSubscription']>[0]) {
+    const rows = await this.call<{ r: { subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> } }>(sql`
+      select graph.register_subscription(${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.consumerKind}, ${a.eventTypes}::text[], ${JSON.stringify(a.filter)}::jsonb,
+        ${a.principalId}::uuid, ${a.version}, ${a.codeDigest}, ${a.owner}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { subscription_id: string; consumer_kind: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown> };
+  }
+  async setSubscriptionStatus(a: Parameters<SubscriptionWrites['setSubscriptionStatus']>[0]): Promise<string> {
+    const rows = await this.call<{ s: string }>(sql`select graph.set_subscription_status(${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.to}, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as s`);
+    return rows[0]?.s ?? a.to;
+  }
+  async replaySubscription(a: Parameters<SubscriptionWrites['replaySubscription']>[0]) {
+    return this.call<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>(sql`
+      select event_id::text, event_type, change_kind, outbox_created_at::text, correlation_id::text, causation_id::text, replay_seq from graph.subscription_replay(
+        ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromCreatedAt}::timestamptz, ${a.fromEventId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async replaySubscriptionFromSeq(a: Parameters<SubscriptionWrites['replaySubscriptionFromSeq']>[0]) {
+    return this.call<{ event_id: string; event_type: string; change_kind: string; outbox_created_at: string; correlation_id: string; causation_id: string; replay_seq: number }>(sql`
+      select event_id::text, event_type, change_kind, outbox_created_at::text, correlation_id::text, causation_id::text, replay_seq from graph.subscription_replay_from_seq(
+        ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromSeq}::bigint, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordRetrievalCheck(a: Parameters<GraphSubscriberWrites['recordRetrievalCheck']>[0]) {
+    const rows = await this.call<{ r: { check_id: string; projections: unknown[]; mismatched: number } }>(sql`select graph.record_retrieval_check(
+      ${a.checkId}::uuid, ${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.touched)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as { check_id: string; projections: unknown[]; mismatched: number };
+  }
+  async openEdgeReassessment(a: Parameters<GraphSubscriberWrites['openEdgeReassessment']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select graph.open_edge_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.trigger}, ${a.reason}, ${a.causeId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok === true;
+  }
+  async proposeMappingReconciliation(a: Parameters<GraphSubscriberWrites['proposeMappingReconciliation']>[0]): Promise<string | null> {
+    const rows = await this.call<{ id: string | null }>(sql`select graph.propose_mapping_reconciliation(
+      ${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.fromEntityId}::uuid, ${a.toEntityId}::uuid,
+      ${a.basis}, ${a.causeEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid)::text as id`);
+    return rows[0]?.id ?? null;
+  }
+  async decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.decide_mapping_reconciliation(${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
+    await this.call(sql`select graph.keep_edge_under_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
 }
 
@@ -532,7 +776,26 @@ export const GraphCapability = {
   strategy(tx: Tx, action: string): StrategyWrites {
     return new GraphCapabilityImpl(tx, action);
   },
+  memory(tx: Tx, action: string): MemoryWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  ontology(tx: Tx, action: string): OntologyWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
   impact(tx: Tx, action: string): ImpactWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  propagationAgents(tx: Tx, action: string): PropagationAgentWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  subscriptions(tx: Tx, action: string): SubscriptionWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  graphSubscriber(tx: Tx, action: string): GraphSubscriberWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /** The relationships consumer (0066 §2): a subscriber that also asserts edges through the builder's port. */
+  relationshipSubscriber(tx: Tx, action: string): RelationshipSubscriberWrites {
     return new GraphCapabilityImpl(tx, action);
   },
 };

@@ -1,0 +1,39 @@
+
+=== CP-6 batch B6 · GraphChanged / MemoryCorrected subscriptions on the demonstration ===
+
+1. the subscribers
+  ✓ twins: subscription 01a09302… already active (consumer 1.0.0 197ffa8c5454…)
+  ✓ forecasts: subscription 01a09302… already active (consumer 1.0.0 cbcde85317c8…)
+  ✓ scenarios: subscription 01a09302… already active (consumer 1.0.0 d2be51c5792f…)
+  ✓ decisions: subscription 01a09302… already active (consumer 1.0.0 fe348542fe4a…)
+  ✓ retrieval: subscription 01a09302… already active (consumer 1.0.0 a95b9b4246f0…)
+  ✓ memory-mappings: subscription 01a09302… already active (consumer 1.0.0 6b361a31d507…)
+  ✓ all six consumers are registered into the dispatcher by their own modules
+  ✓ the domain queue graph.01a084f5-757f-7f03-9cf5-315d74426481.01a084f5-759a-751f-a1dd-38fbd7933057.subscriptions is served by this process
+
+2. the live act — the publisher restates evidence the corridor forecast rests on
+  ✓ correction case 01a09582… applied by the collection manager: evidence 01a084f5… superseded — nobody marks anything
+
+3. MemoryCorrected — delivered to every subscriber within the publisher's tick
+  ✓ event 01a09582…: six deliveries applied 1.1s after the apply
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · ledger events: received → received → received → received → received → received → applied → applied → applied → applying → item.applied → applied → applied → applied
+  ✓ the corridor forecast says: invalidation 01a09582-1f24-7c52-abeb-665f8065952f: a value it was fitted on was read from the corrected evidence
+
+4. GraphChanged — the strategy owner retracts an edge
+  ✓ edge 01a084f5… (carries) retracted
+  ✓ event 01a09582…: six deliveries applied 1.1s after the retraction
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+
+5. the status route
+  · 6 subscription(s); 36 recent deliveries; 6 retrieval check(s) (mismatched: 0,0,0,0,0,0); 0 mapping reconciliation(s) proposed

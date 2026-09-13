@@ -1,0 +1,4 @@
+no attempt (never delivered): reconciled=1
+stranded in 'received' (interrupted after receipt): reconciled=0
+stranded in 'walking' (interrupted after a committed root): reconciled=0
+'failed': reconciled=1

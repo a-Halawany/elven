@@ -18,6 +18,7 @@ import { jcsCanonicalize, type CanonicalHeader } from '@eye/contracts';
 import { isForbiddenAddress } from '../../src/observation/connectors/http-client.js';
 import { ModelGatewayService, requestDigestOf, type GatewayRequest }
   from '../../src/intelligence/gateway/model-gateway.service.js';
+import { ContradictionService } from '../../src/intelligence/contradictions/contradiction.service.js';
 import { ExtractionService, inheritedControlsOf }
   from '../../src/intelligence/extraction/extraction.service.js';
 import type { MethodPin } from '../../src/intelligence/intelligence.capabilities.js';
@@ -37,6 +38,7 @@ const uuid = (n: number): string =>
 function relation(rows: Array<Record<string, unknown>>) {
   const build = (current: Array<Record<string, unknown>>): Record<string, unknown> => ({
     selectAll: () => build(current),
+    select: () => build(current),
     where: (col: string, op: string, val: unknown) => build(current.filter((r) => {
       if (op === 'in') return (val as unknown[]).includes(r[col]);
       return r[col] === val;
@@ -84,6 +86,11 @@ function graphCap(w: WorldRows) {
     readWarnings: () => relation([]),
     readTwins: () => relation([]),
     readRuns: () => relation([]),
+    readBriefings: () => relation([]),
+    readMemoryItems: () => relation([]),
+    // CP-6 B6 (0063): no subscription is live in these worlds, so the emitter walks nothing and the event
+    // is written unwalked; the contract (subscriptionsMatching is total) is modelled, not the SQL.
+    subscriptionsMatching: async () => [],
     /*
      * The double models the CAPABILITY CONTRACT, not the SQL: eligibility is
      * applied before the bound, and `total` counts everything eligible. A double
@@ -325,7 +332,8 @@ async function runExtraction(claims: Array<Record<string, unknown>>, pin: Method
   const { cap, admitted } = extractionCap([
     { request_digest: requestDigestOf(req), response: { claims } },
   ]);
-  const svc = new ExtractionService(new ModelGatewayService());
+  // 0066 §5: the contradiction detector reads the admitted assertions through the same capability (none in this double: no conflicts).
+  const svc = new ExtractionService(new ModelGatewayService(), new ContradictionService());
   const out = await svc.extractOne(cap,
     { scope: 'DOMAIN', tenantId: uuid(90), domainId: uuid(91) }, {
     pin, methodId: uuid(1), runId: uuid(2), agentPrincipalId: uuid(3),
@@ -573,8 +581,9 @@ async function buildEdges(world: WorldRows) {
   const { ResolverService } = await import('../../src/graph/entities/resolver.service.js');
   const cap = graphCap(world);
   const { pipeline, asserted } = pipelineDouble(cap);
+  const { ImpactService } = await import('../../src/graph/strategy/impact.service.js');
   const orch = new GraphOrchestrator(
-    pipeline as never, new ResolverService(), new ModelGatewayService(), new EdgesService());
+    pipeline as never, new ResolverService(), new ModelGatewayService(), new EdgesService(), new ImpactService());
   const outcome = await orch.runEdgeBuild({
     envelope: { correlation_id: 'c', purpose_id: 'graph' } as never,
     principal: { principalId: 'p' } as never,

@@ -139,8 +139,33 @@ async function nextVersion(over: { schema?: Record<string, unknown>; viaRoute?: 
   h.version = version;
   return version;
 }
-/** A new version's FIRST run walks its declared backfill and touches no forward endpoint (rest.connector); warm it up. */
-const warmUp = async (): Promise<{ runId: string }> => { const r = await h.runOnce(connector()); if (r.state !== 'finished') throw new Error(`warm-up ${r.state}: ${r.reason ?? ''}`); return r; };
+/**
+ * A new version's FIRST run walks its declared backfill and touches no forward endpoint
+ * (rest.connector); warm it up.
+ *
+ * Activating a version through the route upserts the scheduler entry, and BullMQ emits an `every`
+ * scheduler's first job with delay 0 — so a scheduler-triggered run is often already walking that
+ * backfill when the warm-up asks for one. Since 0051 a source runs one attempt at a time, and the
+ * warm-up is correctly refused while that tick holds the lease (`source_run_in_flight`). Waiting for
+ * the lease to clear is the scaffolding catching up with the serialisation, not a relaxed assertion:
+ * every property this file asserts is checked after the warm-up, on a source with no run in flight.
+ */
+const leaseHeld = async (): Promise<boolean> => (await sql<{ n: string }>`select count(*)::text n from observation.source_run_leases where source_id = ${h.fx.sourceId}::uuid`.execute(h.su)).rows[0]?.n !== '0';
+const warmUp = async (): Promise<{ runId: string }> => {
+  const until = Date.now() + 90_000;
+  for (;;) {
+    while (await leaseHeld()) {
+      if (Date.now() > until) throw new Error('warm-up: a run for this source stayed in flight for 90s');
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const r = await h.runOnce(connector());
+    if (r.state === 'finished') return r;
+    // The scheduler's repeating tick can take the lease between the check and the acquire; that is the
+    // serialisation working. Take the next turn rather than treating a refusal as a warm-up failure.
+    if (r.state === 'refused' && /in flight/.test(r.reason ?? '') && Date.now() < until) continue;
+    throw new Error(`warm-up ${r.state}: ${r.reason ?? ''}`);
+  }
+};
 const BACKFILL_KEY = `${POLL_KEY}@backfill:2021-01-01..2021-01-07`;
 type Attempt = { attempt_id: string; job_id: string; outcome: string; run_id: string | null; reason: string | null; started_at: Date };
 const attempts = async (): Promise<Attempt[]> => (await sql<Attempt>`select * from observation.scheduled_attempts where source_id = ${h.fx.sourceId}::uuid order by started_at desc`.execute(h.su)).rows;

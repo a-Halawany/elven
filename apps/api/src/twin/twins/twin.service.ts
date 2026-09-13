@@ -315,9 +315,12 @@ export class TwinService {
       const resolved: ResolvedCitation[] = [];
       for (const c of e.citations) resolved.push(await this.resolve(cap, { kind: c.kind, id: c.id, version: c.version ?? null }, correlationId));
       const substantive = resolved.filter((r) => r.citation.kind !== 'entity');
-      // RECORD TIME: nothing recorded after known_at reaches this version.
+      // RECORD TIME: nothing recorded after known_at reaches this version — judged at the record
+      // clock's microsecond precision, the same judgement the carry-forward makes (0035), so a
+      // citation recorded a few hundred microseconds after known_at is refused here rather than
+      // admitted and then re-judged incomplete when carried.
       for (const r of substantive) {
-        if (r.recordedAt !== null && new Date(r.recordedAt).getTime() > new Date(knownAt).getTime()) {
+        if (r.recordedAt !== null && microsOf(r.recordedAt) > microsOf(knownAt)) {
           bad(`${e.key}: ${r.citation.kind} ${r.citation.id}@${r.citation.version} was recorded at ${r.recordedAt}, after this version's known_at ${knownAt} — it was not known at record time`);
         }
       }
@@ -538,9 +541,10 @@ export class TwinService {
      * cited directly, or through a claim derived from it, a forecast that read it, or a
      * run built on it — and whose propagation walk has not completed, is shown as
      * pending. The reach is the same dependency reachability the walk uses (the same
-     * table, the same bound), read here without writing anything: the walk is a
-     * person's act (the CorrectionApplied consumer stays deferred), and until it runs
-     * the twin's verification state says nothing about that case.
+     * table, the same bound), read here without writing anything: the walk is run by
+     * the domain's propagation agent on CorrectionApplied where one is registered
+     * (0060) or by a person otherwise, and until it has recorded its assessment the
+     * twin's verification state says nothing about that case.
      */
     const cases = (await cap.readCorrections().selectAll().where('state' as never, 'in', ['applied', 'awaiting', 'validated'] as never).execute()) as Array<Record<string, unknown>>;
     const open = cases.filter((c) => c['propagation_state'] !== 'complete');
@@ -693,6 +697,16 @@ export class TwinService {
       same, only_in_a: onlyA, only_in_b: onlyB, differing,
     };
   }
+}
+
+/**
+ * An ISO instant at exactly six fractional digits, so two instants compare as text at the record
+ * clock's precision whatever precision each was rendered at ('…55.665Z' → '…55.665000Z').
+ */
+function microsOf(iso: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?\d*Z$/.exec(iso);
+  if (m === null) return new Date(iso).toISOString().replace('Z', '000Z');
+  return `${m[1]}.${(m[2] ?? '').padEnd(6, '0')}Z`;
 }
 
 /** A timestamptz as the driver returns it (a Date) keeps its milliseconds; a string is parsed. */

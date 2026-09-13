@@ -41,7 +41,8 @@ export interface SourceBinding {
     maxBytes?: number;
     /** Contract-declared transport framing. See SourceContractV1 for the rule. */
     itemPath?: string;
-    itemKeyField?: string;
+    /** A single field path, or an ORDERED LIST of them for a composite key (§9.7). */
+    itemKeyField?: string | string[];
     itemTimeField?: string;
   };
   budgets: RunBudgets;
@@ -158,6 +159,16 @@ export interface AcquiredItem {
    * than let the cursor pass a window that was never collected.
    */
   backfillCursor?: string | number;
+  /**
+   * THE CHECKPOINT THAT BECOMES TRUE ONCE THIS PAGE IS COMMITTED.
+   *
+   * Carried on the PARENT of each backfilled page. A checkpoint written only at run
+   * end means a run interrupted after eight pages resumes from page one and re-walks
+   * everything it already admitted (SOURCE_INTEGRATION_STATUS.md §9.6.1, cause iii).
+   * The lifecycle persists this after the page's items are committed and nothing in
+   * the page was quarantined, so the cursor never passes a window that was refused.
+   */
+  checkpointAfter?: Record<string, unknown>;
 }
 
 export interface AcquisitionOutput {

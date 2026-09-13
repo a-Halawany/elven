@@ -45,6 +45,8 @@ const NAV = [
   { href: '/intelligence/review', label: 'Review', glyph: '⚖' },
   { href: '/intelligence/methods', label: 'Methods', glyph: '⚙' },
   { href: '/intelligence/gateway', label: 'Gateway', glyph: '⇄' },
+  { href: '/decisions', label: 'Decisions', glyph: '◆' },
+  { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },

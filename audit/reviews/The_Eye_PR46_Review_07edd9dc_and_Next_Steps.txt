@@ -1,0 +1,855 @@
+THE EYE — PR #46 review and delivery handoff
+Reviewed candidate: 07edd9dcd57e972203fb9e7bbcdab3a398c642b5
+Review date: 9 September 2026
+PR: https://github.com/a-Halawany/elven/pull/46
+
+The correction review remains open. Keep the fixes already made. Five original groups have residual paths: R3 contributor restrictions; R4 authority on every response; R5 historical rights; R6 the outcome's aggregate period; R7 the reporting agent's nested work. R2's carried-option cut-offs are addressed by the shared derivation port, which is called when setting, carrying and proposing options. This review does not request a restart or a change to frozen acceptance criteria.
+
+The product audit can proceed immediately. All eleven volume files, including the seven requested as R-2, exist as full Git blobs in docs/ at this exact candidate. Their paths, sizes and identities are below. The original delivery register accompanies this report. A registry credential is not needed to prepare and scan a local patched-image candidate; choose publishing access after there is a concrete candidate to publish.
+
+1. Evidence and its limits
+
+Independent work at this candidate:
+- Read the correction changes, migration 0049, relevant earlier ports, controllers, the new harness cases and the report/register.
+- Executed 27 focused cases against nine actual TypeScript/PDP files whose bytes match their candidate Git blobs. The loader removes imports/decorators and supplies explicit query, session, pipeline, canonical-admission/header-validation and digest doubles, plus a controlled clock. This is service/PDP evidence, not a running application.
+- 21 preservation/correction checks pass. Five service expectations fail: three response-authorization cases, the later-rights-withdrawal case, and reporting after its deadline. One additional case uses the SQL helper's inspected result shape to demonstrate what the actual ReplayService does when a reconciliation contributor is omitted; that is SQL inspection plus a service experiment, not SQL execution. R6's aggregate-period finding is SQL inspection only and is outside the 27 count.
+- Checked GitHub job/step conclusions and the raw C15 log for the candidate's PR run. No PostgreSQL, Redis, HTTP controller, browser, container build, registry scan or full unit/integration suite was executed independently here. The supplied script and complete results are appended.
+
+Claude's reported evidence stays attributed to Claude: 19/19 residual harness cases, 25/25 earlier corrections, full integration 783, unit 2136 plus 9, upgrade digest match, Phase 6 browser 3/3, Phase 4/5 browser 11/12 with the ECB case failing. Passing those exact cases does not establish the additional residual sequences below. Preserve earlier failures and their later passes; do not infer their cause beyond the existing evidence.
+
+2. Corrections to preserve
+
+| Path | Disposition in this review |
+| --- | --- |
+| R1 current eligibility after binding revocation | Preserve 0048/0049 and the partial refutation: a revoked authority's session was already rejected, while counting another human's revoked approval required correction. No new change requested on that original path. |
+| R2 carried citations under receiving cut-offs | The 0049 derive_option path is shared by set_option and open_version; propose_version revalidates each option. Accept the specific carry/cut-off correction by SQL inspection, retaining Claude's database evidence. No new R2 change requested. |
+| APR/CMT/RPL version restrictions | Passing preservation checks. |
+| R3 an older warning's open window | Now a named source with folded WRN controls; passing check. |
+| R3/R4 observed warning contributor | When the database returns that contributor, the actual service folds it and refuses an internal reader; passing checks. The SQL helper includes observed WRN. |
+| R4 scoped clearance, package list, direct report | Cross-domain borrowing is refused for a tenant-scoped person with multiple domain bindings; protected package list is filtered; direct report rejects wrong purpose and nonmembership. Passing checks. |
+| R4 stored agent output membership and blob availability | Nonmember output is withheld; governed tombstones are reported separately from stored content. Passing checks. |
+| R5 later source version and later-finished attempt | Earlier briefing contents remain stable in both sequences; passing checks. Binding eligibility is reconstructed as of the cut-off in 0049 by source inspection. |
+| R7 briefing composition | A supplied meter refuses before unbudgeted reads; a forced in-composition elapsed limit stops before further queries/admission. Passing checks. Unsupported stop-condition/agent-kind pairs are rejected in service and SQL. In-budget reporting still works. |
+
+3. R4 — Apply the reader boundary to composition, trigger responses and stored outputs (high priority)
+
+These are remaining entrances to the same protected content, not new feature scope. The existing direct-read checks establish the intended boundary; the other response paths bypass it.
+
+R4a: human composition response.
+A same-domain executive who is a room member has confidential clearance. An included warning carries restricted controls. The actual PDP allows briefing.compose; BriefingService.compose folds the warning to restricted, admits the BRF through the admission double and returns its full warning details to the executive. The corresponding stored BRF read refuses that clearance. The service receives the composer's UUID, not the principal needed for a clearance check; the controller returns its result without another content authorization check.
+Code: apps/api/src/executive/executive.controller.ts, compose (around lines 105–125); apps/api/src/executive/briefings/briefing.service.ts, compose and its final return (around lines 116–358).
+Existing compose_briefing checks authority, scope, composer identity, membership and agent status. The inspected port does not supply a missing response-clearance check. That is inspection, not an independently executed database refusal test.
+
+R4b: stored agent-report purpose.
+The direct report renderer correctly refuses a decision-purpose report requested as research. The same room member, with adequate clearance, can request agent.read as research and receive that stored report from the agent-output list. The PDP allows the route. listAgents never passes envelope.purpose_id to AgentsService.list; list checks scope/clearance/membership but has no purpose parameter or output-purpose guard.
+Code: executive.controller.ts, listAgents (around lines 158–162); agents/agents.service.ts, list (lines 133–170).
+
+R4c: operator-triggered agent response.
+A confidential executive is denied a restricted package by renderReport. The executive is allowed to trigger a registered reporting agent whose budget authorizes restricted work. AgentsService.run renders with the agent's clearance and internally uses purpose decision, then returns the full report in run.outputs. The controller returns that run to the triggering operator. Permission to trigger an agent does not authorize the operator to receive everything the agent can read. The trigger route also does not require the operator to be a member of the package's room before returning its output.
+Code: executive.controller.ts, runAgent (around lines 165–178); agents/agents.service.ts, run and report (lines 177–217, 299–307).
+Service experiment: direct report refused; the triggered run finished and returned the restricted choice. The controller return path and open_agent_run port were inspected, not executed here.
+
+Required bounded correction:
+Use one content-read decision for every outward snapshot/output response, including composition results, operator triggers, stored agent outputs and existing list/detail/export paths. Bind the human reader's target context, admitted output purpose, current membership and inherited controls. An agent may finish authorized work while returning only permitted run metadata to a less-authorized operator; do not give that operator the agent's report. Preserve legitimate agent sessions and scheduled operation. Persist enough provenance on stored output to check its purpose and contributors rather than inferring authority from possession of a run id.
+Reproduce through real controllers: restricted composition versus get; wrong-purpose report versus agent list; restricted or nonmember operator trigger versus direct report. Positive controls: the right-purpose, sufficiently cleared member receives the result, and the scheduled agent still completes its own permitted work. Refusal/withholding must avoid restricted values, titles or choices in the response.
+
+4. R3 — Reconciliation observations are missing from replay's contributor fold (high priority)
+
+Migration 0048 replay_layers includes observed.reconciliations: twin id, element key, from/against versions and values, difference and note. They are selected after decided_at and before as_of when from_citations names a run the decision used.
+Migration 0049 replay_contributors enumerates known EVD, believed CLM/FCT/ASU/WRN, tested SIM, decided DPK, observed later versions/OUT/WRN. It does not enumerate observed.reconciliations or the observation-side twin element and its citations. An unresolved entry can fail closed only if the entry is present in the enumeration.
+
+Concrete harness sequence to reproduce: keep the committed DPK and the cited SIM internal; after the decision, admit a restricted observed twin version for the same simulated target and record a valid reconciliation citing the chosen run. Replay as an internal room member. Ground the later observation from a new evidence object. The rp_cites expansion names the original run's element citations (0048 lines 434–452), not the twin object itself or the later observation's new citations. Consequently observed.later_versions does not independently contribute this new observation's restrictions. No OUT is required for recording a Phase 5 reconciliation.
+
+The inspected twin.record_reconciliation port permits the later observation when target/unit/chronology are valid, records its values and citations, and does not retroactively upgrade the earlier SIM or DPK controls. replay_layers returns the reconciliation's values but omits its citation list. The new contributor helper cannot recover the restricted observation just from its present refs.
+
+The supplied service experiment feeds the resulting internal DPK/SIM contributor set and a reconciliation-bearing observed layer to the actual ReplayService. It returns the reconciliation inside an internal RPL. This is a demonstrated service consequence of the inspected SQL result shape; establish the whole sequence at the database/controller boundary before calling it a real-database reproduction.
+Code: migrations/0048_phase6_review_corrections.sql, observed.reconciliations (lines 589–594); migrations/0049_phase6_residual_corrections.sql, replay_contributors (lines 455–483); migrations/0035_twin_cutoffs_scenario_binding_reconciliation.sql, record_reconciliation (lines 555–610); decision/replay/replay.service.ts, contributor fold and return.
+
+Correction: derive controls from every object whose contents appear in the replay, including both sides and cited evidence of each shown reconciliation. Bind the exact versions, propagate rights/residency/retention/access and synthetic state, check the reader before returning/admitting, and treat missing required contributors as unresolved. Preserve content-versus-current-availability separation. Positive controls: an adequately cleared member sees the reconciliation and correct controls; absent/out-of-window reconciliations do not affect an earlier replay.
+
+5. R5 — Historical source rights still come from the current projection (high priority)
+
+The source-version and finished-at corrections are effective, but sourceStates reads rights_state from readSourceContracts() after reconstructing activation at known_at.
+Sequence executed in the service: version 1 was activated with confirmed rights on 10 January; compose through 17 January; withdraw rights on 20 January and recompose through the same 17 January. The historical source changes from live to blocked and the same historical briefing's digest changes.
+The fixture models the existing governed writer: observation.set_rights_state updates the row to rights_state=withdrawn/lifecycle_state=suspended and appends a contract.suspended event with details.kind=rights_update and details.rights_state=withdrawn. This is not a fabricated mutation shape. The historical event filter correctly excludes 20 January, but the current rights column still leaks the future into the result.
+Code: executive/briefings/briefing.service.ts, sourceStates (around lines 70–106); migrations/0022_observation_registry_and_evidence.sql, set_rights_state (lines 956–985).
+
+Correction: reconstruct the rights verdict at the historical cut-off from the recorded rights events, using an explicit unknown/incomplete historical state where the record cannot establish it. Keep current rights/availability restrictions separate and enforce them now; preserving historical truth must not authorize use after withdrawal. Ensure source confirmation/restoration as well as withdrawal cannot rewrite earlier content. Real-harness positive controls: an actual withdrawal inside the requested interval is represented there; a later withdrawal changes current availability, while the earlier content/digest is stable.
+
+6. R6 — Interval containment does not validate an aggregate for that interval (SQL-only finding)
+
+0049 now binds twin_id and period to the signed criterion, and rejects a one-day/late-start aggregate. It still accepts a larger aggregate covering the required period:
+  refusal when e.valid_from IS NULL OR e.valid_from > wanted_from OR e.valid_to < wanted_to.
+The port then compares e.value directly with the target. It does not reduce the value to the approved period.
+
+Concrete sequence: use a fully unsimulated choice with the correct twin and criterion period 1–31 March, expected monthly cost <= 100. After the decision, ground complete, admitted evidence for that same element in the same twin over 1 January–31 March, total cost 150. Its end matches the twin's world cut-off and the criterion's by date, so the earlier stale/late-observation guards do not reject it. The annual-to-date/quarter aggregate covers March and is numerically judged as the March outcome, although March alone could be 50. For the opposite comparison, a larger period can incorrectly satisfy the target. No simulation reconciliation applies to this unsimulated choice, so its same-target check cannot rescue the path.
+Code: migrations/0049_phase6_residual_corrections.sql, record_outcome, period check (lines 377–388) and direct comparison (around lines 401–403).
+This is SQL inspection only. Reproduce with legitimate uploaded evidence and admitted twin elements, passing all upstream health/chronology checks, before treating the database consequence as demonstrated.
+
+Correction: for an aggregate, require the observation's period to match the criterion, or explicitly derive the required interval from sufficiently granular cited observations with a declared, verifiable aggregation rule. A superset total alone cannot establish a subperiod total. Preserve appropriate point-in-time semantics for metrics that are not interval aggregates. Positive controls: exact-period aggregate succeeds; shorter and larger unmatched aggregates refuse; an explicit, correctly derived same-period result succeeds if that derivation is supported.
+
+7. R7 — The reporting agent's nested renderer still runs after its deadline (medium priority)
+
+report() reserves one read before calling renderReport. The nested renderer has no meter/deadline argument. It separately reads the package, canonical purpose, version, options, dissent, approvals and strategy record.
+Controlled-clock sequence executed against the actual agent/service code: max_elapsed_ms=100; the first package query completes at 101 ms; six subsequent queries start after that deadline. The run returns its full report as finished with spent.reads=1, elapsed_ms=101 and over_budget=1. This is additional work starting after the bound, not merely a final permitted operation completing slowly.
+Code: executive/agents/agents.service.ts, report and renderReport (lines 299–358), and run's over_budget outcome (around lines 208–213).
+
+Correction: propagate the meter/deadline into reporting's actual query families and check before starting each new unit. Stop, record and escalate when the budget prevents further work, preserving the successful in-budget report. Keep truthful treatment of a last already-authorized operation completing after the deadline; do not use an over_budget field to legitimize additional unmetered work.
+
+Use a deterministic elapsed-time/latency fixture that guarantees the first operation completes after the deadline. The current 80 ms real-harness case accepts either successful admission or a stop depending on runtime speed; that is a useful compatibility check but does not force the in-composition overrun on every run. The independent controlled-clock briefing case passes at this candidate, so preserve the briefing fix while covering reporting.
+
+8. CI and security maintenance
+
+Verified run: https://github.com/a-Halawany/elven/actions/runs/34390716808
+Associated PR head is 07edd9dc. The PR workflow checks out GitHub's synthetic merge 60ba803fedf021b05e5332b9c712cefc404ef2b1 (07edd9dc into c5460465); do not describe those as direct branch-checkout results.
+- build-test succeeds, including its C18 and upgrade steps.
+- browser-regression succeeds. Its named job step covers the Phase 0/1 browser gate; it does not establish independent execution of the locally reported Phase 6 browser suite.
+- supply-chain fails. Raw output reports pnpm-audit-human/json, both gitleaks checks, trivy-fs/json and the image scanner processes as ok. The failed policy verdict names 13 unmatched HIGH image rows: libuuid in pinned PostgreSQL, setpriv in pinned Redis, across the seven util-linux advisories. This supports the claimed dependency-remediation result.
+- The patched-image recheck is skipped in this branch's failing supply-chain job. FINAL C16 and C17 steps are also skipped. A successful artifact-upload step is not proof that a skipped gate ran.
+C19 lifecycle, delivery-chain-dry and foreign-checkout-pinning succeed in run https://github.com/a-Halawany/elven/actions/runs/34390716833 .
+
+The author's local C17 legal/manifest test and the dependency/security changes remain useful evidence, but FINAL C17 has not passed at this candidate. The raw C15 excerpts are appended. No independent claim is made here that every official image available today was scanned or that patched derived images already exist.
+
+R-3 should be separated into preparation and publishing:
+- Prepare a reproducible local candidate from pinned official bases. Verify and update the actually affected subpackages (libuuid/setpriv and required dependencies) to fixed versions available for the exact Alpine branches. Retain the upstream entrypoint/user behavior. Record package versions, build inputs, image identity, SBOM/licence changes, raw scans, compatibility and upgrade evidence. A registry namespace/push credential is not a prerequisite to this local build and scan.
+- If the required fixed packages are unavailable or a candidate introduces other unresolved findings, report that concrete build/scan result. Do not assert a patched candidate from an apk command alone.
+- For eventual publishing, a candidate option is GHCR under the repository owner's namespace, with a repository-associated Actions workflow and a job-scoped GITHUB_TOKEN granted packages:write. GitHub documents that path; a personal push token is not inherently required. Existing package/org settings may affect access, so verify the exact target before publishing. No token should be pasted into a chat or committed.
+- The owner can approve a concrete publishing/operational proposal with its candidate and evidence. Publish and re-pin through the existing governed maintenance path, update affected dispositions to the real digests, then execute the full required gates and merge sequence. No waiver or bypass is implied by local preparation.
+Official guidance:
+https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images
+
+9. Resource handoff and full-product audit
+
+R-1: The_Eye_Full_Product_Delivery_Register_2026-09-09.md accompanies this report. It contains the earlier 220 requirement-family snapshots, all eleven document identities, completion packages and evidence rules. Reconcile it with the new repository FULL_PRODUCT_DELIVERY_REGISTER.md, retaining both provenance and current dispositions. The 220 families are a seed, not an atomic requirement count and not a completion percentage.
+
+R-2: The missing-volumes blocker is resolved by the candidate's own Git tree. All eleven full document blobs are in docs/; the requested seven are included. They are normal-sized DOCX/PDF blobs, not LFS pointer-size placeholders. Retrieve the pinned bytes without switching the active working tree. Check identities and extract text with page/section references, inspecting figures/tables where needed. The lookup was a file-availability verification, not a fresh reading/audit of all eleven volumes.
+
+Pinned directory:
+https://github.com/a-Halawany/elven/tree/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs
+
+Volume 0: docs/The_Eye_Volume_0_Product_Constitution_v1.0 elvin.docx
+  Git blob f079067067d9db0bdf389b0f4a32fcbad15af44f ; 88,681 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_0_Product_Constitution_v1.0%20elvin.docx
+Volume 1: docs/The_Eye_Volume_1_Executive_Vision_Book_v1.0 elvin.docx
+  Git blob cb6de42bbb4c82491632934d74435d6c7f6bf011 ; 609,027 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_1_Executive_Vision_Book_v1.0%20elvin.docx
+Volume 2: docs/The_Eye_Volume_2_Technical_Presentation_v1.1 elvin.pdf
+  Git blob 62925dd018a9006a476da7cc0d2a0daf87eb1d2f ; 14,213,756 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_2_Technical_Presentation_v1.1%20elvin.pdf
+Volume 3: docs/The_Eye_Volume_3_Technical_Architecture_v1.0 elvin.pdf
+  Git blob dab2408476ff2ddab85656ad586bad6414b49c66 ; 3,679,286 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_3_Technical_Architecture_v1.0%20elvin.pdf
+Volume 4: docs/The_Eye_Volume_4_Engineering_Specification_v1.0 elvin.pdf
+  Git blob 08efeffbce4f901b05b1d5c9a13a58377b116c96 ; 7,185,556 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_4_Engineering_Specification_v1.0%20elvin.pdf
+Volume 5: docs/The_Eye_Volume_5_AI_Architecture_v1.0 elvin.pdf
+  Git blob cc97ed452c263adc1fa01028e67677d71efe61b1 ; 10,292,126 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_5_AI_Architecture_v1.0%20elvin.pdf
+Volume 6: docs/The_Eye_Volume_6_Infrastructure_Architecture_v1.0 elvin .pdf
+  Git blob 9a33d8221892792afffec3c719ae113359294155 ; 11,356,353 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_6_Infrastructure_Architecture_v1.0%20elvin%20.pdf
+Volume 7: docs/The_Eye_Volume_7_Data_Platform_v1.0 elvin.pdf
+  Git blob 81a6cc01958db0cebe823550cc0a62956f671b27 ; 11,299,146 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_7_Data_Platform_v1.0%20elvin.pdf
+Volume 8: docs/The_Eye_V8_PRD elvin.pdf
+  Git blob d1a704b1a041726fabaaa6d3b43888d57cd966b6 ; 11,875,347 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_V8_PRD%20elvin.pdf
+Volume 9: docs/The_Eye_Volume_9_UI_UX_Design_System_v1.0 elvin .pdf
+  Git blob 657c95092c1d00ad52965e9fc2d45d9075c8e244 ; 12,422,483 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_9_UI_UX_Design_System_v1.0%20elvin%20.pdf
+Volume 10: docs/The_Eye_Volume_10_Investor_Package_v1.0 elvin.pdf
+  Git blob 152de5911d0e5c99e57cf94ef06e966dee6e7713 ; 5,491,176 bytes
+  https://github.com/a-Halawany/elven/blob/07edd9dcd57e972203fb9e7bbcdab3a398c642b5/docs/The_Eye_Volume_10_Investor_Package_v1.0%20elvin.pdf
+
+A read-only extraction example (run from the repository, writes only a new temporary directory):
+
+python3 - <<'PYDOCS'
+import hashlib, pathlib, subprocess, tempfile
+head = '07edd9dcd57e972203fb9e7bbcdab3a398c642b5'
+paths = subprocess.check_output(['git','ls-tree','-r','-z','--name-only',head,'--','docs/']).decode().split('\0')
+paths = [p for p in paths if ('Volume_' in p or 'The_Eye_V8_PRD' in p) and p.endswith(('.pdf','.docx'))]
+assert len(paths) == 11, 'the pinned baseline must contain all eleven documents'
+dest = pathlib.Path(tempfile.mkdtemp(prefix='eye-volume-audit-'))
+for p in paths:
+    data = subprocess.check_output(['git','show',f'{head}:{p}'])
+    expected = subprocess.check_output(['git','rev-parse',f'{head}:{p}']).decode().strip()
+    actual = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+    assert actual == expected, p
+    target = dest / pathlib.Path(p).name.replace(' ','_')
+    target.write_bytes(data)
+    print(expected, len(data), target)
+print('Verified specification directory:', dest)
+PYDOCS
+
+Execute the atomic audit across all eleven volumes now. Start with the governing constitution/PRD and reconcile architecture, engineering, data, AI, infrastructure and UX obligations without dropping the other volumes. For every requirement retain its original identifier and exact source clause; map code/UI/API/integration/agent/runtime/operational evidence at an exact candidate, distinguish missing/partial/implemented from verification and release, and give open work an owner, dependency and completion package. Review figures and tables where extraction alone is insufficient. Separate originally planned Phase 7 work from omissions in earlier phases. Neither an old phase closure nor a deferred consumer removes a full-product obligation.
+
+Keep the already recorded full-product gaps visible, including conditional-approval semantics and case-bound decision-agent simulation selection. They belong in the delivery register unless they reproduce a defect in an already-promised correction path. This bounded correction review cannot stand in for the complete atomic audit.
+
+Concrete next outputs: (1) baseline reproductions and dispositions for the residual paths above; (2) reconciled atomic requirement register with evidence-backed statuses, dependencies and an integrated completion schedule; (3) local derived-image build/scan proposal or a specific package-level blocker. Continue implementation from that register and request resources only when a named next step actually requires them. Preserve the scope of the owner's 100% delivery mandate, the existing review history, forward-only migrations, source/credential/purchase holds, and the unmerged release posture.
+
+10. Message to Claude
+
+Continue from 07edd9dc toward the full product. Keep PR #46 review-open and unmerged. Preserve the corrected controls and use the attached review to reproduce the remaining R3–R7 paths at the real database/controller/identity/Redis harness before changing code. Keep R2's carried-option correction closed. The review's independent evidence is service/PDP with doubles and separately labelled SQL inspection; establish each claimed database consequence yourself and retain positive controls.
+
+Cover all remaining outward-response authority paths, reconciliation contributors, historical rights after a later withdrawal, superset aggregate periods, and nested reporting deadlines. Use forward-only migrations if needed, without changing frozen criteria or running builds against an active verification tree.
+
+Begin the full atomic requirements audit now: all eleven volumes are in docs/ at this head, with pinned paths and blob identities in the review. Reconcile the accompanying full delivery register with the repository register; retain every original requirement and every outstanding completion package. No volume re-upload is needed. Do not treat the 220 historical families as the denominator for 100% completion.
+
+Prepare and scan a local derived-image candidate on the maintenance track. A registry credential is not required for local preparation. Once the candidate and its provenance/compatibility evidence are ready, propose the exact publishing path and any real remaining access need. Keep C15 and FINAL C16/C17 blocking, with no waiver, source activation, credential use or purchase. Report the correction disposition, audit progress and security candidate separately at exact commits.
+
+11. Independent executable evidence
+
+Run current-review-probes.cjs beside the candidate's apps/ tree using Node 24. It uses only Node built-ins. The failure assertions state the required behavior; the script exits nonzero while any expectation fails. The JSON result records each preservation check and residual separately. All query/session/pipeline/admission operations are doubles. No product code is modified by this script.
+
+--- BEGIN current-review-probes.cjs ---
+// Independent residual review of 07edd9dcd57e972203fb9e7bbcdab3a398c642b5.
+// Actual candidate TypeScript, with imports/decorators removed for Node execution.
+// Query, pipeline, canonical admission, session and database ports are explicit doubles.
+// SQL is inspected separately. No PostgreSQL, Redis, HTTP or browser claim.
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const { stripTypeScriptTypes } = require('node:module');
+const { createHash, randomUUID } = require('node:crypto');
+let NOW = Date.parse('2026-09-09T12:00:00.000Z');
+class Clock extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return NOW; } }
+class HttpException extends Error {
+  constructor(body, status) { super(body.message ?? JSON.stringify(body)); this.body = body; this.status = status; }
+  getStatus() { return this.status; } getResponse() { return this.body; }
+}
+function stable(v) { if (Array.isArray(v)) return v.map(stable); if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])); return v; }
+const digest = v => createHash('sha256').update(JSON.stringify(stable(v))).digest('hex');
+const base = { Date: Clock, Error, console, Buffer, HttpException, newId: randomUUID,
+  errorBody: (code, correlationId, message) => ({ code, correlationId, message }),
+  contentDigest: digest, canonicalHeaderDigest: (h, p) => digest([h,p]), validateHeader: () => ({ ok: true }) };
+function load(rel, names, extras = {}) {
+  const file = path.join(__dirname, 'apps/api/src', rel);
+  const source = fs.readFileSync(file, 'utf8').replace(/^import[\s\S]*?;\s*$/gm, '').replace(/@(Injectable|Inject)\([^)]*\)/g, '').replace(/^export\s+/gm, '');
+  const context = { ...base, ...extras };
+  vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }) + '\nglobalThis.loaded={' + names.join(',') + '};', context, { filename: file });
+  return context.loaded;
+}
+const { foldControls } = load('prediction/controls.ts', ['foldControls']);
+const clearance = load('decision/clearance.ts', ['assertClearance','assertPurpose','clearanceOf','covers','denyRead']);
+const { PackageService, unfoldProfiles } = load('decision/packages/package.service.ts', ['PackageService','unfoldProfiles'], { foldControls, ...clearance });
+const { ApprovalService, versionControls } = load('decision/approvals/approval.service.ts', ['ApprovalService','versionControls'], {foldControls,unfoldProfiles});
+const { ReplayService } = load('decision/replay/replay.service.ts', ['ReplayService'], {foldControls,unfoldProfiles,versionControls,...clearance});
+const { MonitoringService } = load('decision/monitoring/monitoring.service.ts', ['MonitoringService'], {foldControls,unfoldProfiles,versionControls});
+const { BriefingService, BudgetExceeded, StopCondition } = load('executive/briefings/briefing.service.ts', ['BriefingService','BudgetExceeded','StopCondition'], { foldControls,...clearance });
+const { AgentsService, renderReport, validateRegisterAgent } = load('executive/agents/agents.service.ts', ['AgentsService','renderReport','validateRegisterAgent'], {
+  BudgetExceeded, StopCondition, ...clearance, DecisionAgentGrantRefused: class extends Error {}, DecisionCapability: {}, ExecutiveCapability: {}, PrincipalsCapability: {} });
+const { PdpService } = load('policy/pdp.service.ts', ['PdpService']);
+
+// General query double: actual service chooses predicates, ordering and limits.
+function query(rows, stats = {}, table='') {
+  const filters = [], orders = []; let max = Infinity;
+  const select = () => rows.filter(r => filters.every(f => f(r))).sort((a,b) => {
+    for (const [k,d] of orders) { if(a[k]<b[k]) return d==='desc'?1:-1; if(a[k]>b[k]) return d==='desc'?-1:1; } return 0;
+  }).slice(0,max);
+  return { selectAll(){return this;}, select(){return this;}, $if(c,f){return c?f(this):this;},
+    where(k,op,v){
+      const f = { '=': r=>r[k]!=null && v!=null && String(r[k])===String(v), 'is': r=>r[k]===v, '<>': r=>r[k]!==v, '<': r=>r[k]<v, '>=': r=>r[k]>=v, '<=': r=>r[k]<=v, '>': r=>r[k]>v,
+        'in': r=>v.includes(r[k]), 'not in': r=>!v.includes(r[k]) }[op];
+      if(!f) throw Error('Unsupported predicate '+op); filters.push(f); return this;
+    }, orderBy(k,d='asc'){orders.push([k,d]);return this;},limit(n){max=n;return this;},
+    async execute(){stats.queries++; stats.trace.push(table); stats.timedTrace.push({table,at:NOW}); const out=select(); stats.readRows.push(...out.map(r=>({table,id:r.object_id??r.package_id??r.source_id??null}))); if(stats.onRead)stats.onRead(table,out); return out;},async executeTakeFirst(){return (await this.execute())[0];}
+  };
+}
+const id = n => '00000000-0000-4000-8000-' + String(n).padStart(12,'0');
+const ctx = { scope:'DOMAIN',tenantId:id(1),domainId:id(2) }, reader=id(3), packageId=id(4), twinId=id(5), corr=id(6), known='2024-01-17T23:59:59.000Z';
+const restricted = { synthetic_state:true, classification:'restricted', rights_profile:'internal-use-only',residency_profile:'EU',retention_profile:'24 months',access_policy_ref:'need-to-know', inputs:1 };
+const choice = { option_key:'reroute',rationale:'Move cargo around the Cape.',decision_deadline:'2024-01-25',action_owner:reader,accepted_trade_offs:['longer transit'],outcome_criteria:[{key:'line-stop',quantity:'line-stop days',unit:'days',target:5,comparator:'<=',by:'2024-04-10',observed_on:'twin:outcome.line_stop_days'}] };
+const pkg = { tenant_id:ctx.tenantId,domain_id:ctx.domainId,package_id:packageId,decision_object_id:id(7),title:'Restricted corridor choice',statement:'Review fixture',current_version:1,committed_version:1,decided_at:'2024-01-20T12:00:00.000Z',state:'committed',owner_principal_id:reader,controls:restricted,synthetic_state:true };
+const version = { package_id:packageId,version:1,state:'approved',version_digest:'a'.repeat(64),known_at:known,observed_through:'2024-01-17',controls:restricted,synthetic_state:true,objectives:[id(8)],choice,monitoring_conditions:[] };
+const opt = { package_id:packageId,version:1,key:'reroute',title:'Reroute',kind:'intervention',consequences:[],uncertainty:{},synthetic_state:true };
+function fixture(overrides={}) {
+  const tables={Packages:[structuredClone(pkg)],Versions:[structuredClone(version)],Options:[structuredClone(opt)],Dissent:[],Approvals:[],Commitments:[{package_id:packageId,commitment_id:id(9)}],...overrides};
+  const state={headers:[],writes:[],queries:0,trace:[],timedTrace:[],readRows:[]}; const cap={};
+  for(const name of ['Packages','Versions','Options','Dissent','Events','Approvals','Commitments','Strategy','Elements','Reconciliations','Rooms','Members','RoomEvents','Briefings','Agents','AgentRuns','PackageEvents','CanonicalObjects','Runs','Twins','ScenarioEvents','Branches','Warnings','WarningEvents','Scenarios','Dependencies','SourceContracts','SchedulerEntries','ScheduledAttempts','HealthEvents','SourceContractEvents','Tombstones']) cap['read'+name]=()=>query(tables[name]??[],state,name);
+  cap.admitObject=async(h,p)=>{state.headers.push({header:h,payload:p});return{contentDigest:digest(p)};};
+  cap.isMember=async()=>true; cap.liveApprovalsAsOf=async()=>[]; cap.liveApprovals=async()=>[{approval_id:id(10),approver_principal_id:id(11)}];
+  cap.composeBriefing=async a=>{state.writes.push(a);return{};};
+  cap.setOption=async a=>{state.writes.push(a);return{};};
+  cap.recordApproval=async()=>({state:'approved',live_approvals:1,quorum:1});
+  cap.commitPackage=async a=>({commitment_id:a.commitmentId,approvals:1,op_class:'C3',decided_at:pkg.decided_at});
+  return {cap,state,tables};
+}
+const optionsIntake = c => ({key:'status-quo',title:'Do nothing',kind:'status_quo',consequences:[c],unsimulatedReason:'A cited observation, no simulation',secondOrder:[],risks:[],opportunities:[],reversibility:null});
+const rows = {object_id:id(20),object_version:1,content_digest:'b'.repeat(64),recorded_at:'2024-01-16T00:00:00.000Z',event_time:'2024-01-16T00:00:00.000Z',lifecycle_state:'active',truth_state:'observed',quality_state:{},...restricted};
+const results=[]; let facts={};
+async function test(name,kind,fn){ facts={}; NOW=Date.parse('2026-09-09T12:00:00.000Z'); try{await fn();results.push({name,kind,status:'pass',facts});}catch(e){results.push({name,kind,status:'fail',message:e.message,actual:e.actual,expected:e.expected,facts});}}
+const bfArgs={roomId:null,knownAt:known,priorBriefingId:null,narrative:null,narrativeCites:[]};
+const compose=(f,a=bfArgs)=>new BriefingService().compose(f.cap,ctx,a,reader,'human',null,'review',corr,id(30));
+const human=(role='domain_analyst', extra=[])=>({principalId:reader,kind:'human',homeScope:'TENANT',tenantId:ctx.tenantId,domainId:null,assurance:'password',bindings:[{roleCode:role,scope:role==='auditor'?'TENANT':'DOMAIN',tenantId:ctx.tenantId,domainId:role==='auditor'?null:ctx.domainId},...extra]});
+const internal={synthetic_state:false,classification:'internal',rights_profile:null,residency_profile:null,retention_profile:null,access_policy_ref:null};
+const internalFixture=(over={})=>fixture({Packages:[{...pkg,controls:internal,synthetic_state:false}],Versions:[{...version,controls:internal,synthetic_state:false}],...over});
+const warning={warning_id:id(40),title:'Restricted replay warning',raised_at:'2024-01-16T10:00:00.000Z',state:'raised',routed_to:reader,consequence:'Private line exposure',response_window_closes_at:'2024-01-25T00:00:00.000Z',acknowledged_at:null,synthetic_state:true,controls:restricted,timing:'replay'};
+const wh={object_type:'WRN',object_id:warning.warning_id,object_version:1,...restricted};
+const bf={tenant_id:ctx.tenantId,domain_id:ctx.domainId,briefing_id:id(30),room_id:id(35),known_at:known,composed_at:known,controls:restricted,items:[{details:{private:'restricted'}}],sources:[]};
+const bh={object_type:'BRF',object_id:bf.briefing_id,object_version:1,purpose_scope:'briefing',...restricted};
+const dpk={...internal,object_type:'DPK',object_id:packageId,object_version:1,purpose_scope:'decision'};
+function pdp(p,action,objectType,purpose='briefing'){
+  return new PdpService().evaluate({principal:p,delegationId:null,action,objectType,objectId:id(30),purposeId:purpose,context:ctx,consequenceClass:'C1',environment:{deployment:'local-dev',clockQuality:'trusted'}});
+}
+function replayFixture(over={}, observed={}, knownRows=[]){
+ const f=internalFixture({Versions:[{...version,controls:internal,synthetic_state:false,monitoring_conditions:[{kind:'indicator',indicator_id:id(41)}]}],CanonicalObjects:[dpk,wh],...over});
+ f.cap.replayLayers=async()=>({content:{package_id:packageId,version:1,believed:{claims:[],forecasts:[],assumptions:[],warnings:[]},tested:{runs:[]},cutoffs:{as_of:'2024-01-22T00:00:00.000Z'},known:knownRows,decided:{commitment:{commitment_id:id(9)}},observed,excluded:[]},content_digest:'c'.repeat(64),unavailable:[],summary:{},contributors:[]});
+ f.cap.recordReplay=async()=>{};return f;
+}
+function agentFixture({task='report',maxReads=100,maxElapsed=30000,stops=[],over={},packages=new PackageService()}={}){
+ const agentId=id(50), principal={principalId:id(51),kind:'agent',assurance:'agent_grant',bindings:[]};
+ const f=internalFixture(over),calls=[];
+ const pipeline={consequentialRead:async(...a)=>{calls.push({kind:'read',action:a[2].action,principal:a[1].principalId});return{result:await a.at(-1)(f.cap,ctx)};},write:async(...a)=>{calls.push({kind:'write',action:a[2].action}); if(a[2].action==='decision.package.propose')throw new HttpException({code:'EYE_AUT_001',message:'agent cannot propose'},403);return a.at(-1)(f.cap,ctx);}};
+ f.cap.openAgentRun=async()=>({budget:{max_reads:maxReads,max_gateway_calls:0,max_elapsed_ms:maxElapsed,clearance:'restricted'},stop_conditions:stops,escalation_principal_id:reader});
+ f.cap.closeAgentRun=async a=>{f.state.closed=a;return{escalated_to:a.outcome==='stopped'?reader:null};};
+ f.cap.evaluateConditions=async()=>({checked:0});
+ const sessions={openRunSession:async()=>({principal,registration:{agent_kind:task==='draft'?'decision':task==='briefing'?'briefing':'reporting',agent_version:'1.0.0',code_digest:'d'.repeat(64)}})};
+ const svc=new AgentsService(pipeline,{},sessions,packages,new BriefingService());
+ const a={agentId,tenantId:ctx.tenantId,domainId:ctx.domainId,task,trigger:{kind:'scheduler',principalId:null,ref:'natural-tick'},roomId:task==='briefing'?id(35):null,packageId,version:1,correlationId:corr};
+ return{f,svc,a,calls};
+}
+const room={room_id:id(35),package_id:packageId,title:'Corridor room',owner_principal_id:reader,next_review_at:'2024-01-24T00:00:00.000Z',review_every_days:7};
+async function rejects403(fn){ await assert.rejects(fn,e=>e.getStatus?.()===403); }
+function contributedReplay(over={}, observed={}, contributors=[]){const f=replayFixture(over,observed);const old=f.cap.replayLayers;f.cap.replayLayers=async()=>({...await old(),contributors});return f;}
+async function main(){
+ await test('C01 APR still inherits restrictions','control',async()=>{const f=fixture();await new ApprovalService().approve(f.cap,ctx,packageId,1,{decision:'approve',versionDigest:version.version_digest,rationale:'Reviewed',conditions:[]},reader,'review',corr,id(31));assert.equal(f.state.headers[0].header.classification,'restricted');assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);});
+ await test('C02 CMT still inherits restrictions','control',async()=>{const f=fixture({Packages:[{...pkg,committed_version:null}]});await new ApprovalService().commit(f.cap,ctx,packageId,1,version.version_digest,reader,'review',corr,id(32));assert.equal(f.state.headers[0].header.residency_profile,'EU');assert.equal(f.state.headers[0].header.classification,'restricted');});
+ await test('C03 RPL still inherits version restrictions','control',async()=>{const f=contributedReplay({Versions:[version],Packages:[pkg]});await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);});
+ await test('C04 Older open warning window now retains controls','corrected',async()=>{const f=fixture({Warnings:[{...warning,raised_at:'2024-01-14T00:00:00.000Z'}],CanonicalObjects:[wh],Briefings:[{briefing_id:id(46),room_id:null,known_at:'2024-01-15T23:59:59.000Z',composed_at:'2024-01-16T00:00:00.000Z'}]});const r=await compose(f,{...bfArgs,priorBriefingId:id(46)});assert.equal(r.windows.length,1);assert.equal(r.controls.classification,'restricted');assert.ok(r.sources.includes('warning:'+warning.warning_id));});
+ const wrnContributor={object_type:'WRN',id:warning.warning_id,version:1,...restricted};
+ await test('C05 Observed warning contributor now enters replay fold','corrected',async()=>{const f=contributedReplay({}, {warnings:[warning]},[wrnContributor]);const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));assert.equal(r.controls.classification,'restricted');assert.equal(r.controls.rights_profile,restricted.rights_profile);});
+ await test('C06 Observed warning contributor denies internal reader','corrected',async()=>{const f=contributedReplay({}, {warnings:[warning]},[wrnContributor]);await rejects403(()=>new ReplayService().replay(f.cap,ctx,packageId,1,null,human(),'decision',corr,id(33)));assert.equal(f.state.headers.length,0);});
+ await test('C07 Restricted BRF detail denies internal reader','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human(),corr,'briefing',ctx));});
+ await test('C08 BRF wrong-purpose detail remains refused','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'research',ctx));});
+ await test('C09 BRF nonmember detail remains refused','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});f.cap.isMember=async()=>false;await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'briefing',ctx));});
+ await test('C10 Tenant principal cannot borrow a different domains clearance','corrected',async()=>{const p=human('domain_analyst',[{roleCode:'decision_owner',scope:'DOMAIN',tenantId:ctx.tenantId,domainId:id(99)}]);const f=fixture({Briefings:[{...bf,controls:{...restricted,classification:'confidential'}}],CanonicalObjects:[{...bh,classification:'confidential'}]});assert.ok(pdp(p,'briefing.read','BRF').decision.startsWith('allow'));assert.equal(clearance.clearanceOf(p,ctx),'internal');await rejects403(()=>new BriefingService().get(f.cap,bf.briefing_id,p,corr,'briefing',ctx));});
+ await test('C11 Authorized package list now filters denied package','corrected',async()=>{const f=fixture({CanonicalObjects:[dpk]});const p=human();await rejects403(()=>new PackageService().get(f.cap,packageId,p,'decision',corr,ctx));assert.equal((await new PackageService().list(f.cap,p,'decision',ctx)).length,0);});
+ await test('C12 Human report now refuses wrong purpose','corrected',async()=>{const f=internalFixture({CanonicalObjects:[dpk]});const p=human('executive');const r=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'research',member:reader});assert.equal(r.refused,true);});
+ await test('C13 Human report now refuses nonmember','corrected',async()=>{const f=internalFixture({CanonicalObjects:[dpk],Rooms:[room]});f.cap.isMember=async()=>false;const r=await renderReport(f.cap,packageId,'restricted',{principal_id:reader},corr,{purpose:'decision',member:reader});assert.equal(r.refused,true);});
+ await test('C14 Agent output list now withholds from nonmember','corrected',async()=>{const f=internalFixture({Rooms:[room],AgentRuns:[{run_id:id(60),room_id:room.room_id,package_id:packageId,started_at:known,outputs:{report:{private:'room-only decision'}}}]});f.cap.isMember=async()=>false;const r=await new AgentsService().list(f.cap,human('executive'),ctx);assert.ok(r.runs[0].outputs.withheld);});
+ await test('C15 BRF availability now detects a blob tombstone','corrected',async()=>{const f=fixture({Briefings:[{...bf,sources:[`evidence:${rows.object_id}@1`]}],CanonicalObjects:[bh,{...rows,object_type:'EVD',payload:{manifest_id:id(64)}}],Tombstones:[{manifest_id:id(64),tombstoned_at:'2024-01-21T00:00:00.000Z',reason:'retention swept'}]});const r=await new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'briefing',ctx);facts={availability:r.availability};assert.equal(r.availability.unavailable[0].reason,'governed-deleted');});
+ const source={source_id:id(70),contract_version:1,source_key:'fixture-live',name:'Fixture live',acquisition_mode:'live',data_origin:'live',rights_state:'confirmed',connector_kind:'rest',contract:{security_and_operations:{}},lifecycle_state:'active'};
+ const se={source_id:source.source_id,contract_version:1,event:'contract.activated',occurred_at:'2024-01-10T00:00:00.000Z'};
+ await test('C16 Later source version does not replace historical source','corrected',async()=>{const f=fixture({SourceContracts:[source],SourceContractEvents:[se]});const a=await compose(f);f.tables.SourceContracts.push({...source,contract_version:2});f.tables.SourceContractEvents.push({...se,event:'contract.superseded',occurred_at:'2024-01-20T00:00:00.000Z'},{...se,contract_version:2,occurred_at:'2024-01-20T00:00:01.000Z'});const b=await compose(f);assert.equal(a.contentDigest,b.contentDigest);assert.equal(b.sourceStates[0].contract_version,1);});
+ await test('C17 Attempt finishing later does not change historical source health','corrected',async()=>{const f=fixture({SourceContracts:[source],SourceContractEvents:[se],ScheduledAttempts:[]});const a=await compose(f);f.tables.ScheduledAttempts.push({source_id:source.source_id,started_at:'2024-01-17T10:00:00.000Z',finished_at:'2024-01-19T00:00:00.000Z',outcome:'failed'});const b=await compose(f);assert.equal(a.contentDigest,b.contentDigest);assert.equal(b.sourceStates[0].state,'live');});
+ await test('R5 Later rights withdrawal must not rewrite historical source state','residual',async()=>{const f=fixture({SourceContracts:[{...source}],SourceContractEvents:[se]});const a=await compose(f);f.tables.SourceContracts[0].rights_state='withdrawn';f.tables.SourceContracts[0].lifecycle_state='suspended';f.tables.SourceContractEvents.push({...se,event:'contract.suspended',occurred_at:'2024-01-20T00:00:00.000Z',details:{kind:'rights_update',rights_state:'withdrawn',evidence:'withdrawal received'}});const b=await compose(f);facts={before:a.sourceStates,after:b.sourceStates,knownAt:known,withdrawalRecordedAt:'2024-01-20T00:00:00.000Z',digestBefore:a.contentDigest,digestAfter:b.contentDigest};assert.equal(a.contentDigest,b.contentDigest,'same historical briefing changed because sourceStates reads rights_state from the current projection');});
+ await test('C18 Composition meter refuses before unbudgeted reads','corrected',async()=>{const f=fixture();await assert.rejects(()=>new BriefingService().compose(f.cap,ctx,bfArgs,reader,'agent',id(50),'briefing',corr,id(30),{maxReads:0,maxItems:null,stopOnDegraded:false,reserve:()=>{throw new BudgetExceeded('no reads remain');},deadline:NOW+1000}),e=>e instanceof BudgetExceeded);assert.equal(f.state.queries,0);assert.equal(f.state.headers.length,0);});
+ await test('C19 Composition clock stops before new work or admission','corrected',async()=>{const f=fixture();const deadline=NOW+100;f.state.onRead=(table)=>{if(table==='SourceContracts')NOW+=101;};await assert.rejects(()=>new BriefingService().compose(f.cap,ctx,bfArgs,reader,'agent',id(50),'briefing',corr,id(30),{maxReads:100,maxItems:null,stopOnDegraded:false,reserve:()=>{},deadline}),e=>e instanceof BudgetExceeded);assert.equal(f.state.headers.length,0);assert.equal(f.state.timedTrace.filter(x=>x.at>=deadline).length,0);});
+ await test('C20 Unsupported stop-kind pair is refused at service registration','corrected',async()=>{assert.throws(()=>validateRegisterAgent({kind:'reporting',version:'1.0.0',codeDigest:'d'.repeat(64),ownerPrincipalId:reader,escalationPrincipalId:reader,budgets:{max_reads:10,max_gateway_calls:0,max_elapsed_ms:1000},stopConditions:[{kind:'max_items',value:1}]},corr),e=>e.getStatus?.()===422);});
+ await test('C21 In-budget reporting still completes','control',async()=>{const {f,svc,a}=agentFixture({over:{CanonicalObjects:[dpk]}});const r=await svc.run(a);assert.equal(r.outcome,'finished');assert.equal(r.outputs.report.package.package_id,packageId);});
+ // Remaining authority paths: actual PDP and services, without claiming the controller or PostgreSQL ran.
+ await test('R4a Composition response must not lend a restricted briefing to a confidential executive','residual',async()=>{const p=human('executive');const f=internalFixture({Rooms:[room],Warnings:[warning],CanonicalObjects:[dpk,wh]});assert.ok(pdp(p,'briefing.compose','BRF','briefing').decision.startsWith('allow'));assert.equal(clearance.clearanceOf(p,ctx),'confidential');let out;try{out=await new BriefingService().compose(f.cap,ctx,{...bfArgs,roomId:room.room_id},reader,'human',null,'briefing',corr,id(30));}catch(e){if(e.getStatus?.()===403)return;throw e;}facts={pdp:'allow',readerClearance:clearance.clearanceOf(p,ctx),returnedClassification:out.controls.classification,returnedWarnings:out.items.filter(x=>x.kind==='warning'),admitted:f.state.headers.length};assert.equal(out.items.some(x=>x.id===warning.warning_id),false,'composition returned the restricted warning to the confidential composer');});
+ await test('R4b Stored agent report must enforce its admitted decision purpose','residual',async()=>{const p=human('executive');const f=internalFixture({CanonicalObjects:[dpk],Rooms:[room],AgentRuns:[{run_id:id(60),room_id:room.room_id,package_id:packageId,started_at:known,outputs:{report:{package:{package_id:packageId},version:{choice}}}}]});assert.ok(pdp(p,'agent.read','AGT','research').decision.startsWith('allow'));const denied=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'research',member:reader});assert.equal(denied.refused,true);const r=await new AgentsService().list(f.cap,p,ctx);facts={directReportRefused:denied.reason,requestPurpose:'research',storedReportReturned:r.runs[0].outputs};assert.ok(r.runs[0].outputs.withheld,'same decision report disclosed through the agent-output list despite incompatible purpose');});
+ await test('R4c Operator trigger response must not return an agents higher-clearance report','residual',async()=>{const p=human('executive');assert.ok(pdp(p,'agent.trigger','AGT','research').decision.startsWith('allow'));const {f,svc,a}=agentFixture({over:{Packages:[pkg],Versions:[version],CanonicalObjects:[dpk],Rooms:[room]}});a.trigger={kind:'operator',principalId:reader,ref:'governed-trigger'};const direct=await renderReport(f.cap,packageId,clearance.clearanceOf(p,ctx),{principal_id:reader},corr,{purpose:'decision',member:reader});assert.equal(direct.refused,true);const r=await svc.run(a);facts={directReportRefused:direct.reason,operatorClearance:clearance.clearanceOf(p,ctx),runOutcome:r.outcome,runOutput:r.outputs.report};assert.equal(Boolean(r.outputs.report?.version?.choice),false,'operator receives the higher-clearance report in run.outputs; controller returns this run without a reader check');});
+ await test('R7 Reporting must not start further reads after elapsed budget','residual',async()=>{const {f,svc,a}=agentFixture({maxElapsed:100,over:{CanonicalObjects:[dpk]}});const deadline=NOW+100;f.state.onRead=(table)=>{if(table==='Packages')NOW+=101;};const r=await svc.run(a);const late=f.state.timedTrace.filter(x=>x.at>=deadline);facts={outcome:r.outcome,spent:r.spent,lateQueries:late.map(x=>x.table),reportReturned:Boolean(r.outputs.report)};assert.equal(late.length,0,'report renderer began additional reads after deadline because only its outer call was metered');});
+ // SQL helper omission inspection is separated from execution: feed its documented permitted result shape into the actual service.
+ await test('R3 Replay containing a restricted later reconciliation must fold that contributor','sql-shaped-service',async()=>{const rc={reconciliation_id:id(80),twin_id:twinId,key:'outcome.total_cost',from_version:1,from_kind:'simulated',from_value:900,against_version:2,against_value:1700,difference:{numeric:800},note:'restricted supplier settlement',recorded_at:'2024-01-21T00:00:00.000Z'};const f=contributedReplay({}, {reconciliations:[rc]},[{object_type:'DPK',id:packageId,version:1,...internal},{object_type:'SIM',id:id(81),version:1,...internal}]);const priorLayers=f.cap.replayLayers;f.cap.replayLayers=async()=>{const x=await priorLayers();x.content.tested.runs=[{run_id:id(81)}];return x;};f.tables.CanonicalObjects.push({object_type:'SIM',object_id:id(81),object_version:1,...internal},{object_type:'TWN',object_id:twinId,object_version:2,...restricted});const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human(),'decision',corr,id(33));facts={classification:r.controls.classification,returnedReconciliation:r.layers.observed.reconciliations[0],contributorKinds:r.contributors.map(c=>c.object_type)};assert.equal(r.controls.classification,'restricted','reconciliation observation is absent from SQL contributor enumeration; service returns its values in an internal replay');});
+ const summary={head:'07edd9dcd57e972203fb9e7bbcdab3a398c642b5',evidence:'Actual candidate TypeScript/PDP with controlled clock, query, pipeline, session and admission doubles; SQL-shaped-service case explicitly assumes the inspected contributor result. No real database, HTTP, Redis or browser execution.',total:results.length,passed:results.filter(x=>x.status==='pass').length,failed:results.filter(x=>x.status==='fail').length,results};
+ fs.writeFileSync(path.join(__dirname,'current-probe-results.json'),JSON.stringify(summary,null,2));
+ for(const r of results)console.log(`${r.status.toUpperCase()} ${r.name}${r.status==='fail'?' — '+r.message:''}`);
+ console.log(JSON.stringify({total:summary.total,passed:summary.passed,failed:summary.failed}));
+ process.exitCode=summary.failed?1:0;
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
+
+--- END current-review-probes.cjs ---
+
+--- BEGIN current-probe-results.json ---
+{
+  "head": "07edd9dcd57e972203fb9e7bbcdab3a398c642b5",
+  "evidence": "Actual candidate TypeScript/PDP with controlled clock, query, pipeline, session and admission doubles; SQL-shaped-service case explicitly assumes the inspected contributor result. No real database, HTTP, Redis or browser execution.",
+  "total": 27,
+  "passed": 21,
+  "failed": 6,
+  "results": [
+    {
+      "name": "C01 APR still inherits restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C02 CMT still inherits restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C03 RPL still inherits version restrictions",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C04 Older open warning window now retains controls",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C05 Observed warning contributor now enters replay fold",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C06 Observed warning contributor denies internal reader",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C07 Restricted BRF detail denies internal reader",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C08 BRF wrong-purpose detail remains refused",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C09 BRF nonmember detail remains refused",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C10 Tenant principal cannot borrow a different domains clearance",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C11 Authorized package list now filters denied package",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C12 Human report now refuses wrong purpose",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C13 Human report now refuses nonmember",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C14 Agent output list now withholds from nonmember",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C15 BRF availability now detects a blob tombstone",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {
+        "availability": {
+          "checked_at": "2026-09-09T12:00:00.000Z",
+          "checked": {
+            "evidence": 1,
+            "claims": 0,
+            "runs": 0,
+            "warnings": 0
+          },
+          "unavailable": [
+            {
+              "kind": "evidence",
+              "id": "00000000-0000-4000-8000-000000000020",
+              "version": 1,
+              "reason": "governed-deleted",
+              "at": "2024-01-21T00:00:00.000Z",
+              "tombstone_reason": "retention swept"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "C16 Later source version does not replace historical source",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C17 Attempt finishing later does not change historical source health",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R5 Later rights withdrawal must not rewrite historical source state",
+      "kind": "residual",
+      "status": "fail",
+      "message": "same historical briefing changed because sourceStates reads rights_state from the current projection\n+ actual - expected\n\n+ 'e4374bc72e46c5dc4831f4db1b5e1f260acf5ee74e41ce8b30ef53c8d31ec64d'\n- 'af940da635ea5aae74d41aa35260c8d3c6e54796d9a003bd456de3b9da7861fd'\n",
+      "actual": "e4374bc72e46c5dc4831f4db1b5e1f260acf5ee74e41ce8b30ef53c8d31ec64d",
+      "expected": "af940da635ea5aae74d41aa35260c8d3c6e54796d9a003bd456de3b9da7861fd",
+      "facts": {
+        "before": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000070",
+            "contract_version": 1,
+            "source_key": "fixture-live",
+            "name": "Fixture live",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence"
+          }
+        ],
+        "after": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000070",
+            "contract_version": 1,
+            "source_key": "fixture-live",
+            "name": "Fixture live",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "blocked",
+            "reason": "reuse rights are withdrawn"
+          }
+        ],
+        "knownAt": "2024-01-17T23:59:59.000Z",
+        "withdrawalRecordedAt": "2024-01-20T00:00:00.000Z",
+        "digestBefore": "e4374bc72e46c5dc4831f4db1b5e1f260acf5ee74e41ce8b30ef53c8d31ec64d",
+        "digestAfter": "af940da635ea5aae74d41aa35260c8d3c6e54796d9a003bd456de3b9da7861fd"
+      }
+    },
+    {
+      "name": "C18 Composition meter refuses before unbudgeted reads",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C19 Composition clock stops before new work or admission",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C20 Unsupported stop-kind pair is refused at service registration",
+      "kind": "corrected",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C21 In-budget reporting still completes",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R4a Composition response must not lend a restricted briefing to a confidential executive",
+      "kind": "residual",
+      "status": "fail",
+      "message": "composition returned the restricted warning to the confidential composer\n\ntrue !== false\n",
+      "actual": true,
+      "expected": false,
+      "facts": {
+        "pdp": "allow",
+        "readerClearance": "confidential",
+        "returnedClassification": "restricted",
+        "returnedWarnings": [
+          {
+            "kind": "warning",
+            "id": "00000000-0000-4000-8000-000000000040",
+            "version": null,
+            "title": "raised: Restricted replay warning",
+            "at": "2024-01-16T10:00:00.000Z",
+            "truth_state": "inferred",
+            "synthetic_state": true,
+            "source_state": "internal",
+            "source": null,
+            "owner": "00000000-0000-4000-8000-000000000003",
+            "details": {
+              "state": "raised",
+              "consequence": "Private line exposure",
+              "response_window_closes_at": "2024-01-25T00:00:00.000Z"
+            },
+            "item_id": "warning:00000000-0000-4000-8000-000000000040",
+            "freshness": {
+              "recorded_at": "2024-01-16T10:00:00.000Z",
+              "age_hours": 38
+            },
+            "matters": []
+          }
+        ],
+        "admitted": 1
+      }
+    },
+    {
+      "name": "R4b Stored agent report must enforce its admitted decision purpose",
+      "kind": "residual",
+      "status": "fail",
+      "message": "same decision report disclosed through the agent-output list despite incompatible purpose",
+      "expected": true,
+      "facts": {
+        "directReportRefused": "a report is rendered under the purpose the package was admitted for (decision); this render states research",
+        "requestPurpose": "research",
+        "storedReportReturned": {
+          "report": {
+            "package": {
+              "package_id": "00000000-0000-4000-8000-000000000004"
+            },
+            "version": {
+              "choice": {
+                "option_key": "reroute",
+                "rationale": "Move cargo around the Cape.",
+                "decision_deadline": "2024-01-25",
+                "action_owner": "00000000-0000-4000-8000-000000000003",
+                "accepted_trade_offs": [
+                  "longer transit"
+                ],
+                "outcome_criteria": [
+                  {
+                    "key": "line-stop",
+                    "quantity": "line-stop days",
+                    "unit": "days",
+                    "target": 5,
+                    "comparator": "<=",
+                    "by": "2024-04-10",
+                    "observed_on": "twin:outcome.line_stop_days"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "R4c Operator trigger response must not return an agents higher-clearance report",
+      "kind": "residual",
+      "status": "fail",
+      "message": "operator receives the higher-clearance report in run.outputs; controller returns this run without a reader check\n\ntrue !== false\n",
+      "actual": true,
+      "expected": false,
+      "facts": {
+        "directReportRefused": "the package is classified restricted; the reader's clearance is confidential; the export is refused",
+        "operatorClearance": "confidential",
+        "runOutcome": "finished",
+        "runOutput": {
+          "rendered_at": "2026-09-09T12:00:00.000Z",
+          "rendered_by": {
+            "agent_id": "00000000-0000-4000-8000-000000000050",
+            "agent_kind": "reporting",
+            "agent_version": "1.0.0",
+            "code_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "method": "reporting-agent@1.0.0",
+            "principal_id": "00000000-0000-4000-8000-000000000051"
+          },
+          "marked": "agent-produced",
+          "package": {
+            "package_id": "00000000-0000-4000-8000-000000000004",
+            "title": "Restricted corridor choice",
+            "statement": "Review fixture",
+            "state": "committed",
+            "owner": "00000000-0000-4000-8000-000000000003",
+            "synthetic_state": true,
+            "classification": "restricted",
+            "controls": {
+              "synthetic_state": true,
+              "classification": "restricted",
+              "rights_profile": "internal-use-only",
+              "residency_profile": "EU",
+              "retention_profile": "24 months",
+              "access_policy_ref": "need-to-know",
+              "inputs": 1
+            },
+            "decision": null
+          },
+          "version": {
+            "version": 1,
+            "state": "approved",
+            "known_at": "2024-01-17T23:59:59.000Z",
+            "observed_through": "2024-01-17",
+            "choice": {
+              "option_key": "reroute",
+              "rationale": "Move cargo around the Cape.",
+              "decision_deadline": "2024-01-25",
+              "action_owner": "00000000-0000-4000-8000-000000000003",
+              "accepted_trade_offs": [
+                "longer transit"
+              ],
+              "outcome_criteria": [
+                {
+                  "key": "line-stop",
+                  "quantity": "line-stop days",
+                  "unit": "days",
+                  "target": 5,
+                  "comparator": "<=",
+                  "by": "2024-04-10",
+                  "observed_on": "twin:outcome.line_stop_days"
+                }
+              ]
+            },
+            "version_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "options": [
+            {
+              "key": "reroute",
+              "title": "Reroute",
+              "kind": "intervention",
+              "synthetic_state": true,
+              "marks": [
+                "SYNTHETIC",
+                "unsimulated"
+              ],
+              "consequences": [],
+              "uncertainty": {}
+            }
+          ],
+          "dissent": [],
+          "approvals": [],
+          "attribution": "Real sources stay attributed to their publishers; the company, the runs and the decision are marked synthetic."
+        }
+      }
+    },
+    {
+      "name": "R7 Reporting must not start further reads after elapsed budget",
+      "kind": "residual",
+      "status": "fail",
+      "message": "report renderer began additional reads after deadline because only its outer call was metered\n\n6 !== 0\n",
+      "actual": 6,
+      "expected": 0,
+      "facts": {
+        "outcome": "finished",
+        "spent": {
+          "reads": 1,
+          "gateway_calls": 0,
+          "elapsed_ms": 101,
+          "over_budget": 1
+        },
+        "lateQueries": [
+          "CanonicalObjects",
+          "Versions",
+          "Options",
+          "Dissent",
+          "Approvals",
+          "Strategy"
+        ],
+        "reportReturned": true
+      }
+    },
+    {
+      "name": "R3 Replay containing a restricted later reconciliation must fold that contributor",
+      "kind": "sql-shaped-service",
+      "status": "fail",
+      "message": "reconciliation observation is absent from SQL contributor enumeration; service returns its values in an internal replay\n+ actual - expected\n\n+ 'internal'\n- 'restricted'\n",
+      "actual": "internal",
+      "expected": "restricted",
+      "facts": {
+        "classification": "internal",
+        "returnedReconciliation": {
+          "reconciliation_id": "00000000-0000-4000-8000-000000000080",
+          "twin_id": "00000000-0000-4000-8000-000000000005",
+          "key": "outcome.total_cost",
+          "from_version": 1,
+          "from_kind": "simulated",
+          "from_value": 900,
+          "against_version": 2,
+          "against_value": 1700,
+          "difference": {
+            "numeric": 800
+          },
+          "note": "restricted supplier settlement",
+          "recorded_at": "2024-01-21T00:00:00.000Z"
+        },
+        "contributorKinds": [
+          "DPK",
+          "SIM"
+        ]
+      }
+    }
+  ]
+}
+--- END current-probe-results.json ---
+
+--- BEGIN source-integrity.json ---
+[
+  {
+    "path": "apps/api/src/decision/approvals/approval.service.ts",
+    "git_blob": "45fdac345c0fc80d71605cd815e14890dcdd7d93",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/decision/clearance.ts",
+    "git_blob": "c0a90dc3d80823a71e30cf9e16436d00079d4b17",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/decision/monitoring/monitoring.service.ts",
+    "git_blob": "7e0f8082c7cf94e3129d12483472b4ecce9219c3",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/decision/packages/package.service.ts",
+    "git_blob": "75af421914f8c9abd0fca77b63b8318ae58dbfd5",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/decision/replay/replay.service.ts",
+    "git_blob": "b8ffc5fe99d0a2aaa03263b10a38b88eff419bfa",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/executive/agents/agents.service.ts",
+    "git_blob": "331710f6c2dd2ed018375b09cdb81ff4af7db8dc",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/executive/briefings/briefing.service.ts",
+    "git_blob": "c3ca41279bec99c2667fffbcdb2e101e5441f035",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/policy/pdp.service.ts",
+    "git_blob": "880cb7294e7876cfc9558590e4d032a91b2ec75e",
+    "matches": true
+  },
+  {
+    "path": "apps/api/src/prediction/controls.ts",
+    "git_blob": "f642ff02c151ee04db288a08b3ba5c56b6ee89ba",
+    "matches": true
+  }
+]
+
+--- END source-integrity.json ---
+
+--- BEGIN raw C15 excerpts ---
+2026-09-09T18:43:31.2556371Z HEAD is now at 60ba803 Merge 07edd9dcd57e972203fb9e7bbcdab3a398c642b5 into c5460465aa3c9a551d15ee5f565c8986dd509a55
+2026-09-09T18:43:55.3958756Z   [ok] acquire vulnerability database
+2026-09-09T18:43:57.6335830Z   [ok] acquire misconfiguration checks bundle
+2026-09-09T18:44:01.1021814Z   [ok] pnpm-audit-human
+2026-09-09T18:44:01.6668801Z   [ok] pnpm-audit-json
+2026-09-09T18:44:02.8586444Z   [ok] gitleaks-worktree
+2026-09-09T18:44:05.1232173Z   [ok] gitleaks-history
+2026-09-09T18:44:08.4015927Z   [ok] trivy-fs
+2026-09-09T18:44:12.0265905Z   [ok] trivy-fs-json
+2026-09-09T18:44:17.7003813Z   [ok] trivy-image-0
+2026-09-09T18:44:19.2771149Z   [ok] trivy-image-1
+2026-09-09T18:44:19.2790434Z   findings 40, governed 9 record(s), unmatched 13, unused 0
+2026-09-09T18:44:20.8123657Z   UNGOVERNED image finding: CVE-2026-53612 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8125390Z   UNGOVERNED image finding: CVE-2026-53612 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+2026-09-09T18:44:20.8127120Z   UNGOVERNED image finding: CVE-2026-53613 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8128989Z   UNGOVERNED image finding: CVE-2026-53613 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+2026-09-09T18:44:20.8130485Z   UNGOVERNED image finding: CVE-2026-53614 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8131663Z   UNGOVERNED image finding: CVE-2026-53614 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+2026-09-09T18:44:20.8133184Z   UNGOVERNED image finding: CVE-2026-76642 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8135002Z   UNGOVERNED image finding: CVE-2026-76642 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+2026-09-09T18:44:20.8136152Z   UNGOVERNED image finding: CVE-2026-78408 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8137278Z   UNGOVERNED image finding: CVE-2026-78408 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+2026-09-09T18:44:20.8138431Z   UNGOVERNED image finding: CVE-2026-78409 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8139587Z   UNGOVERNED image finding: CVE-2026-78410 HIGH libuuid pkg:apk/alpine/libuuid@2.42.1-r0?arch=x86_64&distro=3.24.1 in postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+2026-09-09T18:44:20.8140942Z   UNGOVERNED image finding: CVE-2026-78410 HIGH setpriv pkg:apk/alpine/setpriv@2.41.4-r0?arch=x86_64&distro=3.23.5 in redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+--- END raw C15 excerpts ---

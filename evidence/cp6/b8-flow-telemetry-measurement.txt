@@ -1,0 +1,42 @@
+# FLOW TELEMETRY MEASUREMENT (local profile) {"forecast":{"forecast_id":"01a09665-017a-723c-95d8-c890222f989c","issue_lag_ms":"51","publish_ms":"566","end_to_end_ms":"1895","q50":"26.272","interval_width":"2.9064","validation_state":"unvalidated","completed":false},"warning":{"warning_id":"01a09665-06bd-7d8d-bf64-150e74f768c1","evaluate_ms":"624","flip_to_raise_ms":"36","window_ms":"172800000","deadline_slack_ms":null,"end_to_end_ms":"654","level":"normal","urgency":"prompt","timely":null},"reconciliation":{"reconciliation_id":"01a09665-090a-7483-b438-2da663df048a","basis_age_ms":"249","observation_lag_ms":"106","against_admit_ms":"75","end_to_end_ms":"5","relative_difference":"0.05339810938825773729","completeness":"complete"},"simulation":{"run_id":"01a09665-07e6-7055-ab6c-dd3c5185c3fe","execute_ms":"15","information_age_ms":"115","end_to_end_ms":"15","initial_elements":16,"affected_consumers":1,"decision_active":false}}
+{
+ "forecast": {
+  "forecast_id": "01a09665-017a-723c-95d8-c890222f989c",
+  "issue_lag_ms": "51",
+  "publish_ms": "566",
+  "end_to_end_ms": "1895",
+  "q50": "26.272",
+  "interval_width": "2.9064",
+  "validation_state": "unvalidated",
+  "completed": false
+ },
+ "warning": {
+  "warning_id": "01a09665-06bd-7d8d-bf64-150e74f768c1",
+  "evaluate_ms": "624",
+  "flip_to_raise_ms": "36",
+  "window_ms": "172800000",
+  "deadline_slack_ms": null,
+  "end_to_end_ms": "654",
+  "level": "normal",
+  "urgency": "prompt",
+  "timely": null
+ },
+ "reconciliation": {
+  "reconciliation_id": "01a09665-090a-7483-b438-2da663df048a",
+  "basis_age_ms": "249",
+  "observation_lag_ms": "106",
+  "against_admit_ms": "75",
+  "end_to_end_ms": "5",
+  "relative_difference": "0.05339810938825773729",
+  "completeness": "complete"
+ },
+ "simulation": {
+  "run_id": "01a09665-07e6-7055-ab6c-dd3c5185c3fe",
+  "execute_ms": "15",
+  "information_age_ms": "115",
+  "end_to_end_ms": "15",
+  "initial_elements": 16,
+  "affected_consumers": 1,
+  "decision_active": false
+ }
+}

@@ -1,0 +1,773 @@
+THE EYE — INDEPENDENT CORRECTION REVIEW
+9 September 2026
+PR #46: https://github.com/a-Halawany/elven/pull/46
+Reviewed head: 9aaf0311bfdc94f6d580658c94d881695be2f823
+Base: c5460465aa3c9a551d15ee5f565c8986dd509a55
+Original reviewed implementation: 09abd095513d870c20cd6388a996e8327221211c
+
+Verdict: keep the functional review OPEN and the PR UNMERGED. Migration 0048 corrects substantial parts of the original review. Six original requirement groups still have residuals. Describing an unmet requirement as a limitation does not satisfy it or remove it from the owner's full-product delivery target.
+
+This is a correction review of the exact candidate, not a fresh audit of every phase. Preserve earlier scoped reviews as historical evidence. The separate full-product delivery register remains the authority for tracking every outstanding requirement across Volumes 0–10; no completion percentage or new product scope reduction is introduced here.
+
+1. Evidence and limits
+
+The GitHub head was read directly and remains open and unmerged. The changed source, forward migration 0048, regression suite and relevant unchanged callers/ports were inspected.
+
+Independent execution: 28 checks against the actual candidate TypeScript services and policy engine, using explicit query, session, pipeline and write-port doubles. Fifteen controls PASS; thirteen expectations of correct behavior FAIL with the consequences described below. The executable script and complete JSON results are appended to this file.
+
+The execution did NOT run PostgreSQL, Redis, controllers over HTTP, a browser, the canonical JSON schema validator, or production admission. SQL and controller call paths were inspected separately. In particular, the carry-forward path has service reproduction plus SQL inspection; outcome binding is SQL inspection only. Claude must reproduce these at the existing real database/controller boundary and investigate any downstream protection before confirming or refuting them.
+
+Claude's reported 25/25 harness cases, 764 integration checks, browser and deployment results remain AUTHOR evidence. They were not rerun here. The new harness covers the corrected examples, but it does not cover the sequences below. Its zero-read test, for example, does not establish that a later read budget exhaustion stops work inside composition.
+
+These counts do not measure product completeness. A passing control establishes only its stated behavior and evidence class.
+
+2. Corrected behavior retained
+
+- Original R1: 0048 adds revoked_at IS NULL to both approver_eligibility and holds_role. PackageService.get uses the port's live approval recount. The source correction addresses the revoked-approver vote that another authority could otherwise use. Preserve the partial refutation: Phase 0 already invalidated the revoked person's own session. Historical eligibility in briefings is a separate R5 issue.
+- Original R2: set_option now checks citation kind, identity, version/digest and cutoffs at the port, derives controls and uncertainty, and permits a simulation completed later when its inputs obey the package's cutoffs. Those corrections are visible in SQL; do not revert them.
+- APR and CMT inherit the version's restrictions. RPL retains the version's rights and residency. A warning newly raised inside the briefing interval now contributes its restrictions and synthetic state. Independent controls pass.
+- The protected briefing read refuses an insufficient clearance, wrong purpose and nonmember. These controls pass. The remaining issue is that the protection does not cover all routes and all contributors.
+- Future warnings are excluded; later warning acknowledgements and health events no longer alter the earlier tested briefing; the next interval starts at prior.known_at. Independent controls pass.
+- The scheduler-facing agent service no longer requires a cached human reader. The actual service uses its own supplied agent session on a cold instance; this is a service control, not independent Redis proof. A reporting agent with zero reads stops before querying. Unsupported stop kinds are refused. Keep these fixes.
+
+3. R2 residual — carried options bypass the corrected citation gate
+
+Sources:
+apps/api/migrations/0041_decision_packages.sql, decision.open_version and decision.propose_version
+apps/api/src/decision/packages/package.service.ts, openVersion/propose
+
+The corrected set_option port is not the only path that writes options. open_version with carry_from copies existing consequence citations, uncertainty and controls directly into the new draft. It accepts independently supplied known_at and observed_through. Neither the copy nor proposal revalidates those citations against the new version's cutoffs.
+
+Reproduction sequence for the real harness:
+1. Admit and propose v1 with evidence recorded and observed on 16 January, eligible for v1's 17 January cutoffs.
+2. Open v2 carrying v1's options, with record and world cutoffs of 15 January. Set the fresh choice and the other required terms.
+3. Propose v2 without calling set_option again. Verify whether a DPK can be admitted containing the 16 January citation under 15 January cutoffs.
+4. Positive control: carrying the same options to eligible 17 January or later cutoffs remains valid.
+
+Independent service result: the proposed carried row reached DPK admission, with zero citation-object reads in propose. The unchanged SQL copy and proposal paths contain no corresponding cutoff check. The write port was doubled; this is not a claim that PostgreSQL was executed here.
+
+Correction: establish the invariant on every write/admission path, including carry-forward and proposal. Reuse the authoritative citation derivation instead of trusting a copied uncertainty/control block under changed cutoffs. Re-evaluate availability where required by the existing contract. Apply any database change forward from 0049 or the next available migration; do not edit applied migrations.
+
+4. R3 residual — contributors outside the new-item list lose restrictions
+
+Sources:
+apps/api/src/executive/briefings/briefing.service.ts, warning loop and windows loop
+apps/api/src/decision/replay/replay.service.ts, controls fold
+apps/api/migrations/0048_phase6_review_corrections.sql, replay_layers observed layer
+
+A. A warning can be old for the interval but still have an open response window. The composer adds its controls only when raisedIn or ackIn is true; the windows loop includes it regardless. With a restricted synthetic warning raised on 14 January, a prior known_at of 15 January, and a new known_at of 17 January, the response window appears with its title, owner and deadline, but the BRF is internal, synthetic_state=false, with null rights/residency/retention/access policy and no cited sources. This was reproduced in the actual composer. The newly raised-warning control still passes.
+
+B. Replay folds the package version and content.known only. Its observed layer also contains later warnings, outcomes, reconciliations and other contributors. A restricted warning raised after commitment, selected by a monitored indicator, is returned while the RPL stays internal. The actual service reproduces the downgrade when replayLayers returns the warning shape the inspected SQL produces. The SQL query includes the warning title, owner and timing but does not provide its controls.
+
+Correction: build the complete contributor set for the artifact being shown—items, windows, every replay layer and their cited versions—then derive its controls and synthetic state. Do not substitute current unrelated versions. Include the applicable references for availability and lineage. Refuse or explicitly mark unavailable contributors whose controls cannot be resolved according to the existing contract.
+
+5. R4 residual — authorization is incomplete across scope and read surfaces
+
+Sources:
+apps/api/src/decision/clearance.ts
+apps/api/src/decision/packages/package.service.ts, list/get
+apps/api/src/decision/decision.controller.ts, list
+apps/api/src/decision/replay/replay.service.ts
+apps/api/src/executive/executive.controller.ts, report/listAgents
+apps/api/src/executive/agents/agents.service.ts, list/renderReport
+apps/api/src/executive/agents/agent-worker.service.ts, recentRuns/lastReconciliation
+
+Independently reproduced service/PDP cases:
+
+A. Scope borrowing. clearanceOf maps all bindings to role names and ignores their scope, tenant and domain. A principal with domain_analyst in B and decision_owner only in A passes the real PDP's B briefing-read rule through the analyst binding, then receives a confidential B briefing because the helper borrows A's owner clearance. The same internal reader without the foreign owner role is refused. Clearance must be evaluated against the actual target context.
+
+B. Package list bypass. Protected get refuses a restricted package for the internal reader. PackageService.list still takes only a capability and returns selectAll rows for every package and version, including the choice. The controller calls that unfiltered method. This was reproduced after confirming the PDP permits the list action for the ordinary reader.
+
+C. Export purpose bypass. A package admitted for purpose decision is refused by get under research. The same executive's report.render route passes the PDP for research; renderReport checks only classification and returns the choice and other records. Neither membership nor purpose reaches that function.
+
+D. Stored agent outputs bypass room membership. AgentsService.list filters outputs by the package's classification only. It returns a stored room report to a same-domain executive who is not a member. The list method never checks membership or the output's admitted purpose. A broad role is not a substitute for the snapshot authorization promised by this correction.
+
+E. Replay checks clearance before resolving the complete replay. An internal package can acquire a restricted post-decision warning in the observed layer. An internal reader receives its title and owner because the service authorizes only the earlier package fold. This is the read consequence of R3B; it is one shared defect path, not an additional unrelated finding.
+
+Additional inspected caller path: listAgents appends this.worker.lastReconciliation() and recentRuns() after the scoped pipeline result. Those are process-global arrays covering all reconciled rooms/jobs and have no tenant/domain filter. Scope this operational metadata too; verify with two tenants in the real controller harness. This is source inspection, not a claimed executed cross-tenant HTTP disclosure.
+
+Availability coverage also remains incomplete. The stored briefing helper checks canonical lifecycle/classification for evidence and claims only. It does not inspect observation.blob_tombstones; a governed blob deletion is not necessarily a new canonical lifecycle state. It skips run/warning sources entirely. Withdrawal detection passing does not establish deletion detection. Add real governed deletion and run/warning unavailability controls and keep availability now separate from historical content.
+
+Correction: use one context-aware read authorization contract for details, lists, replay, composition responses, exports and agent outputs; apply it to the actual contributing content. Keep permitted metadata-only listings explicit. Do not solve this by denying legitimate reader roles globally. Add same-domain nonmember, wrong-purpose, foreign-scope elevated-role and cross-tenant metadata cases, with authorized controls.
+
+6. R5 residual — fixed historical snapshots still change after later events
+
+Source: apps/api/src/executive/briefings/briefing.service.ts, sourceStates and approval-expiry windows.
+
+A. Contract history: sourceStates selects contracts active NOW, with no as-of contract-version/lifecycle/rights reconstruction. Recomposition at the same 17 January cutoff changes from SRC v1 to SRC v2 after v1 is superseded by a version registered on 19 January. The digest changes. This was reproduced with the actual composer. It is explicitly acknowledged in the report but still conflicts with the original no-hindsight requirement.
+
+B. Attempt completion: filtering a scheduled attempt by started_at does not make its final outcome known then. An attempt starts at 23:00 on 17 January, is still running at the 23:59:59 cutoff, and fails at 00:30 on 18 January. Before completion the historical source is live; after completion the same cutoff reads degraded and has a different digest. The source query filters started_at and current outcome, not the time that outcome became known. Actual composer reproduction confirms the change.
+
+C. Approval eligibility: the briefing's expiry loop checks decision, approval revocation, expiry and digest, but never reconstructs the approver's role eligibility at known_at. It also does not call the current live approval recount for a current composition. The report's suggestion that the current recount saves current composition is not supported by this path. Preserve the distinction between an approval revoked and an approver's role binding revoked. This item is source inspection; reproduce a binding revoked before K and a binding revoked after K through the real harness.
+
+Correction: reconstruct state under the relevant record cutoff, using durable version/event/completion history. Preserve later changes in later views. If a necessary historical fact was never recorded, report that historical portion as unavailable/incomplete; do not silently replace it with current state while claiming a complete as-of snapshot. Keep the fixed prior.known_at, warning event and health event paths.
+
+7. R6 residual — outcome target identity and period remain underbound
+
+Sources:
+apps/api/migrations/0048_phase6_review_corrections.sql, set_choice and record_outcome
+apps/api/migrations/0041_decision_packages.sql, propose_version
+
+Evidence class: SQL inspection only. Do not describe the cases below as independently reproduced in PostgreSQL.
+
+A. All-unsimulated decisions: observed_on binds an element key, not a twin ID. record_outcome infers allowed twins from SIM consequences across the version's options, but the restriction runs only when that inferred array is nonempty. A valid version with two explicitly unsimulated options can therefore have no bound twin. Proposal permits zero simulation baselines. The current regression's chosen option is unsimulated, but its status quo still cites a control run; it never exercises the empty allowed-twin set.
+
+Real-harness sequence: propose and commit two properly marked unsimulated options; offer a same-key/same-unit observation on an unrelated twin. Establish whether it can record the criterion. Preserve an explicitly bound intended twin as the positive control. Bind the intended observation target in the approved choice even when no run supplies it.
+
+B. Period: the only period check is valid_to IS NOT NULL and valid_to <= criterion.by. It never requires the observation to cover the intended decision horizon or checks valid_from against it. A one-day or earlier-period aggregate received after commitment can be judged against a horizon-wide criterion if its end date is before the deadline. Knowing an old aggregate later does not turn it into the requested period's outcome.
+
+Real-harness sequence: use a criterion explicitly about the 11 January–10 April horizon; after commitment admit the same-key/unit aggregate covering only an earlier period or one day. Verify that this cannot satisfy the horizon criterion. Keep the full intended interval, correct target and correct reconciliation as the positive controls. Encode the intended period and target in the signed choice rather than infer them from free text or arbitrary recorded-after dates. Preserve the distinction between the replay/world clock and actual recording time.
+
+8. R7 residual — limits are still applied after some work or ignored by a task
+
+Sources:
+apps/api/src/executive/agents/agents.service.ts, Meter/run/draft/brief/report
+apps/api/src/executive/briefings/briefing.service.ts, CompositionLimits and admission
+
+A. Exhausted remaining reads: the composer executes its source queries and builds the complete content before comparing sourceList.length against maxReads. Given zero remaining reads, it fetches an evidence row, then throws BudgetExceeded. No artifact is admitted in this case, but the bounded read already happened. Reproduced in the actual composer. The outer reporting zero-read control passing does not cover this inner path.
+
+B. Elapsed time: an actual briefing-agent run had a 10 ms budget. A controlled clock advances 20 ms during a composition query. The composer admits BRF after the deadline; only afterward run() marks the run stopped. The result still names the created briefing. This was reproduced with actual agent/composer code and write-port doubles. A final stopped label cannot undo an already committed write.
+
+C. Accepted stop condition ignored: registration accepts max_items for all three agent kinds, but run passes stop conditions only to brief(). With max_items=0 a decision draft writes both status-quo and intervention cards and finishes. Actual agent code reproduces this with the option-write dependency doubled. Either implement the advertised condition for that task or refuse unsupported task/condition combinations at registration. Do not silently accept an unenforced control.
+
+Correction: reserve the defined read units before fetching, propagate a shared deadline/meter through nested services, check before admission/commit, and enforce supported stop conditions for every task accepting them. Meter actual bounded work, not a post-hoc unique-source count. Preserve safe cold start, restart, zero initial budget and stop escalation. Exercise an inner budget exhaustion, a controlled elapsed overrun and a non-briefing stop condition through the real harness.
+
+9. CI and full-product delivery
+
+Independently read exact-head CI run 34343317671:
+https://github.com/a-Halawany/elven/actions/runs/34343317671
+The run's head_sha is 9aaf0311bfdc94f6d580658c94d881695be2f823. build-test and browser-regression succeeded. supply-chain failed. FINAL C16 and C17 steps were skipped. C19 run 34343317664 has both lifecycle jobs and its other jobs successful.
+
+The browser-regression job in this workflow exercises the stated Phase 0/Phase 1 browser gate. It is not independent browser verification of the newly changed Phase 6 actions. Claude's Phase 6 3/3 and the failed ECB-dependent demonstration check remain separate evidence.
+
+C15's current job log names both pnpm-audit-human and trivy-fs failures, plus 13 ungoverned image-package rows across the seven util-linux CVE identifiers. Source:
+https://github.com/a-Halawany/elven/actions/runs/34343317671/job/102438951209
+Therefore the release work is not just waiting for rebuilt database/cache images. Inspect all current scanner artifacts and remediate supported findings through the maintenance track, without waivers or weakened assertions. This review did not scan today's registry or assert a patched image is or is not available now.
+
+The owner's 100% mandate remains binding. Finish this correction pass, then continue the requirement-by-requirement completion work already recorded in The_Eye_Full_Product_Delivery_Register_2026-09-09.md. Map all eleven volumes and owner decisions to code, UI, API, integration and operational evidence. Retain missing, partial, blocked, unverified and branch-only status until each applicable requirement is satisfied. Earlier scoped acceptances do not establish full-product completion.
+
+Keep conditional-approval handling and case-bound decision-agent simulation selection from the broader review visible as decision-completeness work; this pass does not claim they were resolved. Treat security maintenance, durable deployment recovery and the atomic scope inventory as distinct workstreams, with concrete dependencies and resource requests. There is no need to invent another numbered release gate or rewrite historical acceptance evidence.
+
+10. Consolidated prompt for Claude
+
+Review PR #46 at 9aaf0311 against this independent residual review. Keep it unmerged and the functional review open. Preserve the fixes and the 15 independent passing controls. Codex executed 28 service/PDP checks with explicit doubles: 13 residual expectations fail; SQL and controller paths were inspected, not executed. Reproduce each applicable residual through our existing real database/controller/Redis harness before changing product code, and report a downstream guard if it refutes a consequence.
+
+Correct the original requirement groups completely:
+R2: copied options must obey the receiving version's record/world cutoffs and admission rules, including carry-forward and proposal.
+R3: inherited controls and synthetic state must include carried warning windows and every replay layer, with exact contributor versions.
+R4: scope-aware clearance, membership, admitted purpose and current availability must cover lists, details, replay, exports, composition responses and agent outputs. Scope planner metadata. Include governed blob deletion, not only canonical withdrawal.
+R5: preserve fixed-cutoff content across later contract versions, attempt completion and role-binding changes; never substitute current state for missing history without an explicit incomplete result.
+R6: bind the intended twin and observation interval in the approved criterion, including all-unsimulated decisions; reject wrong-period same-key observations and preserve valid reconciliation controls.
+R7: enforce reads and elapsed limits inside nested work before reads/writes; implement or reject each advertised task/stop-condition combination.
+
+Use forward migrations from the next free number; do not edit 0041–0048. Run builds, integration and upgrade verification without overlapping mutations. Use isolated test data and preserve the recovered deployment and its vault. Return one consolidated disposition at one exact code head, with service, SQL, real database/API, Redis, browser, deployment and CI evidence separated. Do not claim closure yourself or broaden frozen tests merely to make them pass.
+
+Update the full-product register with these results and continue its atomic requirements audit and completion sequence. The target is 100% of the agreed product. Missing features stay open even if a narrower phase review closes. Preserve historical evidence and existing source/credential/purchase holds. On the security track, inspect every current C15 finding, including dependency/filesystem failures; require the full FINAL C16/C17 chain before release. Ask for a specific resource only when the next concrete task needs it. Send no permission email, activate no additional source and make no purchase as part of these corrections.
+
+11. Executable service probe appendix
+
+The appended script is self-contained except for the actual repository source it loads. Save it as residual-probes.cjs at the repository root of an isolated checkout of the reviewed SHA, using a Node version with node:module.stripTypeScriptTypes (this review used Node 24). Run node residual-probes.cjs. It writes residual-probe-results.json beside itself. It removes imports/decorators to execute the actual TypeScript and doubles the dependencies stated in the header. It does not install dependencies, start services, or mutate the database.
+
+These probes are independent review evidence, not a replacement for the governed project's harness. Adapt the sequences to that harness and retain the evidence-class labels. The fixed clock, simple digest helper, stubbed header validator and admission doubles are deliberate; no canonical digest-value or schema-admission claim is made from them.
+
+BEGIN EXECUTABLE PROBES
+
+// Independent residual review of 9aaf0311bfdc94f6d580658c94d881695be2f823.
+// Actual candidate TypeScript, with imports/decorators removed for Node execution.
+// Query, pipeline, canonical admission, session and database ports are explicit doubles.
+// SQL is inspected separately. No PostgreSQL, Redis, HTTP or browser claim.
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const { stripTypeScriptTypes } = require('node:module');
+const { createHash, randomUUID } = require('node:crypto');
+let NOW = Date.parse('2026-09-09T12:00:00.000Z');
+class Clock extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return NOW; } }
+class HttpException extends Error {
+  constructor(body, status) { super(body.message ?? JSON.stringify(body)); this.body = body; this.status = status; }
+  getStatus() { return this.status; } getResponse() { return this.body; }
+}
+function stable(v) { if (Array.isArray(v)) return v.map(stable); if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])); return v; }
+const digest = v => createHash('sha256').update(JSON.stringify(stable(v))).digest('hex');
+const base = { Date: Clock, Error, console, Buffer, HttpException, newId: randomUUID,
+  errorBody: (code, correlationId, message) => ({ code, correlationId, message }),
+  contentDigest: digest, canonicalHeaderDigest: (h, p) => digest([h,p]), validateHeader: () => ({ ok: true }) };
+function load(rel, names, extras = {}) {
+  const file = path.join(__dirname, 'apps/api/src', rel);
+  const source = fs.readFileSync(file, 'utf8').replace(/^import[\s\S]*?;\s*$/gm, '').replace(/@(Injectable|Inject)\([^)]*\)/g, '').replace(/\bexport\s+/g, '');
+  const context = { ...base, ...extras };
+  vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }) + '\nglobalThis.loaded={' + names.join(',') + '};', context, { filename: file });
+  return context.loaded;
+}
+const { foldControls } = load('prediction/controls.ts', ['foldControls']);
+const clearance = load('decision/clearance.ts', ['assertClearance','assertPurpose','clearanceOf','covers','denyRead']);
+const { PackageService, unfoldProfiles } = load('decision/packages/package.service.ts', ['PackageService','unfoldProfiles'], { foldControls, ...clearance });
+const { ApprovalService, versionControls } = load('decision/approvals/approval.service.ts', ['ApprovalService','versionControls'], {foldControls,unfoldProfiles});
+const { ReplayService } = load('decision/replay/replay.service.ts', ['ReplayService'], {foldControls,unfoldProfiles,versionControls,...clearance});
+const { MonitoringService } = load('decision/monitoring/monitoring.service.ts', ['MonitoringService'], {foldControls,unfoldProfiles,versionControls});
+const { BriefingService, BudgetExceeded, StopCondition } = load('executive/briefings/briefing.service.ts', ['BriefingService','BudgetExceeded','StopCondition'], { foldControls,...clearance });
+const { AgentsService, renderReport, validateRegisterAgent } = load('executive/agents/agents.service.ts', ['AgentsService','renderReport','validateRegisterAgent'], {
+  BudgetExceeded, StopCondition, ...clearance, DecisionAgentGrantRefused: class extends Error {}, DecisionCapability: {}, ExecutiveCapability: {}, PrincipalsCapability: {} });
+const { PdpService } = load('policy/pdp.service.ts', ['PdpService']);
+
+// General query double: actual service chooses predicates, ordering and limits.
+function query(rows, stats = {}, table='') {
+  const filters = [], orders = []; let max = Infinity;
+  const select = () => rows.filter(r => filters.every(f => f(r))).sort((a,b) => {
+    for (const [k,d] of orders) { if(a[k]<b[k]) return d==='desc'?1:-1; if(a[k]>b[k]) return d==='desc'?-1:1; } return 0;
+  }).slice(0,max);
+  return { selectAll(){return this;}, select(){return this;}, $if(c,f){return c?f(this):this;},
+    where(k,op,v){
+      const f = { '=': r=>r[k]!=null && v!=null && String(r[k])===String(v), 'is': r=>r[k]===v, '<>': r=>r[k]!==v, '<': r=>r[k]<v, '>=': r=>r[k]>=v, '<=': r=>r[k]<=v, '>': r=>r[k]>v,
+        'in': r=>v.includes(r[k]), 'not in': r=>!v.includes(r[k]) }[op];
+      if(!f) throw Error('Unsupported predicate '+op); filters.push(f); return this;
+    }, orderBy(k,d='asc'){orders.push([k,d]);return this;},limit(n){max=n;return this;},
+    async execute(){stats.queries++; stats.trace.push(table); const out=select(); stats.readRows.push(...out.map(r=>({table,id:r.object_id??r.package_id??r.source_id??null}))); if(stats.onRead)stats.onRead(table,out); return out;},async executeTakeFirst(){return (await this.execute())[0];}
+  };
+}
+const id = n => '00000000-0000-4000-8000-' + String(n).padStart(12,'0');
+const ctx = { scope:'DOMAIN',tenantId:id(1),domainId:id(2) }, reader=id(3), packageId=id(4), twinId=id(5), corr=id(6), known='2024-01-17T23:59:59.000Z';
+const restricted = { synthetic_state:true, classification:'restricted', rights_profile:'internal-use-only',residency_profile:'EU',retention_profile:'24 months',access_policy_ref:'need-to-know', inputs:1 };
+const choice = { option_key:'reroute',rationale:'Move cargo around the Cape.',decision_deadline:'2024-01-25',action_owner:reader,accepted_trade_offs:['longer transit'],outcome_criteria:[{key:'line-stop',quantity:'line-stop days',unit:'days',target:5,comparator:'<=',by:'2024-04-10',observed_on:'twin:outcome.line_stop_days'}] };
+const pkg = { package_id:packageId,decision_object_id:id(7),title:'Restricted corridor choice',statement:'Review fixture',current_version:1,committed_version:1,decided_at:'2024-01-20T12:00:00.000Z',state:'committed',owner_principal_id:reader,controls:restricted,synthetic_state:true };
+const version = { package_id:packageId,version:1,state:'approved',version_digest:'a'.repeat(64),known_at:known,observed_through:'2024-01-17',controls:restricted,synthetic_state:true,objectives:[id(8)],choice,monitoring_conditions:[] };
+const opt = { package_id:packageId,version:1,key:'reroute',title:'Reroute',kind:'intervention',consequences:[],uncertainty:{},synthetic_state:true };
+function fixture(overrides={}) {
+  const tables={Packages:[structuredClone(pkg)],Versions:[structuredClone(version)],Options:[structuredClone(opt)],Dissent:[],Approvals:[],Commitments:[{package_id:packageId,commitment_id:id(9)}],...overrides};
+  const state={headers:[],writes:[],queries:0,trace:[],readRows:[]}; const cap={};
+  for(const name of ['Packages','Versions','Options','Dissent','Events','Approvals','Commitments','Strategy','Elements','Reconciliations','Rooms','Members','RoomEvents','Briefings','Agents','AgentRuns','PackageEvents','CanonicalObjects','Runs','Twins','ScenarioEvents','Branches','Warnings','WarningEvents','Scenarios','Dependencies','SourceContracts','SchedulerEntries','ScheduledAttempts','HealthEvents']) cap['read'+name]=()=>query(tables[name]??[],state,name);
+  cap.admitObject=async(h,p)=>{state.headers.push({header:h,payload:p});return{contentDigest:digest(p)};};
+  cap.isMember=async()=>true; cap.liveApprovals=async()=>[{approval_id:id(10),approver_principal_id:id(11)}];
+  cap.composeBriefing=async a=>{state.writes.push(a);return{};};
+  cap.setOption=async a=>{state.writes.push(a);return{};};
+  cap.recordApproval=async()=>({state:'approved',live_approvals:1,quorum:1});
+  cap.commitPackage=async a=>({commitment_id:a.commitmentId,approvals:1,op_class:'C3',decided_at:pkg.decided_at});
+  return {cap,state,tables};
+}
+const optionsIntake = c => ({key:'status-quo',title:'Do nothing',kind:'status_quo',consequences:[c],unsimulatedReason:'A cited observation, no simulation',secondOrder:[],risks:[],opportunities:[],reversibility:null});
+const rows = {object_id:id(20),object_version:1,content_digest:'b'.repeat(64),recorded_at:'2024-01-16T00:00:00.000Z',event_time:'2024-01-16T00:00:00.000Z',lifecycle_state:'active',truth_state:'observed',quality_state:{},...restricted};
+const results=[]; let facts={};
+async function test(name,kind,fn){ facts={}; NOW=Date.parse('2026-09-09T12:00:00.000Z'); try{await fn();results.push({name,kind,status:'pass',facts});}catch(e){results.push({name,kind,status:'fail',message:e.message,actual:e.actual,expected:e.expected,facts});}}
+const bfArgs={roomId:null,knownAt:known,priorBriefingId:null,narrative:null,narrativeCites:[]};
+const compose=(f,a=bfArgs)=>new BriefingService().compose(f.cap,ctx,a,reader,'human',null,'review',corr,id(30));
+const human=(role='domain_analyst', extra=[])=>({principalId:reader,kind:'human',assurance:'password',bindings:[{roleCode:role,scope:role==='auditor'?'TENANT':'DOMAIN',tenantId:ctx.tenantId,domainId:role==='auditor'?null:ctx.domainId},...extra]});
+const internal={synthetic_state:false,classification:'internal',rights_profile:null,residency_profile:null,retention_profile:null,access_policy_ref:null};
+const internalFixture=(over={})=>fixture({Packages:[{...pkg,controls:internal,synthetic_state:false}],Versions:[{...version,controls:internal,synthetic_state:false}],...over});
+const warning={warning_id:id(40),title:'Restricted replay warning',raised_at:'2024-01-16T10:00:00.000Z',state:'raised',routed_to:reader,consequence:'Private line exposure',response_window_closes_at:'2024-01-25T00:00:00.000Z',acknowledged_at:null,synthetic_state:true,controls:restricted,timing:'replay'};
+const wh={object_type:'WRN',object_id:warning.warning_id,object_version:1,...restricted};
+const bf={briefing_id:id(30),room_id:id(35),known_at:known,composed_at:known,controls:restricted,items:[{details:{private:'restricted'}}],sources:[]};
+const bh={object_type:'BRF',object_id:bf.briefing_id,object_version:1,purpose_scope:'briefing',...restricted};
+const dpk={object_type:'DPK',object_id:packageId,object_version:1,purpose_scope:'decision'};
+function pdp(p,action,objectType,purpose='briefing'){
+  return new PdpService().evaluate({principal:p,delegationId:null,action,objectType,objectId:id(30),purposeId:purpose,context:ctx,consequenceClass:'C1',environment:{deployment:'local-dev',clockQuality:'trusted'}});
+}
+function replayFixture(over={}, observed={}, knownRows=[]){
+ const f=internalFixture({Versions:[{...version,controls:internal,synthetic_state:false,monitoring_conditions:[{kind:'indicator',indicator_id:id(41)}]}],CanonicalObjects:[dpk,wh],...over});
+ f.cap.replayLayers=async()=>({content:{cutoffs:{as_of:'2024-01-22T00:00:00.000Z'},known:knownRows,decided:{commitment:{commitment_id:id(9)}},observed,excluded:[]},content_digest:'c'.repeat(64),unavailable:[],summary:{}});
+ f.cap.recordReplay=async()=>{};return f;
+}
+function agentFixture({task='report',maxReads=100,maxElapsed=30000,stops=[],over={},packages=new PackageService()}={}){
+ const agentId=id(50), principal={principalId:id(51),kind:'agent',assurance:'agent_grant',bindings:[]};
+ const f=internalFixture(over),calls=[];
+ const pipeline={consequentialRead:async(...a)=>{calls.push({kind:'read',action:a[2].action,principal:a[1].principalId});return{result:await a.at(-1)(f.cap,ctx)};},write:async(...a)=>{calls.push({kind:'write',action:a[2].action}); if(a[2].action==='decision.package.propose')throw new HttpException({code:'EYE_AUT_001',message:'agent cannot propose'},403);return a.at(-1)(f.cap,ctx);}};
+ f.cap.openAgentRun=async()=>({budget:{max_reads:maxReads,max_gateway_calls:0,max_elapsed_ms:maxElapsed,clearance:'restricted'},stop_conditions:stops,escalation_principal_id:reader});
+ f.cap.closeAgentRun=async a=>{f.state.closed=a;return{escalated_to:a.outcome==='stopped'?reader:null};};
+ f.cap.evaluateConditions=async()=>({checked:0});
+ const sessions={openRunSession:async()=>({principal,registration:{agent_kind:task==='draft'?'decision':task==='briefing'?'briefing':'reporting',agent_version:'1.0.0',code_digest:'d'.repeat(64)}})};
+ const svc=new AgentsService(pipeline,{},sessions,packages,new BriefingService());
+ const a={agentId,tenantId:ctx.tenantId,domainId:ctx.domainId,task,trigger:{kind:'scheduler',principalId:null,ref:'natural-tick'},roomId:task==='briefing'?id(35):null,packageId,version:1,correlationId:corr};
+ return{f,svc,a,calls};
+}
+async function main(){
+ for(const [kind,label,cutoff] of [['correctness','R2 Carried options cannot bypass earlier target cutoffs','2024-01-15T23:59:59.000Z'],['control','C15 Eligible carried options remain proposable','2024-01-17T23:59:59.000Z']]){
+  await test(label,kind,async()=>{
+   const citation={kind:'evidence',id:rows.object_id,version:1,digest:rows.content_digest};
+   const f=fixture({Packages:[{...pkg,current_version:2,committed_version:null,state:'proposed'}],Versions:[{...version,version:2,state:'draft',known_at:cutoff,observed_through:cutoff.slice(0,10),supersedes:1,approver_policy:{principals:[id(11)],quorum:1},monitoring_conditions:[{kind:'indicator',indicator_id:id(41)}]}],Options:[{...opt,version:2,key:'status-quo',kind:'status_quo',consequences:[citation],simulated:false,unsimulated_reason:'Unsimulated observation',uncertainty:{sources:1},controls:restricted},{...opt,version:2,consequences:[citation],simulated:false,unsimulated_reason:'Unsimulated observation',uncertainty:{sources:1},controls:restricted}],CanonicalObjects:[{...rows,object_type:'EVD'}]});
+   f.cap.versionDigest=async()=>version.version_digest;
+   f.cap.proposeVersion=async a=>{f.state.writes.push(a);return{version_digest:version.version_digest,baseline_run_id:null};};
+   await new PackageService().propose(f.cap,ctx,packageId,2,'decision',reader,corr);
+   facts={cutoff,citationRecordedAt:rows.recorded_at,admitted:f.state.headers.map(h=>h.header.object_type),citationReads:f.state.trace.filter(t=>t==='CanonicalObjects').length};
+   assert.equal(f.state.headers.length,kind==='correctness'?0:1,'carried citation newer than target cutoffs reached DPK admission; propose port inspected separately');
+  });
+ }
+ await test('C1 APR inherits restricted controls','control',async()=>{const f=fixture();await new ApprovalService().approve(f.cap,ctx,packageId,1,{decision:'approve',versionDigest:version.version_digest,rationale:'Reviewed',conditions:[]},reader,'review',corr,id(31));assert.equal(f.state.headers[0].header.classification,'restricted');assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);});
+ await test('C2 CMT inherits restricted controls','control',async()=>{const f=fixture({Packages:[{...pkg,committed_version:null}]});await new ApprovalService().commit(f.cap,ctx,packageId,1,version.version_digest,reader,'review',corr,id(32));assert.equal(f.state.headers[0].header.classification,'restricted');assert.equal(f.state.headers[0].header.residency_profile,'EU');});
+ await test('C3 RPL preserves version rights and residency','control',async()=>{const f=replayFixture({Versions:[version],Packages:[pkg]});await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));assert.equal(f.state.headers[0].header.rights_profile,restricted.rights_profile);assert.equal(f.state.headers[0].header.residency_profile,'EU');});
+ await test('C4 New warning in interval preserves controls','control',async()=>{const f=fixture({Warnings:[warning],CanonicalObjects:[wh]});const r=await compose(f);assert.equal(r.controls.classification,'restricted');assert.equal(r.controls.synthetic_state,true);});
+ await test('R3a Carried warning window must retain controls','correctness',async()=>{const f=fixture({Warnings:[{...warning,raised_at:'2024-01-14T00:00:00.000Z'}],CanonicalObjects:[wh],Briefings:[{briefing_id:id(46),room_id:null,known_at:'2024-01-15T23:59:59.000Z',composed_at:'2024-01-16T00:00:00.000Z'}]});const r=await compose(f,{...bfArgs,priorBriefingId:id(46)});facts={windows:r.windows,controls:r.controls,sources:r.sources};assert.equal(r.windows.length,1);assert.equal(r.controls.classification,'restricted');});
+ await test('R3b Replay observed warning must inherit controls','correctness',async()=>{const f=replayFixture({}, {warnings:[{warning_id:warning.warning_id,title:warning.title,indicator_id:id(41),raised_at:'2024-01-21T00:00:00.000Z',routed_to:reader}]});const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human('auditor'),'decision',corr,id(33));facts={observed:r.layers.observed,header:f.state.headers[0].header.classification};assert.equal(f.state.headers[0].header.classification,'restricted');});
+ await test('R4a Replay observed warning must check reader clearance','correctness',async()=>{const f=replayFixture({}, {warnings:[{warning_id:warning.warning_id,title:warning.title,indicator_id:id(41),raised_at:'2024-01-21T00:00:00.000Z',routed_to:reader}]});const r=await new ReplayService().replay(f.cap,ctx,packageId,1,null,human(),'decision',corr,id(33));facts={disclosed:r.layers.observed};assert.equal(r.layers.observed.warnings?.length??0,0,'internal reader received restricted warning through replay');});
+ await test('C5 Internal room member cannot read restricted BRF','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});assert.ok(pdp(human(),'briefing.read','BRF').decision.startsWith('allow'));await assert.rejects(()=>new BriefingService().get(f.cap,bf.briefing_id,human(),corr,'briefing'),e=>e.getStatus()===403);});
+ await test('C6 Wrong purpose refuses stored BRF','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});await assert.rejects(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'research'),e=>e.getStatus()===403);});
+ await test('C7 Nonmember refuses stored BRF','control',async()=>{const f=fixture({Briefings:[bf],CanonicalObjects:[bh]});f.cap.isMember=async()=>false;await assert.rejects(()=>new BriefingService().get(f.cap,bf.briefing_id,human('auditor'),corr,'briefing'),e=>e.getStatus()===403);});
+ await test('R4b Clearance cannot borrow role from another domain','correctness',async()=>{const p=human('domain_analyst',[{roleCode:'decision_owner',scope:'DOMAIN',tenantId:ctx.tenantId,domainId:id(99)}]);const f=fixture({Briefings:[{...bf,controls:{...restricted,classification:'confidential'}}],CanonicalObjects:[{...bh,classification:'confidential'}]});const verdict=pdp(p,'briefing.read','BRF');assert.ok(verdict.decision.startsWith('allow'));const r=await new BriefingService().get(f.cap,bf.briefing_id,p,corr,'briefing');facts={pdp:verdict.decision,clearance:clearance.clearanceOf(p),returned:r.items};assert.fail('confidential B briefing returned using owner role held only in A');});
+ await test('R4c Package list cannot bypass protected get','correctness',async()=>{const f=fixture({CanonicalObjects:[dpk]});const p=human();assert.ok(pdp(p,'decision.read','DPK','decision').decision.startsWith('allow'));await assert.rejects(()=>new PackageService().get(f.cap,packageId,p,'decision',corr));const list=await new PackageService().list(f.cap);facts={deniedGet:true,listTitle:list[0].title,listChoice:list[0].versions[0].choice};assert.equal(list.length,0,'denied package returned with its full choice through list');});
+ await test('R4d Report cannot bypass package purpose','correctness',async()=>{const f=internalFixture({CanonicalObjects:[dpk]});const p=human('executive');assert.ok(pdp(p,'report.render','DPK','research').decision.startsWith('allow'));await assert.rejects(()=>new PackageService().get(f.cap,packageId,p,'research',corr),e=>e.getStatus()===403);const r=await renderReport(f.cap,packageId,clearance.clearanceOf(p),{principal_id:reader},corr);facts={getRefused:true,reportChoice:r.version.choice};assert.equal(r.refused,true,'report returned choice despite incompatible purpose');});
+ await test('R4e Agent output list must respect room membership','correctness',async()=>{const f=internalFixture({Rooms:[{room_id:id(35),package_id:packageId}],AgentRuns:[{run_id:id(60),room_id:id(35),package_id:packageId,started_at:known,outputs:{report:{private:'room-only decision'}}}]});f.cap.isMember=async()=>false;const p=human('executive');assert.ok(pdp(p,'agent.read','AGT','research').decision.startsWith('allow'));const r=await new AgentsService().list(f.cap,p);facts={outputs:r.runs[0].outputs};assert.ok(r.runs[0].outputs.withheld,'room nonmember received stored report');});
+ await test('C8 Future warning excluded from windows','control',async()=>{const f=fixture({Warnings:[{...warning,raised_at:'2024-01-18T00:00:00.000Z'}],CanonicalObjects:[wh]});assert.equal((await compose(f)).windows.length,0);});
+ await test('C9 Later acknowledgement preserves earlier digest','control',async()=>{const f=fixture({Warnings:[{...warning}],CanonicalObjects:[wh]});const a=await compose(f);f.tables.Warnings[0].state='acknowledged';f.tables.Warnings[0].acknowledged_at='2024-01-19T00:00:00.000Z';f.tables.WarningEvents=[{warning_id:warning.warning_id,event:'warning.acknowledged',occurred_at:'2024-01-19T00:00:00.000Z'}];assert.equal((await compose(f)).contentDigest,a.contentDigest);});
+ const source={source_id:id(45),contract_version:1,source_key:'review-live',name:'Public live fixture',lifecycle_state:'active',contract:{security_and_operations:{}},acquisition_mode:'live',rights_state:'confirmed',connector_kind:'rest',data_origin:'live'};
+ await test('C10 Later health event preserves earlier digest','control',async()=>{const f=fixture({SourceContracts:[source],HealthEvents:[]});const a=await compose(f);f.tables.HealthEvents.push({source_id:source.source_id,new_state:'degraded',evaluated_at:'2024-01-19T00:00:00.000Z'});assert.equal((await compose(f)).contentDigest,a.contentDigest);});
+ await test('R5a Later contract version cannot change historical snapshot','correctness',async()=>{const f=fixture({SourceContracts:[{...source,registered_at:'2024-01-10T00:00:00.000Z'}]});const a=await compose(f);f.tables.SourceContracts[0].lifecycle_state='superseded';f.tables.SourceContracts.push({...source,contract_version:2,registered_at:'2024-01-19T00:00:00.000Z'});const b=await compose(f);facts={before:a.sourceStates,after:b.sourceStates};assert.equal(b.contentDigest,a.contentDigest);});
+ await test('R5b Later attempt completion cannot change historical snapshot','correctness',async()=>{const attempt={source_id:source.source_id,started_at:'2024-01-17T23:00:00.000Z',finished_at:null,outcome:'running'};const f=fixture({SourceContracts:[source],ScheduledAttempts:[attempt]});const a=await compose(f);attempt.outcome='failed';attempt.finished_at='2024-01-18T00:30:00.000Z';const b=await compose(f);facts={before:a.sourceStates,after:b.sourceStates,attempt};assert.equal(b.contentDigest,a.contentDigest);});
+ await test('C11 Late-composed prior does not skip known_at interval','control',async()=>{const f=fixture({Briefings:[{briefing_id:id(46),room_id:null,known_at:'2024-01-15T23:59:59.000Z',composed_at:'2026-09-01T00:00:00.000Z'}],CanonicalObjects:[{...rows,object_type:'EVD'}]});const r=await compose(f,{...bfArgs,priorBriefingId:id(46)});assert.equal(r.items.filter(i=>i.kind==='evidence').length,1);});
+ await test('C12 Reporting zero-read budget stops before reads','control',async()=>{const {f,svc,a}=agentFixture({maxReads:0});const r=await svc.run(a);facts={outcome:r.outcome,spent:r.spent,queries:f.state.queries};assert.equal(r.outcome,'stopped');assert.equal(f.state.queries,0);});
+ await test('C13 Scheduled reporting uses its own session without human primer','control',async()=>{const {svc,a,calls}=agentFixture();const r=await svc.run(a);assert.equal(r.outcome,'finished');assert.equal(calls.find(c=>c.action==='report.render').principal,id(51));});
+ await test('R7a Zero remaining composition reads must stop before fetching evidence','correctness',async()=>{const f=fixture({CanonicalObjects:[{...rows,object_type:'EVD'}]});await assert.rejects(()=>new BriefingService().compose(f.cap,ctx,bfArgs,reader,'agent',id(50),'briefing',corr,id(30),{maxReads:0,maxItems:null,stopOnDegraded:false}),e=>e instanceof BudgetExceeded);facts={rowsRead:f.state.readRows,headersAdmitted:f.state.headers.length};assert.equal(f.state.readRows.filter(r=>r.table==='CanonicalObjects').length,0,'evidence fetched before exhausted read budget refused composition');});
+ await test('R7b Elapsed deadline must prevent later BRF admission','correctness',async()=>{const room={room_id:id(35),package_id:packageId,title:'Review room',next_review_at:'2026-09-10T12:00:00.000Z',owner_principal_id:reader};const {f,svc,a}=agentFixture({task:'briefing',maxElapsed:10,over:{Rooms:[room],Versions:[]}});f.state.onRead=table=>{if(table==='SourceContracts')NOW+=20;};const r=await svc.run(a);facts={outcome:r.outcome,spent:r.spent,headers:f.state.headers.map(h=>h.header.object_type),outputs:r.outputs};assert.equal(r.outcome,'stopped');assert.equal(f.state.headers.length,0,'BRF admitted after elapsed deadline then run marked stopped');});
+ await test('R7c Registered max_items applies to decision draft','correctness',async()=>{let writes=0;const {f,svc,a}=agentFixture({task:'draft',stops:[{kind:'max_items',value:0}],over:{Options:[],Runs:[{run_id:id(70),state:'completed',completed_at:known,run_kind:'control'},{run_id:id(71),state:'completed',completed_at:known,run_kind:'intervention',control_run_id:id(70),interventions:[{type:'reroute'}]}]},packages:{setOption:async()=>{writes++;return{};}}});const r=await svc.run(a);facts={outcome:r.outcome,writes,drafted:r.outputs.drafted};assert.equal(writes,0,'two draft cards written despite max_items zero');});
+ await test('C14 Unknown stop condition refused at registration','control',async()=>{assert.throws(()=>validateRegisterAgent({kind:'reporting',version:'1.0.0',codeDigest:'d'.repeat(64),ownerPrincipalId:reader,escalationPrincipalId:reader,budgets:{max_reads:1,max_gateway_calls:0,max_elapsed_ms:30},stopConditions:[{kind:'on_refusal'}]},corr),e=>e.getStatus()===422);});
+ const summary={candidate:'9aaf0311bfdc94f6d580658c94d881695be2f823',evidence:'Actual TypeScript services and PDP with dependency doubles. No SQL, Redis, controller, HTTP or browser execution.',checks:results.length,failedCorrectness:results.filter(r=>r.kind==='correctness'&&r.status==='fail').length,passedControls:results.filter(r=>r.kind==='control'&&r.status==='pass').length,results};
+ fs.writeFileSync(path.join(__dirname,'residual-probe-results.json'),JSON.stringify(summary,null,2)+'\n');console.log(JSON.stringify(summary,null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
+
+END EXECUTABLE PROBES
+
+BEGIN COMPLETE RESULTS
+{
+  "candidate": "9aaf0311bfdc94f6d580658c94d881695be2f823",
+  "evidence": "Actual TypeScript services and PDP with dependency doubles. No SQL, Redis, controller, HTTP or browser execution.",
+  "checks": 28,
+  "failedCorrectness": 13,
+  "passedControls": 15,
+  "results": [
+    {
+      "name": "R2 Carried options cannot bypass earlier target cutoffs",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "carried citation newer than target cutoffs reached DPK admission; propose port inspected separately\n\n1 !== 0\n",
+      "actual": 1,
+      "expected": 0,
+      "facts": {
+        "cutoff": "2024-01-15T23:59:59.000Z",
+        "citationRecordedAt": "2024-01-16T00:00:00.000Z",
+        "admitted": [
+          "DPK"
+        ],
+        "citationReads": 0
+      }
+    },
+    {
+      "name": "C15 Eligible carried options remain proposable",
+      "kind": "control",
+      "status": "pass",
+      "facts": {
+        "cutoff": "2024-01-17T23:59:59.000Z",
+        "citationRecordedAt": "2024-01-16T00:00:00.000Z",
+        "admitted": [
+          "DPK"
+        ],
+        "citationReads": 0
+      }
+    },
+    {
+      "name": "C1 APR inherits restricted controls",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C2 CMT inherits restricted controls",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C3 RPL preserves version rights and residency",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C4 New warning in interval preserves controls",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R3a Carried warning window must retain controls",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'internal'\n- 'restricted'\n",
+      "actual": "internal",
+      "expected": "restricted",
+      "facts": {
+        "windows": [
+          {
+            "kind": "warning-response",
+            "id": "00000000-0000-4000-8000-000000000040",
+            "title": "Restricted replay warning",
+            "closes_at": "2024-01-25T00:00:00.000Z",
+            "time_left_seconds": 604801,
+            "overdue": false,
+            "owner": "00000000-0000-4000-8000-000000000003"
+          }
+        ],
+        "controls": {
+          "synthetic_state": false,
+          "classification": "internal",
+          "rights_profile": null,
+          "residency_profile": null,
+          "retention_profile": null,
+          "access_policy_ref": null,
+          "inputs": 1
+        },
+        "sources": []
+      }
+    },
+    {
+      "name": "R3b Replay observed warning must inherit controls",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'internal'\n- 'restricted'\n",
+      "actual": "internal",
+      "expected": "restricted",
+      "facts": {
+        "observed": {
+          "warnings": [
+            {
+              "warning_id": "00000000-0000-4000-8000-000000000040",
+              "title": "Restricted replay warning",
+              "indicator_id": "00000000-0000-4000-8000-000000000041",
+              "raised_at": "2024-01-21T00:00:00.000Z",
+              "routed_to": "00000000-0000-4000-8000-000000000003"
+            }
+          ]
+        },
+        "header": "internal"
+      }
+    },
+    {
+      "name": "R4a Replay observed warning must check reader clearance",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "internal reader received restricted warning through replay\n\n1 !== 0\n",
+      "actual": 1,
+      "expected": 0,
+      "facts": {
+        "disclosed": {
+          "warnings": [
+            {
+              "warning_id": "00000000-0000-4000-8000-000000000040",
+              "title": "Restricted replay warning",
+              "indicator_id": "00000000-0000-4000-8000-000000000041",
+              "raised_at": "2024-01-21T00:00:00.000Z",
+              "routed_to": "00000000-0000-4000-8000-000000000003"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "C5 Internal room member cannot read restricted BRF",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C6 Wrong purpose refuses stored BRF",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C7 Nonmember refuses stored BRF",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R4b Clearance cannot borrow role from another domain",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "confidential B briefing returned using owner role held only in A",
+      "facts": {
+        "pdp": "allow_with_obligations",
+        "clearance": "confidential",
+        "returned": [
+          {
+            "details": {
+              "private": "restricted"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "R4c Package list cannot bypass protected get",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "denied package returned with its full choice through list\n\n1 !== 0\n",
+      "actual": 1,
+      "expected": 0,
+      "facts": {
+        "deniedGet": true,
+        "listTitle": "Restricted corridor choice",
+        "listChoice": {
+          "option_key": "reroute",
+          "rationale": "Move cargo around the Cape.",
+          "decision_deadline": "2024-01-25",
+          "action_owner": "00000000-0000-4000-8000-000000000003",
+          "accepted_trade_offs": [
+            "longer transit"
+          ],
+          "outcome_criteria": [
+            {
+              "key": "line-stop",
+              "quantity": "line-stop days",
+              "unit": "days",
+              "target": 5,
+              "comparator": "<=",
+              "by": "2024-04-10",
+              "observed_on": "twin:outcome.line_stop_days"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "R4d Report cannot bypass package purpose",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "report returned choice despite incompatible purpose\n+ actual - expected\n\n+ undefined\n- true\n",
+      "expected": true,
+      "facts": {
+        "getRefused": true,
+        "reportChoice": {
+          "option_key": "reroute",
+          "rationale": "Move cargo around the Cape.",
+          "decision_deadline": "2024-01-25",
+          "action_owner": "00000000-0000-4000-8000-000000000003",
+          "accepted_trade_offs": [
+            "longer transit"
+          ],
+          "outcome_criteria": [
+            {
+              "key": "line-stop",
+              "quantity": "line-stop days",
+              "unit": "days",
+              "target": 5,
+              "comparator": "<=",
+              "by": "2024-04-10",
+              "observed_on": "twin:outcome.line_stop_days"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "R4e Agent output list must respect room membership",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "room nonmember received stored report",
+      "expected": true,
+      "facts": {
+        "outputs": {
+          "report": {
+            "private": "room-only decision"
+          }
+        }
+      }
+    },
+    {
+      "name": "C8 Future warning excluded from windows",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C9 Later acknowledgement preserves earlier digest",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C10 Later health event preserves earlier digest",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R5a Later contract version cannot change historical snapshot",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'd7c31caa26646b14a07b119eeceb0e6bb1a71844772fb19050e677a2c1a5ccd1'\n- 'e08b9149646e9ed1ad30cfe5a6c4fdc53ed334fc93746f0e38e96aaeda4bf5dd'\n",
+      "actual": "d7c31caa26646b14a07b119eeceb0e6bb1a71844772fb19050e677a2c1a5ccd1",
+      "expected": "e08b9149646e9ed1ad30cfe5a6c4fdc53ed334fc93746f0e38e96aaeda4bf5dd",
+      "facts": {
+        "before": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000045",
+            "contract_version": 1,
+            "source_key": "review-live",
+            "name": "Public live fixture",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence"
+          }
+        ],
+        "after": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000045",
+            "contract_version": 2,
+            "source_key": "review-live",
+            "name": "Public live fixture",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence"
+          }
+        ]
+      }
+    },
+    {
+      "name": "R5b Later attempt completion cannot change historical snapshot",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'f9bcf82c71fbcea73b5ed9e25f0e6d69b094564525a42814307cb25077a620d4'\n- 'e08b9149646e9ed1ad30cfe5a6c4fdc53ed334fc93746f0e38e96aaeda4bf5dd'\n",
+      "actual": "f9bcf82c71fbcea73b5ed9e25f0e6d69b094564525a42814307cb25077a620d4",
+      "expected": "e08b9149646e9ed1ad30cfe5a6c4fdc53ed334fc93746f0e38e96aaeda4bf5dd",
+      "facts": {
+        "before": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000045",
+            "contract_version": 1,
+            "source_key": "review-live",
+            "name": "Public live fixture",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "live",
+            "reason": "live collection under the source's cadence"
+          }
+        ],
+        "after": [
+          {
+            "source_id": "00000000-0000-4000-8000-000000000045",
+            "contract_version": 1,
+            "source_key": "review-live",
+            "name": "Public live fixture",
+            "acquisition_mode": "live",
+            "data_origin": "live",
+            "state": "degraded",
+            "reason": "the latest scheduled attempt by known_at failed"
+          }
+        ],
+        "attempt": {
+          "source_id": "00000000-0000-4000-8000-000000000045",
+          "started_at": "2024-01-17T23:00:00.000Z",
+          "finished_at": "2024-01-18T00:30:00.000Z",
+          "outcome": "failed"
+        }
+      }
+    },
+    {
+      "name": "C11 Late-composed prior does not skip known_at interval",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "C12 Reporting zero-read budget stops before reads",
+      "kind": "control",
+      "status": "pass",
+      "facts": {
+        "outcome": "stopped",
+        "spent": {
+          "reads": 0,
+          "gateway_calls": 0,
+          "elapsed_ms": 0
+        },
+        "queries": 0
+      }
+    },
+    {
+      "name": "C13 Scheduled reporting uses its own session without human primer",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    },
+    {
+      "name": "R7a Zero remaining composition reads must stop before fetching evidence",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "evidence fetched before exhausted read budget refused composition\n\n1 !== 0\n",
+      "actual": 1,
+      "expected": 0,
+      "facts": {
+        "rowsRead": [
+          {
+            "table": "CanonicalObjects",
+            "id": "00000000-0000-4000-8000-000000000020"
+          }
+        ],
+        "headersAdmitted": 0
+      }
+    },
+    {
+      "name": "R7b Elapsed deadline must prevent later BRF admission",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "BRF admitted after elapsed deadline then run marked stopped\n\n1 !== 0\n",
+      "actual": 1,
+      "expected": 0,
+      "facts": {
+        "outcome": "stopped",
+        "spent": {
+          "reads": 4,
+          "gateway_calls": 0,
+          "elapsed_ms": 20
+        },
+        "headers": [
+          "BRF"
+        ],
+        "outputs": {
+          "room_id": "00000000-0000-4000-8000-000000000035",
+          "package_id": "00000000-0000-4000-8000-000000000004",
+          "briefing_id": "f4c9675d-30bf-4210-96f5-eaf737d3dd82",
+          "content_digest": "caea90ae79542e47f61b8c21b818a6da77eaaf86611a4e1e83921f0edb000907",
+          "items": 0,
+          "degraded": false,
+          "monitoring": {
+            "checked": 0
+          },
+          "marked": "agent-produced",
+          "agent": {
+            "agent_id": "00000000-0000-4000-8000-000000000050",
+            "agent_kind": "briefing",
+            "agent_version": "1.0.0",
+            "code_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "method": "briefing-agent@1.0.0",
+            "principal_id": "00000000-0000-4000-8000-000000000051"
+          }
+        }
+      }
+    },
+    {
+      "name": "R7c Registered max_items applies to decision draft",
+      "kind": "correctness",
+      "status": "fail",
+      "message": "two draft cards written despite max_items zero\n\n2 !== 0\n",
+      "actual": 2,
+      "expected": 0,
+      "facts": {
+        "outcome": "finished",
+        "writes": 2,
+        "drafted": [
+          "status-quo",
+          "reroute-1"
+        ]
+      }
+    },
+    {
+      "name": "C14 Unknown stop condition refused at registration",
+      "kind": "control",
+      "status": "pass",
+      "facts": {}
+    }
+  ]
+}
+
+END COMPLETE RESULTS

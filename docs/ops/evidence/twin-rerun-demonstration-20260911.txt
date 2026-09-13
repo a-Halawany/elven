@@ -1,0 +1,18 @@
+head 1430747689d9f7df41d81e58f5b7dd52f65a8398 (1 dirty path(s))
+[]
+[]
+database eye_twin_demo3_20260911 created at 2026-09-11T20:54:03Z
+migrations up to date
+role passwords synchronized from environment
+=== run 1 start 2026-09-11T20:54:04Z
+rc=0
+ Test Files  48 passed (48)
+      Tests  836 passed (836)
+   Duration  249.71s (transform 810ms, setup 216ms, import 10.34s, tests 235.70s, environment 2ms)
+=== run 1 end 2026-09-11T20:58:15Z
+=== run 2 start 2026-09-11T20:58:15Z
+rc=0
+ Test Files  48 passed (48)
+      Tests  836 passed (836)
+   Duration  281.04s (transform 823ms, setup 209ms, import 10.09s, tests 267.32s, environment 2ms)
+=== run 2 end 2026-09-11T21:02:56Z

@@ -57,6 +57,20 @@ const schema = z.object({
   'eye.connector.max_decompressed_bytes': z.coerce.number().int().min(1024).default(64 * 1024 * 1024),
   'eye.connector.global_concurrency': z.coerce.number().int().min(1).default(4),
   'eye.connector.per_source_concurrency': z.coerce.number().int().min(1).default(2),
+  // ── CP-6 B8: the outbox publisher's lease — how long a leased row is held before a lapsed publish is retried (0015: 60 s). ──
+  'eye.outbox.lease_seconds': z.coerce.number().int().min(1).max(300).default(60),
+  // ── CP-6 B9: the serving claim's lifetime — how long a process serves a domain's subscription queue between renewals (0065 §3: 150 s,
+  //    two and a half reconciliation ticks). Below the tick (60 s) the claim lapses between renewals: a test-runtime setting. ──
+  'eye.subscriptions.serving_seconds': z.coerce.number().int().min(5).max(3600).default(150),
+  /*
+   * How long a collection run may go without appending a run event before another
+   * attempt may take its source over (migration 0051 §1). Every run event is a
+   * heartbeat, so a walking run renews continuously; this bounds only how long a
+   * source stays held by a run whose process died without recording an end. The
+   * default covers a full acquisition at the connector's own ceilings (12 requests ×
+   * 60 s) with a margin, so a slow but live publisher never looks dead.
+   */
+  'eye.connector.run_lease_seconds': z.coerce.number().int().min(30).max(86400).default(900),
   // Replay responder root — the frozen fixture set the deterministic demonstration
   // serves through the SHIPPING connector code (REPLAY_DATA_MANIFEST §4).
   'eye.connector.replay_root': z.string().default('fixtures/phase1/replay'),
@@ -114,6 +128,9 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_CONNECTOR_MAX_DECOMPRESSED_BYTES: 'eye.connector.max_decompressed_bytes',
   EYE_CONNECTOR_GLOBAL_CONCURRENCY: 'eye.connector.global_concurrency',
   EYE_CONNECTOR_PER_SOURCE_CONCURRENCY: 'eye.connector.per_source_concurrency',
+  EYE_OUTBOX_LEASE_SECONDS: 'eye.outbox.lease_seconds',
+  EYE_SUBSCRIPTION_SERVING_SECONDS: 'eye.subscriptions.serving_seconds',
+  EYE_CONNECTOR_RUN_LEASE_SECONDS: 'eye.connector.run_lease_seconds',
   EYE_CONNECTOR_REPLAY_ROOT: 'eye.connector.replay_root',
   EYE_SCHEDULER_MIN_INTERVAL: 'eye.scheduler.min_interval_seconds',
   EYE_SCHEDULER_ENABLED: 'eye.scheduler.enabled',

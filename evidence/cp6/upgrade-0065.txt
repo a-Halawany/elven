@@ -1,0 +1,46 @@
+# scripts/phase1/verify-0022-upgrade.mjs at the B8 head (65 files; migrations +44; 275/275 on the upgraded data; the virgin and upgraded schema digests equal) — run alone on the final migration file
+
+1b. correction cases assessed before 0026 existed, at the 0025 ceiling
+  ✓ migrated to 0025 — the last migration before propagation_state
+  ✓ 8 correction case(s) seeded in the shapes 0024 and 0025 wrote
+
+2. apply every migration above the C18 ceiling
+  ✓ migration set applied in full (65 files present)
+
+3. the data, the roles and Phase 0 authority behaviour survive the upgrade
+  ✓ objects.object_outbox: column(s) partition_key, partition_seq, schema_version added above the ceiling, exactly as declared; the pre-existing values are digested over the ceiling's columns
+  ✓ every pre-existing row survives the upgrade unchanged: 1021 rows across 29 tables
+  ✓ identity.roles: +25 row(s), exactly what these migrations declare they add
+  ✓ objects.schema_registry: +27 row(s), exactly what these migrations declare they add
+  ✓ public.schema_migrations: +44 row(s), exactly what these migrations declare they add
+  ✓ all 9 pre-existing roles unchanged in name and login posture
+  ✓ 0022 registered collection_manager and collection_agent
+  ✓ Phase 0 authority behaviour after the upgrade: 297/297 passed
+
+3b. the previously assessed cases are reconciled, not defaulted
+  ✓ never walked: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ never walked: 0 reconciliation record(s), as expected
+  ✓ one root, walked clean: complete — "dependency propagation assessed by invalidation c908f14b-e694-4d64-91c6-e5ab80c6c473: 1 assumpti…"
+  ✓ one root, walked clean: 1 reconciliation record(s), as expected
+  ✓ one root, truncated: partial — "propagation incomplete: every one of the 1 corrected object(s) has been walked, but the latest w…"
+  ✓ one root, truncated: 1 reconciliation record(s), as expected
+  ✓ two roots, one walked: partial — "propagation incomplete: 1 of 2 corrected object(s) have been walked; 1 remain unassessed"
+  ✓ two roots, one walked: 1 reconciliation record(s), as expected
+  ✓ wrong-kind walk: partial — "propagation incomplete: 1 assessment(s) are linked to this case but none walked one of its 1 cor…"
+  ✓ wrong-kind walk: 1 reconciliation record(s), as expected
+  ✓ no roots, walked clean: complete — "dependency propagation assessed by invalidation e75f0928-12ce-4159-a4ce-ddc70658d2b8: 1 assumpti…"
+  ✓ no roots, walked clean: 1 reconciliation record(s), as expected
+  ✓ no roots, never walked: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ no roots, never walked: 0 reconciliation record(s), as expected
+  ✓ rejected: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ rejected: 0 reconciliation record(s), as expected
+
+4. the upgraded schema equals a virgin full-set schema
+  ✓ virgin database migrated from empty (65 files)
+  ✓ schema digests match exactly: eeb6b164ef9ff2c3…
+
+5. the later-phase suites against the UPGRADED database
+  ✓ Phase 1 and Phase 2 suites on upgraded data: 275/275 passed
+
+=== PASS ===
+

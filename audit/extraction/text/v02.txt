@@ -1,0 +1,760 @@
+# Volume 2 — The Eye Technical Presentation v1.1 (image-only PDF; transcribed from v02-pages/slide-NN.png)
+
+=== SLIDE 1 ===
+THE EYE
+VOLUME 2
+Technical Presentation
+The Operating System for Strategic Intelligence
+OBSERVE / UNDERSTAND / PREDICT / SIMULATE / DECIDE / LEARN
+[Sidebar] 02 — CONTROLLED TECHNICAL BASELINE
+Inherited from Volume 0 and Volume 1
+1 August 2026
+
+=== SLIDE 2 ===
+[Header] VOLUME 2 / TECHNICAL THESIS
+Title: The Eye is one governed technical system—not a collection of AI features
+ONE CLOSED STRATEGIC LOOP
+Every observation, model, agent, scenario, simulation, recommendation, decision, and outcome remains connected to the same governed world.
+• Shared semantics and identity across all ten layers.
+• Temporal memory that preserves what changed and what was known.
+• Bounded AI agents with explicit authority, evaluation, and stop conditions.
+• Explainable foresight and reproducible simulation before commitment.
+• Named human authority at every consequential decision boundary.
+The architecture is designed to remain coherent as models, databases, interfaces, and infrastructure evolve.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 02
+
+=== SLIDE 3 ===
+[Header] VOLUME 2 / TECHNICAL THESIS
+Title: Volume 2 defines the technical contract for the architecture that follows
+INHERITS — Constitutional commitments
+• C-001 through C-052
+• Ten named layers
+• Knowledge Graph centrality
+• Human decision sovereignty
+• SaaS, Private Cloud, and On-Premise parity
+DEFINES — Technical operating logic
+• Layer responsibilities
+• Object and event movement
+• Agent and model boundaries
+• Trust and provenance behavior
+• Deployment and operational qualities
+DOES NOT REPLACE — Detailed architecture volumes
+• Volume 3 — Technical Architecture
+• Volume 4 — Engineering Specification
+• Volume 5 — AI Architecture
+• Volume 6 — Infrastructure Architecture
+• Volume 7 — Data Platform
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 03
+
+=== SLIDE 4 ===
+[Header] VOLUME 2 / SYSTEM MODEL
+Title: The architecture closes the loop from evidence to outcomes—and back again
+Each verb is an operating capability with explicit inputs, outputs, controls, and accountable ownership.
+[Diagram] Ring of six nodes around "STRATEGIC INTELLIGENCE": OBSERVE → UNDERSTAND → PREDICT → SIMULATE → DECIDE → LEARN → (back to OBSERVE)
+Caption: The canonical lifecycle is circular: every outcome becomes new evidence.
+CONTROLLED ITERATION
+A simulation can request new observations. A decision can reopen a scenario. A lesson can change a model—but only through governed release.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 04
+
+=== SLIDE 5 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Ten layers share one semantic heart and a common set of control planes
+The Knowledge Graph is Layer 4 and the shared model of identity, meaning, time, and relationships. It connects—but does not physically replace—the specialized stores and engines around it.
+• Trust and provenance
+• Security and privacy
+• Governance and policy
+• Identity and access
+• Workflow and audit
+• Evaluation and learning
+• Deployment parity
+[Diagram] Vertical control-plane bar: TRUST · SECURITY · GOVERNANCE · WORKFLOW · EVALUATION
+[Diagram] Layer stack (top to bottom):
+10 Executive Operating System
+9 Decision Intelligence
+8 Simulation Engine
+7 Scenario Intelligence
+6 Prediction Engine
+5 Digital Twins
+4 Knowledge Graph (highlighted)
+3 Enterprise Memory
+2 Intelligence Layer
+1 World Observation Layer
+Caption: The architecture layers are canonical; technology choices beneath them remain replaceable.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 05
+
+=== SLIDE 6 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Observation creates governed evidence—not raw ingestion
+01 — WORLD OBSERVATION LAYER
+CORE RESPONSIBILITY: Maintain a measurable field of view across authorized external and internal sources.
+Collection preserves source identity, chain of custody, event and observation time, usage rights, transformations, corrections, and coverage limits.
+INPUT: Authorized sources → OPERATING MECHANISM: Connector registry + collection policy → OUTPUT: Governed evidence
+GOVERNED CONTRACT
+• Source contract
+• Rights and purpose
+• Freshness and coverage
+• Classification
+• Correction propagation
+PRINCIPAL OUTPUTS: Evidence / Source health / Change events / Visibility gaps
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 06
+
+=== SLIDE 7 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Intelligence transforms evidence without collapsing truth states
+02 — INTELLIGENCE LAYER
+CORE RESPONSIBILITY: Convert heterogeneous evidence into connected, reviewable understanding.
+Deterministic methods, statistical models, foundation models, graph algorithms, and human review may contribute; the producing method and version remain visible.
+INPUT: Governed evidence → OPERATING MECHANISM: Extract + resolve + classify + assess → OUTPUT: Structured understanding
+GOVERNED CONTRACT
+• Method lineage
+• Truth-state separation
+• Model version
+• Confidence
+• Human review
+PRINCIPAL OUTPUTS: Entities / Events / Claims / Relationships / Assessments
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 07
+
+=== SLIDE 8 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Enterprise Memory preserves institutional context across time
+03 — ENTERPRISE MEMORY
+CORE RESPONSIBILITY: Retain durable, permission-aware organizational and world memory.
+The memory fabric spans structured and unstructured content while preserving provenance, time, tenant, classification, version, retention, and correction history.
+INPUT: Evidence + context → OPERATING MECHANISM: Versioned storage + semantic retrieval → OUTPUT: Durable memory
+GOVERNED CONTRACT
+• Tenant isolation
+• Temporal accuracy
+• Retention policy
+• Legal hold
+• Verifiable deletion
+PRINCIPAL OUTPUTS: Versioned memory / Retrieval context / Strategic record
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 08
+
+=== SLIDE 9 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: The Knowledge Graph provides shared identity, meaning, and temporal context
+04 — KNOWLEDGE GRAPH
+CORE RESPONSIBILITY: Connect the world, the enterprise, and strategic intent through governed relationships.
+Every layer can refer to the same entities and relationships without forcing all data into one physical store or one model of computation.
+INPUT: Entities + claims → OPERATING MECHANISM: Resolve + link + version + govern → OUTPUT: Shared world model
+GOVERNED CONTRACT
+• Ontology governance
+• Entity identity
+• Temporal validity
+• Edge provenance
+• Relationship policy
+PRINCIPAL OUTPUTS: Identity / Relationships / Provenance / Strategy Graph
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 09
+
+=== SLIDE 10 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Digital Twins maintain living, versioned strategic models
+05 — DIGITAL TWINS
+CORE RESPONSIBILITY: Represent the enterprise and the systems it depends on or seeks to influence.
+Company, competitor, supply chain, product, market, regulation, infrastructure, process, and organization twins declare boundary, evidence, assumptions, behavior, validation, and limitations.
+INPUT: Graph + evidence → OPERATING MECHANISM: State estimation + behavioral models → OUTPUT: Living representation
+GOVERNED CONTRACT
+• Grounding evidence
+• Model envelope
+• State version
+• Synthetic-state marking
+• Validation history
+PRINCIPAL OUTPUTS: Twin state / Behavior / Branches / Dependencies
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 10
+
+=== SLIDE 11 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Prediction maintains calibrated forecasts across six horizons
+06 — PREDICTION ENGINE
+CORE RESPONSIBILITY: Estimate future variables, events, and states with horizon-appropriate methods.
+Forecasts expose distributions, confidence, calibration, important drivers, assumptions, sensitivity, model lineage, failure conditions, and refresh cadence.
+INPUT: Evidence + twins → OPERATING MECHANISM: Ensembles + specialist models → OUTPUT: Calibrated forecasts
+GOVERNED CONTRACT
+• Canonical horizons
+• Calibration
+• Model fitness
+• Sensitivity
+• Failure conditions
+PRINCIPAL OUTPUTS: Forecasts / Distributions / Drivers / Triggers
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 11
+
+=== SLIDE 12 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Scenario Intelligence keeps multiple futures coherent and monitored
+07 — SCENARIO INTELLIGENCE
+CORE RESPONSIBILITY: Maintain several plausible futures under uncertainty without presenting one path as destiny.
+Each scenario declares baseline, assumptions, drivers, actors, branch points, indicators, interventions, impacts, owners, and review cadence.
+INPUT: Forecasts + hypotheses → OPERATING MECHANISM: Branch + monitor + compare → OUTPUT: Coherent futures
+GOVERNED CONTRACT
+• Scenario plurality
+• Assumption register
+• Branch indicators
+• Evidence linkage
+• Review cadence
+PRINCIPAL OUTPUTS: Scenarios / Indicators / Branches / Signposts
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 12
+
+=== SLIDE 13 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Simulation tests interventions before institutional commitment
+08 — SIMULATION ENGINE
+CORE RESPONSIBILITY: Run reproducible experiments against declared models, twins, assumptions, and constraints.
+Every material run records initial state, interventions, model versions, seeds where applicable, constraints, outputs, sensitivity, and validation status.
+INPUT: Twins + scenarios → OPERATING MECHANISM: Experiment + compare + challenge → OUTPUT: Tested consequences
+GOVERNED CONTRACT
+• Reproducibility
+• Assumption declaration
+• Model version
+• Seed and constraints
+• Sensitivity analysis
+PRINCIPAL OUTPUTS: Runs / Impacts / Sensitivity / Second-order effects
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 13
+
+=== SLIDE 14 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Decision Intelligence produces complete, explainable choice packages
+09 — DECISION INTELLIGENCE
+CORE RESPONSIBILITY: Compare viable alternatives against objectives, constraints, obligations, risk, and uncertainty.
+Recommendations retain criteria, evidence, scenarios, simulations, assumptions, alternatives, dissent, approval state, monitoring conditions, and a named accountable authority.
+INPUT: Evidence + futures → OPERATING MECHANISM: Compare + explain + route → OUTPUT: Accountable choice
+GOVERNED CONTRACT
+• Decision completeness
+• Alternative retention
+• Approval workflow
+• Human authority
+• Outcome linkage
+PRINCIPAL OUTPUTS: Options / Recommendations / Approvals / Decision records
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 14
+
+=== SLIDE 15 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: The Executive Operating System governs attention, commitments, and review
+10 — EXECUTIVE OPERATING SYSTEM
+CORE RESPONSIBILITY: Organize strategic work around objectives, change, scenarios, decisions, commitments, and outcomes.
+Leadership interacts with live governed intelligence objects—not isolated dashboards, reports, or conversations—and can inspect why an item was elevated or deferred.
+INPUT: Governed intelligence → OPERATING MECHANISM: Prioritize + convene + decide + review → OUTPUT: Executive operation
+GOVERNED CONTRACT
+• Attention policy
+• Role clarity
+• Decision state
+• Review cadence
+• Experience integrity
+PRINCIPAL OUTPUTS: Briefings / Decision rooms / Commitments / Strategic cadence
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 15
+
+=== SLIDE 16 ===
+[Header] VOLUME 2 / TEN-LAYER ARCHITECTURE
+Title: Layer boundaries define responsibility; contracts preserve interoperability
+A layer owns a canonical responsibility and publishes governed interfaces. It may use several technologies internally without changing the meaning of the layer.
+[Diagram] Flow: Evidence → Understanding → Memory + Graph → Twins + Models → Futures → Decision (highlighted) → Outcome
+CONTRACT — Stable semantics
+• Canonical objects
+• Versioned APIs and events
+• Truth and time semantics
+FREEDOM — Replaceable implementation
+• Multiple stores and engines
+• Model pluralism
+• Deployment-specific services
+CONTROL — Observable behavior
+• Policy at every boundary
+• Backpressure and recovery
+• Audit and evaluation
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 16
+
+=== SLIDE 17 ===
+[Header] VOLUME 2 / CONNECTED WORLD MODEL
+Title: The Knowledge Graph connects external reality to enterprise intent
+[Diagram] Hub "KNOWLEDGE GRAPH" connected to nodes: COMPANIES, COUNTRIES, TECHNOLOGIES, REGULATIONS, SUPPLY CHAINS, MARKETS, CAPABILITIES, OBJECTIVES
+Every relationship carries identity, time, provenance, confidence, truth state, policy, and version appropriate to its role.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 17
+
+=== SLIDE 18 ===
+[Header] VOLUME 2 / CONNECTED WORLD MODEL
+Title: The Strategy Graph makes objectives and commitments operational
+[Diagram] Chain: WORLD CHANGE → ASSUMPTION → OBJECTIVE (highlighted) → DECISION → COMMITMENT → OUTCOME
+OPERATIONAL STRATEGY — Every claim has an owner and consequence
+• Objectives link to indicators and thresholds.
+• Assumptions link to evidence and scenarios.
+• Decisions link to capabilities, resources, and constraints.
+CHANGE PROPAGATION — The graph shows what must be reconsidered
+• A new event can invalidate an assumption.
+• An invalid assumption can reopen a scenario.
+• A changed objective can alter commitments and review owners.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 18
+
+=== SLIDE 19 ===
+[Header] VOLUME 2 / CONNECTED WORLD MODEL
+Title: Enterprise Memory and Strategic Memory serve different institutional needs
+ENTERPRISE MEMORY — Durable context of the organization and world
+• Sources, documents, communications, and telemetry
+• Entities, events, claims, analyses, workflows
+• Decisions, actions, outcomes, and correction history
+• Permission-aware semantic retrieval
+STRATEGIC MEMORY — Decision-centered interpretation and learning
+• Objectives, hypotheses, and assumptions
+• Forecasts, scenarios, and simulation configurations
+• Alternatives, dissent, approvals, and commitments
+• Post-decision reviews and governed lessons
+The distinction prevents document retention from being mistaken for institutional learning.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 19
+
+=== SLIDE 20 ===
+[Header] VOLUME 2 / CONNECTED WORLD MODEL
+Title: Digital Twins form a system of linked representations—not one monolith
+[Diagram] Hub "ENTERPRISE DIGITAL TWIN" with bidirectional arrows to: SUPPLY CHAIN, PRODUCTS, MARKETS, REGULATIONS, INFRASTRUCTURE, PROCESSES, ORGANIZATION, COMPETITORS
+Caption: Every twin declares its boundary, evidence, assumptions, behavior, validation, and limitations.
+TWIN CONTRACT
+• Observed state is separated from synthetic state.
+• Material state remains grounded in evidence and graph identity.
+• Time travel, branching, replay, comparison, and reconciliation are native.
+• Decision fitness is evaluated inside a declared operating envelope.
+• Simulations preserve the exact twin version used.
+A twin is valuable because its approximation is inspectable—not because it claims perfect replication.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 20
+
+=== SLIDE 21 ===
+[Header] VOLUME 2 / CONNECTED WORLD MODEL
+Title: Provenance supports backward explanation and forward impact analysis
+BACKWARD EXPLANATION
+[Diagram] Decision (highlighted) → Chosen option → Simulated impact → Scenario → Evidence
+Why was this recommendation reasonable at the time?
+FORWARD IMPACT
+[Diagram] Corrected source (highlighted) → Claims → Models → Briefings → Decisions
+What downstream objects and choices may now be affected?
+Bidirectional provenance turns trust from a compliance label into an operational capability.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 21
+
+=== SLIDE 22 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: AI extends institutional reach; it never inherits final authority
+AI MAY: Recommend / Forecast / Simulate / Reason / Explain
+HUMANS RETAIN: Purpose / Policy / Risk appetite / Strategy / Final commitment
+SYSTEM PROPERTY: Human authority is enforced through identity, workflow, approvals, policy, audit, interface design, and explicit decision records.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 22
+
+=== SLIDE 23 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: A supervised society of specialized agents operates under common contracts
+[Diagram] Hub "SUPERVISED AGENT SOCIETY" connected to: OBSERVATION, DATA PREPARATION, SEMANTIC INTELLIGENCE, ANALYTICAL INTELLIGENCE, DOMAIN INTELLIGENCE, COMMUNICATION, CONTROL & ASSURANCE, ORCHESTRATION
+Caption: Specialization increases reach; common controls preserve one accountable operating system.
+Groups: Observation and preparation | Semantic and analytical intelligence | Domain intelligence | Orchestration, control, and communication
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 23
+
+=== SLIDE 24 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: Planner, Supervisor, and Workflow agents separate intent, evaluation, and control
+[Diagram] HUMAN OBJECTIVE → PLANNER → SPECIALIST AGENTS → SUPERVISOR → WORKFLOW → HUMAN APPROVAL (highlighted)
+PLANNER — Decomposes intent
+• Objectives into work
+• Dependencies and sequencing
+• Required evidence and tools
+SUPERVISOR — Evaluates and routes
+• Quality and policy checks
+• Retries and escalation
+• Competing results and dissent
+WORKFLOW — Enforces state
+• Approval gates
+• Idempotency and recovery
+• Audit, containment, rollback
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 24
+
+=== SLIDE 25 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: Every agent has bounded identity, permissions, budgets, evaluations, and stop conditions
+IDENTITY — Who and why
+• Purpose and owner
+• Version and publisher
+• Accountable authority
+AUTHORITY — What it may do
+• Tools and models
+• Data scope and permissions
+• Side-effect policy
+CONTROL — How it is bounded
+• Budgets and timeouts
+• Prohibited actions
+• Escalation and stopping
+EVIDENCE — How it earns trust
+• Evaluation suite
+• Required provenance
+• Monitoring and rollback
+An agent cannot grant itself permission, approve its own exception, or convert a recommendation into final authority.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 25
+
+=== SLIDE 26 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: Model pluralism keeps methods replaceable, inspectable, and fit for purpose
+The platform may support deterministic rules, statistical models, graph algorithms, foundation models, causal models, optimization, and specialist engines behind governed interfaces.
+[Diagram] TASK + POLICY → MODEL GATEWAY (highlighted) → CANDIDATE MODELS → EVALUATION → VERSIONED RESULT
+SELECTION — Fitness is contextual
+• Cost, latency, sovereignty, performance
+• Domain, horizon, risk, and evidence regime
+• Customer-controlled approved model set
+ACCOUNTABILITY — Every result remains attributable
+• Model and prompt version
+• Evaluation and validation status
+• Fallback, abstention, and failure conditions
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 26
+
+=== SLIDE 27 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: Continuous learning is a governed release process—not silent self-modification
+[Diagram] OUTCOME → DIAGNOSE → PROPOSE → EVALUATE → APPROVE (highlighted) → RELEASE → MONITOR
+Changes to prompts, models, tools, agents, ontologies, thresholds, workflows, and policy remain versioned proposals until every control is satisfied.
+Rollback is part of the release contract. History is preserved; production behavior never rewrites itself outside governance.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 27
+
+=== SLIDE 28 ===
+[Header] VOLUME 2 / AI & AGENT SYSTEM
+Title: Marketplaces extend capability without weakening constitutional controls
+AGENT MARKETPLACE — Deploy bounded capabilities
+• Publisher, purpose, and permissions
+• Model dependencies and data use
+• Evaluation evidence and limitations
+• Licensing, update, and revocation
+SCENARIO MARKETPLACE — Reuse strategic methods
+• Frameworks, indicators, and models
+• Assumptions and actor structures
+• Local calibration and validation
+• Private customer instance and memory
+SIGNED / VERSIONED / LICENSED / PERMISSION-SCOPED / EVALUATED / SANDBOXED / REVOCABLE
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 28
+
+=== SLIDE 29 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Prediction changes method and confidence language by horizon
+[Diagram] Axis from "CURRENT SIGNALS, COMMITMENTS, AND CONSTRAINTS" to "STRUCTURAL DRIVERS, PATH DEPENDENCE, AND SCENARIO UNCERTAINTY"
+Horizons: 30 DAYS | 90 DAYS | 180 DAYS | 1 YEAR | 3 YEARS | 5 YEARS
+EVERY FORECAST — Declares
+• Outcome and horizon
+• Distribution and confidence
+• Drivers and assumptions
+EVERY MODEL — Exposes
+• Calibration and fitness
+• Sensitivity and failure conditions
+• Refresh cadence and lineage
+EVERY USER — Can inspect
+• Alternative models
+• Evidence and missing information
+• What would change the view
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 29
+
+=== SLIDE 30 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Weak signals remain uncertain evidence until corroboration changes their status
+The system records what would strengthen or falsify the signal and never rewrites uncertainty as certainty merely because a pattern is novel.
+[Diagram] Funnel (top to bottom): OBSERVATIONS → RELATED ENTITIES + POTENTIAL MECHANISMS → CORROBORATION + SCENARIO RELEVANCE → MATERIAL SIGNAL (highlighted)
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 30
+
+=== SLIDE 31 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: An early warning combines evidence, consequence, confidence, and a response window
+[Diagram] SOURCE EVENTS → WEAK SIGNALS → GRAPH IMPACT → FORECAST REVISION → THRESHOLD BREACH → WARNING PRODUCT (highlighted)
+CONTEXT — What changed
+• Observed condition
+• Supporting and contradicting evidence
+• Affected objectives and assets
+ASSESSMENT — Why it matters
+• Confidence and consequence
+• Scenario and forecast movement
+• Conditions that could falsify the view
+RESPONSE — What remains possible
+• Owner and response window
+• Verification or simulation playbook
+• Escalation and closure criteria
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 31
+
+=== SLIDE 32 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Scenarios are living branches with monitored indicators—not narrative documents
+[Diagram] BASELINE → BRANCH POINT → {UPSIDE, BASE CASE, DOWNSIDE} → INDICATORS + SIGNPOSTS
+Every branch declares assumptions, actors, drivers, uncertainties, interventions, impacts, owners, and review cadence.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 32
+
+=== SLIDE 33 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Simulation is reproducible experimentation against declared assumptions
+[Diagram] VERSIONED TWIN → SCENARIO → INTERVENTION → SIMULATION RUN (highlighted) → IMPACTS → SENSITIVITY
+RUN CONTRACT — Every experiment can be reproduced
+• Initial state and time
+• Twin and model versions
+• Assumptions, constraints, and seeds
+• Outputs and validation status
+DECISION VALUE — Every result can be challenged
+• Direct and second-order effects
+• Timing and distributional consequence
+• Hidden dependencies and nonlinear response
+• Information that would improve the decision
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 33
+
+=== SLIDE 34 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Decision packages retain alternatives, dissent, approvals, and monitoring conditions
+A recommendation is not the product. The complete decision environment is the product.
+[Diagram] OBJECTIVES → OPTIONS → CONSEQUENCES → UNCERTAINTY → APPROVALS → COMMITMENT (highlighted)
+RETAINED — Decision context
+• Evidence and assumptions
+• Forecasts, scenarios, simulations
+• Criteria and stakeholder obligations
+EXPLICIT — Human authority
+• Accountable decision-maker
+• Required reviewers
+• Approval, dissent, and override
+FORWARD-LOOKING — Monitoring contract
+• Expected outcome
+• Indicators and triggers
+• Review date and closure criteria
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 34
+
+=== SLIDE 35 ===
+[Header] VOLUME 2 / FORESIGHT & DECISION
+Title: Decision Replay separates process quality from outcome luck
+[Diagram] Timeline: KNOWN (Evidence and context) → BELIEVED (Forecasts and assumptions) → TESTED (Scenarios and simulations) → DECIDED (Authority and rationale; highlighted) → OBSERVED (Actions and outcomes)
+REPLAY ASKS — Was the process sound?
+• Calibration and assumptions
+• Scenario and simulation coverage
+• Information use and timing
+• Policy, approval, and execution
+REPLAY AVOIDS — Hindsight distortion
+• Outcome luck mistaken for quality
+• Later evidence injected into the record
+• Dissent or override erased
+• One lesson hardened into universal truth
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 35
+
+=== SLIDE 36 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: The observation layer supports a universal source universe under explicit contracts
+PUBLIC WORLD — External intelligence
+• Governments and regulation
+• News and social signals
+• Markets and company filings
+• Research, papers, and patents
+• Climate and geopolitical events
+OPERATIONAL WORLD — Physical and networked systems
+• Supply chains and logistics
+• IoT and telemetry
+• Satellites and geospatial data
+• Infrastructure and climate sensors
+• Customer-defined feeds and APIs
+ENTERPRISE WORLD — Internal systems and memory
+• ERP and CRM
+• Internal documents
+• Business processes
+• Operational and financial records
+• Custom sources and RSS
+Every source contract declares authority, rights, purpose, structure, latency, quality, authenticity, and correction behavior.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 36
+
+=== SLIDE 37 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Integration is connector-based, policy-aware, and correction-propagating
+[Diagram] SOURCE CONTRACT → CONNECTOR → RAW PRESERVATION → TRANSFORM → POLICY + QUALITY → INTELLIGENCE OBJECT (highlighted)
+CONTROL — Ingestion is governed work
+• Identity and authorization
+• Schema and parser version
+• Rights, classification, and tenancy
+• Freshness, completeness, and health
+CONTINUITY — History remains reconstructable
+• Original evidence is preserved
+• Derived objects never replace source records
+• Corrections propagate to downstream products
+• Coverage gaps remain visible
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 37
+
+=== SLIDE 38 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: One product operates across SaaS, Private Cloud, and On-Premise
+[Diagram] ONE PRODUCT · ONE SEMANTIC CORE · ONE TRUST MODEL → SAAS (Managed velocity) | PRIVATE CLOUD (Dedicated control) | ON-PREMISE (Sovereign operation)
+Caption: Deployment changes operational topology—not the product's canonical meaning.
+SAAS — Managed velocity
+• Continuous platform operation
+• Shared reliability engineering
+• Explicit tenant and residency controls
+PRIVATE CLOUD — Dedicated control
+• Customer-specific network and identity
+• Dedicated keys, regions, and integrations
+• Cloud operating characteristics
+ON-PREMISE — Sovereign operation
+• Local administration and inference
+• Disconnected or edge operation
+• No mandatory external dependency
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 38
+
+=== SLIDE 39 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Semantic parity is non-negotiable; topology differences are explicit constraints
+SAME ACROSS MODES
+• Canonical objects and APIs
+• Provenance, policy, and audit
+• Agent contracts and workflows
+• Model interfaces and twin packages
+• Scenario, decision, and user concepts
+MAY DIFFER BY MODE
+• Network and storage topology
+• Available managed services
+• Update and telemetry paths
+• Local model and hardware choices
+• Disconnected operating envelope
+Differences are documented as capability constraints—never hidden product fragmentation.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 39
+
+=== SLIDE 40 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Security protects strategic context across identity, data, models, agents, and workflows
+[Diagram] Nested rings (outer to inner): RESILIENT PLATFORM → POLICY + IDENTITY + AUDIT → DATA + MODELS + AGENTS + TWINS → STRATEGIC CONTEXT (core)
+Zero-trust authorization is continuous. Network location alone is never treated as trust.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 40
+
+=== SLIDE 41 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Sovereignty is enforced through control over residency, keys, models, and administration
+DATA — Where knowledge resides
+• Region and residency
+• Retention and deletion
+• Export and portability
+CRYPTOGRAPHY — Who controls access
+• Customer-managed keys
+• Secrets isolation
+• Backup and recovery protection
+COMPUTATION — Which models may operate
+• Approved model set
+• Local inference options
+• Confidential-computing controls
+ADMINISTRATION — Who can govern the system
+• Identity boundary
+• Network isolation
+• Customer-controlled audit and policy
+Sovereignty is a technical operating boundary—not a deployment label.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 41
+
+=== SLIDE 42 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Degraded intelligence must never appear healthy
+[Diagram] State chain: HEALTHY (Full provenance, freshness, coverage, model, and policy services) → DEGRADED (Restricted actions; visible warnings; bounded fallback behavior) → CONTAINED (Unsafe component isolated; decision workflows paused or escalated) → RECOVERING (Restore, reconcile, re-evaluate, and explicitly return to service)
+• Containment and dependency isolation
+• Redundancy, backup, restore, and cyber recovery
+• Disconnected operation where required
+• Reconciliation and explicit re-entry to trusted service
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 42
+
+=== SLIDE 43 ===
+[Header] VOLUME 2 / ENTERPRISE OPERATION
+Title: Observability spans source health, model fitness, workflow state, and decision latency
+OBSERVE — Evidence health
+• Coverage and blind spots
+• Freshness and completeness
+• Correction and withdrawal
+UNDERSTAND — Intelligence quality
+• Entity resolution
+• Extraction and contradiction
+• Truth-state and provenance
+PREDICT + SIMULATE — Analytical fitness
+• Calibration and drift
+• Scenario coverage
+• Reproducibility and sensitivity
+DECIDE + LEARN — Institutional behavior
+• Attention and cycle time
+• Approval and execution state
+• Outcome and lesson adoption
+Operational observability and strategic performance are measured through the same governed object lifecycle.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 43
+
+=== SLIDE 44 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: Architecture quality is measured as product behavior—not assumed as implementation detail
+TRUST — Inspectable intelligence
+• Explainability
+• Provenance
+• Auditability
+OPERATION — Dependable system
+• Reliability
+• Resilience
+• Recoverability
+SCALE — Enterprise fitness
+• Performance
+• Freshness
+• Portability
+RESPONSIBILITY — Governed use
+• Security
+• Privacy
+• Accessibility
+Accuracy, calibration, cost, and latency are evaluated in the context of the decision—not as isolated model metrics.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 44
+
+=== SLIDE 45 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: Evaluation follows the full chain from source acquisition to human use
+[Diagram] SOURCE → EXTRACTION → REASONING → FORECAST → SCENARIO → SIMULATION → AGENT → HUMAN USE (highlighted)
+TECHNICAL — System measures
+• Accuracy and completeness
+• Latency, scale, and cost
+• Reliability and security
+ANALYTICAL — Intelligence measures
+• Calibration and robustness
+• Drift, sensitivity, and scenario coverage
+• Evidence and explanation quality
+INSTITUTIONAL — Decision measures
+• Time-to-understanding
+• Decision completeness and reversibility
+• Outcome quality and learning applied
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 45
+
+=== SLIDE 46 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: Governance converts principles into executable controls and audit evidence
+[Diagram] CONSTITUTION (highlighted) → POLICY → CONTROL → WORKFLOW → DECISION → AUDIT EVIDENCE
+GOVERNANCE PLANE — Rules become enforceable behavior
+• Identity and authorization
+• Data, model, and agent policy
+• Approval and separation of duties
+• Exception, expiry, and revocation
+EVIDENCE PLANE — Behavior remains provable
+• Versions and lineage
+• Policy decisions and approvals
+• Overrides, dissent, and corrections
+• Outcomes, evaluation, and lessons
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 46
+
+=== SLIDE 47 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: The Executive Operating System organizes work around responsibility—not interfaces
+WHAT LEADERSHIP ENTERS THROUGH: Objectives / Material change / Risks and opportunities / Scenarios / Pending decisions / Commitments and outcomes
+WHAT THE SYSTEM MAKES EXPLICIT
+• What changed since the last review
+• Why the change is material
+• Which evidence and relationships support the view
+• Who owns the response
+• Which decision window is closing
+• What was suppressed, deferred, or delegated
+Conversation, dashboards, reports, maps, and APIs are access modes to this live governed system—not the architecture itself.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 47
+
+=== SLIDE 48 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: The Strategic Health Score is decomposable, directional, and decision-linked
+STRATEGIC HEALTH
+A compact view of readiness and exposure—without replacing the evidence and analysis beneath it.
+[Diagram] Component list with colour bars: Objectives, Operations, Technology, Supply chain, Regulation, Geopolitics, Capabilities, Finance, People, Markets, Cyber
+Every component exposes evidence, weight, confidence, trend, sensitivity, freshness, and decision relevance.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 48
+
+=== SLIDE 49 ===
+[Header] VOLUME 2 / QUALITY & GOVERNANCE
+Title: Strategic maturity is measured by connected behavior—not deployment size
+[Diagram] Staircase from "Capability" to "Institutional intelligence":
+1 FRAGMENTED — Search and reporting
+2 CONNECTED — Shared data and graph
+3 PREDICTIVE — Forecasts and warnings
+4 SIMULATED — Twins and scenarios
+5 LEARNING — Decision replay and adaptation (highlighted)
+Caption: The platform becomes an operating system when evidence, decisions, outcomes, and learning share one governed substrate.
+Axis labels: FRAGMENTED | CONNECTED | PREDICTIVE | SIMULATED | LEARNING
+The governing question is whether the institution can observe, understand, predict, simulate, decide, and learn as one system.
+[Footer] THE EYE / TECHNICAL PRESENTATION BASELINE V1.0 — 49
+
+=== SLIDE 50 ===
+THE EYE
+One connected system. Human authority at the center.
+OBSERVE / UNDERSTAND / PREDICT / SIMULATE / DECIDE / LEARN
+Volume 2 establishes the technical presentation baseline. Volumes 3 through 7 specify the architecture, engineering, AI, infrastructure, and data platform in detail.
+[Footer] THE OPERATING SYSTEM FOR STRATEGIC INTELLIGENCE — 50

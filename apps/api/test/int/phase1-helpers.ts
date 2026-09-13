@@ -134,8 +134,9 @@ export async function inCommitContext<T>(
   action: string,
   target: string,
   body: (tx: never) => Promise<T>,
+  /** The operation's correlation id; supplied when the body records events that must carry the SAME one (F06). */
+  correlationId: string = uuidv7(),
 ): Promise<T> {
-  const correlationId = uuidv7();
   const decisionId = uuidv7();
   return commitDb.transaction().execute(async (tx) => {
     await sql`select ctx.issue_commit(

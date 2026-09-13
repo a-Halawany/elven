@@ -17,6 +17,7 @@ import { canonicalHeaderDigest, errorBody, validateHeader,
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ReviewWrites, IntelligenceReads } from '../intelligence.capabilities.js';
+import { ContradictionService } from '../contradictions/contradiction.service.js';
 
 export interface ReviewDecision {
   caseId: string;
@@ -28,6 +29,7 @@ export interface ReviewDecision {
 
 @Injectable()
 export class ReviewService {
+  constructor(private readonly contradictions: ContradictionService) {}
   /** The queue, worst-informed first: abstentions, then the least confident. */
   async queue(cap: IntelligenceReads, limit = 100): Promise<Array<Record<string, unknown>>> {
     return (await cap
@@ -71,9 +73,10 @@ export class ReviewService {
       claim: Record<string, unknown> | null;
       lineage: Record<string, unknown> | null;
     },
-  ): Promise<{ caseId: string; state: string; newVersion: number | null }> {
+  ): Promise<{ caseId: string; state: string; newVersion: number | null; contradictions: Array<{ eventType: string; payload: Record<string, unknown> }> }> {
     const tenantId = ctx.tenantId as string;
     const domainId = ctx.domainId as string;
+    const contradictionEvents: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
     const state = a.decision.decision === 'approve' ? 'approved'
       : a.decision.decision === 'correct' ? 'corrected' : 'rejected';
 
@@ -175,6 +178,16 @@ export class ReviewService {
             `corrected claim header invalid: ${(v.errors ?? []).join('; ')}`), 422);
       }
       await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+      // 0066 §5: a corrected version that now contradicts another admitted assertion is LINKED to it (the person who corrected
+      // decided this value; no review is queued on their decision — the contradiction is theirs to adjudicate).
+      const pv = payload as Record<string, unknown>;
+      const conflicts = await this.contradictions.findConflicts(cap, { claimKind: String(pv['claim_kind'] ?? ''), subject: String(pv['subject'] ?? ''), predicate: String(pv['predicate'] ?? ''), objectValue: pv['object_value'], excludeObjectId: objectId });
+      for (const rec of this.contradictions.records({ objectId, version: newVersion, subject: String(pv['subject'] ?? ''), predicate: String(pv['predicate'] ?? ''), value: pv['object_value'] }, conflicts)) {
+        const inserted = await cap.recordContradiction({ ...rec, tenantId, domainId, reviewCaseId: null, actor: a.decider, correlationId: a.correlationId });
+        if (!inserted) continue;
+        const priorRow = ((await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', rec.a.objectId as never).where('object_version' as never, '=', rec.a.version as never).execute()) as Array<Record<string, unknown>>)[0];
+        if (priorRow !== undefined) contradictionEvents.push(this.contradictions.event({ tenantId, domainId, record: rec, assertions: [priorRow, { ...header, payload } as unknown as Record<string, unknown>], reviewCaseId: null, action: 'intelligence.review.decide', actor: a.decider }));
+      }
       // The corrected version keeps a lineage row of its own, so a reader can see
       // that this version came from a person and which evidence it still rests on.
       await cap.recordLineage({
@@ -201,7 +214,7 @@ export class ReviewService {
       eventId: newId(), correlationId: a.correlationId,
     });
 
-    return { caseId: a.caseId, state, newVersion };
+    return { caseId: a.caseId, state, newVersion, contradictions: contradictionEvents };
   }
 }
 

@@ -1,0 +1,39 @@
+
+=== CP-6 batch B6 · GraphChanged / MemoryCorrected subscriptions on the demonstration ===
+
+1. the subscribers
+  ✓ twins: registered subscription 01a09302…, principal 01a09302… (role twin_subscriber), consumer 1.0.0 197ffa8c5454…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ forecasts: registered subscription 01a09302…, principal 01a09302… (role forecast_subscriber), consumer 1.0.0 cbcde85317c8…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ scenarios: registered subscription 01a09302…, principal 01a09302… (role scenario_subscriber), consumer 1.0.0 d2be51c5792f…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ decisions: registered subscription 01a09302…, principal 01a09302… (role decision_subscriber), consumer 1.0.0 fe348542fe4a…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ retrieval: registered subscription 01a09302…, principal 01a09302… (role retrieval_subscriber), consumer 1.0.0 a95b9b4246f0…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ memory-mappings: registered subscription 01a09302…, principal 01a09302… (role mapping_subscriber), consumer 1.0.0 6b361a31d507…, budgets {"backlog_policy":"leave","max_elapsed_ms":600000,"max_items_per_event":200}; worker running true
+  ✓ all six consumers are registered into the dispatcher by their own modules
+  ✓ the domain queue graph.01a084f5-757f-7f03-9cf5-315d74426481.01a084f5-759a-751f-a1dd-38fbd7933057.subscriptions is served by this process
+
+2. the live act — the publisher restates evidence the corridor forecast rests on
+  ✓ correction case 01a09302… applied by the collection manager: evidence 01a084f5… superseded — nobody marks anything
+
+3. MemoryCorrected — delivered to every subscriber within the publisher's tick
+  ✓ event 01a09302…: six deliveries applied 1.1s after the apply
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 1, items ["01a084f5-cd34-7107-90b8-6329986852f8"] → scenario.attention
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · ledger events: 
+  ✓ the corridor forecast says: invalidation 01a09302-5c30-77cf-9b68-225a391b5264: a value it was fitted on was read from the corrected evidence
+
+4. GraphChanged — the strategy owner retracts an edge
+  ✓ edge 01a084f5… (carries) retracted
+  ✓ event 01a09302…: six deliveries applied 1.1s after the retraction
+  · twins            applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · forecasts        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · scenarios        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · decisions        applied   deliveries 1, attempts 0, items [] → (nothing to do)
+  · retrieval        applied   deliveries 1, attempts 1, items ["projections"] → projections.verified
+  · memory-mappings  applied   deliveries 1, attempts 0, items [] → (nothing to do)
+
+5. the status route
+  · 6 subscription(s); 18 recent deliveries; 3 retrieval check(s) (mismatched: 0,0,0); 0 mapping reconciliation(s) proposed

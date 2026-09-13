@@ -7,14 +7,18 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { PredictionModule } from '../prediction/prediction.module.js';
+import { GraphModule } from '../graph/graph.module.js';
 import { TwinController } from './twin.controller.js';
 import { TwinService } from './twins/twin.service.js';
 import { SimulationService } from './simulations/simulation.service.js';
+import { TwinSubscriptionConsumer } from './twins/twin-subscription.consumer.js';
 
+// CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
+// dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
 @Module({
-  imports: [PipelineModule, PredictionModule],
+  imports: [PipelineModule, PredictionModule, GraphModule],
   controllers: [TwinController],
-  providers: [TwinService, SimulationService],
+  providers: [TwinService, SimulationService, TwinSubscriptionConsumer],
   exports: [TwinService, SimulationService],
 })
 export class TwinModule {}

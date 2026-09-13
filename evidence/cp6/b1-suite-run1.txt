@@ -1,0 +1,22 @@
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ ❯ test/int/phase6-propagation-consumer.test.ts (18 tests | 1 failed) 29186ms
+     × INTERRUPTED AFTER THE FIRST COMMITTED ROOT, queue lost, process restarted: the walk resumes at the second root; no duplicate impact or twin event (AU-MEM-0109) 2913ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-propagation-consumer.test.ts > B1 · automatic propagation, durable idempotency, failure and retry, partial walks, the governed path > INTERRUPTED AFTER THE FIRST COMMITTED ROOT, queue lost, process restarted: the walk resumes at the second root; no duplicate impact or twin event (AU-MEM-0109)
+AssertionError: twin events were duplicated: expected +0 to be 1 // Object.is equality
+- Expected
++ Received
+- 1
++ 0
+ ❯ test/int/phase6-propagation-consumer.test.ts:366:79
+    364|     expect(new Set(r.invalidations.map((i) => i.trigger_object_id))).t…
+    365|     expect(r.events).toEqual(['received', 'walking', 'root.walked', 'r…
+    366|     expect(r.twinEvents - r.before.twinEvents, 'twin events were dupli…
+       |                                                                               ^
+    367|     expect((await caseState(r.c))?.propagation_state).toBe('complete');
+    368|   }, 240_000);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 passed (18)
+   Start at  01:35:40
+   Duration  30.19s (transform 445ms, setup 17ms, import 913ms, tests 29.19s, environment 0ms)

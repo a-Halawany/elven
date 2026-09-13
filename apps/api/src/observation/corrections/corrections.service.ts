@@ -230,6 +230,24 @@ export class CorrectionsService {
         correlationId,
       });
 
+      /*
+       * THE ADMISSION REGISTER FOLLOWS THE CORRECTION.
+       *
+       * The register (migration 0051 §3) names the evidence object admitted under each
+       * deterministic item key, and a re-walk compares incoming bytes against it. An
+       * object this correction has just set aside must stop being that name, or a later
+       * walk would record "already held" against evidence nobody holds any more. The
+       * register is re-pointed at the newest surviving admission for the same key, and
+       * stops indexing the key when none survives — one correction at a time, in the
+       * correction's own transaction (0053).
+       */
+      if (a.source_id !== null) {
+        await cap.reindexAdmittedItem({
+          tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
+          sourceId: a.source_id, evdObjectId: a.object_id,
+        });
+      }
+
       superseded.push({ object_id: a.object_id, from: a.object_version, to: nextVersion });
     }
 

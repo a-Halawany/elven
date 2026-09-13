@@ -1,0 +1,1 @@
+INTERFACE REGISTER {"bound":19,"partial":25,"unbound":6}

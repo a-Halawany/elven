@@ -1,0 +1,32 @@
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  2 passed (2)
+apps/web test:       Tests  6 passed (6)
+apps/api test:  Test Files  40 passed (40)
+apps/api test:       Tests  2148 passed (2148)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+ ✓ test/int/phase6-graph-subscriptions-4.test.ts (25 tests) 14938ms
+ ✓ test/int/phase6-executive-requests.test.ts (9 tests) 15625ms
+ ✓ test/int/phase6-repro-serving-lifecycle.test.ts (5 tests) 34314ms
+ Test Files  56 passed (56)
+      Tests  929 passed (929)
+  ✓ public.schema_migrations: +46 row(s), exactly what these migrations declare they add
+=== PASS ===
+# controls — are one command (scripts/gate/c18-gate.mjs), so the 900-second bound covers
+  node scripts/gate/c18-gate.mjs --out "$C18_OUT" \
+c18-watchdog: pid=30069 deadline=900s command=node scripts/gate/c18-gate.mjs --out /home/runner/work/_temp/c18-out --final --expected-sha acaa6a16993cf1426b7d9342f94211e44458a6fe
+c18-gate: produce → /home/runner/work/_temp/c18-out
+c18-gate: verify-offline
+c18-gate: pinned cosign v3.1.3 staged at /home/runner/work/elven/elven/.c19-tools/cosign
+c18-gate: controls-parallel
+ Test Files  7 passed (7)
+      Tests  612 passed (612)
+c18-gate: controls-serial
+ Test Files  2 passed (2)
+      Tests  44 passed (44)
+c18-gate: all 4 stages passed

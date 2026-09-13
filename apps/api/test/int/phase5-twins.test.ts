@@ -82,8 +82,14 @@ beforeAll(async () => {
     values (${extractedClaim}::uuid, 'CLM', ${h.fx.tenantId}::uuid, ${h.fx.domainId}::uuid, 'DOMAIN', 1, 'admitted', 'CP-INT-01', 'principal:fixture',
       'extracted', 'internal', 'intelligence', 'CLM@v2', ${uuidv7()}::uuid, '{"subject":"SYN-PART-MAG","predicate":"weekly_consumption","object_value":"9200"}'::jsonb,
       ${'b'.repeat(64)}, '["EVD:fixture"]'::jsonb)`.execute(h.su);
-  // RECORD time for the probes: after everything above was recorded.
-  knownAfterBackfill = new Date().toISOString();
+  // RECORD time for the probes: after everything above was recorded — read from the RECORD clock
+  // (the database stamps recorded_at from its own clock at microsecond precision), rounded UP to
+  // the millisecond a version's known_at keeps. Taken from this process's clock, floored to the
+  // millisecond, the cut-off landed up to 999 µs BEFORE the claim just recorded whenever the two
+  // clocks sat in the same millisecond or the container's clock ran ahead (observed −1 ms … +107 ms),
+  // and the carried element was then judged 'recorded after known_at' — the twin re-run failure.
+  knownAfterBackfill = ((await sql<{ t: Date }>`select date_trunc('milliseconds', clock_timestamp()) + interval '1 millisecond' as t`
+    .execute(h.su)).rows[0]?.t as Date).toISOString();
 }, 300_000);
 
 afterAll(async () => { await h?.close(); });

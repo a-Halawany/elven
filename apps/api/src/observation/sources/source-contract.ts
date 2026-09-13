@@ -93,9 +93,21 @@ export interface SourceContractV1 {
        * This is addressing, not interpretation: nothing here says what a field
        * MEANS. Without it the response is admitted whole, which is the right
        * answer for an opaque payload.
+       *
+       * A COMPOSITE KEY (§9.7). Some layers are addressed by more than one field:
+       * the IMF PortWatch daily chokepoints series carries one row per (date,
+       * portid), so a page ordered by `date,portid` puts three chokepoints of the
+       * same day under one key if `date` alone addresses it — three evidence objects
+       * per key on the first walk, and two spurious "revisions" on every re-walk.
+       * `item_key_field` therefore also accepts an ORDERED LIST of paths, and the
+       * child's key carries each component's value in the declared order.
+       *
+       * A CONTRACT THAT DECLARES A STRING IS UNCHANGED, byte for byte: the same key,
+       * the same separator, the same framing. Composite framing is reached only by
+       * declaring a list.
        */
       item_path?: string;
-      item_key_field?: string;
+      item_key_field?: string | string[];
       item_time_field?: string;
     };
     freshness_expectation: {
@@ -287,11 +299,46 @@ export function validateSourceContract(input: unknown): ValidationResult {
       if (typeof es.drift_tolerance !== 'number' || es.drift_tolerance < 0) push('expected_schema.drift_tolerance is required');
       // Framing is all-or-nothing: an item path without a key field would produce
       // items nothing can address, and a key field without a path names nothing.
-      if (es.item_path !== undefined && typeof es.item_key_field !== 'string') {
+      const kf = es.item_key_field as unknown;
+      const isSinglePath = typeof kf === 'string';
+      const isComposite = Array.isArray(kf);
+      if (es.item_path !== undefined && !isSinglePath && !isComposite) {
         push('expected_schema.item_key_field is required when expected_schema.item_path declares framing');
       }
-      if (es.item_key_field !== undefined && typeof es.item_path !== 'string') {
+      if (kf !== undefined && typeof es.item_path !== 'string') {
         push('expected_schema.item_path is required when expected_schema.item_key_field is declared');
+      }
+      if (isComposite) {
+        // A composite key is an ORDERED LIST of paths. The order is part of the key —
+        // reordering it renames every item — so it is declared, never inferred.
+        const parts = kf as unknown[];
+        if (parts.length === 0) {
+          push('expected_schema.item_key_field declared as a list must name at least one path');
+        }
+        if (!parts.every((x) => typeof x === 'string' && x.length > 0)) {
+          push('expected_schema.item_key_field declared as a list must contain only non-empty field paths');
+        }
+        if (new Set(parts.map((x) => String(x))).size !== parts.length) {
+          push('expected_schema.item_key_field names the same path more than once; each component must address a different field');
+        }
+      }
+      /*
+       * A SINGLE-PATH KEY CANNOT ADDRESS A MULTI-VALUED WALK.
+       *
+       * §9.7: a backfill whose filter names several values of a second dimension —
+       * `portid IN ('chokepoint1','chokepoint4','chokepoint7')` — returns several rows
+       * per value of the single key field. On a single-path key those rows collide,
+       * and the walk records the extras as revisions of one another. That contract is
+       * refused at registration rather than accepted and mis-collected.
+       */
+      const where = (so.backfill as { where?: unknown } | undefined)?.where;
+      if (isSinglePath && typeof where === 'string') {
+        const literals = new Set((where.match(/'[^']*'/g) ?? []).map((x) => x.toLowerCase()));
+        if (/\bin\s*\(/i.test(where)) {
+          push('security_and_operations.backfill.where uses an IN (…) filter, which returns several rows per value of a single-path expected_schema.item_key_field; declare a composite item_key_field naming every dimension the walk varies');
+        } else if (literals.size > 1) {
+          push('security_and_operations.backfill.where names more than one value, which returns several rows per value of a single-path expected_schema.item_key_field; declare a composite item_key_field naming every dimension the walk varies');
+        }
       }
     }
 

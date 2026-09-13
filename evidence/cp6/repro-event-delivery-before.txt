@@ -1,0 +1,188 @@
+# Codex B7-F1 / B7-F2 reproduced at the database/queue boundary — BEFORE the correction
+# code: 6fc52c9 (the reproduction head: a852c65 + the test-runtime publish-fault hook and the configurable lease; no behaviour change); database: eye_verify8_20260912 at 0064; real Redis, the real publisher and dispatcher
+# command: EYE_DB_NAME=eye_verify8_20260912 npx vitest run --config vitest.int.config.ts --reporter=verbose --silent=false test/int/phase6-repro-event-delivery.test.ts
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ × test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once 7552ms
+   → later rows of A were published while A:1 was still pending: expected [ 'A:50', 'A:51' ] to deeply equal []
+   → rows of A published before their predecessor: expected [ 'A:50' ] to deeply equal []
+   → rows of A published before A:1: expected [ 'A:50', 'A:51' ] to deeply equal []
+   → halted rows that consumed an attempt they were never tried on: expected [ 'A:2×2', 'A:3×2', 'A:4×2', …(45) ] to deeply equal []
+   → A's jobs are not in sequence order on the queue: [17914,17915,17916,17917,17918,17919,17920,17921,17922,17923,17924,17925,17926,17927,17928,17929,17930,17931,17932,17933,17934,17935,17936,17937,17938,17939,17940,17941,17942,17943,17944,17945,17946,17947,17948,17949,17950,17951,17952,17953,17954,17955,17956,17957,17958,17959,17960,17961,17962,17912,17913]: expected false to be true // Object.is equality
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > CONTROL: without a fault, 52 rows across two ticks publish in sequence and are each tried once 1481ms
+ ✓ test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > SETUP: two events predate a twins subscription registered to LEAVE its backlog; the third is delivered 2886ms
+ × test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > REPRODUCTION → CORRECTION: a replay from the beginning returns the three events AND durably makes the two skipped ones eligible — they are delivered to this subscription, once each; the served point moved back 30179ms
+   → the replay re-drove the two skipped events and the received one: expected 1 to be 3 // Object.is equality
+   → the served point must move back to the replayed point: expected 3 to be +0 // Object.is equality
+   → the skipped history delivered and applied did not happen within 30000 ms; last: [{"event_id":"01a095ef-0964-726e-b558-0bcd7395983e","state":"applied","deliveries":2,"replay_seq":1,"partition_seq":"3"}]
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once
+AssertionError: later rows of A were published while A:1 was still pending: expected [ 'A:50', 'A:51' ] to deeply equal []
+- Expected
++ Received
+- []
++ [
++   "A:50",
++   "A:51",
++ ]
+ ❯ test/int/phase6-repro-event-delivery.test.ts:126:100
+    124|     await sleep(2_500);
+    125|     const overtook = (await rowsOf(aIds)).filter((r) => r.status === '…
+    126|     expect.soft(overtook.map(label), 'later rows of A were published w…
+       |                                                                                                    ^
+    127|     expect.soft((await rowsOf([aIds[0]!]))[0]!.status, 'A:1 still pend…
+    128|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once
+AssertionError: rows of A published before their predecessor: expected [ 'A:50' ] to deeply equal []
+- Expected
++ Received
+- []
++ [
++   "A:50",
++ ]
+ ❯ test/int/phase6-repro-event-delivery.test.ts:133:77
+    131|     const aRows = done.filter((r) => r.partition_key === `tenant:${ten…
+    132|     const outOfOrder = aRows.filter((r, i) => i > 0 && r.published_at!…
+    133|     expect.soft(outOfOrder, 'rows of A published before their predeces…
+       |                                                                             ^
+    134|     const beforeA1 = aRows.slice(1).filter((r) => r.published_at!.getT…
+    135|     expect.soft(beforeA1, 'rows of A published before A:1').toEqual([]…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once
+AssertionError: rows of A published before A:1: expected [ 'A:50', 'A:51' ] to deeply equal []
+- Expected
++ Received
+- []
++ [
++   "A:50",
++   "A:51",
++ ]
+ ❯ test/int/phase6-repro-event-delivery.test.ts:135:61
+    133|     expect.soft(outOfOrder, 'rows of A published before their predeces…
+    134|     const beforeA1 = aRows.slice(1).filter((r) => r.published_at!.getT…
+    135|     expect.soft(beforeA1, 'rows of A published before A:1').toEqual([]…
+       |                                                             ^
+    136|     // Durable, recoverable failure handling: A:1's failed attempt cou…
+    137|     // a halted row never consumes the attempt it was not given (befor…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once
+AssertionError: halted rows that consumed an attempt they were never tried on: expected [ 'A:2×2', 'A:3×2', 'A:4×2', …(45) ] to deeply equal []
+- Expected
++ Received
+- []
++ [
++   "A:2×2",
++   "A:3×2",
++   "A:4×2",
++   "A:5×2",
++   "A:6×2",
++   "A:7×2",
++   "A:8×2",
++   "A:9×2",
++   "A:10×2",
++   "A:11×2",
++   "A:12×2",
++   "A:13×2",
++   "A:14×2",
++   "A:15×2",
++   "A:16×2",
++   "A:17×2",
++   "A:18×2",
++   "A:19×2",
++   "A:20×2",
++   "A:21×2",
++   "A:22×2",
++   "A:23×2",
++   "A:24×2",
++   "A:25×2",
++   "A:26×2",
++   "A:27×2",
++   "A:28×2",
++   "A:29×2",
++   "A:30×2",
++   "A:31×2",
++   "A:32×2",
++   "A:33×2",
++   "A:34×2",
++   "A:35×2",
++   "A:36×2",
++   "A:37×2",
++   "A:38×2",
++   "A:39×2",
++   "A:40×2",
++   "A:41×2",
++   "A:42×2",
++   "A:43×2",
++   "A:44×2",
++   "A:45×2",
++   "A:46×2",
++   "A:47×2",
++   "A:48×2",
++   "A:49×2",
++ ]
+ ❯ test/int/phase6-repro-event-delivery.test.ts:139:170
+    137|     // a halted row never consumes the attempt it was not given (befor…
+    138|     expect.soft(aRows[0]!.attempts, 'A:1: one failed attempt and one s…
+    139|     expect.soft(aRows.slice(1).filter((r) => r.attempts !== 1).map((r)…
+       |                                                                                                                                                                          ^
+    140|     // And on the queue itself (the durable transport): A's jobs sit i…
+    141|     const cfg = h.app.get(EYE_CONFIG);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F1 · a failed publish cannot be overtaken by later rows of its partition — across ticks, lease recovery and processes > REPRODUCTION → CORRECTION: 51 rows in A, one in B, a transient fault on A:1 — B:1 proceeds; A:50 and A:51 wait behind A:1; the lease lapses and A publishes in sequence, each row tried once
+AssertionError: A's jobs are not in sequence order on the queue: [17914,17915,17916,17917,17918,17919,17920,17921,17922,17923,17924,17925,17926,17927,17928,17929,17930,17931,17932,17933,17934,17935,17936,17937,17938,17939,17940,17941,17942,17943,17944,17945,17946,17947,17948,17949,17950,17951,17952,17953,17954,17955,17956,17957,17958,17959,17960,17961,17962,17912,17913]: expected false to be true // Object.is equality
+- Expected
++ Received
+- true
++ false
+ ❯ test/int/phase6-repro-event-delivery.test.ts:150:116
+    148|       const ordered = positions.every((p, i) => i === 0 || p > positio…
+    149|       const reversed = positions.every((p, i) => i === 0 || p < positi…
+    150|       expect(ordered || reversed, `A's jobs are not in sequence order …
+       |                                                                                                                    ^
+    151|     } finally { await q.close(); }
+    152|   }, 180_000);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > REPRODUCTION → CORRECTION: a replay from the beginning returns the three events AND durably makes the two skipped ones eligible — they are delivered to this subscription, once each; the served point moved back
+AssertionError: the replay re-drove the two skipped events and the received one: expected 1 to be 3 // Object.is equality
+- Expected
++ Received
+- 3
++ 1
+ ❯ test/int/phase6-repro-event-delivery.test.ts:218:96
+    216|     expect(r.events).toEqual(expect.arrayContaining(past));
+    217|     // THE FINDING: before 0065 the reconciliation re-drove only the e…
+    218|     expect.soft(r.replayed, 'the replay re-drove the two skipped event…
+       |                                                                                                ^
+    219|     const s1 = await servedFrom();
+    220|     expect(s1.checkpoint_seq).toBeNull();
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > REPRODUCTION → CORRECTION: a replay from the beginning returns the three events AND durably makes the two skipped ones eligible — they are delivered to this subscription, once each; the served point moved back
+AssertionError: the served point must move back to the replayed point: expected 3 to be +0 // Object.is equality
+- Expected
++ Received
+- 0
++ 3
+ ❯ test/int/phase6-repro-event-delivery.test.ts:221:102
+    219|     const s1 = await servedFrom();
+    220|     expect(s1.checkpoint_seq).toBeNull();
+    221|     expect.soft(Number(s1.served_from_seq), 'the served point must mov…
+       |                                                                                                      ^
+    222|     const ds = await waitFor('the skipped history delivered and applie…
+    223|     await settle();
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+ FAIL  test/int/phase6-repro-event-delivery.test.ts > B7-F2 · an explicit replay reaches the history a leave-registration skipped > REPRODUCTION → CORRECTION: a replay from the beginning returns the three events AND durably makes the two skipped ones eligible — they are delivered to this subscription, once each; the served point moved back
+Error: the skipped history delivered and applied did not happen within 30000 ms; last: [{"event_id":"01a095ef-0964-726e-b558-0bcd7395983e","state":"applied","deliveries":2,"replay_seq":1,"partition_seq":"3"}]
+ ❯ waitFor test/int/phase6-repro-event-delivery.test.ts:59:35
+     57|     last = await probe();
+     58|     if (ok(last)) return last;
+     59|     if (Date.now() > until) throw new Error(`${what} did not happen wi…
+       |                                   ^
+     60|     await new Promise((r) => setTimeout(r, 200));
+     61|   }
+ ❯ test/int/phase6-repro-event-delivery.test.ts:222:16
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  17:04:13
+   Duration  43.23s (transform 464ms, setup 15ms, import 766ms, tests 42.38s, environment 0ms)

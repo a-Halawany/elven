@@ -1,0 +1,8 @@
+# CP-6 B9 — the unit and gate suites at the B9 candidate (apps/api: pnpm test = vitest run excluding the hermetic meta suite, then the meta suite alone).
+# command: cd apps/api && pnpm test
+ Test Files  40 passed (40)
+      Tests  2148 passed (2148)
+   Duration  219.97s (transform 2.81s, setup 0ms, import 5.72s, tests 1072.51s, environment 2ms)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  195.06s (transform 10ms, setup 0ms, import 15ms, tests 194.98s, environment 0ms)
