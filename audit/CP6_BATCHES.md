@@ -772,8 +772,8 @@ restart.
 404 / 403 / 409 by the kind of refusal, `P0R01` admitted; the executive agent-run refusals (0046) and the
 retired-scenario run refusal (§8) as named rules ahead of the twin run's generic one.
 
-**Harness.** `phase6-repro-serving-lifecycle.test.ts` (5), `phase6-graph-subscriptions-4.test.ts` (23),
-`phase6-executive-requests.test.ts` (7); the B6 harness kept to its six kinds; `codex-corrections` unit double with
+**Harness.** `phase6-repro-serving-lifecycle.test.ts` (5), `phase6-graph-subscriptions-4.test.ts` (25),
+`phase6-executive-requests.test.ts` (9); hosted at `36ce748` (ci 34726253751: 929/929 in 56 files on a fresh database; C19 34726253762); the B6 harness kept to its six kinds; `codex-corrections` unit double with
 the contradiction service; the upgrade proof at 45 migrations, 31 roles, 28 registry rows; gate22
 `LATER_SCENARIO_COVERAGE` for `objects.outbox_declare_floor`.
 
