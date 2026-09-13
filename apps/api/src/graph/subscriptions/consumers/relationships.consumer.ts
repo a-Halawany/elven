@@ -93,7 +93,8 @@ export class RelationshipsConsumer implements SubscriptionConsumer<RelationshipS
                unresolved: { reason: `the corrected claim ${claimId} v${toVersion} is not readable as a REL claim under this subscription; the relationship cannot be re-derived`, failureClass: 'unresolved_dependency' as const, disposition: 'human_review' as const } };
     }
     const accepted = (await cap.readResolutions().selectAll().where('state' as never, '=', 'accepted' as never).execute()) as Row[];
-    const derived = deriveEdgeFromClaim(claim, entitiesByName(accepted));
+    const latestCase = ((await cap.readReviewCases().select(['state'] as never).where('claim_object_id' as never, '=', claimId as never).where('claim_version' as never, '=', toVersion as never).orderBy('opened_at' as never, 'desc').limit(1).execute()) as Row[])[0] ?? null;
+    const derived = deriveEdgeFromClaim(claim, entitiesByName(accepted), latestCase === null ? null : String(latestCase['state']));
     if (!derived.ok) {
       // The builder's own refusal: the item stays open with that reason; the reassessment stays pending for the person.
       return { effect: 'derivation.blocked', effectRef: null, details: { item, claim_object_id: claimId, claim_version: toVersion, builder_reason: derived.reason },
@@ -107,9 +108,10 @@ export class RelationshipsConsumer implements SubscriptionConsumer<RelationshipS
     // 4. The builder's port: asserts the successor and supersedes every asserted edge of the same claim at a lower version —
     //    the pending edge — whose reassessment the 0065 trigger closes as `superseded`. The port's own refusals of the
     //    DERIVATION (the predicate outside the active ontology; a claim a person has not decided) are the person's to
-    //    resolve, not faults to retry: the item stays open with the port's reason (B9 review).
+    //    resolve, not faults to retry: the item stays open with the port's reason — the call runs under a SAVEPOINT so the
+    //    refusal leaves the delivery's transaction usable for the unresolved checkpoint (Codex B9-F2).
     try {
-      await cap.assertEdge({
+      await cap.withSavepoint('rel_assert', () => cap.assertEdge({
         edgeId: newEdgeId, tenantId: scope.tenantId, domainId: scope.domainId,
         subject: e.subject, predicate: e.predicate, object: e.object, validFrom: e.validFrom, validTo: e.validTo,
         claimObjectId: claimId, claimVersion: toVersion, evidenceObjectId: e.evidenceObjectId, evidenceDigest: e.evidenceDigest,
@@ -117,7 +119,7 @@ export class RelationshipsConsumer implements SubscriptionConsumer<RelationshipS
         runId: lineage === null ? e.runId : (lineage['run_id'] as string | null) ?? e.runId,
         mode: lineage === null ? e.mode : String(lineage['mode'] ?? e.mode),
         confidence: e.confidence, actor, eventId: newId(), correlationId,
-      });
+      }));
     } catch (err) {
       const pg = err as { code?: string; message?: string };
       if (pg.code === '22023' && /edge rejected: (predicate .* is not in the domain|the claim behind it is .* for review)/.test(String(pg.message ?? ''))) {

@@ -146,7 +146,9 @@ export class BriefingService {
   async compose(cap: BriefingWrites, ctx: ScopeContext, a: { roomId: string | null; knownAt: string; priorBriefingId: string | null | undefined; narrative: string | null; narrativeCites: string[] },
                 composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), limits: CompositionLimits | number | null = null,
                 /** The composer's clearance in the target context, for a HUMAN composer: the response is a read of the fold, refused before admission when it is not covered (residual review R4a). */
-                composerClearance: string | null = null) {
+                composerClearance: string | null = null,
+                /** B10: the composer's role codes in the target context (a person's bindings; an agent's registered role) — a memory item for an audience ROLE is read only by a holder of it. */
+                composerRoles: readonly string[] = []) {
     const lim: CompositionLimits = typeof limits === 'number' ? { maxReads: limits, maxItems: null, stopOnDegraded: false } : (limits ?? { maxReads: null, maxItems: null, stopOnDegraded: false });
     // every unit of read work is reserved BEFORE it happens; the deadline is checked with it and again before admission (residual review R7)
     const reserve = (what: string): void => {
@@ -250,6 +252,30 @@ export class BriefingService {
           suppressed: suppressedUntil(String(w['warning_id'])) !== null, suppressed_until: suppressedUntil(String(w['warning_id'])) } });
       if (ackIn) push({ kind: 'warning-acknowledged', id: String(w['warning_id']), version: null, title: `acknowledged: ${String(w['title'])}`, at: iso(w['acknowledged_at']), truth_state: 'asserted', synthetic_state: wc?.synthetic_state !== false,
         source_state: 'internal', source: null, owner: String(w['acknowledged_by']), details: { acknowledgement: w['acknowledgement'] } });
+    }
+    // MEMORY ITEMS the composition may read (B10, AU-MEM-0065's retrieval by an agent or a person): an active item recorded by
+    // known_at whose audience PURPOSES admit this composition's purpose, whose classification the composer's clearance covers
+    // and whose audience ROLES (when it names any) the composer holds. Each read is an ACCESS recorded on the item's ledger in
+    // this transaction, under the composer's purpose, naming the version served — exactly as a retrieval through the route
+    // is. An item outside the audience is neither read nor recorded nor mentioned.
+    reserve('the memory items');
+    const readerClearance = composerClearance ?? clearanceOf({ bindings: composerRoles.map((roleCode) => ({ roleCode, scope: 'DOMAIN', tenantId, domainId })) } as never, { tenantId, domainId }); // an agent's: its registered role's clearance (internal)
+    const memoryRows = (await cap.readMemoryItems().selectAll().where('state' as never, '=', 'active' as never).where('recorded_at' as never, '<=', knownAt as never).orderBy('recorded_at' as never).limit(200).execute()) as Array<Record<string, unknown>>;
+    for (const m of memoryRows) {
+      const purposes = (m['audience_purposes'] as string[] | null) ?? [];
+      const roles = (m['audience_roles'] as string[] | null) ?? [];
+      if (!purposes.includes(purposeId)) continue;
+      if (!covers(readerClearance, String(m['classification'] ?? 'internal'))) continue;
+      if (roles.length > 0 && !roles.some((r) => composerRoles.includes(r)) && !composerRoles.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin')) continue;
+      const versions = (await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', String(m['item_id']) as never).where('object_type' as never, '=', 'MEM' as never)
+        .where('recorded_at' as never, '<=', knownAt as never).orderBy('object_version' as never, 'desc').limit(1).execute()) as Array<Record<string, unknown>>;
+      const v = versions[0]; if (v === undefined) continue;
+      const payload = (v['payload'] ?? {}) as Record<string, unknown>;
+      const accessId = await cap.recordMemoryAccess({ itemId: String(m['item_id']), tenantId, domainId, version: Number(v['object_version']), purpose: purposeId, reader: composer, asOf: knownAt, correlationId });
+      controlInputs.push({ synthetic_state: false, classification: v['classification'], rights_profile: null, residency_profile: null, retention_profile: v['retention_profile'], access_policy_ref: null });
+      push({ kind: 'memory', id: String(m['item_id']), version: Number(v['object_version']), title: `memory: ${String(payload['title'] ?? m['title'] ?? '')}`, at: iso(v['recorded_at']), truth_state: String(v['truth_state'] ?? 'asserted'), synthetic_state: false,
+             source_state: 'internal', source: null, owner: String(m['owner_principal_id']),
+             details: { record_class: payload['record_class'] ?? m['record_class'], statement: payload['statement'] ?? null, source: payload['source'] ?? null, classification: v['classification'], validity: payload['validity'] ?? null, retention: payload['retention'] ?? null, access_id: accessId, read_under: purposeId } });
     }
     // packages moved (the room's, or every package in the domain) — dissent is a package event too, and is shown; the package's fold is inherited
     reserve('the package events');

@@ -250,3 +250,30 @@ describe('B9 · the review\'s corrections (0067 §2): a request is fulfilled onl
     expect((await c.review(roomId, 'the delegate once the lender is back', delegate)).review.roomId).toBe(roomId);
   }, 120_000);
 });
+
+describe('B10 · the AGENT\'s retrieval (AU-MEM-0065): a briefing composition — the briefing agent\'s under its own session, or a person\'s — reads the memory items its purpose admits and records each access on the item\'s ledger; an item outside the audience is neither read nor recorded nor mentioned', () => {
+  it('two items — one for the purpose briefing, one for memory only and restricted; the agent\'s run reads the first (kind memory in the briefing, the access row naming the agent under purpose briefing, version 1) and never the second; the executive\'s own composition reads it too under their principal', async () => {
+    const knowledgeOwner = await h.humanWithSession(['knowledge_owner'], 'b10-knowledge-owner');
+    const base = (over: Record<string, unknown>) => ({ recordClass: 'institutional', title: 'Rebooking rule for the briefing', statement: 'BRIEFING-READABLE: when the corridor warning is raised the third shipment is rebooked within 48 hours.', source: { kind: 'human', ref: 'decision room, January 2024' },
+      audience: { classification: 'internal', roles: [], purposes: ['memory', 'briefing'] }, validity: { from: '2024-01-17T00:00:00Z', to: null }, retention: { profile: 'institutional-record-10y', retainUntil: null, basis: 'institutional rules are kept ten years' }, cites: [], related: { decisionId: null, objectiveId: null }, ...over });
+    const readable = (await w.graph.recordMemoryItem(h.req(knowledgeOwner, 'memory.item.record', 'MEM', null, 'memory'), T(), D(), { payload: base({}) }) as { memory: { itemId: string } }).memory.itemId;
+    const hidden = (await w.graph.recordMemoryItem(h.req(knowledgeOwner, 'memory.item.record', 'MEM', null, 'memory'), T(), D(), { payload: base({ title: 'Premium ceiling (memory only, restricted)', statement: 'MEMORY-ONLY RESTRICTED: the premium ceiling and the broker.', audience: { classification: 'restricted', roles: [], purposes: ['memory'] } }) }) as { memory: { itemId: string } }).memory.itemId;
+    const run = (await c.runAgent(briefingAgent.agentId, { task: 'briefing', roomId })).run;
+    expect(run.outcome).toBe('finished');
+    const briefingId = String(run.outputs['briefing_id']);
+    const items = (await sql<{ items: Array<Record<string, unknown>> }>`select items from executive.briefings where briefing_id = ${briefingId}::uuid`.execute(h.su)).rows[0]!.items;
+    const memoryItems = items.filter((i) => i['kind'] === 'memory');
+    expect(memoryItems.map((i) => i['id'])).toEqual([readable]);
+    expect((memoryItems[0]!['details'] as Record<string, unknown>)['statement']).toMatch(/^BRIEFING-READABLE/);
+    expect((memoryItems[0]!['details'] as Record<string, unknown>)['read_under']).toBe('briefing');
+    expect(JSON.stringify(items)).not.toContain('MEMORY-ONLY RESTRICTED');
+    const accesses = (await sql<{ item_id: string; object_version: number; purpose_id: string; reader_principal_id: string }>`select item_id::text, object_version::int, purpose_id, reader_principal_id::text from memory.item_access where item_id in (${readable}::uuid, ${hidden}::uuid) order by accessed_at`.execute(h.su)).rows;
+    expect(accesses).toEqual([{ item_id: readable, object_version: 1, purpose_id: 'briefing', reader_principal_id: briefingAgent.principalId }]);
+    // a person's own composition reads it under their own principal and purpose; the restricted memory-only item is still outside the audience (the purpose)
+    const composed = await c.compose({ roomId, knownAt: new Date().toISOString() });
+    expect(composed.briefing.items.filter((i) => i['kind'] === 'memory').map((i) => i['id'])).toEqual([readable]);
+    const after = (await sql<{ reader_principal_id: string; purpose_id: string }>`select reader_principal_id::text, purpose_id from memory.item_access where item_id = ${readable}::uuid order by accessed_at`.execute(h.su)).rows;
+    expect(after.map((a) => [a.reader_principal_id, a.purpose_id])).toEqual([[briefingAgent.principalId, 'briefing'], [w.executive.principalId, 'briefing']]);
+    expect((await sql<{ n: number }>`select count(*)::int n from memory.item_access where item_id = ${hidden}::uuid`.execute(h.su)).rows[0]!.n).toBe(0);
+  }, 180_000);
+});

@@ -35,6 +35,25 @@ abstract class GraphCore {
   protected async call<T>(fragment: { execute: (tx: Tx) => Promise<{ rows: T[] }> }): Promise<T[]> {
     return (await fragment.execute(this.#tx)).rows;
   }
+
+  /**
+   * A port refusal the caller EXPECTS and records (the builder's port refusing a derivation; a hold refusing a
+   * tombstone) must not leave the enclosing transaction aborted — PostgreSQL ignores every later statement of an
+   * aborted transaction until it ends. The refusable call runs under a savepoint: refused, the savepoint is rolled
+   * back and the transaction goes on; admitted, the savepoint is released (B9-F2).
+   */
+  async withSavepoint<T>(name: string, run: () => Promise<T>): Promise<T> {
+    const sp = name.replace(/[^a-z0-9_]/gi, '');
+    await sql.raw(`savepoint ${sp}`).execute(this.#tx);
+    try {
+      const out = await run();
+      await sql.raw(`release savepoint ${sp}`).execute(this.#tx);
+      return out;
+    } catch (e) {
+      await sql.raw(`rollback to savepoint ${sp}`).execute(this.#tx);
+      throw e;
+    }
+  }
 }
 
 // ───────────────────────── reads ─────────────────────────
@@ -55,6 +74,8 @@ export interface OutstandingCursor {
 }
 
 export interface GraphReads {
+  /** B9-F2: run a refusable port call under a savepoint so an expected refusal leaves the transaction usable. */
+  withSavepoint<T>(name: string, run: () => Promise<T>): Promise<T>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readEntities(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +104,9 @@ export interface GraphReads {
   readCanonicalObjects(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readClaimLineage(): any;
+  /** G2 (B10): the review cases — the person's decision on a claim version lives here, not on the claim's payload. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readReviewCases(): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any;
   /** Phase 4 dependents the walk may reach: forecasts, scenarios and warnings. */
@@ -383,6 +407,7 @@ class GraphCapabilityImpl extends GraphCore
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
+  readReviewCases(): any { return this.from('intelligence.review_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readCorrections(): any { return this.from('observation.correction_current'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

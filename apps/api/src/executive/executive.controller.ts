@@ -14,7 +14,7 @@ import { ExecutiveCapability } from './executive.capabilities.js';
 import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
 import { AgentsService, renderReport, validateRegisterAgent, type AgentTask } from './agents/agents.service.js';
-import { clearanceOf } from '../decision/clearance.js';
+import { bindingReaches, clearanceOf } from '../decision/clearance.js';
 import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
 import { RequestsService, validateRequest } from './requests/requests.service.js';
@@ -124,7 +124,9 @@ export class ExecutiveController {
           narrative: typeof p.narrative === 'string' ? p.narrative : null, narrativeCites: Array.isArray(p.narrativeCites) ? p.narrativeCites.filter((x): x is string => typeof x === 'string') : [],
         }, principal.principalId, via, agentId, envelope.purpose_id ?? 'briefing', envelope.correlation_id, briefingId, null,
         // the composition is returned to the composer: a human reads it under the clearance the target context gives (residual review R4a)
-        via === 'human' ? clearanceOf(principal, { tenantId: scope.tenantId, domainId: scope.domainId }) : null);
+        via === 'human' ? clearanceOf(principal, { tenantId: scope.tenantId, domainId: scope.domainId }) : null,
+        // B10: the composer's roles in the target — a memory item for an audience role is read by a holder of it
+        principal.bindings.filter((b) => bindingReaches(b, { tenantId: scope.tenantId, domainId: scope.domainId })).map((b) => b.roleCode));
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
     return { briefing: out.result, receipt: receipt(out) };

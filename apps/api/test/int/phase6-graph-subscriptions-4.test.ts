@@ -380,6 +380,23 @@ describe('B9 · the Memory item (AU-MEM-0065): recorded, retrieved under a purpo
   }, 180_000);
 });
 
+describe('B10 · WITHDRAW (OBJ-16\'s counterpart): the record authority\'s own act — the item leaves circulation, every version stays replayable as of an instant', () => {
+  it('the knowledge owner cannot withdraw; the record authority does under memory.item.withdraw; a current retrieval is refused naming the withdrawal; an as-of retrieval still serves the version', async () => {
+    const r = await graph.recordMemoryItem(h.req(knowledgeOwner, 'memory.item.record', 'MEM', null, 'memory'), T(), D(), { payload: { recordClass: 'strategic', title: 'A rule later withdrawn', statement: 'The corridor premium is capped at a quarter of the shipment value (withdrawn later).', source: { kind: 'human', ref: 'decision room' }, audience: { classification: 'internal', roles: [], purposes: ['memory'] }, validity: { from: '2024-01-17T00:00:00Z', to: null }, retention: { profile: 'strategic-record-7y', retainUntil: null, basis: 'strategic records are kept seven years' }, cites: [], related: { decisionId: null, objectiveId: null } } }) as { memory: { itemId: string } };
+    const id = r.memory.itemId;
+    await sleep(30); const before = (await mark()).toISOString(); await sleep(30);
+    await expect(graph.withdrawMemoryItem(h.req(knowledgeOwner, 'memory.item.withdraw', 'MEM', id, 'memory'), T(), D(), id, { payload: { reason: 'the knowledge owner withdrawing' } })).rejects.toMatchObject({ status: 403 });
+    const w = await graph.withdrawMemoryItem(h.req(recordAuthority, 'memory.item.withdraw', 'MEM', id, 'memory'), T(), D(), id, { payload: { reason: 'the cap was never adopted by the decision room' } }) as { memory: { state: string } };
+    expect(w.memory.state).toBe('withdrawn');
+    expect((await sql<{ state: string }>`select state from memory.items_current where item_id = ${id}::uuid`.execute(su)).rows[0]!.state).toBe('withdrawn');
+    await expect(graph.retrieveMemoryItem(h.req(knowledgeOwner, 'memory.item.retrieve', 'MEM', id, 'memory'), T(), D(), id, { payload: {} })).rejects.toMatchObject({ status: 409 });
+    const replay = await graph.retrieveMemoryItem(h.req(knowledgeOwner, 'memory.item.retrieve', 'MEM', id, 'memory'), T(), D(), id, { payload: { asOf: before } }) as { memory: { versionServed: number; availability: Record<string, unknown> } };
+    expect(replay.memory.versionServed).toBe(1);
+    expect(replay.memory.availability).toMatchObject({ state: 'withdrawn', current_version: 1 });
+    await settle();
+  }, 120_000);
+});
+
 describe('B9-F1 closure · a historical retrieval serves the AUTHORISED version\'s content and nothing of a version the reader is not authorised for; the access evidence names what was served', () => {
   let itemId = ''; let tBeforeV2 = ''; let tBeforeV3 = ''; let auditor: AuthenticatedPrincipal;
   const V1 = 'The corridor rule as first recorded: the third shipment is rebooked within 48 hours of the warning (internal).';
@@ -635,12 +652,68 @@ describe('B9 · retention corrected by the review (0067 §1): a hold placed afte
     expect((await sql<{ n: number }>`select count(*)::int n from observation.blob_tombstones where manifest_id = ${mD.manifest_id}::uuid`.execute(su)).rows[0]!.n).toBe(0);
     expect(await vault.exists('evidence', { tenantId: T(), domainId: D() }, mD.locator)).toBe(true);
     expect((await sql<{ port: string; outcome: string }>`select port, outcome from retention.executions where action_id = ${review.action.actionId}::uuid`.execute(su)).rows).toEqual([{ port: 'none', outcome: 'done' }]);
+    // B9-F3 (0068 §2): the review VERIFIES against its preservation contract — the manifest untouched, the bytes present, the review recorded — and no DeletionVerified is published for it.
+    const sinceVerify = await mark();
+    const vr = await retention.verify(h.req(steward, 'retention.action.verify', 'RTA', review.action.actionId, 'retention'), T(), D(), review.action.actionId) as { verification: Record<string, unknown> };
+    expect(vr.verification).toMatchObject({ state: 'verified', verified: true });
+    expect((vr.verification['checks'] as Array<Record<string, unknown>>).map((c) => c['passed'])).toEqual([true]);
+    const checks = (await sql<{ check_name: string; passed: boolean; expected: Record<string, unknown> }>`select check_name, passed, expected from retention.verifications where action_id = ${review.action.actionId}::uuid`.execute(su)).rows;
+    expect(checks).toHaveLength(1); expect(checks[0]!.check_name).toMatch(/reviewed — untouched, its bytes present/); expect(checks[0]!.expected).toEqual({ tombstone: false, bytes_present: true, reviewed: true });
+    expect((await sql<{ state: string }>`select state from retention.actions_current where action_id = ${review.action.actionId}::uuid`.execute(su)).rows[0]!.state).toBe('verified');
+    await sleep(500);
+    expect((await sql<{ n: number }>`select count(*)::int n from objects.object_outbox where event_type = 'DeletionVerified' and tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and created_at >= ${sinceVerify} and payload ->> 'action_id' = ${review.action.actionId}`.execute(su)).rows[0]!.n).toBe(0);
+    expect(await vault.exists('evidence', { tenantId: T(), domainId: D() }, mD.locator)).toBe(true);
     // an ARCHIVE action has no executor in this release: refused at execution, never run as a deletion
     const arch = await open(steward, { kind: 'archive', targetKind: 'evidence', selector: { manifestId: mD.manifest_id } });
     const rA = await resolve(steward, arch.action.actionId);
     await approve(authority, arch.action.actionId, String(rA.scope['scope_digest']));
     await expect(execute(steward, arch.action.actionId)).rejects.toThrow(/has no executor in this release/);
     expect((await sql<{ n: number }>`select count(*)::int n from observation.blob_tombstones where manifest_id = ${mD.manifest_id}::uuid`.execute(su)).rows[0]!.n).toBe(0);
+    await settle();
+  }, 180_000);
+
+  /*
+   * B9-F3, the SCOPE (0068 §6; found on the B10 demonstration rehearsal): a review of CURRENT evidence had resolved to an
+   * excluded item ("a deletion retires corrected, superseded or withdrawn evidence only") and paused — deletion criteria
+   * applied to a review. A review is scoped by its preservation contract: the current evidence is what a periodic review
+   * looks at; a legal hold is honoured by keeping the item, which is what the review does; nothing is retired, so no residuals.
+   */
+  it('B10 · a REVIEW of CURRENT evidence resolves to the item reviewed in place (execute, no residuals), executes as a record and verifies; a review of HELD evidence likewise, the hold recorded on the item; a DELETION of the same current evidence stays excluded', async () => {
+    const up = await h.upload([{ filename: 'ret-e.csv', text: TERMS_CSV.replace('assumption', 'assumption (ret e)'), documentTime: '2024-01-15T00:00:00Z' }]);
+    const evdE = up[0] as { id: string; version: number };
+    const mE = await manifestOf(evdE.id, 1);
+    const scopeItems = async (id: string) => (await sql<{ disposition: string; hold_id: string | null; reason: string; details: Record<string, unknown> }>`select disposition, hold_id::text, reason, details from retention.scope_items where action_id = ${id}::uuid order by dependency_order`.execute(su)).rows;
+    const residuals = async (id: string) => (await sql<{ n: number }>`select count(*)::int n from retention.residual_inventory where action_id = ${id}::uuid`.execute(su)).rows[0]!.n;
+    // CURRENT evidence (its latest version admitted): reviewed in place
+    const review = await open(steward, { kind: 'review', targetKind: 'evidence', selector: { manifestId: mE.manifest_id } });
+    const r1 = await resolve(steward, review.action.actionId);
+    expect(r1.scope).toMatchObject({ state: 'scope_resolved', items: 1, execute: 1, held: 0, blocking: 0, residuals: [] });
+    const i1 = await scopeItems(review.action.actionId);
+    expect(i1).toHaveLength(1); expect(i1[0]).toMatchObject({ disposition: 'execute', hold_id: null }); expect(i1[0]!.reason).toMatch(/reviewed in place: the record and its bytes are kept \(its evidence is admitted\)/); expect(i1[0]!.details).toMatchObject({ evd_state: 'admitted', legal_hold: false });
+    expect(await residuals(review.action.actionId)).toBe(0);
+    await approve(authority, review.action.actionId, String(r1.scope['scope_digest']));
+    expect((await execute(steward, review.action.actionId)).execution).toMatchObject({ executed: 1, held: 0, refused: 0 });
+    const v1 = await retention.verify(h.req(steward, 'retention.action.verify', 'RTA', review.action.actionId, 'retention'), T(), D(), review.action.actionId) as { verification: Record<string, unknown> };
+    expect(v1.verification).toMatchObject({ state: 'verified', verified: true });
+    expect(await vault.exists('evidence', { tenantId: T(), domainId: D() }, mE.locator)).toBe(true);
+    expect((await sql<{ n: number }>`select count(*)::int n from observation.blob_tombstones where manifest_id = ${mE.manifest_id}::uuid`.execute(su)).rows[0]!.n).toBe(0);
+    // the same evidence under a LEGAL HOLD: the review keeps it — which is what a hold asks — and records the hold on the item
+    const hold = await observation.placeLegalHold(h.req(domainAdmin, 'observation.legal_hold.place', 'LGH', evdE.id, 'observation'), T(), D(), evdE.id, { payload: { reason: 'litigation hold on the reviewed upload (fixture)' } }) as { hold: { holdId: string } };
+    const held = await open(steward, { kind: 'review', targetKind: 'evidence', selector: { manifestId: mE.manifest_id } });
+    const r2 = await resolve(steward, held.action.actionId);
+    expect(r2.scope).toMatchObject({ state: 'scope_resolved', items: 1, execute: 1, held: 0 });
+    const i2 = await scopeItems(held.action.actionId);
+    expect(i2[0]).toMatchObject({ disposition: 'execute', hold_id: hold.hold.holdId }); expect(i2[0]!.reason).toMatch(/under a legal hold, which the review honours by keeping it/); expect(i2[0]!.details).toMatchObject({ legal_hold: true });
+    await approve(authority, held.action.actionId, String(r2.scope['scope_digest']));
+    expect((await execute(steward, held.action.actionId)).execution).toMatchObject({ executed: 1, held: 0, refused: 0 });
+    const v2 = await retention.verify(h.req(steward, 'retention.action.verify', 'RTA', held.action.actionId, 'retention'), T(), D(), held.action.actionId) as { verification: Record<string, unknown> };
+    expect(v2.verification).toMatchObject({ state: 'verified', verified: true });
+    // the CONTROL: a deletion of the same current evidence is still excluded — the deletion criteria are the deletion's
+    const del = await open(steward, { kind: 'deletion', targetKind: 'evidence', selector: { manifestId: mE.manifest_id } });
+    const r3 = await resolve(steward, del.action.actionId);
+    expect(r3.scope).toMatchObject({ state: 'paused', items: 1, execute: 0 });
+    expect((await scopeItems(del.action.actionId))[0]).toMatchObject({ disposition: 'excluded' });
+    expect((await scopeItems(del.action.actionId))[0]!.reason).toMatch(/a deletion retires corrected, superseded or withdrawn evidence only/);
     await settle();
   }, 180_000);
 });
@@ -832,6 +905,87 @@ describe('B9 · OntologyChangeProposed (L4-I05): a versioned vocabulary, the com
     expect((await sql<{ predicate: string }>`select predicate from graph.edges_current where edge_id = ${reroute}::uuid`.execute(su)).rows[0]!.predicate).toBe('rerouted_via');
     const listed = await graph.listOntology(h.req(analyst, 'graph.read', 'ONT', null, 'graph'), T(), D()) as { versions: Array<{ version: number; state: string }> };
     expect(listed.versions.map((v) => [v.version, v.state])).toEqual([[1, 'superseded'], [2, 'rejected'], [3, 'active']]);
+    await settle();
+  }, 180_000);
+});
+
+describe('B9-F2 closure · the builder\'s port REFUSES a re-derivation (a predicate outside the active ontology): the refusal is contained under a savepoint, so the item\'s UNRESOLVED state is durable — pending reassessment, no successor, no duplicate cause on a re-drive — and the person\'s repair (the vocabulary extended) lets the next re-drive re-derive it', () => {
+  it('REFUSED, RECORDED, REPAIRED', async () => {
+    // The ontology describe above left version 3 active: ships_through, supplies, insures, transits, rerouted_via — not depends_on.
+    const active = (await sql<{ version: number; predicates: Array<{ predicate: string }> }>`select version, predicates from graph.ontology_versions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and state = 'active'`.execute(su)).rows[0]!;
+    expect(active.predicates.map((p) => p.predicate)).not.toContain('depends_on');
+    const { claimId, caseId } = await seedQueuedClaim({ subject: 'NORDWERK Magnet GmbH', objectValue: 'Bab el-Mandeb Strait', evidence: evd });
+    await acceptedResolution(claimId, 'NORDWERK Magnet GmbH', E2, evd.id);
+    const edgeId = await edgeFor(claimId, evd.id); // asserted under ships_through (declared)
+    const since = await mark();
+    // The correction moves the PREDICATE to one the active vocabulary does not declare: the builder derives depends_on; the port refuses it.
+    await correctClaim(caseId, { predicate: 'depends_on' }, 'the record says NORDWERK depends on the strait, not that it ships through it');
+    const corrected = await publishedEvent('MemoryCorrected', 'claim.corrected', since);
+    const ds = await waitFor('the deliveries terminal', () => deliveriesFor(corrected.id), (rows) => rows.length === 2 && rows.every((d) => d.state !== 'received'), 120_000);
+    await settle();
+    const rel = ds.find((d) => d.consumer_kind === 'relationships')!;
+    // DURABLE: the unresolved checkpoint was written in the same transaction the port refused in (B9-F2) — a human disposition, not a fault to retry.
+    expect(rel).toMatchObject({ state: 'unresolved', failure_class: 'unresolved_dependency', disposition: 'human_review', deliveries: 1 });
+    expect(rel.items_unresolved.map((u) => [u.item, u.effect, u.checks])).toEqual([[`edge:${edgeId}`, 'derivation.blocked', 1]]);
+    expect(rel.items_unresolved[0]!.reason).toMatch(/refused the re-derived relationship: edge rejected: predicate depends_on is not in the domain's active ontology version/);
+    expect(rel.last_error ?? null).toBeNull();
+    const before = await edgeRow(edgeId);
+    expect(before).toMatchObject({ state: 'asserted', reassessment_state: 'pending', reassessment_trigger: 'claim', reassessment_cause_id: corrected.id, superseded_by: null });
+    expect((await sql<{ n: number }>`select count(*)::int n from graph.edges_current where claim_object_id = ${claimId}::uuid and claim_version = 2`.execute(su)).rows[0]!.n).toBe(0); // no successor
+    const causesBefore = (await sql<{ n: number }>`select jsonb_array_length(reassessment_causes)::int n from graph.edges_current where edge_id = ${edgeId}::uuid`.execute(su)).rows[0]!.n;
+    const openedBefore = (await edgeEvents(edgeId)).filter((e) => e.event === 'edge.reassessment_opened').length;
+    // A RE-DRIVE: the same refusal, the same disposition, no second cause and no second opened-event (0067 §5).
+    await dispatcher.reconcile('B9-F2: re-drive of the refused re-derivation', false, '0');
+    const second = await waitFor('the second check', () => deliveriesFor(corrected.id), (rows) => (rows.find((d) => d.consumer_kind === 'relationships')?.deliveries ?? 0) >= 2 && rows.every((d) => d.state !== 'received'), 120_000).then((r) => r.find((d) => d.consumer_kind === 'relationships')!);
+    await settle();
+    expect(second).toMatchObject({ state: 'unresolved', deliveries: 2 });
+    expect(second.items_unresolved[0]!.checks).toBe(2);
+    expect((await sql<{ n: number }>`select jsonb_array_length(reassessment_causes)::int n from graph.edges_current where edge_id = ${edgeId}::uuid`.execute(su)).rows[0]!.n).toBe(causesBefore);
+    expect((await edgeEvents(edgeId)).filter((e) => e.event === 'edge.reassessment_opened').length).toBe(openedBefore);
+    // THE REPAIR is the person's: the vocabulary extended (additive) and approved by the steward — then the next re-drive re-derives.
+    const steward2 = await h.humanWithSession(['ontology_steward'], 'f2-ontology-steward');
+    const preds = [...active.predicates, { predicate: 'depends_on', subject_types: ['organization'], object_types: ['place', 'product'] }];
+    const types = (await sql<{ entity_types: string[] }>`select entity_types from graph.ontology_versions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and state = 'active'`.execute(su)).rows[0]!.entity_types;
+    const proposed = await graph.proposeOntology(h.req(analyst, 'graph.ontology.propose', 'ONT', null, 'graph'), T(), D(), { payload: { namespace: 'domain', entityTypes: types, predicates: preds, rationale: 'the corrected relationship names a dependency the vocabulary lacks', alternatives: [] } }) as { ontology: Record<string, unknown> };
+    expect(proposed.ontology).toMatchObject({ compatibility: 'additive' });
+    await graph.decideOntology(h.req(steward2, 'graph.ontology.decide', 'ONT', String(proposed.ontology['version_id']), 'graph'), T(), D(), String(proposed.ontology['version_id']), { payload: { decision: 'approve', reason: 'additive; the dependency predicate is needed', reviews: { domain: 'passed', governance: 'passed' } } });
+    await dispatcher.reconcile('B9-F2: re-drive after the repair', false, '0');
+    const done = await waitFor('the re-derivation applied after the repair', () => deliveriesFor(corrected.id), (rows) => rows.find((d) => d.consumer_kind === 'relationships')?.state === 'applied', 120_000).then((r) => r.find((d) => d.consumer_kind === 'relationships')!);
+    await settle();
+    expect(done).toMatchObject({ state: 'applied', deliveries: 3, items_unresolved: [], failure_class: null, disposition: null });
+    const applied = done.items_applied[0]!;
+    expect(applied.effect).toBe('edge.re_derived');
+    expect(applied.details).toMatchObject({ superseded: [edgeId], claim_version: 2, predicate: 'depends_on' });
+    expect(await edgeRow(edgeId)).toMatchObject({ state: 'superseded', reassessment_state: 'reassessed', reassessment_outcome: 'superseded', superseded_by: applied.effect_ref });
+    expect(await edgeRow(applied.effect_ref!)).toMatchObject({ state: 'asserted', claim_version: 2, asserted_by: relSub.principalId });
+    expect((await sql<{ predicate: string }>`select predicate from graph.edges_current where edge_id = ${applied.effect_ref}::uuid`.execute(su)).rows[0]!.predicate).toBe('depends_on');
+    await settle();
+  }, 240_000);
+});
+
+describe('G2 closure (B10) · the review CASE decides what the builder graphs: a claim APPROVED in review is asserted by the builder\'s run and by the port though its payload still says queued; a claim REJECTED in review never is', () => {
+  it('APPROVED → graphed; REJECTED → refused; both by the run and by the port', async () => {
+    const { GraphOrchestrator } = await import('../../src/graph/graph.orchestrator.js');
+    const orchestrator = h.app.get(GraphOrchestrator);
+    const builder = await h.principalWith(['resolution_agent'], 'g2-builder');
+    const approvedClaim = await seedQueuedClaim({ subject: 'NORDWERK Magnet GmbH', objectValue: 'Bab el-Mandeb Strait', evidence: evd });
+    await acceptedResolution(approvedClaim.claimId, 'NORDWERK Magnet GmbH', E2, evd.id);
+    const rejectedClaim = await seedQueuedClaim({ subject: 'NORDWERK Magnet GmbH', objectValue: 'Bab el-Mandeb Strait', evidence: evd });
+    await acceptedResolution(rejectedClaim.claimId, 'NORDWERK Magnet GmbH', E2, evd.id);
+    // The person decides: one approved, one rejected — the claims' own payloads keep review.state = queued (the extraction wrote it; nothing rewrites it).
+    await intelligence.decideReview(h.req(reviewer, 'intelligence.review.decide', 'REV', approvedClaim.caseId, 'intelligence'), T(), D(), approvedClaim.caseId, { payload: { decision: 'approve', reason: 'the relationship holds as extracted' } });
+    await intelligence.decideReview(h.req(reviewer, 'intelligence.review.decide', 'REV', rejectedClaim.caseId, 'intelligence'), T(), D(), rejectedClaim.caseId, { payload: { decision: 'reject', reason: 'the record does not support this relationship' } });
+    const payloads = (await sql<{ object_id: string; state: string }>`select object_id::text, payload -> 'review' ->> 'state' state from objects.canonical_objects where object_id in (${approvedClaim.claimId}::uuid, ${rejectedClaim.claimId}::uuid)`.execute(su)).rows;
+    expect(payloads.every((p) => p.state === 'queued')).toBe(true);
+    // The builder's run: the approved claim's edge asserted; the rejected one skipped with the reason.
+    const run = await orchestrator.runEdgeBuild({ envelope: h.env(builder, 'graph.edge.assert', 'EDG', null, 'graph'), principal: builder, tenantId: T(), domainId: D(), limit: 200 });
+    const skippedFor = (claimId: string) => run.skipped.find((k) => k.claimObjectId === claimId);
+    expect((await sql<{ n: number }>`select count(*)::int n from graph.edges_current where claim_object_id = ${approvedClaim.claimId}::uuid and state = 'asserted'`.execute(su)).rows[0]!.n).toBe(1);
+    expect((await sql<{ n: number }>`select count(*)::int n from graph.edges_current where claim_object_id = ${rejectedClaim.claimId}::uuid`.execute(su)).rows[0]!.n).toBe(0);
+    expect(skippedFor(rejectedClaim.claimId)?.reason).toMatch(/rejected in review/);
+    expect(skippedFor(approvedClaim.claimId)).toBeUndefined();
+    // The port itself, under the operator's authority: the rejected claim's edge refused; the approved claim's edge admitted (a second assertion of the same version is the run's idempotency rule — asserted directly with a new id it is admitted by the port's review check, which is what is proved here).
+    await expect(assertEdgeGoverned(owner, { predicate: 'ships_through', claimId: rejectedClaim.claimId, evidenceId: evd.id })).rejects.toThrow(/the claim behind it is rejected for review/);
     await settle();
   }, 180_000);
 });

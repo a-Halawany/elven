@@ -570,7 +570,10 @@ export class GraphOrchestrator {
         .where('object_type' as never, '=', 'REL' as never)
         .orderBy('recorded_at' as never, 'desc')
         .limit(MAX_REL_CLAIMS).execute()) as Array<Record<string, unknown>>;
-      return { accepted, existing, rows };
+      // G2 (B10): the review CASES decide — a claim approved in review is graphed though its payload still says queued.
+      const cases = rows.length === 0 ? [] : (await cap.readReviewCases().select(['claim_object_id', 'claim_version', 'state', 'opened_at'] as never)
+        .where('claim_object_id' as never, 'in', [...new Set(rows.map((r) => String(r['object_id'])))] as never).orderBy('opened_at' as never).execute()) as Array<Record<string, unknown>>;
+      return { accepted, existing, rows, cases };
     });
 
     /*
@@ -611,7 +614,8 @@ export class GraphOrchestrator {
 
       // A claim still awaiting review is not a fact about the world; an end that does not resolve, or resolves to more
       // than one entity, is not an endpoint; a self-edge is not a relationship; no lineage, no edge (derive.ts).
-      const derived = deriveEdgeFromClaim(claim, byName);
+      const caseState = world.cases.filter((c) => String(c['claim_object_id']) === String(claim['object_id']) && Number(c['claim_version']) === Number(claim['object_version'])).at(-1)?.['state'] ?? null;
+      const derived = deriveEdgeFromClaim(claim, byName, caseState === null ? null : String(caseState));
       if (!derived.ok) { outcome.skipped.push({ claimObjectId: claimId, reason: derived.reason }); continue; }
       const { subject, object, predicate, validFrom, validTo, evidenceObjectId, evidenceDigest, runId: lineageRunId, mode, confidence } = derived.edge;
 

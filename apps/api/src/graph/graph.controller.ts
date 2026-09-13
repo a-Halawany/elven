@@ -717,7 +717,7 @@ export class GraphController {
     if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
     const out = await this.pipeline.write(
       envelope, principal,
-      this.route(tenantId, domainId, 'memory.item.supersede', 'MEM', itemId),
+      this.route(tenantId, domainId, 'memory.item.withdraw', 'MEM', itemId),
       GraphCapability.memory,
       async (cap) => {
         await cap.withdrawMemoryItem({ itemId, tenantId, domainId, reason, actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
