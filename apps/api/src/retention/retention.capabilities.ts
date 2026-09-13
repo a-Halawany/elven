@@ -2,9 +2,14 @@
  * The retention module's capabilities (0066 §4): what a governed retention act may read and write — the retention
  * ledgers, the observation manifests/holds/tombstones it acts on, the log's floor. One capability per transaction, bound
  * to the route's action; every port asserts that action itself.
+ *
+ * CP-6 B11 (0070 §2, §3): the tier ledger and the archive port (an executing archive action moves bytes to the archive
+ * tier), the export package ledger with its record and revoke ports, the source contracts and canonical rows the export
+ * packages, and the pause with its failure class.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
+import { tierOf } from '../observation/observation.capabilities.js';
 
 type Row = Record<string, unknown>;
 
@@ -21,8 +26,17 @@ export interface RetentionReads {
   readManifests(): any;
   readTombstones(): any;
   readLegalHolds(): any;
+  /** B11 (0070 §3): the export packages, one row per customer-export action (revoked once, never deleted). */
+  readExportPackages(): any;
+  /** B11 (0070 §2): the tier ledger (a manifest's tier is its latest row). */
+  readBlobTiers(): any;
+  /** B11: the source contracts (the export's data-rights gate) and the canonical rows (the export's records). */
+  readSourceContracts(): any;
+  readCanonicalObjects(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   outboxPartitionTelemetry(): Promise<Row[]>;
+  /** B11: a manifest's tier as the ledger says — 'hot' when it never moved. */
+  tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }>;
 }
 
 export interface RetentionWrites extends RetentionReads {
@@ -36,12 +50,23 @@ export interface RetentionWrites extends RetentionReads {
   finishExecution(a: { actionId: string; tenantId: string; domainId: string; outcome: 'executed' | 'failed'; reason: string | null; actor: string; correlationId: string }): Promise<void>;
   verifyAction(a: { actionId: string; tenantId: string; domainId: string; observed: Row; actor: string; correlationId: string }): Promise<Row>;
   withdrawAction(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
-  /** 0067 §1: an execution rolled back because the scope changed — the action paused for re-resolution, its approvals revoked. */
-  pauseAction(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
+  /**
+   * 0067 §1 / 0070 §5: an execution rolled back — the action paused for re-resolution with its failure class (`legal_hold` when
+   * omitted: a hold placed since the approval; `authority_disputed`: the export's rights withdrawn; `unresolved_dependency`: a
+   * tombstone or a live reference since the approval; `infrastructure`: a copy or a package build failed — disposition retry), its
+   * approvals revoked in every case.
+   */
+  pauseAction(a: { actionId: string; tenantId: string; domainId: string; reason: string; failureClass?: 'legal_hold' | 'unresolved_dependency' | 'authority_disputed' | 'infrastructure'; actor: string; correlationId: string }): Promise<void>;
   /** 0067 §1: the vault refused a removal after the record committed — a pending bytes residual on the executed action. */
   recordBytesResidual(a: { actionId: string; tenantId: string; domainId: string; manifestRef: string; locator: string; error: string; actor: string; correlationId: string }): Promise<void>;
   /** The observation port: refuses a held manifest (0066 §4); idempotent. */
   tombstoneManifest(a: { tombstoneId: string; tenantId: string; domainId: string; manifestId: string; reason: string; correlationId: string }): Promise<boolean>;
+  /** B11 (0070 §2): the archive port — the move to the archive tier recorded, only for an executing archive action's item, under the manifest's own digest; false when already archived. */
+  archiveManifest(a: { recordId: string; tenantId: string; domainId: string; manifestId: string; actionId: string; contentDigest: string; actor: string; correlationId: string }): Promise<boolean>;
+  /** B11 (0070 §3): the export package recorded after its files were written — the digests and the signature block bound to the action, its scope digest and the live approval. */
+  recordExportPackage(a: { actionId: string; tenantId: string; domainId: string; approvalId: string; manifestDigest: string; packageDigest: string; signature: Row; objectCount: number; excludedCount: number; byteTotal: number; actor: string; correlationId: string }): Promise<Row>;
+  /** B11 (0070 §3): the package revoked once by the retention authority (retention.export.revoke); the bytes go after the commit. */
+  revokeExport(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /** The outbox port: the floor moved by this executing action only. */
   declareFloor(a: { partitionKey: string; toSeq: number; actionId: string }): Promise<Row>;
   /** A refused port call must not abort the recording transaction: the call runs under a savepoint. */
@@ -71,8 +96,13 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readManifests(): any { return this.from('observation.blob_manifests'); }
   readTombstones(): any { return this.from('observation.blob_tombstones'); }
   readLegalHolds(): any { return this.from('observation.legal_holds'); }
+  readExportPackages(): any { return this.from('retention.export_packages'); }
+  readBlobTiers(): any { return this.from('observation.blob_tier_records'); }
+  readSourceContracts(): any { return this.from('observation.source_contracts_current'); }
+  readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async outboxPartitionTelemetry(): Promise<Row[]> { return this.call<Row>(sql`select * from objects.outbox_partition_telemetry()`); }
+  async tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> { return tierOf(this, manifestId); }
 
   async declareSchedule(a: Parameters<RetentionWrites['declareSchedule']>[0]): Promise<void> {
     await this.call(sql`select retention.declare_schedule(${a.scheduleId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.retentionProfile}, ${a.targetKind}, ${a.actionKind}, ${a.dueAfter}::interval, ${JSON.stringify(a.selector)}::jsonb, ${a.owner}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
@@ -109,7 +139,7 @@ class RetentionCapabilityImpl implements RetentionWrites {
     await this.call(sql`select retention.withdraw_action(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
   async pauseAction(a: Parameters<RetentionWrites['pauseAction']>[0]): Promise<void> {
-    await this.call(sql`select retention.pause_action(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+    await this.call(sql`select retention.pause_action(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.failureClass ?? 'legal_hold'}::text, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
   async recordBytesResidual(a: Parameters<RetentionWrites['recordBytesResidual']>[0]): Promise<void> {
     await this.call(sql`select retention.record_bytes_residual(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.manifestRef}, ${a.locator}, ${a.error}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
@@ -117,6 +147,18 @@ class RetentionCapabilityImpl implements RetentionWrites {
   async tombstoneManifest(a: Parameters<RetentionWrites['tombstoneManifest']>[0]): Promise<boolean> {
     const rows = await this.call<{ ok: boolean }>(sql`select observation.tombstone_blob(${a.tombstoneId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.manifestId}::uuid, ${a.reason}, ${a.correlationId}::uuid) as ok`);
     return rows[0]?.ok ?? false;
+  }
+  async archiveManifest(a: Parameters<RetentionWrites['archiveManifest']>[0]): Promise<boolean> {
+    const rows = await this.call<{ ok: boolean }>(sql`select observation.archive_blob(${a.recordId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.manifestId}::uuid, ${a.actionId}::uuid, ${a.contentDigest}, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
+    return rows[0]?.ok ?? false;
+  }
+  async recordExportPackage(a: Parameters<RetentionWrites['recordExportPackage']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_export_package(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.approvalId}::uuid, ${a.manifestDigest}, ${a.packageDigest}, ${JSON.stringify(a.signature)}::jsonb, ${a.objectCount}::int, ${a.excludedCount}::int, ${a.byteTotal}::bigint, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async revokeExport(a: Parameters<RetentionWrites['revokeExport']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.revoke_export(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
   async savepoint(name: string): Promise<void> { await this.call(sql.raw(`savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }
   async rollbackToSavepoint(name: string): Promise<void> { await this.call(sql.raw(`rollback to savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }

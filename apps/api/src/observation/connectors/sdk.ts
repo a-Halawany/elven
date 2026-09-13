@@ -48,6 +48,14 @@ export interface SourceBinding {
   budgets: RunBudgets;
   egress: EgressPolicy;
   /**
+   * B11 (the governed credential path, SOURCE_INTEGRATION_STATUS §6 item 3): the contract's credential — a REFERENCE
+   * (the deployment's variable name) and the request header it travels in. Never the value: the binding is what the run
+   * records and the connector reasons about; the value is resolved by the lifecycle at egress time and handed to the
+   * connector apart (AcquisitionContext.credential), carried on the request, dropped on a redirect off the origin, and
+   * never written anywhere.
+   */
+  credential?: { ref: string; header: string };
+  /**
    * A CLOSED-RANGE BACKFILL, declared by the contract (Phase 4 §4a).
    *
    * The poller Phase 1 shipped polls FORWARD from a checkpoint and has no end
@@ -200,6 +208,8 @@ export interface AcquisitionContext {
   budget: BudgetMeter;
   /** Replay fixture root; used only when the contract's acquisition_mode is `replay`. */
   replayRoot: string;
+  /** B11: the resolved credential for this run's requests (header name and value) — present only when the binding names one. */
+  credential?: { header: string; value: string };
 }
 
 export class BudgetExceeded extends Error {

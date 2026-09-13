@@ -61,12 +61,44 @@ export interface BranchRow {
   flip_event_id: string | null; indicator?: IndicatorRow | null;
   /** 'owed' — the flip is committed and its warning has not yet been raised. */
   warning_state?: 'none' | 'owed' | 'raised'; decision_deadline?: string | null;
+  /** 0066 §8 (L7-I05): the instant a review promoted this branch to simulation; null until one did. */
+  simulation_candidate_at?: string | null;
 }
 
 export interface ScenarioRow {
   scenario_id: string; title: string; statement: string; forecast_id: string | null; subject_entity_id: string | null;
-  owner_principal_id: string; review_cadence: string; state: 'active' | 'closed'; declared_at: string;
+  owner_principal_id: string; review_cadence: string; state: 'active' | 'closed' | 'retired'; declared_at: string;
   branches: BranchRow[]; events?: Array<Record<string, unknown>>;
+  /**
+   * 0066 §8 (L7-I05 ScenarioReviewed): the scenario's review state as the server records it — how many reviews, the last,
+   * the next due (null when retired or when the cadence names no interval), and the retirement with its note.
+   */
+  reviews?: number; last_reviewed_at?: string | null; next_review_due_at?: string | null;
+  retired_at?: string | null; retirement_reason?: string | null;
+}
+
+/** A review's outcome (0066 §8): the four the server accepts, spelled as it spells them. */
+export type ScenarioReviewOutcome = 'continue' | 'dissent' | 'promote_to_simulation' | 'retire';
+
+/** What is sent to review a scenario — the controller's payload keys verbatim. */
+export interface ScenarioReviewIntake {
+  outcome: ScenarioReviewOutcome;
+  /** The branch the review names: required for a promotion, optional for a dissent, ignored otherwise. */
+  branch_id: string | null;
+  /** The review's note (8+ characters); on a retirement it becomes the retirement reason. */
+  note: string;
+  /** A dissent's position (4+) and rationale (8+); the server refuses a dissent without them. */
+  dissent: { position: string; rationale: string } | null;
+  /** An instant that names the next review; otherwise the cadence's interval from now (daily/weekly/monthly/quarterly; other cadences leave it open). */
+  next_review_by: string | null;
+}
+
+/** The review as the port recorded it — VERBATIM. */
+export interface ScenarioReview {
+  scenario_id: string; outcome: ScenarioReviewOutcome; review_ordinal: number; state_after: 'active' | 'closed' | 'retired';
+  branch: { branch_id: string; kind: string; state_after: string } | null;
+  next_review_due_at: string | null; branches_closed: number; cadence: string | null;
+  links: { forecast_id: string | null; decision_objects: string[]; dependents: Array<{ type: string; id: string }>; simulation_runs: string[] };
 }
 
 export interface IndicatorRow {
@@ -153,6 +185,15 @@ export const prediction = {
   calibration: (s: Scope) => p<{ calibration: Calibration; receipt: Receipt }>(s, '/calibration/summary', 'prediction.read', 'OUT'),
   listScenarios: (s: Scope) => p<{ scenarios: ScenarioRow[]; receipt: Receipt }>(s, '/scenarios/list', 'prediction.read', 'SCN'),
   getScenario: (s: Scope, id: string) => p<{ scenario: ScenarioRow; receipt: Receipt }>(s, `/scenarios/${id}/get`, 'prediction.read', 'SCN', {}, id),
+  /**
+   * 0066 §8 (L7-I05): a person's review of a scenario — human-gated, under the purpose `prediction`, C2 (the `p` helper's
+   * write class). CONTINUE sets the next review by the cadence or the named instant; DISSENT records a position and
+   * rationale and changes nothing; PROMOTE_TO_SIMULATION marks the named branch the simulation candidate; RETIRE closes the
+   * open branches and takes the scenario out of the portfolio. The server's refusal (a workload principal, a dissent
+   * without its position, a promotion without a branch, a retired scenario) is returned as it states it.
+   */
+  reviewScenario: (s: Scope, id: string, intake: ScenarioReviewIntake) =>
+    p<{ review: ScenarioReview; receipt: Receipt }>(s, `/scenarios/${id}/review`, 'prediction.scenario.review', 'SCN', { ...intake }, id),
   listIndicators: (s: Scope) => p<{ indicators: IndicatorRow[]; receipt: Receipt }>(s, '/indicators/list', 'prediction.read', 'IND'),
   evaluateIndicator: (s: Scope, id: string, timing: 'live' | 'replay' = 'live') =>
     p<{ evaluation: { evaluated: number; breached: boolean; streak: number; flips: unknown[]; expiredWarnings: number; knownAt: string; timing: string; owedRecovered: number };

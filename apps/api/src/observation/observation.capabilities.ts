@@ -85,6 +85,9 @@ export interface ObservationReads {
   /** 0064: legal holds placed on evidence after admission (append-only; a lift is its own row change under its own action). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readLegalHolds(): any;
+  /** CP-6 B11 (0070 §2): the tier ledger — one row per move of a manifest's bytes; its latest row is the manifest's tier, 'hot' when none (D1). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readBlobTiers(): any;
   /**
    * The LATEST evidence held for each deterministic item key of a source — what
    * a backfill re-run compares its bytes against (Phase 4 §4a). One query per
@@ -152,6 +155,8 @@ export interface HeldEvidenceRow {
   content_digest: string; recorded_at: string;
   lifecycle_state: string; manifest_id: string | null; locator: string | null; vault: string | null;
   manifest_present: boolean; tombstoned: boolean;
+  /** B11 (0070 §2): the manifest's CURRENT tier from the tier ledger — 'archive' when an archive action moved the bytes; the vault above is the immutable admission-time vault. */
+  tier: 'hot' | 'archive';
 }
 
 // ───────────────────────── registry writes ─────────────────────────
@@ -401,6 +406,8 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
     return rows[0]?.s ?? [];
   }
   readLegalHolds(): any { return this.from('observation.legal_holds'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readBlobTiers(): any { return this.from('observation.blob_tier_records'); }
   async placeLegalHold(a: { holdId: string; tenantId: string; domainId: string; evdObjectId: string; reason: string; actor: string; correlationId: string }): Promise<string> {
     const rows = await this.call<{ m: string }>(sql`select observation.place_legal_hold(${a.holdId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.evdObjectId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)::text as m`);
     return String(rows[0]?.m);
@@ -431,7 +438,8 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
              e.recorded_at::text as recorded_at, e.lifecycle_state,
              e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
              exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
-             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned,
+             observation.manifest_tier((e.payload ->> 'manifest_id')::uuid) as tier
         from obs
         join lateral (select * from objects.canonical_objects e
                        where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
@@ -461,7 +469,8 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
              e.recorded_at::text as recorded_at, e.lifecycle_state,
              e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
              exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
-             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned,
+             observation.manifest_tier((e.payload ->> 'manifest_id')::uuid) as tier
         from obs
         join lateral (select * from objects.canonical_objects e
                        where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
@@ -486,7 +495,8 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
              e.recorded_at::text as recorded_at, e.lifecycle_state,
              e.payload ->> 'manifest_id' as manifest_id, e.payload ->> 'locator' as locator, e.payload ->> 'vault' as vault,
              exists (select 1 from observation.blob_manifests m where m.manifest_id = (e.payload ->> 'manifest_id')::uuid) as manifest_present,
-             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned
+             exists (select 1 from observation.blob_tombstones t where t.manifest_id = (e.payload ->> 'manifest_id')::uuid) as tombstoned,
+             observation.manifest_tier((e.payload ->> 'manifest_id')::uuid) as tier
         from obs
         join lateral (select * from objects.canonical_objects e
                        where e.object_type = 'EVD' and e.payload ->> 'obs_object_id' = obs.object_id::text
@@ -889,3 +899,16 @@ export const ObservationCapability = {
     return new ObservationCapabilityImpl(tx, action);
   },
 };
+
+/**
+ * CP-6 B11 (0070 §2): a manifest's tier as its latest tier record says — 'hot' when it never moved. Shared by the evidence
+ * routes (the read goes to the tier the bytes are in; the detail says so) and the retention executor (the observer reports
+ * the tier's root). The ledger is read under RLS through the capability handed in.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function tierOf(cap: { readBlobTiers(): any }, manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> {
+  const row = (await cap.readBlobTiers().select(['tier' as never, 'moved_at' as never]).where('manifest_id' as never, '=', manifestId as never)
+    .orderBy('moved_at' as never, 'desc').orderBy('record_id' as never, 'desc').limit(1).executeTakeFirst()) as { tier: string; moved_at: Date | string } | undefined;
+  if (row === undefined) return { tier: 'hot', archivedAt: null };
+  return { tier: row.tier === 'archive' ? 'archive' : 'hot', archivedAt: row.tier === 'archive' ? new Date(row.moved_at).toISOString() : null };
+}

@@ -11,7 +11,8 @@
  *   version is never in scope), approved by the retention authority on the scope's digest (never the opener), executed
  *   by the steward (never an approver) through the ports — superseded evidence bytes tombstoned and removed, the log's
  *   retained floor moved — verified with the residual inventory (DeletionVerified), refused while a subscription's
- *   served point lies below the floor; schedules evaluated raise the actions and nothing deletes.
+ *   served point lies below the floor; schedules evaluated raise the actions and nothing deletes. An archive and a customer
+ *   export execute since B11 (`phase6-retention-b11.test.ts`).
  *
  *   CONTRADICTIONS (0066 §5, L2-I03 ContradictionDetected; AU-INT-0025) — two methods reading the same evidence assert
  *   incompatible values for one subject and predicate: the second admission links them (neither collapsed), queues the
@@ -567,7 +568,7 @@ describe('B9 · governed retention (ES-29-004): scope, holds, approval, executio
     expect((await actionRow(blocked.action.actionId))).toMatchObject({ state: 'paused', failure_class: 'unresolved_dependency', disposition: 'human_review' });
     expect((await items(blocked.action.actionId)).filter((i) => i.item_kind === 'subscription_cursor' && i.disposition === 'blocking').length).toBeGreaterThanOrEqual(cursors.length);
     await expect(approve(authority, blocked.action.actionId, (await actionRow(blocked.action.actionId)).scope_digest!)).rejects.toThrow(/only a resolved scope is approved/);
-    await retention.withdraw(h.req(steward, 'retention.action.open', 'RTA', blocked.action.actionId, 'retention'), T(), D(), blocked.action.actionId, { payload: { reason: 'the subscriptions must catch up first' } });
+    await retention.withdraw(h.req(steward, 'retention.action.withdraw', 'RTA', blocked.action.actionId, 'retention'), T(), D(), blocked.action.actionId, { payload: { reason: 'the subscriptions must catch up first' } });
     // Up to the lowest served point: nothing owed lies below; the move is safe.
     const ok = await open(steward, { kind: 'log_floor', targetKind: 'log_partition', selector: { partitionKey, toSeq: minServed } });
     const id = ok.action.actionId;
@@ -613,14 +614,14 @@ describe('B9 · governed retention (ES-29-004): scope, holds, approval, executio
   }, 120_000);
 });
 
-describe('B9 · retention corrected by the review (0067 §1): a hold placed after the approval rolls the execution back whole and pauses the action; a review action records and removes nothing; an archive action has no executor', () => {
+describe('B9 · retention corrected by the review (0067 §1): a hold placed after the approval rolls the execution back whole and pauses the action; a review action records and removes nothing; an archive action EXECUTES as a move (B11)', () => {
   const open = (p: AuthenticatedPrincipal, payload: Record<string, unknown>) => retention.openAction(h.req(p, 'retention.action.open', 'RTA', null, 'retention'), T(), D(), { payload }) as Promise<{ action: { actionId: string; state: string } }>;
   const resolve = (p: AuthenticatedPrincipal, id: string) => retention.resolveScope(h.req(p, 'retention.action.resolve', 'RTA', id, 'retention'), T(), D(), id) as Promise<{ scope: Record<string, unknown> }>;
   const approve = (p: AuthenticatedPrincipal, id: string, digest: string) => retention.approve(h.req(p, 'retention.action.approve', 'RTA', id, 'retention'), T(), D(), id, { payload: { scopeDigest: digest, rationale: 'the scope as resolved; nothing else' } }) as Promise<{ approval: Record<string, unknown> }>;
   const execute = (p: AuthenticatedPrincipal, id: string) => retention.execute(h.req(p, 'retention.action.execute', 'RTA', id, 'retention'), T(), D(), id) as Promise<{ execution: Record<string, unknown> }>;
   const manifestOf = async (evdId: string, version: number) => (await sql<{ manifest_id: string; locator: string }>`select (payload ->> 'manifest_id') as manifest_id, (select locator from observation.blob_manifests m where m.manifest_id = (o.payload ->> 'manifest_id')::uuid) as locator from objects.canonical_objects o where o.object_id = ${evdId}::uuid and o.object_version = ${version}`.execute(su)).rows[0]!;
 
-  it('a hold placed between the approval and the execution: the execution is refused whole — no tombstone, the bytes present, the action PAUSED for re-resolution with the approvals revoked; resolved again the item is held; a review action executes as a record only; an archive action is refused at execution', async () => {
+  it('a hold placed between the approval and the execution: the execution is refused whole — no tombstone, the bytes present, the action PAUSED for re-resolution with the approvals revoked; resolved again the item is held; a review action executes as a record only; an archive action executes as a move (B11)', async () => {
     const up = await h.upload([{ filename: 'ret-c.csv', text: TERMS_CSV.replace('assumption', 'assumption (ret c)'), documentTime: '2024-01-14T00:00:00Z' }, { filename: 'ret-d.csv', text: TERMS_CSV.replace('assumption', 'assumption (ret d)'), documentTime: '2024-01-14T00:00:00Z' }]);
     const evdC = up[0] as { id: string; version: number }; const evdD = up[1] as { id: string; version: number };
     await applyCase(await submitCorrection([evdC.id, evdD.id], 'retention fixture: both restated (review corrections)'), [evdC.id, evdD.id], 'restatements verified');
@@ -663,12 +664,21 @@ describe('B9 · retention corrected by the review (0067 §1): a hold placed afte
     await sleep(500);
     expect((await sql<{ n: number }>`select count(*)::int n from objects.object_outbox where event_type = 'DeletionVerified' and tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and created_at >= ${sinceVerify} and payload ->> 'action_id' = ${review.action.actionId}`.execute(su)).rows[0]!.n).toBe(0);
     expect(await vault.exists('evidence', { tenantId: T(), domainId: D() }, mD.locator)).toBe(true);
-    // an ARCHIVE action has no executor in this release: refused at execution, never run as a deletion
+    // an ARCHIVE action EXECUTES since B11 (0070 §2; phase6-retention-b11.test.ts): the bytes move to the archive tier under the same locator, nothing is tombstoned, no DeletionVerified
     const arch = await open(steward, { kind: 'archive', targetKind: 'evidence', selector: { manifestId: mD.manifest_id } });
     const rA = await resolve(steward, arch.action.actionId);
+    expect(rA.scope).toMatchObject({ state: 'scope_resolved', execute: 1 });
     await approve(authority, arch.action.actionId, String(rA.scope['scope_digest']));
-    await expect(execute(steward, arch.action.actionId)).rejects.toThrow(/has no executor in this release/);
+    const exA = await execute(steward, arch.action.actionId);
+    expect(exA.execution).toMatchObject({ executed: 1, refused: 0 });
+    expect(await vault.exists('evidence', { tenantId: T(), domainId: D() }, mD.locator)).toBe(false);
+    expect(await vault.exists('archive', { tenantId: T(), domainId: D() }, mD.locator)).toBe(true);
     expect((await sql<{ n: number }>`select count(*)::int n from observation.blob_tombstones where manifest_id = ${mD.manifest_id}::uuid`.execute(su)).rows[0]!.n).toBe(0);
+    const sinceArchive = await mark();
+    const vA = await retention.verify(h.req(steward, 'retention.action.verify', 'RTA', arch.action.actionId, 'retention'), T(), D(), arch.action.actionId) as { verification: Record<string, unknown> };
+    expect(vA.verification).toMatchObject({ state: 'verified', verified: true });
+    await sleep(500);
+    expect((await sql<{ n: number }>`select count(*)::int n from objects.object_outbox where event_type = 'DeletionVerified' and tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and created_at >= ${sinceArchive} and payload ->> 'action_id' = ${arch.action.actionId}`.execute(su)).rows[0]!.n).toBe(0);
     await settle();
   }, 180_000);
 

@@ -244,6 +244,59 @@ export interface MemoryRetrieval {
   accessId: string;
 }
 
+/**
+ * CP-6 B9 (0066 §7, L4-I05 OntologyChangeProposed): the domain's vocabulary is a VERSIONED set of entity types and
+ * predicates, each predicate with the entity types it admits at either end. A change is PROPOSED as the next FULL
+ * version (not a diff): what the proposal omits is removed. The compatibility analysis is the write's — the asserted
+ * edges a removed or narrowed predicate would strand, the strategy resting on them — and the steward decides (never
+ * the proposer). Once a version is active, the builder's port admits only its predicates.
+ */
+/**
+ * A predicate as proposed. `subject_types` / `object_types` are OMITTED (not sent as `[]`) when the predicate declares
+ * no restriction at that end: the server's NARROWED test (0066 §7) is `(op -> key) IS NOT NULL AND (np -> key) IS NOT
+ * NULL AND NOT (np @> op)`, so an absent key is never a narrowing, whereas an explicit `[]` narrows a declared list to
+ * the empty set and makes the change breaking.
+ */
+export interface OntologyPredicate { predicate: string; subject_types?: string[]; object_types?: string[] }
+
+/** A row of graph.ontology_versions as the list returns it; the jsonb columns are rendered as served. */
+export interface OntologyVersionRow {
+  version_id: string; scope: string; tenant_id: string; domain_id: string; namespace: string; version: number;
+  entity_types: string[]; predicates: Array<Record<string, unknown>>;
+  state: 'proposed' | 'active' | 'superseded' | 'rejected';
+  compatibility: 'additive' | 'breaking';
+  /** { added: { entity_types, predicates }, removed: { entity_types, predicates }, narrowed: [{ predicate, from, to }] } */
+  change: Record<string, unknown>;
+  /** { class, edges: { count, sample: [{ edge_id, predicate }] }, entities_of_removed_types, strategy_dependencies_on_edges, from_version, to_version } */
+  analysis: Record<string, unknown>;
+  rationale: string; alternatives: unknown[];
+  /** compatibility / migration / domain / governance → 'passed' | 'open' | 'failed' | 'not_required' (whatever the server holds). */
+  reviews: Record<string, unknown>;
+  migration_plan: string | null;
+  proposed_by: string; proposed_at: string;
+  decided_by: string | null; decided_at: string | null; decision_reason: string | null;
+  activated_at: string | null; superseded_at: string | null; correlation_id: string;
+}
+
+export interface OntologyProposal {
+  namespace: string; entityTypes: string[]; predicates: OntologyPredicate[];
+  rationale: string; alternatives: string[]; migrationPlan: string | null;
+}
+
+/** What the proposing write returns: the version's number, its compatibility, the change and the analysis, its reviews as opened. */
+export interface OntologyProposed {
+  version_id: string; namespace: string; from_version: number | null; to_version: number;
+  compatibility: 'additive' | 'breaking'; change: Record<string, unknown>; analysis: Record<string, unknown>;
+  reviews: Record<string, unknown>;
+}
+
+export type OntologyReviewOutcome = 'passed' | 'failed';
+/** The reviews a steward records with the decision; each key is optional and merges over what the proposal opened. */
+export interface OntologyReviews { domain?: OntologyReviewOutcome; governance?: OntologyReviewOutcome; compatibility?: OntologyReviewOutcome; migration?: OntologyReviewOutcome }
+
+/** What the decision returns: `supersedes` and `version` on an approval only. */
+export interface OntologyDecided { version_id: string; state: 'active' | 'rejected'; supersedes?: string | null; version?: number }
+
 export const graph = {
   overview: (s: Scope) =>
     g<{ overview: GraphOverview; receipt: Receipt }>(s, '/overview', 'graph.read', 'ENT'),
@@ -446,4 +499,171 @@ export const graph = {
   withdrawMemory: (s: Scope, itemId: string, reason: string, purposeId = 'memory') =>
     gUnder<{ memory: { itemId: string; state: string }; receipt: Receipt }>(
       s, purposeId, `/memory/${itemId}/withdraw`, 'memory.item.withdraw', 'MEM', { reason }, itemId),
+
+  /** CP-6 B9 (0066 §7): every version of the domain's vocabulary, ordered by namespace then version (the only read route the controller has). */
+  listOntology: (s: Scope) =>
+    g<{ versions: OntologyVersionRow[]; receipt: Receipt }>(s, '/ontology/list', 'graph.read', 'ONT'),
+
+  /** The next FULL version proposed with its rationale and alternatives; the server computes the compatibility analysis and opens the reviews. */
+  proposeOntology: (s: Scope, p: OntologyProposal) =>
+    g<{ ontology: OntologyProposed; receipt: Receipt }>(s, '/ontology/propose', 'graph.ontology.propose', 'ONT', p),
+
+  /** Human-gated, the steward's (never the proposer's): approval activates the version and supersedes the prior one; a breaking change is refused while it would strand asserted edges. */
+  decideOntology: (s: Scope, versionId: string, decision: 'approve' | 'reject', reason: string, reviews: OntologyReviews) =>
+    g<{ ontology: OntologyDecided; receipt: Receipt }>(
+      s, `/ontology/${versionId}/decide`, 'graph.ontology.decide', 'ONT', { decision, reason, reviews }, versionId),
+};
+
+/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068) ───────────────────────── */
+
+/**
+ * The retention routes live under `…/retention`, not `…/graph`, and every call is made under the purpose `retention`.
+ * One governed act per state transition of an action — open, resolve, approve (human-gated, on the scope digest the
+ * approver read), execute (human-gated, never the approver), verify — and the schedule's declare and evaluate; the
+ * reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action. The server's refusal is returned
+ * verbatim: the opener's own approval, a wrong digest, an unresolved scope, a review's failed check are all its words.
+ */
+async function r<T>(
+  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA',
+  payload: unknown = {}, objectId: string | null = null,
+): Promise<ApiResult<T>> {
+  return call<T>(
+    `/v1/tenants/${scope.tenantId}/domains/${scope.domainId}/retention${path}`,
+    {
+      scope: 'DOMAIN',
+      tenant_id: scope.tenantId,
+      domain_id: scope.domainId,
+      action,
+      object_type: objectType,
+      object_id: objectId,
+      purpose_id: 'retention',
+      side_effect_class: action === 'retention.read' ? 'none' : 'reversible',
+      consequence_class: 'C2',
+    },
+    payload,
+  );
+}
+
+export const RETENTION_KINDS = ['review', 'deletion', 'archive', 'log_floor', 'customer_export'] as const;
+export const RETENTION_TARGET_KINDS = ['evidence', 'log_partition'] as const;
+export type RetentionKind = (typeof RETENTION_KINDS)[number];
+export type RetentionTargetKind = (typeof RETENTION_TARGET_KINDS)[number];
+
+/** A row of `retention.schedules` or `retention.actions_current`, as the server serves it (snake_case columns). */
+export type RetentionRow = Record<string, unknown>;
+
+/**
+ * What opens an action (validateOpenAction): an evidence selector names a manifestId or a sourceId — or, for an archive or a
+ * customer export (B11), manifestIds (1–200, a chosen object set); a customer export names its classificationCeiling (the redaction
+ * gate) and may name destination `export` (the only destination this release binds); a log partition names partitionKey + toSeq
+ * and takes the log_floor kind only.
+ */
+export interface RetentionOpenIntake {
+  kind: RetentionKind;
+  targetKind: RetentionTargetKind;
+  selector: { manifestId?: string; sourceId?: string; manifestIds?: string[]; classificationCeiling?: RetentionClassification; destination?: 'export' } | { partitionKey: string; toSeq: number };
+  retentionProfile?: string;
+}
+export const RETENTION_CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;
+export type RetentionClassification = (typeof RETENTION_CLASSIFICATIONS)[number];
+
+/** What declares a schedule: `dueAfter` is an interval such as "90 days"; `selector` and `ownerPrincipalId` are optional (the owner defaults to the declarer). */
+export interface RetentionScheduleIntake {
+  retentionProfile: string;
+  targetKind: RetentionTargetKind;
+  actionKind: RetentionKind;
+  dueAfter: string;
+  selector?: Record<string, unknown>;
+  ownerPrincipalId?: string;
+}
+
+export interface RetentionResidual { kind: string; count: number; status: string; ref?: string | null; note?: string | null }
+
+/** resolve_scope's answer: the counts by disposition (excluded since B11), the residual inventory, the state the action moved to and the digest the approval signs. */
+export interface RetentionScopeSummary {
+  items: number; execute: number; held: number; blocking: number; excluded?: number; residuals: RetentionResidual[];
+  state: string; scope_digest: string;
+}
+
+/** execute's answer: a fresh execution (what executed, was held, was refused; the floor moved for a log_floor; the package built for a customer export; the bytes removed after the commit) or the retry of an executed action's pending bytes residuals. */
+export type RetentionExecutionResult =
+  | { retried?: false; executed: number; held: number; refused: number; floor: Record<string, unknown> | null; package?: Record<string, unknown> | null; bytes: { removed: string[]; failed: string[] } }
+  | { retried: true; pending: number; bytes: { removed: string[]; failed: string[] } };
+
+/** The export package's record (…/actions/:id/export/get, B11): the ledger row, manifest.json as written (null when its file is gone) and the files the package holds. */
+export interface RetentionExportDetail {
+  package: RetentionRow;
+  manifest: Record<string, unknown> | null;
+  files: string[];
+  receipt: Receipt;
+}
+
+/** verify_action's verdict: each check with its outcome; on a pass, the scope the DeletionVerified event carries (a review's verification publishes none). */
+export interface RetentionVerdict {
+  state: string; verified: boolean;
+  checks: Array<{ item: string; kind: string; disposition: string; passed: boolean }>;
+  scope_digest?: string | null; kind?: string; target_kind?: string; selector?: Record<string, unknown>;
+  authorized_by?: string[]; executed?: number; held?: number; excluded?: number; residual?: RetentionResidual[];
+}
+
+/** The action's record (…/actions/:id/get): the row, its events, its scope items in dependency order, approvals, executions, residual inventory, verifications. */
+export interface RetentionActionDetail {
+  action: RetentionRow;
+  events: Array<Record<string, unknown>>;
+  items: Array<Record<string, unknown>>;
+  approvals: Array<Record<string, unknown>>;
+  executions: Array<Record<string, unknown>>;
+  residuals: Array<Record<string, unknown>>;
+  verifications: Array<Record<string, unknown>>;
+  receipt: Receipt;
+}
+
+export const retention = {
+  listSchedules: (s: Scope) =>
+    r<{ schedules: RetentionRow[]; receipt: Receipt }>(s, '/schedules/list', 'retention.read', 'RTS'),
+
+  /** A domain admin's act: the schedule under which evaluation opens actions for what fell due. */
+  declareSchedule: (s: Scope, intake: RetentionScheduleIntake) =>
+    r<{ schedule: { scheduleId: string }; receipt: Receipt }>(s, '/schedules/declare', 'retention.schedule.declare', 'RTS', intake),
+
+  /** The steward's act: every object past its schedule raises an action (RetentionActionDue each); nothing is deleted. */
+  evaluateSchedules: (s: Scope) =>
+    r<{ evaluation: { opened: Array<Record<string, unknown>> }; receipt: Receipt }>(s, '/schedules/evaluate', 'retention.schedule.evaluate', 'RTS'),
+
+  /** The actions, newest first, with the tenant's outbox partitions (the floor a log_floor action moves). */
+  listActions: (s: Scope, limit = 200) =>
+    r<{ actions: RetentionRow[]; partitions: Array<Record<string, unknown>>; receipt: Receipt }>(s, '/actions/list', 'retention.read', 'RTA', { limit }),
+
+  getAction: (s: Scope, actionId: string) =>
+    r<RetentionActionDetail>(s, `/actions/${actionId}/get`, 'retention.read', 'RTA', {}, actionId),
+
+  openAction: (s: Scope, intake: RetentionOpenIntake) =>
+    r<{ action: { actionId: string; kind: string; targetKind: string; state: string }; receipt: Receipt }>(s, '/actions/open', 'retention.action.open', 'RTA', intake),
+
+  /** The scope resolved: each item with its disposition (execute / held / excluded / blocking) and the digest the approval signs. */
+  resolveAction: (s: Scope, actionId: string) =>
+    r<{ scope: RetentionScopeSummary; receipt: Receipt }>(s, `/actions/${actionId}/resolve`, 'retention.action.resolve', 'RTA', {}, actionId),
+
+  /** Human-gated, the retention authority's: on the resolved scope's digest the approver read; the opener never approves. */
+  approveAction: (s: Scope, actionId: string, scopeDigest: string, rationale: string) =>
+    r<{ approval: { approvalId: string; actionId: string; state: string }; receipt: Receipt }>(s, `/actions/${actionId}/approve`, 'retention.action.approve', 'RTA', { scopeDigest, rationale }, actionId),
+
+  /** Human-gated, the steward's (never an approver): the approved scope in one transaction; a hold placed since rolls it back whole and pauses the action (409). */
+  executeAction: (s: Scope, actionId: string) =>
+    r<{ execution: RetentionExecutionResult; receipt: Receipt }>(s, `/actions/${actionId}/execute`, 'retention.action.execute', 'RTA', {}, actionId),
+
+  verifyAction: (s: Scope, actionId: string) =>
+    r<{ verification: RetentionVerdict; receipt: Receipt }>(s, `/actions/${actionId}/verify`, 'retention.action.verify', 'RTA', {}, actionId),
+
+  /** B11: a withdrawal is its own named act, `retention.action.withdraw`. */
+  withdrawAction: (s: Scope, actionId: string, reason: string) =>
+    r<{ action: { actionId: string; state: string }; receipt: Receipt }>(s, `/actions/${actionId}/withdraw`, 'retention.action.withdraw', 'RTA', { reason }, actionId),
+
+  /** B11 (0070 §3): the export package of a customer-export action — its record, its manifest and its files; a 409 once revoked (the bytes are gone). */
+  getExport: (s: Scope, actionId: string) =>
+    r<RetentionExportDetail>(s, `/actions/${actionId}/export/get`, 'retention.read', 'RTA', {}, actionId),
+
+  /** B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. */
+  revokeExport: (s: Scope, actionId: string, reason: string) =>
+    r<{ revocation: Record<string, unknown>; bytes: { removed: boolean; error?: string }; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
 };

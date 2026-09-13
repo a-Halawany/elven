@@ -188,8 +188,8 @@ export class Phase4Harness {
 
   /** The live contract with a declared period-range backfill. */
   contract(sourceKey: string, over: { from: string; to: string | null; windowDays: number; supersedes: number; version: number; budget?: number;
-                                       /** A credential REFERENCE (never a value) the contract names and this deployment does not bind. */
-                                       credentialRef?: string;
+                                       /** A credential REFERENCE (never a value) the contract names — bound by this deployment or not. B11: the header it travels in. */
+                                       credentialRef?: string; credentialHeader?: string;
                                        controls?: { data_origin?: string; classification_ceiling?: string; residency?: string; retention?: string; licence?: string } }) {
     const c = fixtureContract(sourceKey) as Record<string, unknown>;
     const so = c['security_and_operations'] as Record<string, unknown>;
@@ -204,6 +204,7 @@ export class Phase4Harness {
       security_and_operations: {
         ...so,
         ...(over.credentialRef === undefined ? {} : { credential_ref: over.credentialRef, authentication_method: 'bearer token resolved from the referenced credential' }),
+        ...(over.credentialHeader === undefined ? {} : { credential_header: over.credentialHeader }),
         expected_schema: { media_types: ['application/json'], required_fields: ['dataSets'], drift_tolerance: 0 },
         budgets: { max_requests_per_run: over.budget ?? 12, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 60_000, max_retries: 0 },
         backfill: { strategy: 'period-range', endpoint: BASE, from: over.from, to: over.to,
@@ -227,7 +228,7 @@ export class Phase4Harness {
   }
 
   /** Register, approve and activate the next contract version through the real route and ports. */
-  async newVersion(over: { from: string; to: string | null; windowDays: number; budget?: number; credentialRef?: string;
+  async newVersion(over: { from: string; to: string | null; windowDays: number; budget?: number; credentialRef?: string; credentialHeader?: string;
                            controls?: { data_origin?: string; classification_ceiling?: string; residency?: string; retention?: string; licence?: string } }): Promise<{ version: number; sourceKey: string }> {
     const sourceKey = (await sql<{ source_key: string }>`select source_key from observation.source_contracts_current
       where source_id = ${this.fx.sourceId}::uuid limit 1`.execute(this.su)).rows[0]?.source_key ?? '';
@@ -278,14 +279,17 @@ export class Phase4Harness {
   /**
    * An UPLOAD source (the demonstration's NORDWERK shape), registered through the real
    * route, approved by the other operator, activated, with an upload agent registered
-   * for the operator-upload connector — once per harness.
+   * for the operator-upload connector — once per harness and ceiling. A `label` names a
+   * SECOND source of the same ceiling (B11: a source whose rights are withdrawn beside
+   * the one whose rights are confirmed); the default keeps one source per ceiling.
    */
-  async uploadSource(ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'): Promise<string> {
-    const known = this.uploadSourceIds.get(ceiling);
+  async uploadSource(ceiling: 'internal' | 'confidential' | 'restricted' = 'internal', label = ''): Promise<string> {
+    const cacheKey = label === '' ? ceiling : `${ceiling}:${label}`;
+    const known = this.uploadSourceIds.get(cacheKey);
     if (known !== undefined) return known;
     const { ObservationController } = await import('../../src/observation/observation.controller.js');
     const controller = this.app.get(ObservationController);
-    const sourceKey = `fixture-uploads-${ceiling === 'internal' ? '' : `${ceiling}-`}${uuidv7().slice(-8)}`;
+    const sourceKey = `fixture-uploads-${ceiling === 'internal' ? '' : `${ceiling}-`}${label === '' ? '' : `${label}-`}${uuidv7().slice(-8)}`;
     const r = await controller.registerSource(
       this.req(this.registrar, 'observation.source.register', 'SRC', null, 'observation'), this.fx.tenantId, this.fx.domainId,
       { payload: { contract: uploadContract(sourceKey, ceiling) } }) as { source: { sourceId: string } };
@@ -325,7 +329,7 @@ export class Phase4Harness {
           ${JSON.stringify({ maxRequestsPerRun: 25, maxBytesPerRun: 33554432, maxConcurrency: 1, timeoutMs: 60000, maxRetries: 0 })}::jsonb,
           ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);
       });
-    this.uploadSourceIds.set(ceiling, sourceId);
+    this.uploadSourceIds.set(cacheKey, sourceId);
     return sourceId;
   }
 
@@ -334,9 +338,9 @@ export class Phase4Harness {
    * and return the EVIDENCE objects the run admitted for them, found by the item key the
    * connector derives from the filename and the bytes — never by a name someone typed.
    */
-  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>, ceiling: 'internal' | 'confidential' | 'restricted' = 'internal'):
+  async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>, ceiling: 'internal' | 'confidential' | 'restricted' = 'internal', label = ''):
     Promise<Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }>> {
-    const sourceId = await this.uploadSource(ceiling);
+    const sourceId = await this.uploadSource(ceiling, label);
     const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
     const controller = this.app.get(UploadController);
     await controller.upload(this.req(this.registrar, 'observation.run.trigger', 'RUN', null, 'observation'), this.fx.tenantId, this.fx.domainId,

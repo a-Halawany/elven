@@ -79,7 +79,10 @@ export type InjectionPoint =
   | 'f40.during_noop_event_append'
   | 'f41.after_noop_before_response'
   | 'f42.new_observation_before_obs_insert'
-  | 'f44.after_shared_digest_resolved_before_commit';
+  | 'f44.after_shared_digest_resolved_before_commit'
+  // CP-6 B11 — the archive executor's copy into the archive tier (0070 §2; D3): before the write, and after the rename before the port records the move
+  | 'b11.archive_copy_partial'
+  | 'b11.archive_after_copy_before_record';
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

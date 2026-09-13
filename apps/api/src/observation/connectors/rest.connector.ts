@@ -28,7 +28,10 @@ const VERSION = '1.2.0';
 export const BACKFILL_METHOD_REF = `rest-backfill-traversal@${VERSION}`;
 
 /** The transport a connector uses. Injectable so a traversal can be tested against a double. */
-export type Egress = (a: { url: string; headers: Record<string, string>; policy: EgressPolicy }) => Promise<EgressResult>;
+export type Egress = (a: { url: string; headers: Record<string, string>; credentials?: { headers?: Record<string, string> }; policy: EgressPolicy }) => Promise<EgressResult>;
+/** B11: the run's credential, carried apart from the request headers so the client drops it on a redirect off the origin. */
+const credentialsOf = (ctx: AcquisitionContext): { credentials?: { headers: Record<string, string> } } =>
+  ctx.credential === undefined ? {} : { credentials: { headers: { [ctx.credential.header]: ctx.credential.value } } };
 export const REST_METHOD_REF = `rest-transport-framing@${VERSION}`;
 /**
  * The framing method recorded on every child item. Naming the method and its
@@ -61,8 +64,15 @@ export const JSON_ARRAY_COMPOSITE_METHOD_REF = `json-array-composite-framing@${V
  * of code, not a name. The version stays 1.2.0 and every method ref stays byte for byte:
  * what changed is the digest's coverage, not what any existing item carries.
  */
+/**
+ * B11: the governed credential path — a contract's credential reference resolved at egress time and carried on the
+ * request in its declared header, dropped on a redirect off the origin, never recorded. A transport behaviour the
+ * connector did not have before: it enters the digest (the agents registered against the previous digest stop matching
+ * and are re-provisioned through the governed route, as §9.11.10 did), while the version and every method ref stay.
+ */
+export const CREDENTIAL_CARRIAGE_REF = 'rest-credential-carriage@1.0.0';
 const CODE_DIGEST_INPUT = [
-  `observation.rest@${VERSION}`, REST_METHOD_REF, BACKFILL_METHOD_REF, JSON_ARRAY_METHOD_REF, JSON_ARRAY_COMPOSITE_METHOD_REF,
+  `observation.rest@${VERSION}`, REST_METHOD_REF, BACKFILL_METHOD_REF, JSON_ARRAY_METHOD_REF, JSON_ARRAY_COMPOSITE_METHOD_REF, CREDENTIAL_CARRIAGE_REF,
 ].join(':');
 
 export class RestConnector implements Connector {
@@ -167,7 +177,7 @@ export class RestConnector implements Connector {
       if (cp?.lastModified !== undefined) conditional['if-modified-since'] = cp.lastModified;
 
       try {
-        const res = await this.egress({ url: endpoint, headers: conditional, policy: binding.egress });
+        const res = await this.egress({ url: endpoint, headers: conditional, ...credentialsOf(ctx), policy: binding.egress });
         if (res.status === 304) {
           // Nothing new, and no bytes. Not an item — but a LIVE answer that what is held
           // is still current; the lifecycle binds it to the held evidence if that is
@@ -253,7 +263,7 @@ export class RestConnector implements Connector {
       const step = nextRequest(decl, progress);
       ctx.budget.spendRequest();
       requests += 1;
-      const res = await this.egress({ url: step.url, headers: {}, policy: binding.egress });
+      const res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
       if (res.status < 200 || res.status >= 300) {
         throw new EgressRefused('transport_failure', `backfill endpoint answered ${res.status}`);
       }

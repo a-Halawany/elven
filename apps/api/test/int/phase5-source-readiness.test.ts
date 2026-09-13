@@ -78,7 +78,7 @@ describe('the source readiness register', () => {
     // branch, so an active live contract with a schedule entry read LIVE while its own
     // credential column said "not bound in this deployment", and the unscheduled one read
     // LIVE — UNSCHEDULED. Through the real registry port and the real controller:
-    const ref = 'vault/sources/fixture/api-key';
+    const ref = 'EYE_SRC_FIXTURE_API_KEY'; // B11: a reference is the deployment's variable name (EYE_SRC_<NAME>); this deployment binds none under it
     const v = await h.newVersion({ from: SERIES_START, to: SERIES_END, windowDays: 366, credentialRef: ref });
     const unscheduled = (await readiness()).find((x) => x.source_id === h.fx.sourceId && x.contract_version === v.version);
     expect(unscheduled?.acquisition_mode).toBe('live');

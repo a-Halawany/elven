@@ -953,3 +953,55 @@ the act recorded here as §11 with its receipts, in the shape of §7 and §9.
 
 Unchanged: purchases zero; cadences and budgets as before; GDELT held; the live sources of §7 and §9 untouched; C15
 and the required checks remain the merge gates.
+
+## 11. The act under the authorization of §10 — the governed credential path built; the Comtrade policy read in full; the contract registered and approved; activation waits for the key (2026-09-13, demonstration deployment, `eye_demo`)
+
+**What the policy says (read in full on 2026-09-13; the two pages quoted as the rights evidence recorded on the
+contract).** UN Comtrade, *Policy on use and re-dissemination* (`uncomtrade.org/docs/policy-on-use-and-re-dissemination`):
+internal use is permitted without permission — "only for use by staff members of the institutional unit for the benefit
+of the unit"; the exempt uses (no licence fee) include "Internal use, including the use of UN Comtrade data for the AI
+model"; the citation is "UN Comtrade"; "UN Comtrade data are provided for internal use only and may not be
+re-disseminated in any form without UNSD's permission" — "To re-disseminate UN Comtrade data, a user must be an active
+premium subscriber"; a "For-profit data visualization and/or analytics application" and a "For-profit data extraction
+and/or streaming application" take a fee-based licence; the fair-usage policy restricts "web scraping via bots" and asks
+for "UN Comtrade APIs directly". *Subscriptions* (`uncomtrade.org/docs/subscriptions`): the free tier (Basic Individual)
+is "500 calls/day" and "max 100K records per call"; premium individual 5,000 calls/day; premium institutional
+unlimited. **What this settles**: §3's "UNVERIFIED — read the full policy before any redistribution claim" is now read:
+automated API access under the owner's free-tier key for the product's INTERNAL analysis is within the policy; no
+redistribution of Comtrade data is permitted without UNSD's permission, and none is claimed — the contract's
+`permitted_use` is `['internal analysis']`, its attribution "Source: UN Comtrade.", its `robots_policy` the API used
+directly. A customer-facing, for-profit use would need the fee-based licence first; that is not authorised and not done.
+
+**The governed credential path (§6 item 3), built in this batch (migration 0070 §1; `apps/api/src/observation`).** A
+contract names its credential by REFERENCE — `security_and_operations.credential_ref` is the deployment's variable name
+`EYE_SRC_<NAME>` (a pasted secret, a path or any other shape is refused at registration) — and the request header it
+travels in (`credential_header`; `authorization` when absent; SRC@v3). At egress the run resolves the value from the
+deployment (`SourceCredentialStore`, the process environment at that moment) and hands it to the connector APART from the
+binding; the HTTP client carries it as a credential (dropped on a redirect off the origin, like `authorization`); a
+reference the deployment does not bind cancels the run BEFORE any request (`run.cancelled`, the reference on the record,
+never a value); the readiness register reads `blocked-credential` for an unbound reference and `live` for a bound one
+("bound in this deployment; the run carries it"). The value is recorded nowhere: not on the run's events, not in the
+audit, not in the evidence, not in the register (the harness `apps/api/test/int/phase6-source-credentials.test.ts`
+asserts each). The REST connector's code digest now covers the transport behaviour (`rest-credential-carriage@1.0.0`),
+so every agent registered against the previous digest stopped matching and the six REST sources were re-provisioned
+through the governed route (`scripts/integrations/reprovision-rest-agents.mjs`, the §9.11.10 act scripted) — the
+receipts below.
+
+**The act (`scripts/integrations/activate-comtrade.mjs`, 2026-09-13T14:15Z; the receipts in `evidence/cp6/act-b11.txt` §1).**
+The demonstration API restarted on the B11 build after 0070; the six REST agents re-provisioned for the connector's new
+digest `dbd65634937a…` (six registered by platform-admin with owner a.hoffmann, the six on `e27ca96f7958…` revoked by
+m.dvorak — `act-b11.txt` §0b) and the persisted schedules reconciled to them on a second restart; the proof: one
+operator-triggered run on `ecb-eurusd` v2 under the new agent, `finished`, 1 admitted, 7,287 bytes. Then, in order:
+`un-comtrade` v1 registered by a.hoffmann (draft; policy decision `01a09b1f…`, audit seq 93143); approved by m.dvorak
+(audit seq 93145); rights `confirmed` with the policy quoted (audit seq 93146); the readiness register read back —
+`un-comtrade v1 approved: inactive — contract version 1 is approved; credential reference EYE_SRC_COMTRADE_KEY (not bound
+in this deployment)` — and the act stopped there, as designed.
+
+**What was NOT done, and why.** The contract is not active and nothing was collected: this deployment binds no
+`EYE_SRC_COMTRADE_KEY` — the free-tier key is the owner's, held outside the repository and this host (§2), and the author
+does not create, bind or handle credentials. When the owner binds it in `.eye-local/env` on the demonstration host, a
+re-run of the script activates v1 and triggers one operator run; the readiness register will read `live` with the
+reference "bound in this deployment; the run carries it". No cadence or budget value changed (the upload contract's
+weekly cadence and its 25 requests / 32 MiB per run are carried verbatim); nothing was purchased; GDELT held; PortWatch
+as §9.11 left it (both sources live; the grant text still pending at `docs/sources/portwatch-grant.md` — nothing more
+to activate there). C15 and the required checks remain the merge gates.

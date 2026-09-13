@@ -8,6 +8,13 @@
  * either contains the other, because "separate" that is only separate by
  * convention is not separate.
  *
+ * CP-6 B11 (0070 §2, §3) adds two more roots under the same discipline: the
+ * ARCHIVE tier — a second root of blob tiers, the bytes keeping their opaque scoped
+ * locator so every check below applies unchanged (D2) — and the EXPORT namespace,
+ * where a customer export package lives as `<tenant>/<domain>/<action_id>/` with
+ * `manifest.json` and one `<manifest_id>.bin` per object (D5). All four roots must
+ * be separate and non-nested.
+ *
  * THE LOCATOR IS OPAQUE AND SCOPED: `<tenant>/<domain>/<random-uuid>`. It is NOT
  * the digest. A digest-named path would create a global content namespace in
  * which one tenant could probe for another tenant's bytes by asking for a hash
@@ -25,13 +32,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
-import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { EYE_CONFIG } from '../../config/config.module.js';
 import type { EyeConfig } from '../../config/config.js';
 import * as fault from '../fault-injection.js';
 
-export type VaultName = 'quarantine' | 'evidence';
+/** The blob tiers: three-segment locators under three separate roots. */
+export type VaultName = 'quarantine' | 'evidence' | 'archive';
+/** The package namespace: `<tenant>/<domain>/<action_id>/<name>` under its own root (0070 §3). */
+export type PackageVault = 'export';
 
 export interface VaultScope {
   tenantId: string;
@@ -55,6 +65,8 @@ export class VaultIntegrityError extends Error {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A package file: the manifest, or one object's bytes named by its manifest id. Nothing else is ever written or read under a package. */
+const PACKAGE_FILE_RE = /^(manifest\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin)$/;
 
 export function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -62,7 +74,7 @@ export function sha256(bytes: Uint8Array): string {
 
 @Injectable()
 export class VaultService {
-  private readonly roots: Record<VaultName, string>;
+  private readonly roots: Record<VaultName | PackageVault, string>;
   private readonly maxBytes: number;
 
   constructor(@Inject(EYE_CONFIG) cfg: EyeConfig) {
@@ -76,14 +88,31 @@ export class VaultService {
         'vault configuration invalid: the quarantine and evidence roots must be two separate, non-nested locations',
       );
     }
-    this.roots = { quarantine, evidence };
+    const archive = resolve(cfg['eye.vault.archive_root']);
+    const exportRoot = resolve(cfg['eye.vault.export_root']);
+    // B11: the archive tier and the export namespace are separate from each other and from the two blob roots above — the
+    // same rule, pairwise over all four (the quarantine/evidence pair keeps its own message above).
+    const all: Array<[string, string]> = [['quarantine', quarantine], ['evidence', evidence], ['archive', archive], ['export', exportRoot]];
+    for (let i = 0; i < all.length; i += 1) {
+      for (let j = i + 1; j < all.length; j += 1) {
+        const a = all[i]![1]; const b = all[j]![1];
+        if (a === b || contains(a, b) || contains(b, a)) {
+          throw new Error(
+            'vault configuration invalid: the archive and export roots must be separate, non-nested locations, apart from each other and from the quarantine and evidence roots',
+          );
+        }
+      }
+    }
+    this.roots = { quarantine, evidence, archive, export: exportRoot };
     this.maxBytes = cfg['eye.vault.max_blob_bytes'];
   }
 
-  /** Create both roots. Called once at module init; idempotent. */
+  /** Create the four roots. Called once at module init; idempotent. */
   async ensureRoots(): Promise<void> {
     await mkdir(this.roots.quarantine, { recursive: true, mode: 0o700 });
     await mkdir(this.roots.evidence, { recursive: true, mode: 0o700 });
+    await mkdir(this.roots.archive, { recursive: true, mode: 0o700 });
+    await mkdir(this.roots.export, { recursive: true, mode: 0o700 });
   }
 
   newLocator(scope: VaultScope): string {
@@ -112,6 +141,31 @@ export class VaultService {
     if (!contains(root, full)) {
       throw new VaultIntegrityError('scope', 'resolved path escapes the vault root');
     }
+    return full;
+  }
+
+  /**
+   * B11: the package directory of an action under the export root, `<export_root>/<tenant>/<domain>/<action_id>`, with the
+   * same scope discipline as a locator: the requester's own scope segments, opaque identifiers, containment re-checked.
+   */
+  private packageDir(scope: VaultScope, actionId: string): string {
+    if (!UUID_RE.test(scope.tenantId) || !UUID_RE.test(scope.domainId) || !UUID_RE.test(actionId)) {
+      throw new VaultIntegrityError('scope', 'package segments are not opaque identifiers');
+    }
+    const root = this.roots.export;
+    const dir = resolve(root, scope.tenantId, scope.domainId, actionId);
+    if (!contains(resolve(root, scope.tenantId, scope.domainId), dir) || dir === resolve(root, scope.tenantId, scope.domainId)) {
+      throw new VaultIntegrityError('scope', 'resolved package path escapes the export root');
+    }
+    return dir;
+  }
+
+  /** A file of a package: `manifest.json` or `<manifest_id>.bin`, contained in the package directory. */
+  private pathForPackage(scope: VaultScope, actionId: string, name: string): string {
+    if (!PACKAGE_FILE_RE.test(name)) throw new VaultIntegrityError('scope', 'a package file is manifest.json or <manifest id>.bin');
+    const dir = this.packageDir(scope, actionId);
+    const full = resolve(dir, name);
+    if (!contains(dir, full) || full === dir) throw new VaultIntegrityError('scope', 'resolved path escapes the package directory');
     return full;
   }
 
@@ -205,6 +259,75 @@ export class VaultService {
   }
 
   /**
+   * B11 (0070 §2; D3): copy a blob from one tier to another UNDER THE SAME LOCATOR — the admission's own discipline
+   * (read the source, verify its digest, temp file, write, fsync, rename, fsync the directory, re-read, compare). The
+   * source is untouched: the caller removes it only after the transaction that recorded the move has committed. A
+   * target already present with the same digest is returned as it is with `created: false` (a retry after a crash between
+   * the copy and the record — or another action's committed copy, which is NOT this caller's to remove); one with a
+   * different digest is a defect and refused. A copy THIS call created is `created: true`, and a failure at any point
+   * after the rename (the directory fsync, the re-read, an injected fault) removes it again: a file this call put there
+   * never survives the call's failure.
+   */
+  async copyBlob(
+    from: VaultName,
+    to: VaultName,
+    scope: VaultScope,
+    locator: string,
+    expectedDigest: string,
+  ): Promise<StoredBlob & { created: boolean }> {
+    const source = this.pathFor(from, locator, scope);
+    const full = this.pathFor(to, locator, scope);
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(source);
+    } catch {
+      throw new VaultIntegrityError('missing', `${from} bytes are not retrievable`);
+    }
+    if (sha256(bytes) !== expectedDigest) {
+      throw new VaultIntegrityError('corrupt', `${from} bytes no longer match their recorded digest`);
+    }
+    // An existing target: idempotent when it is the same bytes (not created by this call), a defect otherwise.
+    try {
+      const present = await readFile(full);
+      if (sha256(present) === expectedDigest && present.byteLength === bytes.byteLength) {
+        return { locator, contentDigest: expectedDigest, byteLength: present.byteLength, created: false };
+      }
+      throw new VaultIntegrityError('exists', `the ${to} locator is occupied by different bytes`);
+    } catch (e) {
+      if (e instanceof VaultIntegrityError) throw e;
+      // ENOENT is the expected case — continue.
+    }
+    await mkdir(dirname(full), { recursive: true, mode: 0o700 });
+    const tmp = `${full}.tmp-${randomUUID()}`;
+    const handle = await open(tmp, 'wx', 0o600);
+    try {
+      fault.at('b11.archive_copy_partial');
+      await handle.write(bytes);
+      await handle.sync();
+    } catch (e) {
+      await handle.close();
+      await rm(tmp, { force: true });
+      throw e;
+    }
+    await handle.close();
+    await rename(tmp, full);
+    // From here the copy exists under its locator: whatever fails before the call returns removes it again (the idempotent
+    // early return above precedes the write, so the file is this call's own).
+    try {
+      await syncDir(dirname(full));
+      fault.at('b11.archive_after_copy_before_record');
+      const readBack = await readFile(full);
+      if (sha256(readBack) !== expectedDigest || readBack.byteLength !== bytes.byteLength) {
+        throw new VaultIntegrityError('corrupt', `the ${to} copy does not match the bytes copied`);
+      }
+    } catch (e) {
+      await rm(full, { force: true }).catch(() => undefined);
+      throw e;
+    }
+    return { locator, contentDigest: expectedDigest, byteLength: bytes.byteLength, created: true };
+  }
+
+  /**
    * Every retrieval re-verifies the digest. A missing blob and a corrupt blob
    * both fail closed with an audited integrity error and identical externally
    * visible shape — a denied or absent read must not disclose which it was (A7).
@@ -256,8 +379,87 @@ export class VaultService {
     await writeFile(this.pathFor(vault, locator, scope), bytes);
   }
 
-  rootFor(vault: VaultName): string {
+  rootFor(vault: VaultName | PackageVault): string {
     return this.roots[vault];
+  }
+
+  // ───────────────────────── B11: the export namespace (0070 §3; D5) ─────────────────────────
+
+  /**
+   * Write one file of a package with the store discipline (temp `wx` 0o600, write, fsync, rename, fsync the directory,
+   * re-read, compare). A file already present is a defect: a package is built once, under one action — the builder
+   * clears the package directory of an interrupted earlier build (`removePackage`) before its first write, so an
+   * `exists` here is a concurrent build of the same action, never a leftover. A write that fails leaves no temp file.
+   */
+  async writePackageFile(scope: VaultScope, actionId: string, name: string, bytes: Uint8Array): Promise<{ contentDigest: string; byteLength: number }> {
+    const full = this.pathForPackage(scope, actionId, name);
+    await mkdir(dirname(full), { recursive: true, mode: 0o700 });
+    try {
+      await access(full, fsc.F_OK);
+      throw new VaultIntegrityError('exists', 'the package file is already present');
+    } catch (e) {
+      if (e instanceof VaultIntegrityError) throw e;
+      // ENOENT is the expected case — continue.
+    }
+    const digest = sha256(bytes);
+    const tmp = `${full}.tmp-${randomUUID()}`;
+    const handle = await open(tmp, 'wx', 0o600);
+    try {
+      await handle.write(bytes);
+      await handle.sync();
+    } catch (e) {
+      await handle.close();
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw e;
+    }
+    await handle.close();
+    await rename(tmp, full);
+    try {
+      await syncDir(dirname(full));
+      const readBack = await readFile(full);
+      if (sha256(readBack) !== digest || readBack.byteLength !== bytes.byteLength) {
+        throw new VaultIntegrityError('corrupt', 'the package file written does not match the bytes presented');
+      }
+    } catch (e) {
+      await rm(full, { force: true }).catch(() => undefined);
+      throw e;
+    }
+    return { contentDigest: digest, byteLength: bytes.byteLength };
+  }
+
+  /** One file of a package, as stored; `missing` when it is not there. */
+  async readPackageFile(scope: VaultScope, actionId: string, name: string): Promise<Buffer> {
+    const full = this.pathForPackage(scope, actionId, name);
+    try {
+      return await readFile(full);
+    } catch {
+      throw new VaultIntegrityError('missing', 'the package file is not retrievable');
+    }
+  }
+
+  /** The names in a package directory (everything there, listed or not — the verifier is what says which is which); `[]` when absent. */
+  async listPackage(scope: VaultScope, actionId: string): Promise<string[]> {
+    try {
+      return (await readdir(this.packageDir(scope, actionId))).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  async packageExists(scope: VaultScope, actionId: string): Promise<boolean> {
+    try {
+      await stat(this.packageDir(scope, actionId));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Remove a package directory whole (after the revocation committed, or to clean up a rolled-back build); idempotent. */
+  async removePackage(scope: VaultScope, actionId: string): Promise<void> {
+    const dir = this.packageDir(scope, actionId);
+    await rm(dir, { recursive: true, force: true });
+    await syncDir(dirname(dir)).catch(() => undefined);
   }
 }
 

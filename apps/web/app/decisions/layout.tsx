@@ -26,6 +26,7 @@ export function useShell(): ShellContext {
 export const NAV = [
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
+  { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },

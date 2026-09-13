@@ -58,8 +58,10 @@ export interface SourceContractV1 {
     deletion_obligation: string;
   };
   security_and_operations: {
-    /** A REFERENCE, never the secret. A contract carrying a secret is rejected. */
+    /** A REFERENCE, never the secret. A contract carrying a secret is rejected. B11: the deployment's variable name (`EYE_SRC_<NAME>`). */
     credential_ref: string | null;
+    /** B11: the request header the credential travels in (`authorization` when absent); named only when a credential is. */
+    credential_header?: string | null;
     authentication_method: string;
     /** The four §6 concepts, recorded separately and never collapsed. */
     authenticity_method: {
@@ -269,6 +271,14 @@ export function validateSourceContract(input: unknown): ValidationResult {
       // The contract stores a REFERENCE. A pasted secret is refused here rather
       // than stored and later redacted, because a stored secret has already leaked.
       push('security_and_operations.credential_ref looks like a secret value; contracts carry a reference, never the secret');
+    } else if (typeof so.credential_ref === 'string' && !/^EYE_SRC_[A-Z0-9_]{1,64}$/.test(so.credential_ref)) {
+      // B11: the reference is the deployment's variable name, in the one namespace the credential store reads.
+      push('security_and_operations.credential_ref names a deployment variable EYE_SRC_<NAME> (upper case, digits, underscores)');
+    }
+    if (so.credential_header !== undefined && so.credential_header !== null) {
+      if (typeof so.credential_header !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(so.credential_header)) push('security_and_operations.credential_header is a header name (letters, digits, hyphens)');
+      else if (so.credential_ref === null) push('security_and_operations.credential_header is named only with a credential_ref');
+      else if (looksLikeSecret(so.credential_header)) push('security_and_operations.credential_header looks like a secret value; it names the header, never the secret');
     }
     str(so.authentication_method, 'security_and_operations.authentication_method');
     str(so.correction_channel, 'security_and_operations.correction_channel');
