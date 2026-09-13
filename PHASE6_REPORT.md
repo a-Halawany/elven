@@ -1885,3 +1885,42 @@ remaining clauses in their own prose; AU-DP-0175 (`verified:ci` since `661c2fb`)
 the remaining ownership work. The register's §5.2a reads **3,555 = 3,190 open + 338 local + 27 CI** — three more
 than `3932207` by the allocation of three new units, none by regression; seven moved from local to CI; no accepted
 deployment leg. The hosted run verifies the artefact on a fresh database; it is not a profile leg (S7).
+
+### 22.9 Codex's bounded review at `36ce748` / `121f636` — B9-F1 closed on the candidate; B9-F2 and B9-F3 assigned
+
+`audit/reviews/The_Eye_36ce748_B9_Bounded_Review_and_Merge_Disposition.md` (2026-09-13): the eight merges verified
+(each merge's two parents, the prepared heads, the archive steps inspected in the hosted logs); **B8-F1 and B8-F2
+closed**; B9's capabilities found functioning on the inspected hosted cases; three findings — **B9-F1** (merge blocker)
+and B9-F2, B9-F3 (bounded functional defects assigned to the next relationship/intelligence and retention batches).
+Codex's probe (`The_Eye_36ce748_B9_Probe_Evidence.zip`) executed the actual TypeScript with explicit doubles; it ran no
+PostgreSQL, Redis or HTTP.
+
+**B9-F1 — before → after.** `MemoryService.retrieve` authorised the SERVED version (purpose, classification, audience)
+and then returned the current projection (`item`) as well — its statement and source reference — so an analyst
+authorised for v1 received the current v2's content in the response (Codex's probe: classification-restricted and
+audience-restricted v2 content in the analyst's v1 response; the access port called with version 1). After: the
+response is built from the served version only — its content, header fields and audience — and the current projection
+contributes AVAILABILITY metadata alone (`item_id`, `state`, `current_version`, `versions`, `superseded_versions`,
+`last_superseded_at`, `attention_state`, `served_is_current`); `item` in the response IS that availability object; the
+access recorded names the served version. Closure evidence, the complete serialized response checked:
+- the harness (`phase6-graph-subscriptions-4.test.ts`, three cases on a fresh database through the governed pipeline):
+  v1 internal / v2 RESTRICTED by classification / v3 internal for the audience role `knowledge_owner`; the analyst's
+  current read refused (v3's role), the auditor's refused (not in the role though cleared), the knowledge owner reads v3;
+  before v3 the analyst is refused (v2's classification) while the auditor reads v2 with nothing of v3; **the closure
+  case**: the analyst's read as of before v2 serves v1 — `JSON.stringify` of the response holds v1's statement and
+  source and none of v2's or v3's statement, source, classification, audience role or supersession reason; the
+  availability object is exactly the seven fields; the `version` object's keys are exactly the served version's; the
+  access ledger gains one row — version 1, the analyst, the purpose stated — and the refused reads left none; the
+  listing and the record under `graph.read` carry no statement of any version;
+- the real HTTP path on the demonstration (`scripts/phase6/closure-b9-f1.mjs` → `evidence/cp6/closure-b9-f1.txt`):
+  the same versions recorded by K. Müller and R. Adler, the same reads by A. Hoffmann (analyst), platform-admin and
+  K. Müller, every response printed as the server returned it — the analyst's v1 read 1,849 bytes with nothing of v2
+  or v3, the access ledger read from the database naming version 1 under the analyst's purpose; the full integration
+  suite **932/932 in 56 files** on a fresh database at this candidate (`b9-int-all-5.txt`); boundaries clean. (An administrator is
+  admitted to every audience role by 0066 §3's rule and reads v3; the act's first run expected otherwise on that one
+  control, recorded an extra item on the demonstration and was re-run with the rule stated.)
+
+**B9-F2** (a refused edge assertion leaves the consumer's transaction aborted, so the unresolved checkpoint cannot be
+written — the item falls to infrastructure retry instead of the person's disposition) and **B9-F3** (a `review`
+action's verification applies the deletion checks and can never pass) are carried into the next batch with G2 (a
+claim approved in review never graphed); their clauses stay visibly unfinished on AU-DP-0176 and AU-MEM-0059/-0061.

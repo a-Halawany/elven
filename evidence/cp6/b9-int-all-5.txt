@@ -1,0 +1,7 @@
+# CP-6 B9 — the full integration suite at the B9-F1 closure candidate on a fresh database (eye_verify52_20260913 created empty and migrated 0001–0067): 932 = 929 + the three F1 closure cases.
+# command: EYE_DB_NAME=eye_verify52_20260913 pnpm --filter @eye/api test:int:all
+ Test Files  56 passed (56)
+      Tests  932 passed (932)
+   Start at  10:06:25
+   Duration  412.98s (transform 1.04s, setup 245ms, import 13.65s, tests 395.03s, environment 2ms)
+EXIT 0

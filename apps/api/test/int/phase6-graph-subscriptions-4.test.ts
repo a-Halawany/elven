@@ -380,6 +380,76 @@ describe('B9 · the Memory item (AU-MEM-0065): recorded, retrieved under a purpo
   }, 180_000);
 });
 
+describe('B9-F1 closure · a historical retrieval serves the AUTHORISED version\'s content and nothing of a version the reader is not authorised for; the access evidence names what was served', () => {
+  let itemId = ''; let tBeforeV2 = ''; let tBeforeV3 = ''; let auditor: AuthenticatedPrincipal;
+  const V1 = 'The corridor rule as first recorded: the third shipment is rebooked within 48 hours of the warning (internal).';
+  const V2 = 'RESTRICTED SUPERSESSION: the rebooking premium ceiling and the broker named in it are for restricted readers only.';
+  const V3 = 'KNOWLEDGE-OWNER-ONLY SUPERSESSION: the revised ceiling is for the knowledge owners of this domain only.';
+  const base = (over: Record<string, unknown>) => ({ recordClass: 'institutional', title: 'Rebooking rule (F1 closure)', statement: V1, source: { kind: 'human', ref: 'decision room, January 2024' },
+    audience: { classification: 'internal', roles: [], purposes: ['memory', 'graph'] }, validity: { from: '2024-01-17T00:00:00Z', to: null },
+    retention: { profile: 'institutional-record-10y', retainUntil: '2034-01-17T00:00:00Z', basis: 'institutional rules are kept ten years' }, cites: [], related: { decisionId: null, objectiveId: null }, ...over });
+  const retrieveRaw = (p: AuthenticatedPrincipal, asOf: string | null, purpose = 'memory') =>
+    graph.retrieveMemoryItem(h.req(p, 'memory.item.retrieve', 'MEM', itemId, purpose), T(), D(), itemId, { payload: asOf === null ? {} : { asOf } }) as Promise<Record<string, unknown>>;
+  const accessRows = async () => (await sql<{ object_version: number; purpose_id: string; reader_principal_id: string }>`select object_version::int, purpose_id, reader_principal_id::text from memory.item_access where item_id = ${itemId}::uuid order by accessed_at`.execute(su)).rows;
+
+  it('SETUP: v1 internal for everyone in the audience; v2 restricted by CLASSIFICATION; v3 restricted by AUDIENCE ROLE (knowledge owners only) — each recorded through the governed route', async () => {
+    auditor = await h.humanWithSession(['auditor'], 'f1-auditor', 'TENANT');
+    const r = await graph.recordMemoryItem(h.req(knowledgeOwner, 'memory.item.record', 'MEM', null, 'memory'), T(), D(), { payload: base({}) }) as { memory: { itemId: string } };
+    itemId = r.memory.itemId;
+    await sleep(30); tBeforeV2 = await mark().then((d) => d.toISOString()); await sleep(30);
+    await graph.supersedeMemoryItem(h.req(recordAuthority, 'memory.item.supersede', 'MEM', itemId, 'memory'), T(), D(), itemId, { payload: base({ statement: V2, source: { kind: 'human', ref: 'SYNTHETIC_V2_SOURCE (restricted)' }, audience: { classification: 'restricted', roles: [], purposes: ['memory', 'graph'] }, supersession: { reason: 'the premium ceiling and the broker are restricted', effectiveAt: '2024-02-01T00:00:00Z' } }) });
+    await sleep(30); tBeforeV3 = await mark().then((d) => d.toISOString()); await sleep(30);
+    await graph.supersedeMemoryItem(h.req(recordAuthority, 'memory.item.supersede', 'MEM', itemId, 'memory'), T(), D(), itemId, { payload: base({ statement: V3, source: { kind: 'human', ref: 'SYNTHETIC_V3_SOURCE (knowledge owners)' }, audience: { classification: 'internal', roles: ['knowledge_owner'], purposes: ['memory', 'graph'] }, supersession: { reason: 'the revised ceiling is the knowledge owners\'', effectiveAt: '2024-03-01T00:00:00Z' } }) });
+    expect((await sql<{ n: number }>`select count(*)::int n from objects.canonical_objects where object_id = ${itemId}::uuid and object_type = 'MEM'`.execute(su)).rows[0]!.n).toBe(3);
+  }, 120_000);
+
+  it('CONTROLS: the analyst\'s current read is refused (the audience role of v3); the auditor\'s current read is refused too (not in the audience role) though cleared; the knowledge owner reads v3; before v3 the analyst\'s read of v2 is refused by classification while the auditor reads it', async () => {
+    await expect(retrieveRaw(analyst, null)).rejects.toMatchObject({ status: 403 });
+    await expect(retrieveRaw(auditor, null)).rejects.toMatchObject({ status: 403 });
+    const ko = await retrieveRaw(knowledgeOwner, null);
+    expect((ko['memory'] as Record<string, unknown>)['versionServed']).toBe(3);
+    expect(JSON.stringify(ko)).toContain(V3);
+    await expect(retrieveRaw(analyst, tBeforeV3)).rejects.toMatchObject({ status: 403 }); // v2: restricted
+    const au = await retrieveRaw(auditor, tBeforeV3);
+    expect((au['memory'] as Record<string, unknown>)['versionServed']).toBe(2);
+    expect(JSON.stringify(au)).toContain(V2);
+    expect(JSON.stringify(au)).not.toContain(V3); // the auditor is not in v3's audience: nothing of v3 in a v2 read
+  }, 120_000);
+
+  it('THE CLOSURE CASE: the analyst\'s historical read of v1 serves v1 — the COMPLETE serialized response carries v1\'s statement and source and nothing of v2 (classification) or v3 (audience): no statement, no source reference, no audience of theirs; the availability metadata says only which version is current and how many exist; the access ledger names version 1 under the analyst\'s purpose', async () => {
+    const before = await accessRows();
+    const r = await retrieveRaw(analyst, tBeforeV2, 'graph');
+    const text = JSON.stringify(r);
+    const memory = r['memory'] as Record<string, unknown>;
+    expect(memory['versionServed']).toBe(1);
+    expect(text).toContain(V1);
+    expect(text).not.toContain(V2); expect(text).not.toContain(V3);
+    expect(text).not.toContain('SYNTHETIC_V2_SOURCE'); expect(text).not.toContain('SYNTHETIC_V3_SOURCE');
+    expect(text).not.toContain('"restricted"'); expect(text).not.toContain('knowledge_owner'); // v2's classification and v3's audience are theirs, not v1's
+    expect(text).not.toMatch(/the premium ceiling|the revised ceiling/); // the supersession reasons of v2 and v3
+    expect(memory['availability']).toEqual({ item_id: itemId, state: 'active', current_version: 3, versions: 3, superseded_versions: 2, last_superseded_at: expect.any(String), attention_state: 'none', served_is_current: false });
+    expect(memory['item']).toEqual(memory['availability']);
+    const version = memory['version'] as Record<string, unknown>;
+    expect(version).toMatchObject({ object_version: '1', classification: 'internal', supersedes: null });
+    expect((version['payload'] as Record<string, unknown>)['statement']).toBe(V1);
+    expect(Object.keys(version).sort()).toEqual(['accountable_owner', 'classification', 'content_digest', 'item_id', 'lifecycle_state', 'object_version', 'payload', 'purpose_scope', 'recorded_at', 'retention_profile', 'schema_ref', 'supersedes', 'truth_state', 'valid_from', 'valid_to']);
+    // the access evidence: one row, version 1, the analyst, the purpose stated; the refused reads left none
+    const after = await accessRows();
+    expect(after.length).toBe(before.length + 1);
+    expect(after.at(-1)).toEqual({ object_version: 1, purpose_id: 'graph', reader_principal_id: analyst.principalId });
+    expect(after.filter((a) => a.reader_principal_id === analyst.principalId).every((a) => a.object_version === 1)).toBe(true);
+    // the same read as the auditor at the same instant: v1 too, and v1 only
+    const au = await retrieveRaw(auditor, tBeforeV2);
+    expect(JSON.stringify(au)).toContain(V1); expect(JSON.stringify(au)).not.toContain(V2); expect(JSON.stringify(au)).not.toContain(V3);
+    // a listing under graph.read carries no statement of any version
+    const listed = JSON.stringify(await graph.listMemoryItems(h.req(analyst, 'graph.read', 'MEM', null, 'graph'), T(), D(), { payload: {} }));
+    expect(listed).not.toContain(V1); expect(listed).not.toContain(V2); expect(listed).not.toContain(V3);
+    const got = JSON.stringify(await graph.getMemoryItem(h.req(analyst, 'graph.read', 'MEM', itemId, 'graph'), T(), D(), itemId));
+    expect(got).not.toContain(V1); expect(got).not.toContain(V2); expect(got).not.toContain(V3);
+    await settle();
+  }, 120_000);
+});
+
 describe('B9 · governed retention (ES-29-004): scope, holds, approval, execution evidence, residual inventory, verification; the log\'s floor moved by a governed act', () => {
   type Action = { action_id: string; state: string; kind: string; scope_digest: string | null; scope_summary: Record<string, unknown>; failure_class: string | null; disposition: string | null; failure_reason: string | null; residual_summary: unknown[] };
   const actionRow = async (id: string): Promise<Action> => (await sql<Action>`select action_id::text, state, kind, scope_digest, scope_summary, failure_class, disposition, failure_reason, residual_summary from retention.actions_current where action_id = ${id}::uuid`.execute(su)).rows[0]!;

@@ -174,7 +174,7 @@ export class MemoryService {
    * ledger row is written by the caller inside the same transaction once the read is authorised.
    */
   async retrieve(cap: GraphReads, principal: AuthenticatedPrincipal, ctx: ScopeContext, a: { itemId: string; purpose: string; asOf: string | null; correlationId: string }):
-    Promise<{ item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: { state: string; superseded_versions: number } } | null> {
+    Promise<{ item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: Row } | null> {
     const item = await this.current(cap, a.itemId);
     if (item === null) return null;
     const target = { tenantId: ctx.tenantId, domainId: ctx.domainId };
@@ -202,8 +202,22 @@ export class MemoryService {
       const admin = mine.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin');
       if (!admin && !roles.some((r) => mine.includes(r))) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, `the memory item is for the audience ${roles.join(', ')}; the reader holds none of these roles in this domain`), 403);
     }
-    return { item, version: served, versionServed: Number(served['object_version']), versions: versions.length, asOf: a.asOf,
-             availability: { state: String(item['state']), superseded_versions: Number(item['superseded_versions'] ?? 0) } };
+    // THE RESPONSE IS THE SERVED VERSION'S (B9-F1): its content, its header fields and its audience — nothing of any other
+    // version. The current projection contributes AVAILABILITY only — the item's state, which version is current, how many
+    // versions exist, when it was last superseded, its attention state — never the current statement, source or audience,
+    // which a reader authorised for a historical version is not authorised for. The access recorded names the served version.
+    const availability: Row = {
+      item_id: a.itemId, state: String(item['state']), current_version: Number(item['object_version']), versions: versions.length,
+      superseded_versions: Number(item['superseded_versions'] ?? 0), last_superseded_at: item['last_superseded_at'] instanceof Date ? (item['last_superseded_at'] as Date).toISOString() : item['last_superseded_at'] ?? null,
+      attention_state: item['attention_state'] ?? null, served_is_current: Number(served['object_version']) === Number(item['object_version']),
+    };
+    const version: Row = {
+      item_id: a.itemId, object_version: served['object_version'], recorded_at: served['recorded_at'] instanceof Date ? (served['recorded_at'] as Date).toISOString() : served['recorded_at'],
+      lifecycle_state: served['lifecycle_state'], classification: served['classification'], purpose_scope: served['purpose_scope'], retention_profile: served['retention_profile'],
+      valid_from: served['valid_from'], valid_to: served['valid_to'], truth_state: served['truth_state'], accountable_owner: served['accountable_owner'], supersedes: served['supersedes'],
+      schema_ref: served['schema_ref'], content_digest: served['content_digest'] ?? null, payload: servedPayload,
+    };
+    return { item: availability, version, versionServed: Number(served['object_version']), versions: versions.length, asOf: a.asOf, availability };
   }
 
   /** The RECORD of an item without its content: the statement, the source reference and the related objects are a retrieval's (purpose, audience, the access recorded) — never a listing's (B9 review). */
