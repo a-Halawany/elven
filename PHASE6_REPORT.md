@@ -1639,7 +1639,7 @@ chain to be green. A red push run was re-run as the ENTIRE workflow, never faile
 | 6 | #43 | `34969e8` | `4642856` | 34719853823 green | 34720424456 green | 34720462423 green | retargeted from `phase5-twins` to `main` after #41 |
 | 7 | #44 | `41eaa04` | `cbe1790` | 34720646497 green | 34721192292 green | 34721231086 green | retargeted from `integrations/source-readiness-2026-09` to `main` after #43 |
 | 8 | #45 | `da47bd3` | `e0c5025` | 34721784881 green | 34722387128 green | 34722425076 green | documentation only |
-| 9 | #46 | `c93cdad` → the corrected candidate (§22.7) | — | **not merged**: the B9 candidate goes to Codex's bounded review first; retargeted to `main` | | | |
+| 9 | #46 | `48f7bdc` | `a6c9b91` | 34750092541 green (the C17 archive packaged, verified, uploaded) | 34750840687 green | 34750888559 green | after Codex's bounded closure of B9-F1 (§23.1) |
 
 #42 is not in the authorized order and stays open. No production deployment was made; the archives are the
 repository's normal CI/evidence workflow. `docs/ops/STACK_INTEGRATION_PLAN.md` §8 records the executed stack.
@@ -1946,11 +1946,16 @@ served version with availability metadata alone, the harness closure cases, the 
 demonstration, the records. Hosted at `48f7bdc`: **`ci` 34744726183 green** — unit 2148/2148 and the meta suite 9/9,
 the acceptance suite 58/58, the integration suite **932/932 in 56 files on a fresh database**
 (`phase6-graph-subscriptions-4` 28/28), the upgrade proof with 0066 and 0067 (297/297 and 275/275 on the upgraded
-data), C18 612/612 and the gate stages; **C19 34744726187 green**. #46 is `MERGEABLE`/`CLEAN` against `main` and waits
-for Codex's bounded closure of F1 on this candidate; on closure it merges under the existing authorization and its
-C17/C19 archive chain runs on the push to `main` (the PR workflow skips the archive packaging; the post-merge push run
-does it — Codex's note). No further merge permission is requested. AU-MEM-0065's F1 clause is bound to this hosted run
-(the unit's evidence column).
+data), C18 612/612 and the gate stages; **C19 34744726187 green**. **Codex closed B9-F1 at `48f7bdc` on 2026-09-13** (`audit/reviews/The_Eye_48f7bdc_Closure_and_B10_Bounded_Review.md`:
+"PR #46 is eligible to merge under the existing conditional authorization. B10 does not hold it") and **#46 was merged
+under that authorization: `main` `a6c9b91`** (a merge commit, no squash, no rebase; the merge base `da47bd3` is #45's
+head and `main` carried no content since, so over `main` the candidate carried only its own 318 files; branch preserved).
+Its archive chain on `main`, green in order: `ci` 34750092541 (the push run — the delivery-profile C17 archive
+`c17-evidence-archive-a1-d982e59b…` packaged, verified and uploaded; the C16 and C18 evidence artefacts beside it),
+`C19 lifecycle` 34750092578, `C17 finalize` 34750840687, `C19 anchor` 34750888559 — step 9 of the recorded order
+(`docs/ops/STACK_INTEGRATION_PLAN.md` §8). No further merge permission was requested; no production deployment.
+AU-MEM-0065's F1 clause is bound to the candidate's hosted run (the unit's evidence column). **#47 was retargeted to
+`main`** after the merge (its diff is B10 alone).
 
 ### 23.2 What B10 implements (migration 0068, PR #47 on `phase6-b10`, base `phase6-decisions`) — `audit/CP6_BATCHES.md` §B10 for the mechanism
 
@@ -2027,16 +2032,103 @@ page is claimed; the routes it calls are the act's scene 1.
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `48f7bdc` | **the merge candidate** (#46): B9 + the F1 correction, the closure cases, the HTTP-path act, the records | 34744726183 green (932/932 in 56 files; C18 612/612) | 34744726187 green |
+| `a6c9b91` | **`main`: the merge of #46** at `48f7bdc` (step 9 of the recorded order) | 34750092541 green (push; the C17 archive packaged, verified, uploaded) · C17 finalize 34750840687 green · C19 anchor 34750888559 green | 34750092578 green |
 | `0cee439` | **B10 code** (0068, the services, the workspace, the harness, the act script) — PR #47 | 34747248517 green — build-test job 103697312257: unit 2151/2151 and the meta suite 9/9, the acceptance suite 58/58, the integration suite **937/937 in 56 files on a fresh database** (`phase6-graph-subscriptions-4` 32/32, `phase6-executive-requests` 10/10), the upgrade proof with 0022–0068 (47 migrations; 297/297 and 275/275 on the upgraded data), C18 612/612 and the gate stages; browser-regression and supply-chain green | 34747248530 green |
-| the records head (the commit after `0cee439` on `phase6-b10`) | the B10 records (this section, §B10, the units and rows, the evidence index, the summary) | its PR run is records-only; no refresh chain is awaited or bound | — |
+| `c04f6b1` | the B10 records (this section, §B10, the units and rows, the evidence index, the summary) | records only; no refresh chain awaited or bound | — |
+| `1fa3b08` | **the B10 closure — PR #47's corrected candidate** (0069; B10-F1/F2/F3 and the author-found F4 closed; the harness `phase6-briefing-memory`; the closure act) | 34752156335 green (943/943 in 57 files; C18 612/612; the upgrade proof through 0069) | 34752156341 green |
+| the records head after `1fa3b08` | the closure records (§23.6, §B10's closure paragraph, the units, the evidence index) | records only; no refresh chain awaited or bound | — |
 
-Statuses: no unit changes status in B10 — AU-DP-0176, AU-MEM-0059, AU-MEM-0061 and AU-MEM-0065 were `verified:ci` at
-`36ce748` and stay so; their B10 clauses (F2 closed, G2, F3 closed with the scope, the agent's retrieval, the
-withdrawal, the workspace) are bound to the hosted run at `0cee439` in their evidence columns, the F1 clause to
-`48f7bdc`. The register's §5.2a still reads **3,555 = 3,190 open + 338 local + 27 CI**. The hosted run verifies the
+Statuses: no unit changes status in B10. AU-DP-0176 and AU-MEM-0065 were `verified:ci` at `36ce748` and stay so — a
+status that records evidence and erases no remaining clause (AU-DP-0176 still owes the decided-reassessment guard's
+own case; AU-MEM-0065 the workspace's browser walk and the source-derived records); **AU-MEM-0059 and AU-MEM-0061
+are `open` before and after** (the archive and customer-export executors; the pause of a deletion whose referential
+scope cannot be proven) — an earlier draft of this section misstated them as `verified:ci`, corrected here on Codex's
+reading of the rows (the CSV rows were right throughout). The B10 clauses (F2 closed, G2, F3 closed with the scope,
+the agent's retrieval, the withdrawal, the workspace) are bound to the hosted run at `0cee439` in the four units'
+evidence columns, the F1 clause to `48f7bdc`. The register's §5.2a still reads **3,555 = 3,190 open + 338 local + 27 CI**. The hosted run verifies the
 artefact on a fresh database; it is not a profile leg (S7). Requirement rows: V8 OBJ-15 (the agent's retrieval),
 V8 CAP-UM-07 (`missing` → `partial`: the workspace page exists, its browser walk owed), V7 TT-04 (the refusal
 contained), V4 ES-33-007 (purpose-aware retrieval and the review contract).
+
+### 23.6 Codex's bounded review of B10 at `0cee439`/`c04f6b1` — B9-F2, B9-F3 and G2 closed; B10-F1/F2/F3 found and closed at `1fa3b08` (PR #47's corrected candidate), with an author-found fourth
+
+The review (`audit/reviews/The_Eye_48f7bdc_Closure_and_B10_Bounded_Review.md`) closes **B9-F2** (the savepoint; the
+hosted real-DB/queue case), **G2** (the review case consulted by the port and the rules) and **B9-F3** (the review
+contract, verification and scope) on B10's inspected implementation and evidence, and returns three bounded defects on
+B10's new memory-to-briefing path, reproduced with actual TypeScript and explicit doubles (no PostgreSQL/HTTP):
+**B10-F1** (a merge blocker for #47) a stored briefing disclosed a role-restricted memory version to a reader refused
+it directly; **B10-F2** each access id entered the content digest, so identical recompositions differed; **B10-F3** a
+later supersession moved the current projection's instant, so a recomposition at an earlier cutoff lost the item.
+
+**Reproduced at the governed boundary, then closed** (`apps/api/test/int/phase6-briefing-memory.test.ts`, on the real
+database through the governed controllers; the unfixed code first — `evidence/cp6/b10-closure-repro-before.txt`, all
+cases red as the findings say — then the correction, 6/6):
+- **F1** — `BriefingService.get` applies the CITED memory version's audience to THIS reader: its roles held in the
+  target context (administrators admitted, 0066 §3's rule), its classification against the reader's clearance. Outside
+  it the item is WITHHELD — identity and instant kept (`item_id`, `at`, `owner`), title, statement, source and the rest
+  of its content gone (`title: "memory: withheld"`, `details: {withheld, reason, read_under}`), `items_withheld`
+  counted, the availability naming why; a narrative that cites a withheld item is withheld with it
+  (`narrative_withheld`) — found by the author's adversarial review; the content digest is the stored snapshot's; the
+  reader's read leaves no access row on the withheld item. Controls: the composer, a domain administrator and an
+  unrestricted item read as before; the wrong purpose refused.
+- **F2** — the accesses stay on `memory.item_access` and are bound to the BRIEFING ROW (`executive.briefings.
+  memory_accesses`, 0069 §1: item, version, access id) — outside the content and its digest, and not by the envelope's
+  correlation id (a causal chain shares one across requests and nothing makes it unique — the adversarial review's
+  finding on the first correction). Two compositions with the same inputs → one content digest, two ledger rows with
+  distinct access ids, each briefing reporting exactly its own; the changed-version control: a version within the cutoff
+  changes the content, the earlier cutoff's digest unchanged.
+- **F3** — the candidates and the version served come from HISTORY at the cutoff (`DISTINCT ON` the item, the highest
+  version recorded by `known_at`; a withdrawal by the cutoff — `memory.item_events` — excludes and takes no slot; the
+  version's OWN `payload.audience` rules under the reader's present authority); present availability — withdrawn now,
+  superseded by a later version now — is reported apart from the content (`availability.unavailable` / `corrected`
+  gain `memory:` citations). The same cutoff keeps v1 after v2; a cutoff including v2 uses v2; a withdrawal after the
+  cutoff does not remove the item, one by the cutoff does; direct historical retrieval agrees.
+- **B10-F4 (author-found while reproducing F1 at the boundary, widened by the adversarial review)** — the generic
+  object read (`objects/:id/get`, `/list`, history, as-of) served a role-restricted AND a classification-restricted
+  memory version whole to a domain analyst refused it directly (probed on the demonstration first), and would serve a
+  briefing's stored memory statements the same way; the claim route (`intelligence/claims/:id/get`) and the evidence
+  route (`observation/evidence/:id/get`) read any canonical object by id and did the same; the generic WRITE
+  (`objects.correct`) admitted a new MEM/BRF version. Closed: `objects.read` serves the HEADER of an audience-governed
+  object (MEM, BRF) and withholds its content (`payload: null`, `content_withheld` naming the route the content is
+  read through); the claim and evidence routes serve their own types only (a memory item or a briefing by id is not
+  found there); `observation.canonical_write_exclusions` (0069 §2) — `objects.create`/`objects.correct` do not admit
+  MEM or BRF, refused at `objects.admit_version` ("written through its own port") whatever the caller's role; other
+  types unchanged (the evidence control).
+
+**The author's adversarial review of the closure candidate** (`evidence/cp6/b10-closure-adversarial-review.txt`: six
+find dimensions, two refuters per finding, 38 agents): 13 confirmed findings, five distinct — the two typed routes, the
+narrative, the withdrawn items consuming the 200 slots and the newest-2,000 window against the oldest-200 rule, the
+correlation-id binding — all corrected before the candidate was pushed; three refuted (the `since` window as a design
+choice; two describing the pre-candidate state).
+
+**On the demonstration through the HTTP path** (`scripts/phase6/closure-b10.mjs` → `evidence/cp6/closure-b10.txt`,
+2026-09-13T10:30–10:32Z): `eye_demo` backed up and migrated with 0069, the API restarted on the corrected build; K.
+Müller's item for the audience role `executive`; S. Okafor composes the room's briefing; L. Brandt (the room's owner,
+not an executive) is refused the item directly (403) and reads the briefing — the complete response printed —
+nothing of the item's statement, source or title in it, the item withheld with the reason, the unrestricted item
+served, the digest unchanged, no access row left; S. Okafor reads it whole; the wrong purpose refused; A. Hoffmann
+reads the item and the briefing through the objects route — headers, content withheld, every version; evidence
+served as before; two compositions at one cutoff → one digest, three distinct accesses on the ledger, the accesses
+reported beside the content; an item superseded after a cutoff stays v1 at that cutoff with the digest unchanged, v2
+now, the earlier briefing's availability naming the supersession. (The act's first attempt composed domain-wide and
+was refused whole: on this demonstration a branch of a forecast-less scenario was closed in the B9 act and the fold
+treats such an input as restricted and synthetic, so an unwindowed human composition folds to restricted — an
+observation recorded here, not changed; the act composes the room's briefing following its latest as the prior.)
+
+Local gates at the candidate: `phase6-briefing-memory` 6/6 and `phase6-executive-requests` 10/10 on fresh databases;
+the full integration suite **943/943 in 57 files** (`b10-closure-int-all-1.txt`); unit 2151/2151; boundaries clean;
+web `tsc` and `next build` clean (the briefings page shows what is withheld and the present availability); the upgrade
+proof with 0022–0069 (48 migrations; `b10-closure-upgrade-proof.txt`). **Hosted at `1fa3b08`: `ci` 34752156335 green**
+(build-test job 103710395626: unit 2151/2151 and the meta suite 9/9, the acceptance suite 58/58, the integration suite
+943/943 in 57 files on a fresh database with `phase6-briefing-memory` 6/6, the upgrade proof through 0069, C18 612/612;
+browser-regression and supply-chain green), **C19 34752156341 green**. PR #47 (base `main`) is the corrected candidate
+for Codex's next bounded closure, limited to the changed behaviour.
+
+Recorded, assigned forward: the demonstration's forecast-less branch fold (a human composition in a domain with such an
+event folds to restricted — the fold rule is fail-closed by design; whether a closed branch of a forecast-less scenario
+should fold as an input at all is the next executive batch's question); the generic `objects.read` carries no
+clearance check for the other object types (a Phase 0 behaviour; R4a's rule is applied on the typed routes) — recorded
+for the next data-platform batch, not changed here.
 
 ### 23.5 Functioning, partial, missing — and the acceptance work remaining
 
@@ -2057,10 +2149,11 @@ requests (routes, no pages); the C18.1.11 and Phase 0 "known-at" control determi
 
 **Missing** — what the delivery register lists beyond CP-6's batches: the remaining retention capabilities (archive,
 export, index-tier degradation), the remaining source integrations under the standing permissions (UN Comtrade and
-live PortWatch activation acts — authorized, not performed), the interface capabilities the register names without a
-binding, and every deployment leg (no profile carries signed evidence; S7).
+live PortWatch activation acts — authorized, not performed), the capabilities the interface register's 24 PARTIAL
+contracts still name (the register reads **26 bound / 24 partial / 0 unbound** since B9; B10 changed no binding, and
+"bound" is a binding, not semantic acceptance), and every deployment leg (no profile carries signed evidence; S7).
 
-**Acceptance work remaining** — Codex's bounded closure of F1 on `48f7bdc` → the merge of #46 and its archive chain;
-then #47 retargeted to `main` for its own bounded review; the hosted run at `0cee439` bound in the units when green;
-the owner's walk of `/graph/memory`; the next batch from the register (retention's executors, the source activation
-acts, the pages).
+**Acceptance work remaining** — Codex's bounded closure of B10-F1/F2/F3 (and the author-found F4) on `1fa3b08` → the
+merge of #47 under the existing authorization and its archive chain; the owner's walk of `/graph/memory`; B11 on
+`phase6-b11` (the governed credential path and the UN Comtrade act up to the key the owner binds; retention's archive
+and customer-export executors and the safe deletion scope; the five workspace pages) with its own bounded review.

@@ -869,14 +869,29 @@ briefing agent's run yields a briefing whose only memory item is the first, with
 none for the hidden item; the executive's own composition adds a second access row. Unit: `codex-corrections.test.ts`
 gains three G2 cases on the builder's double (approved-in-case graphed; rejected-in-case refused; a case-corrected
 version superseded, the successor graphed). Units: AU-DP-0176 (F2 closed; G2), AU-MEM-0059/-0061 (F3 closed, §2 and
-§6), AU-MEM-0065 (the agent's retrieval; the workspace page; the withdrawal) — statuses unchanged (`verified:ci` from
-B9), the B10 clauses bound to the hosted run at the B10 head (PHASE6_REPORT §23.4).
+§6), AU-MEM-0065 (the agent's retrieval; the workspace page; the withdrawal) — statuses unchanged: AU-DP-0176 and
+AU-MEM-0065 `verified:ci` from B9, AU-MEM-0059 and AU-MEM-0061 `open` (their executors and the unprovable-scope pause
+still owed); the B10 clauses bound to the hosted run at the B10 head (PHASE6_REPORT §23.4).
 
 **B10.7 the demonstration** — `scripts/phase6/act-b10.mjs` → `evidence/cp6/act-b10.txt` (PHASE6_REPORT §23.3): the
 workspace's routes, the briefing agent's retrieval, the F2 scene on the live `stocks` edge (a correction to `procures`
 refused → unresolved → re-driven without a duplicate cause → the vocabulary extended → re-derived; the builder's run
 afterwards asserting nothing twice), the F3 scene (a review of the current `eu-sanctions-rss` evidence verified
 against its preservation contract, no DeletionVerified).
+
+**B10.8 the closure (Codex's bounded review at `0cee439`/`c04f6b1`; migration 0069; PR #47's corrected candidate
+`1fa3b08`).** B9-F2, B9-F3 and G2 closed on the inspected implementation. B10-F1 (a stored briefing disclosed a memory
+version outside its audience roles), B10-F2 (the access id in the content digest) and B10-F3 (a later supersession
+removed an item from an earlier cutoff) reproduced at the governed boundary and closed — `BriefingService.get` withholds
+a memory item outside the cited version's audience for THIS reader (roles in the target, administrators admitted,
+classification against clearance; a narrative citing a withheld item withheld with it); the accesses on the briefing row
+(`executive.briefings.memory_accesses`, 0069 §1) outside the content; the candidates from history at the cutoff
+(DISTINCT ON the item; withdrawals by the cutoff excluded before the 200-item bound); present availability apart. **B10-F4
+(author-found)**: `objects.read` serves the header of an audience-governed object (MEM, BRF) and withholds the content;
+the claim and evidence routes serve their own types; `observation.canonical_write_exclusions` (0069 §2) keeps the generic
+write off MEM and BRF at `objects.admit_version`. Harness `phase6-briefing-memory.test.ts` (6; the unfixed code red first,
+`b10-closure-repro-before.txt`); the adversarial review of the candidate (38 agents, 13 confirmed findings corrected); the
+demonstration through the HTTP path (`closure-b10.mjs` → `closure-b10.txt`); hosted at `1fa3b08` green. PHASE6_REPORT §23.6.
 
 ## Order and the next implementation batch
 

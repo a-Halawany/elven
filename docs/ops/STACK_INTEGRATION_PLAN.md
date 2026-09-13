@@ -333,9 +333,9 @@ to be green before the next merge; a red push run was re-run as the ENTIRE workf
 | 6 | #43 | `34969e8` | `4642856` | 34719853823 green | 34720424456 green | 34720462423 green |
 | 7 | #44 | `41eaa04` | `cbe1790` | 34720646497 green | 34721192292 green | 34721231086 green |
 | 8 | #45 | `da47bd3` | `e0c5025` | recorded in PHASE6_REPORT §22.1 when its chain completes | | |
-| 9 | #46 | — | — | **not merged** — the B9 candidate goes to Codex's bounded review first | | |
+| 9 | #46 | `48f7bdc` | `a6c9b91` | 34750092541 green (the C17 archive `c17-evidence-archive-a1-d982e59b…` packaged, verified, uploaded) | 34750840687 green | 34750888559 green |
 
-#39 was marked ready first (`gh pr ready 39`) after the C15 recheck dispatch 34713621090 confirmed that no compatible
+#46 merged on 2026-09-13 after Codex's bounded closure of B9-F1 at `48f7bdc` (`audit/reviews/The_Eye_48f7bdc_Closure_and_B10_Bounded_Review.md`), the last step of the order; #47 (B10) was then retargeted to `main`. #39 was marked ready first (`gh pr ready 39`) after the C15 recheck dispatch 34713621090 confirmed that no compatible
 fixed official image exists yet for any service and the derived images remain the pinned route. #43 and #44 were
 retargeted to `main` after their base PRs landed. Each push run's archive artefact
 (`c17-evidence-archive-a<n>-<sha256>`) and the finalized artefact (`c17-evidence-finalized-a<n>-<sha256>`) are on the
