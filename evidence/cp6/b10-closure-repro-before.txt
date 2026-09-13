@@ -1,0 +1,103 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ ❯ test/int/phase6-briefing-memory.test.ts (5 tests | 5 failed) 1558ms
+     × REPRODUCED then CLOSED: the composer (executive + knowledge owner) composes from a knowledge-owner-only item and an unrestricted one; the plain executive is refused the item directly (403) and the complete briefing response holds nothing of it 96ms
+     × the CONTROLS: the composer reads the item in the briefing; a domain administrator (admitted to every audience role) reads it; a wrong purpose is refused; an unrestricted item is served to the plain executive 14ms
+     × B10-F4 · the generic object read serves the HEADER of a memory item and of a briefing and withholds their content — the analyst who is refused the item directly reads its header only, every version; an evidence object is served as before 9ms
+     × equal digests, distinct accesses; the changed-version control 64ms
+     × v1 retained at the earlier cutoff after v2; v2 at a later cutoff; the withdrawal distinction; the availability of a superseded and of a withdrawn citation 173ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the reason); the composer, an administrator and an unrestricted item read as before > REPRODUCED then CLOSED: the composer (executive + knowledge owner) composes from a knowledge-owner-only item and an unrestricted one; the plain executive is refused the item directly (403) and the complete briefing response holds nothing of it
+AssertionError: expected '{"briefing_id":"01a09a2e-3ce6-7ffa-b1…' not to contain 'KNOWLEDGE-OWNERS-ONLY'
+Expected: "KNOWLEDGE-OWNERS-ONLY"
+Received: "{"briefing_id":"01a09a2e-3ce6-7ffa-b141-9991e0120c1b","scope":"DOMAIN","tenant_id":"01a09a2e-385b-70ea-b792-f840546778b5","domain_id":"01a09a2e-385b-70ea-b792-f8411b42d752","room_id":null,"package_id":null,"composed_by":"01a09a2e-3cb9-7d27-ba29-b24d96d0a5bc","composed_via":"human","agent_id":null,"known_at":"2026-09-13T09:51:56.645Z","prior_briefing_id":null,"watermark":{"known_at":"2026-09-13T09:51:56.645Z","prior_known_at":null,"prior_briefing_id":null,"prior_composed_at":null},"sources":["SRC:01a09a2e-387d-74d1-93d3-8543d835dcb8@2","SRC:01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5@1","evidence:01a09a2e-394c-7fe8-9e88-06eaa474b492@1","evidence:01a09a2e-3984-7d96-b2a6-26ecf70b5145@1","evidence:01a09a2e-39b7-775d-b59d-2c87594efe0d@1","evidence:01a09a2e-3a3a-717a-abea-68f5d92d4855@1","evidence:01a09a2e-3a70-7e24-913a-50e84eccd21f@1","evidence:01a09a2e-3aaa-7c97-a695-18551bfc2a87@1","memory:01a09a2e-3cd3-775a-b953-1724bd90f490@1","memory:01a09a2e-3cdd-724a-922f-b0be174781af@1","run:01a09a2e-3b6c-79a2-988b-388f65113384@1","run:01a09a2e-3bac-72f1-ab58-ebb73e0856c8@1","run:01a09a2e-3bde-779b-8a75-a09edfcf6c31@1","run:01a09a2e-3c0b-7987-9970-64208ace7837@1"],"items":[{"at":"2026-09-13T09:51:55.737Z","id":"01a09a2e-394c-7fe8-9e88-06eaa474b492","kind":"evidence","owner":null,"title":"SRC:01a09a2e-387d-74d1-93d3-8543d835dcb8@2","source":{"source_id":"01a09a2e-387d-74d1-93d3-8543d835dcb8","contract_version":2},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-394c-7fe8-9e88-06eaa474b492@1","matters":[{"rationale":"a value the forecast was fitted on was read from this evidence; a correction to it changes the fit","dependent_type":"FCT","dependent_object_id":"01a09a2e-3c6d-7918-9613-0ef8dd665602"}],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:55.737Z"},"truth_state":"observed","source_state":"live","synthetic_state":false},{"at":"2026-09-13T09:51:55.791Z","id":"01a09a2e-3984-7d96-b2a6-26ecf70b5145","kind":"evidence","owner":null,"title":"SRC:01a09a2e-387d-74d1-93d3-8543d835dcb8@2","source":{"source_id":"01a09a2e-387d-74d1-93d3-8543d835dcb8","contract_version":2},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-3984-7d96-b2a6-26ecf70b5145@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:55.791Z"},"truth_state":"observed","source_state":"live","synthetic_state":false},{"at":"2026-09-13T09:51:55.842Z","id":"01a09a2e-39b7-775d-b59d-2c87594efe0d","kind":"evidence","owner":null,"title":"SRC:01a09a2e-387d-74d1-93d3-8543d835dcb8@2","source":{"source_id":"01a09a2e-387d-74d1-93d3-8543d835dcb8","contract_version":2},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-39b7-775d-b59d-2c87594efe0d@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:55.842Z"},"truth_state":"observed","source_state":"live","synthetic_state":false},{"at":"2026-09-13T09:51:55.974Z","id":"01a09a2e-3a3a-717a-abea-68f5d92d4855","kind":"evidence","owner":null,"title":"SRC:01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5@1","source":{"source_id":"01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5","contract_version":1},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-3a3a-717a-abea-68f5d92d4855@1","matters":[{"rationale":"twin version 1 on branch actual grounds consumption.weekly:SYN-PART-MAG on it","dependent_type":"TWN","dependent_object_id":"01a09a2e-3ad8-7b96-bab7-d416e5b2d829"}],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:55.974Z"},"truth_state":"observed","source_state":"operator-upload","synthetic_state":true},{"at":"2026-09-13T09:51:56.029Z","id":"01a09a2e-3a70-7e24-913a-50e84eccd21f","kind":"evidence","owner":null,"title":"SRC:01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5@1","source":{"source_id":"01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5","contract_version":1},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-3a70-7e24-913a-50e84eccd21f@1","matters":[{"rationale":"twin version 1 on branch actual grounds shipment:SYN-SHIP-4471 on it","dependent_type":"TWN","dependent_object_id":"01a09a2e-3ad8-7b96-bab7-d416e5b2d829"}],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.029Z"},"truth_state":"observed","source_state":"operator-upload","synthetic_state":true},{"at":"2026-09-13T09:51:56.087Z","id":"01a09a2e-3aaa-7c97-a695-18551bfc2a87","kind":"evidence","owner":null,"title":"SRC:01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5@1","source":{"source_id":"01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5","contract_version":1},"details":{"correction_of":null,"classification":"internal","lifecycle_state":"admitted"},"item_id":"evidence:01a09a2e-3aaa-7c97-a695-18551bfc2a87@1","matters":[{"rationale":"twin version 1 on branch actual grounds production.policy:SYN-PART-MAG on it","dependent_type":"TWN","dependent_object_id":"01a09a2e-3ad8-7b96-bab7-d416e5b2d829"}],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.087Z"},"truth_state":"observed","source_state":"operator-upload","synthetic_state":true},{"at":"2026-09-13T09:51:56.327Z","id":"01a09a2e-3b6c-79a2-988b-388f65113384","kind":"run","owner":"01a09a2e-38ab-7d15-b251-809ca0b932e9","title":"control run on twin 01a09a2e-3ad8-7b96-bab7-d416e5b2d829@1","source":null,"details":{"run_kind":"control","control_run_id":null,"outputs_digest":"4345238edb8d5b2cce82615227c1ca779ebc74c8b02ceea30d869b6e0566eae1","outside_envelope":false},"item_id":"run:01a09a2e-3b6c-79a2-988b-388f65113384@1","matters":[{"rationale":"intervention run compared against this control","dependent_type":"SIM","dependent_object_id":"01a09a2e-3bac-72f1-ab58-ebb73e0856c8"},{"rationale":"intervention run compared against this control","dependent_type":"SIM","dependent_object_id":"01a09a2e-3bde-779b-8a75-a09edfcf6c31"}],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.327Z"},"truth_state":"synthetic","source_state":"internal","synthetic_state":true},{"at":"2026-09-13T09:51:56.377Z","id":"01a09a2e-3bac-72f1-ab58-ebb73e0856c8","kind":"run","owner":"01a09a2e-38ab-7d15-b251-809ca0b932e9","title":"intervention run on twin 01a09a2e-3ad8-7b96-bab7-d416e5b2d829@1","source":null,"details":{"run_kind":"intervention","control_run_id":"01a09a2e-3b6c-79a2-988b-388f65113384","outputs_digest":"7a60e409d3d49b47069eab66049790636a35f0e85ea322a8b00c9685daf315d5","outside_envelope":false},"item_id":"run:01a09a2e-3bac-72f1-ab58-ebb73e0856c8@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.377Z"},"truth_state":"synthetic","source_state":"internal","synthetic_state":true},{"at":"2026-09-13T09:51:56.423Z","id":"01a09a2e-3bde-779b-8a75-a09edfcf6c31","kind":"run","owner":"01a09a2e-38ab-7d15-b251-809ca0b932e9","title":"intervention run on twin 01a09a2e-3ad8-7b96-bab7-d416e5b2d829@1","source":null,"details":{"run_kind":"intervention","control_run_id":"01a09a2e-3b6c-79a2-988b-388f65113384","outputs_digest":"de86270da6d621761098630b95b2fd951bc486af0fdd5ad4c3e75a902719df64","outside_envelope":false},"item_id":"run:01a09a2e-3bde-779b-8a75-a09edfcf6c31@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.423Z"},"truth_state":"synthetic","source_state":"internal","synthetic_state":true},{"at":"2026-09-13T09:51:56.475Z","id":"01a09a2e-3c0b-7987-9970-64208ace7837","kind":"run","owner":"01a09a2e-38ab-7d15-b251-809ca0b932e9","title":"control run on twin 01a09a2e-3ad8-7b96-bab7-d416e5b2d829@1","source":null,"details":{"run_kind":"control","control_run_id":null,"outputs_digest":"4565becb8e1e102291fe16f8df54ddd1ab72c69de370f865cf356eaf3fb7d31c","outside_envelope":false},"item_id":"run:01a09a2e-3c0b-7987-9970-64208ace7837@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.475Z"},"truth_state":"synthetic","source_state":"internal","synthetic_state":true},{"at":"2026-09-13T09:51:56.629Z","id":"01a09a2e-3cd3-775a-b953-1724bd90f490","kind":"memory","owner":"01a09a2e-3cb4-7c8a-af69-54bb09ef92cd","title":"memory: Ceiling review (knowledge owners only)","source":null,"details":{"source":{"ref":"KO-ONLY-SOURCE-REF","kind":"human"},"validity":{"to":null,"from":"2024-01-17T00:00:00.000Z"},"access_id":"0f7d0e46-dd8d-4f07-9af8-a7daffea306c","retention":{"basis":"institutional rules are kept ten years","profile":"institutional-record-10y","retain_until":null},"statement":"KNOWLEDGE-OWNERS-ONLY: the premium ceiling is revised to a quarter after the February review.","read_under":"briefing","record_class":"institutional","classification":"internal"},"item_id":"memory:01a09a2e-3cd3-775a-b953-1724bd90f490@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.629Z"},"truth_state":"asserted","source_state":"internal","synthetic_state":false},{"at":"2026-09-13T09:51:56.638Z","id":"01a09a2e-3cdd-724a-922f-b0be174781af","kind":"memory","owner":"01a09a2e-3cb4-7c8a-af69-54bb09ef92cd","title":"memory: Rebooking rule","source":null,"details":{"source":{"ref":"decision room, January 2024","kind":"human"},"validity":{"to":null,"from":"2024-01-17T00:00:00.000Z"},"access_id":"743685ce-cf80-4cda-a28e-4fb59d1020ba","retention":{"basis":"institutional rules are kept ten years","profile":"institutional-record-10y","retain_until":null},"statement":"UNRESTRICTED: the third shipment is rebooked within 48 hours of the corridor warning.","read_under":"briefing","record_class":"institutional","classification":"internal"},"item_id":"memory:01a09a2e-3cdd-724a-922f-b0be174781af@1","matters":[],"version":1,"freshness":{"age_hours":0,"recorded_at":"2026-09-13T09:51:56.638Z"},"truth_state":"asserted","source_state":"internal","synthetic_state":false}],"windows":[],"source_states":[{"name":"Fixture PortWatch fixture-portwatch-3faf0dc11e","state":"live","reason":"live collection under the source's cadence","source_id":"01a09a2e-387d-74d1-93d3-8543d835dcb8","source_key":"fixture-portwatch-3faf0dc11e","data_origin":"real","rights_state":"confirmed","acquisition_mode":"live","contract_version":2},{"name":"Fixture uploaded records (SYNTHETIC)","state":"operator-upload","reason":"records the operator uploaded","source_id":"01a09a2e-39dd-79f1-8aa2-7ac3f2455bd5","source_key":"fixture-uploads-28cfd1a3","data_origin":"synthetic","rights_state":"confirmed","acquisition_mode":"replay","contract_version":1}],"degraded":false,"narrative":null,"narrative_cites":[],"content_digest":"c8564a62ca273f9abd62f8956158f97fe16a5a1f36ec51611720e0e6f737d40e","header_digest":"fef841efc8a1129d6f40cbc5f4c8b767bed23775668eaf6c851cb47558145445","controls":{"inputs":12,"classification":"internal","rights_profile":"fixture; internal","synthetic_state":true,"access_policy_ref":null,"residency_profile":"EU","retention_profile":"24 months; institutional-record-10y"},"composed_at":"2026-09-13T09:51:56.676Z","correlation_id":"01a09a2e-3ce5-7b5f-92e8-c34a0f8b6ffd","admitted_for":"briefing","classification":"internal","availability":{"checked_at":"2026-09-13T09:51:56.709Z","checked":{"evidence":6,"claims":0,"runs":4,"warnings":0,"sources":2},"unavailable":[],"corrected":[]},"re_flagged":[]}"
+ ❯ test/int/phase6-briefing-memory.test.ts:81:22
+     79|     const read = (await get(plainExecutive, briefingId)).briefing;
+     80|     const text = JSON.stringify(read);
+     81|     expect(text).not.toContain('KNOWLEDGE-OWNERS-ONLY'); expect(text).…
+       |                      ^
+     82|     expect(text).toContain('UNRESTRICTED: the third shipment');
+     83|     const mem = memoryOf(read);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the reason); the composer, an administrator and an unrestricted item read as before > the CONTROLS: the composer reads the item in the briefing; a domain administrator (admitted to every audience role) reads it; a wrong purpose is refused; an unrestricted item is served to the plain executive
+AssertionError: expected undefined to be +0 // Object.is equality
+- Expected:
+0
++ Received:
+undefined
+ ❯ test/int/phase6-briefing-memory.test.ts:103:99
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the reason); the composer, an administrator and an unrestricted item read as before > B10-F4 · the generic object read serves the HEADER of a memory item and of a briefing and withholds their content — the analyst who is refused the item directly reads its header only, every version; an evidence object is served as before
+AssertionError: expected { cites: [], …(8) } to be null
+- Expected:
+null
++ Received:
+{
+  "audience": {
+    "classification": "internal",
+    "purposes": [
+      "memory",
+      "briefing",
+    ],
+    "roles": [
+      "knowledge_owner",
+    ],
+  },
+  "cites": [],
+  "record_class": "institutional",
+  "related": {
+    "decision_id": null,
+    "objective_id": null,
+  },
+  "retention": {
+    "basis": "institutional rules are kept ten years",
+    "profile": "institutional-record-10y",
+    "retain_until": null,
+  },
+  "source": {
+    "kind": "human",
+    "ref": "KO-ONLY-SOURCE-REF",
+  },
+  "statement": "KNOWLEDGE-OWNERS-ONLY: the premium ceiling is revised to a quarter after the February review.",
+  "title": "Ceiling review (knowledge owners only)",
+  "validity": {
+    "from": "2024-01-17T00:00:00.000Z",
+    "to": null,
+  },
+}
+ ❯ test/int/phase6-briefing-memory.test.ts:116:68
+    114|     await expect(retrieve(analyst, restricted)).rejects.toMatchObject(…
+    115|     const cur = (await read(analyst, restricted))['object'] as Row;
+    116|     expect(cur['object_type']).toBe('MEM'); expect(cur['payload']).toB…
+       |                                                                    ^
+    117|     expect(JSON.stringify(cur)).not.toContain('KNOWLEDGE-OWNERS-ONLY');
+    118|     const hist = (await read(analyst, restricted, { history: true }))[…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F2 · the same inputs compose to ONE content digest while every access is recorded: two compositions by the same reader at the same cutoff with a bound prior — equal digests, two access rows; the accesses reported beside the content by the briefing's correlation id; a memory version within the cutoff changes the content > equal digests, distinct accesses; the changed-version control
+AssertionError: expected 'c54ac759cdfd1b5395c08a86db64bc1ca4ab4…' to be '4d3144531652d746cbaab85f828f1f5addd8c…' // Object.is equality
+Expected: "4d3144531652d746cbaab85f828f1f5addd8c3775515b400f88f4dee86aff14a"
+Received: "c54ac759cdfd1b5395c08a86db64bc1ca4ab4c7b387d53e4d621d5756ad4b36b"
+ ❯ test/int/phase6-briefing-memory.test.ts:140:33
+    138|     const first = (await compose(composer, cutoff)).briefing;
+    139|     const second = (await compose(composer, cutoff)).briefing;
+    140|     expect(first.contentDigest).toBe(second.contentDigest);
+       |                                 ^
+    141|     expect(JSON.stringify(first.items)).toBe(JSON.stringify(second.ite…
+    142|     expect(JSON.stringify(first.items)).not.toMatch(/access_id/);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F3 · a composition at a cutoff takes its memory from HISTORY: a later supersession leaves the earlier cutoff's item (v1) in place, a cutoff including v2 uses v2; a withdrawal by the cutoff excludes, a withdrawal after it does not; present availability is reported apart from the content > v1 retained at the earlier cutoff after v2; v2 at a later cutoff; the withdrawal distinction; the availability of a superseded and of a withdrawn citation
+TypeError: Cannot read properties of undefined (reading 'version')
+ ❯ test/int/phase6-briefing-memory.test.ts:183:12
+    181|     const after = (await compose(composer, cutoff)).briefing;
+    182|     const stillV1 = memoryOf(after as never).find((i) => i['id'] === i…
+    183|     expect(stillV1['version']).toBe(1); expect((stillV1['details'] as …
+       |            ^
+    184|     expect(JSON.stringify(after.items)).not.toContain('HISTORY-V2');
+    185|     expect(memoryOf(after as never).some((i) => i['id'] === wid)).toBe…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
+   Start at  12:51:54
+   Duration  2.60s (transform 512ms, setup 16ms, import 956ms, tests 1.56s, environment 0ms)

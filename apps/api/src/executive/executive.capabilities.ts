@@ -66,6 +66,8 @@ export interface ExecutiveReads {
   readWarningSuppressions(): any;
   /** B10: the memory items a composition may read (their records; the content is a version in objects.canonical_objects). */
   readMemoryItems(): any;
+  /** B10-F3: the items' event ledger (a withdrawal's instant). */
+  readMemoryItemEvents(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -103,7 +105,7 @@ export interface BriefingWrites extends ExecutiveReads {
   recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
   composeBriefing(a: { briefingId: string; tenantId: string; domainId: string; roomId: string | null; packageId: string | null; composer: string; via: 'human' | 'agent'; agentId: string | null;
                        knownAt: string; prior: string | null; watermark: Record<string, unknown>; sources: unknown[]; items: unknown[]; windows: unknown[]; sourceStates: unknown[]; degraded: boolean;
-                       narrative: string | null; narrativeCites: string[]; contentDigest: string; headerDigest: string; controls: unknown; eventId: string; correlationId: string }): Promise<{ briefing_id: string; content_digest: string }>;
+                       narrative: string | null; narrativeCites: string[]; contentDigest: string; headerDigest: string; memoryAccesses?: Array<{ item_id: string; version: number; access_id: string }>; controls: unknown; eventId: string; correlationId: string }): Promise<{ briefing_id: string; content_digest: string }>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -146,6 +148,7 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readFollowUps(): any { return this.from('executive.follow_ups'); }
   readWarningSuppressions(): any { return this.from('prediction.warning_suppressions'); }
   readMemoryItems(): any { return this.from('memory.items_current'); }
+  readMemoryItemEvents(): any { return this.from('memory.item_events'); }
   async recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string> {
     const rows = await this.call<{ id: string }>(sql`select memory.record_access(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.purpose}, ${a.reader}::uuid, ${a.asOf}::timestamptz, ${a.correlationId}::uuid) as id`);
     return String(rows[0]?.id);
@@ -233,7 +236,8 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
     const rows = await this.call<{ r: { briefing_id: string; content_digest: string } }>(sql`select executive.compose_briefing(
       ${a.briefingId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.roomId}::uuid, ${a.packageId}::uuid, ${a.composer}::uuid, ${a.via}, ${a.agentId}::uuid, ${a.knownAt}::timestamptz,
       ${a.prior}::uuid, ${JSON.stringify(a.watermark)}::jsonb, ${JSON.stringify(a.sources)}::jsonb, ${JSON.stringify(a.items)}::jsonb, ${JSON.stringify(a.windows)}::jsonb, ${JSON.stringify(a.sourceStates)}::jsonb, ${a.degraded},
-      ${a.narrative}, ${JSON.stringify(a.narrativeCites)}::jsonb, ${a.contentDigest}, ${a.headerDigest}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+      ${a.narrative}, ${JSON.stringify(a.narrativeCites)}::jsonb, ${a.contentDigest}, ${a.headerDigest}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.eventId}::uuid, ${a.correlationId}::uuid,
+      ${JSON.stringify(a.memoryAccesses ?? [])}::jsonb) as r`);
     const r = rows[0]?.r; if (r === undefined) throw new Error('compose_briefing returned no row'); return r;
   }
 }

@@ -100,6 +100,12 @@ export default function BriefingsPage() {
                 <ol>{briefing.windows.map((w) => <li key={`${w.kind}:${w.id}`} style={{ fontSize: 'var(--eye-type-label-sm)' }}>{w.overdue ? <strong style={{ color: 'var(--eye-color-critical)' }}>OVERDUE </strong> : null}{w.title} — closes <Mono>{fmtInstant(w.closes_at)}</Mono> ({left(w.time_left_seconds)}) · owner <Mono>{short(w.owner)}</Mono></li>)}</ol>
               )}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>What changed · why it matters · who owns it</h4>
+              {(briefing.items_withheld ?? 0) > 0 ? <UnknownNote><strong>{briefing.items_withheld} item(s) withheld from you</strong> — outside the audience of the memory version cited; the snapshot and its digest are unchanged.</UnknownNote> : null}
+              {briefing.availability !== undefined && (briefing.availability.unavailable.length > 0 || briefing.availability.corrected.length > 0) ? (
+                <UnknownNote><strong>Availability now</strong> (checked {fmtInstant(briefing.availability.checked_at)}; the content keeps what it cited):{' '}
+                  {briefing.availability.unavailable.map((u) => `${u.kind} ${u.id.slice(0, 8)}…${u.version === null ? '' : `@${u.version}`} — ${u.reason}`).concat(briefing.availability.corrected.map((c) => `${c.kind} ${c.id.slice(0, 8)}…@${c.version} — ${c.reason} (version ${c.by_version})`)).join(' · ')}
+                </UnknownNote>
+              ) : null}
               {briefing.items.length === 0 ? <Empty>Nothing changed since the baseline.</Empty> : (
                 <table className="eye-table" style={tableStyle}>
                   <thead><tr><Th>Kind</Th><Th>What</Th><Th>Truth</Th><Th>Source</Th><Th>Freshness</Th><Th>Why it matters</Th><Th>Owner</Th></tr></thead>

@@ -87,10 +87,13 @@ export class EvidenceService {
   async detail(
     cap: ObservationReads, evdId: string, knownAt: string | null, correlationId: string,
   ): Promise<Record<string, unknown>> {
+    // B10-F4: the EVIDENCE route serves evidence — the id alone does not make a memory item or a briefing evidence (their
+    // content is their own routes', within their audiences); any other type is not found here.
     let q = cap
       .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', evdId as never)
+      .where('object_type' as never, '=', 'EVD' as never)
       .orderBy('object_version' as never, 'desc')
       .limit(1);
     if (knownAt !== null) {
@@ -163,6 +166,7 @@ export class EvidenceService {
       .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', evdId as never)
+      .where('object_type' as never, '=', 'EVD' as never)
       .orderBy('object_version' as never)
       .execute()) as EvidenceSummary[];
 

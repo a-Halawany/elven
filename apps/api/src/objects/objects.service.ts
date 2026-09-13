@@ -130,7 +130,7 @@ export class ObjectsService {
       .limit(1)
       .executeTakeFirst()) as ObjectRow | undefined;
     if (row === undefined) throw bad('EYE_STA_001', correlationId, 'no authorized object version matches', 404);
-    return row;
+    return servedRow(row);
   }
 
   /**
@@ -152,7 +152,7 @@ export class ObjectsService {
     if (row === undefined) {
       throw bad('EYE_STA_001', correlationId, 'object was not known at the requested instant', 404);
     }
-    return row;
+    return servedRow(row);
   }
 
   async listObjects(cap: ObjectReads, objectType: string | null, limit: number): Promise<ObjectRow[]> {
@@ -162,16 +162,16 @@ export class ObjectsService {
       .orderBy('recorded_at' as never, 'desc')
       .limit(Math.min(limit, 200));
     if (objectType !== null) q = q.where('object_type' as never, '=', objectType as never);
-    return (await q.execute()) as ObjectRow[];
+    return ((await q.execute()) as ObjectRow[]).map(servedRow);
   }
 
   async versionHistory(cap: ObjectReads, objectId: string): Promise<ObjectRow[]> {
-    return (await cap
+    return ((await cap
       .readCanonicalObjects()
       .selectAll()
       .where('object_id' as never, '=', objectId as never)
       .orderBy('object_version' as never)
-      .execute()) as ObjectRow[];
+      .execute()) as ObjectRow[]).map(servedRow);
   }
 
   // ===== internals =====
@@ -312,6 +312,23 @@ export class ObjectsService {
 
     return stored;
   }
+}
+
+/**
+ * B10-F4 (found while closing B10-F1 at the governed boundary): the generic object read serves the HEADER of an
+ * audience-governed object and never its content. A memory item's content is a retrieval's (`memory.item.retrieve`
+ * under a declared purpose, within the version's audience roles and classification), a briefing's is a briefing
+ * read's (`briefing.read`, the room's members, the cited memory versions' audiences) — this route holds neither rule
+ * and had served a role-restricted, classification-restricted memory version whole to any holder of `objects.read`.
+ */
+const AUDIENCE_GOVERNED: Record<string, string> = {
+  MEM: 'the content of a memory item is read through memory.item.retrieve under a declared purpose, within the version\'s audience',
+  BRF: 'the content of a briefing is read through briefing.read, within the cited memory versions\' audiences',
+};
+export function servedRow(row: ObjectRow): ObjectRow {
+  const rule = AUDIENCE_GOVERNED[String(row.object_type)];
+  if (rule === undefined) return row;
+  return { ...row, payload: null, content_withheld: { object_type: row.object_type, reason: rule } };
 }
 
 /** Rebuild the 43-field canonical header from a stored row (round-trip check). */

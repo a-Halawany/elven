@@ -393,8 +393,11 @@ export class IntelligenceController {
         objectType: 'CLM', objectId: claimId },
       IntelligenceCapability.read,
       async (cap) => {
+        // B10-F4: a CLAIM route serves claims — the id alone does not make a memory item or a briefing a claim (their content
+        // is their own routes', within their audiences); any other type is not found here.
         let q = cap.readCanonicalObjects().selectAll()
-          .where('object_id' as never, '=', claimId as never);
+          .where('object_id' as never, '=', claimId as never)
+          .where('object_type' as never, 'in', ['CLM', 'REL', 'ENT', 'EVT', 'ASM'] as never);
         // KNOWN-AT: no hindsight. The state as of an instant, not today's state.
         if (typeof knownAt === 'string') {
           q = q.where('recorded_at' as never, '<=', new Date(knownAt) as never);
