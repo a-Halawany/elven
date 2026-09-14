@@ -151,8 +151,10 @@ export class RetentionController {
         const observed = await this.retention.observeForVerification(cap, { tenantId, domainId }, actionId);
         const verdict = await cap.verifyAction({ actionId, tenantId, domainId, observed, actor: principal.principalId, correlationId: envelope.correlation_id });
         const verified = verdict['verified'] === true;
+        // DeletionVerified (L3-I05) is a DELETION's proof (a deletion or a log-floor move); a review's verification is its own record, not that event (B9-F3).
+        const deletion = verified && verdict['kind'] !== 'review';
         return { result: verdict, targetType: 'RTA', targetId: actionId, targetVersion: null,
-                 outboxEvent: verified ? this.retention.deletionVerifiedEvent({ actionId, tenantId, domainId, verdict, actor: principal.principalId }) : null };
+                 outboxEvent: deletion ? this.retention.deletionVerifiedEvent({ actionId, tenantId, domainId, verdict, actor: principal.principalId }) : null };
       });
     return { verification: out.result, receipt: receipt(out) };
   }

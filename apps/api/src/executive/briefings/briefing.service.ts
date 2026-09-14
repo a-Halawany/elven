@@ -34,7 +34,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
-import { assertClearance, assertPurpose, clearanceOf, covers, denyRead } from '../../decision/clearance.js';
+import { assertClearance, assertPurpose, bindingReaches, clearanceOf, covers, denyRead } from '../../decision/clearance.js';
 import type { BriefingWrites, ExecutiveReads } from '../executive.capabilities.js';
 
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
@@ -47,6 +47,8 @@ export interface BriefingItem {
   owner: string | null; matters: Array<{ dependent_object_id: string; dependent_type: string; rationale: string }>; details: Record<string, unknown>;
 }
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
+type MemoryAudienceState = { kind: 'missing' } | { kind: 'present'; admitted: boolean; reason: string; withdrawn: boolean; withdrawalReason: string | null; currentVersion: number };
+interface MemoryAudience { of(itemId: string, version: number): Promise<MemoryAudienceState> }
 
 /** A budget hit: the composition is abandoned before anything is admitted; the caller records the stop and escalates. */
 export class BudgetExceeded extends Error { constructor(message: string) { super(message); } }
@@ -146,7 +148,9 @@ export class BriefingService {
   async compose(cap: BriefingWrites, ctx: ScopeContext, a: { roomId: string | null; knownAt: string; priorBriefingId: string | null | undefined; narrative: string | null; narrativeCites: string[] },
                 composer: string, via: 'human' | 'agent', agentId: string | null, purposeId: string, correlationId: string, briefingId: string = newId(), limits: CompositionLimits | number | null = null,
                 /** The composer's clearance in the target context, for a HUMAN composer: the response is a read of the fold, refused before admission when it is not covered (residual review R4a). */
-                composerClearance: string | null = null) {
+                composerClearance: string | null = null,
+                /** B10: the composer's role codes in the target context (a person's bindings; an agent's registered role) — a memory item for an audience ROLE is read only by a holder of it. */
+                composerRoles: readonly string[] = []) {
     const lim: CompositionLimits = typeof limits === 'number' ? { maxReads: limits, maxItems: null, stopOnDegraded: false } : (limits ?? { maxReads: null, maxItems: null, stopOnDegraded: false });
     // every unit of read work is reserved BEFORE it happens; the deadline is checked with it and again before admission (residual review R7)
     const reserve = (what: string): void => {
@@ -250,6 +254,49 @@ export class BriefingService {
           suppressed: suppressedUntil(String(w['warning_id'])) !== null, suppressed_until: suppressedUntil(String(w['warning_id'])) } });
       if (ackIn) push({ kind: 'warning-acknowledged', id: String(w['warning_id']), version: null, title: `acknowledged: ${String(w['title'])}`, at: iso(w['acknowledged_at']), truth_state: 'asserted', synthetic_state: wc?.synthetic_state !== false,
         source_state: 'internal', source: null, owner: String(w['acknowledged_by']), details: { acknowledgement: w['acknowledgement'] } });
+    }
+    // MEMORY ITEMS the composition may read (B10, AU-MEM-0065's retrieval by an agent or a person): the item's version current AT
+    // known_at — from HISTORY (the latest MEM version recorded by known_at; a later supersession moves the current projection's
+    // instant and must not remove the item from a composition at an earlier cutoff — B10-F3), an item withdrawn by known_at out
+    // of circulation then; THAT version's audience PURPOSES admit this composition's purpose, its classification is covered by the
+    // composer's clearance, and its audience ROLES (when it names any) are held by the composer. Each read is an ACCESS recorded
+    // on the item's ledger in this transaction, under the composer's purpose, naming the version served — exactly as a retrieval
+    // through the route is; the access ids stay on the ledger (bound to this composition by its correlation id) and OUT of the
+    // content, so the same inputs compose to the same content digest (B10-F2). An item outside the audience is neither read nor
+    // recorded nor mentioned.
+    reserve('the memory items');
+    const readerClearance = composerClearance ?? clearanceOf({ bindings: composerRoles.map((roleCode) => ({ roleCode, scope: 'DOMAIN', tenantId, domainId })) } as never, { tenantId, domainId }); // an agent's: its registered role's clearance (internal)
+    // The version of each item current at known_at: one row per item (DISTINCT ON the item, its highest version recorded by
+    // the cutoff) — no window of versions, so a heavy history cannot push an item's version out of sight; the items withdrawn by
+    // the cutoff are dropped BEFORE the 200-item bound, oldest recorded first, so a withdrawn item takes no slot.
+    const memoryVersions = (await cap.readCanonicalObjects().distinctOn('object_id' as never).selectAll().where('object_type' as never, '=', 'MEM' as never).where('recorded_at' as never, '<=', knownAt as never)
+      .orderBy('object_id' as never).orderBy('object_version' as never, 'desc').execute()) as Array<Record<string, unknown>>;
+    const memoryIds = memoryVersions.map((v) => String(v['object_id']));
+    const withdrawnByCutoff = new Set<string>();
+    const projections = new Map<string, Record<string, unknown>>();
+    if (memoryIds.length > 0) {
+      for (const e of (await cap.readMemoryItemEvents().select(['item_id'] as never).where('event' as never, '=', 'memory.withdrawn' as never).where('occurred_at' as never, '<=', knownAt as never).where('item_id' as never, 'in', memoryIds as never).execute()) as Array<Record<string, unknown>>) withdrawnByCutoff.add(String(e['item_id']));
+      for (const m of (await cap.readMemoryItems().selectAll().where('item_id' as never, 'in', memoryIds as never).execute()) as Array<Record<string, unknown>>) projections.set(String(m['item_id']), m);
+    }
+    const candidates = memoryVersions.filter((v) => !withdrawnByCutoff.has(String(v['object_id'])) && projections.has(String(v['object_id'])))
+      .sort((x, y) => (iso(x['recorded_at']) < iso(y['recorded_at']) ? -1 : iso(x['recorded_at']) > iso(y['recorded_at']) ? 1 : String(x['object_id']) < String(y['object_id']) ? -1 : 1)).slice(0, 200);
+    const memoryAccesses: Array<{ item_id: string; version: number; access_id: string }> = [];
+    for (const v of candidates) {
+      const itemId = String(v['object_id']);
+      const m = projections.get(itemId)!;
+      const payload = (v['payload'] ?? {}) as Record<string, unknown>;
+      const audience = (payload['audience'] ?? {}) as Record<string, unknown>;
+      const purposes = Array.isArray(audience['purposes']) ? (audience['purposes'] as string[]) : [];
+      const roles = Array.isArray(audience['roles']) ? (audience['roles'] as string[]) : [];
+      if (!purposes.includes(purposeId)) continue;
+      if (!covers(readerClearance, String(v['classification'] ?? 'internal'))) continue;
+      if (roles.length > 0 && !roles.some((r) => composerRoles.includes(r)) && !composerRoles.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin')) continue;
+      const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: Number(v['object_version']), purpose: purposeId, reader: composer, asOf: knownAt, correlationId });
+      memoryAccesses.push({ item_id: itemId, version: Number(v['object_version']), access_id: accessId });
+      controlInputs.push({ synthetic_state: false, classification: v['classification'], rights_profile: null, residency_profile: null, retention_profile: v['retention_profile'], access_policy_ref: null });
+      push({ kind: 'memory', id: itemId, version: Number(v['object_version']), title: `memory: ${String(payload['title'] ?? m['title'] ?? '')}`, at: iso(v['recorded_at']), truth_state: String(v['truth_state'] ?? 'asserted'), synthetic_state: false,
+             source_state: 'internal', source: null, owner: String(m['owner_principal_id']),
+             details: { record_class: payload['record_class'] ?? m['record_class'], statement: payload['statement'] ?? null, source: payload['source'] ?? null, classification: v['classification'], validity: payload['validity'] ?? null, retention: payload['retention'] ?? null, audience: { roles, purposes }, read_under: purposeId } });
     }
     // packages moved (the room's, or every package in the domain) — dissent is a package event too, and is shown; the package's fold is inherited
     reserve('the package events');
@@ -407,8 +454,36 @@ export class BriefingService {
     if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded('the elapsed budget ran out before admission; the composition is abandoned');
     await cap.admitObject(header, payload, headerDigest);
     await cap.composeBriefing({ briefingId, tenantId, domainId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), composer, via, agentId, knownAt, prior: watermark.prior_briefing_id,
-      watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId });
-    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls };
+      watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId, memoryAccesses });
+    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses };
+  }
+
+  /**
+   * B10-F1: whether THIS reader is within the audience of a cited memory VERSION — the version's own audience roles (held in the
+   * target context; an administrator is admitted to every audience role, 0066 §3's rule) and its classification against the
+   * reader's clearance — with the item's PRESENT availability (withdrawn; the current version). One record read per version.
+   */
+  private memoryAudience(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, clearance: string, target: { tenantId: string | null; domainId: string | null }): MemoryAudience {
+    const roles = typeof reader === 'string' ? [] : reader.bindings.filter((bd) => bindingReaches(bd, target)).map((bd) => bd.roleCode);
+    const admin = roles.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin');
+    const cache = new Map<string, MemoryAudienceState>();
+    return { of: async (itemId: string, version: number): Promise<MemoryAudienceState> => {
+      const key = `${itemId}@${version}`;
+      const hit = cache.get(key); if (hit !== undefined) return hit;
+      const v = (await cap.readCanonicalObjects().select(['classification', 'payload'] as never).where('object_type' as never, '=', 'MEM' as never).where('object_id' as never, '=', itemId as never).where('object_version' as never, '=', version as never).executeTakeFirst()) as { classification: string; payload: Record<string, unknown> | null } | undefined;
+      const m = (await cap.readMemoryItems().select(['state', 'object_version'] as never).where('item_id' as never, '=', itemId as never).executeTakeFirst()) as { state: string; object_version: number } | undefined;
+      let out: MemoryAudienceState;
+      if (v === undefined || m === undefined) out = { kind: 'missing' };
+      else {
+        const audienceRoles = Array.isArray((v.payload?.['audience'] as Record<string, unknown> | undefined)?.['roles']) ? ((v.payload!['audience'] as Record<string, unknown>)['roles'] as string[]) : [];
+        const inRole = audienceRoles.length === 0 || admin || audienceRoles.some((r) => roles.includes(r));
+        const cleared = covers(clearance, v.classification);
+        const withdrawnEvent = m.state === 'withdrawn' ? (await cap.readMemoryItemEvents().select(['details'] as never).where('item_id' as never, '=', itemId as never).where('event' as never, '=', 'memory.withdrawn' as never).orderBy('occurred_at' as never, 'desc').executeTakeFirst()) as { details: Record<string, unknown> | null } | undefined : undefined;
+        out = { kind: 'present', admitted: inRole && cleared, withdrawn: m.state === 'withdrawn', withdrawalReason: withdrawnEvent?.details?.['reason'] === undefined ? null : String(withdrawnEvent.details['reason']), currentVersion: Number(m.object_version),
+                reason: !inRole ? `the memory version is for the audience ${audienceRoles.join(', ')}; the reader holds none of these roles in this domain` : !cleared ? `classified ${v.classification}, above the reader's clearance ${clearance}` : 'admitted' };
+      }
+      cache.set(key, out); return out;
+    } };
   }
 
   /** The BRF record's admitted purpose and classification (the header the snapshot was admitted with). */
@@ -419,13 +494,26 @@ export class BriefingService {
   }
 
   /** Availability NOW of the sources a stored snapshot cites — apart from the content, which keeps its digest. */
-  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>>; corrected: Array<Record<string, unknown>> }> {
+  private async availability(cap: ExecutiveReads, b: Record<string, unknown>, clearance: string, audience: MemoryAudience): Promise<{ checked_at: string; checked: Record<string, number>; unavailable: Array<Record<string, unknown>>; corrected: Array<Record<string, unknown>> }> {
     const unavailable: Array<Record<string, unknown>> = [];
     // 0065 §8 (AU-MEM-0031): a cited version CORRECTED after the composition is reported beside the unavailable ones — the
     // snapshot keeps what it cited; the reader learns a later version exists and which.
     const corrected: Array<Record<string, unknown>> = [];
-    const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0, sources: 0 };
+    const checked = { evidence: 0, claims: 0, runs: 0, warnings: 0, sources: 0, memory: 0 };
     for (const s of (b['sources'] as string[]) ?? []) {
+      // B10-F1/F3: a memory version the snapshot cites — its PRESENT availability (withdrawn now; superseded by a later version
+      // now) and whether THIS reader is in the cited version's audience — apart from the content, which keeps what it cited.
+      const mm = /^memory:([0-9a-f-]{36})@(\d+)$/i.exec(s);
+      if (mm !== null) {
+        checked.memory += 1;
+        const id = mm[1] as string; const version = Number(mm[2]);
+        const state = await audience.of(id, version);
+        if (state.kind === 'missing') { unavailable.push({ kind: 'memory', id, version, reason: 'not accessible to the reader or not recorded' }); continue; }
+        if (state.withdrawn) unavailable.push({ kind: 'memory', id, version, reason: 'withdrawn now; out of circulation', withdrawal_reason: state.withdrawalReason });
+        if (state.currentVersion > version) corrected.push({ kind: 'memory', id, version, by_version: state.currentVersion, reason: 'superseded after the composition' });
+        if (!state.admitted) unavailable.push({ kind: 'memory', id, version, reason: state.reason });
+        continue;
+      }
       // a source contract the snapshot rested on: its reuse rights and lifecycle NOW (residual review R5c) — the content keeps what they were then
       const sm = /^SRC:([0-9a-f-]{36})@(\d+)$/i.exec(s);
       if (sm !== null) {
@@ -493,10 +581,31 @@ export class BriefingService {
     const admitted = await this.admitted(cap, briefingId);
     if (purpose !== null) assertPurpose(purpose, admitted.purpose_scope, 'briefing', correlationId);
     const clearance = typeof reader === 'string' ? 'restricted' : assertClearance(reader, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) }, admitted.classification, 'briefing', correlationId);
-    const availability = await this.availability(cap, b, clearance);
+    const audience = this.memoryAudience(cap, reader, clearance, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) });
+    const availability = await this.availability(cap, b, clearance, audience);
+    // B10-F1: a memory item the snapshot carries is served to THIS reader only within the cited version's audience (its roles,
+    // its classification) — a stored briefing lends no reader the composer's authority; outside it the item is WITHHELD:
+    // its identity and instant stay (the snapshot is what it is), its title, statement, source and the rest of its content do not.
+    const items = (Array.isArray(b['items']) ? (b['items'] as BriefingItem[]) : []);
+    let withheld = 0;
+    const served: BriefingItem[] = [];
+    for (const i of items) {
+      if (i.kind !== 'memory' || i.version === null) { served.push(i); continue; }
+      const state = await audience.of(i.id, i.version);
+      if (state.kind === 'present' && state.admitted) { served.push(i); continue; }
+      withheld += 1;
+      served.push({ ...i, title: 'memory: withheld', source: null, details: { withheld: true, reason: state.kind === 'present' ? state.reason : 'not accessible to the reader or not recorded', read_under: (i.details ?? {})['read_under'] ?? null } });
+    }
+    // B10-F2: the composition's accesses are on the BRIEFING ROW (0069 §1: item, version, access id — the ledger rows they name are
+    // memory.item_access's), outside the content and its digest. A narrative that cites a withheld item may carry its content: withheld with it.
+    const withheldIds = new Set(served.filter((i) => i.kind === 'memory' && (i.details ?? {})['withheld'] === true).map((i) => i.item_id));
+    const cites = Array.isArray(b['narrative_cites']) ? (b['narrative_cites'] as string[]) : [];
+    const narrativeWithheld = b['narrative'] !== null && b['narrative'] !== undefined && cites.some((c) => withheldIds.has(c));
     // 0065 §8: what reached the briefing after its composition (re-flagged by an assessment) — the snapshot itself unchanged.
     const reFlagged = (await cap.readBriefingEvents().selectAll().where('briefing_id' as never, '=', briefingId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
-    return { ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability,
+    return { ...b, items: served, items_withheld: withheld, narrative: narrativeWithheld ? null : (b['narrative'] ?? null), narrative_withheld: narrativeWithheld,
+             composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability,
+             memory_accesses: Array.isArray(b['memory_accesses']) ? b['memory_accesses'] : [],
              re_flagged: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })) };
   }
 

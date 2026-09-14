@@ -61,6 +61,8 @@ interface WorldRows {
   recorded?: Array<Record<string, unknown>>;
   corrections?: Array<Record<string, unknown>>;
   invalidations?: Array<Record<string, unknown>>;
+  /** B10 (G2): the review cases the builder consults — none in these worlds unless a case says otherwise. */
+  cases?: Array<Record<string, unknown>>;
 }
 
 function graphCap(w: WorldRows) {
@@ -80,6 +82,7 @@ function graphCap(w: WorldRows) {
     readCanonicalObjects: () => relation(w.canonical ?? []),
     readClaimLineage: () => relation([]),
     readCorrections: () => relation(w.corrections ?? []),
+    readReviewCases: () => relation(w.cases ?? []),
     // Phase 4 dependents the walk may reach; none in these worlds.
     readForecasts: () => relation([]),
     readScenarios: () => relation([]),
@@ -668,6 +671,48 @@ describe('F2b — a claim still awaiting review is not promoted into the graph',
       })],
     });
     expect(r.asserted.length).toBe(1);
+  });
+
+  /*
+   * G2 (B10): the decision lives on the REVIEW CASE, not on the claim's payload. A person's approval is recorded
+   * on intelligence.review_current; the claim payload still says `queued`. The builder consults the case — and a
+   * case that says rejected keeps a payload that says approved out of the graph.
+   */
+  it('G2 — graphs a queued-payload claim whose review case says approved', async () => {
+    const queued = REL_CLAIM({ payload: {
+      subject: 'Acme', predicate: 'supplies', object_value: 'Widget', confidence: 0.4,
+      lineage: { evidence_object_id: 'evd-1', evidence_digest: sha256('e'), mode: 'replay', run_id: 'run-1' },
+      review: { state: 'queued', reason: 'below the review threshold', decider: null },
+    } });
+    const r = await buildEdges({
+      entities: [ACME, WIDGET],
+      resolutions: [RES('r-A', 'ent-A', 'Acme'), RES('r-W', 'ent-W', 'Widget')],
+      canonical: [queued],
+      cases: [{ claim_object_id: 'rel-1', claim_version: 1, state: 'approved', opened_at: '2026-01-01T00:00:01.000Z' }],
+    });
+    expect(r.asserted.length, 'a claim a person approved in review (case) was not graphed').toBe(1);
+  });
+
+  it('G2 — keeps a claim out of the graph when its review case says rejected, whatever the payload says', async () => {
+    const r = await buildEdges({
+      entities: [ACME, WIDGET],
+      resolutions: [RES('r-A', 'ent-A', 'Acme'), RES('r-W', 'ent-W', 'Widget')],
+      canonical: [REL_CLAIM()],
+      cases: [{ claim_object_id: 'rel-1', claim_version: 1, state: 'rejected', opened_at: '2026-01-01T00:00:01.000Z' }],
+    });
+    expect(r.asserted.length).toBe(0);
+    expect(String(r.outcome.skipped[0]?.reason)).toMatch(/rejected/i);
+  });
+
+  it('G2 — a version the case marks corrected is superseded: the successor version is graphed, not it', async () => {
+    const r = await buildEdges({
+      entities: [ACME, WIDGET],
+      resolutions: [RES('r-A', 'ent-A', 'Acme'), RES('r-W', 'ent-W', 'Widget')],
+      canonical: [REL_CLAIM({ object_version: 2, recorded_at: '2026-01-02T00:00:00.000Z' }), REL_CLAIM()],
+      cases: [{ claim_object_id: 'rel-1', claim_version: 1, state: 'corrected', opened_at: '2026-01-01T00:00:01.000Z' }],
+    });
+    expect(r.asserted.length).toBe(1);
+    expect(r.asserted[0]?.['claimVersion']).toBe(2);
   });
 });
 

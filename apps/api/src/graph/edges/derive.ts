@@ -31,11 +31,26 @@ export function entitiesByName(accepted: ReadonlyArray<Row>): Map<string, Set<st
   return byName;
 }
 
-export function deriveEdgeFromClaim(claim: Row, byName: ReadonlyMap<string, ReadonlySet<string>>): Derivation {
+/**
+ * The review decision that governs a claim version is the CASE's, not the claim's own payload: the extraction writes
+ * `review.state = 'queued'` at admission and never rewrites it — the person's approval, correction or rejection is
+ * recorded on the review case (intelligence.review_current). A claim approved in review is therefore graphed; a claim
+ * rejected in review (or challenged and then rejected) is not, whatever its payload says (G2, B10).
+ */
+export function effectiveReviewState(claim: Row, caseState: string | null | undefined): string {
+  const review = (claim['payload'] as Row | undefined)?.['review'] as Row | undefined;
+  const own = String(review?.['state'] ?? 'not_required');
+  if (caseState === 'approved') return 'approved';
+  if (caseState === 'rejected' || caseState === 'queued') return caseState;
+  if (caseState === 'corrected') return 'superseded'; // this version's case was corrected: the corrected version carries the relationship
+  return own; // 'corrected' here is the corrected version's own payload — the correction itself, admitted
+}
+
+export function deriveEdgeFromClaim(claim: Row, byName: ReadonlyMap<string, ReadonlySet<string>>, caseState: string | null = null): Derivation {
   const payload = (claim['payload'] ?? {}) as Row;
   const lineage = (payload['lineage'] ?? {}) as Row;
-  const review = (payload['review'] ?? {}) as Row;
-  const reviewState = String(review['state'] ?? 'not_required');
+  const reviewState = effectiveReviewState(claim, caseState);
+  if (reviewState === 'superseded') return { ok: false, reason: 'this version of the relationship was corrected in review to a later version; the corrected version carries it' };
   if (reviewState === 'queued' || reviewState === 'rejected') {
     return { ok: false, reason: reviewState === 'queued'
       ? 'this relationship is still queued for review; a claim a person has not decided is not promoted into the graph'

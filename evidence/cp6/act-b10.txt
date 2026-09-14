@@ -1,0 +1,86 @@
+=== CP-6 batch B10 on the demonstration (NORDWERK, eye_demo) — 2026-09-13T08:13:22Z, head 0cee439 ===
+
+0. the demonstration database migrated with 0068 (rehearsed first on a restored copy, eye_demo_b10, with its own Redis on 6391 and API on :3411 — three rehearsals; the first found the review-scope defect corrected as 0068 §6 and two act-script errors; the copy is disposable)
+   backup before the migration (pg_dump -Fc, kept outside the repository):
+     47910617 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/8704aca5-efd0-4164-8e07-dbc1322f9c20/scratchpad/b10/demo/eye_demo-pre-0068-20260913T081322Z.dump
+   before:
+     [{"filename":"0066_serving_ownership_and_reach.sql","digest":"f5cd8beff6284b3b","applied_at":"2026-09-12T22:30:29.542Z"},{"filename":"0067_b9_review_corrections.sql","digest":"295d9aaa34264bc7","applied_at":"2026-09-12T23:37:06.488Z"}]
+   the demonstration API stopped for the migration (pid 25260)
+   migrate (0068 through the migrator):
+     applying 0068_b10_review_case_and_review_verification.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+   after:
+     [{"filename":"0066_serving_ownership_and_reach.sql","digest":"f5cd8beff6284b3b","applied_at":"2026-09-12T22:30:29.542Z"},{"filename":"0067_b9_review_corrections.sql","digest":"295d9aaa34264bc7","applied_at":"2026-09-12T23:37:06.488Z"},{"filename":"0068_b10_review_case_and_review_verification.sql","digest":"9c324c9a0b2d2fdf","applied_at":"2026-09-13T08:13:29.121Z"}]
+
+   the demonstration API restarted on the B10 build (dist built at this tree):
+     dist already built at this head; no rebuild
+     {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"de
+     
+
+
+=== CP-6 batch B10 · the memory workspace, the agent's retrieval, B9-F2/G2 and B9-F3 on the demonstration ===
+
+0. the personas (created in B9; each opens its own session)
+  ✓ k.mueller, r.adler, l.brandt, s.okafor, a.hoffmann, l.ferreira, j.weber, o.steiner, p.novak, h.bergmann authenticated
+
+1. the memory workspace's routes (what /graph/memory calls) — record, list, get, retrieve, withdraw
+  ✓ K. Müller recorded 01a099d4… v1 (internal; purposes memory, graph)
+  ✓ the workspace's list (K. Müller) shows it: state active, version 1, classification internal, purposes ["memory","graph"]; the row carries no statement: true
+  ✓ the record: 1 event(s), 0 access row(s); no content in the record: true
+  ✓ L. Brandt retrieved under the memory purpose: version 1 served; availability {"item_id":"01a099d4-42a4-7242-ac45-7e937ef864a6","state":"active","current_version":1,"versions":1,"superseded_versions":0,"last_superseded_at":null,"attention_state":"none","served_is_current":true}; access b9341bda…
+  ✓ the same read under the BRIEFING purpose (not in the item's audience) refused: 403 a memory item is read under the purpose it was admitted for (memory) or one it declares for its audience (memory, graph); this read states briefing
+  ✓ K. Müller recorded the throwaway 01a099d4…
+  ✓ K. Müller's withdrawal refused (403: no qualifying role binding for action in resolved scope) — withdrawal is the record authority's
+  ✓ R. Adler withdrew it under memory.item.withdraw: {"itemId":"01a099d4-42ef-7cc8-a900-b83af51bf03c","state":"withdrawn"}
+  · the current retrieval after the withdrawal (L. Brandt) → HTTP 409
+      {"code":"EYE-STA-003","machineName":"truth_state_prohibited","message":"memory item 01a099d4-42ef-7cc8-a900-b83af51bf03c was withdrawn and is out of circulation; its versions stay replayable as of an instant (payload.asOf)","retry":"no","correlationId":"7b6fcddc-c659-4328-8e21-48cd68ab5881","contractVersion":"v1"}
+  ✓ refused 409 EYE-STA-003 (truth_state_prohibited): out of circulation, replayable as of an instant
+  · the same item as of 2026-09-13T08:13:39.960Z (before the withdrawal) → HTTP 201
+      {"memory":{"item":{"item_id":"01a099d4-42ef-7cc8-a900-b83af51bf03c","state":"withdrawn","current_version":1,"versions":1,"superseded_versions":0,"last_superseded_at":null,"attention_state":"none","served_is_current":true},"version":{"item_id":"01a099d4-42ef-7cc8-a900-b83af51bf03c","object_version":"1","recorded_at":"2026-09-13T08:13:39.952Z","lifecycle_state":"active","classification":"internal","purpose_scope":"memory","retention_profile":"institutional-record-10y","valid_from":"2024-03-01T00:00:00.000Z","valid_to":null,"truth_state":"asserted","accountable_owner":"principal:01a097c8-07d2-7f29-b6e3-3e7e1021d1b4","supersedes":null,"schema_ref":"MEM@v1","content_digest":"df3e628f09451d86bc9c69df511fa2b2734bdb0d70f87ec49c5eda47f3c820b1","payload":{"cites":[],"title":"Throwaway (B10 act, withdrawn)","source":{"ref":"decision room, March 2024 (B10 act)","kind":"human"},"related":{"decision_id":null,"objective_id":null},"audience":{"roles":[],"purposes":["memory","graph"],"classification":"internal"},"validity":{"to":null,"from":"2024-03-01T00:00:00.000Z"},"retention":{"basis":"institutional rules are kept ten years","profile":"institutional-record-10y","retain_until":"2034-03-01T00:00:00.000Z"},"statement":"B10: a rule recorded in error — withdrawn in the same act.","record_class":"institutional"}},"versionServed":1,"versions":1,"asOf":"2026-09-13T08:13:39.960Z","availability":{"item_id":"01a099d4-42ef-7cc8-a900-b83af51bf03c","state":"withdrawn","current_version":1,"versions":1,"superseded_versions":0,"last_superseded_at":null,"attention_state":"none","served_is_current":true},"accessId":"1025ff77-6efb-4915-b840-88642eabf75f"},"receipt":{"policyDecisionId":"01a099d4-4310-7c9e-a848-2e9965d8d536","auditSeq":92787}}
+  ✓ v1 served as of the instant; availability state withdrawn
+  · the item's events: memory.recorded → memory.withdrawn (recorded in error; out of circulation) → memory.retrieved
+
+2. the AGENT's retrieval — S. Okafor's analysis request runs the briefing agent; the briefing carries the memory item the agent may read under the briefing purpose, and only that
+  ✓ recorded A 01a099d4… (purposes memory, briefing), B 01a099d4… (memory only), C 01a099d4… (briefing, audience role knowledge_owner)
+  ✓ analysis request 01a099d4… → the briefing agent ran under its own session: run 01a099d4… finished; request fulfilled
+  ✓ S. Okafor reads briefing 01a099d4… (composed via agent, 8 item(s), 1 of kind memory)
+  ·   memory item: {"title":"memory: Rebooking rule for the briefing (B10 act, A)","ref":"memory:01a099d4-4319-73d5-a0e8-cbb1998d01af@1","read_under":"briefing","classification":"internal","statement":"B10-A: rebook within 48 hours of a corridor warning; the premium ceiling is a quarter of the shipment value."}
+  ✓ A (briefing purpose) is in the briefing with its statement
+  ✓ B (memory purpose only) is NOT in the briefing
+  ✓ C (knowledge owners' audience) is NOT in the briefing
+  · memory.item_access for A/B/C: 1 row(s) — A@1 under briefing by the agent
+  ✓ the agent's read is on the ledger: A@1 under the briefing purpose, reader 01a084f8… (the agent's own principal)
+
+3. B9-F2: a correction the builder's port refuses — the unresolved state durable, the re-drive without a duplicate cause, the person's repair, the re-derivation; G2: the builder's run afterwards
+  · the edge 01a097c8…: NORDWERK ANTRIEBSTECHNIK GmbH stocks SYN-PART-BRG (claim 01a084f5…@2); the active vocabulary version 1 declares stocks, carries, transits, ships_through, depends_on — not procures; the relationships subscription 01a097c8… is active
+  ✓ A. Hoffmann challenged claim 01a084f5…@2: review case 01a099d4… queued
+  ✓ L. Ferreira corrected the claim → version 3 (predicate procures); the review case corrected
+  ✓ MemoryCorrected/claim.corrected published (01a099d4…)
+  · delivery: state unresolved, failure class unresolved_dependency, disposition human_review, deliveries 1, last_error "edge:01a097c8-153b-7757-a30b-8a844c8cb069: the builder's port refused the re-derived relationship: edge rejected: predicate procures is not in the domain's active ontology version; propose it (graph.ontology.propose) before asserting it (check 1)"
+  ·   unresolved: edge:01a097c8-153b-7757-a30b-8a844c8cb069 derivation.blocked (checks 1) — the builder's port refused the re-derived relationship: edge rejected: predicate procures is not in the domain's active ontology version; propose it (graph.ontology.propose) before asserting it
+  ✓ REFUSED and RECORDED: the port refused predicate procures; the unresolved checkpoint committed (the refusal under a savepoint — B9-F2)
+  ✓ the edge stands asserted, reassessment pending (cause 01a099d4…), no successor; causes 1
+  ✓ no edge under the corrected version
+  ✓ the administrator paused and resumed the subscription: the re-drive repeated the refusal (deliveries 2, checks 2); the edge's causes still 1 — no duplicate cause
+  ✓ J. Weber proposed version 3 (additive) adding procures
+  ✓ O. Steiner approved: version 3 active
+  ✓ REPAIRED: the third delivery re-derived the edge — 01a097c8… superseded (reassessment reassessed/superseded) → successor 01a099d4… NORDWERK ANTRIEBSTECHNIK GmbH procures SYN-PART-BRG under claim version 3, asserted by the subscription's principal 01a097c8…; deliveries 3, unresolved 0
+  ✓ G2 — the builder's run (k.adeyemi): 0 edge(s) asserted; 0 claim(s) whose current version still awaited an edge (the successor under version 3 is already the consumer's); edges 7 → 7; skipped: none
+  ✓ nothing asserted twice — the run is idempotent per claim version, the review case consulted
+
+4. B9-F3: a REVIEW action on the current NORDWERK evidence — executed (nothing removed) and VERIFIED against its preservation contract; no DeletionVerified
+  · the target: the CURRENT evidence 01a099b5…@1 (eu-sanctions-rss, profile "24 months", 3934 bytes at manifest 01a099b5…) — to be kept
+  ✓ P. Novák opened review action 01a099d4… (opened)
+  ✓ scope resolved: 1 item(s), 1 to execute, 0 held; digest 3796c002b973…
+  ✓ H. Bergmann approved on the scope digest
+  ✓ executed: 1 reviewed, 0 refused; executions [{"port":"none","outcome":"done"}]; tombstones on the manifest 0; bytes removed 0
+  ✓ verified: state verified, verified true; the check(s) from the ledger:
+  ·   PASS manifest 01a099b5-16e6-7dd2-9351-5b61366386b9: reviewed — untouched, its bytes present — expected {"reviewed":true,"tombstone":false,"bytes_present":true}, observed {"reviewed":true,"tombstone":false,"bytes_present":true}
+  ✓ B9-F3: the review was verified against its PRESERVATION contract (untouched, bytes present, reviewed) — not against deletion criteria
+  ✓ no DeletionVerified published for the review
+  · the action reads verified; the manifest row stands (1); the current evidence version is untouched
+
+=== the act completed with every scene producing its effect ===
+
+=== exit 0 — 2026-09-13T08:13:50Z ===

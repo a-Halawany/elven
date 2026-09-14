@@ -782,12 +782,124 @@ P. Novák, H. Bergmann, O. Steiner added; the relationships kind registered by t
 `MemoryCorrected/claim.corrected`; `register-subscriptions.mjs` reconciles seven kinds) — `evidence/cp6/act-b9.txt`,
 every scene with its effect (PHASE6_REPORT §22.5).
 
+## B10 — the memory workspace and the agent's retrieval; Codex's B9-F2 and B9-F3 and the recorded G2 gap carried into implementation (implemented)
+
+**Migration 0068** (`apps/api/migrations/0068_b10_review_case_and_review_verification.sql`), one file, six sections,
+on `phase6-b10` (PR #47, base `phase6-decisions` so the diff is B10 alone; the merge candidate `48f7bdc` for #46 is
+untouched). Rehearsed on a restored copy of `eye_demo` before the demonstration act (§B10.7).
+
+**§1 G2 — the review CASE decides what is graphed.** `graph.assert_edge` re-declared: it reads
+`intelligence.review_current` for the claim version (`v_case`) and takes the person's decision from there — `approved`
+admitted though the claim's own payload still says `queued` (the extraction wrote that; nothing rewrites it),
+`rejected`/`queued` refused as before, and a version the case marks `corrected` refused in favour of the corrected
+version (`edge rejected: claim %@% was corrected in review to a later version`, 22023). The builder's rules do the
+same: `derive.ts` gains `effectiveReviewState(claim, caseState)` and `deriveEdgeFromClaim(claim, byName, caseState)`;
+`runEdgeBuild` reads the review cases of the REL rows it holds (`GraphReads.readReviewCases`) and hands each claim
+version its latest case state, so the operator's run graphs an approved claim and skips a corrected version with the
+reason — the run stays idempotent per claim version. The relationships consumer passes the corrected version's case
+state the same way. The distinction that matters: a payload whose own `review.state` reads `corrected` (the correction
+itself) is not a case-superseded version; only the CASE saying `corrected` supersedes.
+
+**§2 and §6 B9-F3 — a REVIEW action's contract is preservation.** `retention.verify_action` (§2) gains a review
+branch: per executable manifest the check `reviewed — untouched, its bytes present` passes when no tombstone names the
+manifest, the vault observed `bytes_present = true` and a `done` execution of the item is recorded — expected
+`{tombstone:false, bytes_present:true, reviewed:true}`; the action verifies; the deletion and floor checks are
+unchanged. The controller publishes `DeletionVerified` only for a verified action that is not a review. **§6** was
+found on the demonstration rehearsal: a review of CURRENT evidence resolved to an `excluded` item ("a deletion retires
+corrected, superseded or withdrawn evidence only") and PAUSED — deletion criteria applied to a review's scope.
+`retention.resolve_scope` re-declared with the review branches: the source selector covers the source's evidence
+whatever its state; every manifest named is reviewed in place (`execute`, its evidence state and any hold in the
+details — a hold is honoured by keeping the item, which is what the review does; the hold id on the item); no residual
+inventory (a review retires nothing); the paused reason names what a review looks for. Deletion, archive and
+customer-export scoping is unchanged (the harness control: a deletion of the same current evidence stays excluded).
+
+**§3 the floor's re-check aligned.** `objects.outbox_declare_floor` re-checks the served points with the scope
+resolution's rule (`s.status <> 'revoked' AND (served_from_seq < to_seq OR checkpoint_seq < to_seq - 1)`); 0067's raw
+`coalesce(checkpoint_seq, 0) < to_seq` refused moves the resolution had admitted.
+
+**§4 the withdrawal is its own act.** `memory.withdraw_item` asserts `memory.item.withdraw` (the supersession's action
+too); the PDP rule `memory.item.withdraw` (the record authority; human-gated like the supersession); the route and the
+workspace send it. `MemoryService.retrieve`: a withdrawn item's CURRENT retrieval is refused **409 EYE-STA-003**
+(`was withdrawn and is out of circulation; its versions stay replayable as of an instant (payload.asOf)`); the as-of
+read serves the version current at the instant with `availability.state = withdrawn`.
+
+**§5 the agent's retrieval.** `memory.record_access` accepts `briefing.compose`. `BriefingService.compose` gains a
+step: the active memory items recorded at or before `knownAt` whose `audience_purposes` include the composition's
+purpose, whose classification the reader's clearance covers (`composerClearance` — a person's own; an agent's is
+`null`, so R4a stays a human's — or the clearance derived from the composer's role bindings) and whose audience roles
+are empty or held (administrators exempt) are read, each read recorded on the item's ledger (`read_as_of = knownAt`,
+the composer as reader, the purpose) inside the composition's transaction, and pushed as a briefing item of kind
+`memory` (`details`: record class, statement, source, classification, validity, retention, `access_id`, `read_under`)
+and into the control inputs. `ExecutiveReads.readMemoryItems`, `BriefingWrites.recordMemoryAccess`. The executive
+controller passes the human composer's role codes; `AgentsService.brief` passes the agent's.
+
+**B9-F2 — the refusal contained.** `GraphCore.withSavepoint(name, run)` (savepoint / release / rollback) and
+`GraphReads.withSavepoint`; the relationships consumer asserts the re-derived edge inside `withSavepoint('rel_assert')`
+and catches the port's 22023 refusals (an undeclared predicate, an undecided claim, a case-superseded version) as
+`derivation.blocked` unresolved — the transaction is intact, so the unresolved checkpoint commits with the reason
+(`unresolved_dependency → human_review`), the reassessment stays pending on its cause, no successor exists, and a
+re-drive adds no second cause and no second `edge.reassessment_opened`. The person's repair — the vocabulary extended
+by an additive proposal the steward approves — lets the next re-drive re-derive the edge.
+
+**The Enterprise Memory workspace.** `apps/web/app/graph/memory/page.tsx` (the `Memory` entry in the graph
+navigation): the listing shows records without content (state, version, classification, audience, validity,
+retention, attention); a retrieval under a DECLARED purpose (`memory`, `briefing`, `graph`, …; optional as-of instant)
+shows the served version's content with the availability object; record / supersede (with reason and effective time)
+/ withdraw forms; every refusal shown verbatim as the server returned it; `apps/web/lib/graph.ts`: `gUnder(...)` (the
+same call under a declared purpose), `listMemory/getMemory/retrieveMemory/recordMemory/supersedeMemory/withdrawMemory`.
+`next build` lists `/graph/memory`; `tsc` clean. The browser walk of the page (a signed-in session) is not part of
+this batch's evidence — the author does not authenticate in the browser; the routes the page calls are exercised
+end-to-end by the act (§B10.7 scene 1), and the walk is the owner's (`/graph/memory` as K. Müller).
+
+**B10.6 the harness and the units.** `phase6-graph-subscriptions-4.test.ts` (32 cases): `B10 · WITHDRAW` (the knowledge
+owner refused 403; the record authority withdraws under `memory.item.withdraw`; the current retrieval 409; the as-of read
+serves v1); `B9-F2 closure · REFUSED, RECORDED, REPAIRED` (a correction moving the predicate to `depends_on`, outside
+ontology v3 → the delivery `unresolved/unresolved_dependency/human_review`, `deliveries 1`, the item
+`derivation.blocked` with the port's reason, `last_error` null, the edge asserted/pending/no successor; a re-drive →
+`deliveries 2`, checks 2, causes unchanged, no second opened-event; the analyst's additive proposal approved by the
+steward → re-drive → `applied`, `edge.re_derived`, the successor under v2 with predicate `depends_on`, the prior
+superseded); `G2 closure (B10)` (two queued claims decided approved/rejected on their cases, payloads still `queued`;
+the builder's run asserts the approved one and skips the rejected with `/rejected in review/`; the port refuses the
+rejected claim's edge); the retention correction case extended with the review action's verification (§2) and `B10 ·
+a REVIEW of CURRENT evidence …` (§6: current → `execute`, no residuals, executes as a record, verifies; held →
+`execute` with the hold id and reason, verifies; the deletion control excluded). `phase6-executive-requests.test.ts`
+(10): `B10 · the AGENT's retrieval` — two items (`['memory','briefing']` internal; `['memory']` restricted); the
+briefing agent's run yields a briefing whose only memory item is the first, with its statement and `read_under:
+'briefing'`; `memory.item_access` holds one row for it (version 1, purpose `briefing`, reader = the agent's principal),
+none for the hidden item; the executive's own composition adds a second access row. Unit: `codex-corrections.test.ts`
+gains three G2 cases on the builder's double (approved-in-case graphed; rejected-in-case refused; a case-corrected
+version superseded, the successor graphed). Units: AU-DP-0176 (F2 closed; G2), AU-MEM-0059/-0061 (F3 closed, §2 and
+§6), AU-MEM-0065 (the agent's retrieval; the workspace page; the withdrawal) — statuses unchanged: AU-DP-0176 and
+AU-MEM-0065 `verified:ci` from B9, AU-MEM-0059 and AU-MEM-0061 `open` (their executors and the unprovable-scope pause
+still owed); the B10 clauses bound to the hosted run at the B10 head (PHASE6_REPORT §23.4).
+
+**B10.7 the demonstration** — `scripts/phase6/act-b10.mjs` → `evidence/cp6/act-b10.txt` (PHASE6_REPORT §23.3): the
+workspace's routes, the briefing agent's retrieval, the F2 scene on the live `stocks` edge (a correction to `procures`
+refused → unresolved → re-driven without a duplicate cause → the vocabulary extended → re-derived; the builder's run
+afterwards asserting nothing twice), the F3 scene (a review of the current `eu-sanctions-rss` evidence verified
+against its preservation contract, no DeletionVerified).
+
+**B10.8 the closure (Codex's bounded review at `0cee439`/`c04f6b1`; migration 0069; PR #47's corrected candidate
+`1fa3b08`).** B9-F2, B9-F3 and G2 closed on the inspected implementation. B10-F1 (a stored briefing disclosed a memory
+version outside its audience roles), B10-F2 (the access id in the content digest) and B10-F3 (a later supersession
+removed an item from an earlier cutoff) reproduced at the governed boundary and closed — `BriefingService.get` withholds
+a memory item outside the cited version's audience for THIS reader (roles in the target, administrators admitted,
+classification against clearance; a narrative citing a withheld item withheld with it); the accesses on the briefing row
+(`executive.briefings.memory_accesses`, 0069 §1) outside the content; the candidates from history at the cutoff
+(DISTINCT ON the item; withdrawals by the cutoff excluded before the 200-item bound); present availability apart. **B10-F4
+(author-found)**: `objects.read` serves the header of an audience-governed object (MEM, BRF) and withholds the content;
+the claim and evidence routes serve their own types; `observation.canonical_write_exclusions` (0069 §2) keeps the generic
+write off MEM and BRF at `objects.admit_version`. Harness `phase6-briefing-memory.test.ts` (6; the unfixed code red first,
+`b10-closure-repro-before.txt`); the adversarial review of the candidate (38 agents, 13 confirmed findings corrected); the
+demonstration through the HTTP path (`closure-b10.mjs` → `closure-b10.txt`); hosted at `1fa3b08` green. PHASE6_REPORT §23.6.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
-(2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings) and B9 (2026-09-13, after
-Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile). The
+(2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
+Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

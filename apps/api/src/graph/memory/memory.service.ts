@@ -177,6 +177,11 @@ export class MemoryService {
     Promise<{ item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: Row } | null> {
     const item = await this.current(cap, a.itemId);
     if (item === null) return null;
+    // A WITHDRAWN item has left circulation (B10): its current reading is refused with the withdrawal named; every version it
+    // ever had stays replayable AS OF an instant — the record is not rewritten by the withdrawal.
+    if (String(item['state']) === 'withdrawn' && a.asOf === null) {
+      throw new HttpException(errorBody('EYE_STA_003', a.correlationId, `memory item ${a.itemId} was withdrawn and is out of circulation; its versions stay replayable as of an instant (payload.asOf)`), 409);
+    }
     const target = { tenantId: ctx.tenantId, domainId: ctx.domainId };
     // Purpose: the one the item was admitted under, or one it declares for its audience.
     const versions = (await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', a.itemId as never).where('object_type' as never, '=', 'MEM' as never)

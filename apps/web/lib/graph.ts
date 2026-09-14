@@ -180,6 +180,70 @@ async function g<T>(
   );
 }
 
+/**
+ * The same call under a DECLARED purpose. Memory retrieval (CP-6 B9/B10) is read under the purpose the item was
+ * admitted for or one its audience declares — `memory`, `graph`, `decision`, `briefing`, `prediction` — never a fixed
+ * `graph`; the server refuses any other and its refusal names the purposes it accepts. The side-effect class is the
+ * caller's: a retrieval is a read (`none`) whose access is recorded; a record, supersession or withdrawal is reversible.
+ */
+async function gUnder<T>(
+  scope: Scope, purposeId: string, path: string, action: string, objectType: string,
+  payload: unknown = {}, objectId: string | null = null,
+  sideEffect: 'none' | 'reversible' = 'reversible',
+): Promise<ApiResult<T>> {
+  return call<T>(
+    `/v1/tenants/${scope.tenantId}/domains/${scope.domainId}/graph${path}`,
+    {
+      scope: 'DOMAIN',
+      tenant_id: scope.tenantId,
+      domain_id: scope.domainId,
+      action,
+      object_type: objectType,
+      object_id: objectId,
+      purpose_id: purposeId,
+      side_effect_class: sideEffect,
+      consequence_class: 'C2',
+    },
+    payload,
+  );
+}
+
+/** A memory item's RECORD without its content (the statement and the source reference are a retrieval's). */
+export type MemoryRow = Record<string, unknown>;
+
+/** What is sent to record or supersede a memory item (0066 §3, OBJ-14/OBJ-16); `supersession` only on a supersession. */
+export interface MemoryIntake {
+  recordClass: 'institutional' | 'strategic';
+  title: string;
+  statement: string;
+  source: { kind: 'human' | 'document' | 'communication' | 'telemetry'; ref: string | null };
+  audience: { classification: 'public' | 'internal' | 'confidential' | 'restricted'; roles: string[]; purposes: string[] };
+  validity: { from: string; to: string | null };
+  retention: { profile: string; retainUntil: string | null; basis: string | null };
+  cites: Array<{ kind: 'evidence' | 'claim' | 'strategy' | 'entity' | 'edge' | 'forecast' | 'warning'; id: string; version?: number; rationale: string }>;
+  related: { decisionId: string | null; objectiveId: string | null };
+  supersession?: { reason: string; effectiveAt: string | null };
+}
+
+/** The served version of a retrieval — the SERVED version's content and header; the current projection contributes availability only. */
+export interface MemoryRetrieval {
+  item: MemoryRow;
+  version: {
+    item_id: string; object_version: number; recorded_at: string; lifecycle_state: string; classification: string;
+    purpose_scope: string; retention_profile: string; valid_from: string; valid_to: string | null; truth_state: string;
+    accountable_owner: string; supersedes: string | null; schema_ref: string; content_digest: string | null;
+    payload: Record<string, unknown>;
+  };
+  versionServed: number;
+  versions: number;
+  asOf: string | null;
+  availability: {
+    item_id: string; state: string; current_version: number; versions: number; superseded_versions: number;
+    last_superseded_at: string | null; attention_state: string | null; served_is_current: boolean;
+  };
+  accessId: string;
+}
+
 export const graph = {
   overview: (s: Scope) =>
     g<{ overview: GraphOverview; receipt: Receipt }>(s, '/overview', 'graph.read', 'ENT'),
@@ -352,4 +416,34 @@ export const graph = {
     g<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string;
                              mismatched: string }>; receipt: Receipt }>(
       s, '/projections/verify', 'graph.read', 'ENT'),
+
+  /** CP-6 B9/B10 (0066 §3): the Enterprise Memory workspace — records without content; the content is a retrieval's. */
+  listMemory: (s: Scope) =>
+    g<{ memory: MemoryRow[]; receipt: Receipt }>(s, '/memory/list', 'graph.read', 'MEM', { limit: 200 }),
+
+  /** The item's record: its events, its access history (who read which version under which purpose, as of when), what it rests on. */
+  getMemory: (s: Scope, itemId: string) =>
+    g<{ item: MemoryRow; events: Array<Record<string, unknown>>; access: Array<Record<string, unknown>>;
+        dependencies: Array<Record<string, unknown>>; receipt: Receipt }>(
+      s, `/memory/${itemId}/get`, 'graph.read', 'MEM', {}, itemId),
+
+  /** A purpose-authorised, AUDITED read of the version current at `asOf` (the current one when omitted); a 403 names the reason. */
+  retrieveMemory: (s: Scope, itemId: string, purposeId: string, asOf?: string) =>
+    gUnder<{ memory: MemoryRetrieval; receipt: Receipt }>(
+      s, purposeId, `/memory/${itemId}/retrieve`, 'memory.item.retrieve', 'MEM',
+      asOf === undefined ? {} : { asOf }, itemId, 'none'),
+
+  recordMemory: (s: Scope, intake: MemoryIntake, purposeId = 'memory') =>
+    gUnder<{ memory: { itemId: string; version: number; cites: number; contentDigest: string }; receipt: Receipt }>(
+      s, purposeId, '/memory/record', 'memory.item.record', 'MEM', intake),
+
+  /** Human-gated: the record authority records the next version with its reason; the prior version stays replayable. */
+  supersedeMemory: (s: Scope, itemId: string, intake: MemoryIntake, purposeId = 'memory') =>
+    gUnder<{ memory: { itemId: string; version: number; cites: number; contentDigest: string; priorVersion: number }; receipt: Receipt }>(
+      s, purposeId, `/memory/${itemId}/supersede`, 'memory.item.supersede', 'MEM', intake, itemId),
+
+  /** Human-gated (B10: its own action, memory.item.withdraw): the record authority withdraws the item with a reason; every version stays replayable. */
+  withdrawMemory: (s: Scope, itemId: string, reason: string, purposeId = 'memory') =>
+    gUnder<{ memory: { itemId: string; state: string }; receipt: Receipt }>(
+      s, purposeId, `/memory/${itemId}/withdraw`, 'memory.item.withdraw', 'MEM', { reason }, itemId),
 };

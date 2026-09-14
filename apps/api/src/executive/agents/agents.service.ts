@@ -309,7 +309,9 @@ export class AgentsService {
     const limits: CompositionLimits = { maxReads: meter.remainingReads(), maxItems, stopOnDegraded: stops.some((s) => s['kind'] === 'on_degraded'), reserve: (what) => meter.read(what), deadline: meter.deadline() };
     const out = await this.pipeline.write(this.env(p, T, D, 'briefing.compose', 'BRF', briefingId, correlationId), p, { ...this.route(T, D, 'briefing.compose', 'BRF', briefingId), writableTargets: [briefingId] }, ExecutiveCapability.briefing,
       async (cap, scope: ScopeContext) => {
-        const r = await this.briefings.compose(cap, scope, { roomId, knownAt: new Date().toISOString(), priorBriefingId: undefined, narrative: null, narrativeCites: [] }, p.principalId, 'agent', String(identity['agent_id']), 'briefing', correlationId, briefingId, limits);
+        const r = await this.briefings.compose(cap, scope, { roomId, knownAt: new Date().toISOString(), priorBriefingId: undefined, narrative: null, narrativeCites: [] }, p.principalId, 'agent', String(identity['agent_id']), 'briefing', correlationId, briefingId, limits,
+          // B10: the fold check stays a human reader's (R4a: null for an agent); the agent reads memory items under the clearance its registered role carries (internal) and its own role — an item for an audience role is read only when the agent's role is named
+          null, p.bindings.filter((b) => b.tenantId === T && (b.scope !== 'DOMAIN' || b.domainId === D)).map((b) => b.roleCode));
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
     return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, monitoring, marked: 'agent-produced', agent: identity,

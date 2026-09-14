@@ -1,0 +1,23 @@
+browser-regression	Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen, blocking)	2026-09-13T10:35:11.0757978Z   26 passed (31.3s)
+build-test	C18 dual-path database history gate (tracked runner, blocking)	2026-09-13T10:49:43.7628201Z  Test Files  7 passed (7)
+build-test	C18 dual-path database history gate (tracked runner, blocking)	2026-09-13T10:49:43.7628661Z       Tests  612 passed (612)
+build-test	C18 dual-path database history gate (tracked runner, blocking)	2026-09-13T10:50:23.7710842Z  Test Files  2 passed (2)
+build-test	C18 dual-path database history gate (tracked runner, blocking)	2026-09-13T10:50:23.7711587Z       Tests  44 passed (44)
+build-test	Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)	2026-09-13T10:46:10.4953664Z  Test Files  57 passed (57)
+build-test	Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)	2026-09-13T10:46:10.4964158Z       Tests  943 passed (943)
+build-test	Migrations + acceptance suite (15 criteria + request paths + R4/R10)	2026-09-13T10:37:24.3351474Z  Test Files  1 passed (1)
+build-test	Migrations + acceptance suite (15 criteria + request paths + R4/R10)	2026-09-13T10:37:24.3352300Z       Tests  58 passed (58)
+build-test	Post-C18 migration upgrade compatibility (0022, 0023; tracked runner, blocking)	2026-09-13T10:46:23.9174118Z   ✓ Phase 0 suite seeds and passes at 0021: 297/297 passed
+build-test	Post-C18 migration upgrade compatibility (0022, 0023; tracked runner, blocking)	2026-09-13T10:46:38.3344503Z   ✓ Phase 0 authority behaviour after the upgrade: 297/297 passed
+build-test	Post-C18 migration upgrade compatibility (0022, 0023; tracked runner, blocking)	2026-09-13T10:47:39.3329504Z   ✓ Phase 1 and Phase 2 suites on upgraded data: 275/275 passed
+build-test	Post-C18 migration upgrade compatibility (0022, 0023; tracked runner, blocking)	2026-09-13T10:47:39.3330081Z === PASS ===
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:38.2123638Z packages/tokens test:  Test Files  1 passed (1)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:38.2152496Z packages/tokens test:       Tests  3 passed (3)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:38.5990973Z packages/contracts test:  Test Files  6 passed (6)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:38.5992312Z packages/contracts test:       Tests  203 passed (203)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:39.2770305Z apps/web test:  Test Files  2 passed (2)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:34:39.2771782Z apps/web test:       Tests  6 passed (6)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:36:42.3387017Z apps/api test:  Test Files  40 passed (40)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:36:42.3396514Z apps/api test:       Tests  2151 passed (2151)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:37:12.3473451Z apps/api test:  Test Files  1 passed (1)
+build-test	Unit + conformance + gate tests (hermetic — no network)	2026-09-13T10:37:12.3474524Z apps/api test:       Tests  9 passed (9)
