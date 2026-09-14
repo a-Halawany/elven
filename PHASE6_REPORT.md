@@ -2157,3 +2157,137 @@ contracts still name (the register reads **26 bound / 24 partial / 0 unbound** s
 merge of #47 under the existing authorization and its archive chain; the owner's walk of `/graph/memory`; B11 on
 `phase6-b11` (the governed credential path and the UN Comtrade act up to the key the owner binds; retention's archive
 and customer-export executors and the safe deletion scope; the five workspace pages) with its own bounded review.
+
+## 24. The consolidated checkpoint after `1fa3b08` / `8463174` (2026-09-13): B11 implemented — the governed credential path and the UN Comtrade act, the archive tier, the customer export package, the safe referential scope, five workspace pages
+
+Continued from `1fa3b08` (code) / `8463174` (records) with #46 merged (§23.1) and #47 the fixed closure candidate. The
+owner's directive: continue implementing retention executors and safe scope handling, the authorized UN
+Comtrade/PortWatch activation acts and the missing pages, with meaningful NORDWERK effects; preserve budgets, backups,
+demonstration services, frozen criteria and closed reviews. B11 lives on `phase6-b11` (PR base `phase6-b10`, so the
+diff is B11 alone; retargeted to `main` when #47 merges).
+
+### 24.1 What B11 implements (migration 0070) — `audit/CP6_BATCHES.md` §B11 for the mechanism
+
+- **The governed credential path** (SOURCE_INTEGRATION_STATUS §6 item 3, now §11): a contract's credential by
+  REFERENCE (`EYE_SRC_<NAME>`, SRC@v3's `credential_header`), resolved at egress from the deployment, carried apart from
+  the binding and dropped off the origin, never recorded; an unbound reference cancels the run before any request; the
+  readiness register's verdict follows the binding. The REST connector's digest covers it; the demonstration's six REST
+  agents re-provisioned through the governed route.
+- **The UN Comtrade act** under §10's authorization: the policy read in full (internal use permitted; citation
+  "UN Comtrade"; no re-dissemination without permission; the free tier's 500 calls/day); `un-comtrade` v1 (rest, live)
+  registered, approved and its rights recorded with the policy quoted; the act stops before activation — this
+  deployment binds no `EYE_SRC_COMTRADE_KEY` (the owner's key, outside the repository); a re-run activates and runs once
+  when it is bound. PortWatch: both sources live since §9.11; nothing more to activate; the grant text still pending.
+- **The archive tier, the customer export package, the safe referential scope** — designed from the units' remaining
+  clauses (AU-MEM-0059, AU-MEM-0061; V03-T-100, V03-T-047, DPD-19, LR-23, L3-C08, DZ-18, DAT-ST-06) by a workflow agent
+  (D1–D11), implemented, reviewed adversarially (§24.4) and corrected before the demonstration.
+- **Five workspace pages**: `/graph/retention` (schedules, actions, the record, every control, the export package),
+  `/graph/ontology` (versions, the active vocabulary, propose/decide), `/intelligence/contradictions` (both assertions,
+  the challenge, the adjudication), the scenario review panel on `/prediction/scenarios`, `/decisions/requests` (the
+  typed requests and follow-ups) — each built by an agent from the controllers, reviewed and corrected, `next build`
+  listing all five; their browser walks are the owner's.
+
+### 24.2 Local results at the B11 tree (before the commit)
+
+`phase6-source-credentials` 3/3; `phase6-retention-b11` 35/35 and `phase6-retention-b11-archive-poll` 4/4 with
+`phase6-graph-subscriptions-4` 32/32 on fresh databases; the full integration suite **984/984 in 60 files** on a fresh
+database with 0001–0070 (`b11-int-all-1.txt`); the unit suite 2156/2156 in 40 files (`b11-unit.txt`; one C15 gate
+control timed out once under the load of a concurrent full suite and 40 review agents, and passed alone — a load
+artefact, not a defect); boundaries clean; the upgrade proof with 0022–0070 (49 migrations, 29 registry rows —
+`b11-upgrade-proof.txt`); web `tsc` clean and `next build` listing the five new pages; the interface register after 0070
+**26 bound / 24 partial / 0 unbound** with L3-I04's binding naming the five executors (`b11-interface-register.txt`).
+
+### 24.3 The NORDWERK demonstration — `evidence/cp6/act-b11.txt` (2026-09-13T14:15Z, head `8463174` with the B11 tree)
+
+Rehearsed on a restored copy of `eye_demo` with its own Redis, API and A COPY OF THE VAULT (an archive moves bytes; the
+rehearsal must not move the demonstration's) — the act script corrected there (the vault roots as the API resolves
+them; the export gate ceiling) and the copy discarded; then on `eye_demo`: a backup, 0070 through the migrator (digest
+`023ebd3034512cd1`), the API restarted on the B11 build, the six REST agents re-provisioned for the connector's new
+digest (`reprovision-rest-agents.mjs`: 6 registered, 6 revoked — §9.11.10's act scripted), a second restart reconciling
+the persisted schedules to them, and one operator run on `ecb-eurusd` v2 under the new agent (finished, 1 admitted,
+7,287 bytes). Then:
+- **UN Comtrade** (`activate-comtrade.mjs`): `un-comtrade` v1 registered (a.hoffmann), approved (m.dvorak), rights
+  confirmed with the policy quoted; the readiness register reads `inactive — approved; credential reference
+  EYE_SRC_COMTRADE_KEY (not bound in this deployment)`; the act stops before activation (SOURCE_INTEGRATION_STATUS §11).
+- **Archive**: the current `eu-sanctions-rss` evidence B10 reviewed (3,934 bytes) — P. Novák's archive action resolved
+  (execute 1: "the manifest and its digest are kept, the bytes move from the hot tier to the archive tier"), H. Bergmann
+  approved on the digest, executed (1 archived; the hot copy removed after the commit), the tier ledger `hot → archive`
+  and `custody.archived`; on the host the archive path PRESENT and the hot path ABSENT; verified on the archive
+  contract (`{tier: archive, tombstone: false, bytes_present: false, archive_present: true, archive_digest_ok: true}`
+  expected = observed); no DeletionVerified; A. Hoffmann downloads the evidence: HTTP 201, 3,934 bytes, the digest the
+  manifest's, `tier archive, availability archived`.
+- **Customer export**: the two most recent current NORDWERK internal evidence objects — the export action (ceiling
+  `internal`, destination `export`) resolved (2 to execute, 0 excluded; no confidential object exists on the
+  demonstration, so the redaction gate is the harness's), approved, executed (a package of 2 objects, 1,285 bytes,
+  package digest `b01ad90601b6c001…`); the customer's verifier run on the package directory alone — every check PASS
+  (integrity 2/2, re-import 2/2 with the 43-field headers recomputing to the canonical digests, completeness, redaction,
+  the two chains, `bound_to`, authenticity against the recorded digest) — `PACKAGE OK`; verified (3 checks); the export
+  read route (the signature block); H. Bergmann REVOKES it — the read refuses 409 "revoked at …; its bytes are gone",
+  the directory GONE on the host, the source evidence still downloads.
+- **Safe scope**: a superseded `imf-portwatch-chokepoints` version whose bytes one claim (without an edge) names — A.
+  Hoffmann challenges the claim (a queued case); P. Novák's deletion resolves `paused / unresolved_dependency /
+  human_review` with the item `blocking` and `details.dependents` naming `review_case:<id>` and the claim; H. Bergmann's
+  approval refused (409 "paused — only a resolved scope is approved"); L. Ferreira decides the case (approved); resolved
+  again `scope_resolved` under a new digest; approved, executed (1 tombstoned, the bytes removed), verified,
+  `DeletionVerified` published.
+
+The five pages are served by the rebuilt web application (`/graph/retention`, `/graph/ontology`,
+`/intelligence/contradictions`, `/prediction/scenarios`, `/decisions/requests`); their signed-in walks are the owner's.
+
+**The demonstration service, observed and restored (2026-09-14).** At 2026-09-13T19:59Z `scripts/demo.sh` was run on the
+host outside this session (its log at `/tmp/eye-api.log`): it rebuilt `dist`, migrated the DEFAULT database `eye`
+through 0070 (the local env names no `EYE_DB_NAME`), and started an API on :3401 against `eye` — the Phase 0 database
+with 66 audit-integrity incidents on record, so `/readyz` read `degraded` — replacing the demonstration process that
+served `eye_demo`; its web start on :3000 exited 143 (the port held) and was restarted. On 2026-09-14T16:20Z the
+demonstration API was restarted on `eye_demo` (`/readyz` ok, 0 incidents) with the same `dist`; `eye_demo` itself was
+not touched by that run (its migrations, rows and vault as the act left them). `demo.sh` is the Phase 0 bootstrap
+script; the demonstration is served by the restart script that names `eye_demo` — noted for the operator's runbook.
+
+### 24.4 The adversarial review before the commit — `evidence/cp6/b11-adversarial-review.txt`
+
+Six find dimensions (the ports, the bytes, the export, the safe scope, regressions, the harness), two refuters per
+finding: **29 confirmed of 31** — two HIGH (the rollback cleanup would have tombstoned an archive copy another action
+had committed, losing a manifest's bytes in both tiers; the acquisition lifecycle read a manifest's immutable vault
+column instead of its tier, so archived current evidence would have admitted a duplicate on the next live poll), 12
+medium, 15 low — every one corrected in the same unapplied migration and tree BEFORE the demonstration (the B9 rule),
+each correction with its own harness case (35 + 4 cases), then re-judged by two judges per finding: **29 closed, 0 open**.
+The design's object-level DEC branch was dropped as unreachable by any route (the package citation governs, version-
+aware); the export's verification contract is the package's own files and recorded digests (the source's present state
+recorded, not required); the safe scope is re-proven at execution; the withdrawal is its own act (0070 §9, found by the
+retention workspace).
+
+### 24.5 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `8463174` | the B10 closure records (phase6-b10, PR #47 — Codex's next bounded closure: code `1fa3b08`) | records only | — |
+| `dc1a60a` | the first push of the B11 code — RED: the C15 supply-chain gate's secret scanners (gitleaks, worktree and history) flagged the harness's "pasted secret" control string (a high-entropy literal beside `credentialRef` — GitHub's push protection had already refused its first, provider-shaped form), and one `-4` case still withdrew a retention action under the opener's action (0070 §9 made the withdrawal its own act after the full suite had run). Both corrected — the control string is built at run time (no literal), the case sends `retention.action.withdraw` — the commit AMENDED and the unreviewed branch force-pushed before any review (recorded here; the amended head below is the candidate) | 34867250971 red (supply-chain: gitleaks; build-test: 984/985, the floor case) | 34867251133 green |
+| `1e3e4be` | **B11 code** (0070; the credential path; the retention executors and the safe scope; the five pages; the act) — PR #48 on `phase6-b10` | 34869384873 green — build-test job 104061230792: unit 2156/2156 and the meta suite 9/9, the acceptance suite 58/58, the integration suite **985/985 in 60 files on a fresh database** (`phase6-retention-b11` 35/35, `phase6-retention-b11-archive-poll` 4/4, `phase6-source-credentials` 3/3), the upgrade proof with 0022–0070 (49 migrations, 29 registry rows), C18 612/612 and the gate stages; supply-chain (C15, gitleaks worktree and history) and browser-regression green | 34869384887 green |
+| the records head after `1e3e4be` | the B11 records (this section, §B11, §11 of the source status, the units and rows, the evidence index) — AU-MEM-0059 and AU-MEM-0061 to `verified:ci` | records only; no refresh chain | — |
+
+Statuses: **AU-MEM-0059 and AU-MEM-0061 `open` → `verified:ci`** — their remaining clauses closed by the executors and
+the safe scope on the author's harness at the B11 head and on the hosted chain at `1e3e4be` (ci 34869384873, C19
+34869384887; one artefact on a fresh database, no deployment leg), bound in this one records refresh; AU-MEM-0060 a
+note; the split reads **3,555 = 3,188 open + 338 local + 29 CI**. Requirement rows: V03-T-100 `partial`
+→ `implemented` (passed:harness); V03-T-047, L3-C08 (V3), DZ-18, DAT-ST-06, DPD-19, LR-23 (V7) `missing` →
+`partial` (passed:harness); V08 CAP-UM-07 unchanged. The interface register unchanged at 26/24/0 (L3-I04's binding text
+names the five executors).
+
+### 24.6 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** (harness on a fresh database; the demonstration through the HTTP path) — everything §23.5 listed, and
+now: the governed credential path; retention's archive and customer-export executors with their verification contracts;
+the safe referential scope of a deletion with the person's route; the retention withdrawal as its own act; the five
+pages served.
+
+**Partial** — the UN Comtrade live contract (approved; activation and the first run wait for the owner's key); the
+archive tier without a restore-to-hot port, a cold-tier manager's budgets/ordering/escalation, or the sweeper's walk of
+the archive root; the customer export without an external destination, an HTTP download of the package bytes, or a
+key-based signature; the pages' browser walks (the owner's); the demonstration's forecast-less branch fold (§23.6).
+
+**Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory
+records; index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — Codex's bounded closure of B10-F1..F4 on `1fa3b08` → the merge of #47 and its archive
+chain; #48 retargeted to `main` after it for its own bounded review; the hosted run at the B11 head bound in the two
+units; the owner's key for Comtrade and the owner's walks of the six pages; the next batch from the register.

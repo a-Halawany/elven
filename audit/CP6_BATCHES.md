@@ -996,7 +996,7 @@ the re-check at execution, unknown manifest ids excluded with a reason; D the wi
 the 304 and the 200 paths — instead of admitting a duplicate); the `-4` retention describes re-run unchanged with the
 archive block rewritten (executed as a move). Unit: `phase5-refusals` gains the B11 refusal mappings and the P0R02
 class. Units: AU-MEM-0059 (every kind the statement names executes) and AU-MEM-0061 (the pause on an unprovable
-referential scope) `open` → `verified:local` at the B11 head, `verified:ci` at a green hosted run; AU-MEM-0060 a note
+referential scope) `open` → `verified:ci` (the harness at the B11 head; the hosted run at `1e3e4be`); AU-MEM-0060 a note
 (a hold under archive/export recorded and honoured by keeping).
 
 **B11.7 the adversarial review before the commit** (`evidence/cp6/b11-adversarial-review.txt`; PHASE6_REPORT §24.4):
