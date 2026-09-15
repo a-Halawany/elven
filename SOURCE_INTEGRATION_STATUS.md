@@ -1005,3 +1005,15 @@ reference "bound in this deployment; the run carries it". No cadence or budget v
 weekly cadence and its 25 requests / 32 MiB per run are carried verbatim); nothing was purchased; GDELT held; PortWatch
 as §9.11 left it (both sources live; the grant text still pending at `docs/sources/portwatch-grant.md` — nothing more
 to activate there). C15 and the required checks remain the merge gates.
+
+### 11.1 The binding step, named (2026-09-14; PHASE6_REPORT §25.7)
+
+Codex's B11 review confirmed the stop as a missing runtime binding, not a missing authorization, and asked that the exact
+remaining step be stated. The key is not on this host (checked by name: the local secret handoff, the demonstration
+process's environment, the login keychain, the dotfiles — no value printed). The step is the owner's: one line
+`EYE_SRC_COMTRADE_KEY=<the key>` in `.eye-local/env` (mode 0600, never committed), a restart with
+`scripts/ops/demo-restart.sh` (a changed file binds nothing until the process is restarted with it; the script prints the
+running process's settings by name), then `node scripts/integrations/activate-comtrade.mjs`, which activates the contract
+only when the readiness verdict of the running process shows the credential bound and performs the first governed run
+under the existing permissions, budget and cadence. The closure act's third scene (`evidence/cp6/closure-b11.txt`) reads
+the readiness register for the contract and prints this step.

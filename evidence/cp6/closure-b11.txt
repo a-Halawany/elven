@@ -1,0 +1,58 @@
+=== B11 closure on the demonstration (NORDWERK, eye_demo) — 2026-09-15T12:09:54Z, tree over 44b01bb (the closure candidate, uncommitted at run time; committed as the next head); rehearsed first on a restored copy with its own vault copy and Redis ===
+
+0. the running target (docs/ops/DEMONSTRATION_RUNBOOK.md §2 — the check that would have caught the 2026-09-13 incident):
+     the API on :3401 is pid 28118; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0071 (backup taken; the migration re-declares two ports and adds functions — no data changes); the API restarted on the corrected build by the runbook's script:
+     [{"filename":"0070_b11_credential_path_retention_executors_and_safe_scope.sql","digest":"023ebd3034512cd1","applied_at":"2026-09-13T14:15:12.313Z"},{"filename":"0071_b11_closure_manifest_locks.sql","digest":"dce154d66d5d99f6","applied_at":"2026-09-15T11:35:29.661Z"}]
+
+
+=== B11 closure on the demonstration (eye_demo at http://localhost:3401) — B11-F1 the manifests' locks, B11-F2 the verifier ===
+
+1. OVERLAPPING ARCHIVES — two approved archive actions on the same NORDWERK evidence executed concurrently; the lock orders them; one tier record; the bytes present
+  · the targets: P = evidence 01a084f8…@1 (nordwerk-internal, 240 bytes, manifest 01a084f8…), Q = evidence 01a084f5…@1 (nordwerk-internal, 1045 bytes, manifest 01a084f5…); both hot
+  ✓ archive A over P and Q: P. Novák opened 01a0a4f9…; scope resolved (2 item(s), 2 to execute, 0 held; digest fbe7b52ad791…); H. Bergmann approved
+  ✓ archive B over P: P. Novák opened 01a0a4f9…; scope resolved (1 item(s), 1 to execute, 0 held; digest a379b87a4176…); H. Bergmann approved
+  ✓ A executed: HTTP 201 — 2 archived, 0 refused; hot copies removed after the commit 2, failed 0
+  ✓ B executed: HTTP 201 — 1 archived, 0 refused; hot copies removed after the commit 1, failed 0
+  · both executions returned after 100 ms, started together
+  ·   P by action A (01a0a4f9…): done — copy_created true, already_archived false, tier_record 01a0a4f9…, digest_verified true
+  ·   P by action B (01a0a4f9…): done — copy_created false, already_archived true, tier_record none, digest_verified true
+  ✓ exactly one execution made the copy and the move; the other found P archived under the lock and recorded the move as already made
+  ✓ the tier ledger holds ONE record for P (by A)
+  ✓ the host: P's archive path PRESENT, hot path ABSENT (.eye-local/vault/archive/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/907be699-b108-4f3e-b571-9de518a227ef)
+  · Q: tier archive, archive path PRESENT
+  ✓ A verified against the archive contract: 2/2 checks
+  ✓ B verified against the archive contract: 1/1 checks
+  ✓ A. Hoffmann downloads P: HTTP 201, 240 bytes, digest the manifest's, tier archive, availability archived, integrity verified
+  ✓ no advisory lock outlives its transaction (pg_locks: 0 advisory locks held)
+
+2. THE VERIFIER — the same two records exported (read from the archive tier), verified by the corrected verifier; the shipped verifier's false success on a manifest that is not a package, and the corrected one's refusal; the export revoked
+  ✓ customer export of P and Q: P. Novák opened 01a0a4f9…; scope resolved (2 item(s), 2 to execute, 0 held; digest fbe7b52ad791…); H. Bergmann approved
+  ✓ executed: 2 exported, 0 refused; package 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a4f9-4cf9-7876-98a3-e6e391f67175/ — 2 object(s), 1285 bytes, package digest 642933bd2ecab695…
+  · the bytes were read from: tier not recorded ×2
+  ✓ the corrected verifier on the package: exit 0, ok true, complete true — "PACKAGE OK: 2 objects, 1285 bytes, package digest 642933bd2ecab6955684fbd4c1cc5ca3ed6fc1a7c85f77eac7e07e91afcfb97a"
+  · manifest.json = null: SHIPPED verifier exit 0, ok true, failed 0 — "PACKAGE FAILED: 0 check(s)"; with the expected digest exit 0, ok true
+  ✓   the finding on this host: the shipped verifier reports success for a manifest that is null
+  ✓   the corrected verifier: exit 1, ok false, complete false, failed 2 — "PACKAGE FAILED: 2 check(s) failed; the validation did not complete"; with the expected digest exit 1 (the comparison that could not run is a failed check)
+  · manifest.json = []: SHIPPED verifier exit 0, ok true, failed 0 — "PACKAGE FAILED: 0 check(s)"; with the expected digest exit 0, ok true
+  ✓   the finding on this host: the shipped verifier reports success for a manifest that is []
+  ✓   the corrected verifier: exit 1, ok false, complete false, failed 2 — "PACKAGE FAILED: 2 check(s) failed; the validation did not complete"; with the expected digest exit 1 (the comparison that could not run is a failed check)
+  ✓ the export verified by the product
+  ✓ H. Bergmann revoked the package; bytes removed true; the directory is GONE
+
+3. UN COMTRADE — the contract's readiness in this process, and the exact remaining binding step
+  · un-comtrade v1: verdict inactive (contract version 1 is approved); rights confirmed; credential: reference EYE_SRC_COMTRADE_KEY (not bound in this deployment)
+  ✓ this process binds no EYE_SRC_COMTRADE_KEY (the key is not on this host); the remaining step is the owner's: add one line EYE_SRC_COMTRADE_KEY=<the key> to .eye-local/env (mode 0600), restart with scripts/ops/demo-restart.sh, then run node scripts/integrations/activate-comtrade.mjs — the act stops before activation until then
+
+=== the closure act completed with every scene producing its effect ===
+
+=== exit 0 — 2026-09-15T12:09:59Z ===

@@ -1009,6 +1009,54 @@ manifest's bytes reads its current tier, restore.sh's verification included), th
 **B11.8 the demonstration** — `scripts/phase6/act-b11.mjs` with `reprovision-rest-agents.mjs` and
 `activate-comtrade.mjs` → `evidence/cp6/act-b11.txt` (PHASE6_REPORT §24.3).
 
+**B11.9 the closure of Codex's B11-F1 and B11-F2 (migration 0071; 2026-09-14; PHASE6_REPORT §25).** *The finding:* two
+approved archive actions overlapping on a manifest — the first's copy adopted by the second (`copy_created: false`), the
+second committed, the first failing later and its rollback cleanup removing the copy the second's committed record now
+served: the bytes gone from both tiers. *Reproduced* through the governed path on a fresh database with an isolated vault
+by `phase6-retention-b11-closure.test.ts`, using a HOLD (a fault-module primitive that makes the shipped code wait at a
+boundary instead of crashing there; test profile only) — RED on the unfixed executor (`b11-closure-repro-before.txt`).
+*The mechanism, 0071 §1:* `retention.lock_key_manifest`, `retention.lock_key_domain`, `retention.holds_advisory`,
+`retention.holds_manifest_lock(tenant, domain, manifest)`; `begin_execution` re-declared — after the approval checks and
+before the kind-specific re-checks, the domain's MOVERS advisory lock shared, then each executable manifest's advisory lock
+in one canonical order (by ref): exclusive for an archive or a deletion, shared for a customer export; more than 256
+executable manifests → the movers lock exclusively and no manifest lock (the lock table is finite: max_locks_per_transaction
+× the connections); every execution takes the domain lock first, so no wait cycle. *§2:* `archive_blob` records a move only
+under the manifest's lock (55P03 otherwise). *The executor:* a copy is STAGED under the creating execution ATTEMPT's own name
+(`<locator>.staging-<attempt_id>` in the archive root, `VaultService.copyBlob` with the owner; every execution of an action
+is its own attempt) and PUBLISHED under the locator by the controller only after the commit that recorded the move
+(`publishArchiveCopy`: a rename in the same directory, the digest re-read; idempotent; the other staged copies of the
+locator retired) — so a copy whose record did not commit is adoptable by no other execution, and a rollback removes only the
+file bearing its own attempt's name (`removeStaged`; a second attempt of the same action, admitted after the first's backend
+was lost, owns its own), whatever became of the transaction's locks, backend or connection meanwhile (the author's first closure proved the lock before each removal and read "current transaction is
+aborted" as held — wrong: PostgreSQL releases a transaction's locks at the abort itself; the review's judges reproduced the
+loss on a cancelled statement and named the check-then-act window on a lost backend); the execution runs in a subtransaction
+(a savepoint after the locks) so a cancelled or timed-out statement aborts only that (the cleanup on a transaction still
+open), and the item branches roll back to the item savepoint only while it exists; an execution finding the manifest
+archived under the lock reads the committed copy (`readArchived`: the locator, else any staged copy under the manifest's
+digest, else the locator again, else the kept hot copy — the source recorded on the download's custody row), publishes a
+still-staged one there and then, schedules the hot removal only once a published copy stands, and records the move as
+already made; the retry route works from the executed items (not residual rows alone), leaves a tombstoned manifest to its
+deletion and reports what it could not publish; a transaction failing after the executor returned has its attempt's staged
+copies removed by the controller; an execution naming more than 256 manifests, whatever its kind, takes the movers lock
+exclusively; a failed publish keeps the hot copy and records a pending
+residual retried by the execute route (`retryBytes` publishes any staged copy under the manifest's digest first, and copies
+the kept hot copy again when none publishes); a deletion retires staged copies with the bytes (`removeAllStaged`, retried
+too) and its verification counts a staged copy as bytes present; `scripts/ops/restore.sh`'s blob verification and its
+after-boundary listing look where the product's readers look (a pending publish counted apart, never absent); every reader of the archive tier — the evidence download, the acquisition lifecycle's availability,
+the export builder — reads through `readArchived`. *The controller:* the executor's verdict survives a failed
+ROLLBACK (stashed beside the transaction; the pause on a fresh connection); a lock not granted at the start (40P01,
+55P03) pauses the action `infrastructure` for a retry. *The pools* (`shared/db.ts`): an `error` listener on every client,
+idle or checked out — a terminated backend is a logged failing query, not an event that ends the process. *B11-F2:* the
+verifier's verdict rule (complete validation, `ok`/`complete`/`failed`, text = JSON = exit; an expected digest never
+silently skipped; `excluded` as listed; an unreadable listed file a failed check). *The harness:* nine cases — Codex's
+interleaving, the hold inside the cleanup, the serial control, the overlap that succeeds (serial and concurrent), the lock's
+end with the backend (pg_terminate_backend on the holder), a statement cancelled mid-record (a sleeping trigger and
+pg_cancel_backend), a second attempt of the same action after the first's backend was lost, and the verifier's refusals
+and controls. *Records:* the four
+requirement rows (DZ-18, DAT-ST-06, L3-C08, V03-T-047) carry the clauses; no unit changes status. *The runbook:*
+`docs/ops/DEMONSTRATION_RUNBOOK.md` and `scripts/ops/demo-restart.sh` (the target verified before success is reported),
+carrying the 2026-09-13 incident. *The demonstration:* `scripts/phase6/closure-b11.mjs` → `evidence/cp6/closure-b11.txt`.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

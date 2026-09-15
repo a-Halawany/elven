@@ -796,19 +796,34 @@ done
 
 step "verification: every live (non-tombstoned) blob manifest has its bytes in the restored vault with the recorded sha256 (ALL rows)"
 cat > "$RROOT/work/verify-blobs.mjs" <<'EOF'
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 const [vaultRoot, tsv] = process.argv.slice(2);
-const c = { total: 0, present_verified: 0, absent: 0, digest_mismatch: 0, length_mismatch: 0, by_vault: {} };
+const c = { total: 0, present_verified: 0, present_pending_publish: 0, absent: 0, digest_mismatch: 0, length_mismatch: 0, by_vault: {} };
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+// A manifest in the ARCHIVE tier whose copy is recorded but not yet published (CP-6 B11 closure, 0071: the instant after the commit, or
+// a publish that failed and awaits its retry) has its bytes under a staged name beside the locator, or still hot — the same places the
+// product's readers look (VaultService.readArchived); such a manifest is present, counted apart as pending_publish, never absent.
+function readArchived(locator, digest) {
+  const p = join(vaultRoot, 'archive', locator);
+  try { return { buf: readFileSync(p), pending: false }; } catch { /* not published */ }
+  let names = []; try { names = readdirSync(dirname(p)); } catch { names = []; }
+  for (const n of names.filter((x) => x.startsWith(`${basename(p)}.staging-`))) {
+    try { const b = readFileSync(join(dirname(p), n)); if (sha(b) === digest) return { buf: b, pending: true }; } catch { /* moved meanwhile */ }
+  }
+  try { return { buf: readFileSync(join(vaultRoot, 'evidence', locator)), pending: true }; } catch { return null; }
+}
 for (const line of readFileSync(tsv, 'utf8').split('\n').filter(Boolean)) {
   const [vault, locator, digest, bytes] = line.split('\t');
-  c.total += 1; c.by_vault[vault] = c.by_vault[vault] ?? { total: 0, present_verified: 0, absent: 0 }; c.by_vault[vault].total += 1;
-  const p = join(vaultRoot, vault, locator);
-  let buf; try { buf = readFileSync(p); } catch { c.absent += 1; c.by_vault[vault].absent += 1; continue; }
-  if (createHash('sha256').update(buf).digest('hex') !== digest) { c.digest_mismatch += 1; continue; }
+  c.total += 1; c.by_vault[vault] = c.by_vault[vault] ?? { total: 0, present_verified: 0, present_pending_publish: 0, absent: 0 }; c.by_vault[vault].total += 1;
+  let buf; let pending = false;
+  if (vault === 'archive') { const r = readArchived(locator, digest); if (r === null) { c.absent += 1; c.by_vault[vault].absent += 1; continue; } buf = r.buf; pending = r.pending; }
+  else { try { buf = readFileSync(join(vaultRoot, vault, locator)); } catch { c.absent += 1; c.by_vault[vault].absent += 1; continue; } }
+  if (sha(buf) !== digest) { c.digest_mismatch += 1; continue; }
   if (buf.length !== Number(bytes)) { c.length_mismatch += 1; continue; }
   c.present_verified += 1; c.by_vault[vault].present_verified += 1;
+  if (pending) { c.present_pending_publish += 1; c.by_vault[vault].present_pending_publish += 1; }
 }
 console.log(JSON.stringify(c));
 EOF
@@ -878,9 +893,13 @@ else
     if [[ "$OUTSIDE" != "0" ]]; then
       say "  $db: the following fall OUTSIDE the bundle and must be re-collected or accepted as lost:"
       node -e '
-        const {readFileSync}=require("node:fs"); const {existsSync}=require("node:fs"); const {join}=require("node:path");
-        const rows=JSON.parse(readFileSync(process.argv[2],"utf8"));
-        for (const r of rows) if (!existsSync(join(process.argv[3], r.vault, r.locator)))
+        const {readFileSync, existsSync, readdirSync}=require("node:fs"); const {join, dirname, basename}=require("node:path");
+        const rows=JSON.parse(readFileSync(process.argv[2],"utf8")); const V=process.argv[3];
+        // an archived manifest whose copy is recorded but not yet published (0071) has its bytes under a staged name beside the locator, or still hot
+        const present=(r)=>{ if (existsSync(join(V, r.vault, r.locator))) return true; if (r.vault!=="archive") return false;
+          const p=join(V,"archive",r.locator); let names=[]; try { names=readdirSync(dirname(p)); } catch { names=[]; }
+          return names.some((n)=>n.startsWith(`${basename(p)}.staging-`)) || existsSync(join(V,"evidence",r.locator)); };
+        for (const r of rows) if (!present(r))
           console.log(`    ${r.manifest_id}  ${r.vault}/${r.locator}  admitted ${r.created_at}`);
       ' -- "$RROOT/work/$db.after-boundary.json" "$VAULT"
     fi

@@ -6,7 +6,9 @@
  * removed only after the transaction that recorded the execution committed.
  *
  * CP-6 B11 (0070): every kind executes. An ARCHIVE copies the bytes into the archive tier under the same locator, records
- * the move through the archive port and removes the hot copy after the commit (D3); a CUSTOMER EXPORT writes the package
+ * the move through the archive port and removes the hot copy after the commit (D3) — the manifests it moves locked for the
+ * transaction, the copy STAGED under the execution attempt's own name until the commit and published under the locator after it, the
+ * staged copies removed by name when the execution cannot stand (0071, Codex B11-F1); a CUSTOMER EXPORT writes the package
  * — manifest.json and one <manifest_id>.bin per object — under the export namespace, signs it by a digest chain bound to
  * the approval (D4) and records it through the package port; a refusal at execution rolls the whole execution back and
  * pauses the action with its failure class (D11).
@@ -21,6 +23,7 @@ import { canonicalHeaderDigest, errorBody } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { rebuildHeaderFromRow, type ObjectRow } from '../objects/objects.service.js';
 import { VaultService, VaultIntegrityError, sha256, type VaultName } from '../observation/vault/vault.service.js';
+import * as fault from '../observation/fault-injection.js';
 import type { RetentionReads, RetentionWrites } from './retention.capabilities.js';
 import { EXPORT_FORMAT, SIGNATURE_SCHEME, objectsDigestOf, packageDigestOf, type ExportManifestShape } from './export-package.js';
 
@@ -28,7 +31,9 @@ import { EXPORT_FORMAT, SIGNATURE_SCHEME, objectsDigestOf, packageDigestOf, type
  * An execution that cannot stand (0067 §1, generalised by B11): a hold placed since the approval (`legal_hold`), the export's
  * rights withdrawn (`authority_disputed`), a tombstone or a live reference since the approval (`unresolved_dependency`), a copy or
  * a package build that failed or any fault after the state moved (`infrastructure`). The caller rolls the transaction back
- * whole, runs the cleanup of what left the transaction (the copies THIS execution created, the package directory) and pauses the action.
+ * whole, runs the cleanup of what left the transaction and pauses the action. B11-F1 (0071): the archive copies THIS attempt staged
+ * under its own name are removed by `execute` before it throws (no other execution could have adopted them); `cleanup` — run by the
+ * controller after the rollback — removes only what no other action can share: the export's package directory.
  */
 export type ExecutionFailureClass = 'legal_hold' | 'unresolved_dependency' | 'authority_disputed' | 'infrastructure';
 export class RetentionExecutionRolledBack extends Error {
@@ -96,7 +101,7 @@ export function validateOpenAction(p: Row, correlationId: string): OpenActionInt
 }
 
 /** What an execution leaves for the controller: the counts, the bytes to remove after the commit (each in its tier), the floor moved, the package built. */
-export interface ExecutionOutcome { executed: number; held: number; refused: number; locatorsToRemove: Array<{ ref: string; locator: string; vault: VaultName }>; floor: Row | null; package: Row | null }
+export interface ExecutionOutcome { executed: number; held: number; refused: number; locatorsToRemove: Array<{ ref: string; locator: string; vault: VaultName; stagedToo?: boolean }>; copiesToPublish: Array<{ ref: string; locator: string; digest: string; attemptId: string }>; floor: Row | null; package: Row | null }
 
 @Injectable()
 export class RetentionService {
@@ -123,25 +128,51 @@ export class RetentionService {
     if (action === null) throw new HttpException(errorBody('EYE_STA_001', a.correlationId, 'no authorized retention action matches'), 404);
     const kind = String(action['kind']);
     const scope = { tenantId: a.tenantId, domainId: a.domainId };
+    // begin_execution (0070 §5; 0071 §1) re-checks what the approval assumed and LOCKS, for this transaction, every manifest the action will
+    // move or remove — an execution naming a manifest another execution holds waits here, with nothing copied and nothing recorded.
     const items = await cap.beginExecution({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, actor: a.actor, correlationId: a.correlationId });
     // The archive's copies THIS execution created (copyBlob says which — an identical copy already present is another action's, or a
-    // committed earlier record's, and is never this execution's to remove): removed by the cleanup when the execution is rolled back (D3).
-    const copiesMade: string[] = [];
-    const cleanup = async (): Promise<void> => {
-      if (kind === 'archive') for (const l of copiesMade) await this.vault.tombstone('archive', scope, l);
-      if (kind === 'customer_export') await this.vault.removePackage(scope, a.actionId);
-    };
+    // committed earlier record's, and is never this execution's to remove): removed when the execution is rolled back (D3).
+    const copiesMade: Array<{ ref: string; locator: string; digest: string }> = [];
+    // THE ATTEMPT (0071): every execution of an action is its own attempt, and an archive copy is staged under the ATTEMPT's name — a second
+    // attempt of the same action, admitted after the first's backend was lost (the server rolled the first back to approved), owns its own
+    // staged files, and the first's late cleanup cannot touch them.
+    const attemptId = newId();
+    // THE EXECUTION RUNS IN A SUBTRANSACTION (0071, b): a savepoint taken after the locks. PostgreSQL releases a transaction's locks at the
+    // abort itself — not at the client's ROLLBACK — so a top-level SQL error after a copy (a statement cancelled or timed out, a deadlock, a
+    // fault in a record) aborts only the subtransaction: rolled back to it, the transaction is usable again for the record of the failure.
+    await cap.savepoint('retention_execution');
     try {
-      return await this.executeItems(cap, scope, action, items, a, copiesMade, cleanup);
+      const outcome = await this.executeItems(cap, scope, action, items, a, copiesMade, attemptId);
+      await cap.releaseSavepoint('retention_execution');
+      return outcome;
     } catch (e) {
-      if (e instanceof RetentionExecutionRolledBack) throw e;
-      // After the state moved: a port refusal that names its class (the record of the package re-checked the tombstones and the rights), a
-      // vault or database fault, a defect of the record — the transaction rolls back and the action pauses; the cleanup runs after the rollback.
-      throw new RetentionExecutionRolledBack(a.actionId, failureClassOf(e), `the execution failed after it began: ${String((e as { message?: unknown })?.message ?? 'unknown failure').slice(0, 600)}; the scope is resolved again`, cleanup);
+      // After the state moved: a refusal at execution, a port refusal that names its class (the record of the package re-checked the tombstones
+      // and the rights), a vault or database fault, a defect of the record — the transaction rolls back whole and the action pauses.
+      const rolled = e instanceof RetentionExecutionRolledBack ? e
+        : new RetentionExecutionRolledBack(a.actionId, failureClassOf(e), `the execution failed after it began: ${String((e as { message?: unknown })?.message ?? 'unknown failure').slice(0, 600)}; the scope is resolved again`);
+      let message = rolled.message;
+      // B11-F1 (0071): the copies this execution created are STAGED under this ATTEMPT's own name (never published under the locator before the
+      // commit that records the move), so no other execution — and no other attempt of this action — can have adopted them, whatever became of
+      // this transaction's locks, its backend or its connection meanwhile. They are removed here by name; a removal that fails is part of the
+      // pause reason (a staged file left behind is retired with the bytes by a deletion, or by the publish of another attempt's copy). The
+      // subtransaction is rolled back first so the transaction is usable again for the record of the failure.
+      if (kind === 'archive' && copiesMade.length > 0) {
+        await fault.pause('b11.archive_cleanup_before_remove');
+        await cap.rollbackToSavepoint('retention_execution').catch(() => undefined);
+        const failed: string[] = [];
+        for (const c of copiesMade) {
+          try { await this.vault.removeStaged(scope, c.locator, attemptId); } catch (e) { failed.push(`${c.locator}: ${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 120)}`); }
+        }
+        if (failed.length > 0) message = `${message}; the removal of ${failed.length} staged archive cop${failed.length === 1 ? 'y' : 'ies'} this execution created failed: ${failed.join('; ').slice(0, 300)}`;
+      }
+      // What goes AFTER the rollback (the controller runs it): the export's package directory — this action's own namespace, shared with no other action.
+      const cleanup = async (): Promise<void> => { if (kind === 'customer_export') await this.vault.removePackage(scope, a.actionId); };
+      throw new RetentionExecutionRolledBack(a.actionId, rolled.failureClass, message, cleanup);
     }
   }
 
-  private async executeItems(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, action: Row, items: Row[], a: { actionId: string; tenantId: string; domainId: string; actor: string; correlationId: string }, copiesMade: string[], cleanup: () => Promise<void>): Promise<ExecutionOutcome> {
+  private async executeItems(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, action: Row, items: Row[], a: { actionId: string; tenantId: string; domainId: string; actor: string; correlationId: string }, copiesMade: Array<{ ref: string; locator: string; digest: string }>, attemptId: string): Promise<ExecutionOutcome> {
     const kind = String(action['kind']);
     let executed = 0; let held = 0; let refused = 0; const locators: ExecutionOutcome['locatorsToRemove'] = []; let floor: Row | null = null; const refusals: string[] = [];
     for (const item of items) {
@@ -165,17 +196,20 @@ export class RetentionService {
       if (itemKind === 'manifest' && kind === 'deletion') {
         const tombstoneId = newId();
         await cap.savepoint('retention_item');
+        let released = false;
         try {
           const inserted = await cap.tombstoneManifest({ tombstoneId, tenantId: a.tenantId, domainId: a.domainId, manifestId: ref, reason: `retention action ${a.actionId}: superseded evidence past its retention`, correlationId: a.correlationId });
-          await cap.releaseSavepoint('retention_item');
+          await cap.releaseSavepoint('retention_item'); released = true;
           await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'observation.tombstone_blob', outcome: 'done',
                                       evidence: { tombstone_id: inserted ? tombstoneId : null, already_tombstoned: !inserted, locator: details['locator'] ?? null, byte_length_before: details['byte_length'] ?? null, tier: (await cap.tierOf(ref)).tier }, actor: a.actor, correlationId: a.correlationId });
           executed += 1;
           // A deletion retires the bytes from BOTH roots (B11): the manifest's current tier says where they are, and a hot copy an archive
-          // could not remove after its commit, or an archive copy left by an interrupted move, must not survive the tombstone in either.
-          if (typeof details['locator'] === 'string') { locators.push({ ref, locator: details['locator'], vault: 'evidence' }); locators.push({ ref, locator: details['locator'], vault: 'archive' }); }
+          // could not remove after its commit, an archive copy left by an interrupted move, or a copy still staged (0071) must not survive the tombstone in either.
+          if (typeof details['locator'] === 'string') { locators.push({ ref, locator: details['locator'], vault: 'evidence' }); locators.push({ ref, locator: details['locator'], vault: 'archive', stagedToo: true }); }
         } catch (e) {
-          // A hold placed since the scope was resolved: the port refuses; the refusal is the record, the action fails closed.
+          // A hold placed since the scope was resolved: the port refuses; the refusal is the record, the action fails closed. A failure AFTER the
+          // port answered (the record itself — a statement cancelled, a fault) is the execution's own: it propagates as such (the item savepoint is gone).
+          if (released) throw e;
           await cap.rollbackToSavepoint('retention_item');
           const message = (e as Error).message.slice(0, 300);
           await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'observation.tombstone_blob', outcome: 'refused', evidence: { reason: message }, actor: a.actor, correlationId: a.correlationId });
@@ -187,28 +221,54 @@ export class RetentionService {
         const locator = String(details['locator'] ?? ''); const digest = String(details['content_digest'] ?? '');
         const hold = ((await cap.readLegalHolds().select(['hold_id' as never]).where('manifest_id' as never, '=', ref as never).where('lifted_at' as never, 'is', null as never).orderBy('placed_at' as never).limit(1).executeTakeFirst()) as { hold_id: string } | undefined)?.hold_id ?? null;
         let copy: { contentDigest: string; byteLength: number; created: boolean };
-        try {
-          copy = await this.vault.copyBlob('evidence', 'archive', scope, locator, digest);
-        } catch (e) {
-          // The copy failed (the source unreadable or corrupt, the target occupied by other bytes, a fault): an infrastructure refusal; nothing of this execution stands.
-          const message = (e as Error).message.slice(0, 300);
-          await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'vault.copy', outcome: 'refused', evidence: { reason: message, failure: e instanceof VaultIntegrityError ? e.reason : 'unknown' }, actor: a.actor, correlationId: a.correlationId });
-          refused += 1; refusals.push(`${ref}: ${message}`);
-          continue;
+        // ALREADY ARCHIVED (0071; Codex B11-F1): the manifest's lock, taken by begin_execution, makes any other execution's move of it committed and
+        // complete before this one began — so a tier read here is definitive: another approved action archived it between this scope's resolution
+        // and this execution (and removed the hot copy after its commit, or left that to its retry). Nothing is copied from a hot copy that may be
+        // gone: the archive copy is verified under the manifest's digest and the port answers "already archived" for the record.
+        const tierNow = await cap.tierOf(ref);
+        let hotRemovable = true;
+        if (tierNow.tier === 'archive') {
+          try {
+            const present = await this.vault.readArchived(scope, locator, digest);
+            // The recording action's copy may still be STAGED (its publish pending or failed): published here, under this execution's lock,
+            // by a rename; the hot copy is scheduled for removal only once a published copy stands (0071, e — never on the strength of a staged one).
+            const publishedHere = present.source === 'published' ? false : await this.vault.publishArchiveCopy(scope, locator, digest, null).then(() => true, () => false);
+            hotRemovable = present.source === 'published' || publishedHere;
+            copy = { contentDigest: present.contentDigest, byteLength: present.bytes.byteLength, created: false };
+          } catch (e) {
+            const message = (e as Error).message.slice(0, 300);
+            await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'vault.read', outcome: 'refused', evidence: { reason: `the manifest is in the archive tier but its archive copy does not verify: ${message}`, failure: e instanceof VaultIntegrityError ? e.reason : 'unknown', tier: 'archive' }, actor: a.actor, correlationId: a.correlationId });
+            refused += 1; refusals.push(`${ref}: ${message}`);
+            continue;
+          }
+        } else {
+          try {
+            // STAGED under this attempt's name (0071): published under the locator by the controller after the commit that records the move.
+            copy = await this.vault.copyBlob('evidence', 'archive', scope, locator, digest, { attemptId });
+          } catch (e) {
+            // The copy failed (the source unreadable or corrupt, the target occupied by other bytes, a fault): an infrastructure refusal; nothing of this execution stands.
+            const message = (e as Error).message.slice(0, 300);
+            await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'vault.copy', outcome: 'refused', evidence: { reason: message, failure: e instanceof VaultIntegrityError ? e.reason : 'unknown' }, actor: a.actor, correlationId: a.correlationId });
+            refused += 1; refusals.push(`${ref}: ${message}`);
+            continue;
+          }
         }
         // Only a copy THIS execution created is its own to remove on a rollback: an identical copy already present belongs to a committed record (another action's, or a crash between an earlier copy and its record).
-        if (copy.created) copiesMade.push(locator);
+        if (copy.created) copiesMade.push({ ref, locator, digest });
         const recordId = newId();
         await cap.savepoint('retention_item');
+        let released = false;
         try {
           const moved = await cap.archiveManifest({ recordId, tenantId: a.tenantId, domainId: a.domainId, manifestId: ref, actionId: a.actionId, contentDigest: copy.contentDigest, actor: a.actor, correlationId: a.correlationId });
-          await cap.releaseSavepoint('retention_item');
+          await cap.releaseSavepoint('retention_item'); released = true;
           await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'observation.archive_blob', outcome: 'done',
-                                      evidence: { tier_record_id: moved ? recordId : null, already_archived: !moved, locator, archive_locator: locator, digest_verified: true, copy_created: copy.created, byte_length: copy.byteLength, hold_id: hold }, actor: a.actor, correlationId: a.correlationId });
+                                      evidence: { tier_record_id: moved ? recordId : null, already_archived: !moved, locator, archive_locator: locator, digest_verified: true, copy_created: copy.created, staged: copy.created, attempt_id: attemptId, byte_length: copy.byteLength, hold_id: hold }, actor: a.actor, correlationId: a.correlationId });
           executed += 1;
-          locators.push({ ref, locator, vault: 'evidence' });
+          if (hotRemovable) locators.push({ ref, locator, vault: 'evidence' });
         } catch (e) {
           // The port refused (tombstoned meanwhile, the digest not the manifest's): rolled back to the savepoint, recorded, the execution fails closed.
+          // A failure AFTER the port answered (the record itself — a statement cancelled, a fault) is the execution's own: it propagates as such.
+          if (released) throw e;
           await cap.rollbackToSavepoint('retention_item');
           const message = (e as Error).message.slice(0, 300);
           await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId, port: 'observation.archive_blob', outcome: 'refused', evidence: { reason: message }, actor: a.actor, correlationId: a.correlationId });
@@ -231,14 +291,15 @@ export class RetentionService {
     }
     // A refusal at execution means the execution cannot stand — a hold placed since the approval (a deletion), a copy that failed
     // (an archive), a package that did not build (an export): NOTHING of it stands. The transaction is rolled back whole by the
-    // throw, the controller runs the cleanup of what left the transaction, records the pause with the class, the scope is resolved again (0067 §1; D11).
+    // throw (`execute` removes the copies this execution created before the rollback, the controller the package directory after it),
+    // the pause is recorded with the class, the scope is resolved again (0067 §1; D11; 0071).
     if (refused > 0) {
       const summary = `${refused} item(s) refused at execution: ${refusals.join('; ').slice(0, 800)}; the scope is resolved again`;
       if (kind === 'deletion') throw new RetentionExecutionRolledBack(a.actionId, 'legal_hold', `${refused} item(s) refused at execution — a hold placed since the scope was resolved: ${refusals.join('; ').slice(0, 800)}; the scope is resolved again`);
-      throw new RetentionExecutionRolledBack(a.actionId, kind === 'customer_export' ? exportClass : 'infrastructure', summary, cleanup);
+      throw new RetentionExecutionRolledBack(a.actionId, kind === 'customer_export' ? exportClass : 'infrastructure', summary);
     }
     await cap.finishExecution({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, outcome: 'executed', reason: null, actor: a.actor, correlationId: a.correlationId });
-    return { executed, held, refused, locatorsToRemove: locators, floor, package: pkg };
+    return { executed, held, refused, locatorsToRemove: locators, copiesToPublish: copiesMade.map((c) => ({ ref: c.ref, locator: c.locator, digest: c.digest, attemptId })), floor, package: pkg };
   }
 
   /**
@@ -287,7 +348,7 @@ export class RetentionService {
       // The BYTES: read from the tier they are in, verified against the manifest's digest, written into the package under the manifest's id.
       let bytes: Buffer;
       try {
-        bytes = (await this.vault.read((await cap.tierOf(ref)).tier === 'archive' ? 'archive' : 'evidence', scope, locator, digest)).bytes;
+        bytes = ((await cap.tierOf(ref)).tier === 'archive' ? await this.vault.readArchived(scope, locator, digest) : await this.vault.read('evidence', scope, locator, digest)).bytes;
       } catch (e) {
         await refuse(`the bytes were not read: ${(e as Error).message.slice(0, 200)}`, { failure: e instanceof VaultIntegrityError ? e.reason : 'unknown' }); continue;
       }
@@ -335,41 +396,70 @@ export class RetentionService {
     return { executed, refused, redactionRefused, refusals, package: pkg };
   }
 
-  /** The bytes of an executed action whose removal the vault refused after the commit (a pending bytes residual): tried again; verification closes what is gone. */
+  /**
+   * THE RETRY of an executed action's bytes (0071): from the EXECUTED ITEMS themselves — not from the residual rows alone, which the same
+   * process writes after the commit and which a crash between the commit and that write never leaves behind. An ARCHIVE's item: any
+   * staged copy of the locator under the manifest's digest is published (a publish that failed, or a process gone between the commit
+   * and the publish); when none publishes, the hot copy kept for exactly that case is copied again and published; the hot copy goes only
+   * once the published copy verifies; a manifest tombstoned since is left to the deletion that tombstoned it. A DELETION's item: the bytes
+   * in either root and every staged copy, idempotently. `pending` counts the residual rows; `failed` names what could not be published.
+   */
   async retryBytes(cap: RetentionReads, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ removed: string[]; failed: string[]; pending: number }> {
     const action = ((await cap.readActions().select(['kind' as never]).where('action_id' as never, '=', actionId as never).executeTakeFirst()) as { kind: string } | undefined);
     const pending = (await cap.readResiduals().selectAll().where('action_id' as never, '=', actionId as never).where('kind' as never, '=', 'bytes_present' as never).where('status' as never, '=', 'pending' as never).execute()) as Row[];
-    const items = (await cap.readScopeItems().selectAll().where('action_id' as never, '=', actionId as never).where('item_kind' as never, '=', 'manifest' as never).execute()) as Row[];
-    const entries: Array<{ locator: string; vault: VaultName }> = [];
-    for (const r of pending) {
-      const it = items.find((i) => String(i['ref']) === String(r['ref']));
-      const locator = ((it?.['details'] ?? {}) as Row)['locator'];
+    const items = (await cap.readScopeItems().selectAll().where('action_id' as never, '=', actionId as never).where('item_kind' as never, '=', 'manifest' as never).where('disposition' as never, '=', 'execute' as never).execute()) as Row[];
+    const entries: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }> = []; const unpublished: string[] = [];
+    for (const it of items) {
+      const details = (it['details'] ?? {}) as Row; const locator = details['locator']; const ref = String(it['ref']);
       if (typeof locator !== 'string') continue;
-      // The pending bytes of an ARCHIVE are its hot copy (B11) — removed only while the archive copy is present and verifies (never the last copy of a
-      // live manifest); of a DELETION, the bytes in either root.
       if (action?.kind === 'archive') {
-        const digest = String(((it?.['details'] ?? {}) as Row)['content_digest'] ?? '');
-        const archived = await this.vault.read('archive', scope, locator, digest).then(() => true, () => false);
-        if (archived) entries.push({ locator, vault: 'evidence' });
-      } else {
-        entries.push({ locator, vault: 'evidence' }); entries.push({ locator, vault: 'archive' });
+        const digest = String(details['content_digest'] ?? '');
+        const tombstoned = ((await cap.readTombstones().select(['manifest_id' as never]).where('manifest_id' as never, '=', ref as never).executeTakeFirst()) as Row | undefined) !== undefined;
+        if (tombstoned) continue;
+        await this.vault.publishArchiveCopy(scope, locator, digest, null).catch(() => undefined);
+        let archived = await this.vault.read('archive', scope, locator, digest).then(() => true, () => false);
+        if (!archived) {
+          const attemptId = newId();
+          archived = await this.vault.copyBlob('evidence', 'archive', scope, locator, digest, { attemptId })
+            .then(() => this.vault.publishArchiveCopy(scope, locator, digest, attemptId)).then(() => true, () => false);
+        }
+        if (!archived) { unpublished.push(locator); continue; }
+        if (await this.vault.exists('evidence', scope, locator)) entries.push({ locator, vault: 'evidence' });
+      } else if (action?.kind === 'deletion') {
+        entries.push({ locator, vault: 'evidence' }); entries.push({ locator, vault: 'archive', stagedToo: true });
       }
     }
     const r = await this.removeBytes(scope, entries);
-    return { ...r, pending: pending.length };
+    return { removed: r.removed, failed: [...r.failed, ...unpublished.filter((l) => !r.failed.includes(l))], pending: pending.length };
   }
 
   /**
    * The bytes go after the record committed (the sweeper's discipline), each from its tier: a failure here leaves the record true and the
    * bytes for the retry route. Reported per LOCATOR: removed when every root named for it is clear, failed when any removal was refused.
    */
-  async removeBytes(scope: { tenantId: string; domainId: string }, entries: Array<{ locator: string; vault: VaultName }>): Promise<{ removed: string[]; failed: string[] }> {
+  /** The controller's cleanup of an attempt's staged copy when the transaction failed after the handler returned (0071). */
+  async removeStagedCopy(scope: { tenantId: string; domainId: string }, locator: string, attemptId: string): Promise<void> { await this.vault.removeStaged(scope, locator, attemptId); }
+
+  async removeBytes(scope: { tenantId: string; domainId: string }, entries: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }>): Promise<{ removed: string[]; failed: string[] }> {
     const failedSet = new Set<string>(); const seen: string[] = [];
     for (const e of entries) {
       if (!seen.includes(e.locator)) seen.push(e.locator);
-      try { await this.vault.tombstone(e.vault, scope, e.locator); } catch { failedSet.add(e.locator); }
+      try { await this.vault.tombstone(e.vault, scope, e.locator); if (e.stagedToo === true) await this.vault.removeAllStaged(scope, e.locator); } catch { failedSet.add(e.locator); }
     }
     return { removed: seen.filter((l) => !failedSet.has(l)), failed: seen.filter((l) => failedSet.has(l)) };
+  }
+
+  /**
+   * PUBLISH the staged copies of an executed archive after its commit (0071): each renamed under its locator; a copy that cannot be
+   * published keeps its hot copy in place (recorded as a pending residual by the controller; the retry route publishes it first).
+   */
+  async publishCopies(scope: { tenantId: string; domainId: string }, copies: ExecutionOutcome['copiesToPublish']): Promise<{ published: string[]; failed: Array<{ ref: string; locator: string; error: string }> }> {
+    const published: string[] = []; const failed: Array<{ ref: string; locator: string; error: string }> = [];
+    for (const c of copies) {
+      try { await this.vault.publishArchiveCopy(scope, c.locator, c.digest, c.attemptId); published.push(c.locator); }
+      catch (e) { failed.push({ ref: c.ref, locator: c.locator, error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }); }
+    }
+    return { published, failed };
   }
 
   /**
@@ -389,13 +479,16 @@ export class RetentionService {
       const locator = details['locator']; const digest = String(details['content_digest'] ?? '');
       if (typeof locator !== 'string') { observed[ref] = { bytes_present: null }; continue; }
       const inEvidence = await this.vault.exists('evidence', scope, locator); const inArchive = await this.vault.exists('archive', scope, locator);
+      // A staged copy (0071) is bytes in the archive root too: a deletion is not verified while one remains; an archive's own contract needs the
+      // PUBLISHED copy. A listing that fails counts as bytes PRESENT — the observer never concludes "nothing staged" from an answer it did not get.
+      const staged = await this.vault.stagedCopies(scope, locator).then((n) => n.length > 0, () => true);
       if (kind === 'archive') {
-        observed[ref] = { bytes_present: inEvidence, archive_present: inArchive, archive_digest_ok: await this.vault.read('archive', scope, locator, digest).then(() => true, () => false) };
+        observed[ref] = { bytes_present: inEvidence, archive_present: inArchive, archive_digest_ok: await this.vault.read('archive', scope, locator, digest).then(() => true, () => false), staged_copies: staged };
       } else if (kind === 'customer_export') {
         const file = await this.vault.readPackageFile(scope, actionId, `${ref}.bin`).then((b) => b, () => null);
-        observed[ref] = { bytes_present: inEvidence || inArchive, export_present: file !== null, export_digest_ok: file !== null && sha256(file) === digest };
+        observed[ref] = { bytes_present: inEvidence || inArchive || staged, export_present: file !== null, export_digest_ok: file !== null && sha256(file) === digest };
       } else {
-        observed[ref] = { bytes_present: inEvidence || inArchive, tiers_present: [...(inEvidence ? ['evidence'] : []), ...(inArchive ? ['archive'] : [])] };
+        observed[ref] = { bytes_present: inEvidence || inArchive || staged, tiers_present: [...(inEvidence ? ['evidence'] : []), ...(inArchive ? ['archive'] : []), ...(staged ? ['archive-staged'] : [])] };
       }
     }
     if (kind === 'customer_export') {

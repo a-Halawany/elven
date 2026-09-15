@@ -1429,7 +1429,8 @@ export class AcquisitionLifecycle {
     if (held.tombstoned) return 'governed-deleted';
     if (!held.manifestPresent || held.manifestId === null || held.locator === null || held.vault === null) return 'no-manifest';
     try {
-      await this.vault.read(held.tier === 'archive' ? 'archive' : (held.vault as 'evidence' | 'quarantine'), scope, held.locator, held.contentDigest);
+      if (held.tier === 'archive') await this.vault.readArchived(scope, held.locator, held.contentDigest);
+      else await this.vault.read(held.vault as 'evidence' | 'quarantine', scope, held.locator, held.contentDigest);
       return 'verified';
     } catch {
       return 'integrity';

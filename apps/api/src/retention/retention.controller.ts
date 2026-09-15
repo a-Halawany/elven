@@ -133,16 +133,42 @@ export class RetentionController {
         async (cap) => { await cap.pauseAction({ actionId, tenantId, domainId, failureClass, reason, actor: principal.principalId, correlationId: envelope.correlation_id }); return { result: null, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null }; });
     };
     let out: Awaited<ReturnType<PipelineService['write']>> & { result: Awaited<ReturnType<RetentionService['execute']>> };
+    // The executor's verdict is kept beside the transaction (0071): when the ROLLBACK itself fails — the connection lost after the state
+    // moved — the rollback's error would otherwise replace the rolled-back execution's class and reason, and the action would stay approved
+    // with no pause on record; the pause below is its own write on a fresh connection.
+    const verdict: { rolled: RetentionExecutionRolledBack | null; outcome: Awaited<ReturnType<RetentionService['execute']>> | null } = { rolled: null, outcome: null };
     try {
       out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.action.execute', 'RTA', actionId), RetentionCapability.write,
-        async (cap) => ({ result: await this.retention.execute(cap, { actionId, tenantId, domainId, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null }));
+        async (cap) => {
+          try { const result = await this.retention.execute(cap, { actionId, tenantId, domainId, actor: principal.principalId, correlationId: envelope.correlation_id }); verdict.outcome = result; return { result, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null }; }
+          catch (e) { if (e instanceof RetentionExecutionRolledBack) verdict.rolled = e; throw e; }
+        });
     } catch (e) {
-      if (e instanceof RetentionExecutionRolledBack) {
+      const rolled = verdict.rolled ?? (e instanceof RetentionExecutionRolledBack ? e : null);
+      if (rolled !== null) {
         // What left the transaction is removed first (best effort: a failure is part of the pause reason), then the pause is its own write.
-        let reason = e.message;
-        try { await e.cleanup(); } catch (c) { reason = `${reason}; the cleanup after the rollback failed: ${(c as Error).message.slice(0, 200)}`; }
-        await pause(e.failureClass, reason);
+        let reason = rolled.message;
+        if (!(e instanceof RetentionExecutionRolledBack)) reason = `${reason}; the transaction's own rollback failed (${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 160)}) — the server rolled it back with the connection`;
+        try { await rolled.cleanup(); } catch (c) { reason = `${reason}; the cleanup after the rollback failed: ${(c as Error).message.slice(0, 200)}`; }
+        // The pause is refused when the action is no longer approved — a second attempt, admitted after this one's backend was lost, has
+        // executed it meanwhile (0071): this attempt's verdict is still answered, with the refusal named, never a bare error.
+        try { await pause(rolled.failureClass, reason); }
+        catch (p) { reason = `${reason}; the pause could not be recorded: ${String((p as { message?: unknown })?.message ?? 'unknown').slice(0, 200)}`; }
         throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `the execution was rolled back and the action paused: ${reason}`), 409);
+      }
+      // The locks could not be taken at the start (0071 §1): a deadlock PostgreSQL detected (40P01) or a lock it could not grant (55P03) —
+      // nothing moved, the action is still approved; it pauses for a retry by its normal route.
+      const code = (e as { code?: unknown })?.code;
+      if (code === '40P01' || code === '55P03') {
+        const why = `the execution could not take its locks (${String(code)}): ${String((e as { message?: unknown })?.message ?? '').slice(0, 300)}; retried by the same route`;
+        await pause('infrastructure', why);
+        throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `the execution was rolled back and the action paused: ${why}`), 409);
+      }
+      // The handler returned but the transaction failed after it (the policy or audit commit, the outbox, the COMMIT itself): the record did not
+      // commit — or its acknowledgement was lost — and the attempt's staged copies are removed by name (0071); were the commit real after all,
+      // the retry route copies the kept hot copy again. The action stays approved; the error is answered as it is.
+      if (verdict.outcome !== null && verdict.outcome.copiesToPublish.length > 0) {
+        for (const c of verdict.outcome.copiesToPublish) await this.retention.removeStagedCopy({ tenantId, domainId }, c.locator, c.attemptId).catch(() => undefined);
       }
       // begin_execution's re-checks (B11, 0070 §5) raised BEFORE the state moved, so the action is still approved and pauses with the class the
       // refusal names: the export's rights withdrawn (authority_disputed), a tombstone or a live reference since the approval (unresolved_dependency → human review).
@@ -153,18 +179,28 @@ export class RetentionController {
       }
       throw e;
     }
-    // The bytes go only after the record committed, each from its tier; a removal the vault refuses is recorded on the action as a pending residual (retried by this route; closed by verification).
-    const bytes = await this.retention.removeBytes({ tenantId, domainId }, out.result.locatorsToRemove);
-    if (bytes.failed.length > 0) {
+    // After the commit (0071): an archive's staged copies are PUBLISHED under their locators first; then the bytes go, each from its tier —
+    // a hot copy whose archive copy could not be published stays, and both a failed publish and a removal the vault refuses are recorded on
+    // the action as a pending residual (retried by this route, which publishes before it removes; closed by verification).
+    const publish = await this.retention.publishCopies({ tenantId, domainId }, out.result.copiesToPublish);
+    const unpublished = new Set(publish.failed.map((f) => f.locator));
+    const bytes = await this.retention.removeBytes({ tenantId, domainId }, out.result.locatorsToRemove.filter((l) => !(l.vault === 'evidence' && unpublished.has(l.locator))));
+    if (bytes.failed.length > 0 || publish.failed.length > 0) {
       await this.pipeline.write({ ...envelope, message_id: newId() } as typeof envelope, principal, this.route(tenantId, domainId, 'retention.action.execute', 'RTA', actionId), RetentionCapability.write,
         async (cap) => {
+          const noted = new Set<string>();
           for (const l of out.result.locatorsToRemove.filter((x) => bytes.failed.includes(x.locator))) {
+            if (noted.has(l.locator)) continue; noted.add(l.locator);
             await cap.recordBytesResidual({ actionId, tenantId, domainId, manifestRef: l.ref, locator: l.locator, error: 'the vault refused the removal after the record committed', actor: principal.principalId, correlationId: envelope.correlation_id });
+          }
+          for (const f of publish.failed) {
+            await cap.recordBytesResidual({ actionId, tenantId, domainId, manifestRef: f.ref, locator: f.locator, error: `the archive copy is staged but could not be published after the commit: ${f.error}`, actor: principal.principalId, correlationId: envelope.correlation_id });
           }
           return { result: null, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
         });
     }
-    return { execution: { executed: out.result.executed, held: out.result.held, refused: out.result.refused, floor: out.result.floor, package: out.result.package, bytes }, receipt: receipt(out) };
+    const failedAll = [...bytes.failed, ...publish.failed.map((f) => f.locator).filter((l) => !bytes.failed.includes(l))];
+    return { execution: { executed: out.result.executed, held: out.result.held, refused: out.result.refused, floor: out.result.floor, package: out.result.package, bytes: { removed: bytes.removed, failed: failedAll }, published: publish.published.length }, receipt: receipt(out) };
   }
 
   @Post('/actions/:actionId/verify')

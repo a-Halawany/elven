@@ -15,7 +15,8 @@
  *      digest — what an import checks before admitting the record); the header carries exactly 43 fields;
  *   4. COMPLETENESS: every listed file present and every file in the directory listed — EVERY entry, a dot-file included (an
  *      unlisted file fails; the product's own verification counts the directory the same way); what was excluded and why
- *      is printed — an exclusion is not a failure;
+ *      is printed — an exclusion is not a failure, but `excluded` must be a list, since it enters the chain as listed;
+ *      a listed file that cannot be read is a failed integrity check, never a crash;
  *   5. REDACTION: every exported header's classification is within gates.redaction.classification_ceiling (a package never
  *      states a ceiling one of its records exceeds);
  *   6. THE CHAIN: sha256(JCS(objects)) = signature.objects_digest; sha256(JCS({format, package, authorization, gates,
@@ -25,6 +26,12 @@
  *      authorization.approval_id); and, with --expect-package-digest, equality with the digest the product's record
  *      reports (the authenticity step: the same digest is recorded in the append-only retention ledger, bound to the
  *      approval on the resolved scope).
+ *
+ *   7. THE VERDICT (B11-F2, the closure of Codex's finding on the B11 candidate): PACKAGE OK only when every check passed
+ *      AND the validation ran through to the chain — a manifest that is not a JSON object (null, a list, a scalar), a
+ *      manifest without its object list or signature block, or a package whose chain could not be computed is a FAILURE,
+ *      never a success by absence; an expected digest that could not be compared is a failure of its own; the text
+ *      verdict, the JSON `ok` and the exit status always agree.
  *
  * The package is "signed" by that digest chain, not by a key (D4 of the batch record): integrity and completeness are
  * proven offline here; authenticity is proven by presenting the package digest to the product (the export read route, or
@@ -36,7 +43,7 @@
  * agree with this file on the package it built.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const FORMAT = 'eye-customer-export/1';
@@ -102,19 +109,24 @@ let summary = null;
 const check = (name, ok, detail) => { results.push({ name, ok: ok === true, detail: detail ?? null }); return ok === true; };
 const note = (text) => results.push({ name: text, ok: null, detail: null });
 
-let manifest = null;
+let manifest = null; let parsed = false;
 const manifestPath = join(dir, 'manifest.json');
 if (!existsSync(manifestPath)) {
   check('manifest.json present', false, `no manifest.json under ${dir}`);
 } else {
   try {
-    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    check('manifest.json present and parses', true, `${statSync(manifestPath).size} bytes, file digest ${sha256(readFileSync(manifestPath))}`);
+    const raw = readFileSync(manifestPath);
+    manifest = JSON.parse(raw.toString('utf8')); parsed = true;
+    check('manifest.json present and parses', true, `${raw.byteLength} bytes, file digest ${sha256(raw)}`);
   } catch (e) {
-    check('manifest.json present and parses', false, `manifest.json does not parse: ${e.message}`);
+    check('manifest.json present and parses', false, `manifest.json does not parse or cannot be read: ${e.message}`);
   }
 }
-if (manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest)) {
+// The manifest is a JSON OBJECT (B11-F2): `null`, a list or a scalar parses, and is not a package — a failed check, so that
+// no branch below is skipped silently and the verdict is a failure.
+const isObject = manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest);
+if (parsed) check('manifest.json is a JSON object', isObject, isObject ? 'an object' : `manifest.json is ${manifest === null ? 'null' : Array.isArray(manifest) ? 'an array' : `a ${typeof manifest}`}, not a package manifest`);
+if (isObject) {
   check(`format is ${FORMAT}`, manifest.format === FORMAT, `format ${JSON.stringify(manifest.format)}`);
   const sig = manifest.signature;
   check(`signature scheme is ${SCHEME}`, sig !== null && typeof sig === 'object' && sig.scheme === SCHEME, `scheme ${JSON.stringify(sig?.scheme)}`);
@@ -132,7 +144,8 @@ if (manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest
       listed.add(file);
       const path = join(dir, file);
       if (!existsSync(path)) { check(`integrity ${label}: ${file} present`, false, 'the listed file is absent'); continue; }
-      const bytes = readFileSync(path);
+      let bytes;
+      try { bytes = readFileSync(path); } catch (e) { check(`integrity ${label}: ${file} readable`, false, `the listed file cannot be read as a file: ${e.message}`); continue; }
       const d = sha256(bytes);
       const okDigest = d === o.bytes.content_digest;
       const okSize = bytes.byteLength === o.bytes.byte_length;
@@ -152,13 +165,19 @@ if (manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest
   }
   // 4. completeness: the directory holds the manifest and the listed files, nothing else — every entry counts, a dot-file included
   //    (the product's verification counts the directory the same way; the product never writes a dot-file into a package)
-  const present = readdirSync(dir);
-  const unlisted = present.filter((n) => n !== 'manifest.json' && !listed.has(n));
-  const missing = [...listed].filter((n) => !present.includes(n));
-  check('completeness: every listed file present and every file listed', unlisted.length === 0 && missing.length === 0,
-    unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the directory: manifest.json + ${listed.size} object file(s)`);
-  const excluded = Array.isArray(manifest.excluded) ? manifest.excluded : [];
-  note(`excluded ${excluded.length}: ${excluded.length === 0 ? 'nothing was withheld' : excluded.map((x) => `${x.manifest_id ?? '?'} (${x.gate ?? '?'}: ${x.reason ?? ''})`).join('; ')}`);
+  let present = null;
+  try { present = readdirSync(dir); } catch (e) { check('completeness: the package directory can be listed', false, `the directory cannot be listed: ${e.message}`); }
+  if (present !== null) {
+    const unlisted = present.filter((n) => n !== 'manifest.json' && !listed.has(n));
+    const missing = [...listed].filter((n) => !present.includes(n));
+    check('completeness: every listed file present and every file listed', unlisted.length === 0 && missing.length === 0,
+      unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the directory: manifest.json + ${listed.size} object file(s)`);
+  }
+  // `excluded` enters the chain AS LISTED (the product digests the value it wrote; a substitute would let an edited member verify):
+  // a member that is not a list is a failed check and stops the chain.
+  const excluded = Array.isArray(manifest.excluded) ? manifest.excluded : null;
+  check('excluded is a list', excluded !== null, excluded === null ? `excluded is ${manifest.excluded === undefined ? 'absent' : JSON.stringify(manifest.excluded).slice(0, 60)}, not a list` : `${excluded.length} entr${excluded.length === 1 ? 'y' : 'ies'}`);
+  if (excluded !== null) note(`excluded ${excluded.length}: ${excluded.length === 0 ? 'nothing was withheld' : excluded.map((x) => `${x?.manifest_id ?? '?'} (${x?.gate ?? '?'}: ${x?.reason ?? ''})`).join('; ')}`);
   // 5. redaction: no exported record classified above the package's stated ceiling
   if (objects !== null) {
     const ceiling = manifest.gates?.redaction?.classification_ceiling;
@@ -167,7 +186,7 @@ if (manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest
       !CLASSIFICATIONS.includes(ceiling) ? `gates.redaction.classification_ceiling ${JSON.stringify(ceiling)} is not a classification` : above.length > 0 ? `record(s) above the ceiling: ${above.join(', ')}` : `${objects.length} record(s) at or below ${ceiling}`);
   }
   // 6. the chain
-  if (objects !== null && sig !== null && typeof sig === 'object') {
+  if (objects !== null && excluded !== null && sig !== null && typeof sig === 'object') {
     let objectsDigest = null; let packageDigest = null; let chainError = null;
     try {
       objectsDigest = digestOf(objects);
@@ -191,13 +210,23 @@ if (manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest
   }
 }
 
-/* ── the report ────────────────────────────────────────────────────────────── */
+/* ── the verdict (B11-F2) ──────────────────────────────────────────────────── */
+// COMPLETE means the validation reached the chain and computed the package digest: a package is verified only by a completed
+// validation. Anything that stopped short — no manifest, not an object, no object list, no signature block, a chain that could not
+// be computed — is recorded as a failed check of its own, so `failed` counts it and the three outcomes (text, JSON, exit) agree.
+const complete = summary !== null && typeof summary.package_digest === 'string' && HEX64.test(summary.package_digest);
+if (!complete) check('validation complete: the package was checked through to its digest chain', false, 'the validation did not reach the chain (no manifest object, no object list, no signature block, or the chain could not be computed); the package is NOT verified');
+// An expected digest is never skipped silently: when no authenticity comparison ran, the comparison the caller asked for failed.
+if (expected !== null && !results.some((r) => r.ok !== null && r.name.startsWith('authenticity:'))) {
+  check('authenticity: the package digest equals the digest the product recorded (--expect-package-digest)', false, `no package digest was computed, so the expected digest ${expected} could not be compared`);
+}
 const failed = results.filter((r) => r.ok === false).length;
+const ok = failed === 0 && complete;
 if (asJson) {
-  console.log(JSON.stringify({ package: dir, checks: results, summary, failed, ok: failed === 0 }, null, 2));
+  console.log(JSON.stringify({ package: dir, checks: results, summary, complete, failed, ok }, null, 2));
 } else {
   console.log(`export package: ${dir}`);
   for (const r of results) console.log(r.ok === null ? `  ${r.name}` : `  ${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail !== null ? ` — ${r.detail}` : ''}`);
-  console.log(failed === 0 && summary !== null ? `PACKAGE OK: ${summary.objects} objects, ${summary.bytes} bytes, package digest ${summary.package_digest}` : `PACKAGE FAILED: ${failed} check(s)`);
+  console.log(ok ? `PACKAGE OK: ${summary.objects} objects, ${summary.bytes} bytes, package digest ${summary.package_digest}` : `PACKAGE FAILED: ${failed} check(s) failed${complete ? '' : '; the validation did not complete'}`);
 }
-process.exit(failed === 0 ? 0 : 1);
+process.exit(ok ? 0 : 1);

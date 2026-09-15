@@ -385,15 +385,17 @@ describe('A · ARCHIVE executor (0070 §2; L3-C08, DZ-18, DAT-ST-06)', () => {
     fault.arm(['b11.archive_after_copy_before_record'], 'test');
     try { await expect(execute(steward, a.id)).rejects.toMatchObject({ status: 409 }); } finally { fault.disarm(); }
     await rolledBack(a.id, [mD]);
-    // (ii) TWO manifests, the fault before the FIRST write (it fires once): the first copy refused, the second copied whole — a copy this execution
-    // created — and removed by the RetentionExecutionRolledBack cleanup (the tombstone of the archive tier observed on that locator, and on no other).
+    // (ii) TWO manifests, the fault before the FIRST write (it fires once): the first copy refused, the second STAGED whole under this action's
+    // name (0071) — a copy this execution created — and removed by the RetentionExecutionRolledBack cleanup (the staged file of that locator removed,
+    // and of no other; nothing under the locator itself was ever published).
     const b = await approved({ kind: 'archive', targetKind: 'evidence', selector: { manifestIds: [mX.manifest_id, mY.manifest_id] } });
-    const spy = vi.spyOn(vault, 'tombstone');
+    const spy = vi.spyOn(vault, 'removeStaged');
     fault.arm(['b11.archive_copy_partial'], 'test');
     try { await expect(execute(steward, b.id)).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/1 item\(s\) refused at execution/) }); } finally { fault.disarm(); }
-    const archiveTombstones = spy.mock.calls.filter((c) => c[0] === 'archive').map((c) => c[2]);
+    const stagedRemovals = spy.mock.calls.map((c) => c[1]);
     spy.mockRestore();
-    expect(archiveTombstones).toEqual([mY.locator]);
+    expect(stagedRemovals).toEqual([mY.locator]);
+    expect(await vault.stagedCopies(scope(), mY.locator)).toHaveLength(0);
     await rolledBack(b.id, [mX, mY]);
     for (const x of [a, b]) {
       const r = await resolve(steward, x.id);
@@ -441,11 +443,15 @@ describe('A · ARCHIVE executor (0070 §2; L3-C08, DZ-18, DAT-ST-06)', () => {
     // A2 approved on its unchanged digest and executed with the second copy faulting: the first copy is found in place (not created here) and the
     // cleanup leaves it — the committed record of A1 keeps its bytes; the action pauses as before.
     await approve(authority, a2.id, a2.digest);
-    const spy = vi.spyOn(vault, 'tombstone');
+    const spy = vi.spyOn(vault, 'tombstone'); const spyStaged = vi.spyOn(vault, 'removeAllStaged'); const spyOwn = vi.spyOn(vault, 'removeStaged');
     fault.arm(['b11.archive_copy_partial'], 'test');
     try { await expect(execute(steward, a2.id)).rejects.toMatchObject({ status: 409 }); } finally { fault.disarm(); }
+    // Nothing of A1's committed copy is touched by A2's rollback: no archive-root tombstone, no staged copy of the locator retired, and A2's own
+    // cleanup removes only what A2 staged (nothing for P — found archived under the lock — and nothing for Q, whose copy faulted before the write).
     expect(spy.mock.calls.filter((c) => c[0] === 'archive').map((c) => c[2])).toEqual([]);
-    spy.mockRestore();
+    expect(spyStaged.mock.calls).toEqual([]);
+    expect(spyOwn.mock.calls.map((c) => c[1])).toEqual([]);
+    spy.mockRestore(); spyStaged.mockRestore(); spyOwn.mockRestore();
     expect(await actionRow(a2.id)).toMatchObject({ state: 'paused', failure_class: 'infrastructure' });
     expect(await tierOf(mP.manifest_id)).toBe('archive');
     expect(await vault.exists('archive', scope(), mP.locator)).toBe(true);

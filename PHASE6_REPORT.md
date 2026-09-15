@@ -2291,3 +2291,243 @@ records; index-tier degradation behaviours; every deployment leg (S7).
 **Acceptance work remaining** — Codex's bounded closure of B10-F1..F4 on `1fa3b08` → the merge of #47 and its archive
 chain; #48 retargeted to `main` after it for its own bounded review; the hosted run at the B11 head bound in the two
 units; the owner's key for Comtrade and the owner's walks of the six pages; the next batch from the register.
+
+
+## 25. The consolidated checkpoint after `93bce74` / `44b01bb` (2026-09-14): #47 merged with its archive chain complete; Codex's B11-F1 and B11-F2 closed on #48's corrected candidate (migration 0071); the operator's runbook; the Comtrade binding step named
+
+Codex's closure of B10-F1/F2/F3/F4 at `1fa3b08` (records `8463174`) is filed at
+`audit/reviews/The_Eye_1fa3b08_Closure_and_B11_Bounded_Review.md` with its probe fixture
+`The_Eye_1fa3b08_B11_Probe_Evidence.zip`. It clears #47 under the carried conditional authorization and names two bounded
+findings on the B11 candidate `1e3e4be`: **B11-F1** (high; the #48 merge blocker) — overlapping archive actions could lose
+committed evidence bytes — and **B11-F2** (medium) — the standalone export verifier succeeds without a package. This
+section records the merge, the two closures reproduced at the governed boundary and corrected, the review of the
+correction, the demonstration, the runbook Codex asked for, and the exact step that still separates the UN Comtrade
+contract from its first governed run. No AU unit changes status; the four requirement rows that carry the archive and the
+export gate carry the closure clauses.
+
+### 25.1 #47 merged; the archive chain; #48 retargeted
+
+#47 merged at 2026-09-14T17:43:04Z under the existing authorization as **`93bce74`** (a merge commit; its second parent
+the records head `8463174`, the tested code `1fa3b08`). Its push chain on `main`: the `ci` run **34876436407** was RED on
+its first attempt for two reasons unrelated to the merged code — in build-test, the upgrade-compatibility step's Phase 1
+acceptance suite on the upgraded data failed **A5's timing probe** ("a foreign-scope probe answers like a non-existent
+one": the ratio of a foreign row's answer to an absent one's read 5.0 against the probe's ceiling of 3 under the runner's
+load; 274/275), and in supply-chain the **C15 patched-image recheck** could not resolve `postgres:18-alpine`'s registry
+index (Docker Hub's token fetch failed; `redis:8-alpine` still AFFECTED, so no patched image to move to — the state
+recorded in §19). The failed jobs were **re-run** (attempt 2, 17:56–18:07Z) and passed whole, the C17 archive packaged,
+verified and uploaded (artifact 10362215652, `c17-evidence-archive-a2-3ef20f02…`, 2,429,623 bytes); **C19 lifecycle
+34876436398** green; **C17 finalize 34880449429** green on attempt 2's completion (the finalize of the red completion,
+34877919953, skipped as designed); **C19 anchor 34880555543** green (34877925629 green too). The first attempt's red and
+the re-run are recorded here as they happened; the re-run created no records to bind and rewrote nothing. **#48 was
+retargeted to `main`** at 17:43Z (MERGEABLE, CLEAN), its base now the merged stack.
+
+### 25.2 B11-F1 and B11-F2 — reproduced at the governed boundary, closed by migration 0071 and the corrected executor and verifier
+
+**B11-F1, the finding.** Two approved archive actions overlapped on a manifest P; A also named Q, whose bytes could not be
+copied. A copied P into the archive tier and stopped before recording the move; B found that identical copy in place
+(`copy_created: false`), recorded its move, committed and removed the hot copy; A resumed, failed on Q, rolled back and ran
+its cleanup, which removed every copy A had created — P, now B's. Nothing serialised the two executions on the shared
+manifest: `begin_execution` locked each ACTION row, `archive_blob` read the tier and inserted, and the cleanup ran after
+the rollback, outside any lock. Codex proved it with the actual services and a real filesystem under doubles; the frozen
+closure asked for the interleaving through the governed PostgreSQL path in an isolated database and an isolated vault.
+
+**Reproduced.** `apps/api/test/int/phase6-retention-b11-closure.test.ts` boots the harness with its four vault roots
+under a temporary directory of the run and interleaves two governed executions on the real database with a **hold** — a
+new primitive of the fault module (`fault.hold` / `fault.pause`): where a fault makes the shipped code crash at a boundary,
+a hold makes it *wait* there until the test releases it; test profile only, inert otherwise, fires once. On the unfixed
+executor (migrations 0001–0070 on the fresh `eye_verify_b11c0`) Codex's interleaving reproduced exactly:
+`evidence/cp6/b11-closure-repro-before.txt` — after B's committed record the retrieval of P from the archive tier answered
+`{ ok: false, reason: 'missing' }`; the serial control passed.
+
+**Closed (migration `0071_b11_closure_manifest_locks.sql`; PHASE6_REPORT keeps the mechanism short, `audit/CP6_BATCHES.md`
+§B11.9 has it whole).** (a) THE LOCK: `retention.begin_execution` takes, for the whole transaction and before any re-check
+reads their state, the domain's MOVERS advisory lock (shared) and then each executable manifest's advisory lock in one
+canonical order — exclusive for an archive or a deletion, shared for a customer export, whose bytes are read while the
+package builds; an execution naming more than 256 manifests takes the movers lock exclusively instead (one entry in the
+cluster's finite lock table, not thousands). A second execution naming a held manifest waits at its start with nothing
+copied and nothing recorded. (b) OWNERSHIP THROUGH THE CLEANUP BOUNDARY: a copy is STAGED under its creating execution ATTEMPT's own
+name (`<locator>.staging-<attempt_id>` in the archive root; every execution of an action is its own attempt) and published
+under the locator by the controller only AFTER the commit that recorded the move — so a copy whose record did not commit
+is adoptable by no other execution, and a rollback removes only the file bearing its own attempt's name (a second attempt
+of the same action, admitted after the first's backend was lost and the server rolled it back to approved, owns its own
+staged file; the first's late cleanup cannot touch it — the review's second round found the per-action name was not
+enough, §25.3). No lock has to survive to the removal for the removal to be safe, and none could be relied on: a transaction's locks end with its backend and at a top-level abort (PostgreSQL releases them at
+the abort itself, not at the client's ROLLBACK — the author's first closure assumed otherwise and the review's judges
+proved it wrong, §25.3). The execution still runs in a subtransaction (a savepoint after the locks) so a statement
+cancelled or timed out mid-record aborts only that: the cleanup runs on a transaction still open, its locks still held (a
+courtesy to the record, not a requirement of the removal), and the pipeline's rollback and the controller's pause follow as
+for any failure; an execution naming more than 256 manifests — whatever its kind — takes the movers lock exclusively. (c)
+THE PORT FAILS CLOSED:
+`observation.archive_blob` records a move only for a manifest the transaction holds. (d) An execution that finds the
+manifest archived under the lock — the loser of an overlap — reads the committed copy (published, or still staged, in
+which case it publishes it there and then by a rename; the hot copy is scheduled for removal only once a published copy
+stands), records the move as already made and copies nothing; both actions execute and verify, one tier record. (e) THE
+PUBLISHED COPY IS THE SERVED ONE; a copy recorded but not yet published — the instant after the commit, or a publish that
+failed and awaits its retry — is found by every reader of the archive tier under the manifest's digest
+(`VaultService.readArchived`: the evidence download, the acquisition lifecycle's availability, the export builder, the
+executor's already-archived branch), the hot copy staying in place until the publish succeeds (a pending residual, retried
+by the execute route, which publishes any staged copy under the manifest's digest before it removes; a successful publish
+retires the other staged copies of the locator; when no staged copy publishes, the retry copies the kept hot copy again;
+the retry works from the EXECUTED ITEMS, not from residual rows alone — a process gone between the commit and its
+post-commit work leaves none — and leaves a manifest tombstoned since to its deletion; a transaction that fails after the
+executor returned has its attempt's staged copies removed by the controller); a
+deletion retires staged copies with the bytes, and a deletion's verification counts a staged copy as bytes present (the
+round-2 finders' point: DeletionVerified must not be published while one remains); `scripts/ops/restore.sh`'s blob
+verification and its after-boundary listing look where the product's readers look (the locator, a staged copy under the
+digest, the hot copy), counting a pending publish apart, never as absent. (f) The
+controller keeps the executor's verdict when the ROLLBACK itself fails (a lost connection) and records the pause on a fresh
+connection; a lock PostgreSQL could not grant at the start (40P01, 55P03) pauses the action for a retry; and every pool
+client carries an `error` listener (`shared/db.ts`), so a backend terminated under a checked-out connection is a logged,
+failing query — not an unhandled event that ends the process. The serial control and the already-committed-copy control
+(A9) keep their behaviour; the failure record (the pause with its class, the approvals revoked) and the retry stay.
+
+The harness proves each clause on the real database: Codex's interleaving (B held back while A's copy is staged and
+unrecorded; A fails, removes its staged file, pauses; B makes its own copy, commits, publishes, is served and verifies; A
+resolved again executes Q); the hold INSIDE A's cleanup (B still held back); the serial control; the overlap that succeeds,
+serially and concurrently (one mover, one finder, one tier record); the lock's END with the backend — A's backend
+terminated by the superuser while held after its copy: B makes its own copy and commits (A's staged file is adoptable by
+no one), the server rolls A back, the controller pauses A on a fresh connection, A's cleanup removes only A's staged file,
+B's evidence survives and verifies; and a top-level ABORT inside the execution — A's record of P cancelled by the superuser
+mid-statement (what a statement timeout does unattended): the subtransaction aborts, A rolls back to its savepoint, removes
+its staged file and pauses with the cancel on record, B (held back throughout) then makes its own copy; and a SECOND
+ATTEMPT of the same action — A's first attempt held after its copy and its backend terminated, the server rolling the
+action back to approved; a second execute of A admitted, staging under its own attempt's name, recording, committing and
+publishing; the first attempt released, removing only its own staged file and answered 409 with the refused pause named;
+A's published copy served and verified. **9/9** on the fresh `eye_verify_b11c16` through 0071.
+
+**B11-F2, the finding and the closure.** With `manifest.json` = `null` or `[]` the shipped verifier recorded one passing
+parse check, skipped the whole validation branch and exited 0 — `ok: true` even with `--expect-package-digest`, its text
+verdict "PACKAGE FAILED: 0 check(s)" disagreeing with its exit. The corrected `scripts/retention/verify-export.mjs` states
+its verdict rule: PACKAGE OK only when every check passed AND the validation ran through to the chain — a manifest that is
+not a JSON object, a missing object list or signature block, or a chain that could not be computed is a failed check
+("validation complete"), never a success by absence; an expected digest that could not be compared is a failed
+authenticity check; text, JSON (`ok`, `complete`, `failed`) and the exit status always agree. The review of the candidate
+added two clauses: `excluded` enters the chain AS LISTED (a member that is not a list is a failed check — the shipped
+verifier substituted `[]` and let an edited member verify against the product's digest), and a listed file that cannot be
+read is a failed integrity check, never a crash. The harness (F2): null, a list, a scalar, no manifest, no object list, no
+signature block — each exit 1, `ok: false`, `complete: false`, PACKAGE FAILED, and with an expected digest a failed
+authenticity check; the synthetic one-object package built with the product's own digest helpers passes with its
+expected digest, tampered it fails. B5's controls on a real export stay.
+
+### 25.3 The adversarial review of the closure candidate, and the corrections — `evidence/cp6/b11-closure-adversarial-review.txt`
+
+The closure candidate was reviewed before its commit by the author's adversarial workflow in two rounds. **Round 1**: six
+finders (the lock design, the executor's in-transaction cleanup, the re-declared ports, the verifier, the harness and the
+hold primitive, the regressions and the scripts), two refuters per finding who default to "refuted" unless they can
+demonstrate the defect, a finding confirmed unless both refute it — **19 findings, 10 confirmed, 9 refuted** (44 agents).
+The confirmed ones changed the closure: (1) **the lock ends with the backend** (three findings, one demonstrated on a
+fresh database: A's session terminated while held after its copy — the transaction lock gone, B adopts the copy and
+commits, A's cleanup removes B's bytes; and, in the shipped process, the terminated backend's `error` event ending the API
+before the cleanup, so the first candidate was "protected by an accident, not by its lock"); (2) the verifier's `excluded`
+substitution and a listed file that cannot be read crashing the verifier; (3) `disarm()` unable to release a fired hold;
+(4) `demo-restart.sh` starting the process without the port it checks, and its macOS environment split at every space;
+(5) the runbook's migrate step failing as written; (6) the after-evidence predating the last code change. Among the
+refuted: the bound_to restatement's vacuous pass and the zero-object package (real, not defects of the correction; left as
+observations), the temporary directories (removed anyway), and four findings the refuters judged against a tree already
+corrected while the review ran (the lock-table bound, the deadlock's bare 500, the failed-ROLLBACK verdict loss, the stale
+upgrade-proof comment). The author's first correction of (1) proved the lock on the transaction's connection before each
+removal and read "current transaction is aborted" as held. **The re-judgement (two judges per confirmed finding) proved that
+premise false**: PostgreSQL releases a transaction's locks at the abort itself, so a statement cancelled or timed out
+mid-record freed the manifests' locks with the connection alive — reproduced through the governed controllers on a fresh
+database (B adopted A's copy and committed; A's cleanup, answered 25P02, removed B's bytes) — and, on a lost backend, a
+check-then-act window remained between the proof and the unlink. **Round 2** replaced the mechanism: the copy STAGED under
+its own name and published only after the commit (§25.2 b, e), a subtransaction for the failure record, the item
+savepoints rolled back only while they exist; the two open findings were judged again by two judges each — all four
+named one residual, the staged name being per ACTION (a second attempt of the same action, admitted after the first's
+backend was lost, shared it, and the first's late cleanup removed the second's file) — corrected by the per-ATTEMPT name
+and its own harness case; three finders with two refuters each then attacked the staged-copy design itself:
+**the actionable findings corrected in the same tree (the already-archived branch publishes a staged copy under the lock before scheduling the hot removal; the retry works from the executed items, not residual rows a crash never leaves; a listing failure fails a deletion's cleanup and its verification closed; the download's custody row names where the bytes were served; the movers lock is taken exclusively above 256 manifests of any kind; the harness's ABORT case asserts the lock inside the cleanup and A9 spies the removals the cleanup could make), the two structural residuals — the post-commit byte movers running outside the manifest lock, and the archive root never reconciled — recorded as follow-ups (§25.9)**. Every finding, verdict and
+re-judgement is in the evidence file.
+
+### 25.4 Local results at the closure tree (before the commit)
+
+| Run | Result |
+|---|---|
+| the closure harness `phase6-retention-b11-closure` on `eye_verify_b11c16` (fresh, 0001–0071; an isolated vault) | **9/9** (F1 ×7, F2 ×2); the before-run on `eye_verify_b11c0` (0001–0070, the unfixed executor): Codex's interleaving RED (`missing`), the serial control green |
+| `phase6-retention-b11` 35, `-archive-poll` 4, `phase6-graph-subscriptions-4` 32 on `eye_verify_b11c17` (fresh, 0001–0071) | **71/71** |
+| the full integration suite on a fresh database (0001–0071) | **994/994 in 61 files** — `evidence/cp6/b11-closure-int-all-1.txt` |
+| the unit suite (`pnpm test`) | **2156/2156 in 40 files** and the meta suite 9/9 — `evidence/cp6/b11-closure-unit.txt` |
+| the upgrade proof (`scripts/phase1/verify-0022-upgrade.mjs`) | PASS — 0022–0071 (50 migrations, 29 registry rows); the Phase 1 and Phase 2 suites on the upgraded data — `evidence/cp6/b11-closure-upgrade-proof.txt` |
+| typecheck | clean |
+
+### 25.5 The NORDWERK demonstration — `evidence/cp6/closure-b11.txt`
+
+The closure ran on the NORDWERK demonstration (`eye_demo`) through the HTTP path, rehearsed first on a restored copy with
+its own vault copy and Redis (`scripts/phase6/closure-b11.mjs` → `evidence/cp6/closure-b11.txt`, 2026-09-15): the running
+target verified by `scripts/ops/demo-restart.sh --verify-only`, `eye_demo` backed up and migrated with 0071, the API
+restarted by the runbook's script with its target verified. **Scene 1 — overlapping archives (B11-F1):** two approved
+archive actions on one NORDWERK internal record executed CONCURRENTLY; the manifest's lock ordered them — exactly one made
+the copy and the move (`copy_created: true`), the other found it archived under the lock and recorded the move as already
+made (`copy_created: false`), one tier record on the ledger, the archive path present and the hot path gone, both actions
+verified against the archive contract, A. Hoffmann's download served from the archive tier and verified, and no advisory
+lock outlived its transaction (`pg_locks`: 0). **Scene 2 — the verifier (B11-F2):** the same two records exported and
+verified by the corrected verifier (`PACKAGE OK` with the expected digest); on copies whose `manifest.json` is `null` and
+`[]`, the verifier AS SHIPPED at `1e3e4be` (read from git) answered exit 0 / `ok: true` — the finding on this host — while
+the corrected verifier answered exit 1 / `ok: false` / `complete: false`, and with `--expect-package-digest` a failed
+authenticity check; the package was then revoked and its directory gone. **Scene 3 — Comtrade:** the contract reads
+`inactive`, rights confirmed, `credential: reference EYE_SRC_COMTRADE_KEY (not bound in this deployment)`, and the act
+printed the exact remaining binding step (§25.7). The `demo-restart.sh` wrapper hung once on the first run holding the
+API's pipe open; the script now starts the API fully detached (`setsid`) and the act was re-run clean — the demonstration
+API stayed up and healthy on `eye_demo` throughout.
+
+### 25.6 The operator's runbook — `docs/ops/DEMONSTRATION_RUNBOOK.md`, `scripts/ops/demo-restart.sh`
+
+Codex asked that the restart incident of 2026-09-13 (§24.3) be carried into the operator's runbook: a future restart must
+select `eye_demo` and its vault roots explicitly and verify the running target, and the Phase 0 bootstrap must never be
+used as a restart. The runbook records what the demonstration is (the database, the API's settings, the vault roots as the
+process resolves them, the local secret handoff), the restart procedure, what must not be run, the migration procedure
+for a batch, the rehearsal rule (a restored copy with its own vault copy and Redis), the incident, and how to read the
+running target by hand. `scripts/ops/demo-restart.sh` is the restart: it loads the handoff, sets the demonstration's
+identity, restarts the API and then **verifies the running target** — the process's `EYE_DB_NAME`, its vault roots, the
+scheduler flag, `/readyz` `ok` — and exits non-zero when the process serves any database but `eye_demo`; `--verify-only`
+checks without restarting (the demonstration act's first lines); `--build` rebuilds first. It prints no credential. The
+demonstration's restart on 0071 in §25.5 was performed by it; the verification lines are in the act.
+
+### 25.7 The UN Comtrade key — the exact remaining binding step
+
+The existing UN key's use is authorized (SOURCE_INTEGRATION_STATUS §10–§11). It is **not on this host**: `.eye-local/env`
+carries no `EYE_SRC_*` line, the demonstration process binds none (its environment read by name only), the login keychain
+has no item labelled or serviced `comtrade`, and no dotfile names it — checked by name, no value printed or looked for
+anywhere else. The readiness register says the same for the contract (`un-comtrade` v1, rights confirmed, verdict
+`inactive`, "credential: reference EYE_SRC_COMTRADE_KEY (not bound in this deployment)"). The step that remains is the
+owner's: add one line `EYE_SRC_COMTRADE_KEY=<the key>` to `.eye-local/env` (mode 0600; the file is never committed),
+restart the demonstration with `scripts/ops/demo-restart.sh` (a changed file binds nothing until the process is restarted
+with it; the script's verification shows the process's settings by name), then run
+`node scripts/integrations/activate-comtrade.mjs` — it reads the readiness verdict of the running process, activates the
+contract only when the credential is bound there, and performs the first governed run under the existing permissions,
+budget and cadence. Nothing else of the act changes; PortWatch stays live and untouched.
+
+### 25.8 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `93bce74` | **`main`: #47 merged** (B10's closure; second parent `8463174`) | 34876436407 — attempt 1 red (A5's timing probe under load; Docker Hub's token fetch in the C15 recheck), attempt 2 green with the C17 archive (artifact 10362215652); C17 finalize 34880449429 green; C19 anchor 34880555543 green | 34876436398 green |
+| `44b01bb` | the B11 records (§24) — the head of #48 before this closure, now on `main`'s base | 34871580761 green (records only) | 34871580954 green |
+| the code head after `44b01bb` | **the B11 closure** (0071; the executor, the controller, the pools, the fault module's hold, the verifier, the closure harness, the runbook and the restart script, the act) — PR #48 on `main` | the hosted run is bound in the records refresh after the push (one commit; no refresh chain) | — |
+
+Statuses: **no AU unit changes status** in this closure (the B11 units AU-MEM-0059/-0061 stay `verified:ci` at `1e3e4be`;
+the closure's hosted run is bound in the records refresh after the push); the split reads **3,555 = 3,188 open + 338 local
++ 29 CI** as before. Requirement rows DZ-18 and DAT-ST-06 (V7), L3-C08 and V03-T-047 (V3) carry the B11-F1 / B11-F2
+closure clauses in their evidence and remaining-work text; statuses unchanged (`partial`, passed:harness, branch-only).
+The interface register unchanged at 26/24/0.
+
+### 25.9 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §24.6 listed, and now: overlapping retention executions serialised on the manifests they
+move, with the copies an execution created removed under a proven lock or left for adoption; the loser of an overlap
+recording the move as already made; the verifier failing closed; the demonstration restart with its target verified.
+
+**Partial** — the UN Comtrade live contract (approved; the key's binding is the owner's, §25.7); the archive tier without
+a restore-to-hot port, a cold-tier manager's budgets/ordering/escalation, or the sweeper's walk of the archive root (now
+also the disposal of a staged copy orphaned by a process lost between its copy and its cleanup — retired meanwhile only by a
+deletion or by the publish of another attempt's copy; the round-2 finders' point, kept as the follow-up); the customer export without an external destination,
+an HTTP download of the package bytes, a key-based signature, or the tier read recorded on its custody row; the pages'
+browser walks (the owner's, outstanding until performed); the demonstration's forecast-less branch fold (§23.6).
+
+**Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory
+records; index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — Codex's bounded closure of B11-F1/F2 on #48's corrected candidate (the code head recorded in §25.8) — its
+next closure limited to the changed behaviour — then the merge of #48 under the existing authorization and its archive
+chain on `main`; the owner's key for Comtrade and the owner's walks of the six pages; the next batch from the register
+(the follow-ups above; the register's 24 partial contracts).

@@ -288,12 +288,12 @@ export class EvidenceService {
 
     let integrity: RetrievalResult['integrity'] = 'verified';
     let bytes: Buffer;
+    let servedFrom: string = readFrom;
     try {
-      const read = await this.vault.read(
-        readFrom,
-        { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string },
-        manifest.locator, manifest.content_digest);
-      bytes = read.bytes;
+      const scopeOf = { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string };
+      // An archived manifest's bytes may still be staged, or kept hot, until the publish succeeds (0071): readArchived finds them and says where.
+      const read = readFrom === 'archive' ? await this.vault.readArchived(scopeOf, manifest.locator, manifest.content_digest) : { ...(await this.vault.read(readFrom, scopeOf, manifest.locator, manifest.content_digest)), source: readFrom };
+      bytes = read.bytes; servedFrom = read.source;
     } catch (e) {
       integrity = 'unavailable';
       // The FAILURE is recorded in custody before the request answers, so an
@@ -329,7 +329,7 @@ export class EvidenceService {
       agentPrincipalId: null, agentVersion: null, codeDigest: null,
       connector: null, connectorVersion: null, methodRef: null,
       contentDigest: manifest.content_digest, digestVerified: true,
-      details: { verified_on_read: true, byte_length: bytes.byteLength, tier: tier.tier, ...context },
+      details: { verified_on_read: true, byte_length: bytes.byteLength, tier: tier.tier, served_from: servedFrom, ...context },
       correlationId,
     });
 
