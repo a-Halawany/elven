@@ -2503,6 +2503,7 @@ budget and cadence. Nothing else of the act changes; PortWatch stays live and un
 |---|---|---|---|
 | `93bce74` | **`main`: #47 merged** (B10's closure; second parent `8463174`) | 34876436407 — attempt 1 red (A5's timing probe under load; Docker Hub's token fetch in the C15 recheck), attempt 2 green with the C17 archive (artifact 10362215652); C17 finalize 34880449429 green; C19 anchor 34880555543 green | 34876436398 green |
 | `44b01bb` | the B11 records (§24) — the head of #48 before this closure, now on `main`'s base | 34871580761 green (records only) | 34871580954 green |
+| **`6b93a27`** | the **B11 closure** (0071; the staged-copy design; the executor, controller, pools, fault-module hold, verifier, harness, runbook, restart script and act) — PR #48 → `main` | **34968358484 green** — build-test: apps/api unit 2156/2156 and the meta suite 9/9, acceptance 58/58, the integration suite **994/994 in 61 files** on a fresh database (`phase6-retention-b11-closure` 9/9), the upgrade proof through 0071 (50 migrations), C18 612/612; supply-chain and browser-regression green | 34968358342 green |
 | the code head after `44b01bb` | **the B11 closure** (0071; the executor, the controller, the pools, the fault module's hold, the verifier, the closure harness, the runbook and the restart script, the act) — PR #48 on `main` | the hosted run is bound in the records refresh after the push (one commit; no refresh chain) | — |
 
 Statuses: **no AU unit changes status** in this closure (the B11 units AU-MEM-0059/-0061 stay `verified:ci` at `1e3e4be`;
@@ -2527,7 +2528,7 @@ browser walks (the owner's, outstanding until performed); the demonstration's fo
 **Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory
 records; index-tier degradation behaviours; every deployment leg (S7).
 
-**Acceptance work remaining** — Codex's bounded closure of B11-F1/F2 on #48's corrected candidate (the code head recorded in §25.8) — its
+**Acceptance work remaining** — Codex's bounded closure of B11-F1/F2 on #48's corrected candidate (`6b93a27`, the required gates green, #48 MERGEABLE/CLEAN against `main`) — its
 next closure limited to the changed behaviour — then the merge of #48 under the existing authorization and its archive
 chain on `main`; the owner's key for Comtrade and the owner's walks of the six pages; the next batch from the register
 (the follow-ups above; the register's 24 partial contracts).
