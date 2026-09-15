@@ -2515,7 +2515,7 @@ The interface register unchanged at 26/24/0.
 ### 25.9 Functioning, partial, missing — and the acceptance work remaining
 
 **Functioning** — everything §24.6 listed, and now: overlapping retention executions serialised on the manifests they
-move, with the copies an execution created removed under a proven lock or left for adoption; the loser of an overlap
+move, with the copies an execution created staged under its own attempt's name and published only after the commit, so a rollback removes its own file and nothing another execution could have adopted; the loser of an overlap
 recording the move as already made; the verifier failing closed; the demonstration restart with its target verified.
 
 **Partial** — the UN Comtrade live contract (approved; the key's binding is the owner's, §25.7); the archive tier without
@@ -2532,3 +2532,187 @@ records; index-tier degradation behaviours; every deployment leg (S7).
 next closure limited to the changed behaviour — then the merge of #48 under the existing authorization and its archive
 chain on `main`; the owner's key for Comtrade and the owner's walks of the six pages; the next batch from the register
 (the follow-ups above; the register's 24 partial contracts).
+
+
+## 26. The consolidated checkpoint after `41d4a26` (2026-09-15): #48 merged with its archive chain complete; B12 implemented — the governed restore-to-hot port, the cold-tier manager and the sweeper's walk of the archive root; the demonstration's NORDWERK records restored and re-archived
+
+Codex's bounded review of the B11 closure at `6b93a27` / `a07dd2c` is filed at
+`audit/reviews/The_Eye_6b93a27_B11_Closure_and_Delivery_Next.md`: **B11-F1 and B11-F2 closed** on the candidate (the
+overlap probe executed on the actual TypeScript with explicit doubles and real isolated filesystem operations; the unmodified
+verifier run against synthetic packages), #48 cleared under the existing authorization, no remaining closure hold; the two
+structural residuals of the archive tier (post-commit byte movers outside the manifest lock; archive-root reconciliation) kept
+for the later hardening campaign; the stale lock/cleanup wording in some evidence rows and harness titles to be folded into the
+next ordinary records update; the next batch named — the governed restore-to-hot and the remaining cold-tier lifecycle from the
+register. This section records the merge and its chain, what B12 implements, the local results, the demonstration, the
+records fold, the heads, and what is functioning, partial and missing.
+
+### 26.1 #48 merged; the archive chain on `main`
+
+#48 merged at 2026-09-15T15:41Z under the existing authorization as **`41d4a26`** (a merge commit; its second parent the
+records head `a07dd2c`, the tested code `6b93a27`; the merge performed with the repository owner's account after the
+session's default account was refused `MergePullRequest`). Its push chain on `main` completed green on the first attempt:
+**`ci` 34990126368** (build-test — unit and the meta suite, the acceptance suite, the integration suite 994/994 in 61 files on a
+fresh database, the upgrade proof through 0071 with +50 ledger rows, C18; supply-chain with the C17 archive packaged, verified
+and uploaded, artifact 10405850284 `c17-evidence-archive-a1-69eeaed1…`, 2,429,641 bytes; browser-regression), **C19 lifecycle
+34990126469**, **C17 finalize 34992193646**, **C19 anchor 34992322188** (guard, verify on both runners, publish). No records
+refresh chain was started for the merge; `main` is `41d4a26` and B12's branch `phase6-b12` is cut from it.
+
+### 26.2 What B12 implements (migration 0072) — `audit/CP6_BATCHES.md` §B12 for the mechanism
+
+The register's next missing archive-lifecycle capability, taken whole: L3-C08's remaining clause after B11 ("no restore-to-hot
+port; no budgets, ordering, retries or escalation of a cold-tier manager; the sweeper does not walk the archive root") with
+DZ-18, DAT-ST-06, DP-28-002/-006, DP-54-006 and the units AU-MEM-0062 and AU-INF-0791.
+
+**The restore-to-hot port** — `observation.restore_blob`, the archive port mirrored (an executing RESTORE action naming the
+manifest as an executable item, not tombstoned, the manifest's digest, the manifest's lock held by this transaction, false when
+already hot); a RESTORE action (`kind = 'restore'`, opened on demand with a chosen object set, resolved to the preservation
+scope — a manifest already hot excluded, a hold recorded and honoured by keeping) executed by the archive executor MIRRORED
+under 0071's ownership rule: the archive copy is copied into the HOT root STAGED under the attempt's own name, the move recorded
+under the lock, the transaction committed, the staged copy PUBLISHED under the locator, the archive copy removed; a failed publish
+keeps the archive copy and records a pending residual retried by the execute route; a rollback removes only this attempt's file.
+Every reader of a hot manifest reads through the tier-aware read (the locator, else a staged copy under the digest, else the kept
+archive copy): the download (`served_from` on the custody row), the acquisition lifecycle's availability, the export builder,
+the ops restore script's verification. The restore's verification contract: the tier hot, the hot copy present and verifying,
+the archive copy absent, no staged copy in either root, the move recorded; no DeletionVerified.
+
+**The cold-tier manager** — a per-domain POLICY (`retention.tier_policies`, versioned, the domain administrator's declaration
+through `/retention/tier/declare`; the defaults in force until one is declared) read by the execution and the evaluation:
+ADMISSION and BUDGETS (a daily byte budget over a rolling window, checked before the state moves and before any manifest lock —
+`budget_exhausted` pauses the action for retry with the instant the window frees and counts no attempt; exact under
+concurrency by a budget lock), ORDERING (oldest due first, at most the policy's opens per schedule per evaluation, the rest
+deferred and counted on the schedule and in the route's answer), RETRIES (the attempts begun — counted with the state move on
+the committing path and by the pause that records a failure otherwise, since the increment rolls back with a failed execution —
+bounded by the policy; `attempts_exhausted` ESCALATES the action for human review with its approvals revoked; a re-resolution
+restarts the count), ESCALATION BY AGE (an action paused for retry longer than the policy's age is escalated by the next
+evaluation, in the same act), COMPLETION (the verification contracts) and OBSERVABLE STATE (`retention.tier_state` through
+`/retention/tier/state`: the policy, the tiers, the moves of the last day, the budget's use and reset instant, the actions by
+state, the restored manifests awaiting re-archive, the schedules with their last evaluation, and the vault's inventory of both
+roots); the RESTORE WINDOW — an archive schedule treats a restored manifest as due at its restore instant plus the window, so a
+restored record returns to the cold tier by the existing schedule; a restore schedule is refused (a restore is on demand).
+
+**The sweeper's walk** — both blob roots, the staged and temp names known: a temp of an interrupted write removed after a
+minute (a staged copy's temp included — it was never removable before); a redundant staged copy removed when a verified copy
+stands under the locator in the tier's root (at once in that root; in the other root only once older than the run timeout);
+a staged copy that may be the only verified copy kept and recorded; an archive-root name with no manifest an orphan candidate
+(recorded with its root named, kept); an archive copy of a manifest the ledger says is hot a stale copy (recorded, kept — the
+execute route's residual retries it). Nothing with bytes the product may still need is removed.
+
+**The web** — the retention workspace gains the cold tier: the state as the server returns it, the policy form, the
+evaluation's escalated and deferred beside its opened, the action's attempts and escalation; `restore` among the kinds.
+
+### 26.3 The design check before the implementation; the local results
+
+The design (the restore port, the manager, the sweeper, the harness plan, the act) was checked by two independent readers
+against the code before any line was written: 21 findings — four BLOCKING (the `open_action` port refusing the kind before any
+row exists; a failed attempt never counted because `begin_execution`'s increment rolls back with the execution; a pinned
+refusal substring the reworded message would have broken; the post-commit removal filter sparing only the hot copy so a
+restore's failed publish would have removed the only published copy), eight important (the residual closure keyed on the wrong
+observation for a restore; the controller's post-handler cleanup naming the archive root only; the deferred count taken after
+the opens and so hidden by the dedupe; the acquisition lifecycle and the export builder reading a hot manifest by the locator
+alone; the ops restore script likewise; the staged copy's temp name never matching the sweeper's rule; the fault point for the
+retry case missing) and nine minor — every one folded into the design as a binding correction (§9 of the design) before the
+six implementation agents ran on disjoint files.
+
+Local results at the B12 tree, each on a FRESH database migrated 0001–0072 (`evidence/cp6/`): the B12 harness 12/12
+(`b12-harness.txt`; the first run 10/12 on two harness expectations corrected — the archive root's orphan is recorded with its
+root named, a verified action's retry is the port's refusal); the suites the changes touch 160/160 in five files and the B11
+closure harness 9/9 after its retitling (`b12-neighbouring-suites.txt`); the full integration suite **1006/1006 in 62 files**
+(`b12-int-all-1.txt`); the upgrade proof with 0022–0072, 51 migrations above the ceiling, the Phase 0/1/2 suites on upgraded
+data (`b12-upgrade-proof.txt`); the API and web typechecks, the web build and its tests (6/6); the unit suite (`b12-unit.txt`,
+run last after the records edits). The demonstration act rehearsed first on a restored copy of `eye_demo` with its own vault
+copy and its own Redis (`b12-rehearsal.txt`; every scene producing its effect).
+
+### 26.4 The NORDWERK demonstration — `evidence/cp6/act-b12.txt` (2026-09-15T17:31–17:43Z)
+
+`eye_demo` backed up (`eye_demo-pre-0072-20260915T173107Z.dump`) and migrated with 0072 through the migrator (the ledger
+row's digest `ef56c5be…`), the API restarted on the B12 build by the runbook's script with the target verified. **Found on
+the demonstration:** the restart at 17:31:21Z brought the API up and the verification passed, but the act's capture never
+received its output — `scripts/ops/demo-restart.sh`'s background detach ran the API through a bash FUNCTION in the background,
+leaving a bash subshell holding the saved copies of the script's stdout for the API's lifetime, which hangs any caller that
+pipes the script's output (the previous acts happened not to block on it). Corrected in this tree: the forked subshell EXECs
+the API (bash's internal descriptors are close-on-exec), the restart repeated by the corrected script inside the act, the
+incident and the fix recorded in the runbook (§6). Then the act, every scene producing its effect:
+
+1. **The state before** — M. Dvořák reads the cold tier (`retention.read`): the policy undeclared (the defaults), the archive
+   tier holding three manifests (5,219 bytes: eu-sanctions-rss ×1, nordwerk-internal ×2), the vault's inventory of both roots.
+2. **Restore** — P. Novák opens a restore of the two NORDWERK records the B11 closure archived (P 240 bytes, Q 1,045 bytes);
+   scope resolved (2 to execute), H. Bergmann approves, P. Novák executes: 2 restored, the hot copies published after the
+   commit, the archive copies removed; the host — every restored record's hot path PRESENT and archive path ABSENT, no
+   `.staging-` file under either domain directory; the ledger's archive→hot row per manifest by this action; `custody.restored`;
+   the restore contract 2/2; the action `attempts 1`; A. Hoffmann downloads P from the hot tier (availability verified,
+   `served_from published`), the detail's availability hot.
+3. **The manager's policy** — the platform administrator declares version 1 at demonstration settings (one byte per day, one
+   open per evaluation, one attempt, escalate after zero seconds, a zero restore window); `tier/state` shows it in force, the
+   budget already used by the restores (2,570 bytes), two restored manifests awaiting re-archive.
+4. **Budget → retry → escalation** — an archive of P REFUSED AT ADMISSION (409 `budget_exhausted`, naming the window's reset
+   instant; paused for retry, `attempts 0` — the state never moved, `attempted false` on the pause event; the approvals
+   revoked; nothing moved on the host); the budget lifted (version 2), the action re-resolved, re-approved and executed
+   (`attempts 1`, `execution.started` naming attempt 1), verified — P cold again; the budget restored (version 3), an archive
+   of Q paused by it and ESCALATED BY AGE by P. Novák's next evaluation ("paused for retry since …, longer than the policy's
+   escalate_after"): disposition human_review, `escalated_at`, `action.escalated`, `tier/state` escalated 1; withdrawn.
+5. **The restore window and the ordering** — the archive schedule of profile "24 months" for nordwerk-internal declared (a
+   restore schedule refused); the budget lifted for the cycle (version 4); three evaluations under one open per evaluation,
+   each opening ONE action, oldest due first — two never-moved records due at their creation, then the RESTORED record due at
+   its restore instant — `deferred` 2, 1, 0 recorded on the schedule; the third action resolved, approved, executed and
+   verified: **the full cycle in one ledger — hot → archive (the B11 closure), archive → hot (scene 2), hot → archive (the
+   schedule after the window)**; A. Hoffmann still downloads it (tier archive, availability archived); the two never-moved
+   records' actions withdrawn (the demonstration keeps them hot).
+6. **The sweeper's walk** — a redundant staged copy of an archived manifest and a stale temp file planted in the
+   demonstration's archive root; the platform administrator's sweep: `stagedCopiesRemoved 1`, `tempFilesRemoved 1`,
+   `archiveOrphanCandidates 0`; the host — both gone, the published copy present and its bytes the manifest's digest (the
+   evidence root's 61 pre-existing orphan candidates reported as before, kept).
+7. **The state after** — the policy re-declared at sane values (version 5: budget unbounded, 200 opens, 3 attempts, 7 days,
+   30 days); `tier/state` shows it in force.
+
+Stated in the act's output: what the demonstration shows, and what the harness alone proves (`attempts_exhausted` after a
+FAILED attempt — the demonstration corrupts nothing; two restores of one manifest together; the retry route of a failed hot
+publish; the sweeper's other classifications). Left on the demonstration: the archive schedule (active; it acts only on an
+evaluation; no route retires a schedule — a follow-up). The web rebuilt with the retention page's cold tier and restarted on
+:3000 (the browser walks are the owner's).
+
+### 26.5 The records fold Codex asked for
+
+The stale lock/cleanup wording is replaced by the per-attempt ownership wording in this ordinary records update: the three
+requirement rows (L3-C08, DZ-18, DAT-ST-06 — "the copies an execution created are removed inside the transaction before the
+rollback" → "an archive copy is STAGED under its creating execution attempt's own name and published under the locator only
+after the commit that recorded the move, so a rollback removes only its own attempt's file whatever became of the
+transaction's locks or backend"), §25.9's line, and the four case titles of `phase6-retention-b11-closure.test.ts` that
+described the superseded designs ("B adopts the copy", "A cannot prove its lock … leaves the copy in place", "the lock spans the
+cleanup boundary", "keeps the locks through an abort") — retitled to what their bodies assert (the staged copy under the
+attempt's name; B making its own copy; A removing only its own file), the harness re-run 9/9. No test body changed.
+
+### 26.6 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `41d4a26` | **`main`: #48 merged** (B11 and its closure; second parent `a07dd2c`) | 34990126368 green (994/994 in 61 files; the C17 archive artifact 10405850284); C17 finalize 34992193646 green; C19 anchor 34992322188 green | 34990126469 green |
+| the B12 head | **B12** (0072; the restore port, the manager, the sweeper's walk, the web, the harness, the act, the runbook fix) — PR `phase6-b12` → `main` | the hosted run is bound in the records refresh after the push (one commit; no refresh chain) | — |
+
+Statuses: AU-MEM-0062 and AU-INF-0791 `open` → `verified:local` (the B12 harness on a fresh database; `verified:ci` on the
+hosted run); the split reads **3,555 = 3,186 open + 340 local + 29 CI**. Requirement rows L3-C08 (V3), DZ-18 and DAT-ST-06
+(V7) `partial` → `implemented` (passed:harness, branch-only): every function the rows name exists on the local profile; the
+two structural residuals are named in their remaining work for the hardening campaign. DP-28-002 and DP-28-006 carry the
+restore-state and the restore/archive-retrieval clauses (`partial`); DP-54-006 `missing` → `partial` (retention timers, hold
+precedence and archive retrieval exist and are exercised; delete propagation, backup expiry and processor receipts do not). The
+interface register unchanged at 26/24/0. No completion percentage; no deployment leg accepted.
+
+### 26.7 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** (harness on a fresh database; the demonstration through the HTTP path) — everything §25.9 listed, and now:
+the governed restore of archived evidence to the hot tier with its contract and its retrieval; the cold-tier manager's policy —
+the byte budget at admission, the ordered and bounded evaluation with deferral, the attempts bound, the escalation on exhausted
+attempts and by age, the observable state — and the restore window returning a restored record to the cold tier by the
+existing schedule; the sweeper's walk of both roots with the staged and temp names; the runbook's restart detached whole.
+
+**Partial** — the UN Comtrade live contract (approved; the key's binding is the owner's, §25.7); the customer export without an
+external destination, an HTTP download of the package bytes, a key-based signature, or the tier read recorded on its custody
+row; the pages' browser walks (the owner's); the demonstration's forecast-less branch fold (§23.6); no route retires a
+schedule; the two structural residuals of the archive tier (post-commit byte movers outside the manifest lock; archive-root
+reconciliation — the sweeper's walk is its functional part, its adversarial proof the hardening campaign's).
+
+**Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
+index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — the hosted run at the B12 head bound in the two units and the records; the owner's key for
+Comtrade and the owner's walks of the pages; the next batch from the register (the delivery sequence continues); comprehensive
+hardening after the feature scope, with the two residuals.

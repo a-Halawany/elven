@@ -805,20 +805,30 @@ const sha = (b) => createHash('sha256').update(b).digest('hex');
 // A manifest in the ARCHIVE tier whose copy is recorded but not yet published (CP-6 B11 closure, 0071: the instant after the commit, or
 // a publish that failed and awaits its retry) has its bytes under a staged name beside the locator, or still hot — the same places the
 // product's readers look (VaultService.readArchived); such a manifest is present, counted apart as pending_publish, never absent.
-function readArchived(locator, digest) {
-  const p = join(vaultRoot, 'archive', locator);
+// CP-6 B12 (0072): the same in the other direction — a manifest RESTORED to the hot tier whose copy is recorded but not yet published has
+// its bytes under a staged name beside the locator in the EVIDENCE root, or still in the archive root when no staged copy could be
+// published (the retry route copies it again) — the places VaultService.readTiered('evidence') looks; the same pending_publish count.
+// A staged copy is named `<locator id>.staging-<attempt uuid>` EXACTLY (C17): the `.tmp-` of an interrupted staged write is not one.
+const stagedOf = (p) => new RegExp(`^${basename(p)}\\.staging-[0-9a-f-]{36}$`);
+function readTiered(tier, other, locator, digest) {
+  const p = join(vaultRoot, tier, locator);
   try { return { buf: readFileSync(p), pending: false }; } catch { /* not published */ }
   let names = []; try { names = readdirSync(dirname(p)); } catch { names = []; }
-  for (const n of names.filter((x) => x.startsWith(`${basename(p)}.staging-`))) {
+  for (const n of names.filter((x) => stagedOf(p).test(x))) {
     try { const b = readFileSync(join(dirname(p), n)); if (sha(b) === digest) return { buf: b, pending: true }; } catch { /* moved meanwhile */ }
   }
-  try { return { buf: readFileSync(join(vaultRoot, 'evidence', locator)), pending: true }; } catch { return null; }
+  try { return { buf: readFileSync(join(vaultRoot, other, locator)), pending: true }; } catch { return null; }
 }
+const readArchived = (locator, digest) => readTiered('archive', 'evidence', locator, digest);
+const readHot = (locator, digest) => readTiered('evidence', 'archive', locator, digest);
 for (const line of readFileSync(tsv, 'utf8').split('\n').filter(Boolean)) {
   const [vault, locator, digest, bytes] = line.split('\t');
   c.total += 1; c.by_vault[vault] = c.by_vault[vault] ?? { total: 0, present_verified: 0, present_pending_publish: 0, absent: 0 }; c.by_vault[vault].total += 1;
   let buf; let pending = false;
-  if (vault === 'archive') { const r = readArchived(locator, digest); if (r === null) { c.absent += 1; c.by_vault[vault].absent += 1; continue; } buf = r.buf; pending = r.pending; }
+  if (vault === 'archive' || vault === 'evidence') {
+    const r = vault === 'archive' ? readArchived(locator, digest) : readHot(locator, digest);
+    if (r === null) { c.absent += 1; c.by_vault[vault].absent += 1; continue; } buf = r.buf; pending = r.pending;
+  }
   else { try { buf = readFileSync(join(vaultRoot, vault, locator)); } catch { c.absent += 1; c.by_vault[vault].absent += 1; continue; } }
   if (sha(buf) !== digest) { c.digest_mismatch += 1; continue; }
   if (buf.length !== Number(bytes)) { c.length_mismatch += 1; continue; }
@@ -895,10 +905,13 @@ else
       node -e '
         const {readFileSync, existsSync, readdirSync}=require("node:fs"); const {join, dirname, basename}=require("node:path");
         const rows=JSON.parse(readFileSync(process.argv[2],"utf8")); const V=process.argv[3];
-        // an archived manifest whose copy is recorded but not yet published (0071) has its bytes under a staged name beside the locator, or still hot
-        const present=(r)=>{ if (existsSync(join(V, r.vault, r.locator))) return true; if (r.vault!=="archive") return false;
-          const p=join(V,"archive",r.locator); let names=[]; try { names=readdirSync(dirname(p)); } catch { names=[]; }
-          return names.some((n)=>n.startsWith(`${basename(p)}.staging-`)) || existsSync(join(V,"evidence",r.locator)); };
+        // a manifest whose copy is recorded but not yet published (0071 for an archive; 0072 for a restore, B12) has its bytes under a staged
+        // name beside the locator in its tier root, or still in the other tier root — the places the verifier above and the product look
+        const other={archive:"evidence",evidence:"archive"};
+        const present=(r)=>{ if (existsSync(join(V, r.vault, r.locator))) return true; if (other[r.vault]===undefined) return false;
+          const p=join(V,r.vault,r.locator); let names=[]; try { names=readdirSync(dirname(p)); } catch { names=[]; }
+          const staged=new RegExp(`^${basename(p)}\\.staging-[0-9a-f-]{36}$`);
+          return names.some((n)=>staged.test(n)) || existsSync(join(V,other[r.vault],r.locator)); };
         for (const r of rows) if (!present(r))
           console.log(`    ${r.manifest_id}  ${r.vault}/${r.locator}  admitted ${r.created_at}`);
       ' -- "$RROOT/work/$db.after-boundary.json" "$VAULT"

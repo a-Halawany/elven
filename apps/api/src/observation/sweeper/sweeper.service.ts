@@ -13,9 +13,28 @@
  * (F35), and the next sweep re-derives the classification and completes the work.
  * That is why classification is a pure function of stored state and never a
  * remembered decision.
+ *
+ * CP-6 B12 (D6): the walk covers BOTH blob roots — the evidence root and the
+ * ARCHIVE root — and knows the names the tier moves leave behind. A move
+ * (an archive, 0070; a restore, 0072) copies the bytes into the other root STAGED
+ * under the execution attempt's own name, `<uuid>.staging-<attempt uuid>`, and
+ * publishes the copy under the locator only after the commit that recorded the
+ * move (0071); a process lost between its copy and its cleanup leaves the staged
+ * file behind, and the B11 closure's follow-up asks the sweeper to dispose of it.
+ * The classification is still a pure function of stored state and file age: a
+ * `.tmp-` file older than a minute never had a locator and goes; a staged copy is
+ * REDUNDANT — and removed — only when a copy under the locator VERIFIES against
+ * the manifest's digest in the tier the ledger records (in the same root at
+ * once; in the other root only once the file is older than the run timeout, an
+ * execution may still be in flight); a staged copy that may be the only verified
+ * copy is kept and recorded for a person; a plain name in the archive root with
+ * no manifest is an orphan candidate like its evidence-root sibling, and one
+ * whose manifest the ledger says is HOT is a stale archive copy (a restore whose
+ * archive removal failed — the execute route's pending residual), recorded and
+ * kept. Nothing with bytes the product may still need is removed.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { readdir, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Envelope } from '@eye/contracts';
 import { EYE_CONFIG } from '../../config/config.module.js';
@@ -25,11 +44,21 @@ import type { Db } from '../../shared/db.js';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
-import { ObservationCapability, type ObservationReads } from '../observation.capabilities.js';
-import { VaultService } from '../vault/vault.service.js';
+import { ObservationCapability, tierOf, type ObservationReads } from '../observation.capabilities.js';
+import { VaultService, sha256, type VaultName } from '../vault/vault.service.js';
 import * as fault from '../fault-injection.js';
 
 const EMPTY_PAYLOAD_DIGEST = '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a';
+
+/** The two blob roots the tier moves write to (the quarantine root holds no staged copy and is step 3's). */
+type BlobRoot = 'evidence' | 'archive';
+const BLOB_ROOTS: readonly BlobRoot[] = ['evidence', 'archive'];
+
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+/** A staged copy's name, EXACTLY (C17): the locator's own id and the creating attempt's — a temp of a staged copy carries `.tmp-` and is a temp. */
+const STAGED_NAME_RE = new RegExp(`^(${UUID})\\.staging-(${UUID})$`);
+/** A temp file of an interrupted write is gone after this long; it never had a locator, so nothing could ever have referenced it. */
+const TEMP_FILE_MAX_AGE_MS = 60_000;
 
 export interface SweepReport {
   expiredCases: number;
@@ -37,7 +66,27 @@ export interface SweepReport {
   orphanCandidates: number;
   pendingTombstones: number;
   poisonItems: Array<{ kind: string; ref: string; reason: string }>;
+  /** B12 (D6): plain names in the ARCHIVE root with no manifest row — recorded, kept, like the evidence root's. */
+  archiveOrphanCandidates: number;
+  /** B12 (D6): staged copies removed as redundant — a copy under the locator verifies in the tier's root. */
+  stagedCopiesRemoved: number;
+  /** B12 (D6): staged copies kept — an execution may be in flight, or the copy may be the only verified one (then also recorded under `poisonItems`). */
+  stagedCopiesKept: number;
+  /** B12 (D6): `.tmp-` files of interrupted writes, older than a minute, removed from either root. */
+  tempFilesRemoved: number;
 }
+
+/** A manifest of the domain as the walk needs it: the id the tier ledger is keyed by and the digest a copy must verify against. */
+interface KnownManifest {
+  manifestId: string;
+  digest: string;
+}
+
+/** What a file name in a blob root is (C17: a temp first, whatever precedes the `.tmp-`; then a staged copy; then a plain locator id). */
+type NameClass =
+  | { kind: 'temp' }
+  | { kind: 'staged'; base: string; attemptId: string }
+  | { kind: 'plain'; base: string };
 
 @Injectable()
 export class SweeperService {
@@ -92,6 +141,7 @@ export class SweeperService {
     const report: SweepReport = {
       expiredCases: 0, failedRuns: 0, orphanCandidates: 0,
       pendingTombstones: 0, poisonItems: [],
+      archiveOrphanCandidates: 0, stagedCopiesRemoved: 0, stagedCopiesKept: 0, tempFilesRemoved: 0,
     };
 
     // ── 1. Quarantine cases past their TTL without a terminal state ──────────
@@ -192,69 +242,220 @@ export class SweeperService {
       }
     }
 
-    // ── 4. Admitted-candidate blobs with NO manifest row ─────────────────────
-    // These are the 8g orphans. They are ALREADY unreachable (retrieval resolves
-    // through the manifest), and they are QUARANTINED FOR INVESTIGATION rather
-    // than deleted: bytes that reached the evidence volume without a record are
-    // exactly the thing a reviewer will want to see.
-    report.orphanCandidates = await this.reconcileOrphanCandidates(
-      principal, tenantId, domainId, correlationId, purposeId, report);
+    // ── 4. The blob roots: admitted-candidate blobs with NO manifest row, and
+    //       (B12, D6) the names a tier move leaves behind ─────────────────────
+    // The plain orphans are the 8g orphans. They are ALREADY unreachable
+    // (retrieval resolves through the manifest), and they are QUARANTINED FOR
+    // INVESTIGATION rather than deleted: bytes that reached the evidence volume
+    // without a record are exactly the thing a reviewer will want to see. The
+    // same rule holds in the archive root. Temp files and REDUNDANT staged copies
+    // are the only names the walk removes, each through the vault by its own name.
+    await this.reconcileRoots(principal, tenantId, domainId, correlationId, purposeId, report);
 
     return report;
   }
 
   /**
-   * Walk the evidence volume for this domain and compare against the manifests.
-   * Filesystem-first, deliberately: an orphan is by definition something the
-   * database does not know about, so a database-first sweep could never find one.
+   * Walk BOTH blob roots for this domain and compare against the manifests and
+   * the tier ledger. Filesystem-first, deliberately: an orphan is by definition
+   * something the database does not know about, so a database-first sweep could
+   * never find one. The stored state is read ONCE before the walk (the manifests
+   * by locator; the tier of every manifest a staged or an archive-root name points
+   * at), so the classification of every name is a function of one snapshot and
+   * the file's age, never of a read interleaved with a removal.
    */
-  private async reconcileOrphanCandidates(
+  private async reconcileRoots(
     principal: AuthenticatedPrincipal, tenantId: string, domainId: string,
     correlationId: string, purposeId: string, report: SweepReport,
-  ): Promise<number> {
-    const dir = join(this.vault.rootFor('evidence'), tenantId, domainId);
-    let names: string[];
-    try {
-      names = await readdir(dir);
-    } catch {
-      return 0; // nothing stored for this domain yet
-    }
-    const known = new Set(
-      (await this.read(principal, tenantId, domainId, correlationId, purposeId, 'EVD',
-        async (cap) => (await cap
-          .readManifests().select('locator' as never)
-          .where('vault' as never, '=', 'evidence' as never)
-          .limit(20000)
-          .execute()) as Array<{ locator: string }>)).map((r) => r.locator),
-    );
+  ): Promise<void> {
+    const scope = { tenantId, domainId };
 
-    let orphans = 0;
-    for (const name of names) {
-      const locator = `${tenantId}/${domainId}/${name}`;
-      if (known.has(locator)) continue;
-      // A temp file from an interrupted write is a different orphan class and is
-      // removed: it never had a locator, so nothing could ever have referenced it.
-      if (name.includes('.tmp-')) {
-        const info = await stat(join(dir, name)).catch(() => null);
-        if (info !== null && Date.now() - info.mtimeMs > 60_000) {
-          await this.vault.tombstone('evidence', { tenantId, domainId }, locator).catch(() => undefined);
-        }
-        continue;
+    // The listings first: a root that cannot be listed is recorded and left alone
+    // — nothing of it is classified, so nothing of it is removed (fail closed).
+    const listed: Array<{ root: BlobRoot; names: string[] }> = [];
+    for (const root of BLOB_ROOTS) {
+      try {
+        listed.push({ root, names: await this.vault.listDomain(root, scope) });
+      } catch (e) {
+        report.poisonItems.push({ kind: 'vault_root', ref: `${root}/${tenantId}/${domainId}`, reason: `the ${root} root cannot be listed for this domain; nothing of it was classified or removed: ${describe(e)}` });
       }
-      orphans += 1;
-      // Recorded, NOT removed: the bytes stay where they are for investigation.
-      // A BOUNDED SAMPLE is carried in the report — a list that repeats one
-      // sentence two hundred times tells an operator less than a count and five
-      // examples, not more.
-      if (orphans <= 5) {
+    }
+    if (listed.every((l) => l.names.length === 0)) return; // nothing stored for this domain yet
+
+    // The manifests of the domain, by locator. Only evidence-vault manifests have
+    // bytes in these two roots (a manifest's vault is its admission-time vault; the
+    // tier ledger says which root holds the bytes now).
+    const known = new Map<string, KnownManifest>();
+    for (const r of await this.read(principal, tenantId, domainId, correlationId, purposeId, 'EVD',
+      async (cap) => (await cap
+        .readManifests().select(['manifest_id' as never, 'locator' as never, 'content_digest' as never])
+        .where('vault' as never, '=', 'evidence' as never)
+        .limit(20000)
+        .execute()) as Array<{ manifest_id: string; locator: string; content_digest: string }>)) {
+      known.set(r.locator, { manifestId: r.manifest_id, digest: r.content_digest });
+    }
+
+    // The tier of every manifest whose bytes the walk must place: the manifest a
+    // staged copy names (in either root) and the manifest a plain archive-root
+    // name names. One governed read; a read that fails leaves every tier unknown,
+    // and a staged copy whose tier is unknown is kept.
+    const wanted = new Set<string>();
+    for (const { root, names } of listed) {
+      for (const name of names) {
+        const c = classifyName(name);
+        if (c.kind === 'temp') continue;
+        const m = known.get(`${tenantId}/${domainId}/${c.base}`);
+        if (m === undefined) continue;
+        if (c.kind === 'staged' || root === 'archive') wanted.add(m.manifestId);
+      }
+    }
+    const tiers = new Map<string, 'hot' | 'archive'>();
+    if (wanted.size > 0) {
+      try {
+        await this.read(principal, tenantId, domainId, correlationId, purposeId, 'EVD', async (cap) => {
+          for (const manifestId of wanted) tiers.set(manifestId, (await tierOf(cap, manifestId)).tier);
+        });
+      } catch (e) {
+        tiers.clear();
+        report.poisonItems.push({ kind: 'blob_tier', ref: `${tenantId}/${domainId}`, reason: `the tier ledger could not be read; every staged copy of the domain is kept this round: ${describe(e)}` });
+      }
+    }
+
+    const timeoutMs = this.cfg['eye.sweeper.run_timeout_seconds'] * 1000;
+    for (const { root, names } of listed) {
+      const dir = join(this.vault.rootFor(root), tenantId, domainId);
+      let orphans = 0;
+      for (const name of names) {
+        const c = classifyName(name);
+
+        // A temp file from an interrupted write is a different orphan class and is
+        // removed: it never had a locator, so nothing could ever have referenced it.
+        // A temp of a STAGED copy (`<uuid>.staging-<attempt>.tmp-<uuid>`, C17) is
+        // the same class — the `.tmp-` decides, whatever precedes it.
+        if (c.kind === 'temp') {
+          const info = await stat(join(dir, name)).catch(() => null);
+          if (info === null || Date.now() - info.mtimeMs <= TEMP_FILE_MAX_AGE_MS) continue;
+          try {
+            await this.vault.removeTempFile(root, scope, name);
+            report.tempFilesRemoved += 1;
+          } catch (e) {
+            report.poisonItems.push({ kind: 'temp_file', ref: `${root}/${tenantId}/${domainId}/${name}`, reason: describe(e) });
+          }
+          continue;
+        }
+
+        const locator = `${tenantId}/${domainId}/${c.base}`;
+        const m = known.get(locator);
+
+        // No manifest with this locator: an ORPHAN CANDIDATE, staged or plain,
+        // in either root. Recorded, NOT removed: the bytes stay where they are for
+        // investigation. A BOUNDED SAMPLE is carried in the report — a list that
+        // repeats one sentence two hundred times tells an operator less than a
+        // count and five examples, not more.
+        if (m === undefined) {
+          orphans += 1;
+          if (orphans <= 5) {
+            report.poisonItems.push({
+              kind: 'orphan_candidate',
+              ref: root === 'evidence' ? locator : `${root}/${locator}`,
+              reason: root === 'evidence'
+                ? 'evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, unreachable through every retrieval path.'
+                : 'archive-tier bytes with no manifest row: a move whose manifest the ledger does not know. Retained for investigation, unreachable through every retrieval path.',
+            });
+          }
+          continue;
+        }
+
+        if (c.kind === 'staged') {
+          await this.reconcileStagedCopy(root, dir, name, locator, c.attemptId, m, tiers.get(m.manifestId), timeoutMs, report);
+          continue;
+        }
+
+        // A plain name with a manifest: known in the evidence root, nothing to do.
+        // In the ARCHIVE root the tier decides: 'archive' is the copy the ledger
+        // expects; 'hot' is a STALE ARCHIVE COPY — a restore whose archive removal
+        // did not complete, the pending residual the execute route retries —
+        // recorded and kept: the retry is a governed act, not the sweeper's.
+        if (root === 'archive' && tiers.get(m.manifestId) === 'hot') {
+          report.poisonItems.push({
+            kind: 'stale_archive_copy',
+            ref: `${root}/${locator}`,
+            reason: 'an archive-tier copy of a manifest the tier ledger records as HOT: a restore whose archive removal did not complete (a pending residual the execute route on the restore action retries). Retained; the hot copy serves.',
+          });
+        }
+      }
+      if (root === 'evidence') report.orphanCandidates = orphans;
+      else report.archiveOrphanCandidates = orphans;
+    }
+  }
+
+  /**
+   * One staged copy (D6, C17, C18). "Verifies" means the vault reads the copy under
+   * the locator against the manifest's digest. Removed only when it is REDUNDANT:
+   * a verified copy stands under the locator in the tier's root — at once when the
+   * staged copy is in that root (a publish already happened, or another attempt's
+   * did), only after the run timeout when it is in the other root (a move that
+   * never committed; younger, an execution may still be in flight). Kept in every
+   * other case, and RECORDED for a person when it may be the only verified copy —
+   * unless it is young and in the tier's root, the ordinary instant between a
+   * commit and its publish (C18). Recovery from a verified copy (DP-28-005) is a
+   * governed act, never the sweeper's.
+   */
+  private async reconcileStagedCopy(
+    root: BlobRoot, dir: string, name: string, locator: string, attemptId: string,
+    m: KnownManifest, tier: 'hot' | 'archive' | undefined, timeoutMs: number, report: SweepReport,
+  ): Promise<void> {
+    const scope = { tenantId: locator.split('/')[0] as string, domainId: locator.split('/')[1] as string };
+    const ref = `${root}/${locator}.staging-${attemptId}`;
+    if (tier === undefined) { report.stagedCopiesKept += 1; return; } // the tier is unknown this round (recorded once above): kept
+    const tierRoot: BlobRoot = tier === 'archive' ? 'archive' : 'evidence';
+    const verifies = (v: VaultName): Promise<boolean> => this.vault.read(v, scope, locator, m.digest).then(() => true, () => false);
+    const info = await stat(join(dir, name)).catch(() => null);
+    if (info === null) return; // gone between the listing and now: a publish or a cleanup raced the walk
+    const stale = Date.now() - info.mtimeMs > timeoutMs;
+
+    const remove = async (why: string): Promise<void> => {
+      try {
+        await this.vault.removeStagedIn(root, scope, locator, attemptId);
+        report.stagedCopiesRemoved += 1;
+      } catch (e) {
+        report.stagedCopiesKept += 1;
+        report.poisonItems.push({ kind: 'staged_copy', ref, reason: `${why}, but the removal failed: ${describe(e)}` });
+      }
+    };
+
+    if (root === tierRoot) {
+      if (await verifies(root)) { await remove('redundant: the copy under the locator verifies in the tier\'s root'); return; }
+      // The published copy does not verify (absent or corrupt). The staged copy may
+      // be the only verified one — an integrity incident for a person, never a
+      // removal — unless the file is young: the instant between a commit and its
+      // publish is ordinary and passes.
+      report.stagedCopiesKept += 1;
+      const stagedOk = await readFile(join(dir, name)).then((b) => sha256(b) === m.digest, () => false);
+      if (stale || !stagedOk) {
         report.poisonItems.push({
-          kind: 'orphan_candidate',
-          ref: locator,
-          reason: 'evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, unreachable through every retrieval path.',
+          kind: 'staged_copy_kept',
+          ref,
+          reason: stagedOk
+            ? `the ${tierRoot} copy under the locator does not verify against the manifest's digest while this staged copy does, and the file is older than the run timeout: it may be the only verified copy. Retained for a person; recovery from a verified copy is a governed act.`
+            : `neither the ${tierRoot} copy under the locator nor this staged copy verifies against the manifest's digest. Retained for a person as an integrity incident.`,
         });
       }
+      return;
     }
-    return orphans;
+
+    // A staged copy in the root the tier does NOT record: a move that has not
+    // committed — still in flight while the file is young, abandoned once it is
+    // older than the run timeout. Abandoned and the tier's copy verified: removed;
+    // abandoned and the tier's copy not verifying: kept and recorded.
+    if (!stale) { report.stagedCopiesKept += 1; return; }
+    if (await verifies(tierRoot)) { await remove(`abandoned by a move that never committed; the copy under the locator verifies in the ${tierRoot} root`); return; }
+    report.stagedCopiesKept += 1;
+    report.poisonItems.push({
+      kind: 'staged_copy_kept',
+      ref,
+      reason: `left by a move that never committed, older than the run timeout, and the ${tierRoot} copy under the locator — the tier the ledger records — does not verify against the manifest's digest: this may be the only verified copy. Retained for a person; recovery from a verified copy is a governed act.`,
+    });
   }
 
   private async governed(
@@ -287,6 +488,14 @@ export class SweeperService {
       },
     );
   }
+}
+
+/** C17: a `.tmp-` anywhere makes a temp, whatever precedes it; then the exact staged shape; anything else is a plain name (a locator's id, or junk the orphan rule reports). */
+function classifyName(name: string): NameClass {
+  if (name.includes('.tmp-')) return { kind: 'temp' };
+  const staged = STAGED_NAME_RE.exec(name);
+  if (staged !== null) return { kind: 'staged', base: staged[1] as string, attemptId: staged[2] as string };
+  return { kind: 'plain', base: name };
 }
 
 function describe(e: unknown): string {

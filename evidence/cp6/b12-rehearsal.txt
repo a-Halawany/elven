@@ -1,0 +1,105 @@
+=== the B12 act rehearsed on a restored copy of the demonstration (eye_demo_b12 on :3411 with its own vault copy and its own Redis on :6392) at the B12 tree, 2026-09-15 — before the demonstration ===
+
+
+=== CP-6 batch B12 on the demonstration (eye_demo_b12 at http://localhost:3411) — the restore-to-hot port and the cold-tier manager ===
+
+1. THE STATE BEFORE — the cold tier as the collection manager reads it (retention.read): the archived manifests, the policy in force, the vault's inventory of both roots
+  ✓ M. Dvořák reads the cold tier's state: HTTP 201; the policy UNDECLARED — the defaults in force
+  · policy: UNDECLARED — the defaults: budget unbounded, 200 opens per evaluation, 3 attempts, escalate after 7 days, restore window 30 days
+  · tiers: hot 14008 manifest(s) / 40271108 bytes, archive 3 / 5219; moves in the last 24 h: archived 2 (1285 bytes), restored 0 (0 bytes)
+  · budget: unbounded per day, used 1285, remaining unbounded, the window resets at 2026-09-16T12:09:56.596Z
+  · actions: executing 0, paused for retry 0, paused for human review 0, escalated 0, pending bytes residuals 0; restored manifests awaiting their re-archive 0
+  · schedules: 01a097c8… review of profile "24 months" after 730 days (active; last evaluation {})
+  · the vault: evidence root 14069 blob(s), 0 staged, 0 temp; archive root 3 blob(s), 0 staged, 0 temp
+  · the archive tier holds: eu-sanctions-rss ×1 (3934 bytes), nordwerk-internal ×2 (1285 bytes)
+
+2. RESTORE — the NORDWERK records in the archive tier moved back to the hot tier by a governed restore; the host, the ledgers, the verification, the retrieval
+  · the targets (2): P = evidence 01a084f8…@1 (nordwerk-internal, 240 bytes, manifest 01a084f8…); Q = evidence 01a084f5…@1 (nordwerk-internal, 1045 bytes, manifest 01a084f5…); all in the archive tier
+  ✓ restore of P and Q: P. Novák opened 01a0a615…; scope resolved (2 item(s), 2 to execute, 0 held, 0 excluded; digest fbe7b52ad791…); H. Bergmann approved
+  ·   execute: manifest 01a084f5… (tier archive) — restored: the manifest and its digest are kept, the bytes move from the archive tier back to the hot tier (its evidence is admitted)
+  ·   execute: manifest 01a084f8… (tier archive) — restored: the manifest and its digest are kept, the bytes move from the archive tier back to the hot tier (its evidence is admitted)
+  ✓ P. Novák executed: HTTP 201 — 2 restored, 0 refused; hot copies published after the commit 2; archive copies removed after the commit 2, failed 0
+  ·   observation.restore_blob done: manifest 2fbe37d5… — copy_created true, staged true, already_restored false, tier record 01a0a615…, attempt 01a0a615…, digest_verified true
+  ·   observation.restore_blob done: manifest 907be699… — copy_created true, staged true, already_restored false, tier record 01a0a615…, attempt 01a0a615…, digest_verified true
+  ·   manifest 01a084f8…: hot path PRESENT, archive path ABSENT; tier hot; the ledger's latest row archive → hot by this action at 2026-09-15T17:20:30.181Z; custody custody.restored (archive → hot, tier record 01a0a615…)
+  ·   manifest 01a084f5…: hot path PRESENT, archive path ABSENT; tier hot; the ledger's latest row archive → hot by this action at 2026-09-15T17:20:30.160Z; custody custody.restored (archive → hot, tier record 01a0a615…)
+  ✓ the host: every restored record's hot path PRESENT and archive path ABSENT (/private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/e03167dc-0a4e-42b8-b194-a1ca2ccccc9c/scratchpad/b12/demo/vault/evidence/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057; /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/e03167dc-0a4e-42b8-b194-a1ca2ccccc9c/scratchpad/b12/demo/vault/archive/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057)
+  ✓ the tier ledger: an archive → hot row per manifest by this action (a manifest's tier is its latest record; no manifest was updated)
+  ✓ no .staging- file under either domain directory (each copy was staged under its attempt's name and published under the locator after the commit)
+  ✓ verified against the restore contract: 2/2 checks — expected {"tier":"hot","restored":true,"tombstone":false,"bytes_present":true,"hot_digest_ok":true,"staged_copies":false,"archive_present":false}
+  · the action: state verified, attempts 1 (the one execution that began), escalated_at —
+  ✓ A. Hoffmann downloads P: HTTP 201, 240 bytes, digest the manifest's, tier hot, availability verified, integrity verified; the custody row: tier hot, served_from published
+  · the detail: manifest tier hot, archived at null, availability {"tier":"hot","state":"hot"}
+
+3. THE MANAGER'S POLICY — the platform administrator declares the domain's tier policy at DEMONSTRATION settings (each rule fires within this act; scene 7 restores sane values)
+  ✓ the platform administrator declared the tier policy — the demonstration setting (one byte per day, one open per evaluation, one attempt, escalate after zero seconds, a restore window of zero seconds): version 1: budget 1 byte(s) per day, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  ✓ tier/state shows the policy in force: declared, version 1: budget 1 byte(s) per day, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  · policy: declared, version 1: budget 1 byte(s) per day, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  · tiers: hot 14010 manifest(s) / 40272393 bytes, archive 1 / 3934; moves in the last 24 h: archived 2 (1285 bytes), restored 2 (1285 bytes)
+  · budget: 1 per day, used 2570, remaining 0, the window resets at 2026-09-16T12:09:56.596Z
+  · actions: executing 0, paused for retry 0, paused for human review 0, escalated 0, pending bytes residuals 0; restored manifests awaiting their re-archive 2
+  · schedules: 01a097c8… review of profile "24 months" after 730 days (active; last evaluation {})
+  · the vault: evidence root 14071 blob(s), 0 staged, 0 temp; archive root 1 blob(s), 0 staged, 0 temp
+
+4. BUDGET → RETRY → ESCALATION — an archive refused at admission by the byte budget and retried after a re-declaration (one attempt: the whole retry budget under max attempts 1); an action paused for retry escalated by age at the next evaluation
+  ✓ archive of P: P. Novák opened 01a0a615…; scope resolved (1 item(s), 1 to execute, 0 held, 0 excluded; digest a379b87a4176…); H. Bergmann approved
+  ✓ the execution REFUSED AT ADMISSION: HTTP 409 — the execution was rolled back and the action paused: retention execution rejected (budget_exhausted): the domain moved 2570 bytes in the last 24 hours and this execution would move 240 more, above the policy's 1 bytes per day; the window frees at 2026-09-16 12:09:56.596+00; retried by the same route after a re-resolution
+  · the action: state paused, class infrastructure, disposition retry, attempts 0 (the state never moved: no attempt counted), approvals live 0 (revoked by the pause); the pause event's details {"failure_class":"infrastructure","attempted":false,"attempts":0,"approvals_revoked":true}
+  · the host: P's hot path PRESENT, archive path ABSENT (nothing moved); tier hot
+  · tier/state: budget 1 per day, used 2570 (the bytes the domain moved in the last 24 hours — scene 2's restores), remaining 0, the window resets at 2026-09-16T12:09:56.596Z; actions paused for retry 1
+  ✓ the platform administrator declared the tier policy — the budget lifted (the rest of the demonstration setting kept): version 2: budget unbounded, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  ✓ re-resolved (state scope_resolved, 1 to execute, digest a379b87a4176…) and re-approved by H. Bergmann
+  ✓ executed: 1 archived, 0 refused; hot copies removed after the commit 1; the action's attempts 1 (execution.started names attempt 1) — under max attempts 1 this one attempt is the whole retry budget
+  ✓ verified against the archive contract; P is in the archive tier again (archive path PRESENT, hot path ABSENT)
+  · NOT shown here: the refusal of a further execution after a FAILED attempt (attempts_exhausted → the action escalated for human review; a re-resolution restarts the count) — it needs a copy that fails, and the harness R8 (apps/api/test/int/phase6-retention-b12.test.ts) corrupts one in an isolated vault; the demonstration corrupts nothing
+  ✓ the platform administrator declared the tier policy — the budget restored (one byte per day): version 3: budget 1 byte(s) per day, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  ✓ archive of Q: P. Novák opened 01a0a615…; scope resolved (1 item(s), 1 to execute, 0 held, 0 excluded; digest 97cea765a358…); H. Bergmann approved
+  ✓ refused at admission by the budget again: HTTP 409; the action paused for retry (attempts 0, paused at 2026-09-15T17:20:30.919Z)
+  ✓ P. Novák's evaluation ESCALATED it (escalate_after 0 seconds; paused at 2026-09-15T17:20:30.919Z): "escalated by the cold-tier manager: paused for retry since 2026-09-15 17:20:30.91917+00, longer than the policy's escalate_after 00:00:00"
+  ✓ the action: state paused, disposition human_review, class infrastructure, attempts 0, escalated_at 2026-09-15T17:20:30.938Z; approvals live 0; the event action.escalated {"attempts":0,"approvals_revoked":true}
+  · the same evaluation opened 0 action(s) by the schedules in force and reported deferred 0
+  · tier/state: escalated 1, paused for human review 1, paused for retry 0
+  ✓ P. Novák withdrew the escalated action (withdrawn); Q stays in the hot tier
+
+5. THE RESTORE WINDOW and ORDERING — the archive schedule evaluated under one open per evaluation and a restore window of zero seconds: oldest due first, the rest deferred; a restored record, due at its restore instant, returns to the cold tier by the schedule
+  ✓ the platform administrator declared the archive schedule 01a0a615…: profile "24 months", due after 0 seconds, the evidence of nordwerk-internal (a schedule selects by profile and source, never a chosen object set; a RESTORE schedule is refused — a restore is opened on demand)
+  ✓ the platform administrator declared the tier policy — the budget lifted for the cycle (one open per evaluation and the restore window of zero seconds kept): version 4: budget unbounded, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  · due under the schedule now, in the manager's order: #1 manifest 01a084f5… — never moved, due at its creation 2026-09-09T06:57:59.575Z; #2 manifest 01a084f5… — never moved, due at its creation 2026-09-09T06:57:59.634Z; #3 manifest 01a084f5… — RESTORED, due at its restore instant 2026-09-15T17:20:30.160Z
+  ✓ evaluation #1: opened ONE action 26cec552… — archive of manifest 01a084f5… (never moved, due at its creation; due_from 2026-09-09T06:57:59.575Z), deferred 2; the schedule's last_evaluation {"at":"2026-09-15T17:20:31.232041+00:00","opened":1,"deferred":2}
+  ✓ evaluation #2: opened ONE action 8d13bc73… — archive of manifest 01a084f5… (never moved, due at its creation; due_from 2026-09-09T06:57:59.634Z), deferred 1; the schedule's last_evaluation {"at":"2026-09-15T17:20:31.253037+00:00","opened":1,"deferred":1}
+  ✓ evaluation #3: opened ONE action bfdd0782… — archive of manifest 01a084f5… (the restored record, due at its restore instant; due_from 2026-09-15T17:20:30.160Z), deferred 0; the schedule's last_evaluation {"at":"2026-09-15T17:20:31.285871+00:00","opened":1,"deferred":0}
+  ✓ the schedule's action bfdd0782… resolved (1 to execute) and approved by H. Bergmann
+  ✓ executed (1 archived, hot copies removed 1) and verified: the record is in the archive tier again
+  · the tier ledger of manifest 01a084f5…: hot → archive (2026-09-15T12:09:56.596Z), archive → hot (2026-09-15T17:20:30.160Z), hot → archive (2026-09-15T17:20:31.329Z)
+  ✓ the full cycle in one ledger: archived, restored (scene 2), retrieved, re-archived by the schedule after its restore window
+  ✓ A. Hoffmann still downloads it: HTTP 201, 1045 bytes, digest the manifest's, tier archive, availability archived
+  ✓ withdrew 26cec552… (archive of manifest 01a084f5…, never moved): the demonstration keeps it hot
+  ✓ withdrew 8d13bc73… (archive of manifest 01a084f5…, never moved): the demonstration keeps it hot
+  · the schedule stays declared: it acts only on an evaluation, and the final policy (scene 7) restores the 30-day restore window and 200 opens per evaluation
+
+6. THE SWEEPER'S WALK — a redundant staged copy of an archived manifest and a stale temp file planted in the archive root; the platform administrator's sweep removes both and reports no archive orphan; the published copy untouched
+  · the sweep before the planting: staged copies removed 0, kept 0; temp files removed 0; archive orphan candidates 0; evidence orphan candidates 61; expired cases 0, failed runs 1, tombstones completed 0; 5 item(s) recorded
+  ✓ planted under /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/e03167dc-0a4e-42b8-b194-a1ca2ccccc9c/scratchpad/b12/demo/vault/archive/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057: 907be699-b108-4f3e-b571-9de518a227ef.staging-46aa0490-1a6a-45a4-9e59-3b6d0a0c28eb (a byte copy of manifest 01a084f8…'s published archive copy, nordwerk-internal — REDUNDANT: the published copy verifies) and a629b9b5-2513-49dc-a4bd-c400edc36302.tmp-d74a6775-7348-48de-8efa-78d523ab319b (mtime set two minutes back)
+  ✓ the platform administrator's sweep: stagedCopiesRemoved 1, tempFilesRemoved 1, archiveOrphanCandidates 0, stagedCopiesKept 0, orphanCandidates 61; expired cases 0, failed runs 0, tombstones completed 0 — no archive orphan
+  ·   recorded: orphan_candidate 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd — evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, un
+  ·   recorded: orphan_candidate 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd — evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, un
+  ·   recorded: orphan_candidate 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd — evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, un
+  ·   recorded: orphan_candidate 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd — evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, un
+  ·   recorded: orphan_candidate 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd — evidence-volume bytes with no manifest row: an admission transaction that did not commit. Retained for investigation, un
+  ✓ the host: the staged copy GONE, the temp file GONE, the published archive copy present and its bytes the manifest's digest (/private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/e03167dc-0a4e-42b8-b194-a1ca2ccccc9c/scratchpad/b12/demo/vault/archive/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/907be699-b108-4f3e-b571-9de518a227ef)
+
+7. THE STATE AFTER — the cold tier's state, and the policy re-declared at sane values so the demonstration is left governed by the defaults' equivalent
+  ✓ M. Dvořák reads the cold tier's state after the act: HTTP 201
+  · policy: declared, version 4: budget unbounded, 1 open(s) per evaluation, 1 attempt(s), escalate after 00:00:00, restore window 00:00:00
+  · tiers: hot 14008 manifest(s) / 40271108 bytes, archive 3 / 5219; moves in the last 24 h: archived 4 (2570 bytes), restored 2 (1285 bytes)
+  · budget: unbounded per day, used 3855, remaining unbounded, the window resets at 2026-09-16T12:09:56.596Z
+  · actions: executing 0, paused for retry 0, paused for human review 0, escalated 0, pending bytes residuals 0; restored manifests awaiting their re-archive 0
+  · schedules: 01a097c8… review of profile "24 months" after 730 days (active; last evaluation {"at":"2026-09-15T17:20:31.280289+00:00","opened":0,"deferred":0}); 01a0a615… archive of profile "24 months" after 00:00:00 (active; last evaluation {"at":"2026-09-15T17:20:31.285871+00:00","opened":1,"deferred":0})
+  · the vault: evidence root 14069 blob(s), 0 staged, 0 temp; archive root 3 blob(s), 0 staged, 0 temp
+  ✓ the platform administrator declared the tier policy — sane values (budget unbounded, 200 opens per evaluation, 3 attempts, escalate after 7 days, restore window 30 days — the defaults' equivalent): version 5: budget unbounded, 200 open(s) per evaluation, 3 attempt(s), escalate after 7 days, restore window 30 days
+  ✓ tier/state shows the policy in force: declared, version 5: budget unbounded, 200 open(s) per evaluation, 3 attempt(s), escalate after 7 days, restore window 30 days
+
+SHOWN ON THE DEMONSTRATION: the restore port (a move back recorded in the same ledger; the copy staged under the attempt's name and published after the commit; the archive copy removed; the restore contract; the retrieval from the hot tier), the manager's policy and its observable state, a BUDGET refusal at admission (no attempt counted; paused for retry; retried after a re-declaration by a re-resolution and a re-approval — one attempt, the whole retry budget under max attempts 1), ESCALATION BY AGE at the next evaluation, ORDERING (oldest due first, one open per evaluation, the rest deferred and counted on the schedule), the RESTORE WINDOW (a restored record due at its restore instant; the full cycle archive → restore → retrieval → re-archive), and the sweeper's removal of a redundant staged copy and a stale temp file from the archive root.
+PROVEN BY THE HARNESS ALONE (apps/api/test/int/phase6-retention-b12.test.ts): the refusal after a FAILED attempt — the attempt counted where its pause is recorded, attempts_exhausted, the escalation for human review and the re-resolution restarting the count (R8); two restores of one archived manifest executed together — one mover, one finder, one tier record (R5); the retry route of a restore whose hot publish failed after the commit — the archive copy kept, the staged copy served, the residual closed (R11); the sweeper's other classifications — a staged copy in the wrong root removed only once older than the run timeout and only when the tier's copy verifies, a young one kept, an orphan recorded and kept (R10).
+
+=== the act completed with every scene producing its effect ===

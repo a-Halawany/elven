@@ -292,7 +292,12 @@ export class EvidenceService {
     try {
       const scopeOf = { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string };
       // An archived manifest's bytes may still be staged, or kept hot, until the publish succeeds (0071): readArchived finds them and says where.
-      const read = readFrom === 'archive' ? await this.vault.readArchived(scopeOf, manifest.locator, manifest.content_digest) : { ...(await this.vault.read(readFrom, scopeOf, manifest.locator, manifest.content_digest)), source: readFrom };
+      // B12 (D2): a RESTORED manifest's likewise — the tier ledger says hot, and its hot copy may still be staged in the evidence root, or kept in
+      // the archive root until the publish succeeds: readTiered('evidence') finds them (served_from: published | staged | archive). The
+      // quarantine vault keeps the plain read.
+      const read = readFrom === 'archive' ? await this.vault.readArchived(scopeOf, manifest.locator, manifest.content_digest)
+        : readFrom === 'evidence' ? await this.vault.readTiered('evidence', scopeOf, manifest.locator, manifest.content_digest).then((r) => ({ ...r, source: r.source === 'fallback' ? 'archive' : r.source }))
+        : { ...(await this.vault.read(readFrom, scopeOf, manifest.locator, manifest.content_digest)), source: readFrom };
       bytes = read.bytes; servedFrom = read.source;
     } catch (e) {
       integrity = 'unavailable';

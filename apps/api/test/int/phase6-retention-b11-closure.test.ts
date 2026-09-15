@@ -144,7 +144,7 @@ afterAll(async () => {
 }, 120_000);
 
 describe('F1 · overlapping archive actions on one manifest (0071 §1; Codex B11-F1)', () => {
-  it('the interleaving Codex named, through the governed path: A copies P and is held before the move is recorded; B (approved on P) starts meanwhile and is held back by the lock; A fails on Q, removes its copy inside the transaction, rolls back and pauses (infrastructure → retry); B then makes ITS OWN copy, records the move, commits and removes the hot copy — B\'s committed evidence is served from the archive tier and verifies; A resolved again executes Q', async () => {
+  it('the interleaving Codex named, through the governed path: A copies P and is held before the move is recorded; B (approved on P) starts meanwhile and is held back by the lock; A fails on Q, removes its OWN STAGED copy by name, rolls back and pauses (infrastructure → retry); B then makes ITS OWN copy, records the move, commits, publishes it under the locator and removes the hot copy — B\'s committed evidence is served from the archive tier and verifies; A resolved again executes Q', async () => {
     const { evdP, mP, mQ, a, b, restoreQ } = await twoActionsOnP('ovl');
     const held = fault.hold('b11.archive_after_copy_before_record', 'test');
     const pA = failing(execute(steward, a.id));
@@ -193,7 +193,7 @@ describe('F1 · overlapping archive actions on one manifest (0071 §1; Codex B11
     expect(await tierOf(mQ.manifest_id)).toBe('archive');
   }, 180_000);
 
-  it('the lock spans the CLEANUP boundary: A, failed on Q, is held inside its rollback cleanup with its copy of P still under the archive root and its transaction open; B, started meanwhile, is still held back; released, A removes its copy and rolls back, and B makes its own copy', async () => {
+  it('the CLEANUP boundary: A, failed on Q, is held inside its rollback cleanup with its STAGED copy of P still in the archive root (under its own attempt\'s name, adoptable by no one) and its transaction open; B, started meanwhile, waits at its start on the lock; released, A removes only its own staged file and rolls back, and B makes its own copy', async () => {
     const { mP, a, b, restoreQ } = await twoActionsOnP('cln');
     const held = fault.hold('b11.archive_cleanup_before_remove', 'test');
     const pA = failing(execute(steward, a.id));
@@ -262,7 +262,7 @@ describe('F1 · overlapping archive actions on one manifest (0071 §1; Codex B11
     }
   }, 180_000);
 
-  it('the lock ends with the BACKEND (0071, d): A is held after its copy and its session is terminated — the lock is gone, B adopts the copy, commits and removes the hot copy; released, A cannot prove its lock on its lost connection and LEAVES the copy in place; the server rolled A back; the controller keeps A\'s verdict and pauses it on a fresh connection; B\'s committed evidence is served and verifies; A resolved again executes Q', async () => {
+  it('the lock ends with the BACKEND (0071, d): A is held after its copy and its session is terminated — the lock is gone, but A\'s copy is STAGED under A\'s name, so B makes ITS OWN copy, commits, publishes and removes the hot copy; released, A\'s cleanup removes only its own staged file (B\'s published copy untouched); the server rolled A back; the controller keeps A\'s verdict and pauses it on a fresh connection; B\'s committed evidence is served and verifies; A resolved again executes Q', async () => {
     const { evdP, mP, mQ, a, b, restoreQ } = await twoActionsOnP('dead');
     const held = fault.hold('b11.archive_after_copy_before_record', 'test');
     const pA = failing(execute(steward, a.id));
@@ -302,7 +302,7 @@ describe('F1 · overlapping archive actions on one manifest (0071 §1; Codex B11
     expect((await verify(steward, a.id)).verification).toMatchObject({ verified: true });
   }, 180_000);
 
-  it('the SUBTRANSACTION keeps the locks through an ABORT (0071, b): A\'s record of P is cancelled by the superuser mid-statement (what a statement timeout does unattended) — the error aborts the execution\'s subtransaction only; held inside its cleanup, A still holds P\'s lock and B (started meanwhile) is still waiting at its start; released, A removes its own staged copy and pauses with the cancel on record; B then makes its own copy, commits and is served', async () => {
+  it('the SUBTRANSACTION keeps the transaction usable through an ABORT (0071, b): A\'s record of P is cancelled by the superuser mid-statement (what a statement timeout does unattended) — the error aborts the execution\'s subtransaction only, so the failure is still recorded; A\'s copy is staged under its own name whatever became of its locks; released, A removes only its own staged copy and pauses with the cancel on record; B then makes its own copy, commits and is served', async () => {
     const evdP = await uploadOne('abt-p');
     const mP = await manifestRow((await manifestOf(evdP.id, 1)).manifest_id);
     const a = await approved({ kind: 'archive', targetKind: 'evidence', selector: { manifestIds: [mP.manifest_id] } });

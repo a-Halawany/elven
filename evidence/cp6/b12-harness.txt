@@ -1,0 +1,7 @@
+=== the B12 harness at the B12 tree (apps/api: npx vitest run --config vitest.int.config.ts test/int/phase6-retention-b12.test.ts) on a fresh database eye_verify_b12_h2 (0001–0072; an isolated vault under a temp dir), 2026-09-15 — R0–R11 (the first run on eye_verify_b12_h1 was 10/12: two harness expectations corrected — the archive root's orphan ref names its root; a retry of a VERIFIED action is refused by the port, asserted as such) ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  20:17:45
+   Duration  2.84s (transform 535ms, setup 15ms, import 1.03s, tests 1.71s, environment 0ms)
