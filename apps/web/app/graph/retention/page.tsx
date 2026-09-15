@@ -14,17 +14,26 @@
  * Since B12 (0072) a restore moves archived bytes back to the hot tier (opened on demand, never by a schedule), and the COLD-TIER
  * MANAGER — a per-domain policy: a daily byte budget, the opens per evaluation, the attempts before escalation, the escalation
  * age, the restore window — is read by the execution and the evaluation; its state and its declaration have a section here.
+ * Since B13 (0073) a schedule is RETIRED by its own governed act (its history kept), and the customer export's DELIVERY is
+ * real: a package is signed with the tenant's Ed25519 key — declared by a credential REFERENCE bound in the server's process,
+ * the private key never answered, the PUBLIC key recorded and shown — carries an expiry and an ARCHIVE digest (one deterministic
+ * tar of manifest.json and the object files); its archive is DOWNLOADED through a governed, audited act; it is DELIVERED,
+ * human-gated, to a declared DESTINATION — a transfer station (a directory the product writes into and reads the recipient's
+ * receipt from: the disconnected-transfer path) or an https endpoint (POSTed, its bearer credential by reference) — and the
+ * exchange closes on the RECIPIENT'S ACKNOWLEDGEMENT (a receipt naming the same digests, verified), or is recorded MISMATCHED.
+ * The signing keys and the destinations have a section here; the download, the delivery and the deliveries sit on the action's record.
  *
  * Nothing here predicts a state: every row, count, digest and check is rendered as the server returned it, and every
- * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted —
- * is shown in the server's own words with its code.
+ * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted, an
+ * expired package, an unbound credential reference — is shown in the server's own words with its code. No credential VALUE
+ * is ever shown, sent or held here: a reference's name and its readiness only.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
 import {
-  retention, RETENTION_CLASSIFICATIONS, RETENTION_KINDS, RETENTION_TARGET_KINDS,
-  type RetentionActionDetail, type RetentionClassification, type RetentionEvaluation, type RetentionExecutionResult, type RetentionExportDetail, type RetentionKind, type RetentionOpenIntake,
-  type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionTargetKind, type RetentionTierPolicyIntake, type RetentionTierState, type RetentionVaultInventory, type RetentionVerdict,
+  retention, RETENTION_CLASSIFICATIONS, RETENTION_DESTINATION_KINDS, RETENTION_KEY_PURPOSES, RETENTION_KINDS, RETENTION_TARGET_KINDS,
+  type RetentionActionDetail, type RetentionClassification, type RetentionDestinationIntake, type RetentionDestinationKind, type RetentionEvaluation, type RetentionExecutionResult, type RetentionExportDetail, type RetentionExportDownload, type RetentionKeyPurpose, type RetentionKind, type RetentionOpenIntake,
+  type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionSigningKeyIntake, type RetentionTargetKind, type RetentionTierPolicyIntake, type RetentionTierState, type RetentionVaultInventory, type RetentionVerdict,
 } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -50,10 +59,10 @@ const fmtInterval = (v: unknown): string => {
   }
   return String(v);
 };
-/** A selector as the server stores it: manifest_id / source_id / manifest_ids (a chosen object set), the export's classification_ceiling and destination, or partition_key / to_seq. */
+/** A selector as the server stores it: manifest_id / source_id / manifest_ids (a chosen object set), the export's classification_ceiling, destination and (B13) expires_after, or partition_key / to_seq. */
 const selectorText = (v: unknown): string => {
   const s = rec(v);
-  const parts = (['manifest_id', 'source_id', 'manifest_ids', 'classification_ceiling', 'destination', 'partition_key', 'to_seq'] as const)
+  const parts = (['manifest_id', 'source_id', 'manifest_ids', 'classification_ceiling', 'destination', 'expires_after', 'partition_key', 'to_seq'] as const)
     .filter((k) => s[k] !== undefined && s[k] !== null)
     .map((k) => `${k} ${Array.isArray(s[k]) ? `${(s[k] as unknown[]).length} id(s): ${(s[k] as unknown[]).map(String).join(', ')}` : String(s[k])}`);
   return parts.length === 0 ? (Object.keys(s).length === 0 ? '(none)' : json(s)) : parts.join(' · ');
@@ -83,11 +92,36 @@ const lastEvaluationText = (v: unknown): string => {
 /** A blob root's inventory as the controller listed it: the counts, or the error the listing raised (nulls then). */
 const inventoryText = (i: RetentionVaultInventory | undefined): string =>
   i === undefined ? '—' : i.error !== undefined ? `not listed — ${i.error}` : `${str(i.blobs)} blob(s), ${str(i.staged)} staged, ${str(i.temp)} temp`;
+/** A retirement as the row records it (B13: a schedule's, a key's, a destination's): the instant and the reason, or "no" while the row is not retired. */
+const isRetired = (row: Row) => row['retired_at'] !== null && row['retired_at'] !== undefined;
+const retiredText = (row: Row): string => (isRetired(row) ? `${fmtInstant(row['retired_at'])} — ${str(row['retire_reason'])}` : 'no');
+/** A signature block as the manifest carries it (B11 scheme /1: the digest chain; B13 scheme /2: key-based, Ed25519): what names the scheme and, for /2, the key. */
+const signatureText = (v: unknown): string => {
+  const s = rec(v);
+  if (Object.keys(s).length === 0) return 'none recorded';
+  return `scheme ${str(s['scheme'])}${s['key_id'] !== undefined ? ` · key ${str(s['key_id'])} (${str(s['algorithm'])})` : ' · the digest chain, no key'}${s['purpose'] !== undefined ? ` · purpose ${str(s['purpose'])}` : ''}`;
+};
+/** The block's public key PEM, when the manifest or the download carries one (scheme /2); the export's record carries it under signing_key as well. */
+const pemOf = (v: unknown): string | null => {
+  const s = rec(v);
+  return typeof s['public_key_pem'] === 'string' ? s['public_key_pem'] : null;
+};
+/** The tar's bytes as the answer carries them (base64 → the bytes): what the Blob is built from. */
+const bytesOf = (base64: string): Uint8Array<ArrayBuffer> => {
+  const s = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(s.length));
+  for (let i = 0; i < s.length; i += 1) bytes[i] = s.charCodeAt(i);
+  return bytes;
+};
+/** The receipt JSON a person pastes for the acknowledge act: an object, or null while it is not one (the server states what it refuses of the object). */
+const receiptObjectOf = (text: string): Row | null => {
+  try { const v: unknown = JSON.parse(text); return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : null; } catch { return null; }
+};
 
 interface Outcome<T> { result: T | null; receipt: ReceiptT; problem: string | null }
 const none = <T,>(): Outcome<T> => ({ result: null, receipt: null, problem: null });
 
-interface OpenDraft { kind: RetentionKind; targetKind: RetentionTargetKind; manifestId: string; sourceId: string; manifestIds: string; classificationCeiling: RetentionClassification; partitionKey: string; toSeq: string; retentionProfile: string }
+interface OpenDraft { kind: RetentionKind; targetKind: RetentionTargetKind; manifestId: string; sourceId: string; manifestIds: string; classificationCeiling: RetentionClassification; expiresAfter: string; partitionKey: string; toSeq: string; retentionProfile: string }
 /** A chosen object set (B11): one id per line, blanks ignored — an archive's, a customer export's or (B12) a restore's selector. */
 const manifestIdsOf = (text: string): string[] => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
 const takesObjectSet = (kind: RetentionKind) => kind === 'archive' || kind === 'customer_export' || kind === 'restore';
@@ -104,11 +138,31 @@ function toOpenIntake(d: OpenDraft): RetentionOpenIntake {
     selector: {
       ...(d.manifestId.trim() === '' ? {} : { manifestId: d.manifestId.trim() }), ...(d.sourceId.trim() === '' ? {} : { sourceId: d.sourceId.trim() }),
       ...(ids.length === 0 ? {} : { manifestIds: ids }),
-      ...(d.kind === 'customer_export' ? { classificationCeiling: d.classificationCeiling, destination: 'export' as const } : {}),
+      ...(d.kind === 'customer_export' ? { classificationCeiling: d.classificationCeiling, destination: 'export' as const, ...(d.expiresAfter.trim() === '' ? {} : { expiresAfter: d.expiresAfter.trim() }) } : {}),
     },
     ...profile,
   };
 }
+
+/** A signing key as a person declares it (B13): the credential reference's NAME and the purpose — never a value. */
+interface KeyDraft { credentialRef: string; purpose: RetentionKeyPurpose }
+const EMPTY_KEY: KeyDraft = { credentialRef: '', purpose: 'demonstration' };
+const keyOk = (d: KeyDraft) => d.credentialRef.trim() !== '';
+const toKeyIntake = (d: KeyDraft): RetentionSigningKeyIntake => ({ credentialRef: d.credentialRef.trim(), purpose: d.purpose });
+
+/** A destination as a person declares it (B13): the credential reference is an https destination's and is sent only when given. */
+interface DestinationDraft { destinationKey: string; kind: RetentionDestinationKind; endpoint: string; credentialRef: string; recipient: string; purpose: string }
+const EMPTY_DESTINATION: DestinationDraft = { destinationKey: '', kind: 'transfer_station', endpoint: '', credentialRef: '', recipient: '', purpose: '' };
+const destinationOk = (d: DestinationDraft) => d.destinationKey.trim() !== '' && d.endpoint.trim() !== '' && d.recipient.trim() !== '' && d.purpose.trim() !== '';
+function toDestinationIntake(d: DestinationDraft): RetentionDestinationIntake {
+  return {
+    destinationKey: d.destinationKey.trim(), kind: d.kind, endpoint: d.endpoint.trim(), recipient: d.recipient.trim(), purpose: d.purpose.trim(),
+    ...(d.credentialRef.trim() === '' ? {} : { credentialRef: d.credentialRef.trim() }),
+  };
+}
+
+/** The archive as downloaded (B13 D7): the answer's record and the object URL of the Blob the person's browser saves — revoked after the click (the url then '' and the link gone), or when another download or selection replaces it. */
+interface Downloaded { filename: string; byteLength: number; archiveDigest: string; packageDigest: string; manifestDigest: string; signature: Row; expiresAt: string | null; url: string }
 
 interface ScheduleDraft { retentionProfile: string; targetKind: RetentionTargetKind; actionKind: RetentionKind; dueAfter: string; sourceId: string; ownerPrincipalId: string }
 const EMPTY_SCHEDULE: ScheduleDraft = { retentionProfile: '', targetKind: 'evidence', actionKind: 'review', dueAfter: '', sourceId: '', ownerPrincipalId: '' };
@@ -158,6 +212,23 @@ function Txt({ id, value, onChange, type }: { id: string; value: string; onChang
 }
 function Problem({ verb, problem }: { verb: string; problem: string | null }) {
   return problem === null ? null : <LiveStatus assertive><span style={critical}>{verb} — {problem}</span></LiveStatus>;
+}
+/** Preformatted text as the server sent it — a public key PEM, a signature block, a receipt — never reflowed. */
+function Block({ label, text }: { label: string; text: string }) {
+  return (
+    <ScrollBox label={label}>
+      <pre style={{ background: 'var(--eye-color-surface-secondary)', border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)', padding: 'var(--eye-space-8)', fontFamily: 'var(--eye-font-mono)', fontSize: 'var(--eye-type-mono-sm)', margin: 0, maxBlockSize: '18rem', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{text}</pre>
+    </ScrollBox>
+  );
+}
+/** A retirement's control (B13): the reason and the governed button, on a row that is not retired; the server refuses a second retirement and a reason under 8 characters. */
+function Retire({ id, reason, onReason, onRun }: { id: string; reason: string; onReason: (v: string) => void; onRun: () => Promise<void> }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 'var(--eye-space-4)', alignItems: 'center' }}>
+      <input aria-label={`reason to retire ${id} (at least 8 characters)`} placeholder="reason (8+ characters)" style={{ ...inputStyle, inlineSize: '12rem' }} value={reason} onChange={(e) => onReason(e.target.value)} />
+      <GovernedButton label="Retire" pendingLabel="retiring" variant="critical" disabled={reason.trim().length < 8} onRun={onRun} />
+    </span>
+  );
 }
 
 /** The verdict a verification returned, VERBATIM: each check and, on a pass, the scope the DeletionVerified event carries. */
@@ -340,7 +411,7 @@ export default function RetentionPage() {
   const [tierProblem, setTierProblem] = useState<string | null>(null);
   const [policyDraft, setPolicyDraft] = useState<PolicyDraft>(DEFAULT_POLICY);
   const [policyDeclared, setPolicyDeclared] = useState<Outcome<Row>>(none);
-  const [openDraft, setOpenDraft] = useState<OpenDraft>(() => ({ kind: 'review', targetKind: 'evidence', manifestId: '', sourceId: '', manifestIds: '', classificationCeiling: 'internal', partitionKey: `tenant:${scope.tenantId}`, toSeq: '', retentionProfile: '' }));
+  const [openDraft, setOpenDraft] = useState<OpenDraft>(() => ({ kind: 'review', targetKind: 'evidence', manifestId: '', sourceId: '', manifestIds: '', classificationCeiling: 'internal', expiresAfter: '', partitionKey: `tenant:${scope.tenantId}`, toSeq: '', retentionProfile: '' }));
   const [opened, setOpened] = useState<Outcome<{ actionId: string; kind: string; targetKind: string; state: string }>>(none);
   const [resolved, setResolved] = useState<Outcome<RetentionScopeSummary>>(none);
   const [rationale, setRationale] = useState('');
@@ -352,11 +423,54 @@ export default function RetentionPage() {
   const [exported, setExported] = useState<{ detail: RetentionExportDetail | null; problem: string | null }>({ detail: null, problem: null });
   const [rvReason, setRvReason] = useState('');
   const [revoked, setRevoked] = useState<Outcome<{ revocation: Record<string, unknown>; bytes: { removed: boolean; error?: string } }>>(none);
+  // B13: the schedules' retirement, the signing keys, the destinations, and the selected export's download, delivery and deliveries.
+  const [retireReasons, setRetireReasons] = useState<Record<string, string>>({});
+  const [scheduleRetired, setScheduleRetired] = useState<Outcome<RetentionRow>>(none);
+  const [keys, setKeys] = useState<RetentionRow[] | null>(null);
+  const [keysProblem, setKeysProblem] = useState<string | null>(null);
+  const [keyDraft, setKeyDraft] = useState<KeyDraft>(EMPTY_KEY);
+  const [keyDeclared, setKeyDeclared] = useState<Outcome<RetentionRow>>(none);
+  const [keyRetired, setKeyRetired] = useState<Outcome<RetentionRow>>(none);
+  const [destinations, setDestinations] = useState<RetentionRow[] | null>(null);
+  const [destinationsProblem, setDestinationsProblem] = useState<string | null>(null);
+  const [destinationDraft, setDestinationDraft] = useState<DestinationDraft>(EMPTY_DESTINATION);
+  const [destinationDeclared, setDestinationDeclared] = useState<Outcome<RetentionRow>>(none);
+  const [destinationRetired, setDestinationRetired] = useState<Outcome<RetentionRow>>(none);
+  const [deliveries, setDeliveries] = useState<{ rows: RetentionRow[] | null; problem: string | null }>({ rows: null, problem: null });
+  const [downloaded, setDownloaded] = useState<Outcome<Downloaded>>(none);
+  const [destinationKey, setDestinationKey] = useState('');
+  const [delivered, setDelivered] = useState<Outcome<RetentionRow>>(none);
+  const [collected, setCollected] = useState<Outcome<RetentionRow>>(none);
+  const [ackDeliveryId, setAckDeliveryId] = useState('');
+  const [ackReceipt, setAckReceipt] = useState('');
+  const [acknowledged, setAcknowledged] = useState<Outcome<RetentionRow>>(none);
 
   const loadSchedules = async () => {
     const r = await retention.listSchedules(scope);
     if (!r.ok || r.data === undefined) { setScheduleProblem(refusal(r, 'the schedules could not be listed')); return; }
     setScheduleProblem(null); setSchedules(r.data.schedules);
+  };
+  /** B13: the tenant's signing keys and the domain's destinations — read with the lists and again after their acts; each row carries a reference NAME and its readiness, never a value. */
+  const loadKeys = async () => {
+    const r = await retention.listSigningKeys(scope);
+    if (!r.ok || r.data === undefined) { setKeysProblem(refusal(r, 'the signing keys could not be listed')); return; }
+    setKeysProblem(null); setKeys(r.data.keys);
+  };
+  const loadDestinations = async () => {
+    const r = await retention.listDestinations(scope);
+    if (!r.ok || r.data === undefined) { setDestinationsProblem(refusal(r, 'the destinations could not be listed')); return; }
+    setDestinationsProblem(null); setDestinations(r.data.destinations);
+  };
+  /** B13: the action's deliveries as recorded — read beside the package, and still read when the package is revoked (its deliveries stay recorded). */
+  const loadDeliveries = async (actionId: string) => {
+    const r = await retention.listDeliveries(scope, actionId);
+    if (!r.ok || r.data === undefined) { setDeliveries({ rows: null, problem: refusal(r, 'the deliveries could not be listed') }); return; }
+    setDeliveries({ rows: r.data.deliveries, problem: null });
+  };
+  /** The object URL of a downloaded archive is the browser's to hold until the click; it is released when the download is replaced or the selection changes. */
+  const releaseDownload = () => {
+    if (downloaded.result !== null && downloaded.result.url !== '') URL.revokeObjectURL(downloaded.result.url);
+    setDownloaded(none());
   };
   const loadActions = async () => {
     const r = await retention.listActions(scope);
@@ -371,10 +485,11 @@ export default function RetentionPage() {
   };
   /** B11: the export package of a customer-export action — read beside the record; a revoked package answers 409, kept as the server's words. */
   const loadExport = async (actionId: string, kind: unknown) => {
-    if (kind !== 'customer_export') { setExported({ detail: null, problem: null }); return; }
+    if (kind !== 'customer_export') { setExported({ detail: null, problem: null }); setDeliveries({ rows: null, problem: null }); return; }
     const r = await retention.getExport(scope, actionId);
-    if (!r.ok || r.data === undefined) { setExported({ detail: null, problem: refusal(r, 'the export package could not be read') }); return; }
-    setExported({ detail: r.data, problem: null });
+    if (!r.ok || r.data === undefined) setExported({ detail: null, problem: refusal(r, 'the export package could not be read') });
+    else setExported({ detail: r.data, problem: null });
+    await loadDeliveries(actionId);
   };
   const loadDetail = async (actionId: string) => {
     const r = await retention.getAction(scope, actionId);
@@ -383,11 +498,12 @@ export default function RetentionPage() {
     await loadExport(actionId, r.data.action['kind']);
   };
   const select = (actionId: string) => {
-    setSelected(actionId); setDetail(null); setDetailProblem(null); setExported({ detail: null, problem: null });
+    setSelected(actionId); setDetail(null); setDetailProblem(null); setExported({ detail: null, problem: null }); setDeliveries({ rows: null, problem: null });
     setResolved(none()); setRationale(''); setApproved(none()); setExecuted(none()); setVerified(none()); setWdReason(''); setWithdrawn(none()); setRvReason(''); setRevoked(none());
+    releaseDownload(); setDestinationKey(''); setDelivered(none()); setCollected(none()); setAckDeliveryId(''); setAckReceipt(''); setAcknowledged(none());
     void loadDetail(actionId);
   };
-  useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); }, [scope]);
+  useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); void loadKeys(); void loadDestinations(); }, [scope]);
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (actions === null) return <Empty>reading the retention actions…</Empty>;
@@ -425,7 +541,10 @@ export default function RetentionPage() {
         vault observes. A review records the review and touches no bytes; a deletion tombstones, its bytes removed after the record committed;
         a log-floor move retires outbox history below the served points; an archive moves bytes to the cold tier and a <strong>restore</strong> moves
         them back. The <strong>cold-tier manager</strong> is the domain's policy — a daily byte budget, the opens per evaluation, the attempts before
-        escalation, the escalation age, the restore window — read by every execution and evaluation. Every count, digest and refusal below is the server's.
+        escalation, the escalation age, the restore window — read by every execution and evaluation. A customer export's package is <strong>signed</strong> with
+        the tenant's key (declared by a reference; its public key shown), carries an <strong>expiry</strong>, is <strong>downloaded</strong> through an audited act and
+        <strong>delivered</strong>, human-gated, to a declared <strong>destination</strong>, the exchange closing on the recipient's <strong>acknowledgement</strong>.
+        Every count, digest and refusal below is the server's; no credential value is ever shown.
       </UnknownNote>
 
       <section aria-labelledby="sched-h" style={cardStyle}>
@@ -434,16 +553,41 @@ export default function RetentionPage() {
         {schedules === null ? (scheduleProblem === null ? <Empty>reading the schedules…</Empty> : null) : schedules.length === 0 ? <Empty>No schedule is declared in this domain: nothing falls due on its own.</Empty> : (
           <ScrollBox label="retention schedules">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Schedule</Th><Th>Retention profile</Th><Th>Target</Th><Th>Action kind</Th><Th>Due after</Th><Th>Selector</Th><Th>State</Th><Th>Owner</Th><Th>Declared</Th><Th>Last evaluated</Th><Th>Last evaluation</Th></tr></thead>
-              <tbody>{schedules.map((s) => (
-                <tr key={String(s['schedule_id'])}>
-                  <Td mono>{short(s['schedule_id'])}</Td><Td mono>{str(s['retention_profile'])}</Td><Td>{str(s['target_kind'])}</Td><Td>{str(s['action_kind'])}</Td>
-                  <Td mono>{fmtInterval(s['due_after'])}</Td><Td mono>{selectorText(s['selector'])}</Td><Td>{str(s['state'])}</Td><Td mono>{short(s['owner_principal_id'])}</Td>
-                  <Td>{fmtInstant(s['declared_at'])}</Td><Td>{fmtInstant(s['last_evaluated_at'])}</Td><Td>{lastEvaluationText(s['last_evaluation'])}</Td>
-                </tr>))}</tbody>
+              <thead><tr><Th>Schedule</Th><Th>Retention profile</Th><Th>Target</Th><Th>Action kind</Th><Th>Due after</Th><Th>Selector</Th><Th>State</Th><Th>Owner</Th><Th>Declared</Th><Th>Last evaluated</Th><Th>Last evaluation</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
+              <tbody>{schedules.map((s) => {
+                const id = String(s['schedule_id']);
+                return (
+                  <tr key={id}>
+                    <Td mono>{short(s['schedule_id'])}</Td><Td mono>{str(s['retention_profile'])}</Td><Td>{str(s['target_kind'])}</Td><Td>{str(s['action_kind'])}</Td>
+                    <Td mono>{fmtInterval(s['due_after'])}</Td><Td mono>{selectorText(s['selector'])}</Td><Td><strong>{str(s['state'])}</strong></Td><Td mono>{short(s['owner_principal_id'])}</Td>
+                    <Td>{fmtInstant(s['declared_at'])}</Td><Td>{fmtInstant(s['last_evaluated_at'])}</Td><Td>{lastEvaluationText(s['last_evaluation'])}</Td>
+                    <Td>{retiredText(s)}{isRetired(s) && s['retired_by'] !== null && s['retired_by'] !== undefined ? <> by <Mono>{short(s['retired_by'])}</Mono></> : null}</Td>
+                    <Td>{s['state'] === 'active' ? (
+                      <Retire id={`schedule ${short(id)}`} reason={retireReasons[id] ?? ''} onReason={(v) => setRetireReasons({ ...retireReasons, [id]: v })}
+                        onRun={async () => {
+                          try {
+                            await act(setScheduleRetired, 'retirement', () => retention.retireSchedule(scope, id, (retireReasons[id] ?? '').trim()), (d) => rec(d['schedule']));
+                            setRetireReasons({ ...retireReasons, [id]: '' });
+                          } finally {
+                            // The retirement changes the row's state and the cold tier's view of it: the schedules are re-read whether or not the act was answered.
+                            await loadSchedules();
+                          }
+                        }} />
+                    ) : '—'}</Td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </ScrollBox>
         )}
+        <p style={muted}>
+          B13: a domain admin's act, <Mono>retention.schedule.retire</Mono> — a schedule is retired once, with a reason, and its history is kept: the row, its last
+          evaluation, the actions it opened and their events stay as they are; a retired schedule opens nothing at the next evaluation. The server refuses a second
+          retirement and a reason under 8 characters.
+        </p>
+        <Problem verb="not retired" problem={scheduleRetired.problem} />
+        {scheduleRetired.result !== null && <p>schedule <Mono>{str(scheduleRetired.result['schedule_id'])}</Mono> is now <strong>{str(scheduleRetired.result['state'])}</strong> · retired {retiredText(scheduleRetired.result)}</p>}
+        <Receipt receipt={scheduleRetired.receipt} />
 
         <h3 style={h3}>Evaluate the schedules</h3>
         <p style={muted}>
@@ -557,11 +701,12 @@ export default function RetentionPage() {
             {tier.schedules.length === 0 ? <Empty>No schedule: nothing returns to the cold tier on its own.</Empty> : (
               <ScrollBox label="cold tier schedules">
                 <table className="eye-table" style={tableStyle}>
-                  <thead><tr><Th>Schedule</Th><Th>Action kind</Th><Th>Retention profile</Th><Th>Due after</Th><Th>State</Th><Th>Last evaluated</Th><Th>Last evaluation</Th></tr></thead>
+                  <thead><tr><Th>Schedule</Th><Th>Action kind</Th><Th>Retention profile</Th><Th>Due after</Th><Th>State</Th><Th>Last evaluated</Th><Th>Last evaluation</Th><Th>Retired at</Th></tr></thead>
                   <tbody>{tier.schedules.map((s) => (
                     <tr key={String(s.schedule_id)}>
                       <Td mono>{short(s.schedule_id)}</Td><Td>{str(s.action_kind)}</Td><Td mono>{str(s.retention_profile)}</Td><Td mono>{fmtInterval(s.due_after)}</Td>
                       <Td>{str(s.state)}</Td><Td>{fmtInstant(s.last_evaluated_at)}</Td><Td>{lastEvaluationText(s.last_evaluation)}</Td>
+                      <Td>{s.retired_at === null || s.retired_at === undefined ? '—' : fmtInstant(s.retired_at)}</Td>
                     </tr>))}</tbody>
                 </table>
               </ScrollBox>
@@ -603,6 +748,160 @@ export default function RetentionPage() {
           </p>
         )}
         <Receipt receipt={policyDeclared.receipt} />
+      </section>
+
+      <section aria-labelledby="xd-h" style={cardStyle}>
+        <h2 id="xd-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Export delivery</h2>
+        <p style={muted}>
+          B13 (0073): what a customer export's package is signed with and where it is delivered. A <strong>signing key</strong> is the tenant's Ed25519 key,
+          declared by a credential <strong>reference</strong> bound in the server's process environment — the private key never leaves it and no answer carries
+          it; the server derives and records the <strong>public key</strong>, which a customer fetches to verify a package. The latest key not retired is the
+          active one: every export built while it is active carries scheme <Mono>eye-customer-export/2</Mono> and its key id; an export is refused at execution
+          while the active key's reference is not bound where the server runs. A key's <strong>purpose</strong> — demonstration or production — is shown wherever
+          its signature is. A <strong>destination</strong> is a declared exchange party of this domain: a <strong>transfer station</strong> (an absolute directory
+          outside the vault's roots — the disconnected-transfer path: the product writes the package, its signature and the exchange identity there and reads the
+          recipient's receipt back) or an <strong>https</strong> endpoint (the package POSTed with its digests and signature in headers; the bearer credential by
+          reference, never recorded; readiness <Mono>blocked-credential</Mono> while its reference is not bound). The download, the delivery and the deliveries of a
+          package sit on its action's record below. Every row and readiness here is the server's; no credential value is ever shown.
+        </p>
+
+        <h3 style={h3}>Signing keys ({keys === null ? '…' : keys.length})</h3>
+        {keysProblem !== null && <LiveStatus assertive><span style={critical}>not listed — {keysProblem}</span></LiveStatus>}
+        {keys === null ? (keysProblem === null ? <Empty>reading the signing keys…</Empty> : null) : keys.length === 0 ? <Empty>No signing key is declared for this tenant: a package is signed by the digest chain (scheme eye-customer-export/1) until one is.</Empty> : (
+          <ScrollBox label="export signing keys">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Key</Th><Th>Algorithm</Th><Th>Purpose</Th><Th>State</Th><Th>Credential reference</Th><Th>Readiness</Th><Th>Declared</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
+              <tbody>{keys.map((k) => {
+                const id = String(k['key_id']);
+                return (
+                  <tr key={id}>
+                    <Td mono>{id}</Td><Td>{str(k['algorithm'])}</Td><Td><strong>{str(k['purpose'])}</strong></Td><Td><strong>{str(k['state'])}</strong></Td>
+                    <Td mono>{str(k['credential_ref'])}</Td><Td>{str(k['readiness'])}</Td>
+                    <Td>by <Mono>{short(k['declared_by'])}</Mono> at {fmtInstant(k['declared_at'])}</Td><Td>{retiredText(k)}</Td>
+                    <Td>{isRetired(k) ? '—' : (
+                      <Retire id={`key ${id}`} reason={retireReasons[id] ?? ''} onReason={(v) => setRetireReasons({ ...retireReasons, [id]: v })}
+                        onRun={async () => {
+                          try {
+                            await act(setKeyRetired, 'retirement', () => retention.retireSigningKey(scope, id, (retireReasons[id] ?? '').trim()), (d) => rec(d['key']));
+                            setRetireReasons({ ...retireReasons, [id]: '' });
+                          } finally {
+                            await loadKeys();
+                          }
+                        }} />
+                    )}</Td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </ScrollBox>
+        )}
+        <Problem verb="not retired" problem={keyRetired.problem} />
+        {keyRetired.result !== null && <p>key <Mono>{str(keyRetired.result['key_id'])}</Mono> retired {retiredText(keyRetired.result)} — its public key stays recorded: a package it signed still verifies</p>}
+        <Receipt receipt={keyRetired.receipt} />
+
+        <h3 style={h3}>Declare a signing key</h3>
+        <p style={muted}>
+          The tenant's administrator's act (or the platform's), human-gated. The reference names an environment binding of the server —
+          <Mono>EYE_EXPORT_SIGNING_KEY_&lt;NAME&gt;</Mono> — whose value is the private key; it is resolved where the server runs and never sent from here.
+          The server refuses a reference it does not bind, a value that is not an Ed25519 private key and a key already declared. A demonstration key is
+          declared as such; production activation is a production key generated under the owner's key custody, declared with purpose production, and the
+          demonstration key retired.
+        </p>
+        <div style={rowStyle}>
+          <Field id="sk-ref" label="Credential reference (required; EYE_EXPORT_SIGNING_KEY_<NAME>)">{(id) => <Txt id={id} value={keyDraft.credentialRef} onChange={(v) => setKeyDraft({ ...keyDraft, credentialRef: v })} />}</Field>
+          <Field id="sk-purpose" label="Purpose">{(id) => <Sel id={id} value={keyDraft.purpose} options={RETENTION_KEY_PURPOSES} onChange={(v) => setKeyDraft({ ...keyDraft, purpose: v })} />}</Field>
+        </div>
+        <div style={controlRow}>
+          <GovernedButton label="Declare signing key" pendingLabel="declaring" disabled={!keyOk(keyDraft)}
+            onRun={async () => {
+              try {
+                await act(setKeyDeclared, 'declaration', () => retention.declareSigningKey(scope, toKeyIntake(keyDraft)), (d) => rec(d['key']));
+                setKeyDraft(EMPTY_KEY);
+              } finally {
+                await loadKeys();
+              }
+            }} />
+        </div>
+        <Problem verb="not declared" problem={keyDeclared.problem} />
+        {keyDeclared.result !== null && (
+          <>
+            <p>declared key <Mono>{str(keyDeclared.result['key_id'])}</Mono> · {str(keyDeclared.result['algorithm'])} · purpose <strong>{str(keyDeclared.result['purpose'])}</strong> · reference <Mono>{str(keyDeclared.result['credential_ref'])}</Mono> · declared at {fmtInstant(keyDeclared.result['declared_at'])}</p>
+            {pemOf(keyDeclared.result) !== null && <Block label="the declared key's public key" text={pemOf(keyDeclared.result) ?? ''} />}
+          </>
+        )}
+        <Receipt receipt={keyDeclared.receipt} />
+
+        <h3 style={h3}>Destinations ({destinations === null ? '…' : destinations.length})</h3>
+        {destinationsProblem !== null && <LiveStatus assertive><span style={critical}>not listed — {destinationsProblem}</span></LiveStatus>}
+        {destinations === null ? (destinationsProblem === null ? <Empty>reading the destinations…</Empty> : null) : destinations.length === 0 ? <Empty>No destination is declared in this domain: a package can be downloaded but delivered nowhere.</Empty> : (
+          <ScrollBox label="export destinations">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Key</Th><Th>Kind</Th><Th>Endpoint</Th><Th>Recipient</Th><Th>Purpose</Th><Th>Credential reference</Th><Th>Readiness</Th><Th>Declared</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
+              <tbody>{destinations.map((d) => {
+                const id = String(d['destination_id']);
+                return (
+                  <tr key={id}>
+                    <Td mono>{str(d['destination_key'])}</Td><Td>{str(d['kind'])}</Td><Td mono>{str(d['endpoint'])}</Td><Td>{str(d['recipient'])}</Td><Td>{str(d['purpose'])}</Td>
+                    <Td mono>{str(d['credential_ref'])}</Td><Td><strong>{str(d['readiness'])}</strong></Td>
+                    <Td>by <Mono>{short(d['declared_by'])}</Mono> at {fmtInstant(d['declared_at'])}</Td><Td>{retiredText(d)}</Td>
+                    <Td>{isRetired(d) ? '—' : (
+                      <Retire id={`destination ${str(d['destination_key'])}`} reason={retireReasons[id] ?? ''} onReason={(v) => setRetireReasons({ ...retireReasons, [id]: v })}
+                        onRun={async () => {
+                          try {
+                            await act(setDestinationRetired, 'retirement', () => retention.retireDestination(scope, id, (retireReasons[id] ?? '').trim()), (d2) => rec(d2['destination']));
+                            setRetireReasons({ ...retireReasons, [id]: '' });
+                          } finally {
+                            await loadDestinations();
+                          }
+                        }} />
+                    )}</Td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </ScrollBox>
+        )}
+        <Problem verb="not retired" problem={destinationRetired.problem} />
+        {destinationRetired.result !== null && <p>destination <Mono>{str(destinationRetired.result['destination_key'])}</Mono> retired {retiredText(destinationRetired.result)} — a delivery to it is refused from now on; its recorded deliveries stay</p>}
+        <Receipt receipt={destinationRetired.receipt} />
+
+        <h3 style={h3}>Declare a destination</h3>
+        <p style={muted}>
+          A domain admin's act, human-gated. The key is unique among the domain's active destinations (<Mono>a-z 0-9 -</Mono>, 2 to 64 characters). A transfer
+          station's endpoint is an absolute directory that exists where the server runs and lies outside the vault's roots; an https destination's endpoint is an
+          <Mono>https://</Mono> URL and may name a credential reference <Mono>EYE_DST_&lt;NAME&gt;</Mono> (carried as a bearer at egress, resolved where the server
+          runs, never recorded). The recipient is the exchange identity — who receives; the purpose is the exchange's. The server states what it refuses.
+        </p>
+        <div style={rowStyle}>
+          <Field id="ds-key" label="Destination key (required)">{(id) => <Txt id={id} value={destinationDraft.destinationKey} onChange={(v) => setDestinationDraft({ ...destinationDraft, destinationKey: v })} />}</Field>
+          <Field id="ds-kind" label="Kind">{(id) => <Sel id={id} value={destinationDraft.kind} options={RETENTION_DESTINATION_KINDS} onChange={(v) => setDestinationDraft({ ...destinationDraft, kind: v })} />}</Field>
+          <Field id="ds-endpoint" label={destinationDraft.kind === 'https' ? 'Endpoint (required; an https:// URL)' : 'Endpoint (required; an absolute directory outside the vault\'s roots)'}>{(id) => <Txt id={id} value={destinationDraft.endpoint} onChange={(v) => setDestinationDraft({ ...destinationDraft, endpoint: v })} />}</Field>
+          {destinationDraft.kind === 'https' && (
+            <Field id="ds-ref" label="Credential reference (optional; EYE_DST_<NAME>)">{(id) => <Txt id={id} value={destinationDraft.credentialRef} onChange={(v) => setDestinationDraft({ ...destinationDraft, credentialRef: v })} />}</Field>
+          )}
+          <Field id="ds-recipient" label="Recipient (required; who receives)">{(id) => <Txt id={id} value={destinationDraft.recipient} onChange={(v) => setDestinationDraft({ ...destinationDraft, recipient: v })} />}</Field>
+          <Field id="ds-purpose" label="Purpose (required)">{(id) => <Txt id={id} value={destinationDraft.purpose} onChange={(v) => setDestinationDraft({ ...destinationDraft, purpose: v })} />}</Field>
+        </div>
+        <div style={controlRow}>
+          <GovernedButton label="Declare destination" pendingLabel="declaring" disabled={!destinationOk(destinationDraft)}
+            onRun={async () => {
+              try {
+                // A credential reference belongs to an https destination only: one typed under a transfer station is not sent.
+                await act(setDestinationDeclared, 'declaration', () => retention.declareDestination(scope, toDestinationIntake(destinationDraft.kind === 'https' ? destinationDraft : { ...destinationDraft, credentialRef: '' })), (d) => rec(d['destination']));
+                setDestinationDraft(EMPTY_DESTINATION);
+              } finally {
+                await loadDestinations();
+              }
+            }} />
+        </div>
+        <Problem verb="not declared" problem={destinationDeclared.problem} />
+        {destinationDeclared.result !== null && (
+          <p>
+            declared destination <Mono>{str(destinationDeclared.result['destination_key'])}</Mono> <Mono>{short(destinationDeclared.result['destination_id'])}</Mono> · {str(destinationDeclared.result['kind'])} at <Mono>{str(destinationDeclared.result['endpoint'])}</Mono>
+            {' · '}recipient {str(destinationDeclared.result['recipient'])} · readiness <strong>{str(destinationDeclared.result['readiness'])}</strong> · declared at {fmtInstant(destinationDeclared.result['declared_at'])}
+          </p>
+        )}
+        <Receipt receipt={destinationDeclared.receipt} />
       </section>
 
       <section aria-labelledby="acts-h" style={cardStyle}>
@@ -654,11 +953,28 @@ export default function RetentionPage() {
                 {exported.detail === null ? (exported.problem === null ? <Empty>No package is recorded: the export has not executed.</Empty> : null) : (
                   <dl>
                     <DefinitionRow term="Package"><Mono>{str(exported.detail.package['locator_prefix'])}</Mono> · {str(exported.detail.package['object_count'])} object(s), {str(exported.detail.package['excluded_count'])} excluded, {str(exported.detail.package['byte_total'])} bytes · ceiling {str(exported.detail.package['classification_ceiling'])}</DefinitionRow>
-                    <DefinitionRow term="Digests">package <Mono>{str(exported.detail.package['package_digest'])}</Mono> · manifest.json <Mono>{str(exported.detail.package['manifest_digest'])}</Mono> · scheme {str(rec(exported.detail.package['signature'])['scheme'])}</DefinitionRow>
+                    <DefinitionRow term="Digests">package <Mono>{str(exported.detail.package['package_digest'])}</Mono> · manifest.json <Mono>{str(exported.detail.package['manifest_digest'])}</Mono> · archive <Mono>{exported.detail.archive_digest === null || exported.detail.archive_digest === undefined ? str(exported.detail.package['archive_digest']) : exported.detail.archive_digest}</Mono> (the tar's sha256, recorded at the build; none for a package built before B13)</DefinitionRow>
+                    <DefinitionRow term="Signature">
+                      {signatureText(exported.detail.package['signature'])}
+                      {exported.detail.signing_key !== null && exported.detail.signing_key !== undefined && <> · the key is <strong>{str(exported.detail.signing_key.state)}</strong>, purpose <strong>{str(exported.detail.signing_key.purpose)}</strong>{exported.detail.signing_key.state === 'retired' ? ' (a package signed by a key retired since still verifies against its recorded public key)' : ''}</>}
+                      {exported.detail.signing_key === null && <> · no key: the digest chain (a package built while no key was active)</>}
+                    </DefinitionRow>
+                    <DefinitionRow term="Expires">
+                      {exported.detail.expires_at === null ? 'never (a package built before B13 carries no expiry)' : exported.detail.expires_at === undefined ? str(exported.detail.package['expires_at']) : fmtInstant(exported.detail.expires_at)}
+                      {exported.detail.expired === true && <> · <strong style={critical}>expired</strong> — the download and the delivery are refused</>}
+                      {exported.detail.expired === false && <> · not expired</>}
+                    </DefinitionRow>
                     <DefinitionRow term="Built">by <Mono>{short(exported.detail.package['built_by'])}</Mono> at {fmtInstant(exported.detail.package['built_at'])} under approval <Mono>{short(exported.detail.package['approval_id'])}</Mono></DefinitionRow>
                     <DefinitionRow term="Revoked">{exported.detail.package['revoked_at'] === null || exported.detail.package['revoked_at'] === undefined ? 'no' : `${fmtInstant(exported.detail.package['revoked_at'])} — ${str(exported.detail.package['revoke_reason'])}`}</DefinitionRow>
                     <DefinitionRow term="Files">{exported.detail.files.length === 0 ? 'none on disk' : exported.detail.files.map((f) => <Mono key={f}>{f} </Mono>)}</DefinitionRow>
+                    <DefinitionRow term="Deliveries">{exported.detail.deliveries === undefined ? '—' : `${exported.detail.deliveries.length} recorded (below)`}</DefinitionRow>
                   </dl>
+                )}
+                {exported.detail !== null && exported.detail.signing_key !== null && exported.detail.signing_key !== undefined && (
+                  <>
+                    <p style={muted}>The public key of <Mono>{str(exported.detail.signing_key.key_id)}</Mono>, as recorded at its declaration — what a customer passes to <Mono>scripts/retention/verify-export.mjs --public-key</Mono> to verify the signature:</p>
+                    <Block label="the signing key's public key" text={exported.detail.signing_key.public_key_pem} />
+                  </>
                 )}
               </>
             )}
@@ -755,9 +1071,178 @@ export default function RetentionPage() {
           </section>
 
           {current['kind'] === 'customer_export' && (
+            <section aria-labelledby="dl-h" style={cardStyle}>
+              <h2 id="dl-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Download the package</h2>
+              <p style={muted}>
+                A governed, audited act (<Mono>retention.export.download</Mono>: the event is recorded on the action with the reader and the digest; the bytes ride the
+                same answer). The package's ARCHIVE is one deterministic tar — manifest.json first, then the object files by name — rebuilt from the files and compared
+                with the digest recorded at the build before it is served: a mismatch is refused, never served. Refused once the package is revoked or expired. The browser
+                saves <Mono>&lt;action id&gt;.tar</Mono> when the link below is clicked; verify it with <Mono>scripts/retention/verify-export.mjs --tar</Mono> and, for a
+                key-based signature, <Mono>--public-key</Mono>.
+              </p>
+              <div style={controlRow}>
+                <GovernedButton label="Download the archive" pendingLabel="downloading"
+                  onRun={async () => {
+                    releaseDownload();
+                    await act(setDownloaded, 'download', () => retention.downloadExport(scope, selected), (d) => {
+                      // The answer's base64 becomes a Blob the person's browser saves under the answer's filename; nothing is decoded or shown beyond its record.
+                      const dl = d['download'] as RetentionExportDownload;
+                      const url = URL.createObjectURL(new Blob([bytesOf(dl.base64)], { type: 'application/x-tar' }));
+                      return { filename: dl.filename, byteLength: dl.byteLength, archiveDigest: dl.archiveDigest, packageDigest: dl.packageDigest, manifestDigest: dl.manifestDigest, signature: rec(dl.signature), expiresAt: dl.expiresAt, url };
+                    });
+                  }} />
+              </div>
+              <Problem verb="not downloaded" problem={downloaded.problem} />
+              {downloaded.result !== null && (
+                <>
+                  <p>
+                    {downloaded.result.url === '' ? <>saved as <Mono>{downloaded.result.filename}</Mono> (download again for a fresh link)</> : (
+                      <a href={downloaded.result.url} download={downloaded.result.filename} style={{ color: 'var(--eye-color-accent-strong)', fontWeight: 600 }}
+                        onClick={() => {
+                          // The object URL is released once the browser has taken the bytes, and the link gives way to the statement; the record of the download stays.
+                          const url = downloaded.result?.url;
+                          if (url === undefined || url === '') return;
+                          setTimeout(() => {
+                            URL.revokeObjectURL(url);
+                            setDownloaded((cur) => (cur.result !== null && cur.result.url === url ? { ...cur, result: { ...cur.result, url: '' } } : cur));
+                          }, 1000);
+                        }}>
+                        save {downloaded.result.filename}
+                      </a>
+                    )}
+                    {' '}· {String(downloaded.result.byteLength)} bytes · archive digest <Mono>{downloaded.result.archiveDigest}</Mono>
+                    {' · '}package <Mono>{downloaded.result.packageDigest}</Mono> · manifest.json <Mono>{downloaded.result.manifestDigest}</Mono>
+                    {' · '}expires {downloaded.result.expiresAt === null ? 'never' : fmtInstant(downloaded.result.expiresAt)}
+                    {' · '}{signatureText(downloaded.result.signature)}
+                  </p>
+                  <Block label="the archive's signature block" text={JSON.stringify(downloaded.result.signature, null, 2)} />
+                </>
+              )}
+              <Receipt receipt={downloaded.receipt} />
+            </section>
+          )}
+
+          {current['kind'] === 'customer_export' && (
+            <section aria-labelledby="dv-h" style={cardStyle}>
+              <h2 id="dv-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Deliver the package</h2>
+              <p style={muted}>
+                The retention authority's act, human-gated: the VERIFIED, unrevoked, unexpired package is delivered to one of this domain's active destinations, the
+                rights of every exported source re-checked first (a right withdrawn since the build refuses the delivery) — the server refuses an executed but unverified
+                export, a package whose archive does not rebuild to its recorded digest, and a package without a key-based signature while the tenant now has an active
+                key (build the export again). A delivery that failed is a recorded fact with its class — destination retired, credential unbound, egress refused, transport,
+                receipt invalid, write failed — not a rolled-back one. To a transfer station the package, its signature and the exchange identity are written and the
+                delivery waits for the recipient's receipt; to an https endpoint the package is POSTed and the endpoint's answer is its receipt.
+              </p>
+              {destinations !== null && destinations.filter((d) => !isRetired(d)).length === 0 && <p style={muted}>no active destination is declared in this domain — declare one under Export delivery above</p>}
+              <div style={rowStyle}>
+                <Field id="dv-dest" label="Destination (by key; the readiness as listed)">{(id) => (
+                  <select id={id} style={wide} value={destinationKey} onChange={(e) => setDestinationKey(e.target.value)}>
+                    <option value="">— choose a destination —</option>
+                    {(destinations ?? []).filter((d) => !isRetired(d)).map((d) => (
+                      <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['kind'])} · {str(d['readiness'])} · {str(d['recipient'])}</option>
+                    ))}
+                  </select>
+                )}</Field>
+              </div>
+              <div style={controlRow}>
+                <GovernedButton label="Deliver to the destination" pendingLabel="delivering" variant="critical" disabled={destinationKey === ''}
+                  onRun={() => act(setDelivered, 'delivery', () => retention.deliverExport(scope, selected, destinationKey), (d) => rec(d['delivery']))} />
+              </div>
+              <Problem verb="not delivered" problem={delivered.problem} />
+              {delivered.result !== null && (
+                <p>
+                  delivery <Mono>{str(delivered.result['delivery_id'])}</Mono> attempt {str(delivered.result['attempt'])} is <strong>{str(delivered.result['state'])}</strong>
+                  {delivered.result['failure_class'] !== null && delivered.result['failure_class'] !== undefined && <> · <span style={critical}>failed: {str(delivered.result['failure_class'])}</span></>}
+                  {' · '}archive <Mono>{str(delivered.result['archive_digest'])}</Mono> · delivered at {fmtInstant(delivered.result['delivered_at'])}
+                  {delivered.result['signing_key_state'] !== undefined && <> · the signing key is {str(delivered.result['signing_key_state'])}</>}
+                </p>
+              )}
+              <Receipt receipt={delivered.receipt} />
+
+              <h3 style={h3}>Deliveries ({deliveries.rows === null ? '…' : deliveries.rows.length})</h3>
+              <p style={muted}>
+                The Content and Export Delivery Receipt: each delivery as recorded — the attempt, the destination, the state, the recipient's receipt as received (or the failure)
+                and its digest. A transfer-station delivery in state <Mono>delivered</Mono> waits for the recipient's <Mono>receipt.json</Mono> beside the package: collect it here;
+                a receipt carried out-of-band is presented to the acknowledge act below. The exchange closes <strong>acknowledged</strong> on a receipt naming the same archive and
+                package digests with <Mono>verified</Mono> true; other digests or <Mono>verified</Mono> false record it <strong>mismatched</strong> — the exchange denied, the
+                request and evidence preserved. A revoked package's deliveries stay recorded; no notice reaches the destination (a named remaining step).
+              </p>
+              {deliveries.problem !== null && <p><span style={critical}>not listed — {deliveries.problem}</span></p>}
+              {deliveries.rows === null ? (deliveries.problem === null ? <Empty>reading the deliveries…</Empty> : null) : deliveries.rows.length === 0 ? <Empty>No delivery is recorded for this export.</Empty> : (
+                <ScrollBox label="export deliveries">
+                  <table className="eye-table" style={tableStyle}>
+                    <thead><tr><Th>Delivery</Th><Th>Attempt</Th><Th>Destination</Th><Th>State</Th><Th>Delivered</Th><Th>Acknowledged</Th><Th>Receipt digest</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
+                    <tbody>{deliveries.rows.map((x) => {
+                      const id = String(x['delivery_id']);
+                      const dest = (destinations ?? []).find((d) => d['destination_id'] === x['destination_id']);
+                      const kind = x['kind'] ?? x['destination_kind'] ?? dest?.['kind'];
+                      const key = x['destination_key'] ?? dest?.['destination_key'];
+                      return (
+                        <tr key={id}>
+                          <Td mono>{short(id)}</Td><Td mono>{str(x['attempt'])}</Td>
+                          <Td>{key === undefined ? <Mono>{short(x['destination_id'])}</Mono> : <><Mono>{str(key)}</Mono> ({str(kind)})</>}</Td>
+                          <Td><strong>{str(x['state'])}</strong></Td><Td>{fmtInstant(x['delivered_at'])}</Td><Td>{fmtInstant(x['acknowledged_at'])}</Td>
+                          <Td mono>{str(x['receipt_digest'])}</Td><Td>{str(x['failure_class'])}</Td>
+                          <Td mono>{x['receipt'] === null || x['receipt'] === undefined ? 'none yet' : json(x['receipt'])}</Td>
+                          <Td>{x['state'] === 'delivered' && kind === 'transfer_station' ? (
+                            <GovernedButton label="Collect receipt" pendingLabel="collecting"
+                              onRun={() => act(setCollected, 'collection', () => retention.collectReceipt(scope, selected, id), (d) => rec(d['delivery']))} />
+                          ) : '—'}</Td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </ScrollBox>
+              )}
+              <Problem verb="receipt not collected" problem={collected.problem} />
+              {collected.result !== null && (
+                <>
+                  <p>delivery <Mono>{str(collected.result['delivery_id'])}</Mono> is now <strong>{str(collected.result['state'])}</strong>{collected.result['acknowledged_at'] !== null && collected.result['acknowledged_at'] !== undefined ? <> · acknowledged at {fmtInstant(collected.result['acknowledged_at'])}</> : null} · receipt digest <Mono>{str(collected.result['receipt_digest'])}</Mono></p>
+                  <Block label="the receipt as recorded" text={JSON.stringify(collected.result['receipt'] ?? null, null, 2)} />
+                </>
+              )}
+              <Receipt receipt={collected.receipt} />
+
+              <h3 style={h3}>Acknowledge a delivery</h3>
+              <p style={muted}>
+                The same act, for a receipt presented out-of-band — an https recipient that answered without verifying, a transfer station's receipt carried by hand — on a
+                delivery in state delivered. The receipt is a JSON object: <Mono>receipt_id</Mono>, <Mono>recipient</Mono>, <Mono>received_at</Mono>, <Mono>archive_digest</Mono>,
+                <Mono>package_digest</Mono>, <Mono>verified</Mono>, and the <Mono>delivery_id</Mono> and <Mono>attempt</Mono> it answers (a receipt naming another delivery is refused);
+                anything else is kept as received.
+              </p>
+              <div style={rowStyle}>
+                <Field id="ak-delivery" label="Delivery (in state delivered)">{(id) => (
+                  <select id={id} style={wide} value={ackDeliveryId} onChange={(e) => setAckDeliveryId(e.target.value)}>
+                    <option value="">— choose a delivery —</option>
+                    {(deliveries.rows ?? []).filter((x) => x['state'] === 'delivered').map((x) => (
+                      <option key={String(x['delivery_id'])} value={String(x['delivery_id'])}>{short(x['delivery_id'])} · attempt {str(x['attempt'])} · {fmtInstant(x['delivered_at'])}</option>
+                    ))}
+                  </select>
+                )}</Field>
+                <Field id="ak-receipt" label="Receipt (JSON object)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '8rem', fontFamily: 'var(--eye-font-mono)' }} value={ackReceipt} onChange={(e) => setAckReceipt(e.target.value)} />}</Field>
+              </div>
+              <div style={controlRow}>
+                <GovernedButton label="Acknowledge on this receipt" pendingLabel="acknowledging" disabled={ackDeliveryId === '' || receiptObjectOf(ackReceipt) === null}
+                  onRun={async () => {
+                    await act(setAcknowledged, 'acknowledgement', () => retention.acknowledgeDelivery(scope, selected, ackDeliveryId, receiptObjectOf(ackReceipt) ?? {}), (d) => rec(d['delivery']));
+                    setAckDeliveryId(''); setAckReceipt('');
+                  }} />
+              </div>
+              <Problem verb="not acknowledged" problem={acknowledged.problem} />
+              {acknowledged.result !== null && (
+                <>
+                  <p>delivery <Mono>{str(acknowledged.result['delivery_id'])}</Mono> is now <strong>{str(acknowledged.result['state'])}</strong>{acknowledged.result['acknowledged_at'] !== null && acknowledged.result['acknowledged_at'] !== undefined ? <> · acknowledged at {fmtInstant(acknowledged.result['acknowledged_at'])}</> : null} · receipt digest <Mono>{str(acknowledged.result['receipt_digest'])}</Mono></p>
+                  <Block label="the receipt as recorded" text={JSON.stringify(acknowledged.result['receipt'] ?? null, null, 2)} />
+                </>
+              )}
+              <Receipt receipt={acknowledged.receipt} />
+            </section>
+          )}
+
+          {current['kind'] === 'customer_export' && (
             <section aria-labelledby="rv-h" style={cardStyle}>
               <h2 id="rv-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Revoke the export package</h2>
-              <p style={muted}>The retention authority's act, human-gated: the package is revoked once with a reason and its bytes are removed after the commit; the read route refuses it from then on.</p>
+              <p style={muted}>The retention authority's act, human-gated: the package is revoked once with a reason and its bytes are removed after the commit; the read route, the download and a further delivery refuse it from then on. Its recorded deliveries stay; a recipient's copy is outside the product's custody and no notice reaches the destination (a named remaining step).</p>
               <Field id="rv-reason" label="Reason (at least 8 characters, required)">{(id) => <Txt id={id} value={rvReason} onChange={setRvReason} />}</Field>
               <div style={controlRow}>
                 <GovernedButton label="Revoke the package" pendingLabel="revoking" variant="critical" disabled={rvReason.trim().length < 8}
@@ -777,8 +1262,10 @@ export default function RetentionPage() {
           The steward's act, under the purpose <Mono>retention</Mono>: the workflow's first durable state, announced by RetentionActionDue. An evidence
           selector names a manifest id or a source id (that source's superseded versions) — an archive, a restore or a customer export may name a chosen
           object set instead (manifest ids, one per line; a restore names the archived manifests to move back to the hot tier), and a customer export names
-          its classification ceiling (its redaction gate; the export namespace is its destination); a log partition names this tenant's partition key and
-          the sequence the floor moves to, and takes the <Mono>log_floor</Mono> kind only. The server states what it refuses.
+          its classification ceiling (its redaction gate; the export namespace is where its package is built — its delivery to a declared destination is its
+          own act) and may name how long the package stays downloadable and deliverable (an interval, 1 hour to 1 year; the server's default is 30 days);
+          a log partition names this tenant's partition key and the sequence the floor moves to, and takes the <Mono>log_floor</Mono> kind only. The server
+          states what it refuses.
         </p>
         <div style={rowStyle}>
           <Field id="op-kind" label="Kind">{(id) => <Sel id={id} value={openDraft.kind} options={RETENTION_KINDS} onChange={(v) => setOpenDraft({ ...openDraft, kind: v })} />}</Field>
@@ -793,7 +1280,10 @@ export default function RetentionPage() {
               <Field id="op-manifest-ids" label="Manifest ids (a chosen object set — an archive's, a restore's or a customer export's; one id per line, 1 to 200)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem' }} value={openDraft.manifestIds} onChange={(e) => setOpenDraft({ ...openDraft, manifestIds: e.target.value })} />}</Field>
             )}
             {openDraft.kind === 'customer_export' && (
-              <Field id="op-ceiling" label="Classification ceiling (the redaction gate: objects above it are excluded)">{(id) => <Sel id={id} value={openDraft.classificationCeiling} options={RETENTION_CLASSIFICATIONS} onChange={(v) => setOpenDraft({ ...openDraft, classificationCeiling: v })} />}</Field>
+              <>
+                <Field id="op-ceiling" label="Classification ceiling (the redaction gate: objects above it are excluded)">{(id) => <Sel id={id} value={openDraft.classificationCeiling} options={RETENTION_CLASSIFICATIONS} onChange={(v) => setOpenDraft({ ...openDraft, classificationCeiling: v })} />}</Field>
+                <Field id="op-expires" label="Expires after (optional, e.g. 30 days; 1 hour to 1 year — the package's download and delivery are refused after)">{(id) => <Txt id={id} value={openDraft.expiresAfter} onChange={(v) => setOpenDraft({ ...openDraft, expiresAfter: v })} />}</Field>
+              </>
             )}
           </div>
         ) : (

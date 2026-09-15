@@ -22,19 +22,33 @@
  * the ports; here it surfaces as the execution refusals the controller classifies (budget_exhausted, attempts_exhausted) and as the
  * observable state (`tierState`: the port's state with the vault's inventory of both roots).
  *
+ * CP-6 B13 (0073): the customer export's DELIVERY. The package's ARCHIVE is one deterministic ustar tar built in memory at the
+ * build from the manifest and the files it lists, its digest recorded with the package and re-verified — the tar rebuilt from
+ * the files on disk — before every download and every delivery (D2, C4, C12); the SIGNATURE is key-based (`eye-customer-export/2`)
+ * when the tenant has declared an active signing key — the private key a credential BY REFERENCE resolved from the process
+ * environment at the build, the public key recorded and served; an active key not bound in this deployment refuses the
+ * execution before the state moves (D3, C14); a package EXPIRES after the action's selector's `expires_after` (D4, C3). A
+ * DELIVERY is a governed, human-gated act on a verified, unrevoked, unexpired package to a declared destination — a transfer
+ * station (a directory: the archive, the signature and the exchange identity written; the recipient's receipt read back by the
+ * collect act) or an https endpoint (the archive POSTed once by the delivery egress) — every outcome recorded (D5, D6, D8); the
+ * DOWNLOAD is a governed, audited read of the tar (D7). The schedule's RETIREMENT is its own governed act, its history kept (D1).
+ *
  * Events: RetentionActionDue (L3-I04) when an action opens — by a person or by the schedule evaluation;
  * DeletionVerified (L3-I05) when a deletion or a log-floor move verifies, carrying the scope digest, the approvals, what
  * executed, what was held, and the residual inventory.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
-import { canonicalHeaderDigest, errorBody } from '@eye/contracts';
+import { canonicalHeaderDigest, contentDigest, errorBody } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { rebuildHeaderFromRow, type ObjectRow } from '../objects/objects.service.js';
 import { VaultService, VaultIntegrityError, sha256, type VaultName } from '../observation/vault/vault.service.js';
 import * as fault from '../observation/fault-injection.js';
 import type { RetentionReads, RetentionWrites } from './retention.capabilities.js';
 import { EXPORT_FORMAT, SIGNATURE_SCHEME, objectsDigestOf, packageDigestOf, type ExportManifestShape } from './export-package.js';
+import { EXPORT_ARCHIVE_MAX_BYTES, ExportArchiveError, archiveDigestOf, archiveOfPackage, listedFilesOf, type ArchiveEntry } from './export-archive.js';
+import { DestinationCredentialStore, ExportSigningKeyStore, KEY_SIGNATURE_SCHEME, SIGNING_ALGORITHM } from './export-signing.js';
+import { ExportDeliveryService, TransferStationRefused, type DeliveryPackage } from './export-delivery.service.js';
 
 /**
  * An execution that cannot stand (0067 §1, generalised by B11): a hold placed since the approval (`legal_hold`), the export's
@@ -58,6 +72,8 @@ export function failureClassOf(e: unknown): ExecutionFailureClass {
   if (message.startsWith('retention execution rejected (rights_changed)')) return 'authority_disputed';
   if (message.startsWith('retention execution rejected (scope_changed)') || message.startsWith('retention execution rejected (references_changed)')) return 'unresolved_dependency';
   if (message.startsWith('retention execution rejected (budget_exhausted)')) return 'infrastructure';
+  // B13 (C14): the tenant's active signing key is not bound in this deployment — a retry once it is (the key declared on another host).
+  if (message.startsWith('retention execution rejected (signing_key_unbound)')) return 'infrastructure';
   return 'infrastructure';
 }
 
@@ -68,6 +84,20 @@ const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as 
 /** The classification order the redaction gate uses (decision.classification_rank): an unknown level ranks as restricted. */
 const classificationRank = (c: unknown): number => { const i = (CLASSIFICATIONS as readonly string[]).indexOf(String(c ?? '')); return i < 0 ? 3 : i; };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * B13 (D4, C3): a customer export's `expiresAfter` — an interval spelled as a dueAfter, between 1 hour and 1 year, ONE floor in SQL
+ * (open_action, declare_schedule) and here alike, no test-only branch. The comparison mirrors PostgreSQL's interval ordering, in which
+ * a month is 30 days and a year 12 months (360 days): '12 months' is the ceiling, '365 days' lies above it.
+ */
+const EXPIRES_AFTER = /^(\d+) (seconds?|minutes?|hours?|days?|months?|years?)$/;
+const EXPIRES_AFTER_UNIT_SECONDS: Record<string, number> = { second: 1, minute: 60, hour: 3600, day: 86400, month: 30 * 86400, year: 360 * 86400 };
+const EXPIRES_AFTER_FLOOR_SECONDS = 3600; const EXPIRES_AFTER_CEILING_SECONDS = 360 * 86400;
+export function expiresAfterSeconds(value: string): number | null {
+  const m = EXPIRES_AFTER.exec(value);
+  if (m === null) return null;
+  const unit = (m[2] as string).replace(/s$/, '');
+  return Number(m[1]) * (EXPIRES_AFTER_UNIT_SECONDS[unit] as number);
+}
 /** The canonical row's `payload ->> 'manifest_id'` as a where-clause expression (the manifest an evidence version names). */
 const sqlPayloadManifestId = sql`(payload ->> 'manifest_id')`;
 const bad = (correlationId: string, message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, message), 422); };
@@ -94,12 +124,20 @@ export function validateOpenAction(p: Row, correlationId: string): OpenActionInt
     if (manifestId !== null && !UUID.test(manifestId)) bad(correlationId, 'selector.manifestId is an id');
     if (sourceId !== null && !UUID.test(sourceId)) bad(correlationId, 'selector.sourceId is an id');
     // B11 (D7): a customer export names its classification ceiling (the redaction gate) and binds the export namespace as its destination.
+    // B13 (D4, C3): and its expiry — `expiresAfter`, an interval between 1 hour and 1 year, stored as `expires_after`; absent, the port's 30 days.
     const exportKeys: Row = {};
     if (kind === 'customer_export') {
       const ceiling = sel['classificationCeiling'] === undefined ? '' : String(sel['classificationCeiling']);
       if (!(CLASSIFICATIONS as readonly string[]).includes(ceiling)) bad(correlationId, `selector.classificationCeiling is one of ${CLASSIFICATIONS.join(', ')} (a customer export names its ceiling)`);
       if (sel['destination'] !== undefined && String(sel['destination']) !== 'export') bad(correlationId, 'selector.destination is export (the export namespace of the vault is the only destination this release binds)');
       exportKeys['classification_ceiling'] = ceiling; exportKeys['destination'] = 'export';
+      if (sel['expiresAfter'] !== undefined && sel['expiresAfter'] !== null) {
+        const expiresAfter = String(sel['expiresAfter']);
+        const seconds = expiresAfterSeconds(expiresAfter);
+        if (seconds === null) bad(correlationId, 'selector.expiresAfter is an interval such as "30 days"');
+        if ((seconds as number) < EXPIRES_AFTER_FLOOR_SECONDS || (seconds as number) > EXPIRES_AFTER_CEILING_SECONDS) bad(correlationId, 'selector.expiresAfter is between 1 hour and 1 year');
+        exportKeys['expires_after'] = expiresAfter;
+      }
     }
     return { kind: kind as OpenActionIntake['kind'], targetKind: 'evidence',
              // The ids are stored lower-cased: every comparison downstream (the resolution's chosen object set, the safe scope's citations) is on the uuid, not on its spelling.
@@ -119,7 +157,7 @@ export interface ExecutionOutcome { executed: number; held: number; refused: num
 
 @Injectable()
 export class RetentionService {
-  constructor(private readonly vault: VaultService) {}
+  constructor(private readonly vault: VaultService, private readonly signing: ExportSigningKeyStore, private readonly credentials: DestinationCredentialStore, private readonly delivery: ExportDeliveryService) {}
 
   /** RetentionActionDue@v1 — the event an opened action announces (stable references, no replicas). */
   dueEvent(a: { actionId: string; tenantId: string; domainId: string; kind: string; targetKind: string; selector: Row; retentionProfile: string | null; scheduleId: string | null; dueFrom: string; openedBy: string; action: string }): { eventType: string; payload: Row } {
@@ -143,6 +181,15 @@ export class RetentionService {
     if (action === null) throw new HttpException(errorBody('EYE_STA_001', a.correlationId, 'no authorized retention action matches'), 404);
     const kind = String(action['kind']);
     const scope = { tenantId: a.tenantId, domainId: a.domainId };
+    // B13 (D3, C14): a customer export whose tenant has an ACTIVE signing key is built only where that key's reference is bound — refused here,
+    // BEFORE the state moves (the controller pauses the action for a retry, no attempt counted; the key declared on another host is bound on
+    // this one, or retired). A package is never silently downgraded to the digest chain once a key is declared.
+    if (kind === 'customer_export') {
+      const active = await this.activeSigningKey(cap, a.tenantId);
+      if (active !== null && !this.signing.has(String(active['credential_ref'] ?? ''))) {
+        throw new Error(`retention execution rejected (signing_key_unbound): the tenant's active export signing key ${String(active['key_id'])} is not bound in this deployment (${String(active['credential_ref'])}); the package was not built`);
+      }
+    }
     // begin_execution (0070 §5; 0071 §1) re-checks what the approval assumed and LOCKS, for this transaction, every manifest the action will
     // move or remove — an execution naming a manifest another execution holds waits here, with nothing copied and nothing recorded.
     const items = await cap.beginExecution({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, actor: a.actor, correlationId: a.correlationId });
@@ -392,6 +439,13 @@ export class RetentionService {
    * tier they are in, written as <manifest_id>.bin; then manifest.json with the package's authorization (the live approval on the
    * resolved scope), its gates, the objects (the 43-field header and the payload as stored), what was excluded and why, and the
    * signature block: the digest chain bound to the action, the scope digest and the approval. The port records the same digests.
+   *
+   * B13 (D2, D3; C4, C5): with an ACTIVE signing key the block is key-based (`eye-customer-export/2`: the key id, the algorithm and
+   * the Ed25519 signature over the ASCII hex of the package digest, the private key resolved by reference at this instant and never
+   * recorded); the ARCHIVE — the deterministic tar of manifest.json and the files the manifest lists, at the manifest's own built_at —
+   * is built from the in-memory file set before the port is called (never written into the package directory: B11's B4/B5 pin the
+   * directory's files and the execution rows) and its digest travels to the port with the key id; the port's answer (the archive
+   * digest, the key, the expiry) is the record_export_package execution row's evidence.
    */
   private async buildExportPackage(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, action: Row, items: Row[], a: { actionId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<{ executed: number; refused: number; redactionRefused: number; refusals: string[]; package: Row | null }> {
     const scopeDigest = String(action['scope_digest']);
@@ -409,6 +463,8 @@ export class RetentionService {
     await this.vault.removePackage(scope, a.actionId);
     let executed = 0; let refused = 0; let redactionRefused = 0; const refusals: string[] = []; let byteTotal = 0;
     const objects: Row[] = [];
+    // The in-memory file set the archive is built from (C4): each object's bytes as written, under its package name.
+    const files: ArchiveEntry[] = [];
     for (const item of items) {
       if (String(item['item_kind']) !== 'manifest' || String(item['disposition']) !== 'execute') continue;
       const ref = String(item['ref']); const itemId = String(item['item_id']); const details = (item['details'] ?? {}) as Row;
@@ -439,6 +495,7 @@ export class RetentionService {
       }
       const file = `${ref}.bin`;
       const written = await this.vault.writePackageFile(scope, a.actionId, file, bytes);
+      files.push({ name: file, bytes });
       const manifest = ((await cap.readManifests().selectAll().where('manifest_id' as never, '=', ref as never).executeTakeFirst()) as Row | undefined) ?? {};
       const contract = ((await cap.readSourceContracts().select(['source_key' as never, 'rights_state' as never]).where('source_id' as never, '=', String(manifest['source_id']) as never).where('contract_version' as never, '=', Number(manifest['contract_version']) as never).executeTakeFirst()) as Row | undefined) ?? {};
       objects.push({
@@ -470,15 +527,39 @@ export class RetentionService {
     };
     // The signature block: the binding (bound_to) and the statement are INSIDE the package digest (the digest is computed over them, then
     // placed beside them), so a tampered binding fails the chain offline; the port asserts the same binding against the action.
+    // B13 (D3): with an active signing key the statement names the key and the scheme is /2 — the key's reference resolved NOW (the
+    // pre-check in `execute` refused an unbound key before the state moved; a binding removed since is the same refusal, after it).
+    const active = await this.activeSigningKey(cap, a.tenantId);
     const boundTo = { action_id: a.actionId, scope_digest: scopeDigest, approval_id: approvalId };
-    const statement = 'the package digest is bound to the approval on the resolved scope and recorded in the append-only retention ledger; verify offline with scripts/retention/verify-export.mjs and authenticate the digest against the product record';
+    const statement = active === null
+      ? 'the package digest is bound to the approval on the resolved scope and recorded in the append-only retention ledger; verify offline with scripts/retention/verify-export.mjs and authenticate the digest against the product record'
+      : `the package digest is bound to the approval on the resolved scope, recorded in the append-only retention ledger and signed (Ed25519) by the tenant's export signing key ${String(active['key_id'])}; verify offline with scripts/retention/verify-export.mjs --public-key <the key's PEM, served by the export read route> and authenticate the digest against the product record`;
     const packageDigest = packageDigestOf({ ...body, signature: { bound_to: boundTo, statement } });
-    const signature: Row = { scheme: SIGNATURE_SCHEME, objects_digest: objectsDigestOf(objects), package_digest: packageDigest, bound_to: boundTo, statement };
+    let signature: Row = { scheme: SIGNATURE_SCHEME, objects_digest: objectsDigestOf(objects), package_digest: packageDigest, bound_to: boundTo, statement };
+    let signingKeyId: string | null = null;
+    if (active !== null) {
+      const keyId = String(active['key_id']); const ref = String(active['credential_ref'] ?? '');
+      const signed = this.signing.sign(ref, packageDigest);
+      if (signed === null) throw new RetentionExecutionRolledBack(a.actionId, 'infrastructure', `the tenant's active export signing key ${keyId} is not bound in this deployment (${ref}); the package was not built`);
+      signature = { ...signature, scheme: KEY_SIGNATURE_SCHEME, key_id: keyId, algorithm: SIGNING_ALGORITHM, signature: signed };
+      signingKeyId = keyId;
+    }
     const fileBytes = Buffer.from(`${JSON.stringify({ ...body, signature }, null, 2)}\n`, 'utf8');
     const manifestFile = await this.vault.writePackageFile(scope, a.actionId, 'manifest.json', fileBytes);
-    const pkg = await cap.recordExportPackage({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, approvalId, manifestDigest: manifestFile.contentDigest, packageDigest, signature, objectCount: executed, excludedCount: excluded.length, byteTotal, actor: a.actor, correlationId: a.correlationId });
+    // THE ARCHIVE (D2, C4): built in memory from the manifest's bytes and the files it lists, at the manifest's own built_at; its digest recorded with the package.
+    let archiveDigest: string;
+    try { archiveDigest = archiveDigestOf(archiveOfPackage(fileBytes, files)); }
+    catch (e) { throw new RetentionExecutionRolledBack(a.actionId, 'infrastructure', `the package's archive did not build: ${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300)}`); }
+    const pkg = await cap.recordExportPackage({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, approvalId, manifestDigest: manifestFile.contentDigest, packageDigest, signature, objectCount: executed, excludedCount: excluded.length, byteTotal, archiveDigest, signingKeyId, actor: a.actor, correlationId: a.correlationId });
     await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId: null, port: 'retention.record_export_package', outcome: 'done', evidence: pkg, actor: a.actor, correlationId: a.correlationId });
     return { executed, refused, redactionRefused, refusals, package: pkg };
+  }
+
+  /** B13 (D3): the tenant's active signing key row (the latest non-retired, as the port says), or null; the row carries the reference's NAME and the public key, never a value. */
+  private async activeSigningKey(cap: RetentionReads, tenantId: string): Promise<Row | null> {
+    const keyId = await cap.activeExportSigningKey(tenantId);
+    if (keyId === null) return null;
+    return ((await cap.readExportSigningKeys().selectAll().where('tenant_id' as never, '=', tenantId as never).where('key_id' as never, '=', keyId as never).executeTakeFirst()) as Row | undefined) ?? null;
   }
 
   /**
@@ -656,17 +737,228 @@ export class RetentionService {
     return { ...(await cap.tierState(scope)), vault: { evidence: await inventory('evidence'), archive: await inventory('archive') } };
   }
 
-  /** B11 (0070 §3): the export package's record with its manifest as written and the files the package directory holds (the read route). */
-  async exportPackage(cap: RetentionReads, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ package: Row; manifest: Row | null; files: string[] } | null> {
+  /**
+   * B11 (0070 §3): the export package's record with its manifest as written and the files the package directory holds (the read route).
+   * B13 (D3, D4, D6): the signing key the package names — its public PEM, purpose and state NOW, so a customer can fetch the key and
+   * verify offline — the expiry and whether it has passed, the archive digest, and the deliveries recorded on the action.
+   */
+  async exportPackage(cap: RetentionReads, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ package: Row; manifest: Row | null; files: string[]; signing_key: Row | null; expires_at: string | null; expired: boolean; archive_digest: string | null; deliveries: Row[] } | null> {
     const row = ((await cap.readExportPackages().selectAll().where('action_id' as never, '=', actionId as never).executeTakeFirst()) as Row | undefined);
     if (row === undefined) return null;
     const bytes = await this.vault.readPackageFile(scope, actionId, 'manifest.json').then((b) => b, () => null);
     let manifest: Row | null = null;
     try { manifest = bytes === null ? null : (JSON.parse(bytes.toString('utf8')) as Row); } catch { manifest = null; }
-    return { package: row, manifest, files: await this.vault.listPackage(scope, actionId) };
+    const expiresAt = instantOf(row['expires_at']);
+    return { package: row, manifest, files: await this.vault.listPackage(scope, actionId),
+             signing_key: await this.signingKeyOf(cap, scope.tenantId, row), expires_at: expiresAt, expired: expiresAt !== null && Date.parse(expiresAt) <= Date.now(),
+             archive_digest: (row['archive_digest'] as string | null) ?? null, deliveries: await this.deliveries(cap, actionId) };
   }
   /** B11: the package directory removed after the revocation committed (or retried when a removal failed); idempotent. */
   async removePackage(scope: { tenantId: string; domainId: string }, actionId: string): Promise<void> {
     await this.vault.removePackage(scope, actionId);
   }
+
+  // ───────────────────────── B13: the export's delivery (0073; D2–D8) ─────────────────────────
+
+  /** The key a package names (`signing_key_id`), as served: the id, algorithm, purpose, public PEM and its state NOW — or null for a /1 package. */
+  private async signingKeyOf(cap: RetentionReads, tenantId: string, pkg: Row): Promise<Row | null> {
+    const keyId = pkg['signing_key_id'];
+    if (typeof keyId !== 'string') return null;
+    const key = ((await cap.readExportSigningKeys().selectAll().where('tenant_id' as never, '=', tenantId as never).where('key_id' as never, '=', keyId as never).executeTakeFirst()) as Row | undefined);
+    if (key === undefined) return { key_id: keyId, algorithm: SIGNING_ALGORITHM, purpose: null, public_key_pem: null, state: 'unknown', retired_at: null };
+    return { key_id: keyId, algorithm: String(key['algorithm'] ?? SIGNING_ALGORITHM), purpose: key['purpose'] ?? null, public_key_pem: key['public_key_pem'] ?? null, state: key['retired_at'] == null ? 'active' : 'retired', retired_at: instantOf(key['retired_at']) };
+  }
+
+  /**
+   * C19: the tenant's signing keys as the read route serves them — the reference's NAME and its readiness (`bound` | `blocked-credential`,
+   * computed from the store at this instant, never a value), the state, which one is active (the latest non-retired, the port's rule).
+   */
+  async signingKeys(cap: RetentionReads, tenantId: string): Promise<Row[]> {
+    const rows = (await cap.readExportSigningKeys().selectAll().where('tenant_id' as never, '=', tenantId as never).orderBy('declared_at' as never).execute()) as Row[];
+    const activeId = await cap.activeExportSigningKey(tenantId);
+    return rows.map((k) => ({ ...k, state: k['retired_at'] == null ? 'active' : 'retired', active: k['key_id'] === activeId, readiness: this.signing.has(String(k['credential_ref'] ?? '')) ? 'bound' : 'blocked-credential' }));
+  }
+  /** The signing key as an act's answer (the declaration's, the retirement's): the row with its state and readiness. */
+  signingKeyAnswer(row: Row): Row {
+    return { ...row, state: row['retired_at'] == null ? 'active' : 'retired', readiness: this.signing.has(String(row['credential_ref'] ?? '')) ? 'bound' : 'blocked-credential' };
+  }
+
+  /** D5, C19: the domain's destinations with their readiness — `active` / `retired`; for https, `blocked-credential` when the reference is not bound in this process. */
+  async destinations(cap: RetentionReads): Promise<Row[]> {
+    const rows = (await cap.readExportDestinations().selectAll().orderBy('declared_at' as never).execute()) as Row[];
+    return rows.map((d) => this.destinationAnswer(d));
+  }
+  destinationAnswer(row: Row): Row {
+    const ref = typeof row['credential_ref'] === 'string' ? (row['credential_ref'] as string) : null;
+    const bound = ref === null ? null : this.credentials.has(ref);
+    const readiness = row['retired_at'] != null ? 'retired' : ref !== null && bound === false ? 'blocked-credential' : 'active';
+    return { ...row, readiness, credential: ref === null ? 'none required' : `reference ${ref} (${bound === true ? 'bound in this deployment; a delivery carries it' : 'not bound in this deployment'})` };
+  }
+
+  /** D6: the deliveries of an action, each with its destination's key and kind, oldest first. */
+  async deliveries(cap: RetentionReads, actionId: string): Promise<Row[]> {
+    const rows = (await cap.readExportDeliveries().selectAll().where('action_id' as never, '=', actionId as never).orderBy('delivered_at' as never).execute()) as Row[];
+    if (rows.length === 0) return [];
+    const destinations = (await cap.readExportDestinations().select(['destination_id' as never, 'destination_key' as never, 'kind' as never, 'recipient' as never]).execute()) as Row[];
+    const byId = new Map(destinations.map((d) => [String(d['destination_id']), d]));
+    return rows.map((r) => { const d = byId.get(String(r['destination_id'])); return { ...r, destination_key: d?.['destination_key'] ?? null, kind: d?.['kind'] ?? null, recipient: d?.['recipient'] ?? null }; });
+  }
+
+  /** D3: the public key a signing-key reference's value derives (the declaration records it), or the typed refusal; the value never leaves the store. */
+  deriveSigningKey(credentialRef: string): ReturnType<ExportSigningKeyStore['derivePublic']> { return this.signing.derivePublic(credentialRef); }
+  /** D5, C13: a transfer station's endpoint checked at the declaration — absolute, existing, a directory, outside the vault roots. */
+  async checkTransferStation(endpoint: string): Promise<{ ok: true; real: string } | { ok: false; message: string }> { return this.delivery.checkTransferStation(endpoint); }
+  /** C6: the controller's cleanup of the station paths an attempt created when its transaction did not commit. */
+  async removeCreatedStationFiles(paths: string[]): Promise<string[]> { return this.delivery.removeCreated(paths); }
+
+  /** A delivery row of this action, as the collect and acknowledge acts find it, with its destination — or null. */
+  async deliveryOf(cap: RetentionReads, actionId: string, deliveryId: string): Promise<{ delivery: Row; destination: Row | null } | null> {
+    const delivery = ((await cap.readExportDeliveries().selectAll().where('action_id' as never, '=', actionId as never).where('delivery_id' as never, '=', deliveryId as never).executeTakeFirst()) as Row | undefined);
+    if (delivery === undefined) return null;
+    const destination = ((await cap.readExportDestinations().selectAll().where('destination_id' as never, '=', String(delivery['destination_id']) as never).executeTakeFirst()) as Row | undefined) ?? null;
+    return { delivery, destination };
+  }
+  /** The destination a delivery names by key: the active one, else the latest retired one (the port refuses it as retired), else null. */
+  async destinationByKey(cap: RetentionReads, destinationKey: string): Promise<Row | null> {
+    const rows = (await cap.readExportDestinations().selectAll().where('destination_key' as never, '=', destinationKey as never).orderBy('declared_at' as never, 'desc').execute()) as Row[];
+    return rows.find((d) => d['retired_at'] == null) ?? rows[0] ?? null;
+  }
+
+  /**
+   * THE REBUILD (D2, C4, C12): the package's archive from the files on disk — refused before any file is read when the row's byte total
+   * lies above the ceiling, and again once the manifest's size is known; the manifest read, the files it lists read (a listed file absent,
+   * a name outside the package's rule, or a rebuilt digest other than the recorded one → the integrity refusal, 409, nothing served).
+   */
+  private async rebuildArchive(scope: { tenantId: string; domainId: string }, actionId: string, pkg: Row, correlationId: string): Promise<{ tar: Buffer; manifest: ExportManifestShape; manifestBytes: Buffer; archiveDigest: string }> {
+    const conflict = (message: string): never => { throw new HttpException(errorBody('EYE_STA_002', correlationId, message), 409); };
+    const recorded = pkg['archive_digest'];
+    if (typeof recorded !== 'string') conflict(`the export package of ${actionId} was built before its archive digest was recorded (B13); build the export again to download or deliver it`);
+    const byteTotal = Number(pkg['byte_total'] ?? 0);
+    if (byteTotal > EXPORT_ARCHIVE_MAX_BYTES) conflict(`the package is ${byteTotal} bytes, above the archive ceiling of ${EXPORT_ARCHIVE_MAX_BYTES}; deliver a smaller export`);
+    let manifestBytes: Buffer;
+    try { manifestBytes = await this.vault.readPackageFile(scope, actionId, 'manifest.json'); }
+    catch { return conflict(`the package's archive does not rebuild to its recorded digest: manifest.json is not readable`); }
+    if (byteTotal + manifestBytes.byteLength > EXPORT_ARCHIVE_MAX_BYTES) conflict(`the package is ${byteTotal + manifestBytes.byteLength} bytes, above the archive ceiling of ${EXPORT_ARCHIVE_MAX_BYTES}; deliver a smaller export`);
+    let manifest: ExportManifestShape;
+    try { manifest = JSON.parse(manifestBytes.toString('utf8')) as ExportManifestShape; } catch { return conflict(`the package's archive does not rebuild to its recorded digest: manifest.json does not parse`); }
+    const files: ArchiveEntry[] = [];
+    let tar: Buffer;
+    try {
+      for (const name of listedFilesOf(manifest.objects)) {
+        let bytes: Buffer;
+        try { bytes = await this.vault.readPackageFile(scope, actionId, name); } catch { return conflict(`the package's archive does not rebuild to its recorded digest: the manifest lists ${name}, which is not present`); }
+        files.push({ name, bytes });
+      }
+      tar = archiveOfPackage(manifestBytes, files);
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      return conflict(`the package's archive does not rebuild to its recorded digest: ${e instanceof ExportArchiveError ? e.message : String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200)}`);
+    }
+    const digest = archiveDigestOf(tar);
+    if (digest !== recorded) conflict(`the package's archive does not rebuild to its recorded digest (rebuilt ${digest}, recorded ${String(recorded)}); nothing is served`);
+    return { tar, manifest, manifestBytes, archiveDigest: digest };
+  }
+
+  /** The package row of an action for a download or a delivery: present (404 otherwise), not revoked, not expired (409, the messages the mapper routes). */
+  private async servablePackage(cap: RetentionReads, actionId: string, correlationId: string): Promise<Row> {
+    const pkg = ((await cap.readExportPackages().selectAll().where('action_id' as never, '=', actionId as never).executeTakeFirst()) as Row | undefined);
+    if (pkg === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `retention delivery rejected: ${actionId} has no export package in this domain`), 404);
+    const revokedAt = instantOf(pkg['revoked_at']);
+    if (revokedAt !== null) throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention delivery rejected: the export package of ${actionId} was revoked at ${revokedAt}; its bytes are gone`), 409);
+    const expiresAt = instantOf(pkg['expires_at']);
+    if (expiresAt !== null && Date.parse(expiresAt) <= Date.now()) throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention delivery rejected: the export package of ${actionId} expired at ${expiresAt}`), 409);
+    return pkg;
+  }
+
+  /**
+   * THE DOWNLOAD (D7): a governed, audited read of the tar — the package present, unrevoked, unexpired; the archive rebuilt from the files
+   * and compared with the record before it is served; the event export.downloaded recorded through the port with the reader and the digest
+   * (the caller's write). The signature block is served with the public key and the key's purpose and state for a /2 package.
+   */
+  async downloadExport(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, a: { actor: string; correlationId: string }): Promise<{ filename: string; bytes: Buffer; archiveDigest: string; packageDigest: string; manifestDigest: string; signature: Row; expiresAt: string | null }> {
+    const pkg = await this.servablePackage(cap, actionId, a.correlationId);
+    const rebuilt = await this.rebuildArchive(scope, actionId, pkg, a.correlationId);
+    const key = await this.signingKeyOf(cap, scope.tenantId, pkg);
+    await cap.recordExportDownload({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, archiveDigest: rebuilt.archiveDigest, actor: a.actor, correlationId: a.correlationId });
+    return { filename: `${actionId}.tar`, bytes: rebuilt.tar, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']), manifestDigest: String(pkg['manifest_digest']),
+             signature: { ...((rebuilt.manifest.signature ?? {}) as Row), ...(key === null ? {} : { key }) }, expiresAt: instantOf(pkg['expires_at']) };
+  }
+
+  /**
+   * THE DELIVERY (D6, C6, C8): inside the governed write — the port's gates (begin_export_delivery: the action a verified customer export, the
+   * package present, unrevoked, unexpired, the destination active, the rights still confirmed, the signing-key gate; the delivery id and the
+   * attempt under the action's lock), the archive rebuilt and compared with the record (a mismatch: 409, nothing recorded), the executor by
+   * the destination's kind, the outcome recorded whatever it is — delivered, acknowledged, mismatched, failed with its class. `created`
+   * receives the station paths this attempt newly wrote, for the controller's cleanup after a commit that failed.
+   */
+  async deliverExport(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, destinationId: string, a: { actor: string; correlationId: string }, created: string[]): Promise<Row> {
+    const begun = await cap.beginExportDelivery({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, destinationId, actor: a.actor, correlationId: a.correlationId });
+    const deliveryId = String(begun['delivery_id']); const attempt = Number(begun['attempt']);
+    // The port answered with the package and the destination it gated; the rows are read again here under the same transaction (the executor
+    // reads every column by name — the archive digest, the byte total, the endpoint — whatever the port chose to return).
+    const pkg: Row = { ...((begun['package'] ?? {}) as Row), ...(((await cap.readExportPackages().selectAll().where('action_id' as never, '=', actionId as never).executeTakeFirst()) as Row | undefined) ?? {}) };
+    const destination: Row = { ...((begun['destination'] ?? {}) as Row), ...(((await cap.readExportDestinations().selectAll().where('destination_id' as never, '=', destinationId as never).executeTakeFirst()) as Row | undefined) ?? {}) };
+    const rebuilt = await this.rebuildArchive(scope, actionId, pkg, a.correlationId);
+    const key = await this.signingKeyOf(cap, scope.tenantId, pkg);
+    const signingKey: DeliveryPackage['signingKey'] = key === null ? null
+      : { key_id: String(key['key_id']), algorithm: String(key['algorithm'] ?? SIGNING_ALGORITHM), purpose: String(key['purpose'] ?? ''), public_key_pem: String(key['public_key_pem'] ?? ''), state: key['state'] === 'retired' ? 'retired' : 'active', retired_at: (key['retired_at'] as string | null) ?? null };
+    const deliveredAt = new Date().toISOString();
+    const deliveryPackage: DeliveryPackage = {
+      tenantId: scope.tenantId, domainId: scope.domainId, actionId, deliveryId, attempt,
+      destinationKey: String(destination['destination_key'] ?? ''), recipient: String(destination['recipient'] ?? ''), purpose: String(destination['purpose'] ?? ''),
+      tar: rebuilt.tar, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']), manifestDigest: String(pkg['manifest_digest']),
+      signature: (rebuilt.manifest.signature ?? {}) as Row, signingKey, expiresAt: instantOf(pkg['expires_at']), deliveredAt,
+    };
+    const kind = String(destination['kind'] ?? '');
+    const endpoint = String(destination['endpoint'] ?? '');
+    let outcome: Awaited<ReturnType<ExportDeliveryService['deliverToTransferStation']>> | Awaited<ReturnType<ExportDeliveryService['deliverToHttps']>>;
+    if (kind === 'transfer_station') outcome = await this.delivery.deliverToTransferStation({ endpoint, pkg: deliveryPackage, created });
+    else if (kind === 'https') outcome = await this.delivery.deliverToHttps({ endpoint, credentialRef: typeof destination['credential_ref'] === 'string' ? (destination['credential_ref'] as string) : null, pkg: deliveryPackage });
+    else throw new HttpException(errorBody('EYE_STA_002', a.correlationId, `retention delivery rejected: the destination's kind ${kind} has no executor`), 409);
+    // What the destination answered — the recipient's receipt, or the failure — is recorded with the sha256 of its canonical JSON (the port's rule: a receipt and its digest together, or neither).
+    const receiptDigest = outcome.receipt === null ? null : contentDigest(outcome.receipt);
+    const recorded = await cap.recordExportDelivery({ deliveryId, actionId, tenantId: scope.tenantId, domainId: scope.domainId, destinationId, attempt, state: outcome.state, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']),
+                                                       signingKeyId: signingKey === null ? null : signingKey.key_id, receipt: outcome.receipt, receiptDigest, failureClass: outcome.failureClass, actor: a.actor, correlationId: a.correlationId });
+    const station = 'directory' in outcome ? { directory: outcome.directory, files: outcome.files, delivery_json: outcome.deliveryJson } : null;
+    const egress = 'egress' in outcome ? outcome.egress : null;
+    return { ...recorded, delivery_id: deliveryId, attempt, state: outcome.state, failure_class: outcome.failureClass, receipt: outcome.receipt, receipt_digest: receiptDigest,
+             destination: { destination_id: destinationId, destination_key: deliveryPackage.destinationKey, kind, recipient: deliveryPackage.recipient }, signing_key: signingKey, station, egress };
+  }
+
+  /**
+   * THE COLLECT ACT (D6, C7): the recipient's `receipt.json` read from the transfer station's directory of the action — the endpoint re-checked,
+   * the file bounded and a JSON object, naming its delivery_id (a receipt without one is presented through the acknowledge route) — then the
+   * acknowledgement port. The row must be a transfer-station delivery in state delivered; a missing file is a conflict ("no receipt yet").
+   */
+  async collectReceipt(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, deliveryId: string, a: { actor: string; correlationId: string }): Promise<Row> {
+    const conflict = (message: string): never => { throw new HttpException(errorBody('EYE_STA_002', a.correlationId, message), 409); };
+    const found = await this.deliveryOf(cap, actionId, deliveryId);
+    if (found === null) throw new HttpException(errorBody('EYE_STA_001', a.correlationId, `retention delivery rejected: no such delivery ${deliveryId} of ${actionId}`), 404);
+    if (found.destination === null || String(found.destination['kind']) !== 'transfer_station') conflict(`retention delivery rejected: delivery ${deliveryId} is not a transfer-station delivery; its receipt is presented through the acknowledge route`);
+    if (String(found.delivery['state']) !== 'delivered') conflict(`retention delivery rejected: delivery ${deliveryId} is not delivered (it is ${String(found.delivery['state'])})`);
+    let collected: { receipt: Row; path: string; byteLength: number };
+    try { collected = await this.delivery.collectReceipt(String(found.destination?.['endpoint'] ?? ''), scope, actionId); }
+    catch (e) {
+      if (e instanceof TransferStationRefused) return conflict(e.reason === 'no_receipt' ? `retention delivery rejected: ${e.message}` : `retention delivery rejected (${e.reason}): ${e.message}`);
+      throw e;
+    }
+    if (typeof collected.receipt['delivery_id'] !== 'string') conflict(`retention delivery rejected (receipt_invalid): the receipt at ${collected.path} names no delivery_id; a receipt without one is presented through the acknowledge route`);
+    const row = await cap.acknowledgeExportDelivery({ deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: collected.receipt, receiptDigest: contentDigest(collected.receipt), actor: a.actor, correlationId: a.correlationId });
+    return { ...row, collected_from: collected.path, receipt_bytes: collected.byteLength };
+  }
+
+  /** THE ACKNOWLEDGE ACT (D6): the recipient's receipt presented out of band — a JSON object under the receipt ceiling — to the same port. */
+  async acknowledgeDelivery(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, deliveryId: string, receipt: Row, a: { actor: string; correlationId: string }): Promise<Row> {
+    const found = await this.deliveryOf(cap, actionId, deliveryId);
+    if (found === null) throw new HttpException(errorBody('EYE_STA_001', a.correlationId, `retention delivery rejected: no such delivery ${deliveryId} of ${actionId}`), 404);
+    return cap.acknowledgeExportDelivery({ deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, receipt, receiptDigest: contentDigest(receipt), actor: a.actor, correlationId: a.correlationId });
+  }
+}
+
+/** A timestamptz column as the driver hands it (a Date) or a jsonb instant (a string), as an ISO string; null when absent. */
+function instantOf(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return v.toISOString();
+  const t = Date.parse(String(v));
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
 }

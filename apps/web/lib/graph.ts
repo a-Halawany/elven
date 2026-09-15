@@ -514,18 +514,26 @@ export const graph = {
       s, `/ontology/${versionId}/decide`, 'graph.ontology.decide', 'ONT', { decision, reason, reviews }, versionId),
 };
 
-/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072) ───────────────────────── */
+/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072 / 0073) ───────────────────────── */
 
 /**
  * The retention routes live under `…/retention`, not `…/graph`, and every call is made under the purpose `retention`.
  * One governed act per state transition of an action — open, resolve, approve (human-gated, on the scope digest the
- * approver read), execute (human-gated, never the approver), verify — and the schedule's declare and evaluate; the
- * reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action, RTP the cold tier's policy (B12:
- * declared per domain, its state read beside the lists). The server's refusal is returned verbatim: the opener's own
- * approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted are all its words.
+ * approver read), execute (human-gated, never the approver), verify — and the schedule's declare, evaluate and (B13)
+ * retire; the reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action, RTP the cold tier's
+ * policy (B12: declared per domain, its state read beside the lists); since B13 (0073) RSK is an export signing key (the
+ * tenant's, declared by a credential REFERENCE — the private key never leaves the process environment and no answer
+ * carries it), RDS an export destination (a transfer station or an https endpoint, declared per domain) and RDL a delivery
+ * of a package to one. The download of a package is a governed WRITE (`retention.export.download` records the event on the
+ * action; the bytes ride the same answer), so its envelope carries `reversible` as every act does. The server's refusal is
+ * returned verbatim: the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget
+ * exhausted, an expired or revoked package, an unbound credential reference are all its words.
+ *
+ * The envelope's object id is a uuid or null: a signing key's id (`ed25519:<hex>`) is not one, so those calls carry null
+ * and the key travels in the path — percent-encoded, the colon included (design C16).
  */
 async function r<T>(
-  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP',
+  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP' | 'RSK' | 'RDS' | 'RDL',
   payload: unknown = {}, objectId: string | null = null,
 ): Promise<ApiResult<T>> {
   return call<T>(
@@ -556,14 +564,16 @@ export type RetentionRow = Record<string, unknown>;
 /**
  * What opens an action (validateOpenAction): an evidence selector names a manifestId or a sourceId — or, for an archive, a
  * customer export (B11) or a restore (B12: the archived bytes moved back to the hot tier, opened on demand and never by a
- * schedule), manifestIds (1–200, a chosen object set); a customer export names its classificationCeiling (the redaction gate)
- * and may name destination `export` (the only destination this release binds); a log partition names partitionKey + toSeq
- * and takes the log_floor kind only.
+ * schedule), manifestIds (1–200, a chosen object set); a customer export names its classificationCeiling (the redaction gate),
+ * may name destination `export` (the vault's export namespace, where its package is built — a delivery to a declared
+ * destination is its own act since B13) and may name expiresAfter (B13, an interval as a dueAfter is spelled, 1 hour to
+ * 1 year; the server's default is 30 days — the package's download and delivery are refused once it expired); a log
+ * partition names partitionKey + toSeq and takes the log_floor kind only.
  */
 export interface RetentionOpenIntake {
   kind: RetentionKind;
   targetKind: RetentionTargetKind;
-  selector: { manifestId?: string; sourceId?: string; manifestIds?: string[]; classificationCeiling?: RetentionClassification; destination?: 'export' } | { partitionKey: string; toSeq: number };
+  selector: { manifestId?: string; sourceId?: string; manifestIds?: string[]; classificationCeiling?: RetentionClassification; destination?: 'export'; expiresAfter?: string } | { partitionKey: string; toSeq: number };
   retentionProfile?: string;
 }
 export const RETENTION_CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;
@@ -628,9 +638,67 @@ export interface RetentionTierState {
   schedules: Array<{
     schedule_id: string; action_kind: string; retention_profile: string; due_after: string; state: string;
     last_evaluated_at: string | null; last_evaluation: Record<string, unknown>;
+    /** B13 (0073 §1): the instant a retired schedule was retired; null while active (absent from a server before 0073). */
+    retired_at?: string | null;
   }>;
   vault: { evidence: RetentionVaultInventory; archive: RetentionVaultInventory };
 }
+
+/* ── B13 (0073): the export's delivery — signing keys, destinations, the download, the deliveries ── */
+
+export const RETENTION_KEY_PURPOSES = ['demonstration', 'production'] as const;
+export type RetentionKeyPurpose = (typeof RETENTION_KEY_PURPOSES)[number];
+export const RETENTION_DESTINATION_KINDS = ['transfer_station', 'https'] as const;
+export type RetentionDestinationKind = (typeof RETENTION_DESTINATION_KINDS)[number];
+
+/**
+ * What declares an export signing key (0073 §2 `retention.export_signing_keys`, the tenant's): the credential REFERENCE
+ * (`EYE_EXPORT_SIGNING_KEY_<NAME>`, bound in the server's process environment — the value is never sent, never recorded and
+ * never answered; the server derives and records the PUBLIC key) and the purpose, `demonstration` or `production`, shown
+ * everywhere the signature is shown. The list serves each key's reference NAME and its readiness (`bound` | `blocked-credential`).
+ */
+export interface RetentionSigningKeyIntake { credentialRef: string; purpose: RetentionKeyPurpose }
+
+/**
+ * What declares an export destination (0073 §3 `retention.export_destinations`, the domain's): a key unique among the domain's
+ * active destinations (`^[a-z0-9][a-z0-9-]{1,63}$`), the kind — a `transfer_station` (an absolute directory outside the vault's
+ * roots, existing at declaration; the disconnected-transfer path: the product writes the package there and reads the recipient's
+ * receipt back) or `https` (an endpoint the package is POSTed to; its bearer credential by REFERENCE `EYE_DST_<NAME>`, https only,
+ * never recorded) — the endpoint, the recipient (the exchange identity: who receives) and the purpose.
+ */
+export interface RetentionDestinationIntake {
+  destinationKey: string;
+  kind: RetentionDestinationKind;
+  endpoint: string;
+  credentialRef?: string;
+  recipient: string;
+  purpose: string;
+}
+
+/**
+ * The download's answer (…/actions/:id/export/download, B13 D7): the package's ARCHIVE — one deterministic ustar tar of
+ * manifest.json and the object files — as base64, rebuilt from the files and compared with the recorded archive digest before
+ * it is served (a mismatch is refused, never served); the filename `<action_id>.tar`; the digests; the signature block as the
+ * manifest carries it (for scheme eye-customer-export/2 with the public key PEM and the key's purpose); the expiry.
+ */
+export interface RetentionExportDownload {
+  filename: string;
+  byteLength: number;
+  archiveDigest: string;
+  packageDigest: string;
+  manifestDigest: string;
+  signature: Record<string, unknown>;
+  expiresAt: string | null;
+  base64: string;
+}
+
+/**
+ * A recipient's receipt as the specification shapes it (B13 D6/C7): the delivery it answers (`delivery_id`, `attempt` — a receipt
+ * naming another delivery is refused), the recipient, the instant, both digests and whether the recipient's verification passed;
+ * anything else is kept as received. The server acknowledges a delivery on a receipt naming the SAME digests with `verified` true,
+ * and records a MISMATCH — the exchange denied, the evidence preserved — on other digests or `verified` false.
+ */
+export type RetentionDeliveryReceipt = Record<string, unknown>;
 
 export interface RetentionResidual { kind: string; count: number; status: string; ref?: string | null; note?: string | null }
 
@@ -645,11 +713,22 @@ export type RetentionExecutionResult =
   | { retried?: false; executed: number; held: number; refused: number; floor: Record<string, unknown> | null; package?: Record<string, unknown> | null; bytes: { removed: string[]; failed: string[] } }
   | { retried: true; pending: number; bytes: { removed: string[]; failed: string[] } };
 
-/** The export package's record (…/actions/:id/export/get, B11): the ledger row, manifest.json as written (null when its file is gone) and the files the package holds. */
+/**
+ * The export package's record (…/actions/:id/export/get, B11): the ledger row, manifest.json as written (null when its file is
+ * gone) and the files the package holds. Since B13 (0073 §2): the key the package was signed with — its id, purpose, current
+ * state (`active` | `retired`: a package signed by a key retired since still verifies against the recorded public key) and the
+ * PUBLIC key PEM a customer fetches to verify — null for a package on the digest chain (scheme /1); the expiry and whether it
+ * passed; the archive digest (null for a package built before B13); the action's deliveries as recorded.
+ */
 export interface RetentionExportDetail {
   package: RetentionRow;
   manifest: Record<string, unknown> | null;
   files: string[];
+  signing_key?: { key_id: string; purpose: string; state: string; public_key_pem: string } | null;
+  expires_at?: string | null;
+  expired?: boolean;
+  archive_digest?: string | null;
+  deliveries?: RetentionRow[];
   receipt: Receipt;
 }
 
@@ -684,6 +763,34 @@ export const retention = {
   /** The steward's act: every object past its schedule raises an action (RetentionActionDue each), oldest due first and bounded by the policy (B12: the rest deferred); nothing is deleted. The cold-tier manager's escalations by age ride the same act. */
   evaluateSchedules: (s: Scope) =>
     r<{ evaluation: RetentionEvaluation; receipt: Receipt }>(s, '/schedules/evaluate', 'retention.schedule.evaluate', 'RTS'),
+
+  /** B13 (0073 §1): a domain admin's act, `retention.schedule.retire` — the schedule moves active → retired once, with a reason (8+ characters); its row, its last evaluation, the actions it opened and their events stay; a retired schedule opens nothing. */
+  retireSchedule: (s: Scope, scheduleId: string, reason: string) =>
+    r<{ schedule: RetentionRow; receipt: Receipt }>(s, `/schedules/${scheduleId}/retire`, 'retention.schedule.retire', 'RTS', { reason }, scheduleId),
+
+  /** B13 (0073 §2): the tenant's export signing keys — each with its reference NAME and readiness, never the reference's value (an audited read). */
+  listSigningKeys: (s: Scope) =>
+    r<{ keys: RetentionRow[]; receipt: Receipt }>(s, '/signing-keys/list', 'retention.read', 'RSK'),
+
+  /** B13: the tenant's (or the platform's) administrator declares a key from a credential reference bound in the server's environment; the server derives and records the public key. Human-gated. */
+  declareSigningKey: (s: Scope, intake: RetentionSigningKeyIntake) =>
+    r<{ key: RetentionRow; receipt: Receipt }>(s, '/signing-keys/declare', 'retention.signing_key.declare', 'RSK', intake),
+
+  /** B13: a key retired once with a reason; its row and public key stay (a package it signed still verifies). The key id carries a colon, so it is percent-encoded in the path and the envelope's object id is null (not a uuid). */
+  retireSigningKey: (s: Scope, keyId: string, reason: string) =>
+    r<{ key: RetentionRow; receipt: Receipt }>(s, `/signing-keys/${encodeURIComponent(keyId)}/retire`, 'retention.signing_key.retire', 'RSK', { reason }),
+
+  /** B13 (0073 §3): the domain's export destinations with their readiness — `active` / `retired`, and for an https destination `blocked-credential` while its reference is not bound in the server's process (an audited read). */
+  listDestinations: (s: Scope) =>
+    r<{ destinations: RetentionRow[]; receipt: Receipt }>(s, '/destinations/list', 'retention.read', 'RDS'),
+
+  /** B13: a domain admin's act — a destination declared; the server refuses a transfer station that is not an existing absolute directory outside the vault's roots, an endpoint that is not https, a credential reference on a transfer station, a duplicate key. */
+  declareDestination: (s: Scope, intake: RetentionDestinationIntake) =>
+    r<{ destination: RetentionRow; receipt: Receipt }>(s, '/destinations/declare', 'retention.destination.declare', 'RDS', intake),
+
+  /** B13: a destination retired once with a reason; a delivery to it is refused from then on, its recorded deliveries stay. */
+  retireDestination: (s: Scope, destinationId: string, reason: string) =>
+    r<{ destination: RetentionRow; receipt: Receipt }>(s, `/destinations/${encodeURIComponent(destinationId)}/retire`, 'retention.destination.retire', 'RDS', { reason }, destinationId),
 
   /** B12 (0072 §1): the cold tier's observable state — an audited read (`retention.read`) of the policy in force, the tiers, the moves, the budget, the actions by state and the vault's inventory of both roots. */
   tierState: (s: Scope) =>
@@ -729,4 +836,33 @@ export const retention = {
   /** B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. */
   revokeExport: (s: Scope, actionId: string, reason: string) =>
     r<{ revocation: Record<string, unknown>; bytes: { removed: boolean; error?: string }; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
+
+  /**
+   * B13 (D7): the package's archive downloaded — a governed, audited act (`retention.export.download`: the event export.downloaded is
+   * written on the action; the tar's bytes ride the same answer as base64). Refused once revoked or expired, and when the archive
+   * does not rebuild to its recorded digest (an integrity failure: nothing is served).
+   */
+  downloadExport: (s: Scope, actionId: string) =>
+    r<{ download: RetentionExportDownload; receipt: Receipt }>(s, `/actions/${actionId}/export/download`, 'retention.export.download', 'RTA', {}, actionId),
+
+  /**
+   * B13 (D6): the retention authority's act, human-gated — the VERIFIED, unrevoked, unexpired package delivered to one of the domain's
+   * active destinations by its key, the rights of every exported source re-checked first. A delivery that failed is a recorded fact
+   * (state `failed` with its class), not a rolled-back one; a transfer-station delivery waits for the recipient's receipt (`delivered`);
+   * an https destination's answer is its receipt (`delivered`, `acknowledged` or `mismatched`).
+   */
+  deliverExport: (s: Scope, actionId: string, destinationKey: string) =>
+    r<{ delivery: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/deliver`, 'retention.export.deliver', 'RTA', { destinationKey }, actionId),
+
+  /** B13: the action's deliveries as recorded — attempt, destination, state, the receipt as received (or the failure), its digest, the failure class (an audited read). */
+  listDeliveries: (s: Scope, actionId: string) =>
+    r<{ deliveries: RetentionRow[]; receipt: Receipt }>(s, `/actions/${actionId}/export/deliveries/list`, 'retention.read', 'RTA', {}, actionId),
+
+  /** B13: for a transfer-station delivery in state delivered — the recipient's receipt.json read from the station's directory and applied (`retention.export.acknowledge`, human-gated); 409 while no receipt is there. */
+  collectReceipt: (s: Scope, actionId: string, deliveryId: string) =>
+    r<{ delivery: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/deliveries/${encodeURIComponent(deliveryId)}/collect-receipt`, 'retention.export.acknowledge', 'RDL', {}, deliveryId),
+
+  /** B13: a receipt presented out-of-band (carried by hand from a station, or an https recipient's later answer) applied to a delivered delivery — the same act; the server's words on a mismatch. */
+  acknowledgeDelivery: (s: Scope, actionId: string, deliveryId: string, receipt: RetentionDeliveryReceipt) =>
+    r<{ delivery: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/deliveries/${encodeURIComponent(deliveryId)}/acknowledge`, 'retention.export.acknowledge', 'RDL', { receipt }, deliveryId),
 };

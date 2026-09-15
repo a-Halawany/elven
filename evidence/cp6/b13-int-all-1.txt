@@ -1,0 +1,8 @@
+=== the full integration suite at the B13 tree (apps/api: pnpm test:int:all) on a fresh database eye_verify_b13_all1 (0001–0073), 2026-09-15 — the B13 harness's 10 cases included ===
+
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  63 passed (63)
+      Tests  1016 passed (1016)
+   Start at  01:26:47
+   Duration  482.30s (transform 1.28s, setup 287ms, import 20.04s, tests 457.34s, environment 3ms)

@@ -596,6 +596,18 @@ export class VaultService {
     return this.roots[vault];
   }
 
+  /**
+   * B13 (D5, C13): whether a path lies OUTSIDE every one of the four roots — neither a root, nor inside one, nor containing
+   * one (the constructor's pairwise rule, applied to a fifth location). A transfer station — a directory the product writes
+   * export packages into and reads receipts from — must lie outside the vault entirely, so a station can never alias a tier.
+   * The caller passes an absolute path it has `realpath`'d (at the declaration, and again before every write and read: a
+   * symlink turned into a vault root since is refused then); the roots are compared as configured.
+   */
+  isOutsideRoots(path: string): boolean {
+    const p = resolve(path);
+    return !Object.values(this.roots).some((r) => r === p || contains(r, p) || contains(p, r));
+  }
+
   // ───────────────────────── B11: the export namespace (0070 §3; D5) ─────────────────────────
 
   /**

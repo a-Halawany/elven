@@ -1,0 +1,8 @@
+=== the suites the B13 changes touch, at the B13 tree, on a fresh database eye_verify_b13_n1 (0001–0073): phase6-retention-b11 (the export builder and the /1 scheme when no key is active), phase6-retention-b11-closure, phase6-retention-b12 (the schedules), phase1-acceptance (the vault, the egress A10), phase6-graph-subscriptions-4 (retention B9) — 134/134 in 5 files (phase1-hosting named in the run does not exist as a file; the egress is pinned by phase1-acceptance) ===
+
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  5 passed (5)
+      Tests  134 passed (134)
+   Start at  01:25:39
+   Duration  60.27s (transform 661ms, setup 36ms, import 3.20s, tests 56.66s, environment 0ms)
