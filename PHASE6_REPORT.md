@@ -2686,10 +2686,10 @@ attempt's name; B making its own copy; A removing only its own file), the harnes
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `41d4a26` | **`main`: #48 merged** (B11 and its closure; second parent `a07dd2c`) | 34990126368 green (994/994 in 61 files; the C17 archive artifact 10405850284); C17 finalize 34992193646 green; C19 anchor 34992322188 green | 34990126469 green |
-| the B12 head | **B12** (0072; the restore port, the manager, the sweeper's walk, the web, the harness, the act, the runbook fix) — PR `phase6-b12` → `main` | the hosted run is bound in the records refresh after the push (one commit; no refresh chain) | — |
+| **`97576c3`** | **B12** (0072; the restore port, the manager, the sweeper's walk, the web, the harness, the act, the runbook fix) — PR #49 `phase6-b12` → `main` | **35004457633 green** — build-test: unit 2156/2156 and the meta suite 9/9, acceptance 58/58, the integration suite **1006/1006 in 62 files** on a fresh database (`phase6-retention-b12` 12/12), the upgrade proof through 0072 (+51 rows, 72 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-97576c3-build-test-summary.txt`) | 35004457741 green |
 
-Statuses: AU-MEM-0062 and AU-INF-0791 `open` → `verified:local` (the B12 harness on a fresh database; `verified:ci` on the
-hosted run); the split reads **3,555 = 3,186 open + 340 local + 29 CI**. Requirement rows L3-C08 (V3), DZ-18 and DAT-ST-06
+Statuses: AU-MEM-0062 and AU-INF-0791 `open` → `verified:local` (the B12 harness on a fresh database) → **`verified:ci`** (the
+hosted run at `97576c3`, bound in this records refresh); the split reads **3,555 = 3,186 open + 338 local + 31 CI**. Requirement rows L3-C08 (V3), DZ-18 and DAT-ST-06
 (V7) `partial` → `implemented` (passed:harness, branch-only): every function the rows name exists on the local profile; the
 two structural residuals are named in their remaining work for the hardening campaign. DP-28-002 and DP-28-006 carry the
 restore-state and the restore/archive-retrieval clauses (`partial`); DP-54-006 `missing` → `partial` (retention timers, hold
@@ -2713,6 +2713,6 @@ reconciliation — the sweeper's walk is its functional part, its adversarial pr
 **Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
 index-tier degradation behaviours; every deployment leg (S7).
 
-**Acceptance work remaining** — the hosted run at the B12 head bound in the two units and the records; the owner's key for
+**Acceptance work remaining** — the merge of #49 under the existing authorization and its archive chain on `main`; the owner's key for
 Comtrade and the owner's walks of the pages; the next batch from the register (the delivery sequence continues); comprehensive
 hardening after the feature scope, with the two residuals.

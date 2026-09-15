@@ -1177,8 +1177,8 @@ changes touch — `phase6-retention-b11` (35), `-archive-poll` (4), `-closure` (
 ownership design, Codex's stale-wording note), `phase1-fault-injection` (the sweeper), `phase1-acceptance` (the vault),
 `phase6-graph-subscriptions-4` — green on a fresh database; the full integration suite 1006/1006 in 62 files on a fresh
 database (`evidence/cp6/b12-int-all-1.txt`); the upgrade proof with 0022–0072 (51 migrations, `b12-upgrade-proof.txt`); the web
-typecheck, build and tests. Units: AU-MEM-0062 and AU-INF-0791 `open` → `verified:local` (3,555 = 3,186 open + 340 local +
-29 CI); the requirement rows L3-C08, DZ-18 and DAT-ST-06 `partial` → `implemented` (passed:harness, branch-only — every function
+typecheck, build and tests. Units: AU-MEM-0062 and AU-INF-0791 `open` → `verified:local`, then `verified:ci` at `97576c3` (ci 35004457633,
+1006/1006 in 62 files on a fresh database; 3,555 = 3,186 open + 338 local + 31 CI); the requirement rows L3-C08, DZ-18 and DAT-ST-06 `partial` → `implemented` (passed:harness, branch-only — every function
 the rows name exists on the local profile; the two structural residuals named for the hardening campaign), DP-28-002/-006 and
 DP-54-006 carry the clauses (DP-54-006 `missing` → `partial`).
 
