@@ -15,6 +15,12 @@
  * `manifest.json` and one `<manifest_id>.bin` per object (D5). All four roots must
  * be separate and non-nested.
  *
+ * CP-6 B12: the staging discipline applies to both blob roots — a restore stages
+ * its hot copy under the attempt's name in the evidence root and publishes it
+ * after the commit that recorded the move. The generic forms (`stagedCopiesIn`,
+ * `publishCopy`, `removeStagedIn`, `removeAllStagedIn`, `readTiered`) take the
+ * root; the archive-named forms of B11 keep their contracts and delegate.
+ *
  * THE LOCATOR IS OPAQUE AND SCOPED: `<tenant>/<domain>/<random-uuid>`. It is NOT
  * the digest. A digest-named path would create a global content namespace in
  * which one tenant could probe for another tenant's bytes by asking for a hash
@@ -67,6 +73,11 @@ export class VaultIntegrityError extends Error {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** A package file: the manifest, or one object's bytes named by its manifest id. Nothing else is ever written or read under a package. */
 const PACKAGE_FILE_RE = /^(manifest\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin)$/;
+/**
+ * B12 (C17): the temp name of an interrupted write — `<uuid>.tmp-<uuid>` for a store, `<uuid>.staging-<attempt>.tmp-<uuid>` for a staged
+ * copy (the temp lives beside the file it was to become). The sweeper removes these and nothing else by name.
+ */
+const TEMP_FILE_RE = /^[0-9a-f-]{36}(\.staging-[0-9a-f-]{36})?\.tmp-[0-9a-f-]{36}$/;
 
 export function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -142,6 +153,20 @@ export class VaultService {
       throw new VaultIntegrityError('scope', 'resolved path escapes the vault root');
     }
     return full;
+  }
+
+  /**
+   * B12: the domain's directory under a blob root, `<root>/<tenant>/<domain>` — the requester's own scope segments, opaque
+   * identifiers, containment re-checked; the sweeper's walk and the inventory list it, and never anything above it.
+   */
+  private domainDir(vault: VaultName, scope: VaultScope): string {
+    if (!UUID_RE.test(scope.tenantId) || !UUID_RE.test(scope.domainId)) {
+      throw new VaultIntegrityError('scope', 'scope segments are not opaque identifiers');
+    }
+    const root = this.roots[vault];
+    const dir = resolve(root, scope.tenantId, scope.domainId);
+    if (!contains(root, dir) || dir === root) throw new VaultIntegrityError('scope', 'resolved domain directory escapes the vault root');
+    return dir;
   }
 
   /**
@@ -282,7 +307,8 @@ export class VaultService {
     // after the commit that recorded the move — so a copy whose record did not commit is never adoptable by another execution, and a
     // rollback removes only the file bearing its own attempt's name (a second attempt of the same action, admitted after the first's
     // backend was lost, has its own). The published locator is still the idempotent target: a copy already there under the digest wins.
-    const full = staging !== undefined ? this.stagingPathFor(locator, scope, staging.attemptId) : published;
+    // B12: the staged file lives in the `to` root — the archive root for an archive, the evidence root for a restore (D2).
+    const full = staging !== undefined ? this.stagingPathFor(to, locator, scope, staging.attemptId) : published;
     let bytes: Buffer;
     try {
       bytes = await readFile(source);
@@ -307,6 +333,8 @@ export class VaultService {
     const tmp = `${full}.tmp-${randomUUID()}`;
     const handle = await open(tmp, 'wx', 0o600);
     try {
+      // The B11 fault points keep their names and fire for a restore's copy too (B12): the boundary is the same — before the write, and
+      // after the rename before the port records the move — whichever root the copy is going to.
       fault.at('b11.archive_copy_partial');
       await handle.write(bytes);
       await handle.sync();
@@ -359,103 +387,182 @@ export class VaultService {
     return { bytes, contentDigest: digest };
   }
 
-  /** The staging name of an archive copy (0071): the locator's own path with the creating execution attempt's id — adoptable by no other execution, removed by no other attempt. */
-  private stagingPathFor(locator: string, scope: VaultScope, attemptId: string): string {
+  /**
+   * The staging name of a copy (0071; both roots since B12): the locator's own path in the root the copy is going to, with the creating
+   * execution attempt's id — adoptable by no other execution, removed by no other attempt.
+   */
+  private stagingPathFor(vault: VaultName, locator: string, scope: VaultScope, attemptId: string): string {
     if (!UUID_RE.test(attemptId)) throw new VaultIntegrityError('scope', 'the staging owner is not an opaque identifier');
-    return `${this.pathFor('archive', locator, scope)}.staging-${attemptId}`;
+    return `${this.pathFor(vault, locator, scope)}.staging-${attemptId}`;
+  }
+
+  /** The names that are staged copies of a locator, and nothing else (C17): `<id>.staging-<attempt>` EXACTLY — a staged copy's own temp file (`….staging-<attempt>.tmp-<uuid>`) is a temp, never a staged copy. */
+  private stagedNamesOf(full: string, names: string[]): string[] {
+    const re = new RegExp(`^${basename(full)}\\.staging-[0-9a-f-]{36}$`);
+    return names.filter((n) => re.test(n)).sort();
   }
 
   /**
-   * The staged copies of a locator (the file names), whatever attempt staged them. A directory that is not there holds none; a directory
-   * that cannot be LISTED is an error ('unavailable'), never an empty answer — a deletion's cleanup and its verification must not conclude
-   * "nothing staged" from a listing that failed.
+   * The staged copies of a locator in a root (the file names), whatever attempt staged them. A directory that is not there holds none; a
+   * directory that cannot be LISTED is an error ('unavailable'), never an empty answer — a deletion's cleanup and its verification must not
+   * conclude "nothing staged" from a listing that failed.
    */
-  async stagedCopies(scope: VaultScope, locator: string): Promise<string[]> {
-    const full = this.pathFor('archive', locator, scope);
+  async stagedCopiesIn(vault: VaultName, scope: VaultScope, locator: string): Promise<string[]> {
+    const full = this.pathFor(vault, locator, scope);
     let names: string[];
     try { names = await readdir(dirname(full)); }
     catch (e) {
       if ((e as { code?: unknown })?.code === 'ENOENT') return [];
-      throw new VaultIntegrityError('unavailable', 'the archive directory of the locator cannot be listed');
+      throw new VaultIntegrityError('unavailable', `the ${vault} directory of the locator cannot be listed`);
     }
-    const prefix = `${basename(full)}.staging-`;
-    return names.filter((n) => n.startsWith(prefix)).sort();
+    return this.stagedNamesOf(full, names);
+  }
+
+  /** The staged copies of a locator in the ARCHIVE root (B11's form). */
+  async stagedCopies(scope: VaultScope, locator: string): Promise<string[]> {
+    return this.stagedCopiesIn('archive', scope, locator);
   }
 
   /**
-   * PUBLISH a staged archive copy under its locator (0071) — after the commit that recorded the move: a rename in the same directory,
-   * the directory synced, the digest re-read. With an attempt id, that attempt's own file; without one (the retry route), any staged
-   * copy of the locator whose bytes carry the manifest's digest. Idempotent: a copy already published under the digest wins ('already');
-   * a locator occupied by different bytes is a defect; no staged copy to publish is 'missing'. Once published, every other staged copy
-   * of the locator is redundant and removed (an attempt still running removes its own by name anyway, and finds the locator published).
+   * PUBLISH a staged copy under its locator in a root (0071; both roots since B12) — after the commit that recorded the move: a rename in
+   * the same directory, the directory synced, the digest re-read. With an attempt id, that attempt's own file; without one (the retry
+   * route), any staged copy of the locator whose bytes carry the manifest's digest. Idempotent: a copy already published under the digest
+   * wins ('already'); a locator occupied by different bytes is a defect; no staged copy to publish is 'missing'. Once published, every other
+   * staged copy of the locator in that root is redundant and removed (an attempt still running removes its own by name anyway, and finds
+   * the locator published).
    */
-  async publishArchiveCopy(scope: VaultScope, locator: string, expectedDigest: string, attemptId: string | null): Promise<'published' | 'already'> {
-    const full = this.pathFor('archive', locator, scope);
+  async publishCopy(vault: VaultName, scope: VaultScope, locator: string, expectedDigest: string, attemptId: string | null): Promise<'published' | 'already'> {
+    const tier = vault === 'archive' ? 'archive' : 'hot';
+    const full = this.pathFor(vault, locator, scope);
     const already = await readFile(full).then((present) => sha256(present) === expectedDigest ? true : null, () => false);
-    if (already === null) throw new VaultIntegrityError('exists', 'the archive locator is occupied by different bytes');
-    if (already) { await this.removeAllStaged(scope, locator); return 'already'; }
+    if (already === null) throw new VaultIntegrityError('exists', `the ${vault} locator is occupied by different bytes`);
+    if (already) { await this.removeAllStagedIn(vault, scope, locator); return 'already'; }
     let staged: string | null = null;
-    if (attemptId !== null) staged = this.stagingPathFor(locator, scope, attemptId);
+    if (attemptId !== null) staged = this.stagingPathFor(vault, locator, scope, attemptId);
     else {
-      for (const name of await this.stagedCopies(scope, locator)) {
+      for (const name of await this.stagedCopiesIn(vault, scope, locator)) {
         const candidate = join(dirname(full), name);
         const ok = await readFile(candidate).then((b) => sha256(b) === expectedDigest, () => false);
         if (ok) { staged = candidate; break; }
       }
     }
-    if (staged === null) throw new VaultIntegrityError('missing', 'the staged archive copy is not present');
+    if (staged === null) throw new VaultIntegrityError('missing', `the staged ${tier} copy is not present`);
     let bytes: Buffer;
-    try { bytes = await readFile(staged); } catch { throw new VaultIntegrityError('missing', 'the staged archive copy is not present'); }
-    if (sha256(bytes) !== expectedDigest) throw new VaultIntegrityError('corrupt', 'the staged archive copy does not match the manifest digest');
+    try { bytes = await readFile(staged); } catch { throw new VaultIntegrityError('missing', `the staged ${tier} copy is not present`); }
+    if (sha256(bytes) !== expectedDigest) throw new VaultIntegrityError('corrupt', `the staged ${tier} copy does not match the manifest digest`);
+    // B12 (C15): the hot publish of a restore after the commit — the fault fires once, so the retry route's publish succeeds.
+    if (vault === 'evidence') fault.at('b12.restore_publish_fail');
     await rename(staged, full);
     await syncDir(dirname(full));
     const readBack = await readFile(full);
-    if (sha256(readBack) !== expectedDigest) throw new VaultIntegrityError('corrupt', 'the published archive copy does not match the manifest digest');
-    await this.removeAllStaged(scope, locator);
+    if (sha256(readBack) !== expectedDigest) throw new VaultIntegrityError('corrupt', `the published ${tier} copy does not match the manifest digest`);
+    await this.removeAllStagedIn(vault, scope, locator);
     return 'published';
   }
 
-  /** Remove the staged copy of ONE execution attempt (its own file; nothing another execution could have adopted, nothing another attempt owns). */
-  async removeStaged(scope: VaultScope, locator: string, attemptId: string): Promise<void> {
-    const staged = this.stagingPathFor(locator, scope, attemptId);
+  /** PUBLISH a staged ARCHIVE copy under its locator (B11's form). */
+  async publishArchiveCopy(scope: VaultScope, locator: string, expectedDigest: string, attemptId: string | null): Promise<'published' | 'already'> {
+    return this.publishCopy('archive', scope, locator, expectedDigest, attemptId);
+  }
+
+  /** Remove the staged copy of ONE execution attempt in a root (its own file; nothing another execution could have adopted, nothing another attempt owns). */
+  async removeStagedIn(vault: VaultName, scope: VaultScope, locator: string, attemptId: string): Promise<void> {
+    const staged = this.stagingPathFor(vault, locator, scope, attemptId);
     await rm(staged, { force: true });
     await syncDir(dirname(staged)).catch(() => undefined);
   }
 
-  /** The staged copies of a locator retired, whatever attempt staged them (a deletion retires them with the bytes; a publish retires the rest). A directory that cannot be listed is an error, never "none removed". */
-  async removeAllStaged(scope: VaultScope, locator: string): Promise<number> {
-    const full = this.pathFor('archive', locator, scope);
-    const names = await this.stagedCopies(scope, locator);
+  /** Remove ONE attempt's staged copy in the ARCHIVE root (B11's form). */
+  async removeStaged(scope: VaultScope, locator: string, attemptId: string): Promise<void> {
+    await this.removeStagedIn('archive', scope, locator, attemptId);
+  }
+
+  /** The staged copies of a locator in a root retired, whatever attempt staged them (a deletion retires them with the bytes; a publish retires the rest). A directory that cannot be listed is an error, never "none removed". */
+  async removeAllStagedIn(vault: VaultName, scope: VaultScope, locator: string): Promise<number> {
+    const full = this.pathFor(vault, locator, scope);
+    const names = await this.stagedCopiesIn(vault, scope, locator);
     let n = 0;
     for (const name of names) { await rm(join(dirname(full), name), { force: true }); n += 1; }
     if (n > 0) await syncDir(dirname(full)).catch(() => undefined);
     return n;
   }
 
+  /** The staged copies of a locator in the ARCHIVE root retired (B11's form). */
+  async removeAllStaged(scope: VaultScope, locator: string): Promise<number> {
+    return this.removeAllStagedIn('archive', scope, locator);
+  }
 
   /**
-   * A read from the ARCHIVE tier that also finds a copy recorded but not yet published (the instant between the commit and the
-   * publish, or a publish that failed and awaits its retry): the locator first; then any staged copy of the locator whose bytes
-   * match the manifest's digest — the digest is the authority, not the name; then the locator once more (the publish may have
-   * happened between the two reads); and last the HOT copy, kept in place for exactly the case in which no staged copy could be
-   * published (the retry route copies it again) — served under the digest, the tier ledger's record standing.
+   * A read from a blob TIER that also finds a copy recorded but not yet published (the instant between the commit and the publish, or a
+   * publish that failed and awaits its retry): the locator first; then any staged copy of the locator in that root whose bytes match the
+   * manifest's digest — the digest is the authority, not the name; then the locator once more (the publish may have happened between the
+   * two reads); and last the OTHER blob root's published copy (`fallback`: the hot copy an archive keeps until its publish succeeds, the
+   * archive copy a restore keeps likewise — the retry route copies it again) — served under the digest, the tier ledger's record standing.
+   * Each step falls through on 'missing' ONLY (C16): a corrupt published copy propagates as the integrity failure it is.
    */
-  async readArchived(scope: VaultScope, locator: string, expectedDigest: string): Promise<{ bytes: Buffer; contentDigest: string; source: 'published' | 'staged' | 'hot' }> {
-    try { return { ...(await this.read('archive', scope, locator, expectedDigest)), source: 'published' }; }
+  async readTiered(vault: 'evidence' | 'archive', scope: VaultScope, locator: string, expectedDigest: string): Promise<{ bytes: Buffer; contentDigest: string; source: 'published' | 'staged' | 'fallback' }> {
+    const other: 'evidence' | 'archive' = vault === 'archive' ? 'evidence' : 'archive';
+    try { return { ...(await this.read(vault, scope, locator, expectedDigest)), source: 'published' }; }
     catch (e) { if (!(e instanceof VaultIntegrityError) || e.reason !== 'missing') throw e; }
-    const full = this.pathFor('archive', locator, scope);
+    const full = this.pathFor(vault, locator, scope);
     let names: string[] = [];
     try { names = await readdir(dirname(full)); } catch { names = []; }
-    const prefix = `${basename(full)}.staging-`;
-    for (const name of names.filter((n) => n.startsWith(prefix))) {
+    for (const name of this.stagedNamesOf(full, names)) {
       try {
         const bytes = await readFile(join(dirname(full), name));
         if (sha256(bytes) === expectedDigest) return { bytes, contentDigest: expectedDigest, source: 'staged' };
       } catch { /* the publish may have moved it meanwhile */ }
     }
-    try { return { ...(await this.read('archive', scope, locator, expectedDigest)), source: 'published' }; }
+    try { return { ...(await this.read(vault, scope, locator, expectedDigest)), source: 'published' }; }
     catch (e) { if (!(e instanceof VaultIntegrityError) || e.reason !== 'missing') throw e; }
-    return { ...(await this.read('evidence', scope, locator, expectedDigest)), source: 'hot' };
+    return { ...(await this.read(other, scope, locator, expectedDigest)), source: 'fallback' };
+  }
+
+  /** A read from the ARCHIVE tier (B11's form): `readTiered('archive', …)`, the hot fallback named as such. */
+  async readArchived(scope: VaultScope, locator: string, expectedDigest: string): Promise<{ bytes: Buffer; contentDigest: string; source: 'published' | 'staged' | 'hot' }> {
+    const r = await this.readTiered('archive', scope, locator, expectedDigest);
+    return { bytes: r.bytes, contentDigest: r.contentDigest, source: r.source === 'fallback' ? 'hot' : r.source };
+  }
+
+  /**
+   * B12: the domain's inventory in a blob root, by name class — blobs under their locators, staged copies, temp files of interrupted
+   * writes — from one listing of `<root>/<tenant>/<domain>`. A name containing `.tmp-` is a temp whatever precedes it (C17); one containing
+   * `.staging-` is a staged copy; anything else is a blob. A directory that is not there holds nothing; one that cannot be listed is an
+   * error ('unavailable'), never zeros.
+   */
+  async domainInventory(vault: VaultName, scope: VaultScope): Promise<{ blobs: number; staged: number; temp: number }> {
+    const names = await this.listDomain(vault, scope);
+    const out = { blobs: 0, staged: 0, temp: 0 };
+    for (const n of names) {
+      if (n.includes('.tmp-')) out.temp += 1;
+      else if (n.includes('.staging-')) out.staged += 1;
+      else out.blobs += 1;
+    }
+    return out;
+  }
+
+  /** B12: the raw names in the domain's directory of a blob root (the sweeper's walk); `[]` when the directory is not there, 'unavailable' when it cannot be listed. */
+  async listDomain(vault: VaultName, scope: VaultScope): Promise<string[]> {
+    const dir = this.domainDir(vault, scope);
+    try { return await readdir(dir); }
+    catch (e) {
+      if ((e as { code?: unknown })?.code === 'ENOENT') return [];
+      throw new VaultIntegrityError('unavailable', `the ${vault} directory of the domain cannot be listed`);
+    }
+  }
+
+  /**
+   * B12 (D6): remove a TEMP file of an interrupted write by its name — `<uuid>.tmp-<uuid>`, or a staged copy's own `<uuid>.staging-<attempt>.tmp-<uuid>`
+   * — in the domain's directory of a blob root; nothing else is removable by name (a temp never had a locator, so nothing could have
+   * referenced it). The name is matched exactly and the resolved path re-checked for containment; idempotent.
+   */
+  async removeTempFile(vault: VaultName, scope: VaultScope, name: string): Promise<void> {
+    if (!TEMP_FILE_RE.test(name)) throw new VaultIntegrityError('scope', 'a temp file is <uuid>.tmp-<uuid> or <uuid>.staging-<attempt>.tmp-<uuid>');
+    const dir = this.domainDir(vault, scope);
+    const full = resolve(dir, name);
+    if (!contains(dir, full) || full === dir || dirname(full) !== dir) throw new VaultIntegrityError('scope', 'resolved path escapes the domain directory');
+    await rm(full, { force: true });
+    await syncDir(dir).catch(() => undefined);
   }
 
   /**

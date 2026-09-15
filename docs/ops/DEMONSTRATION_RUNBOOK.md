@@ -77,6 +77,24 @@ On 2026-09-14T16:20Z the demonstration API was restarted on `eye_demo` (`/readyz
 incident showed: a restart that does not name its target lands on the default, and a restart that does not verify its
 target reports nothing wrong. §2's script does both; §3 names what not to run.
 
+**The second incident — 2026-09-15T17:31Z (the B12 act).** The act ran `scripts/ops/demo-restart.sh --build 2>&1 | sed …` to
+capture the restart into the evidence file. The API came up on the B12 build and the script's verification passed, but the
+capture never received its output: the script detached the API by calling a bash FUNCTION in the background, which leaves a
+bash subshell alive as the API's parent holding the saved copies of the script's stdout for the API's lifetime — the pipe
+never closes, the caller waits. The earlier acts had piped the script the same way and happened not to block. Corrected: the
+forked subshell now `exec`s the API (`( cd apps/api && exec nohup node dist/main.js >> "$LOG" 2>&1 < /dev/null ) &`), so
+nothing of the caller's reaches the API (bash's internal descriptors are close-on-exec); the restart was repeated by the
+corrected script inside the act. What it showed: a restart script is part of the evidence path and is exercised under a
+pipe like any other command.
+
+**Left on the demonstration by the B12 act (2026-09-15):** an ARCHIVE schedule of profile "24 months" for the source
+`nordwerk-internal` (due after 0 seconds). A schedule acts only on an evaluation (`/schedules/evaluate`, the steward's act):
+an evaluation opens archive actions for that source's hot records past their due (all of them, under the sane policy's 200
+opens per evaluation; a restored record only after the 30-day restore window) — opened only; nothing moves without the
+authority's approval and the steward's execution. No route retires a schedule (recorded as a follow-up); until one exists,
+retire it by SQL on `eye_demo` (`UPDATE retention.schedules SET state = 'retired' WHERE schedule_id = …`) if an evaluation
+must not open those actions.
+
 ## 7. Reading the running target by hand
 
 The process environment is read on macOS with `ps -E -p <pid> -o command=` and on Linux from `/proc/<pid>/environ`,

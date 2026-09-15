@@ -11,17 +11,20 @@
  * after the record committed; a log-floor move retires the outbox history below the served points. Since B11 (0070) an
  * archive moves the bytes to the archive tier and a customer export builds a signed package under the export namespace —
  * read and revoked through their own routes; a deletion whose evidence version is load-bearing pauses with the dependents named.
+ * Since B12 (0072) a restore moves archived bytes back to the hot tier (opened on demand, never by a schedule), and the COLD-TIER
+ * MANAGER — a per-domain policy: a daily byte budget, the opens per evaluation, the attempts before escalation, the escalation
+ * age, the restore window — is read by the execution and the evaluation; its state and its declaration have a section here.
  *
  * Nothing here predicts a state: every row, count, digest and check is rendered as the server returned it, and every
- * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check — is shown in the
- * server's own words with its code.
+ * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted —
+ * is shown in the server's own words with its code.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
 import {
   retention, RETENTION_CLASSIFICATIONS, RETENTION_KINDS, RETENTION_TARGET_KINDS,
-  type RetentionActionDetail, type RetentionClassification, type RetentionExecutionResult, type RetentionExportDetail, type RetentionKind, type RetentionOpenIntake,
-  type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionTargetKind, type RetentionVerdict,
+  type RetentionActionDetail, type RetentionClassification, type RetentionEvaluation, type RetentionExecutionResult, type RetentionExportDetail, type RetentionKind, type RetentionOpenIntake,
+  type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionTargetKind, type RetentionTierPolicyIntake, type RetentionTierState, type RetentionVaultInventory, type RetentionVerdict,
 } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -71,14 +74,23 @@ const failureText = (a: Row): string => {
   if (a['failure_class'] === null || a['failure_class'] === undefined) return '—';
   return `${str(a['failure_class'])} → ${str(a['disposition'])}${a['failure_reason'] !== null && a['failure_reason'] !== undefined ? ` — ${String(a['failure_reason'])}` : ''}`;
 };
+/** A schedule's last evaluation as the evaluation recorded it (B12): { at, opened, deferred }; `{}` until one has run. */
+const lastEvaluationText = (v: unknown): string => {
+  const e = rec(v);
+  if (Object.keys(e).length === 0) return 'none recorded';
+  return `opened ${str(e['opened'])}, deferred ${str(e['deferred'])} at ${fmtInstant(e['at'])}`;
+};
+/** A blob root's inventory as the controller listed it: the counts, or the error the listing raised (nulls then). */
+const inventoryText = (i: RetentionVaultInventory | undefined): string =>
+  i === undefined ? '—' : i.error !== undefined ? `not listed — ${i.error}` : `${str(i.blobs)} blob(s), ${str(i.staged)} staged, ${str(i.temp)} temp`;
 
 interface Outcome<T> { result: T | null; receipt: ReceiptT; problem: string | null }
 const none = <T,>(): Outcome<T> => ({ result: null, receipt: null, problem: null });
 
 interface OpenDraft { kind: RetentionKind; targetKind: RetentionTargetKind; manifestId: string; sourceId: string; manifestIds: string; classificationCeiling: RetentionClassification; partitionKey: string; toSeq: string; retentionProfile: string }
-/** A chosen object set (B11): one id per line, blanks ignored — an archive's or a customer export's selector. */
+/** A chosen object set (B11): one id per line, blanks ignored — an archive's, a customer export's or (B12) a restore's selector. */
 const manifestIdsOf = (text: string): string[] => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
-const takesObjectSet = (kind: RetentionKind) => kind === 'archive' || kind === 'customer_export';
+const takesObjectSet = (kind: RetentionKind) => kind === 'archive' || kind === 'customer_export' || kind === 'restore';
 const openOk = (d: OpenDraft) =>
   d.targetKind === 'evidence'
     ? d.manifestId.trim() !== '' || d.sourceId.trim() !== '' || (takesObjectSet(d.kind) && manifestIdsOf(d.manifestIds).length > 0)
@@ -106,6 +118,21 @@ function toScheduleIntake(d: ScheduleDraft): RetentionScheduleIntake {
     retentionProfile: d.retentionProfile.trim(), targetKind: d.targetKind, actionKind: d.actionKind, dueAfter: d.dueAfter.trim(),
     ...(d.sourceId.trim() === '' ? {} : { selector: { source_id: d.sourceId.trim() } }),
     ...(d.ownerPrincipalId.trim() === '' ? {} : { ownerPrincipalId: d.ownerPrincipalId.trim() }),
+  };
+}
+
+/** The cold tier's policy as a person drafts it (B12): the five fields, shown with the server's defaults; a blank budget is sent as null (unbounded). */
+interface PolicyDraft { budgetBytesPerDay: string; maxOpensPerEvaluation: string; maxAttempts: string; escalateAfter: string; restoreHotFor: string }
+const DEFAULT_POLICY: PolicyDraft = { budgetBytesPerDay: '', maxOpensPerEvaluation: '200', maxAttempts: '3', escalateAfter: '7 days', restoreHotFor: '30 days' };
+const isInt = (s: string) => s.trim() !== '' && Number.isInteger(Number(s));
+const policyOk = (d: PolicyDraft) =>
+  (d.budgetBytesPerDay.trim() === '' || isInt(d.budgetBytesPerDay)) && isInt(d.maxOpensPerEvaluation) && isInt(d.maxAttempts)
+  && d.escalateAfter.trim() !== '' && d.restoreHotFor.trim() !== '';
+function toPolicyIntake(d: PolicyDraft): RetentionTierPolicyIntake {
+  return {
+    budgetBytesPerDay: d.budgetBytesPerDay.trim() === '' ? null : Number(d.budgetBytesPerDay),
+    maxOpensPerEvaluation: Number(d.maxOpensPerEvaluation), maxAttempts: Number(d.maxAttempts),
+    escalateAfter: d.escalateAfter.trim(), restoreHotFor: d.restoreHotFor.trim(),
   };
 }
 
@@ -202,6 +229,8 @@ function ActionRecord({ d }: { d: RetentionActionDetail }) {
         <DefinitionRow term="Scope">{scopeText(a['scope_summary'])}</DefinitionRow>
         <DefinitionRow term="Scope digest">{a['scope_digest'] === null || a['scope_digest'] === undefined ? 'none — the scope has not been resolved' : <Mono>{String(a['scope_digest'])}</Mono>}</DefinitionRow>
         <DefinitionRow term="Failure">{failureText(a)}</DefinitionRow>
+        <DefinitionRow term="Attempts">{str(a['attempts'])} execution(s) begun under the tier policy (a re-resolution of an escalated action restarts the count)</DefinitionRow>
+        <DefinitionRow term="Escalated">{a['escalated_at'] === null || a['escalated_at'] === undefined ? 'no' : <>{fmtInstant(a['escalated_at'])} — for human review; the approvals were revoked</>}</DefinitionRow>
         <DefinitionRow term="Residual summary">{arr(a['residual_summary']).length === 0 ? 'none recorded' : arr(a['residual_summary']).map((x, i) => <span key={i}>{str(x['kind'])} ×{str(x['count'])} ({str(x['status'])}){x['note'] !== null && x['note'] !== undefined ? ` — ${String(x['note'])}` : ''}; </span>)}</DefinitionRow>
       </dl>
 
@@ -306,7 +335,11 @@ export default function RetentionPage() {
   const [detailProblem, setDetailProblem] = useState<string | null>(null);
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft>(EMPTY_SCHEDULE);
   const [declared, setDeclared] = useState<Outcome<{ scheduleId: string }>>(none);
-  const [evaluated, setEvaluated] = useState<Outcome<Row[]>>(none);
+  const [evaluated, setEvaluated] = useState<Outcome<RetentionEvaluation>>(none);
+  const [tier, setTier] = useState<RetentionTierState | null>(null);
+  const [tierProblem, setTierProblem] = useState<string | null>(null);
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft>(DEFAULT_POLICY);
+  const [policyDeclared, setPolicyDeclared] = useState<Outcome<Row>>(none);
   const [openDraft, setOpenDraft] = useState<OpenDraft>(() => ({ kind: 'review', targetKind: 'evidence', manifestId: '', sourceId: '', manifestIds: '', classificationCeiling: 'internal', partitionKey: `tenant:${scope.tenantId}`, toSeq: '', retentionProfile: '' }));
   const [opened, setOpened] = useState<Outcome<{ actionId: string; kind: string; targetKind: string; state: string }>>(none);
   const [resolved, setResolved] = useState<Outcome<RetentionScopeSummary>>(none);
@@ -330,6 +363,12 @@ export default function RetentionPage() {
     if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the retention actions could not be listed')); return; }
     setProblem(null); setActions(r.data.actions); setPartitions(r.data.partitions);
   };
+  /** B12: the cold tier's state — read with the lists and again after every act (an execution moves bytes and spends budget; an evaluation defers and escalates; a declaration changes the policy in force). */
+  const loadTier = async () => {
+    const r = await retention.tierState(scope);
+    if (!r.ok || r.data === undefined) { setTierProblem(refusal(r, 'the cold tier\'s state could not be read')); return; }
+    setTierProblem(null); setTier(r.data.state);
+  };
   /** B11: the export package of a customer-export action — read beside the record; a revoked package answers 409, kept as the server's words. */
   const loadExport = async (actionId: string, kind: unknown) => {
     if (kind !== 'customer_export') { setExported({ detail: null, problem: null }); return; }
@@ -348,7 +387,7 @@ export default function RetentionPage() {
     setResolved(none()); setRationale(''); setApproved(none()); setExecuted(none()); setVerified(none()); setWdReason(''); setWithdrawn(none()); setRvReason(''); setRevoked(none());
     void loadDetail(actionId);
   };
-  useEffect(() => { void loadSchedules(); void loadActions(); }, [scope]);
+  useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); }, [scope]);
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (actions === null) return <Empty>reading the retention actions…</Empty>;
@@ -356,7 +395,7 @@ export default function RetentionPage() {
   const current = selected === null ? null : actions.find((a) => String(a['action_id']) === selected) ?? null;
   const servedDigest = detail !== null && typeof detail.action['scope_digest'] === 'string' ? detail.action['scope_digest'] : null;
 
-  /** One governed act on the selected action: the refusal is kept verbatim; the list and the record are re-read from the server after. */
+  /** One governed act on the selected action: the refusal is kept verbatim; the list, the record and the cold tier's state are re-read from the server after. */
   const act = async <T,>(set: (o: Outcome<T>) => void, verb: string, run: () => Promise<{ ok: boolean; status: number; data?: { receipt: ReceiptT } & Record<string, unknown>; error?: { code: string; message: string } }>, pick: (d: Record<string, unknown>) => T) => {
     set(none());
     const r = await run();
@@ -365,11 +404,13 @@ export default function RetentionPage() {
       set({ result: null, receipt: null, problem: m });
       if (selected !== null) await loadDetail(selected);
       await loadActions();
+      await loadTier();
       throw new Error(m);
     }
     set({ result: pick(r.data), receipt: r.data.receipt, problem: null });
     await loadActions();
     if (selected !== null) await loadDetail(selected);
+    await loadTier();
   };
 
   return (
@@ -382,7 +423,9 @@ export default function RetentionPage() {
         digest they read (never by the opener); <strong>executed</strong> by the steward (never by an approver) in one transaction — a hold placed
         since the approval rolls the execution back whole and pauses the action; and <strong>verified</strong> check by check against what the
         vault observes. A review records the review and touches no bytes; a deletion tombstones, its bytes removed after the record committed;
-        a log-floor move retires outbox history below the served points. Every count, digest and refusal below is the server's.
+        a log-floor move retires outbox history below the served points; an archive moves bytes to the cold tier and a <strong>restore</strong> moves
+        them back. The <strong>cold-tier manager</strong> is the domain's policy — a daily byte budget, the opens per evaluation, the attempts before
+        escalation, the escalation age, the restore window — read by every execution and evaluation. Every count, digest and refusal below is the server's.
       </UnknownNote>
 
       <section aria-labelledby="sched-h" style={cardStyle}>
@@ -391,12 +434,12 @@ export default function RetentionPage() {
         {schedules === null ? (scheduleProblem === null ? <Empty>reading the schedules…</Empty> : null) : schedules.length === 0 ? <Empty>No schedule is declared in this domain: nothing falls due on its own.</Empty> : (
           <ScrollBox label="retention schedules">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Schedule</Th><Th>Retention profile</Th><Th>Target</Th><Th>Action kind</Th><Th>Due after</Th><Th>Selector</Th><Th>State</Th><Th>Owner</Th><Th>Declared</Th><Th>Last evaluated</Th></tr></thead>
+              <thead><tr><Th>Schedule</Th><Th>Retention profile</Th><Th>Target</Th><Th>Action kind</Th><Th>Due after</Th><Th>Selector</Th><Th>State</Th><Th>Owner</Th><Th>Declared</Th><Th>Last evaluated</Th><Th>Last evaluation</Th></tr></thead>
               <tbody>{schedules.map((s) => (
                 <tr key={String(s['schedule_id'])}>
                   <Td mono>{short(s['schedule_id'])}</Td><Td mono>{str(s['retention_profile'])}</Td><Td>{str(s['target_kind'])}</Td><Td>{str(s['action_kind'])}</Td>
                   <Td mono>{fmtInterval(s['due_after'])}</Td><Td mono>{selectorText(s['selector'])}</Td><Td>{str(s['state'])}</Td><Td mono>{short(s['owner_principal_id'])}</Td>
-                  <Td>{fmtInstant(s['declared_at'])}</Td><Td>{fmtInstant(s['last_evaluated_at'])}</Td>
+                  <Td>{fmtInstant(s['declared_at'])}</Td><Td>{fmtInstant(s['last_evaluated_at'])}</Td><Td>{lastEvaluationText(s['last_evaluation'])}</Td>
                 </tr>))}</tbody>
             </table>
           </ScrollBox>
@@ -405,41 +448,60 @@ export default function RetentionPage() {
         <h3 style={h3}>Evaluate the schedules</h3>
         <p style={muted}>
           The steward's act: every evidence manifest of a schedule's profile past its due-after that no open action of that kind covers raises an
-          action (a RetentionActionDue each); nothing is deleted by an evaluation. Only evidence schedules are evaluated.
+          action (a RetentionActionDue each) — oldest due first, at most the tier policy's opens per evaluation per schedule, the rest deferred to
+          the next evaluation; a restored manifest falls due for its archive schedule at the restore's instant plus the restore window. Nothing is
+          deleted by an evaluation. Only evidence schedules are evaluated. The cold-tier manager's pass rides the same act: an action paused for
+          retry longer than the policy's escalate-after is escalated for human review (its approvals revoked).
         </p>
         <div style={controlRow}>
           <GovernedButton label="Evaluate schedules" pendingLabel="evaluating"
             onRun={async () => {
               try {
-                await act(setEvaluated, 'evaluation', () => retention.evaluateSchedules(scope), (d) => arr(rec(d['evaluation'])['opened']));
+                await act(setEvaluated, 'evaluation', () => retention.evaluateSchedules(scope), (d) => d['evaluation'] as RetentionEvaluation);
               } finally {
-                // The evaluation stamps last_evaluated_at on every active schedule: the schedules are re-read whether or not the act was answered.
+                // The evaluation stamps last_evaluated_at and last_evaluation on every active schedule: the schedules are re-read whether or not the act was answered.
                 await loadSchedules();
               }
             }} />
         </div>
         <Problem verb="not evaluated" problem={evaluated.problem} />
         {evaluated.result !== null && (
-          evaluated.result.length === 0 ? <p>the evaluation opened no action: nothing of any active schedule fell due that an open action does not already cover</p> : (
-            <>
-              <p>the evaluation opened <strong>{evaluated.result.length}</strong> action(s):</p>
-              <ScrollBox label="actions opened by the evaluation">
-                <table className="eye-table" style={tableStyle}>
-                  <thead><tr><Th>Action</Th><Th>Kind</Th><Th>Target</Th><Th>Selector</Th><Th>Schedule</Th><Th>Retention profile</Th><Th>Due from</Th></tr></thead>
-                  <tbody>{evaluated.result.map((o) => (
-                    <tr key={String(o['action_id'])}>
-                      <Td mono>{str(o['action_id'])}</Td><Td>{str(o['kind'])}</Td><Td>{str(o['target_kind'])}</Td><Td mono>{selectorText(o['selector'])}</Td>
-                      <Td mono>{short(o['schedule_id'])}</Td><Td mono>{str(o['retention_profile'])}</Td><Td>{fmtInstant(o['due_from'])}</Td>
-                    </tr>))}</tbody>
-                </table>
-              </ScrollBox>
-            </>
-          )
+          <>
+            {evaluated.result.opened.length === 0 ? <p>the evaluation opened no action: nothing of any active schedule fell due that an open action does not already cover · deferred {str(evaluated.result.deferred)}</p> : (
+              <>
+                <p>the evaluation opened <strong>{evaluated.result.opened.length}</strong> action(s) · deferred <strong>{str(evaluated.result.deferred)}</strong> to the next evaluation (the policy's opens per evaluation):</p>
+                <ScrollBox label="actions opened by the evaluation">
+                  <table className="eye-table" style={tableStyle}>
+                    <thead><tr><Th>Action</Th><Th>Kind</Th><Th>Target</Th><Th>Selector</Th><Th>Schedule</Th><Th>Retention profile</Th><Th>Due from</Th></tr></thead>
+                    <tbody>{evaluated.result.opened.map((o) => (
+                      <tr key={String(o['action_id'])}>
+                        <Td mono>{str(o['action_id'])}</Td><Td>{str(o['kind'])}</Td><Td>{str(o['target_kind'])}</Td><Td mono>{selectorText(o['selector'])}</Td>
+                        <Td mono>{short(o['schedule_id'])}</Td><Td mono>{str(o['retention_profile'])}</Td><Td>{fmtInstant(o['due_from'])}</Td>
+                      </tr>))}</tbody>
+                  </table>
+                </ScrollBox>
+              </>
+            )}
+            {evaluated.result.escalated.length === 0 ? <p>the cold-tier manager escalated no action: none paused for retry is older than the policy's escalate-after</p> : (
+              <>
+                <p>the cold-tier manager escalated <strong>{evaluated.result.escalated.length}</strong> action(s) for human review:</p>
+                <ScrollBox label="actions escalated by the evaluation">
+                  <table className="eye-table" style={tableStyle}>
+                    <thead><tr><Th>Action</Th><Th>Kind</Th><Th>Paused at</Th><Th>Reason</Th></tr></thead>
+                    <tbody>{evaluated.result.escalated.map((o) => (
+                      <tr key={String(o['action_id'])}>
+                        <Td mono>{str(o['action_id'])}</Td><Td>{str(o['kind'])}</Td><Td>{fmtInstant(o['paused_at'])}</Td><Td>{str(o['reason'])}</Td>
+                      </tr>))}</tbody>
+                  </table>
+                </ScrollBox>
+              </>
+            )}
+          </>
         )}
         <Receipt receipt={evaluated.receipt} />
 
         <h3 style={h3}>Declare a schedule</h3>
-        <p style={muted}>A domain admin's act. The due-after is an interval such as <Mono>90 days</Mono> (seconds, minutes, hours, days, months or years); the owner defaults to the declarer.</p>
+        <p style={muted}>A domain admin's act. The due-after is an interval such as <Mono>90 days</Mono> (seconds, minutes, hours, days, months or years); the owner defaults to the declarer. A restore is opened on demand, never by a schedule: the server refuses that kind here.</p>
         <div style={rowStyle}>
           <Field id="sd-profile" label="Retention profile (required)">{(id) => <Txt id={id} value={scheduleDraft.retentionProfile} onChange={(v) => setScheduleDraft({ ...scheduleDraft, retentionProfile: v })} />}</Field>
           <Field id="sd-target" label="Target kind">{(id) => <Sel id={id} value={scheduleDraft.targetKind} options={RETENTION_TARGET_KINDS} onChange={(v) => setScheduleDraft({ ...scheduleDraft, targetKind: v })} />}</Field>
@@ -459,6 +521,88 @@ export default function RetentionPage() {
         <Problem verb="not declared" problem={declared.problem} />
         {declared.result !== null && <p>declared schedule <Mono>{str(declared.result.scheduleId)}</Mono></p>}
         <Receipt receipt={declared.receipt} />
+      </section>
+
+      <section aria-labelledby="tier-h" style={cardStyle}>
+        <h2 id="tier-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Cold tier</h2>
+        <p style={muted}>
+          The cold-tier manager's observable state, as the server returned it: the policy in force (the defaults until one is declared), the
+          manifests and bytes per tier, the moves of the last 24 hours, the daily byte budget and the instant its rolling window frees, the
+          actions by state, the restored manifests awaiting their re-archive, and the vault's inventory of both roots. An audited read.
+        </p>
+        {tierProblem !== null && <LiveStatus assertive><span style={critical}>not read — {tierProblem}</span></LiveStatus>}
+        {tier === null ? (tierProblem === null ? <Empty>reading the cold tier's state…</Empty> : null) : (
+          <>
+            <dl>
+              <DefinitionRow term="Policy in force">
+                {tier.policy.declared ? <>version <strong>{str(tier.policy.version)}</strong>{tier.policy.policy_id !== undefined && tier.policy.policy_id !== null ? <> · <Mono>{short(tier.policy.policy_id)}</Mono></> : null}</> : <>the defaults — no policy is declared for this domain</>}
+                {' · '}budget {tier.policy.budget_bytes_per_day === null ? 'unbounded (null)' : `${str(tier.policy.budget_bytes_per_day)} bytes per day`}
+                {' · '}opens per evaluation {str(tier.policy.max_opens_per_evaluation)} · attempts {str(tier.policy.max_attempts)}
+                {' · '}escalate after <Mono>{fmtInterval(tier.policy.escalate_after)}</Mono> · restore window <Mono>{fmtInterval(tier.policy.restore_hot_for)}</Mono>
+              </DefinitionRow>
+              <DefinitionRow term="Tiers">hot {str(tier.tiers.hot.manifests)} manifest(s), {str(tier.tiers.hot.bytes)} bytes · archive {str(tier.tiers.archive.manifests)} manifest(s), {str(tier.tiers.archive.bytes)} bytes</DefinitionRow>
+              <DefinitionRow term="Moves, last 24 hours">archived {str(tier.moves_24h.archived.count)} ({str(tier.moves_24h.archived.bytes)} bytes) · restored {str(tier.moves_24h.restored.count)} ({str(tier.moves_24h.restored.bytes)} bytes)</DefinitionRow>
+              <DefinitionRow term="Budget">
+                {tier.budget.bytes_per_day === null ? 'unbounded (null)' : `${str(tier.budget.bytes_per_day)} bytes per day`} · used {str(tier.budget.used_24h)}
+                {' · '}remaining {tier.budget.remaining === null ? 'unbounded (null)' : str(tier.budget.remaining)} · window resets {tier.budget.window_resets_at === null ? 'never (nothing moved in the window)' : fmtInstant(tier.budget.window_resets_at)}
+              </DefinitionRow>
+              <DefinitionRow term="Actions">
+                executing {str(tier.actions.executing)} · paused for retry {str(tier.actions.paused_retry)} · paused for human review {str(tier.actions.paused_human_review)}
+                {' · '}escalated <strong>{str(tier.actions.escalated)}</strong> · pending bytes residuals {str(tier.actions.pending_bytes_residuals)}
+              </DefinitionRow>
+              <DefinitionRow term="Restored, awaiting re-archive">{str(tier.restored_awaiting_rearchive)} hot manifest(s) whose latest tier record is a restore</DefinitionRow>
+              <DefinitionRow term="Vault inventory">evidence root: {inventoryText(tier.vault.evidence)} · archive root: {inventoryText(tier.vault.archive)}</DefinitionRow>
+            </dl>
+            <h3 style={h3}>Schedules as the manager sees them ({tier.schedules.length})</h3>
+            {tier.schedules.length === 0 ? <Empty>No schedule: nothing returns to the cold tier on its own.</Empty> : (
+              <ScrollBox label="cold tier schedules">
+                <table className="eye-table" style={tableStyle}>
+                  <thead><tr><Th>Schedule</Th><Th>Action kind</Th><Th>Retention profile</Th><Th>Due after</Th><Th>State</Th><Th>Last evaluated</Th><Th>Last evaluation</Th></tr></thead>
+                  <tbody>{tier.schedules.map((s) => (
+                    <tr key={String(s.schedule_id)}>
+                      <Td mono>{short(s.schedule_id)}</Td><Td>{str(s.action_kind)}</Td><Td mono>{str(s.retention_profile)}</Td><Td mono>{fmtInterval(s.due_after)}</Td>
+                      <Td>{str(s.state)}</Td><Td>{fmtInstant(s.last_evaluated_at)}</Td><Td>{lastEvaluationText(s.last_evaluation)}</Td>
+                    </tr>))}</tbody>
+                </table>
+              </ScrollBox>
+            )}
+          </>
+        )}
+
+        <h3 style={h3}>Declare the tier policy</h3>
+        <p style={muted}>
+          A domain admin's act (the tenant's or the platform's admin as well), the next version of this domain's policy. The budget is the bytes an
+          archive or a restore may move in a rolling day (blank: unbounded; an execution above it is refused before it begins and the action paused for
+          retry, the instant the window frees named); the opens per evaluation bound what an evaluation opens per schedule (1–200, oldest due first);
+          the attempts bound the executions begun before an action is escalated for human review (1–10); the escalate-after is the age at which an
+          action paused for retry is escalated by the evaluation; the restore window is how long a restored record stays hot before its archive
+          schedule takes it back. Intervals are spelled as a due-after. The defaults are shown; the server states what it refuses.
+        </p>
+        <div style={rowStyle}>
+          <Field id="tp-budget" label="Budget, bytes per day (blank: unbounded)">{(id) => <Txt id={id} type="number" value={policyDraft.budgetBytesPerDay} onChange={(v) => setPolicyDraft({ ...policyDraft, budgetBytesPerDay: v })} />}</Field>
+          <Field id="tp-opens" label="Opens per evaluation (1 to 200)">{(id) => <Txt id={id} type="number" value={policyDraft.maxOpensPerEvaluation} onChange={(v) => setPolicyDraft({ ...policyDraft, maxOpensPerEvaluation: v })} />}</Field>
+          <Field id="tp-attempts" label="Attempts before escalation (1 to 10)">{(id) => <Txt id={id} type="number" value={policyDraft.maxAttempts} onChange={(v) => setPolicyDraft({ ...policyDraft, maxAttempts: v })} />}</Field>
+          <Field id="tp-escalate" label="Escalate after (e.g. 7 days)">{(id) => <Txt id={id} value={policyDraft.escalateAfter} onChange={(v) => setPolicyDraft({ ...policyDraft, escalateAfter: v })} />}</Field>
+          <Field id="tp-window" label="Restore window (e.g. 30 days)">{(id) => <Txt id={id} value={policyDraft.restoreHotFor} onChange={(v) => setPolicyDraft({ ...policyDraft, restoreHotFor: v })} />}</Field>
+        </div>
+        <div style={controlRow}>
+          <GovernedButton label="Declare tier policy" pendingLabel="declaring" disabled={!policyOk(policyDraft)}
+            onRun={async () => {
+              await act(setPolicyDeclared, 'declaration', () => retention.declareTierPolicy(scope, toPolicyIntake(policyDraft)), (d) => rec(d['policy']));
+              setPolicyDraft(DEFAULT_POLICY);
+            }} />
+        </div>
+        <Problem verb="not declared" problem={policyDeclared.problem} />
+        {policyDeclared.result !== null && (
+          <p>
+            declared tier policy version <strong>{str(policyDeclared.result['version'])}</strong> <Mono>{short(policyDeclared.result['policy_id'])}</Mono>
+            {' · '}budget {policyDeclared.result['budget_bytes_per_day'] === null ? 'unbounded (null)' : `${str(policyDeclared.result['budget_bytes_per_day'])} bytes per day`}
+            {' · '}opens per evaluation {str(policyDeclared.result['max_opens_per_evaluation'])} · attempts {str(policyDeclared.result['max_attempts'])}
+            {' · '}escalate after <Mono>{fmtInterval(policyDeclared.result['escalate_after'])}</Mono> · restore window <Mono>{fmtInterval(policyDeclared.result['restore_hot_for'])}</Mono>
+            {' · '}declared at {fmtInstant(policyDeclared.result['declared_at'])}
+          </p>
+        )}
+        <Receipt receipt={policyDeclared.receipt} />
       </section>
 
       <section aria-labelledby="acts-h" style={cardStyle}>
@@ -524,8 +668,10 @@ export default function RetentionPage() {
             <h2 id="resolve-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Resolve the scope</h2>
             <p style={muted}>
               The steward's act: every item the action would touch is recorded with its disposition — execute, held (a legal hold takes precedence),
-              excluded (a deletion retires corrected, superseded or withdrawn evidence only), blocking (a cursor or unpublished row below a floor) —
-              and the digest the approval signs is computed over that ordered scope. A paused or held action is resolved again by the same act.
+              excluded (a deletion retires corrected, superseded or withdrawn evidence only; a restore moves archived bytes only, so a manifest already
+              in the hot tier is excluded), blocking (a cursor or unpublished row below a floor) — and the digest the approval signs is computed over
+              that ordered scope. A paused, held or escalated action is resolved again by the same act; the re-resolution of an escalated one restarts
+              its attempts (recorded on the resolution's event).
             </p>
             <div style={controlRow}>
               <GovernedButton label="Resolve scope" pendingLabel="resolving"
@@ -562,7 +708,10 @@ export default function RetentionPage() {
               The steward's act, human-gated; an approver never executes. The approved scope runs in one transaction: a review records each item as reviewed
               and removes nothing; a deletion tombstones each executing manifest and its bytes go after the commit; a log-floor move declares the floor.
               A hold placed since the approval refuses the item, and the whole execution is rolled back and the action paused for re-resolution (a 409).
-              Every kind executes: an archive moves the bytes to the archive tier; a customer export builds a signed package under the export namespace.
+              Every kind executes: an archive moves the bytes to the archive tier; a restore moves them back to the hot tier; a customer export builds a
+              signed package under the export namespace. The cold-tier manager refuses, before anything moves, an archive or a restore above the domain's
+              daily byte budget (the action paused for retry, the instant the window frees named) and any execution past the policy's attempts (the action
+              escalated for human review; a re-resolution restarts the count) — each a 409 in the server's words.
               On an already executed action this act retries the pending bytes residuals.
             </p>
             <div style={controlRow}>
@@ -578,7 +727,8 @@ export default function RetentionPage() {
             <h2 id="verify-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Verify</h2>
             <p style={muted}>
               Only an executed action is verified. Each item is checked against what the vault observes: a deleted manifest tombstoned and its bytes gone; a held
-              one untouched and its bytes present; a reviewed one untouched, its bytes present and the review recorded; a moved floor standing at its sequence.
+              one untouched and its bytes present; a reviewed one untouched, its bytes present and the review recorded; a moved floor standing at its sequence;
+              a restored one recorded hot, its bytes in the hot tier under its digest, absent from the archive tier and no staged copy in either root.
               A pass closes the action verified (with residuals when bytes are still pending) and, for a deletion or a floor move, publishes DeletionVerified;
               a review's verification is its own record and publishes none.
             </p>
@@ -625,10 +775,10 @@ export default function RetentionPage() {
         <h2 id="open-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Open an action</h2>
         <p style={muted}>
           The steward's act, under the purpose <Mono>retention</Mono>: the workflow's first durable state, announced by RetentionActionDue. An evidence
-          selector names a manifest id or a source id (that source's superseded versions) — an archive or a customer export may name a chosen object set
-          instead (manifest ids, one per line), and a customer export names its classification ceiling (its redaction gate; the export namespace is its
-          destination); a log partition names this tenant's partition key and the sequence the floor moves to, and takes the <Mono>log_floor</Mono> kind only.
-          The server states what it refuses.
+          selector names a manifest id or a source id (that source's superseded versions) — an archive, a restore or a customer export may name a chosen
+          object set instead (manifest ids, one per line; a restore names the archived manifests to move back to the hot tier), and a customer export names
+          its classification ceiling (its redaction gate; the export namespace is its destination); a log partition names this tenant's partition key and
+          the sequence the floor moves to, and takes the <Mono>log_floor</Mono> kind only. The server states what it refuses.
         </p>
         <div style={rowStyle}>
           <Field id="op-kind" label="Kind">{(id) => <Sel id={id} value={openDraft.kind} options={RETENTION_KINDS} onChange={(v) => setOpenDraft({ ...openDraft, kind: v })} />}</Field>
@@ -640,7 +790,7 @@ export default function RetentionPage() {
             <Field id="op-manifest" label={takesObjectSet(openDraft.kind) ? 'Manifest id (or a source id, or manifest ids below)' : 'Manifest id (one of the two)'}>{(id) => <Txt id={id} value={openDraft.manifestId} onChange={(v) => setOpenDraft({ ...openDraft, manifestId: v })} />}</Field>
             <Field id="op-source" label={takesObjectSet(openDraft.kind) ? 'Source id (or a manifest id, or manifest ids below)' : 'Source id (one of the two)'}>{(id) => <Txt id={id} value={openDraft.sourceId} onChange={(v) => setOpenDraft({ ...openDraft, sourceId: v })} />}</Field>
             {takesObjectSet(openDraft.kind) && (
-              <Field id="op-manifest-ids" label="Manifest ids (a chosen object set, one id per line, 1 to 200)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem' }} value={openDraft.manifestIds} onChange={(e) => setOpenDraft({ ...openDraft, manifestIds: e.target.value })} />}</Field>
+              <Field id="op-manifest-ids" label="Manifest ids (a chosen object set — an archive's, a restore's or a customer export's; one id per line, 1 to 200)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem' }} value={openDraft.manifestIds} onChange={(e) => setOpenDraft({ ...openDraft, manifestIds: e.target.value })} />}</Field>
             )}
             {openDraft.kind === 'customer_export' && (
               <Field id="op-ceiling" label="Classification ceiling (the redaction gate: objects above it are excluded)">{(id) => <Sel id={id} value={openDraft.classificationCeiling} options={RETENTION_CLASSIFICATIONS} onChange={(v) => setOpenDraft({ ...openDraft, classificationCeiling: v })} />}</Field>

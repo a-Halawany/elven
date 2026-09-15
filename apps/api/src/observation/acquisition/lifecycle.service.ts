@@ -1430,6 +1430,8 @@ export class AcquisitionLifecycle {
     if (!held.manifestPresent || held.manifestId === null || held.locator === null || held.vault === null) return 'no-manifest';
     try {
       if (held.tier === 'archive') await this.vault.readArchived(scope, held.locator, held.contentDigest);
+      // B12 (C12): a restored manifest whose hot publish is pending is still available — its copy staged or kept in the archive root — and must not read as unavailable (it would admit a duplicate).
+      else if (held.vault === 'evidence') await this.vault.readTiered('evidence', scope, held.locator, held.contentDigest);
       else await this.vault.read(held.vault as 'evidence' | 'quarantine', scope, held.locator, held.contentDigest);
       return 'verified';
     } catch {

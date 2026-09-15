@@ -72,10 +72,12 @@ if [ -n "$pid" ]; then
   [ -z "$(api_pid)" ] || { echo "the API on :$PORT did not stop" >&2; exit 1; }
 fi
 mkdir -p "$(dirname "$LOG")"
-# Fully detach the API: a new session, its own fds to the log, no controlling terminal — so the API never holds a pipe or a
-# terminal of whoever invoked this script (a plain `( ... & )` left the API attached to the caller's stdout pipe and hung it).
-detach() { if command -v setsid >/dev/null 2>&1; then setsid "$@"; else nohup "$@"; fi; }
-( cd apps/api && detach node dist/main.js >> "$LOG" 2>&1 < /dev/null & )
+# Fully detach the API: its own fds to the log, immune to the hangup, and EXEC'd in the forked subshell — so no bash lingers as
+# the API's parent holding the saved copies of this script's stdout (a plain `( ... & )` left the API attached to the caller's
+# stdout pipe and hung it; a background FUNCTION call left a bash subshell holding those copies for the API's lifetime, which
+# hung a caller that piped this script's output — found during the B12 demonstration, 2026-09-15). `exec` replaces the
+# subshell by the API; bash's internal descriptors are close-on-exec, so nothing of the caller's reaches the API.
+( cd apps/api && exec nohup node dist/main.js >> "$LOG" 2>&1 < /dev/null ) &
 for _ in $(seq 1 60); do curl -sf "localhost:$PORT/readyz" > /dev/null 2>&1 && break; sleep 1; done
 verify
 exit $?

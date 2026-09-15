@@ -1,0 +1,12 @@
+=== the unit suite at the B12 tree (apps/api: pnpm test — the C16 hermetic gate suite and the meta suite), 2026-09-15, run last after the records edits ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  40 passed (40)
+      Tests  2156 passed (2156)
+   Start at  20:49:07
+   Duration  231.00s (transform 2.84s, setup 0ms, import 6.33s, tests 1127.32s, environment 2ms)
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  20:52:58
+   Duration  201.94s (transform 10ms, setup 0ms, import 16ms, tests 201.86s, environment 0ms)

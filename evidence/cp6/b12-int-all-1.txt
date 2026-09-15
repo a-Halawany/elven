@@ -1,0 +1,7 @@
+=== the full integration suite at the B12 tree (apps/api: pnpm test:int:all) on a fresh database eye_verify_b12_all1 (0001–0072), 2026-09-15 — the B12 harness's 12 cases included ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  62 passed (62)
+      Tests  1006 passed (1006)
+   Start at  20:19:49
+   Duration  476.60s (transform 1.25s, setup 293ms, import 20.82s, tests 450.78s, environment 3ms)

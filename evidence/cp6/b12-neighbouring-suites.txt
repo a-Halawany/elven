@@ -1,0 +1,26 @@
+=== the suites the B12 changes touch, at the B12 tree, on a fresh database eye_verify_b12_n1 (0001–0072): phase6-retention-b11, phase6-retention-b11-archive-poll, phase1-fault-injection (the sweeper), phase1-acceptance (the vault, A7), phase6-graph-subscriptions-4 (retention B9) — 160/160 in 5 files; phase6-retention-b11-closure failed to TRANSFORM in this run (an unescaped apostrophe in a retitled case, corrected) and passed 9/9 on eye_verify_b12_n2 below ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ ❯ test/int/phase6-retention-b11-closure.test.ts (0 test)
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-retention-b11-closure.test.ts [ test/int/phase6-retention-b11-closure.test.ts ]
+[38;5;246m─────╯[0m
+  Plugin: vite:oxc
+  File: /Users/halawany/work/personal/mohammed/new_project/apps/api/test/int/phase6-retention-b11-closure.test.ts
+ ❯ transformWithOxc ../../node_modules/.pnpm/vite@8.2.0_@types+node@26.1.2_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:4090:19
+ ❯ TransformPluginContext.transform ../../node_modules/.pnpm/vite@8.2.0_@types+node@26.1.2_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:4161:26
+ ❯ EnvironmentPluginContainer.transform ../../node_modules/.pnpm/vite@8.2.0_@types+node@26.1.2_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:30796:51
+ ❯ loadAndTransform ../../node_modules/.pnpm/vite@8.2.0_@types+node@26.1.2_yaml@2.9.0/node_modules/vite/dist/node/chunks/node.js:20594:26
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+ Test Files  1 failed | 5 passed (6)
+      Tests  160 passed (160)
+   Start at  20:18:02
+   Duration  55.38s (transform 633ms, setup 38ms, import 2.68s, tests 52.22s, environment 0ms)
+
+=== phase6-retention-b11-closure at the B12 tree on a fresh database eye_verify_b12_n2 (0001–0072), 2026-09-15 — the four case titles retitled to the per-attempt ownership design (Codex's stale-wording note) ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  20:19:13
+   Duration  21.99s (transform 510ms, setup 15ms, import 872ms, tests 21.04s, environment 0ms)

@@ -971,6 +971,9 @@ const BUNDLE_V1: Rule[] = [
    * administrator's; the ports refuse an opener approving or an approver executing.
    */
   { actionPrefix: 'retention.schedule.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B12 (0072 §1; L3-C08): the cold-tier manager's POLICY — the daily byte budget, the opens per evaluation, the attempts before escalation, the
+  // escalation age, the restore window — is the domain administrator's declaration, like the schedule; the steward evaluates and executes under it.
+  { actionPrefix: 'retention.tier.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'retention.schedule.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'retention.action.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   // B11: a withdrawal is its own named act (the retention workspace found the route bound to the opener's action); the same holders.

@@ -514,17 +514,18 @@ export const graph = {
       s, `/ontology/${versionId}/decide`, 'graph.ontology.decide', 'ONT', { decision, reason, reviews }, versionId),
 };
 
-/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068) ───────────────────────── */
+/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072) ───────────────────────── */
 
 /**
  * The retention routes live under `…/retention`, not `…/graph`, and every call is made under the purpose `retention`.
  * One governed act per state transition of an action — open, resolve, approve (human-gated, on the scope digest the
  * approver read), execute (human-gated, never the approver), verify — and the schedule's declare and evaluate; the
- * reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action. The server's refusal is returned
- * verbatim: the opener's own approval, a wrong digest, an unresolved scope, a review's failed check are all its words.
+ * reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action, RTP the cold tier's policy (B12:
+ * declared per domain, its state read beside the lists). The server's refusal is returned verbatim: the opener's own
+ * approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted are all its words.
  */
 async function r<T>(
-  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA',
+  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP',
   payload: unknown = {}, objectId: string | null = null,
 ): Promise<ApiResult<T>> {
   return call<T>(
@@ -544,7 +545,7 @@ async function r<T>(
   );
 }
 
-export const RETENTION_KINDS = ['review', 'deletion', 'archive', 'log_floor', 'customer_export'] as const;
+export const RETENTION_KINDS = ['review', 'deletion', 'archive', 'log_floor', 'customer_export', 'restore'] as const;
 export const RETENTION_TARGET_KINDS = ['evidence', 'log_partition'] as const;
 export type RetentionKind = (typeof RETENTION_KINDS)[number];
 export type RetentionTargetKind = (typeof RETENTION_TARGET_KINDS)[number];
@@ -553,9 +554,10 @@ export type RetentionTargetKind = (typeof RETENTION_TARGET_KINDS)[number];
 export type RetentionRow = Record<string, unknown>;
 
 /**
- * What opens an action (validateOpenAction): an evidence selector names a manifestId or a sourceId — or, for an archive or a
- * customer export (B11), manifestIds (1–200, a chosen object set); a customer export names its classificationCeiling (the redaction
- * gate) and may name destination `export` (the only destination this release binds); a log partition names partitionKey + toSeq
+ * What opens an action (validateOpenAction): an evidence selector names a manifestId or a sourceId — or, for an archive, a
+ * customer export (B11) or a restore (B12: the archived bytes moved back to the hot tier, opened on demand and never by a
+ * schedule), manifestIds (1–200, a chosen object set); a customer export names its classificationCeiling (the redaction gate)
+ * and may name destination `export` (the only destination this release binds); a log partition names partitionKey + toSeq
  * and takes the log_floor kind only.
  */
 export interface RetentionOpenIntake {
@@ -567,7 +569,7 @@ export interface RetentionOpenIntake {
 export const RETENTION_CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;
 export type RetentionClassification = (typeof RETENTION_CLASSIFICATIONS)[number];
 
-/** What declares a schedule: `dueAfter` is an interval such as "90 days"; `selector` and `ownerPrincipalId` are optional (the owner defaults to the declarer). */
+/** What declares a schedule: `dueAfter` is an interval such as "90 days"; `selector` and `ownerPrincipalId` are optional (the owner defaults to the declarer). The server refuses the restore kind (a restore is opened on demand). */
 export interface RetentionScheduleIntake {
   retentionProfile: string;
   targetKind: RetentionTargetKind;
@@ -575,6 +577,59 @@ export interface RetentionScheduleIntake {
   dueAfter: string;
   selector?: Record<string, unknown>;
   ownerPrincipalId?: string;
+}
+
+/**
+ * evaluate's answer (B12, 0072 §1/§6): the actions opened (oldest due first, at most the policy's opens per evaluation per schedule;
+ * `deferred` is what fell due beyond that bound and waits for the next evaluation) and, from the cold-tier manager's pass after the
+ * schedules, the paused-for-retry actions it ESCALATED for human review because their pause is older than the policy's escalate-after
+ * — each `{ action_id, kind, paused_at, reason }` in the server's words.
+ */
+export interface RetentionEvaluation {
+  opened: Array<Record<string, unknown>>;
+  escalated: Array<Record<string, unknown>>;
+  deferred: number;
+}
+
+/**
+ * What declares the cold tier's policy (B12, 0072 §1 `retention.tier_policies`): every field is optional and the server takes its
+ * defaults for what is omitted — `budgetBytesPerDay` null (unbounded), `maxOpensPerEvaluation` 200 (1–200), `maxAttempts` 3 (1–10),
+ * `escalateAfter` "7 days", `restoreHotFor` "30 days" (intervals as `dueAfter` is spelled). Each declaration is the next version.
+ */
+export interface RetentionTierPolicyIntake {
+  budgetBytesPerDay?: number | null;
+  maxOpensPerEvaluation?: number;
+  maxAttempts?: number;
+  escalateAfter?: string;
+  restoreHotFor?: string;
+}
+
+/** One blob root's inventory as the controller adds it to the tier state (one readdir of the domain's directory); nulls with `error` when the root could not be listed. */
+export interface RetentionVaultInventory { blobs: number | null; staged: number | null; temp: number | null; error?: string }
+
+/**
+ * The cold tier's observable state (B12, `retention.tier_state` + the vault's inventory of both roots): the policy in force (the
+ * defaults with `declared` false when none is declared), the manifests and bytes per tier, the moves of the last 24 hours, the
+ * daily byte budget (`remaining` null when unbounded; `window_resets_at` the instant the rolling window frees), the actions by
+ * state, the hot manifests whose latest tier record is a restore (awaiting their re-archive by the schedule after the restore
+ * window), and the schedules with their last evaluation `{ at, opened, deferred }` (`{}` until one runs). Intervals are text.
+ */
+export interface RetentionTierState {
+  policy: {
+    declared: boolean; version: number; policy_id?: string | null;
+    budget_bytes_per_day: number | null; max_opens_per_evaluation: number; max_attempts: number;
+    escalate_after: string; restore_hot_for: string;
+  };
+  tiers: { hot: { manifests: number; bytes: number }; archive: { manifests: number; bytes: number } };
+  moves_24h: { archived: { count: number; bytes: number }; restored: { count: number; bytes: number } };
+  budget: { bytes_per_day: number | null; used_24h: number; remaining: number | null; window_resets_at: string | null };
+  actions: { executing: number; paused_retry: number; paused_human_review: number; escalated: number; pending_bytes_residuals: number };
+  restored_awaiting_rearchive: number;
+  schedules: Array<{
+    schedule_id: string; action_kind: string; retention_profile: string; due_after: string; state: string;
+    last_evaluated_at: string | null; last_evaluation: Record<string, unknown>;
+  }>;
+  vault: { evidence: RetentionVaultInventory; archive: RetentionVaultInventory };
 }
 
 export interface RetentionResidual { kind: string; count: number; status: string; ref?: string | null; note?: string | null }
@@ -626,9 +681,17 @@ export const retention = {
   declareSchedule: (s: Scope, intake: RetentionScheduleIntake) =>
     r<{ schedule: { scheduleId: string }; receipt: Receipt }>(s, '/schedules/declare', 'retention.schedule.declare', 'RTS', intake),
 
-  /** The steward's act: every object past its schedule raises an action (RetentionActionDue each); nothing is deleted. */
+  /** The steward's act: every object past its schedule raises an action (RetentionActionDue each), oldest due first and bounded by the policy (B12: the rest deferred); nothing is deleted. The cold-tier manager's escalations by age ride the same act. */
   evaluateSchedules: (s: Scope) =>
-    r<{ evaluation: { opened: Array<Record<string, unknown>> }; receipt: Receipt }>(s, '/schedules/evaluate', 'retention.schedule.evaluate', 'RTS'),
+    r<{ evaluation: RetentionEvaluation; receipt: Receipt }>(s, '/schedules/evaluate', 'retention.schedule.evaluate', 'RTS'),
+
+  /** B12 (0072 §1): the cold tier's observable state — an audited read (`retention.read`) of the policy in force, the tiers, the moves, the budget, the actions by state and the vault's inventory of both roots. */
+  tierState: (s: Scope) =>
+    r<{ state: RetentionTierState; receipt: Receipt }>(s, '/tier/state', 'retention.read', 'RTP'),
+
+  /** B12: a domain admin's act (`retention.tier.declare`) — the next version of the domain's cold-tier policy; the server states what it refuses (a budget below one byte, opens outside 1–200, attempts outside 1–10, an interval it cannot read). */
+  declareTierPolicy: (s: Scope, intake: RetentionTierPolicyIntake) =>
+    r<{ policy: Record<string, unknown>; receipt: Receipt }>(s, '/tier/declare', 'retention.tier.declare', 'RTP', intake),
 
   /** The actions, newest first, with the tenant's outbox partitions (the floor a log_floor action moves). */
   listActions: (s: Scope, limit = 200) =>

@@ -84,7 +84,9 @@ export type InjectionPoint =
   | 'b11.archive_copy_partial'
   | 'b11.archive_after_copy_before_record'
   // CP-6 B11 closure (0071; Codex B11-F1) — the rollback cleanup of the copies an execution created, before the first removal (a HOLD point)
-  | 'b11.archive_cleanup_before_remove';
+  | 'b11.archive_cleanup_before_remove'
+  // CP-6 B12 (0072; D2) — the hot publish of a restore after the commit that recorded the move (the rename in the evidence root); fires once, so the retry route's publish succeeds
+  | 'b12.restore_publish_fail';
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {
