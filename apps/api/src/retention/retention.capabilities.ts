@@ -10,6 +10,12 @@
  * CP-6 B12 (0072): the restore port (an executing restore action moves bytes back to the hot tier, §2), the cold-tier manager's
  * policy and its ports (§1: the declaration, the escalation, the evaluation by age, the observable state), and the pause that
  * counts a failed attempt (C2).
+ *
+ * CP-6 B13 (0073): the schedule's retirement and its ledger (§1), the export's key-based signing — the tenant's signing keys and
+ * their ports, the active key (§2) — the package's archive digest, expiry and key on the 14-argument record port (C5), the
+ * download event's port (C18: a SECURITY DEFINER port with its own authority check that calls retention.event — never a direct
+ * call from here), the destinations (§3) and the deliveries (§4: the gates before anything leaves, the record of every outcome,
+ * the acknowledgement).
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
@@ -39,12 +45,22 @@ export interface RetentionReads {
   readCanonicalObjects(): any;
   /** B12 (0072 §1): the domain's cold-tier policies, one row per version (append-only; the latest is in force). */
   readTierPolicies(): any;
+  /** B13 (0073 §1): the schedule ledger — schedule.declared / schedule.retired, each with its actor and reason. */
+  readScheduleEvents(): any;
+  /** B13 (0073 §2): the tenant's export signing keys (RLS by tenant; the credential REFERENCE and the public key, never a value). */
+  readExportSigningKeys(): any;
+  /** B13 (0073 §3): the domain's declared exchange parties — transfer stations and https endpoints (the credential reference's NAME only). */
+  readExportDestinations(): any;
+  /** B13 (0073 §4): the deliveries of the domain's export packages, every outcome a row. */
+  readExportDeliveries(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   outboxPartitionTelemetry(): Promise<Row[]>;
   /** B11: a manifest's tier as the ledger says — 'hot' when it never moved. */
   tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }>;
   /** B12 (0072 §1; D4 "observable state"): the cold-tier manager's state of the domain — the policy in force or the defaults, the tiers, the moves of the last 24 h, the budget, the actions by state, the schedules (retention.tier_state). */
   tierState(a: { tenantId: string; domainId: string }): Promise<Row>;
+  /** B13 (0073 §2; D3): the tenant's ACTIVE signing key — its latest non-retired key's id — or null when it has declared none (the /1 digest chain then). */
+  activeExportSigningKey(tenantId: string): Promise<string | null>;
 }
 
 export interface RetentionWrites extends RetentionReads {
@@ -80,8 +96,34 @@ export interface RetentionWrites extends RetentionReads {
   evaluateTier(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
   /** B12 (0072 §1; D4 "retries"): the action escalated for human review — state paused, disposition human_review, its approvals revoked, event action.escalated (the execute route on attempts_exhausted; the evaluation by age). */
   escalateAction(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void>;
-  /** B11 (0070 §3): the export package recorded after its files were written — the digests and the signature block bound to the action, its scope digest and the live approval. */
-  recordExportPackage(a: { actionId: string; tenantId: string; domainId: string; approvalId: string; manifestDigest: string; packageDigest: string; signature: Row; objectCount: number; excludedCount: number; byteTotal: number; actor: string; correlationId: string }): Promise<Row>;
+  /**
+   * B11 (0070 §3): the export package recorded after its files were written — the digests and the signature block bound to the action, its
+   * scope digest and the live approval. B13 (0073 §2; C4, C5): the ARCHIVE DIGEST (the deterministic tar built in memory before this call) and
+   * the SIGNING KEY the /2 block names (null for the /1 chain); the port computes the expiry from the action's selector and returns it with both.
+   */
+  recordExportPackage(a: { actionId: string; tenantId: string; domainId: string; approvalId: string; manifestDigest: string; packageDigest: string; signature: Row; objectCount: number; excludedCount: number; byteTotal: number; archiveDigest: string; signingKeyId: string | null; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §1; D1): the schedule retired by its own governed act — state active → retired once, the row and its history kept, the event schedule.retired; the row as recorded. */
+  retireSchedule(a: { scheduleId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §2; D3, C1): the tenant's signing key declared — the PUBLIC key the server derived from the reference's value, the reference's NAME, the purpose; the route's domain asserted, the row the tenant's. */
+  declareExportSigningKey(a: { keyId: string; tenantId: string; domainId: string; algorithm: string; publicKeyPem: string; credentialRef: string; purpose: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §2): the key retired with a reason; the row kept (a package signed by it still verifies against the recorded public key). */
+  retireExportSigningKey(a: { keyId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §3; D5): a destination declared — the key, the kind, the endpoint (a directory for a transfer station, an https URL), the credential reference's NAME (https only), the recipient, the purpose. */
+  declareExportDestination(a: { destinationId: string; tenantId: string; domainId: string; destinationKey: string; kind: string; endpoint: string; credentialRef: string | null; recipient: string; purpose: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §3): the destination retired with a reason; its deliveries stay recorded. */
+  retireExportDestination(a: { destinationId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  /**
+   * B13 (0073 §4; D6, C6, C8): the gates BEFORE anything leaves — the action a verified customer export, its package present, unrevoked and
+   * unexpired, the destination active, the rights of every exported source still confirmed, the signing-key gate — under the action's lock; the
+   * delivery id allocated and the attempt numbered; returns {delivery_id, attempt, package, destination, signing_key} for the executor.
+   */
+  beginExportDelivery(a: { actionId: string; tenantId: string; domainId: string; destinationId: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §4; D6, D9): the delivery's outcome recorded — the row, the action event (export.delivered | export.delivery_failed | export.acknowledged | export.mismatched), the custody rows for a delivered outcome. */
+  recordExportDelivery(a: { deliveryId: string; actionId: string; tenantId: string; domainId: string; destinationId: string; attempt: number; state: string; archiveDigest: string; packageDigest: string; signingKeyId: string | null; receipt: Row | null; receiptDigest: string | null; failureClass: string | null; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §4; D6, C7): a delivered row moves to acknowledged (the receipt names both digests and verified: true) or mismatched (other digests, or verified: false); a receipt naming another delivery is refused; the row as recorded. */
+  acknowledgeExportDelivery(a: { deliveryId: string; tenantId: string; domainId: string; receipt: Row; receiptDigest: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B13 (0073 §2; D7, C18): the event export.downloaded on the action with the reader and the archive digest — a port with its own authority check (retention.export.download). */
+  recordExportDownload(a: { actionId: string; tenantId: string; domainId: string; archiveDigest: string; actor: string; correlationId: string }): Promise<void>;
   /** B11 (0070 §3): the package revoked once by the retention authority (retention.export.revoke); the bytes go after the commit. */
   revokeExport(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /** The outbox port: the floor moved by this executing action only. */
@@ -118,12 +160,20 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readSourceContracts(): any { return this.from('observation.source_contracts_current'); }
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
   readTierPolicies(): any { return this.from('retention.tier_policies'); }
+  readScheduleEvents(): any { return this.from('retention.schedule_events'); }
+  readExportSigningKeys(): any { return this.from('retention.export_signing_keys'); }
+  readExportDestinations(): any { return this.from('retention.export_destinations'); }
+  readExportDeliveries(): any { return this.from('retention.export_deliveries'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async outboxPartitionTelemetry(): Promise<Row[]> { return this.call<Row>(sql`select * from objects.outbox_partition_telemetry()`); }
   async tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> { return tierOf(this, manifestId); }
   async tierState(a: Parameters<RetentionReads['tierState']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.tier_state(${a.tenantId}::uuid, ${a.domainId}::uuid) as r`);
     return rows[0]?.r ?? {};
+  }
+  async activeExportSigningKey(tenantId: string): Promise<string | null> {
+    const rows = await this.call<{ k: string | null }>(sql`select retention.active_export_signing_key(${tenantId}::uuid) as k`);
+    return rows[0]?.k ?? null;
   }
 
   async declareSchedule(a: Parameters<RetentionWrites['declareSchedule']>[0]): Promise<void> {
@@ -191,8 +241,44 @@ class RetentionCapabilityImpl implements RetentionWrites {
     await this.call(sql`select retention.escalate_action(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
   async recordExportPackage(a: Parameters<RetentionWrites['recordExportPackage']>[0]): Promise<Row> {
-    const rows = await this.call<{ r: Row }>(sql`select retention.record_export_package(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.approvalId}::uuid, ${a.manifestDigest}, ${a.packageDigest}, ${JSON.stringify(a.signature)}::jsonb, ${a.objectCount}::int, ${a.excludedCount}::int, ${a.byteTotal}::bigint, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    // The 14-argument form (0073; C5): the archive digest and the signing key id after the byte total; the expiry is the port's, from the action's selector.
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_export_package(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.approvalId}::uuid, ${a.manifestDigest}, ${a.packageDigest}, ${JSON.stringify(a.signature)}::jsonb, ${a.objectCount}::int, ${a.excludedCount}::int, ${a.byteTotal}::bigint, ${a.archiveDigest}::text, ${a.signingKeyId}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
+  }
+  async retireSchedule(a: Parameters<RetentionWrites['retireSchedule']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retire_schedule(${a.scheduleId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async declareExportSigningKey(a: Parameters<RetentionWrites['declareExportSigningKey']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.declare_export_signing_key(${a.keyId}::text, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.algorithm}::text, ${a.publicKeyPem}::text, ${a.credentialRef}::text, ${a.purpose}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retireExportSigningKey(a: Parameters<RetentionWrites['retireExportSigningKey']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retire_export_signing_key(${a.keyId}::text, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async declareExportDestination(a: Parameters<RetentionWrites['declareExportDestination']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.declare_export_destination(${a.destinationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationKey}::text, ${a.kind}::text, ${a.endpoint}::text, ${a.credentialRef}::text, ${a.recipient}::text, ${a.purpose}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retireExportDestination(a: Parameters<RetentionWrites['retireExportDestination']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retire_export_destination(${a.destinationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async beginExportDelivery(a: Parameters<RetentionWrites['beginExportDelivery']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.begin_export_delivery(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordExportDelivery(a: Parameters<RetentionWrites['recordExportDelivery']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_export_delivery(${a.deliveryId}::uuid, ${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationId}::uuid, ${a.attempt}::int, ${a.state}::text, ${a.archiveDigest}::text, ${a.packageDigest}::text, ${a.signingKeyId}::text, ${a.receipt === null ? null : JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${a.failureClass}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async acknowledgeExportDelivery(a: Parameters<RetentionWrites['acknowledgeExportDelivery']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.acknowledge_export_delivery(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordExportDownload(a: Parameters<RetentionWrites['recordExportDownload']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_export_download(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.archiveDigest}::text, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
   async revokeExport(a: Parameters<RetentionWrites['revokeExport']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.revoke_export(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);

@@ -1,0 +1,8 @@
+=== the B13 harness at the B13 tree (apps/api: npx vitest run --config vitest.int.config.ts test/int/phase6-retention-b13.test.ts) on a fresh database eye_verify_b13_h2 (0001–0073; an isolated vault and an isolated transfer station under temp dirs; two Ed25519 pairs bound by reference before boot), 2026-09-15 — S0–P1 (the first run on eye_verify_b13_h1 was 6/10: one harness fixture defect — the symlink case's cleanup used rmSync on a symlink to a directory, which follows it and refuses; unlinkSync removes the link — the three later cases failed for want of that case's fixtures) ===
+
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  01:25:26
+   Duration  3.64s (transform 609ms, setup 15ms, import 1.15s, tests 2.42s, environment 0ms)

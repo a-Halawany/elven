@@ -12,9 +12,22 @@
  *   POST …/retention/actions/:id/export/revoke  retention.export.revoke  (B11; the retention authority, human-gated) — the package revoked once, its bytes removed after the commit
  *   POST …/retention/tier/declare           retention.tier.declare       (domain admin; B12, 0072 §1) — the cold-tier manager's policy, declared as the domain's next version
  *   POST …/retention/tier/state             retention.read               (B12) — the cold tier's observable state with the vault's inventory of both blob roots
+ *   POST …/retention/schedules/:id/retire   retention.schedule.retire    (B13, 0073 §1; the schedule declare's holders: platform admin, tenant admin, domain admin) — active → retired once, its history kept
+ *   POST …/retention/signing-keys/declare   retention.signing_key.declare (B13, 0073 §2; platform admin, tenant admin; human-gated) — the tenant's export signing key from its reference; the PUBLIC key recorded
+ *   POST …/retention/signing-keys/:keyId/retire  retention.signing_key.retire (B13; the same holders) — the key retired with a reason; its packages still verify
+ *   POST …/retention/signing-keys/list      retention.read               (B13) — the keys, the reference's NAME and readiness, never a value
+ *   POST …/retention/destinations/declare   retention.destination.declare (B13, 0073 §3; the schedule declare's holders) — a transfer station (a directory outside the vault) or an https endpoint
+ *   POST …/retention/destinations/:id/retire  retention.destination.retire (B13; the same holders)
+ *   POST …/retention/destinations/list      retention.read               (B13) — each with its readiness (active / retired / blocked-credential)
+ *   POST …/retention/actions/:id/export/download  retention.export.download (B13, D7; steward, retention authority, domain admin, tenant admin, auditor; audited) — the archive, its digest verified against the record; the event export.downloaded
+ *   POST …/retention/actions/:id/export/deliver   retention.export.deliver  (B13, D6; retention authority, tenant admin, domain admin; human-gated) — the verified package to a declared destination; every outcome recorded
+ *   POST …/retention/actions/:id/export/deliveries/list  retention.read  (B13)
+ *   POST …/retention/actions/:id/export/deliveries/:deliveryId/collect-receipt  retention.export.acknowledge (B13; the deliver's holders; human-gated) — the transfer station's receipt.json → acknowledged | mismatched
+ *   POST …/retention/actions/:id/export/deliveries/:deliveryId/acknowledge      retention.export.acknowledge (B13) — the recipient's receipt presented out of band
  *   POST …/retention/actions/:id/get, /actions/list, /schedules/list   retention.read
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
+import { resolve as resolvePath } from 'node:path';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
@@ -22,6 +35,8 @@ import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { RetentionCapability } from './retention.capabilities.js';
 import { RetentionExecutionRolledBack, RetentionService, failureClassOf, validateOpenAction, type ExecutionFailureClass } from './retention.service.js';
+import { DESTINATION_CREDENTIAL_REF, SIGNING_ALGORITHM, SIGNING_KEY_REF } from './export-signing.js';
+import { RECEIPT_MAX_BYTES } from './export-delivery.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope; const principal = req.eyePrincipal;
@@ -32,8 +47,16 @@ const receipt = (o: { policyDecisionId: string; auditSeq: number }) => ({ policy
 type Row = Record<string, unknown>;
 /** An interval as a schedule's dueAfter and the tier policy's ages are spelled: a count and a unit, such as "90 days". */
 const INTERVAL = /^\d+ (seconds?|minutes?|hours?|days?|months?|years?)$/;
-/** begin_execution's refusals BEFORE the state moves (0070 §5; 0072 §4): the class in the message names what the controller does with them. */
-const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted)\)/;
+/**
+ * begin_execution's refusals BEFORE the state moves (0070 §5; 0072 §4): the class in the message names what the controller does with them.
+ * B13 (C14): the service's own refusal before begin_execution — the tenant's active signing key not bound in this deployment — joins them (a
+ * pause for retry, infrastructure, no attempt counted).
+ */
+const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted|signing_key_unbound)\)/;
+/** D5: a destination's key — unique per domain among the active destinations. */
+const DESTINATION_KEY = /^[a-z0-9][a-z0-9-]{1,63}$/;
+const SIGNING_KEY_PURPOSES = ['demonstration', 'production'] as const;
+const DESTINATION_KINDS = ['transfer_station', 'https'] as const;
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/retention')
 export class RetentionController {
@@ -351,5 +374,211 @@ export class RetentionController {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RTP', null), RetentionCapability.read, async (cap) => this.retention.tierState(cap, { tenantId, domainId }));
     return { state: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── B13 (0073): the schedule's retirement; the export's signing, destinations and delivery ─────────────────────────
+
+  /**
+   * B13 (0073 §1; D1): a schedule RETIRED by its own governed act, with a reason — state active → retired once; the row, its last
+   * evaluation, the actions it opened and their events stay untouched (a retired schedule opens nothing); the event schedule.retired on the
+   * schedule ledger. The port refuses a second retirement and an unknown schedule.
+   */
+  @Post('/schedules/:scheduleId/retire')
+  async retireSchedule(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('scheduleId') scheduleId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.schedule.retire', 'RTS', scheduleId), RetentionCapability.write,
+      async (cap) => ({ result: await cap.retireSchedule({ scheduleId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RTS', targetId: scheduleId, targetVersion: null, outboxEvent: null }));
+    return { schedule: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B13 (0073 §2; D3, C1): the tenant's export SIGNING KEY declared from a credential REFERENCE — the deployment variable
+   * EYE_EXPORT_SIGNING_KEY_<NAME>, whose value (the base64 PKCS8 DER of an Ed25519 private key) the server resolves here to derive the
+   * PUBLIC key it records, and never logs, records or returns. An unbound reference, or a value that is not an Ed25519 private key, is
+   * refused before any write. The purpose (demonstration | production) is declared and shown wherever the signature is shown. The key is
+   * the TENANT's, declared under the route's domain (the port asserts the domain; the row is the tenant's): the route's policy object is
+   * the kind alone — a key id is not a uuid — and the audit target is the key id.
+   */
+  @Post('/signing-keys/declare')
+  async declareSigningKey(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { credentialRef?: string; purpose?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const bad = (message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, message), 422); };
+    const credentialRef = String(body.payload?.credentialRef ?? '');
+    const purpose = String(body.payload?.purpose ?? '');
+    if (!SIGNING_KEY_REF.test(credentialRef)) bad('credentialRef is the deployment variable EYE_EXPORT_SIGNING_KEY_<NAME> (A–Z, 0–9 and _, 1 to 64 characters after the prefix)');
+    if (!(SIGNING_KEY_PURPOSES as readonly string[]).includes(purpose)) bad(`purpose is one of ${SIGNING_KEY_PURPOSES.join(', ')}`);
+    const derived = this.retention.deriveSigningKey(credentialRef);
+    if (!derived.ok) {
+      bad(derived.reason === 'unbound' ? `export signing key rejected: the deployment binds no export signing key under ${credentialRef}`
+        : derived.reason === 'not_ed25519' ? `export signing key rejected: the value bound under ${credentialRef} is not an Ed25519 private key`
+        : `export signing key rejected: the value bound under ${credentialRef} is not the base64 of a PKCS8 DER private key`);
+    }
+    const key = derived as Extract<typeof derived, { ok: true }>;
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.signing_key.declare', 'RSK', null), RetentionCapability.write,
+      async (cap) => ({ result: this.retention.signingKeyAnswer(await cap.declareExportSigningKey({ keyId: key.keyId, tenantId, domainId, algorithm: SIGNING_ALGORITHM, publicKeyPem: key.publicKeyPem, credentialRef, purpose, actor: principal.principalId, correlationId: envelope.correlation_id })),
+                        targetType: 'RSK', targetId: key.keyId, targetVersion: null, outboxEvent: null }));
+    return { key: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (0073 §2): the key retired with a reason; the row kept — a package it signed still verifies against the recorded public key, and the read route says the key is retired. */
+  @Post('/signing-keys/:keyId/retire')
+  async retireSigningKey(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('keyId') keyId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.signing_key.retire', 'RSK', null), RetentionCapability.write,
+      async (cap) => ({ result: this.retention.signingKeyAnswer(await cap.retireExportSigningKey({ keyId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id })), targetType: 'RSK', targetId: keyId, targetVersion: null, outboxEvent: null }));
+    return { key: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (C19): the tenant's keys — the reference's NAME and its readiness (bound | blocked-credential, from the store now), the state, which is active; never a value. */
+  @Post('/signing-keys/list')
+  async listSigningKeys(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RSK', null), RetentionCapability.read, async (cap) => this.retention.signingKeys(cap, tenantId));
+    return { keys: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B13 (0073 §3; D5, C13): a DESTINATION declared — a TRANSFER STATION (the disconnected path: an absolute directory that exists, realpath'd,
+   * outside every vault root — neither a root, nor inside one, nor containing one; no credential) or an HTTPS endpoint (the production kind:
+   * an https:// URL without userinfo; an optional credential REFERENCE EYE_DST_<NAME> whose value the delivery carries as a bearer and never
+   * records) — with the recipient (the exchange identity: who receives) and the purpose. The port validates the same shapes and the key's
+   * uniqueness among the domain's active destinations.
+   */
+  @Post('/destinations/declare')
+  async declareDestination(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const bad = (message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, message), 422); };
+    const destinationKey = String(p['destinationKey'] ?? '');
+    if (!DESTINATION_KEY.test(destinationKey)) bad('destinationKey is 2 to 64 characters of a–z, 0–9 and -, starting with a letter or a digit');
+    const kind = String(p['kind'] ?? '');
+    if (!(DESTINATION_KINDS as readonly string[]).includes(kind)) bad(`kind is one of ${DESTINATION_KINDS.join(', ')}`);
+    let endpoint = String(p['endpoint'] ?? '').trim();
+    const credentialRef = p['credentialRef'] === undefined || p['credentialRef'] === null || p['credentialRef'] === '' ? null : String(p['credentialRef']);
+    const recipient = String(p['recipient'] ?? '').trim(); const purpose = String(p['purpose'] ?? '').trim();
+    if (recipient.length < 1 || recipient.length > 200) bad('recipient names who receives (1 to 200 characters)');
+    if (purpose.length < 1 || purpose.length > 500) bad('purpose says what the destination receives the export for (1 to 500 characters)');
+    if (kind === 'https') {
+      let u: URL | null = null;
+      try { u = new URL(endpoint); } catch { u = null; }
+      if (u === null || u.protocol !== 'https:' || u.username !== '' || u.password !== '' || u.hostname === '') bad('an https destination\'s endpoint is an https:// URL without userinfo');
+      if (credentialRef !== null && !DESTINATION_CREDENTIAL_REF.test(credentialRef)) bad('credentialRef is the deployment variable EYE_DST_<NAME> (A–Z, 0–9 and _, 1 to 64 characters after the prefix)');
+    } else {
+      if (credentialRef !== null) bad('a transfer station names no credential reference (a credential is the https kind\'s)');
+      const check = await this.retention.checkTransferStation(endpoint);
+      if (!check.ok) bad(check.message);
+      // Stored as declared (normalised), not as its realpath: the endpoint is realpath'd again before every write and every read (C13).
+      endpoint = resolvePath(endpoint);
+    }
+    const destinationId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.destination.declare', 'RDS', destinationId), RetentionCapability.write,
+      async (cap) => ({ result: this.retention.destinationAnswer(await cap.declareExportDestination({ destinationId, tenantId, domainId, destinationKey, kind, endpoint, credentialRef, recipient, purpose, actor: principal.principalId, correlationId: envelope.correlation_id })),
+                        targetType: 'RDS', targetId: destinationId, targetVersion: null, outboxEvent: null }));
+    return { destination: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (0073 §3): the destination retired with a reason; its deliveries stay recorded; a delivery to it is refused by the port. */
+  @Post('/destinations/:destinationId/retire')
+  async retireDestination(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('destinationId') destinationId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.destination.retire', 'RDS', destinationId), RetentionCapability.write,
+      async (cap) => ({ result: this.retention.destinationAnswer(await cap.retireExportDestination({ destinationId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id })), targetType: 'RDS', targetId: destinationId, targetVersion: null, outboxEvent: null }));
+    return { destination: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (D5, C19): the domain's destinations, each with its readiness — active / retired; blocked-credential for an https destination whose reference is not bound here. */
+  @Post('/destinations/list')
+  async listDestinations(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RDS', null), RetentionCapability.read, async (cap) => this.retention.destinations(cap));
+    return { destinations: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B13 (D7, C12): the DOWNLOAD — a governed, audited read of the package's archive: the package present (404), unrevoked and unexpired
+   * (409), under the archive ceiling, the tar rebuilt from the files and its digest compared with the record before it is served (a
+   * mismatch: 409, custody untouched); the event export.downloaded on the action, with the reader and the digest, is a WRITE — so the
+   * download is one, the bytes returned in the same answer as base64 (the product's idiom for bytes over the governed pipeline).
+   */
+  @Post('/actions/:actionId/export/download')
+  async downloadExport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.download', 'RTA', actionId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.downloadExport(cap, { tenantId, domainId }, actionId, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null }));
+    const d = out.result;
+    return { download: { filename: d.filename, contentType: 'application/x-tar', contentDisposition: 'attachment', byteLength: d.bytes.byteLength, archiveDigest: d.archiveDigest, packageDigest: d.packageDigest, manifestDigest: d.manifestDigest, signature: d.signature, expiresAt: d.expiresAt, base64: d.bytes.toString('base64') },
+             receipt: receipt(out) };
+  }
+
+  /**
+   * B13 (D6, C6): the DELIVERY — a governed, human-gated act on a VERIFIED, unrevoked, unexpired package to a declared destination, named by
+   * its key. ONE write: the port's gates (begin_export_delivery — under the action's lock, the attempt numbered), the archive rebuilt and
+   * verified, the executor INSIDE the transaction (the station's files, or the https egress), the outcome recorded whatever it is — a
+   * FAILED delivery is a recorded fact, not a rolled-back one. When the transaction does not commit — the handler refused after the station
+   * write, or the commit itself failed after the handler returned — the station paths THIS attempt created are removed by name (never a
+   * pre-existing identical package.tar/package.sig). An https delivery that left the process before a commit that then failed is a network
+   * side effect the ledger did not record: visible by the next attempt's number and by a receipt naming a delivery id the ledger never
+   * recorded (the honest residual, as B11's archive publish).
+   */
+  @Post('/actions/:actionId/export/deliver')
+  async deliverExport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Body() body: { payload?: { destinationKey?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const destinationKey = String(body.payload?.destinationKey ?? '');
+    if (!DESTINATION_KEY.test(destinationKey)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'destinationKey names a declared destination of this domain (2 to 64 characters of a–z, 0–9 and -)'), 422);
+    const created: string[] = [];
+    let out: Awaited<ReturnType<PipelineService['write']>> & { result: Awaited<ReturnType<RetentionService['deliverExport']>> };
+    try {
+      out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.deliver', 'RTA', actionId), RetentionCapability.write,
+        async (cap) => {
+          const destination = await this.retention.destinationByKey(cap, destinationKey);
+          if (destination === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `retention delivery rejected: no such destination ${destinationKey} in this domain`), 404);
+          const result = await this.retention.deliverExport(cap, { tenantId, domainId }, actionId, String(destination['destination_id']), { actor: principal.principalId, correlationId: envelope.correlation_id }, created);
+          return { result, targetType: 'RDL', targetId: String(result['delivery_id']), targetVersion: null, outboxEvent: null };
+        });
+    } catch (e) {
+      if (created.length > 0) await this.retention.removeCreatedStationFiles(created).catch(() => undefined);
+      throw e;
+    }
+    return { delivery: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (D6): the deliveries of an action, each with its destination, oldest first — CMP-102's "Content and Export Delivery Receipt" in the page's voice. */
+  @Post('/actions/:actionId/export/deliveries/list')
+  async listDeliveries(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RTA', actionId), RetentionCapability.read, async (cap) => this.retention.deliveries(cap, actionId));
+    return { deliveries: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B13 (D6, C7): the COLLECT act — the transfer station's receipt.json read from the delivery's directory (the endpoint re-checked, the
+   * file bounded, a JSON object naming its delivery_id) and presented to the acknowledgement port: acknowledged when it names both digests
+   * and verified: true, mismatched when it names other digests or verified: false (the exchange denied, the evidence kept); no receipt
+   * yet, a receipt naming another delivery, a row not in state delivered — a conflict.
+   */
+  @Post('/actions/:actionId/export/deliveries/:deliveryId/collect-receipt')
+  async collectReceipt(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Param('deliveryId') deliveryId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RDL', deliveryId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.collectReceipt(cap, { tenantId, domainId }, actionId, deliveryId, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RDL', targetId: deliveryId, targetVersion: null, outboxEvent: null }));
+    return { delivery: out.result, receipt: receipt(out) };
+  }
+
+  /** B13 (D6): the ACKNOWLEDGE act — the recipient's receipt presented out of band (an https destination that answered without verifying; a station's receipt carried by hand): a JSON object under the receipt ceiling, to the same port. */
+  @Post('/actions/:actionId/export/deliveries/:deliveryId/acknowledge')
+  async acknowledgeDelivery(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Param('deliveryId') deliveryId: string, @Body() body: { payload?: { receipt?: unknown } }) {
+    const { envelope, principal } = ctx(req);
+    const r = body.payload?.receipt;
+    if (r === null || r === undefined || typeof r !== 'object' || Array.isArray(r)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'receipt is the recipient\'s receipt, a JSON object'), 422);
+    if (Buffer.byteLength(JSON.stringify(r), 'utf8') > RECEIPT_MAX_BYTES) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `receipt is at most ${RECEIPT_MAX_BYTES} bytes`), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RDL', deliveryId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.acknowledgeDelivery(cap, { tenantId, domainId }, actionId, deliveryId, r as Row, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RDL', targetId: deliveryId, targetVersion: null, outboxEvent: null }));
+    return { delivery: out.result, receipt: receipt(out) };
   }
 }

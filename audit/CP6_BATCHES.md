@@ -1203,13 +1203,166 @@ by the corrected script inside the act. Left on the demonstration: the archive s
 nordwerk-internal (active; it acts only on an evaluation, and the sane policy's restore window keeps restored records hot for
 30 days; no route retires a schedule — recorded as a follow-up).
 
+## B13 — the governed schedule retirement; the customer export's delivery — the package download, the destination and its receipt, the key-based signature (implemented)
+
+**Migration 0073** (`apps/api/migrations/0073_b13_schedule_retirement_and_export_delivery.sql`, sha256 `35826c53…`), one file, on
+`phase6-b13` (PR base `main` at `2d760e4`, #49 merged). The owner's 2026-09-16 directive and Codex's B12 review named the batch: a
+governed schedule-retirement route and page control, used to retire the demonstration-created archive schedule with its history kept;
+the customer export's delivery capabilities from the specification — package download, destination delivery, key-based signing —
+demonstrated whole in NORDWERK with an isolated synthetic destination and a demonstration key where production bindings are
+unavailable, that demonstration distinguished from production activation. The specification rows: V03-T-047 (the export gate's
+destination and revocation), DP-47-001/-002/-003/-005/-006 (Data Exchange, Export and Portability — the controlled state "exchange
+identity, requester, purpose, scope, contract versions, … policy, encryption, destination, receipt, and expiry"; the continuity rule
+"deny or quarantine the exchange, preserve the request and evidence … and require recipient acknowledgement before closure"), DZ-17
+(the exchange staging tier: scope, rights, destination, expiry), DPD-19 and LR-23 (the signed open package), DP-54-006 (external
+processor receipts), ES-53-003/-004 (egress obligations; signed packages with receipt checks for disconnected modes), NZ-20 (approved
+transfer stations), SC-24, CMP-102 (the delivery receipt on the page), DAT-SV-08; the units AU-IDP-0179/0180, AU-COM-0056/0058/0060,
+AU-IDP-0227, AU-INF-0854, AU-DP-0097. Designed, checked by two independent readers against the code before a line was written (27
+findings — the tenant-scoped key table under the domain route, the mapper prefixes, the two built_at instants, the expiry floor, the
+station files' cleanup after a failed commit, the receipt bound to its delivery, the signing gate at delivery, the section references,
+the pair check, the base64 shape, the archive ceiling, the realpath containment, the unbound key before the state moves, the .invalid
+host, the colon in a key id, the POST form of the egress — each folded as a binding correction), implemented by six agents on disjoint
+files, run on a fresh database, rehearsed on a restored copy and exercised on the demonstration (§B13.7).
+
+**D1 — a schedule is retired by its own governed act, its history kept.** `retention.schedules` gains `retired_at`, `retired_by`,
+`retire_reason` (a pair check among the three; no trigger — the harnesses that retire by a raw UPDATE of `state` keep working);
+`retention.retire_schedule` moves `state` active → retired once (a second retirement refused "is retired"; an unknown id "is not a
+schedule of this domain"); the row, its `last_evaluation`, the actions it opened and their events stay untouched, and a retired schedule
+opens nothing (the evaluation reads `state = 'active'`). A new append-only ledger `retention.schedule_events` (`schedule.declared` —
+`declare_schedule` re-declared to write it — and `schedule.retired`, each with the actor and the details). Action
+`retention.schedule.retire` (the declare rule's holders), route `POST …/retention/schedules/:id/retire { reason }`; the list and
+`tier_state` serve the columns; the page's Retire control per active schedule.
+
+**D2 — the package's ARCHIVE is one deterministic ustar tar, its digest recorded at the build.** `export-archive.ts` builds the tar
+in process (no dependency): `manifest.json` first, then the object files the MANIFEST lists sorted by name; mode 0600, uid/gid 0,
+mtime = the manifest's own `package.built_at` (seconds) for every entry, two zero blocks — a pure function of the manifest and the
+files, so its sha256 (the **archive digest**) is recorded once in `retention.export_packages.archive_digest` at the build and re-verified
+on every download and delivery (the tar rebuilt from the files on disk and compared; a listed file absent, a name outside the package's
+rule or a differing digest is an integrity refusal — nothing served). The tar is never written into the package directory and adds no
+execution row (B11's B4/B5 pin the directory's three files and the three rows); a 256 MiB archive ceiling refuses the download and the
+delivery from the row's byte total before any file is read (a streaming writer for larger packages is recorded as remaining). The
+verifier reads a tar directly (`--tar`: the 512-byte headers, the magic, the sizes; a malformed archive a failed "archive readable"
+check).
+
+**D3 — key-based signing is the scheme `eye-customer-export/2`; the private key is a credential BY REFERENCE; the public key is
+recorded.** `retention.export_signing_keys` — TENANT rows under the domain route (their own scope check and RLS by tenant; primary key
+(tenant, key id)): `key_id` `ed25519:<first 16 hex of sha256(SPKI DER)>`, the public key PEM, `credential_ref`
+(`EYE_EXPORT_SIGNING_KEY_<NAME>`), `purpose` ('demonstration' | 'production'), declared/retired. The tenant's (or the platform's)
+administrator declares a key by its reference (`retention.signing_key.declare`, `/signing-keys/declare`): the server resolves the
+reference from the process environment (`ExportSigningKeyStore`, the source credential store's discipline — never logged, never
+recorded), derives the public key (Ed25519 only; an unbound reference or a value that is not an Ed25519 private key refused 422) and
+records it; a key already declared refused; retirement keeps the row (a package signed by a retired key still verifies; the read route
+says the key is retired). The active key = the latest non-retired. The export build signs the ASCII hex of the package digest
+(`crypto.sign(null, …)`), `signature = { scheme /2, objects_digest, package_digest, bound_to, statement, key_id, algorithm 'Ed25519',
+signature base64 }`; `record_export_package` (re-declared, 14 arguments) admits /2 only with the tenant's active key and a
+64-byte signature, and REFUSES /1 while a key is active — a package is never silently downgraded; with an active key whose reference is
+NOT bound in this process the execution is refused BEFORE the state moves (`retention execution rejected (signing_key_unbound)`, paused
+`infrastructure`, no attempt counted). The verifier verifies /2 with `--public-key` (a note, never a failure, without it); the export read
+route serves the public key, its purpose and state. **Demonstration vs production:** the demonstration key is generated by
+`scripts/retention/generate-demo-signing-key.mjs` (one env line to stdout for the operator's local handoff; the public PEM to a file),
+declared with purpose `demonstration`; production activation = a production key under the owner's key custody declared with purpose
+`production` and the demonstration key retired — a named remaining step (a KMS/HSM binding is a later scheme).
+
+**D4 — expiry.** `expires_at` = the build's instant + the action's `expires_after` (a customer export's selector key, an interval spelled
+as a due-after between 1 hour and 1 year, validated in the port and in the intake; the default 30 days); an expired package's download
+and delivery are refused; revocation still records; the read route says `expires_at` and `expired`.
+
+**D5 — a DESTINATION is a declared exchange party, two kinds.** `retention.export_destinations` (`destination_key` unique among the
+domain's active destinations; `kind` `transfer_station` | `https`; `endpoint`; `credential_ref` `EYE_DST_<NAME>` for https only;
+`recipient`; `purpose`; declared/retired) — the domain's administrator declares (`retention.destination.declare`), lists (with the
+readiness `blocked-credential` for an unbound https reference — the source register's discipline), retires. A **transfer station**
+(ES-53-004, NZ-20 — the disconnected/air-gap path; the demonstration's isolated synthetic destination) is an absolute directory
+outside the four vault roots (realpath-checked at declaration and before every write and read; a symlink into a vault root refused)
+into which the product writes `<tenant>/<domain>/<action>/package.tar` and `package.sig` (content-addressed: an identical file accepted, a
+differing one an integrity failure) and `delivery.json` (the exchange identity per attempt: delivery id, attempt, action, destination,
+recipient, purpose, the digests, the signature scheme and key with its current state, delivered_at, expires_at, the verification
+statement), and from which it READS the recipient's `receipt.json`. An **https** destination is delivered by `deliver()` in the
+egress client — the same vetting as every collection (https only, the host as the allowlist, resolve-then-connect to the pinned
+address, TLS, size and time caps), a POST with the tar and the digests in headers, the credential as a bearer on the first hop only, a
+3xx refused (`redirect_not_followed`), the response JSON the receipt.
+
+**D6 — a DELIVERY is a governed, human-gated act on a VERIFIED, unrevoked, unexpired package, re-checking the rights, recorded with what
+the destination answered.** `retention.export_deliveries` (delivery id, action, destination, attempt — serialised by the action row's
+lock and a per-action advisory lock; unique per action/destination/attempt — state `delivered` | `acknowledged` | `failed` |
+`mismatched`, the digests, the key, the receipt as received and its digest, the failure class `destination_retired` |
+`credential_unbound` | `egress_refused` | `transport` | `receipt_invalid` | `write_failed`, delivered/acknowledged instants). The
+delivery act (`retention.export.deliver`, the retention authority's or the administrators', human-gated; `/actions/:id/export/deliver
+{ destinationKey }`): ONE governed write runs `begin_export_delivery` (the gates: the action `verified` — an executed one "verify the
+package first"; not revoked; not expired; the destination active; every exported source's rights still confirmed — `(rights_changed)`;
+a package without a key-based signature while a key is now active refused; a package signed by a key retired since IS deliverable), the
+executor (the archive rebuilt and compared; the station files written or the POST made), and `record_export_delivery` — a FAILED
+delivery is a recorded fact with its class, never a rolled-back one (the request and evidence preserved); the controller removes the
+station files this attempt CREATED when the transaction fails after the handler returned (a pre-existing identical tar never). The
+recipient's ACKNOWLEDGEMENT closes the exchange: the collect act (`retention.export.acknowledge`, `/…/deliveries/:id/collect-receipt`)
+reads `receipt.json` from the station (containment re-checked, 64 KiB, a JSON object) and `acknowledge_export_delivery` moves a delivered
+row to `acknowledged` when the receipt names THIS delivery, both digests and `verified: true`, to `mismatched` when it names other
+digests or `verified: false` (the exchange denied), and refuses a receipt naming another delivery (a stale receipt of an earlier
+attempt); the acknowledge act (`/…/deliveries/:id/acknowledge { receipt }`) takes a receipt presented out-of-band. `custody.delivered`
+per exported manifest; the events `export.delivered` | `export.delivery_failed` | `export.acknowledged` | `export.mismatched` |
+`export.downloaded`. Stated: an https delivery that left the process before a commit that then failed is a network side effect the
+ledger did not record — visible by the next attempt's number and by a receipt naming a delivery the ledger never recorded (the honest
+residual, as B11's archive publish). A revocation sends no notice to a destination (remaining).
+
+**D7 — the download is a governed, audited read of the tar** (`retention.export.download` — the steward's, the authority's, the
+administrators' and the auditor's; `audit_access`): the tar rebuilt and compared, answered as base64 with its digests, the signature
+block, the public key and the expiry (the evidence download's idiom); refused when revoked or expired; the event `export.downloaded` on
+the action with the reader. The page turns the bytes into a file the person saves.
+
+**D10 — no new interface bound**; the register stays 26/24/0 (asserted). Object codes `RSK`, `RDS`, `RDL`.
+
+**B13.6 the harness and the units.** `phase6-retention-b13.test.ts` (10 cases on an isolated vault AND an isolated transfer station,
+two generated Ed25519 pairs bound by reference before boot, the demonstration recipient and the customer's verifier spawned as
+processes): S0 the setup; S1 the schedule retirement (the ledger's declared and retired events, the row and its last evaluation kept,
+the opened action untouched, a second retirement refused, the evaluation opening nothing, the steward refused 403, a short reason 422,
+`tier/state`); K1 the signing key (declared from the bound reference — the key id, the public PEM, the list without the value; a second
+key; an unbound reference and a non-key value refused; retirement; the steward refused); E1 the signed export (the record's key,
+archive digest and expiry; the /2 block; the verifier with and without the key; a flipped signature failing; `expiresAfter` bounds;
+the unbound key refused before the state moves); A1 the archive (deterministic; the download's tar = the recorded digest, its entries
+the package files; the event; a tampered file refused; a revoked and an expired package refused — the expiry proven through the owner
+connection moving `expires_at` back); D1 the destinations (a station on the root; inside a vault root, a vault root, the directory
+above, a symlink into a vault root, a relative path, a missing directory refused; a duplicate key, a credential on a station, a plain
+http URL, a malformed key refused; the unbound https reference's readiness; retirement; the steward refused); T1 the transfer-station
+delivery (the files, `delivery.json`, the ledger, `custody.delivered`, the recipient's receipt collected → acknowledged, a second
+delivery attempt 2 with the tar unchanged, a mismatched receipt → mismatched, a non-object receipt refused, the acknowledge route);
+T2 the gates (unsigned while a key is active; an unverified export; a revoked package with its earlier delivery kept; an expired
+package; a retired and an unknown destination; rights withdrawn since; the steward; the key retired → the package signed by it still
+deliverable and an unsigned one too; no receipt yet; a receipt naming another delivery); H1 the https delivery (credential unbound →
+failed before egress; bound → the `.invalid` host → failed transport; the loopback endpoint → failed egress_refused; nothing of the
+credential's value anywhere); P1 the reads and the PDP. The first run 6/10 on one harness fixture defect (the symlink case's cleanup);
+the second 10/10. The suites the changes touch 134/134 in five files; the full integration suite **1016/1016 in 63 files** on a fresh
+database; the upgrade proof with 0022–0073 (52 migrations); the web typecheck, build and tests. Units: AU-IDP-0179, AU-IDP-0180 and
+AU-COM-0060 `open` → `verified:local`, then `verified:ci` at `3a5a181` (ci 35032929806, 1016/1016 in 63 files on a fresh database; 3,555 = 3,183 open + 338 local + 34 CI); AU-COM-0056/0058, AU-IDP-0227, AU-INF-0854 and
+AU-DP-0097 carry clauses; the requirement rows V03-T-047 (the gate whole; `partial` on the EXECUTION half of the boundary row),
+DP-47-001/-002/-003/-005/-006, DZ-17, SC-24, NZ-20, DAT-SV-08 `missing` → `partial`, DPD-19 and LR-23 `partial` → `implemented`,
+CMP-102 `partial`, DP-54-006, ES-53-003/-004 carry the clauses.
+
+**B13.7 the demonstration** — `scripts/phase6/act-b13.mjs` → `evidence/cp6/act-b13.txt` (rehearsed first on a restored copy with its
+own vault copy, its own rehearsal key and station, `evidence/cp6/b13-rehearsal.txt`): the preparation by the operator (the
+demonstration key generated, its private half bound by reference in the local secret handoff — never printed — and its public half on
+file; the transfer station directory), `eye_demo` backed up and migrated with 0073, the API restarted by the runbook's script; then
+(1) the platform administrator RETIRES the archive schedule the B12 act declared, with a reason — the row, its last evaluation and its
+three actions untouched, `schedule.retired` on the ledger, an evaluation opening nothing from it; (2) the DEMONSTRATION KEY declared
+from `EYE_EXPORT_SIGNING_KEY_DEMO` with purpose `demonstration` — the recorded public key the one on file, the list without the value;
+(3) the transfer station `nordwerk-transfer-station` (the isolated synthetic destination) and the https destination `nordwerk-exports`
+(the production kind; its credential reference unbound on this host → `blocked-credential`) declared; (4) P. Novák's customer export of
+the two hot NORDWERK internal records (expiry 7 days), approved by H. Bergmann, executed with the active key — scheme /2, the archive
+digest, `expires_at`, verified by the product; (5) the DOWNLOAD as one tar (13,312 bytes; the digest the record's; the event on the
+action), the customer's verifier on it with the public key: PACKAGE OK, signature verified; a byte flipped inside a `.bin` entry:
+FAILED; the analyst's download refused 403; (6) the DELIVERY to the transfer station by H. Bergmann — `package.tar`, `package.sig`,
+`delivery.json` on the host, `custody.delivered` per record, the DEMONSTRATION RECIPIENT (the script, not the product) verifying on
+its side and writing `receipt.json`, H. Bergmann collecting it → ACKNOWLEDGED (the exchange closed with the recipient's
+acknowledgement); (7) the PRODUCTION PATH'S GATE — a delivery to `nordwerk-exports` recorded FAILED `credential_unbound` before any
+egress; (8) the REVOCATION — the download, a further delivery and the read refused; the deliveries stay recorded; no notice reaches the
+destination; (9) the state. Left on the demonstration: the demonstration key (active, purpose demonstration), the two destinations,
+the station's files and receipt, the retired schedule.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15) and B12 (2026-09-15, the register's next missing archive-lifecycle capability, on `main` after #48). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

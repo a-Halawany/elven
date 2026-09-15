@@ -18,6 +18,13 @@
  * is stricter than the common "same host is same origin" reading, and
  * deliberately so: an https→http hop to the same host and port still moves the
  * credential onto the wire in the clear.
+ *
+ * CP-6 B13 (D8, C17): the DELIVERY form — `deliver()` — is the same vetting with a
+ * METHOD and a BODY: a customer export's archive POSTed to a declared https
+ * destination, the credential on that one hop only, and NO redirect followed (a
+ * 3xx answer to a delivery is a refusal, never a second POST elsewhere). It reuses
+ * the URL check, the resolve-then-connect pinning, the TLS agent and the response
+ * reader of `egress()`, whose own behaviour is unchanged.
  */
 import { Agent, request as httpsRequest } from 'node:https';
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -45,6 +52,8 @@ export type EgressRefusalClass =
   | 'dns_failure'
   | 'too_many_redirects'
   | 'redirect_target_refused'
+  /** B13 (D8): a delivery answered with a redirect — not followed; the delivery is refused with the hop's status. */
+  | 'redirect_not_followed'
   | 'response_too_large'
   | 'decompressed_too_large'
   | 'timeout'
@@ -295,6 +304,57 @@ export async function egress(req: EgressRequest): Promise<EgressResult> {
   throw new EgressRefused('too_many_redirects', 'redirect chain exhausted');
 }
 
+/**
+ * B13 (D8): the delivery of a customer export's archive to an https destination. The body travels as `application/x-tar`
+ * with its length; the caller's headers name the package (the digests, the signature scheme and key, the delivery and action
+ * ids); the credential is carried on THIS hop and no other, because there is no other: a 3xx answer is not followed — a
+ * delivery redirected is a delivery refused (`redirect_not_followed`), the archive never re-POSTed to a host nobody declared.
+ */
+export interface DeliveryRequest {
+  url: string;
+  body: Buffer;
+  headers?: Record<string, string>;
+  credentials?: { authorization?: string };
+  policy: EgressPolicy;
+}
+
+export async function deliver(req: DeliveryRequest): Promise<EgressResult> {
+  const policy = req.policy;
+  const target = new URL(req.url);
+  assertUrlPermitted(target, policy);
+  // URL userinfo is a credential. It never travels.
+  if (target.username !== '' || target.password !== '') {
+    target.username = '';
+    target.password = '';
+  }
+  const pinned = await resolveAndVet(target.hostname);
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'user-agent': 'the-eye-retention/1.0 (+governed export delivery)',
+    ...(req.headers ?? {}),
+    'content-type': 'application/x-tar',
+    'content-length': String(req.body.byteLength),
+    host: target.host,
+  };
+  if (req.credentials?.authorization !== undefined) headers['authorization'] = req.credentials.authorization;
+  const res = await once(target, pinned, headers, policy, { method: 'POST', body: req.body });
+  const hops: EgressResult['hops'] = [{ urlRedacted: redactUrl(target.toString()), status: res.status, credentialsCarried: req.credentials?.authorization !== undefined }];
+  if (res.status >= 300 && res.status < 400) {
+    throw new EgressRefused('redirect_not_followed', `a delivery is not redirected (the destination answered ${res.status})`);
+  }
+  return {
+    status: res.status,
+    headers: res.headers,
+    body: res.body,
+    finalUrlRedacted: redactUrl(target.toString()),
+    hops,
+    tlsVerified: true, // rejectUnauthorized is never disabled; a TLS failure throws
+    originAllowlisted: true,
+    pinnedAddress: pinned,
+    retryAfterSeconds: parseRetryAfter(res.headers['retry-after']),
+  };
+}
+
 function parseRetryAfter(v: string | undefined): number | null {
   if (v === undefined) return null;
   const seconds = Number(v);
@@ -309,7 +369,8 @@ interface RawResponse {
   body: Buffer;
 }
 
-function once(url: URL, pinnedAddress: string, headers: Record<string, string>, policy: EgressPolicy): Promise<RawResponse> {
+/** One hop. B13 (C17): a method and a body for the delivery form; the GET form passes neither and behaves as it always has. */
+function once(url: URL, pinnedAddress: string, headers: Record<string, string>, policy: EgressPolicy, opts?: { method?: 'GET' | 'POST'; body?: Buffer }): Promise<RawResponse> {
   return new Promise<RawResponse>((resolvePromise, reject) => {
     // The AGENT connects to the PINNED address; `servername` keeps SNI and
     // certificate verification bound to the real hostname, so pinning the address
@@ -333,7 +394,7 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
         servername: url.hostname,
         port: url.port === '' ? 443 : Number(url.port),
         path: `${url.pathname}${url.search}`,
-        method: 'GET',
+        method: opts?.method ?? 'GET',
         headers,
         agent,
         rejectUnauthorized: true, // never disabled
@@ -399,6 +460,6 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
       const tls = typeof e.code === 'string' && (e.code.startsWith('ERR_TLS') || e.code.startsWith('CERT_') || e.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || e.code === 'DEPTH_ZERO_SELF_SIGNED_CERT');
       reject(new EgressRefused(tls ? 'tls_failure' : 'transport_failure', tls ? 'TLS certificate verification failed' : 'transport failure'));
     });
-    r.end();
+    r.end(opts?.body);
   });
 }
