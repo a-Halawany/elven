@@ -14,6 +14,7 @@ import { IdentityModule } from '../identity/identity.module.js';
 import { ObservationController } from './observation.controller.js';
 import { UploadController } from './sources/upload.controller.js';
 import { SourcesService } from './sources/sources.service.js';
+import { SourceCredentialStore } from './sources/source-credentials.js';
 import { VaultService } from './vault/vault.service.js';
 import { EvidenceService } from './vault/evidence.service.js';
 import { QuarantineService } from './quarantine/quarantine.service.js';
@@ -34,6 +35,7 @@ import { ObservationExceptionFilter } from './observation.filter.js';
   controllers: [ObservationController, UploadController],
   providers: [
     SourcesService,
+    SourceCredentialStore,
     VaultService,
     EvidenceService,
     QuarantineService,

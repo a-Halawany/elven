@@ -51,6 +51,8 @@ const NAV = [
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },
   { href: '/graph/memory', label: 'Memory', glyph: '▤' },
+  { href: '/graph/retention', label: 'Retention', glyph: '⌛' },
+  { href: '/graph/ontology', label: 'Ontology', glyph: '⊞' },
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/twins', label: 'Twins', glyph: '◫' },

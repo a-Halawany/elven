@@ -35,6 +35,25 @@ alone is either useless or dangerous.
 | Degraded-audit journal | `apps/api/.eye-local/degraded-demo` (`EYE_DEGRADED_DIR`, set by `scripts/demo.sh` for the demonstration) and the dev default `apps/api/.eye-local/degraded` (`apps/api/src/shared/degraded-store.ts`) | A degraded audit state must survive a restart (`degraded-reconciliation.service.ts`): the journal is what keeps `/readyz` reporting `degraded` until governed recovery. Restoring a database with open incidents but no journal would come back reporting `ok`. |
 | Configuration and credentials | `.eye-local/env` (0600): the role passwords, the Redis password, the JWT secret, the test/bootstrap passwords | The role passwords must match the SCRAM verifiers in the globals; the JWT secret must match for any issued session to remain valid; the demo personas' password is what the walkthrough logs in with. This is exactly the file lost on 2026-09-09. |
 
+Since CP-6 B11 (migration 0070) the vault has two more roots under the same
+parent: `.eye-local/vault/archive` — the ARCHIVE TIER, where an executed archive
+action moves a manifest's bytes under the same opaque locator (config
+`eye.vault.archive_root` / `EYE_VAULT_ARCHIVE_ROOT`; the manifest's tier is the
+latest row of `observation.blob_tier_records`) — and `.eye-local/vault/export`
+— the EXPORT NAMESPACE, where a customer export package lives as
+`<tenant>/<domain>/<action_id>/manifest.json` plus one `<manifest_id>.bin` per
+object (config `eye.vault.export_root` / `EYE_VAULT_EXPORT_ROOT`; the package's
+record is `retention.export_packages`). Both sit inside the capture boundary
+because `backup.sh` tars the whole `.eye-local/vault`; `restore.sh` passes both
+roots to the API it starts, and its blob verification (and the capture-boundary
+reconciliation) looks for a live manifest's bytes under the root the TIER names —
+`archive/<locator>` when `observation.manifest_tier(manifest_id)` says so, the
+row's own `vault` otherwise — so an archived manifest counts as present when its
+bytes are in the bundle (a bundle from before 0070 has no tier function; every
+manifest is hot). An older bundle has neither directory: the API creates them
+empty at start (`ensureRoots`), and the two-root existence check of `backup.sh`
+is unchanged.
+
 The bundle also records the pinned image digests of both containers, so a
 restore runs the same PostgreSQL major and build the dump was taken from.
 

@@ -220,8 +220,8 @@ export async function resolveAndVet(hostname: string): Promise<string> {
 export interface EgressRequest {
   url: string;
   headers?: Record<string, string>;
-  /** Credentials are passed separately so the redirect logic can drop them explicitly. */
-  credentials?: { authorization?: string; cookie?: string };
+  /** Credentials are passed separately so the redirect logic can drop them explicitly. `headers` carries a named credential header (a subscription key); the same rule. */
+  credentials?: { authorization?: string; cookie?: string; headers?: Record<string, string> };
   policy: EgressPolicy;
 }
 
@@ -254,6 +254,9 @@ export async function egress(req: EgressRequest): Promise<EgressResult> {
     }
     if (carryCredentials && req.credentials?.cookie !== undefined) {
       headers['cookie'] = req.credentials.cookie;
+    }
+    if (carryCredentials && req.credentials?.headers !== undefined) {
+      for (const [k, v] of Object.entries(req.credentials.headers)) headers[k.toLowerCase()] = v;
     }
 
     fault.at('f10.mid_acquisition');

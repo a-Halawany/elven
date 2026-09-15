@@ -49,6 +49,10 @@ const schema = z.object({
   // TWO SEPARATE ROOTS. The service refuses to start if they are equal or nested.
   'eye.vault.quarantine_root': z.string().default('.eye-local/vault/quarantine'),
   'eye.vault.evidence_root': z.string().default('.eye-local/vault/evidence'),
+  // ── CP-6 B11 (0070 §2, §3): the ARCHIVE tier (a second root under the same opaque scoped locator — D2) and the EXPORT namespace
+  //    (customer export packages, <export_root>/<tenant>/<domain>/<action_id>/). Four separate, non-nested roots; the service refuses otherwise.
+  'eye.vault.archive_root': z.string().default('.eye-local/vault/archive'),
+  'eye.vault.export_root': z.string().default('.eye-local/vault/export'),
   'eye.vault.max_blob_bytes': z.coerce.number().int().min(1024).default(64 * 1024 * 1024),
   // ── Phase 1: connector hardening (§8.1) ──
   'eye.connector.max_redirects': z.coerce.number().int().min(0).max(3).default(3),
@@ -121,6 +125,8 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_TELEMETRY_REDACT: 'eye.telemetry.redact_fields',
   EYE_VAULT_QUARANTINE_ROOT: 'eye.vault.quarantine_root',
   EYE_VAULT_EVIDENCE_ROOT: 'eye.vault.evidence_root',
+  EYE_VAULT_ARCHIVE_ROOT: 'eye.vault.archive_root',
+  EYE_VAULT_EXPORT_ROOT: 'eye.vault.export_root',
   EYE_VAULT_MAX_BLOB_BYTES: 'eye.vault.max_blob_bytes',
   EYE_CONNECTOR_MAX_REDIRECTS: 'eye.connector.max_redirects',
   EYE_CONNECTOR_TIMEOUT_MS: 'eye.connector.request_timeout_ms',
@@ -168,6 +174,8 @@ function workspaceRoot(): string {
 const PATH_KEYS: Array<keyof EyeConfig> = [
   'eye.vault.quarantine_root',
   'eye.vault.evidence_root',
+  'eye.vault.archive_root',
+  'eye.vault.export_root',
   'eye.connector.replay_root',
 ];
 

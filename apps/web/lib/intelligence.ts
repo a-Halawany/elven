@@ -65,7 +65,8 @@ export interface ReviewCase {
   claim_version: number | null;
   run_id: string;
   method_id: string;
-  queued_reason: 'below_review_threshold' | 'abstained' | 'method_flagged';
+  /** 0066 §5 adds `contradiction` (the newer of two incompatible assertions) and `challenged` (a person's review request). */
+  queued_reason: 'below_review_threshold' | 'abstained' | 'method_flagged' | 'contradiction' | 'challenged';
   confidence: string | null;
   state: 'queued' | 'approved' | 'corrected' | 'rejected';
   opened_at: string;
@@ -87,6 +88,39 @@ export interface GatewayCall {
   outcome: 'completed' | 'abstained' | 'refused' | 'failed';
   latency_ms: number; occurred_at: string; detail: Record<string, unknown>;
 }
+
+/**
+ * A CONTRADICTION (0066 §5, interface L2-I03): two admitted assertions about the same subject and predicate whose
+ * values are incompatible, LINKED and never collapsed. `a` is the assertion that stood; `b` the one admitted (or
+ * corrected) against it. The row is served as stored: its only mutation is the adjudication.
+ */
+export interface ContradictionRow {
+  contradiction_id: string;
+  scope: string;
+  tenant_id: string;
+  domain_id: string;
+  kind: 'claim.value';
+  a_object_id: string;
+  a_version: number | string;
+  b_object_id: string;
+  b_version: number | string;
+  subject: string;
+  predicate: string;
+  a_value: string | null;
+  b_value: string | null;
+  basis: Record<string, unknown>;
+  state: 'open' | 'adjudicated';
+  review_case_id: string | null;
+  detected_by: string;
+  detected_at: string;
+  adjudicated_by: string | null;
+  adjudicated_at: string | null;
+  adjudication: 'both_stand' | 'a_withdrawn' | 'b_withdrawn' | 'superseded' | null;
+  adjudication_reason: string | null;
+  correlation_id: string;
+}
+
+export type Adjudication = NonNullable<ContradictionRow['adjudication']>;
 
 export interface IntelligenceOverview {
   methods: { total: number; active: number; draft: number };
@@ -173,10 +207,39 @@ export const intelligence = {
     s: Scope, caseId: string, decision: 'approve' | 'correct' | 'reject', reason: string,
     correctedValue?: Record<string, unknown>,
   ) =>
-    intel<{ review: { state: string; newVersion: number | null }; receipt: Receipt }>(
+    intel<{ review: { caseId: string; state: string; newVersion: number | null;
+                      /** 0066 §5: the contradictions a correction entered (a corrected value that contradicts a standing assertion). */
+                      contradictions: number };
+            receipt: Receipt }>(
       s, `/review/${caseId}/decide`, 'intelligence.review.decide', 'REV',
       correctedValue === undefined ? { decision, reason } : { decision, reason, correctedValue },
       caseId),
+
+  /**
+   * A CHALLENGE (0066 §5, V00-T-037): a person opens a review case on an admitted claim version with a reason; the case
+   * queues with the reason `challenged` and is decided through the review route. The envelope names no object: the
+   * case id is the server's. A version already queued is refused, and the refusal says so.
+   */
+  requestReview: (s: Scope, claimObjectId: string, claimVersion: number, reason: string) =>
+    intel<{ review: { caseId: string; claimObjectId: string; claimVersion: number; state: string; reason: string };
+            receipt: Receipt }>(
+      s, '/review/request', 'intelligence.review.request', 'REV', { claimObjectId, claimVersion, reason }),
+
+  /** The contradictions of the domain, newest detection first; `state` narrows to open or adjudicated ones. */
+  listContradictions: (s: Scope, state?: ContradictionRow['state']) =>
+    intel<{ contradictions: ContradictionRow[]; receipt: Receipt }>(
+      s, '/contradictions/list', 'intelligence.read', 'CTR',
+      state === undefined ? { limit: 200 } : { state, limit: 200 }),
+
+  /**
+   * The ADJUDICATION (V03-T-286): a person records how the incompatible assertions stand — both stand, one withdrawn,
+   * or superseded. Neither assertion is deleted by this act, and the link is immutable afterwards. It is the review
+   * decision's action (intelligence.review.decide) on the contradiction (CTR), C2.
+   */
+  adjudicateContradiction: (s: Scope, contradictionId: string, adjudication: Adjudication, reason: string) =>
+    intel<{ contradiction: { contradictionId: string; state: string; adjudication: string }; receipt: Receipt }>(
+      s, `/contradictions/${contradictionId}/adjudicate`, 'intelligence.review.decide', 'CTR',
+      { adjudication, reason }, contradictionId),
 
   gatewayCalls: (s: Scope) =>
     intel<{

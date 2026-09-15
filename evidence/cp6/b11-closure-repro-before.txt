@@ -1,0 +1,39 @@
+=== Codex's B11-F1 REPRODUCED at the governed boundary on the UNFIXED executor (the B11 tree at 1e3e4be's sources, migrations 0001–0070 on the fresh database eye_verify_b11c0, an isolated vault) — 2026-09-14T17:58Z ===
+=== the new harness apps/api/test/int/phase6-retention-b11-closure.test.ts, the cases 'the interleaving Codex named' and 'the serial control' only (the cleanup-boundary hold does not exist in the unfixed executor) ===
+
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+ ❯ test/int/phase6-retention-b11-closure.test.ts (5 tests | 1 failed | 3 skipped) 2926ms
+     × the interleaving Codex named, through the governed path: A copies P and is held before the move is recorded; B (approved on P) starts meanwhile and is held back by the lock; A fails on Q, removes its copy inside the transaction, rolls back and pauses (infrastructure → retry); B then makes ITS OWN copy, records the move, commits and removes the hot copy — B's committed evidence is served from the archive tier and verifies; A resolved again executes Q 2415ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/int/phase6-retention-b11-closure.test.ts > F1 · overlapping archive actions on one manifest (0071 §1; Codex B11-F1) > the interleaving Codex named, through the governed path: A copies P and is held before the move is recorded; B (approved on P) starts meanwhile and is held back by the lock; A fails on Q, removes its copy inside the transaction, rolls back and pauses (infrastructure → retry); B then makes ITS OWN copy, records the move, commits and removes the hot copy — B's committed evidence is served from the archive tier and verifies; A resolved again executes Q
+AssertionError: expected { ok: false, reason: 'missing' } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "ok": false,
++   "reason": "missing",
+  }
+
+ ❯ test/int/phase6-retention-b11-closure.test.ts:144:67
+    142|     // THE BYTES: P is served from the archive tier under B's committe…
+    143|     expect(await tierOf(mP.manifest_id)).toBe('archive');
+    144|     expect(await archiveRetrieval(mP.locator, mP.content_digest)).toEq…
+       |                                                                   ^
+    145|     expect(await vault.exists('archive', scope(), mP.locator)).toBe(tr…
+    146|     expect(await vault.exists('evidence', scope(), mP.locator)).toBe(f…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 3 skipped (5)
+   Start at  20:58:27
+   Duration  3.99s (transform 522ms, setup 15ms, import 981ms, tests 2.93s, environment 0ms)
+

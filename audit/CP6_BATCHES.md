@@ -893,6 +893,170 @@ write off MEM and BRF at `objects.admit_version`. Harness `phase6-briefing-memor
 `b10-closure-repro-before.txt`); the adversarial review of the candidate (38 agents, 13 confirmed findings corrected); the
 demonstration through the HTTP path (`closure-b10.mjs` → `closure-b10.txt`); hosted at `1fa3b08` green. PHASE6_REPORT §23.6.
 
+## B11 — the governed credential path and the UN Comtrade act; the archive tier, the customer export package and the safe referential scope of a deletion; five workspace pages (implemented)
+
+**Migration 0070** (`apps/api/migrations/0070_b11_credential_path_retention_executors_and_safe_scope.sql`), one file, on
+`phase6-b11` (PR base `phase6-b10`, so the diff is B11 alone). The retention part was designed by a workflow agent from
+the units' remaining clauses and the requirement rows (D1–D11 below), implemented by another, reviewed adversarially
+(§B11.8) and exercised on the demonstration (§B11.9).
+
+**§1 the governed credential path (SOURCE_INTEGRATION_STATUS §6 item 3, §11).** SRC@v3 adds
+`security_and_operations.credential_header`; `credential_ref` is validated as the deployment's variable name
+`EYE_SRC_<NAME>` (a pasted secret, a path or any other shape refused at registration; a header without a reference
+refused). `SourceBinding.credential {ref, header}` — the reference only; `AcquisitionLifecycle` resolves the value
+through `SourceCredentialStore` (the process environment at egress time) and hands it to the connector APART from the
+binding (`AcquisitionContext.credential`); the HTTP client carries it as a credential, dropped on a redirect off the
+origin like `authorization`; an unbound reference cancels the run BEFORE any request (`run.cancelled`, the reference on
+the record); the readiness register reads `blocked-credential` for an unbound reference and live for a bound one. The
+REST connector's code digest covers the new transport behaviour (`rest-credential-carriage@1.0.0`), so the agents
+registered against the previous digest stop matching and are re-provisioned through the governed route
+(`scripts/integrations/reprovision-rest-agents.mjs`). Harness `phase6-source-credentials.test.ts` (3): unbound —
+blocked, cancelled before egress, the reference and never a value; bound — the value in the contract's header on every
+request, the items admitted, the value nowhere on the run, the audit, the evidence or the register; the contract's
+refusals. The UN Comtrade act (`scripts/integrations/activate-comtrade.mjs`): the policy read in full and quoted as the
+rights evidence; `un-comtrade` v1 (rest, live; HS 8505, Germany with the world, annual; the upload contract's weekly
+cadence and budgets carried verbatim; internal analysis only, attribution "Source: UN Comtrade.") registered by
+a.hoffmann, approved by m.dvorak, rights recorded; the act STOPS before activation because this deployment binds no
+`EYE_SRC_COMTRADE_KEY` (the key is the owner's to bind; a re-run activates and triggers one run).
+
+**§2 the archive tier (L3-C08, DZ-18, DAT-ST-06).** D1 — the manifest row stays immutable (append-only since 0022);
+its tier is a companion ledger `observation.blob_tier_records` (one row per move; a manifest's tier is its latest
+record, `hot` when none — `observation.manifest_tier(uuid)`); the evidence detail and the scope items serve the tier,
+never an UPDATE of the manifest. D2 — the archive tier is a second namespace of the vault under the SAME locator
+(`eye.vault.archive_root`, env `EYE_VAULT_ARCHIVE_ROOT`); every containment check applies unchanged. D3 — copy first,
+record, commit, then remove the hot copy: the executor copies the bytes into the archive root (temp file, fsync, rename,
+re-read, digest compared), calls `observation.archive_blob` (only while an executing ARCHIVE action of the domain names
+the manifest as an executable item; not a tombstoned manifest; under the manifest's own digest; a hold is no refusal —
+an archive preserves; idempotent), and after the commit removes the hot copy (a copy the vault refuses to remove is the
+pending `bytes_present` residual of 0067 §1, closed when verification observes the hot bytes gone); a copy failure rolls
+the execution back whole and pauses the action with failure class `infrastructure`, disposition `retry`, the copies
+THIS execution made removed. Retrieval of archived evidence reads the archive tier (`RetrievalResult.tier/availability`
+= `archived`); the acquisition lifecycle's revalidation and every other reader of a manifest's bytes read the manifest's
+CURRENT tier. The scope: the review's preservation scope (0068 §6) — current and superseded evidence alike, a hold
+recorded on the item. Verification: no tombstone; `manifest_tier = archive`; the hot copy absent; the archive copy
+present under the digest; the move recorded. No DeletionVerified (D10).
+
+**§3 the customer export package (V03-T-047, DPD-19, LR-23).** The `export` namespace of the vault
+(`eye.vault.export_root`): `<tenant>/<domain>/<action_id>/manifest.json` and `<manifest_id>.bin` per exported object,
+nothing else (D5). The gates of V03-T-047: approval (the live approval on the resolved scope digest, re-checked at
+`begin_execution`); redaction (the action's declared `classification_ceiling` — objects above it excluded with the
+reason); format (JSON manifest + raw bytes); destination (`export`, the only one this release binds); data rights (the
+source contract's `rights_state` must be confirmed — withdrawn rights exclude; re-checked at execution:
+`authority_disputed` pauses the action); audit (`retention.action_events` `export.built`/`export.revoked`,
+`retention.executions`, `observation.custody_events` `custody.exported` per object); revocation
+(`retention.revoke_export`, the retention authority's human-gated act: the package row revoked once, the bytes removed,
+the read route refusing, verification failing). D4 — "signed" is a DIGEST CHAIN, not a cryptographic signature (there is
+no signing facility in the runtime; the only asymmetric signing in the repository is the C19 CI tooling):
+`signature { scheme: 'eye-digest-chain/1', objects_digest = sha256(JCS(objects)), package_digest = sha256(JCS({format,
+package, authorization, gates, objects_digest, excluded, bound_to})), bound_to {action_id, scope_digest, approval_id} }`,
+the same digests recorded by the port in the append-only `retention.export_packages` and in the execution evidence — a
+customer verifies integrity, completeness and re-import offline with `scripts/retention/verify-export.mjs` (no
+dependencies, no network, no database: bytes against their digests, every canonical header+payload recomputing to its
+recorded canonical digest, every file listed and every listed file present, the chain) and authenticity by presenting
+the package digest to the product's export read route; a key-based scheme is `eye-customer-export/2`, recorded as
+remaining. D6 — the EVD payload is exported as stored (its locator is an opaque id of the customer's own tenant). D7 —
+`manifestIds` (1–200) is the selector of an archive or an export; a deletion or a review keeps `manifestId | sourceId`.
+
+**§4 the safe referential scope of a deletion (V03-T-100, AU-MEM-0061).** D9 — the version set of a manifest M is
+V(M): every version of the evidence object whose payload names M (a correction admits n+1 with the same payload and
+manifest; a revision admits n+1 under a NEW manifest). A reference makes M load-bearing when it is version-aware and
+names a version in V(M) — a briefing citing `evidence:<id>@<v>` in its sources, a live decision package's citation — or
+digest-bearing and names M's digest — a claim whose lineage carries it with an asserted edge or a live review case; an
+object-level reference (a dependency row) rests on the object's servable bytes and makes M load-bearing only while no
+later version carries different, admitted, non-tombstoned bytes. `retention.load_bearing_references` computes them;
+`resolve_scope` marks such an item `blocking` with the dependents named in `details.dependents`, the action PAUSED
+(`unresolved_dependency` → `human_review`) with the failure reason listing them; the residual inventory unchanged for
+the non-blocking references (lineage, dependencies, canonical versions — retained by policy); the person's route:
+decide the case, retract the edge, close or supersede the package, then resolve again (the digest changes). D8 —
+precedence `excluded` (current evidence) → `held` (a legal hold) → `blocking` → `execute`. The check is re-run at
+`begin_execution`: a reference created inside the approval window pauses the execution.
+
+**§5 execution and verification.** D11 — a refusal at execution is a `RetentionExecutionRolledBack` (the failure class
+`legal_hold` | `authority_disputed` | `infrastructure`; disposition `retry` for infrastructure, `human_review` otherwise;
+the approvals revoked in every case; the copies or the package this execution wrote removed on rollback). D10 —
+`DeletionVerified` for `deletion` and `log_floor` only. Schedules carry their selector keys into the actions they open;
+an archive schedule skips archived manifests; a customer-export schedule needs a classification ceiling.
+
+**§6 the withdrawal is its own act (0070 §9).** The retention workspace found the withdraw route bound to the
+opener's action; `retention.action.withdraw` is its own PDP rule (the same holders), the route's action and the port's
+assertion (the opener's action still admitted).
+
+**B11.6 the harness and the units.** `phase6-source-credentials.test.ts` (3); `phase6-retention-b11.test.ts` (35: A
+the archive executor A1–A10 — the move, the tier ledger and the custody row, the hot copy removed after the commit, the
+verification, retrieval from the archive tier, a deletion of archived bytes, the rollback cleanup with a copy actually
+made and with an existing identical copy not this execution's, a hold recorded and kept, an archive schedule skipping
+archived manifests; B the export executor B1–B11 — the package and its files, the redaction gate on the record's
+classification, the data-rights gate, the verifier's checks and its tamper controls (a flipped byte, an unlisted file
+including a dot-file, an edited header, a wrong expected digest), the revocation and the read after it, the rights
+re-check at execution under a share lock, a leftover directory not wedging the next execution, a tombstoned manifest
+refused, a schedule's ceiling carried; C the safe scope C1–C10 — a briefing citing the version, a live review case, an
+asserted edge, a live package citation with an upper-cased id, a de-duplicated dependent, the release on withdrawal,
+the re-check at execution, unknown manifest ids excluded with a reason; D the withdrawal as its own act);
+`phase6-retention-b11-archive-poll.test.ts` (4: archived current evidence revalidates as held on the next live poll —
+the 304 and the 200 paths — instead of admitting a duplicate); the `-4` retention describes re-run unchanged with the
+archive block rewritten (executed as a move). Unit: `phase5-refusals` gains the B11 refusal mappings and the P0R02
+class. Units: AU-MEM-0059 (every kind the statement names executes) and AU-MEM-0061 (the pause on an unprovable
+referential scope) `open` → `verified:ci` (the harness at the B11 head; the hosted run at `1e3e4be`); AU-MEM-0060 a note
+(a hold under archive/export recorded and honoured by keeping).
+
+**B11.7 the adversarial review before the commit** (`evidence/cp6/b11-adversarial-review.txt`; PHASE6_REPORT §24.4):
+six dimensions, two refuters per finding — 29 confirmed of 31, every one corrected in the same unapplied migration and
+tree before the demonstration (two HIGH: the rollback cleanup tombstoning an archive copy another action had committed
+— now only the copies THIS execution created; the acquisition lifecycle reading a manifest's immutable vault instead of
+its tier, so archived current evidence would have admitted a duplicate on the next poll — now every reader of a
+manifest's bytes reads its current tier, restore.sh's verification included), then re-judged by two judges per finding.
+
+**B11.8 the demonstration** — `scripts/phase6/act-b11.mjs` with `reprovision-rest-agents.mjs` and
+`activate-comtrade.mjs` → `evidence/cp6/act-b11.txt` (PHASE6_REPORT §24.3).
+
+**B11.9 the closure of Codex's B11-F1 and B11-F2 (migration 0071; 2026-09-14; PHASE6_REPORT §25).** *The finding:* two
+approved archive actions overlapping on a manifest — the first's copy adopted by the second (`copy_created: false`), the
+second committed, the first failing later and its rollback cleanup removing the copy the second's committed record now
+served: the bytes gone from both tiers. *Reproduced* through the governed path on a fresh database with an isolated vault
+by `phase6-retention-b11-closure.test.ts`, using a HOLD (a fault-module primitive that makes the shipped code wait at a
+boundary instead of crashing there; test profile only) — RED on the unfixed executor (`b11-closure-repro-before.txt`).
+*The mechanism, 0071 §1:* `retention.lock_key_manifest`, `retention.lock_key_domain`, `retention.holds_advisory`,
+`retention.holds_manifest_lock(tenant, domain, manifest)`; `begin_execution` re-declared — after the approval checks and
+before the kind-specific re-checks, the domain's MOVERS advisory lock shared, then each executable manifest's advisory lock
+in one canonical order (by ref): exclusive for an archive or a deletion, shared for a customer export; more than 256
+executable manifests → the movers lock exclusively and no manifest lock (the lock table is finite: max_locks_per_transaction
+× the connections); every execution takes the domain lock first, so no wait cycle. *§2:* `archive_blob` records a move only
+under the manifest's lock (55P03 otherwise). *The executor:* a copy is STAGED under the creating execution ATTEMPT's own name
+(`<locator>.staging-<attempt_id>` in the archive root, `VaultService.copyBlob` with the owner; every execution of an action
+is its own attempt) and PUBLISHED under the locator by the controller only after the commit that recorded the move
+(`publishArchiveCopy`: a rename in the same directory, the digest re-read; idempotent; the other staged copies of the
+locator retired) — so a copy whose record did not commit is adoptable by no other execution, and a rollback removes only the
+file bearing its own attempt's name (`removeStaged`; a second attempt of the same action, admitted after the first's backend
+was lost, owns its own), whatever became of the transaction's locks, backend or connection meanwhile (the author's first closure proved the lock before each removal and read "current transaction is
+aborted" as held — wrong: PostgreSQL releases a transaction's locks at the abort itself; the review's judges reproduced the
+loss on a cancelled statement and named the check-then-act window on a lost backend); the execution runs in a subtransaction
+(a savepoint after the locks) so a cancelled or timed-out statement aborts only that (the cleanup on a transaction still
+open), and the item branches roll back to the item savepoint only while it exists; an execution finding the manifest
+archived under the lock reads the committed copy (`readArchived`: the locator, else any staged copy under the manifest's
+digest, else the locator again, else the kept hot copy — the source recorded on the download's custody row), publishes a
+still-staged one there and then, schedules the hot removal only once a published copy stands, and records the move as
+already made; the retry route works from the executed items (not residual rows alone), leaves a tombstoned manifest to its
+deletion and reports what it could not publish; a transaction failing after the executor returned has its attempt's staged
+copies removed by the controller; an execution naming more than 256 manifests, whatever its kind, takes the movers lock
+exclusively; a failed publish keeps the hot copy and records a pending
+residual retried by the execute route (`retryBytes` publishes any staged copy under the manifest's digest first, and copies
+the kept hot copy again when none publishes); a deletion retires staged copies with the bytes (`removeAllStaged`, retried
+too) and its verification counts a staged copy as bytes present; `scripts/ops/restore.sh`'s blob verification and its
+after-boundary listing look where the product's readers look (a pending publish counted apart, never absent); every reader of the archive tier — the evidence download, the acquisition lifecycle's availability,
+the export builder — reads through `readArchived`. *The controller:* the executor's verdict survives a failed
+ROLLBACK (stashed beside the transaction; the pause on a fresh connection); a lock not granted at the start (40P01,
+55P03) pauses the action `infrastructure` for a retry. *The pools* (`shared/db.ts`): an `error` listener on every client,
+idle or checked out — a terminated backend is a logged failing query, not an event that ends the process. *B11-F2:* the
+verifier's verdict rule (complete validation, `ok`/`complete`/`failed`, text = JSON = exit; an expected digest never
+silently skipped; `excluded` as listed; an unreadable listed file a failed check). *The harness:* nine cases — Codex's
+interleaving, the hold inside the cleanup, the serial control, the overlap that succeeds (serial and concurrent), the lock's
+end with the backend (pg_terminate_backend on the holder), a statement cancelled mid-record (a sleeping trigger and
+pg_cancel_backend), a second attempt of the same action after the first's backend was lost, and the verifier's refusals
+and controls. *Records:* the four
+requirement rows (DZ-18, DAT-ST-06, L3-C08, V03-T-047) carry the clauses; no unit changes status. *The runbook:*
+`docs/ops/DEMONSTRATION_RUNBOOK.md` and `scripts/ops/demo-restart.sh` (the target verified before success is reported),
+carrying the 2026-09-13 incident. *The demonstration:* `scripts/phase6/closure-b11.mjs` → `evidence/cp6/closure-b11.txt`.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

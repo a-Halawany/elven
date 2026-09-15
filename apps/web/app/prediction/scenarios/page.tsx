@@ -7,12 +7,42 @@
  * and the event that recorded it; the state is never derived on this screen
  * from the latest number. Evaluating an indicator is a governed act and the
  * warnings it raises are listed with it.
+ *
+ * A REVIEW IS A PERSON'S ACT (0066 §8, L7-I05 ScenarioReviewed). Each scenario
+ * carries its review state as the server records it — how many reviews, the
+ * last, the next due, the retirement — and a review panel whose outcome is one
+ * of the four the server accepts: continue, dissent (a position and a
+ * rationale), promote a branch to simulation, retire. The result shown is the
+ * review as the port recorded it, and a refusal is shown as the server states it.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
-import { prediction, type ScenarioRow, type IndicatorRow } from '../../../lib/prediction';
-import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
-import { tableStyle, Th, Td, Receipt } from '../../../components/ui';
+import { prediction, type ScenarioRow, type IndicatorRow, type ScenarioReview, type ScenarioReviewOutcome } from '../../../lib/prediction';
+import type { Scope } from '../../../lib/observation';
+import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
+import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+
+type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
+const OUTCOMES: ReadonlyArray<{ value: ScenarioReviewOutcome; label: string }> = [
+  { value: 'continue', label: 'continue — the branches stand; the next review falls due' },
+  { value: 'dissent', label: 'dissent — a position and rationale recorded; nothing changes' },
+  { value: 'promote_to_simulation', label: 'promote to simulation — the named branch becomes the candidate' },
+  { value: 'retire', label: 'retire — the open branches close; the scenario leaves the portfolio' },
+];
+const muted = { color: 'var(--eye-color-ink-muted)' } as const;
+const small = { fontSize: 'var(--eye-type-label-sm)' } as const;
+const h3 = { fontSize: 'var(--eye-type-heading-3)' } as const;
+const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
+/** A datetime-local value → an ISO instant (null when empty); the server validates the instant. */
+const toIso = (local: string): string | null => (local.trim() === '' ? null : new Date(local).toISOString());
+/** A failed call, as the server answered it: status, code and message verbatim (a network failure has no code). */
+const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
+  `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
+const when = (v: string | null | undefined, none: string) => (v === null || v === undefined || v === '' ? none : fmtInstant(v));
+
+function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
+  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
+}
 
 function BranchState({ state }: { state: string }) {
   const map: Record<string, { glyph: string; token: string }> = {
@@ -20,6 +50,137 @@ function BranchState({ state }: { state: string }) {
   };
   const v = map[state] ?? (map['open'] as { glyph: string; token: string });
   return <span style={{ color: `var(${v.token})`, fontWeight: state === 'flipped' ? 650 : 400 }}><span aria-hidden="true">{v.glyph}</span> {state.toUpperCase()}</span>;
+}
+
+/** The scenario's review state, as the listing row carries it (0066 §8): counts and instants verbatim, nothing derived from the clock. */
+function ReviewState({ s }: { s: ScenarioRow }) {
+  return (
+    <p style={{ ...muted, ...small }}>
+      state <strong style={{ color: s.state === 'retired' ? 'var(--eye-color-critical)' : 'var(--eye-color-ink-default)' }}>{s.state.toUpperCase()}</strong>
+      {' · '}reviews {s.reviews === undefined ? '—' : String(s.reviews)}
+      {' · '}last reviewed {when(s.last_reviewed_at, 'never')}
+      {' · '}next review due {when(s.next_review_due_at, s.state === 'retired' ? 'none (retired)' : 'not set')}
+      {s.retired_at === null || s.retired_at === undefined ? null : <> · retired {fmtInstant(s.retired_at)}{s.retirement_reason ? <> — {s.retirement_reason}</> : null}</>}
+    </p>
+  );
+}
+
+/** The review as the port recorded it — VERBATIM. */
+function RecordedReview({ r }: { r: ScenarioReview }) {
+  const links = r.links ?? { forecast_id: null, decision_objects: [], dependents: [], simulation_runs: [] };
+  return (
+    <dl>
+      <DefinitionRow term="Recorded">review <Mono>{String(r.review_ordinal)}</Mono> of scenario <Mono>{r.scenario_id}</Mono> · outcome <Mono>{r.outcome}</Mono> · state after <strong>{r.state_after}</strong></DefinitionRow>
+      <DefinitionRow term="Branch">{r.branch === null ? 'none named' : <><Mono>{r.branch.branch_id}</Mono> · {r.branch.kind} · state after <strong>{r.branch.state_after}</strong></>}</DefinitionRow>
+      <DefinitionRow term="Next review due">{r.next_review_due_at === null ? (r.outcome === 'retire' ? 'none — the scenario is retired' : 'not set (the cadence names no interval)') : fmtInstant(r.next_review_due_at)} · cadence {r.cadence ?? '—'}</DefinitionRow>
+      <DefinitionRow term="Branches closed">{String(r.branches_closed)}</DefinitionRow>
+      <DefinitionRow term="Links named in ScenarioReviewed">
+        forecast {links.forecast_id === null ? 'none' : <Mono>{links.forecast_id}</Mono>}
+        {' · '}{links.decision_objects.length} decision object(s){links.decision_objects.length > 0 ? <> (<Mono>{links.decision_objects.join(', ')}</Mono>)</> : null}
+        {' · '}{links.dependents.length} dependent(s){links.dependents.length > 0 ? <> (<Mono>{links.dependents.map((d) => `${d.type} ${d.id}`).join(', ')}</Mono>)</> : null}
+        {' · '}{links.simulation_runs.length} simulation run(s){links.simulation_runs.length > 0 ? <> (<Mono>{links.simulation_runs.join(', ')}</Mono>)</> : null}
+      </DefinitionRow>
+    </dl>
+  );
+}
+
+/**
+ * The review panel of one scenario. The outcome names the fields it needs: a dissent its position and rationale, a
+ * promotion its branch; a continuation may name the next review. Only the note's length is gated here (the exemplar's
+ * rule for a reason); everything else is the server's to refuse, and its refusal is shown as it states it.
+ */
+function ReviewPanel({ s, scope, onRecorded }: { s: ScenarioRow; scope: Scope; onRecorded: () => Promise<void> }) {
+  const idp = `rv-${s.scenario_id}`;
+  const [outcome, setOutcome] = useState<ScenarioReviewOutcome>('continue');
+  const [branchId, setBranchId] = useState('');
+  const [note, setNote] = useState('');
+  const [position, setPosition] = useState('');
+  const [rationale, setRationale] = useState('');
+  const [nextReviewBy, setNextReviewBy] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const [recorded, setRecorded] = useState<ScenarioReview | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptT>(null);
+  const sel = (id: string, value: string, onChange: (v: string) => void, options: ReactNode) => (
+    <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)}>{options}</select>
+  );
+  const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text') => (
+    <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} />
+  );
+
+  if (s.state === 'retired') {
+    return (
+      <section aria-labelledby={`${idp}-h`} style={{ marginBlockStart: 'var(--eye-space-16)' }}>
+        <h3 id={`${idp}-h`} style={h3}>Review</h3>
+        <p style={muted}>
+          Retired {when(s.retired_at, 'at an instant the row does not carry')}: a retired scenario is not reviewed again (declare a successor). Its history stays as recorded.
+        </p>
+        {/* The retirement this panel recorded (the listing reloads to the retired row; the review and its receipt stay shown). */}
+        {recorded !== null && <RecordedReview r={recorded} />}
+        <Receipt receipt={receipt} />
+      </section>
+    );
+  }
+
+  return (
+    <section aria-labelledby={`${idp}-h`} style={{ marginBlockStart: 'var(--eye-space-16)' }}>
+      <h3 id={`${idp}-h`} style={h3}>Review — {s.title}</h3>
+      <p style={muted}>
+        A person's act under the purpose <Mono>prediction</Mono>, human-gated: the server accepts a strategy owner, a forecast owner, a domain
+        administrator or a platform administrator and refuses a workload principal. The review is recorded on the scenario's log and published as <Mono>ScenarioReviewed</Mono>{' '}
+        naming the scenario's links. Cadence <Mono>{s.review_cadence}</Mono>: without a named instant the next review falls due by the cadence's
+        interval (daily, weekly, monthly, quarterly; another cadence leaves it open).
+      </p>
+      <div style={rowStyle}>
+        <Field id={`${idp}-outcome`} label="Outcome">
+          {(id) => sel(id, outcome, (v) => setOutcome(v as ScenarioReviewOutcome), OUTCOMES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>))}
+        </Field>
+        {outcome === 'retire' ? null : (
+          <Field id={`${idp}-branch`} label={outcome === 'promote_to_simulation' ? 'Branch (a promotion names the branch it promotes)' : 'Branch (optional; a dissent may name the branch it dissents on)'}>
+            {(id) => sel(id, branchId, setBranchId, [
+              <option key="" value="">{outcome === 'promote_to_simulation' ? '— name a branch —' : '— none (the scenario as a whole) —'}</option>,
+              ...s.branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.name} · {b.kind} · {b.state}{b.simulation_candidate_at ? ' · already a simulation candidate' : ''}</option>),
+            ])}
+          </Field>
+        )}
+        {outcome === 'retire' ? null : (
+          <Field id={`${idp}-next`} label="Next review by (optional; otherwise the cadence names it)">
+            {(id) => txt(id, nextReviewBy, setNextReviewBy, 'datetime-local')}
+          </Field>
+        )}
+      </div>
+      {outcome === 'dissent' ? (
+        <div style={{ ...rowStyle, marginBlockStart: 'var(--eye-space-8)' }}>
+          <Field id={`${idp}-pos`} label="Position (4+ characters; the server refuses a dissent without one)">{(id) => txt(id, position, setPosition)}</Field>
+          <Field id={`${idp}-rat`} label="Rationale (8+ characters)">{(id) => txt(id, rationale, setRationale)}</Field>
+        </div>
+      ) : null}
+      <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
+        <Field id={`${idp}-note`} label={outcome === 'retire' ? 'Note (8+ characters; recorded as the retirement reason)' : 'Note (8+ characters)'}>
+          {(id) => <textarea id={id} style={textareaStyle} value={note} onChange={(e) => setNote(e.target.value)} />}
+        </Field>
+      </div>
+      <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
+        <GovernedButton label={outcome === 'retire' ? 'Retire the scenario' : 'Record the review'} pendingLabel="recording"
+          variant={outcome === 'retire' ? 'critical' : 'primary'} disabled={note.trim().length < 8}
+          onRun={async () => {
+            setProblem(null);
+            const r = await prediction.reviewScenario(scope, s.scenario_id, {
+              outcome, note: note.trim(),
+              branch_id: outcome === 'retire' || branchId === '' ? null : branchId,
+              dissent: outcome === 'dissent' ? { position: position.trim(), rationale: rationale.trim() } : null,
+              next_review_by: outcome === 'retire' ? null : toIso(nextReviewBy),
+            });
+            if (!r.ok || r.data === undefined) { const m = refusal(r, 'the review was not answered'); setRecorded(null); setReceipt(null); setProblem(m); throw new Error(m); }
+            setRecorded(r.data.review); setReceipt(r.data.receipt);
+            setNote(''); setPosition(''); setRationale(''); setNextReviewBy(''); setBranchId('');
+            await onRecorded();
+          }} />
+      </div>
+      {problem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not recorded — {problem}</span></LiveStatus>}
+      {recorded !== null && <RecordedReview r={recorded} />}
+      <Receipt receipt={receipt} />
+    </section>
+  );
 }
 
 export default function ScenariosPage() {
@@ -55,8 +216,10 @@ export default function ScenariosPage() {
             owner <Mono>{s.owner_principal_id.slice(0, 8)}…</Mono> · review {s.review_cadence} · declared {fmtInstant(s.declared_at)}
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
+          <ReviewState s={s} />
+          <ScrollBox label={`branches of ${s.title}`}>
           <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th></tr></thead>
+            <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th><Th>Simulation candidate</Th></tr></thead>
             <tbody>
               {s.branches.map((b) => {
                 const i = ind(b.indicator_id);
@@ -80,11 +243,16 @@ export default function ScenariosPage() {
                     <Td>{b.response_window_hours} h{b.decision_deadline === undefined || b.decision_deadline === null ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no deadline · T3 unmeasured</div> : <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>by {fmtInstant(b.decision_deadline)}</div>}</Td>
                     <Td>{b.consequence}{b.consequence_class ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class <Mono>{b.consequence_class}</Mono> (declared)</div>
                       : <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>class not declared — a warning assumes C2 and says so</div>}</Td>
+                    {/* 0066 §8: the instant a review promoted the branch to simulation, as the row carries it; nothing is derived. */}
+                    <Td>{b.simulation_candidate_at === null || b.simulation_candidate_at === undefined
+                      ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>not promoted</span>
+                      : <>candidate since {fmtInstant(b.simulation_candidate_at)}</>}</Td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </ScrollBox>
           {isForecastOwner ? s.branches.filter((b) => b.indicator_id !== null).map((b) => (
             <GovernedButton key={b.branch_id} label={`Evaluate "${b.name}" against what is known now`} pendingLabel="evaluating" variant="quiet"
               onRun={async () => {
@@ -97,12 +265,16 @@ export default function ScenariosPage() {
                 await load();
               }} />
           )) : null}
+          <ReviewPanel s={s} scope={scope} onRecorded={load} />
         </section>
       ))}
       {lastEval === null ? null : <LiveStatus>{lastEval}</LiveStatus>}
       <Receipt receipt={receipt} />
       <UnknownNote>A branch flips only when its indicator has been breached for the declared run of consecutive observations, and every
         flip raises a warning to the branch owner with a response window. Nothing here re-renders a state from the latest number.</UnknownNote>
+      <UnknownNote>A review is a person's act: the review state and each branch's simulation candidacy above are the server's records, and
+        a recorded review is shown as the port returned it. A dissent changes nothing on the scenario; a retirement closes the open
+        branches (a flipped branch keeps its history) and a retired scenario is not reviewed again.</UnknownNote>
     </>
   );
 }

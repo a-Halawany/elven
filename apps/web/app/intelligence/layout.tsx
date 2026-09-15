@@ -43,6 +43,7 @@ const NAV = [
   { href: '/intelligence', label: 'Overview', glyph: '◎' },
   { href: '/intelligence/claims', label: 'Claims', glyph: '❝' },
   { href: '/intelligence/review', label: 'Review', glyph: '⚖' },
+  { href: '/intelligence/contradictions', label: 'Contradictions', glyph: '≠' },
   { href: '/intelligence/methods', label: 'Methods', glyph: '⚙' },
   { href: '/intelligence/gateway', label: 'Gateway', glyph: '⇄' },
   { href: '/decisions', label: 'Decisions', glyph: '◆' },

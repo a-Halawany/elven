@@ -48,6 +48,51 @@ export interface Briefing {
   availability?: { checked_at: string; checked: Record<string, number>; unavailable: Array<{ kind: string; id: string; version: number | null; reason: string }>; corrected: Array<{ kind: string; id: string; version: number; by_version: number; reason: string }> };
 }
 
+/**
+ * CP-6 B9 (0066 §9; interface L10-I04 ExecutiveActionRequested): a person's TYPED REQUEST with an exactly-once
+ * institutional effect. The requester's `request_key` is the idempotency boundary: the same key with the same request
+ * returns the request already recorded (no second effect, no second event); the same key with a different request is
+ * refused. The server routes the request to the responsible capability (`analysis` → an agent run; `scenario`,
+ * `simulation`, `decision` → the owner's own governed act, which names the request and fulfils it) or effects it in the
+ * write (`delegation`, `suppression`, `follow_up`). Every row below is the server's; nothing is derived on the client.
+ */
+export const REQUEST_KINDS = ['analysis', 'scenario', 'simulation', 'decision', 'delegation', 'suppression', 'follow_up'] as const;
+export type RequestKind = (typeof REQUEST_KINDS)[number];
+export type RequestState = 'routed' | 'fulfilled' | 'refused' | 'withdrawn';
+/** A request as the list and the get serve it (executive.requests, instants as ISO). */
+export interface RequestRow {
+  request_id: string; kind: RequestKind; request_key: string; request_digest: string; subject: Record<string, unknown>; instruction: string;
+  delegate_principal_id: string | null; owner_principal_id: string | null; due_at: string | null; until_at: string | null;
+  requester_principal_id: string; routed_to: string; routed_ref: string | null; state: RequestState; refusal: string | null;
+  requested_at: string; fulfilled_at: string | null; fulfilled_by: string | null; withdrawn_at: string | null; correlation_id: string;
+}
+export interface RequestEvent { event: string; occurred_at: string; actor_principal_id: string; details: Record<string, unknown> }
+/** A follow-up on a package's (or room's) agenda; `overdue` and `status` are the workflow route's reading against now — the get's effect row carries the stored columns only. */
+export interface FollowUp {
+  follow_up_id: string; request_id: string; package_id: string | null; room_id: string | null; instruction: string; owner_principal_id: string;
+  due_at: string; state: 'open' | 'done' | 'withdrawn'; done_at: string | null; done_by: string | null; note: string | null; created_at: string;
+  overdue?: boolean; status?: string;
+}
+/** The get: the row, its events and the in-write effect of its kind (a delegation, a suppression or a follow-up), or null where none was recorded. */
+export interface RequestDetail extends RequestRow {
+  effect: { delegation?: Record<string, unknown> | null; suppression?: Record<string, unknown> | null; follow_up?: FollowUp | null };
+  events: RequestEvent[];
+}
+/** What the open route returns for the request: recorded (`repeated: false`) or the one already recorded under the key (`repeated: true`, no second effect). */
+export interface OpenedRequest {
+  request_id: string; repeated: boolean; kind: RequestKind; state: string; routed_to: string; routed_ref: string | null; requested_at: string;
+  effect: Record<string, unknown>; request_digest: string;
+}
+/** The agent run an ANALYSIS request triggered, as the open route reports it (null for every other kind and for a repeat). */
+export interface RequestRun {
+  run_id: string; agent_id: string; outcome: string; stop_reason: string | null; refusals: unknown; escalated_to: unknown; fulfilment: Record<string, unknown>;
+}
+/** What is sent to open a request (the controller's validateRequest): the per-kind fields are the server's requirements, refused verbatim when missing. */
+export type RequestIntake = {
+  kind: RequestKind; request_key: string; subject: Record<string, unknown>; instruction: string;
+  delegate?: string; owner?: string; due_at?: string; until?: string;
+};
+
 const base = (s: Scope) => `/v1/tenants/${s.tenantId}/domains/${s.domainId}`;
 async function p<T>(s: Scope, path: string, action: string, objectType: string, payload: Record<string, unknown> = {}, objectId: string | null = null, purpose = 'decision'): Promise<ApiResult<T>> {
   const read = action.endsWith('.read') || action === 'report.render';
@@ -62,7 +107,8 @@ export const decisions = {
   get: (s: Scope, id: string) => p<{ package: Package; receipt: Receipt }>(s, `/decisions/${id}/get`, 'decision.read', 'DPK', {}, id),
   outcomes: (s: Scope, id: string) => p<{ outcomes: Array<Record<string, unknown>>; breaches: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/decisions/${id}/outcomes/list`, 'decision.read', 'DPK', {}, id),
   replays: (s: Scope, id: string) => p<{ replays: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/decisions/${id}/replays/list`, 'decision.read', 'DPK', {}, id),
-  workflow: (s: Scope, id: string) => p<{ workflow: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/workflow/${id}`, 'decision.read', 'DPK', {}, id),
+  /** The package's workflow steps and, since 0066 §9, the follow-ups on its agenda (overdue read against now). */
+  workflow: (s: Scope, id: string) => p<{ workflow: Array<Record<string, unknown>>; follow_ups: FollowUp[]; receipt: Receipt }>(s, `/workflow/${id}`, 'decision.read', 'DPK', {}, id),
   approve: (s: Scope, id: string, version: number, payload: { decision: 'approve' | 'reject'; versionDigest: string; rationale: string }) =>
     p<{ approval: Record<string, unknown>; receipt: Receipt }>(s, `/decisions/${id}/versions/${version}/approve`, 'decision.approve', 'APR', payload),
   /** The commit: the route pins C3 on the server; the envelope says what every write says. */
@@ -81,4 +127,28 @@ export const decisions = {
   briefing: (s: Scope, id: string) => p<{ briefing: Briefing; receipt: Receipt }>(s, `/briefings/${id}/get`, 'briefing.read', 'BRF', {}, id, 'briefing'),
   compose: (s: Scope, roomId: string | null) => p<{ briefing: Briefing; receipt: Receipt }>(s, '/briefings/compose', 'briefing.compose', 'BRF', { roomId }, null, 'briefing'),
   agents: (s: Scope) => p<{ agents: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>>; planner: Record<string, unknown>; receipt: Receipt }>(s, '/agents/decision/list', 'agent.read', 'AGT'),
+
+  /** CP-6 B9 (0066 §9): the domain's typed requests, newest first; `state` and `kind` narrow the list when given. */
+  requests: (s: Scope, filter: { state?: string | null; kind?: string | null } = {}) =>
+    p<{ requests: RequestRow[]; receipt: Receipt }>(s, '/executive/requests/list', 'executive.request.read', 'EXR', { ...filter, limit: 200 }),
+  request: (s: Scope, id: string) => p<{ request: RequestDetail; receipt: Receipt }>(s, `/executive/requests/${id}/get`, 'executive.request.read', 'EXR', {}, id),
+  /**
+   * Human-gated, exactly once on the requester's `request_key`. An ANALYSIS request runs the briefing agent under the agent's own
+   * session and is made under the purpose `briefing`; every other kind is made under `decision`. The response carries the request as
+   * recorded (or the one repeated under the key) and, for an analysis, the run that fulfilled it.
+   */
+  openRequest: (s: Scope, intake: RequestIntake) =>
+    p<{ request: OpenedRequest; run: RequestRun | null; receipt: Receipt }>(s, '/executive/requests', 'executive.request', 'EXR', intake, null, intake.kind === 'analysis' ? 'briefing' : 'decision'),
+  /** The responsible owner's act answered a ROUTED request: `routedRef` names that act (a uuid); the server binds it to the request's kind. */
+  fulfilRequest: (s: Scope, id: string, routedRef: string, note: string | null) =>
+    p<{ request: { request_id: string; kind: RequestKind; state: RequestState; routed_to: string; routed_ref: string }; receipt: Receipt }>(
+      s, `/executive/requests/${id}/fulfil`, 'executive.request.fulfil', 'EXR', note === null ? { routed_ref: routedRef } : { routed_ref: routedRef, note }, id),
+  /** The requester's: a routed request is withdrawn, an in-write effect reversed (`reversed` says which); an act already done stands and the server refuses. */
+  withdrawRequest: (s: Scope, id: string, reason: string) =>
+    p<{ request: { request_id: string; kind: RequestKind; state: RequestState; reversed: string | null }; receipt: Receipt }>(
+      s, `/executive/requests/${id}/withdraw`, 'executive.request.withdraw', 'EXR', { reason }, id),
+  /** A follow-up is completed by its owner or its requester with a note; `was_overdue` is the server's reading at completion. */
+  completeFollowUp: (s: Scope, followUpId: string, note: string) =>
+    p<{ follow_up: { follow_up_id: string; state: string; was_overdue: boolean }; receipt: Receipt }>(
+      s, `/executive/follow-ups/${followUpId}/complete`, 'executive.follow_up.complete', 'EXR', { note }, followUpId),
 };

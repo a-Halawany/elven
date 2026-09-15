@@ -79,7 +79,12 @@ export type InjectionPoint =
   | 'f40.during_noop_event_append'
   | 'f41.after_noop_before_response'
   | 'f42.new_observation_before_obs_insert'
-  | 'f44.after_shared_digest_resolved_before_commit';
+  | 'f44.after_shared_digest_resolved_before_commit'
+  // CP-6 B11 — the archive executor's copy into the archive tier (0070 §2; D3): before the write, and after the rename before the port records the move
+  | 'b11.archive_copy_partial'
+  | 'b11.archive_after_copy_before_record'
+  // CP-6 B11 closure (0071; Codex B11-F1) — the rollback cleanup of the copies an execution created, before the first removal (a HOLD point)
+  | 'b11.archive_cleanup_before_remove';
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {
@@ -107,6 +112,49 @@ export function arm(points: InjectionPoint[], runtimeEnv: string): void {
 export function disarm(): void {
   armed.clear();
   enabled = false;
+  // A hold still armed, or fired and not yet released, is released when the test disarms, so the code under test never waits on a test
+  // that has moved on (a failed assertion, an afterAll).
+  for (const h of holds.values()) h.release();
+  holds.clear();
+  for (const h of fired) h.release();
+  fired.clear();
+}
+
+/*
+ * A HOLD (CP-6 B11 closure, 0071; Codex B11-F1). A fault makes the code under test CRASH at a boundary; a hold makes it WAIT
+ * there — not a branch, not a crash: the same shipped code runs, delayed until the test releases it — so two governed
+ * executions can be interleaved deterministically at a durable boundary (an archive copy made, the record not yet written;
+ * the rollback cleanup about to remove what the execution created) with the other execution running against the real
+ * database and vault in between. The same two properties hold: a hold can only be armed in the test profile, and `pause()`
+ * is inert (returns at once) unless a hold is armed at its point. A hold fires once. Holds are placed only where a
+ * cross-execution interleaving is meaningful; `pause()` is async, `at()` stays synchronous.
+ */
+interface Hold { reached: () => void; released: Promise<void>; release: () => void }
+const holds = new Map<InjectionPoint, Hold>();
+/** Holds that fired and are waiting for their release (so `disarm()` can release them too). */
+const fired = new Set<Hold>();
+
+/** Arm a hold at a point: `reached` resolves when the code under test arrives there; `release()` lets it continue. */
+export function hold(point: InjectionPoint, runtimeEnv: string): { reached: Promise<void>; release: () => void } {
+  if (runtimeEnv !== 'test') {
+    throw new Error('a hold may only be armed in the test runtime profile');
+  }
+  let reachedResolve: () => void = () => undefined; let releaseResolve: () => void = () => undefined;
+  const reached = new Promise<void>((r) => { reachedResolve = r; });
+  const released = new Promise<void>((r) => { releaseResolve = r; });
+  const h: Hold = { reached: reachedResolve, released, release: () => { releaseResolve(); fired.delete(h); } };
+  holds.set(point, h);
+  return { reached, release: h.release };
+}
+
+/** The hold point itself: returns at once unless a hold is armed here, in which case the code under test waits for its release. */
+export async function pause(point: InjectionPoint): Promise<void> {
+  const h = holds.get(point);
+  if (h === undefined) return;
+  holds.delete(point); // fire once: the next execution through this point does not wait
+  fired.add(h);
+  h.reached();
+  await h.released;
 }
 
 export function isArmed(point: InjectionPoint): boolean {

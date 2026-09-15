@@ -445,6 +445,9 @@ export class ObservationController {
         byteLength: (out.result as { byteLength: number }).byteLength,
         base64: (out.result as { base64: string }).base64,
         integrity: (out.result as { integrity: string }).integrity,
+        // B11: the tier the bytes were read from; archived evidence is served, its availability says cold.
+        tier: (out.result as { tier: string }).tier,
+        availability: (out.result as { availability: string }).availability,
       },
       receipt: receipt(out),
     };

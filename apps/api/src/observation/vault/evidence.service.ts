@@ -16,7 +16,7 @@ import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
-import type { AcquisitionWrites, ObservationReads } from '../observation.capabilities.js';
+import { tierOf, type AcquisitionWrites, type ObservationReads } from '../observation.capabilities.js';
 import { VaultService, VaultIntegrityError } from './vault.service.js';
 
 export interface EvidenceSummary {
@@ -40,6 +40,9 @@ export interface RetrievalResult {
   byteLength: number;
   base64: string;
   integrity: 'verified' | 'unavailable';
+  /** CP-6 B11: the tier the bytes were read from, and what that means for the reader — served either way, cold when archived. */
+  tier: 'hot' | 'archive';
+  availability: 'verified' | 'archived';
 }
 
 @Injectable()
@@ -143,6 +146,10 @@ export class EvidenceService {
           .executeTakeFirst()) as Record<string, unknown> | undefined)
       : undefined;
 
+    // B11 (0070 §2): the manifest row is immutable; its tier is the ledger's latest row, joined here (D1) — never an
+    // UPDATE of the manifest. A tombstoned manifest keeps today's shape; a never-moved one reads hot.
+    const tier = payload.manifest_id !== undefined ? await tierOf(cap, payload.manifest_id) : { tier: 'hot' as const, archivedAt: null };
+
     const obsPayload = obs?.payload as { source_id?: string; run_id?: string } | undefined;
     const source = obsPayload?.source_id !== undefined
       ? ((await cap
@@ -175,8 +182,9 @@ export class EvidenceService {
       observation: obs ?? null,
       source: source ?? null,
       run: run ?? null,
-      manifest: manifest ?? null,
+      manifest: manifest === undefined ? null : { ...manifest, tier: tier.tier, archived_at: tier.archivedAt },
       tombstone: tombstone ?? null,
+      availability: { tier: tier.tier, state: tier.tier === 'archive' ? 'archived' : 'hot' },
       custody,
       versionHistory: versions.map((v) => ({
         object_version: Number(v.object_version),
@@ -273,14 +281,19 @@ export class EvidenceService {
         errorBody('EYE_STA_001', correlationId, 'no authorized evidence object matches'), 404);
     }
 
+    // B11 (0070 §2): the read goes to the tier the bytes are in — the archive root when the manifest's latest tier record
+    // says so, its own vault otherwise. Archived evidence stays served; the availability says it is cold.
+    const tier = await tierOf(cap, payload.manifest_id);
+    const readFrom = tier.tier === 'archive' ? 'archive' : (manifest.vault as 'evidence' | 'quarantine');
+
     let integrity: RetrievalResult['integrity'] = 'verified';
     let bytes: Buffer;
+    let servedFrom: string = readFrom;
     try {
-      const read = await this.vault.read(
-        manifest.vault as 'evidence' | 'quarantine',
-        { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string },
-        manifest.locator, manifest.content_digest);
-      bytes = read.bytes;
+      const scopeOf = { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string };
+      // An archived manifest's bytes may still be staged, or kept hot, until the publish succeeds (0071): readArchived finds them and says where.
+      const read = readFrom === 'archive' ? await this.vault.readArchived(scopeOf, manifest.locator, manifest.content_digest) : { ...(await this.vault.read(readFrom, scopeOf, manifest.locator, manifest.content_digest)), source: readFrom };
+      bytes = read.bytes; servedFrom = read.source;
     } catch (e) {
       integrity = 'unavailable';
       // The FAILURE is recorded in custody before the request answers, so an
@@ -298,6 +311,7 @@ export class EvidenceService {
           failure: e instanceof VaultIntegrityError ? e.reason : 'unknown',
           // No filesystem path, no locator, no hint about what else exists.
           disclosure: 'none',
+          tier: tier.tier,
           ...context,
         },
         correlationId,
@@ -315,7 +329,7 @@ export class EvidenceService {
       agentPrincipalId: null, agentVersion: null, codeDigest: null,
       connector: null, connectorVersion: null, methodRef: null,
       contentDigest: manifest.content_digest, digestVerified: true,
-      details: { verified_on_read: true, byte_length: bytes.byteLength, ...context },
+      details: { verified_on_read: true, byte_length: bytes.byteLength, tier: tier.tier, served_from: servedFrom, ...context },
       correlationId,
     });
 
@@ -325,6 +339,8 @@ export class EvidenceService {
       byteLength: bytes.byteLength,
       base64: bytes.toString('base64'),
       integrity,
+      tier: tier.tier,
+      availability: tier.tier === 'archive' ? 'archived' : 'verified',
     };
   }
 }

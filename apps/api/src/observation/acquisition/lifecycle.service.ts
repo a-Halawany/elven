@@ -32,6 +32,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService, type RouteInfo } from '../../pipeline/pipeline.service.js';
 import { ObservationCapability, type AcquisitionWrites , type HeldEvidenceRow } from '../observation.capabilities.js';
 import { VaultService, VaultIntegrityError } from '../vault/vault.service.js';
+import { SourceCredentialStore } from '../sources/source-credentials.js';
 import { inspectContent } from '../connectors/content-controls.js';
 import { redactValue } from '../connectors/redaction.js';
 import { BudgetExceeded, BudgetMeter, checkSchemaDrift, type AcquiredItem, type Connector, type SourceBinding } from '../connectors/sdk.js';
@@ -120,6 +121,8 @@ interface PriorEvidence {
   evdObjectId: string; objectVersion: number; contentDigest: string; obsObjectId: string;
   lifecycleState: string; manifestId: string | null; locator: string | null; vault: string | null;
   manifestPresent: boolean; tombstoned: boolean;
+  /** The manifest's current tier (B11): the bytes of archived evidence are read from the archive root, not from the admission-time vault. */
+  tier: 'hot' | 'archive';
 }
 /** Availability of held evidence, established before reuse: verified, or the reason it cannot be reused. */
 type Availability = 'verified' | 'withdrawn' | 'governed-deleted' | 'no-manifest' | 'integrity';
@@ -152,6 +155,7 @@ export class AcquisitionLifecycle {
     @Inject(APP_DB) private readonly db: Db,
     private readonly pipeline: PipelineService,
     private readonly vault: VaultService,
+    private readonly credentials: SourceCredentialStore,
   ) {}
 
   /** The envelope a governed operation needs. Built server-side; never client-supplied. */
@@ -357,11 +361,27 @@ export class AcquisitionLifecycle {
 
       // ── step 4: bounded external acquisition, OUTSIDE any transaction ───────
       const binding = this.bindingFor(contract);
+      // B11: the contract's credential, resolved by REFERENCE from the deployment at this moment — a reference the deployment
+      // does not bind cancels the run BEFORE any request, with the reference (never a value) on the record; a live run never
+      // goes out with a credential it does not hold, and a replay needs none.
+      let credential: { header: string; value: string } | undefined;
+      if (binding.credential !== undefined && binding.acquisitionMode === 'live') {
+        const value = this.credentials.resolve(binding.credential.ref);
+        if (value === null) {
+          await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.cancel', 'run.cancelled', {
+            reason: 'credential unresolved: the deployment binds no source credential under the contract\'s reference',
+            credential_ref: binding.credential.ref, credential_header: binding.credential.header,
+          });
+          return { runId, state: 'cancelled', admitted, quarantined, noop, reason: `credential unresolved: the deployment binds no source credential named ${binding.credential.ref}` };
+        }
+        credential = { header: binding.credential.header, value };
+      }
       const meter = new BudgetMeter(binding.budgets);
       const checkpoint = await this.loadCheckpoint(req, tenantId, domainId);
       const output = await req.connector.acquire({
         binding, checkpoint, budget: meter,
         replayRoot: this.cfg['eye.connector.replay_root'],
+        ...(credential === undefined ? {} : { credential }),
       });
       fault.at('f11.after_acquisition_before_open');
 
@@ -1398,14 +1418,19 @@ export class AcquisitionLifecycle {
    * Is held evidence still something a poll may be confirmed against? Its latest
    * version not withdrawn; its manifest present and not governed-deleted; its bytes in
    * the vault verifying against the recorded digest. Established here, by reading —
-   * never assumed from metadata.
+   * never assumed from metadata. The read goes to the tier the ledger names (B11, 0070
+   * §2): archived evidence is read from the archive root under the same locator and,
+   * verifying there, is available — a governed move to cold storage is not an
+   * integrity failure, and the identical bytes polled again confirm it rather than
+   * admit a duplicate hot copy.
    */
   private async availabilityOf(scope: { tenantId: string; domainId: string }, held: PriorEvidence): Promise<Availability> {
     if (held.lifecycleState === 'withdrawn') return 'withdrawn';
     if (held.tombstoned) return 'governed-deleted';
     if (!held.manifestPresent || held.manifestId === null || held.locator === null || held.vault === null) return 'no-manifest';
     try {
-      await this.vault.read(held.vault as 'evidence' | 'quarantine', scope, held.locator, held.contentDigest);
+      if (held.tier === 'archive') await this.vault.readArchived(scope, held.locator, held.contentDigest);
+      else await this.vault.read(held.vault as 'evidence' | 'quarantine', scope, held.locator, held.contentDigest);
       return 'verified';
     } catch {
       return 'integrity';
@@ -1463,6 +1488,7 @@ export class AcquisitionLifecycle {
     const c = contract.contract as {
       identity: { endpoints: string[] };
       security_and_operations: {
+        credential_ref?: string | null; credential_header?: string | null;
         budgets: Record<string, number>;
         expected_schema: {
           media_types: string[]; required_fields: string[]; drift_tolerance: number;
@@ -1489,6 +1515,8 @@ export class AcquisitionLifecycle {
         ...(bf.time_field !== undefined ? { timeField: bf.time_field } : {}),
         ...(bf.where !== undefined ? { where: bf.where } : {}),
       } } : {}),
+      // B11: the credential by REFERENCE (the value is resolved at egress time, apart from the binding)
+      ...(typeof c.security_and_operations.credential_ref === 'string' ? { credential: { ref: c.security_and_operations.credential_ref, header: c.security_and_operations.credential_header ?? 'authorization' } } : {}),
       sourceId: contract.source_id,
       sourceKey: contract.source_key,
       replaySet: String(
@@ -1599,5 +1627,6 @@ function toPrior(r: HeldEvidenceRow): PriorEvidence {
     contentDigest: r.content_digest, obsObjectId: r.obs_object_id,
     lifecycleState: r.lifecycle_state, manifestId: r.manifest_id, locator: r.locator, vault: r.vault,
     manifestPresent: r.manifest_present === true, tombstoned: r.tombstoned === true,
+    tier: r.tier === 'archive' ? 'archive' : 'hot',
   };
 }

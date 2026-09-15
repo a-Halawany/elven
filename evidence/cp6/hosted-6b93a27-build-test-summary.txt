@@ -1,0 +1,14 @@
+=== the totals of the hosted ci run 34968358484 at 6b93a27 (phase6-b11, PR #48 → main; build-test job 104378198417) — the B11 closure (migration 0071) ===
+
+  packages/tokens         3/3
+  packages/contracts      203/203
+  apps/api unit           2156/2156     (the hermetic suites)
+  apps/api meta suite     9/9           (the C16 hermetic-suite meta gate, no file parallelism)
+  acceptance suite        58/58         (15 criteria + request paths + R4/R10)
+  integration suite       994/994 in 61 files   (a fresh database, 0001–0071; phase6-retention-b11-closure 9/9, phase6-retention-b11 35/35, -archive-poll 4/4, phase6-source-credentials 3/3, phase6-briefing-memory 6/6)
+  Post-C18 upgrade proof  green         (a virgin 0001–0021 database upgraded through 0022–0071 by the tracked runner; the Phase 1 and Phase 2 suites on the upgraded data)
+  C18 dual-path gate       612/612 + 44/44   (the differential verifiers)
+  supply-chain            green         (C15 patched-image recheck, gitleaks worktree + history, C16 closure)
+  browser-regression      green
+
+C19 lifecycle 34968358342 green — the run this closure's records are bound to.

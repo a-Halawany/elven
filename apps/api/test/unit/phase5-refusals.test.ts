@@ -99,3 +99,45 @@ describe('B9 (0066) — the refusals of the memory, retention, contradiction, ev
     expect(mapped('XX000', 'request rejected: a delegation names the delegate')).toBeNull();
   });
 });
+
+describe('B11 (0070) — the refusals of the archive port, the export package ports and the export\'s rights re-check at execution answer with the port\'s reason and a status, never as a 500', () => {
+  const mapped = (code: string, message: string) => {
+    const r = asObservationRefusal(pg(code, message), 'corr');
+    if (r === null) return null;
+    const body = r.getResponse() as { message?: string };
+    return { status: r.getStatus(), message: body.message };
+  };
+  it('standing → 403', () => {
+    expect(mapped('42501', 'archive rejected: recorded by the acting principal')).toMatchObject({ status: 403, message: expect.stringMatching(/^archive rejected/) });
+    expect(mapped('42501', 'archive refused: no executing archive action names manifest 01a0 as an executable item')).toMatchObject({ status: 403 });
+    expect(mapped('42501', 'export rejected: recorded by the acting principal')).toMatchObject({ status: 403 });
+    expect(mapped('42501', 'export rejected: approval 01a1 is not a live approval on the resolved scope of 01a0')).toMatchObject({ status: 403 });
+    expect(mapped('42501', 'retention revocation rejected: recorded by the acting principal')).toMatchObject({ status: 403 });
+  });
+  it('absence → 404', () => {
+    expect(mapped('23503', 'archive rejected: no such evidence manifest in this domain')).toMatchObject({ status: 404 });
+    expect(mapped('23503', 'retention revocation rejected: 01a0 has no export package in this domain')).toMatchObject({ status: 404 });
+  });
+  it('the record\'s state → 409 (the archive port\'s digest refusal under its own SQLSTATE P0R02)', () => {
+    expect(mapped('22023', 'archive refused: manifest 01a0 is tombstoned; there are no bytes to move')).toMatchObject({ status: 409 });
+    expect(mapped('P0R02', 'archive refused: the digest verified on the archive copy (ab) is not the manifest\'s (cd)')).toMatchObject({ status: 409, message: expect.stringMatching(/the digest verified on the archive copy/) });
+    expect(mapped('22023', 'export rejected: 01a0 is not an executing customer export')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'retention revocation rejected: the package of 01a0 was revoked at 2026-09-13 12:00:00+00')).toMatchObject({ status: 409 });
+    expect(mapped('22023', 'retention execution rejected (rights_changed): the rights of a source in the approved scope are no longer confirmed — 01a2@1 (withdrawn); the scope is resolved again')).toMatchObject({ status: 409, message: expect.stringMatching(/rights_changed/) });
+    // The adversarial review's corrections: a tombstone since the approval (an archive or an export) and a reference created inside a deletion's approval window refuse at begin_execution with their own class.
+    expect(mapped('22023', 'retention execution rejected (scope_changed): manifest(s) in the approved scope were tombstoned since the approval — 01a3; the scope is resolved again')).toMatchObject({ status: 409, message: expect.stringMatching(/scope_changed/) });
+    expect(mapped('22023', 'retention execution rejected (references_changed): a live reference was created on the approved scope since it was resolved — manifest 01a3 ← review_case:01a4; the scope is resolved again')).toMatchObject({ status: 409, message: expect.stringMatching(/references_changed/) });
+  });
+  it('a schedule that could only open unresolvable actions is refused at declaration → 422', () => {
+    expect(mapped('22023', 'retention schedule rejected: a customer_export schedule names its classification_ceiling (public, internal, confidential, restricted)')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'retention schedule rejected: a schedule selects by retention profile and source; a chosen object set (manifest_ids) or a single manifest is an action\'s selector')).toMatchObject({ status: 422 });
+  });
+  it('the caller\'s request → 422', () => {
+    expect(mapped('22023', 'export rejected: the manifest and package digests are sha-256 hex')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'export rejected: the signature block binds the package digest to this action, its resolved scope and the live approval')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'export rejected: the package lists 3 object(s); the approved scope executes 2')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'retention revocation rejected: a reason of 8+ characters')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'retention action rejected: a chosen object set (manifest_ids) is an archive\'s or a customer export\'s selector')).toMatchObject({ status: 422 });
+    expect(mapped('22023', 'retention action rejected: a customer export names its classification ceiling (public, internal, confidential, restricted)')).toMatchObject({ status: 422 });
+  });
+});

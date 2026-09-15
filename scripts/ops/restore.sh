@@ -796,26 +796,52 @@ done
 
 step "verification: every live (non-tombstoned) blob manifest has its bytes in the restored vault with the recorded sha256 (ALL rows)"
 cat > "$RROOT/work/verify-blobs.mjs" <<'EOF'
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 const [vaultRoot, tsv] = process.argv.slice(2);
-const c = { total: 0, present_verified: 0, absent: 0, digest_mismatch: 0, length_mismatch: 0, by_vault: {} };
+const c = { total: 0, present_verified: 0, present_pending_publish: 0, absent: 0, digest_mismatch: 0, length_mismatch: 0, by_vault: {} };
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+// A manifest in the ARCHIVE tier whose copy is recorded but not yet published (CP-6 B11 closure, 0071: the instant after the commit, or
+// a publish that failed and awaits its retry) has its bytes under a staged name beside the locator, or still hot — the same places the
+// product's readers look (VaultService.readArchived); such a manifest is present, counted apart as pending_publish, never absent.
+function readArchived(locator, digest) {
+  const p = join(vaultRoot, 'archive', locator);
+  try { return { buf: readFileSync(p), pending: false }; } catch { /* not published */ }
+  let names = []; try { names = readdirSync(dirname(p)); } catch { names = []; }
+  for (const n of names.filter((x) => x.startsWith(`${basename(p)}.staging-`))) {
+    try { const b = readFileSync(join(dirname(p), n)); if (sha(b) === digest) return { buf: b, pending: true }; } catch { /* moved meanwhile */ }
+  }
+  try { return { buf: readFileSync(join(vaultRoot, 'evidence', locator)), pending: true }; } catch { return null; }
+}
 for (const line of readFileSync(tsv, 'utf8').split('\n').filter(Boolean)) {
   const [vault, locator, digest, bytes] = line.split('\t');
-  c.total += 1; c.by_vault[vault] = c.by_vault[vault] ?? { total: 0, present_verified: 0, absent: 0 }; c.by_vault[vault].total += 1;
-  const p = join(vaultRoot, vault, locator);
-  let buf; try { buf = readFileSync(p); } catch { c.absent += 1; c.by_vault[vault].absent += 1; continue; }
-  if (createHash('sha256').update(buf).digest('hex') !== digest) { c.digest_mismatch += 1; continue; }
+  c.total += 1; c.by_vault[vault] = c.by_vault[vault] ?? { total: 0, present_verified: 0, present_pending_publish: 0, absent: 0 }; c.by_vault[vault].total += 1;
+  let buf; let pending = false;
+  if (vault === 'archive') { const r = readArchived(locator, digest); if (r === null) { c.absent += 1; c.by_vault[vault].absent += 1; continue; } buf = r.buf; pending = r.pending; }
+  else { try { buf = readFileSync(join(vaultRoot, vault, locator)); } catch { c.absent += 1; c.by_vault[vault].absent += 1; continue; } }
+  if (sha(buf) !== digest) { c.digest_mismatch += 1; continue; }
   if (buf.length !== Number(bytes)) { c.length_mismatch += 1; continue; }
   c.present_verified += 1; c.by_vault[vault].present_verified += 1;
+  if (pending) { c.present_pending_publish += 1; c.by_vault[vault].present_pending_publish += 1; }
 }
 console.log(JSON.stringify(c));
 EOF
+# THE ROOT A LIVE MANIFEST'S BYTES ARE IN (CP-6 B11, migration 0070 §2): the manifest row is immutable — its `vault` column is the
+# admission-time vault, 'evidence' for ever — while an executed ARCHIVE action moves the bytes to <vault>/archive/<locator> and
+# records the move in observation.blob_tier_records (observation.manifest_tier(manifest_id) reads the latest row). backup.sh tars
+# the whole vault, archive root included, so the verification must look where the tier says, not where the row says; a bundle from
+# before 0070 has no tier function and every manifest is hot.
+tier_vault_expr() { # tier_vault_expr <db> — the SQL expression for the directory under $VAULT that holds the manifest m's bytes
+  if [[ "$(rpsq "$1" "select to_regprocedure('observation.manifest_tier(uuid)') is not null")" == "t" ]]; then
+    printf '%s' "case observation.manifest_tier(m.manifest_id) when 'archive' then 'archive' else m.vault end"
+  else printf '%s' "m.vault"; fi
+}
 for db in $(jq -r '.databases[]' "$MANIFEST"); do
+  TVE="$(tier_vault_expr "$db")"
   docker exec -e PGPASSWORD "$PG_NAME" psql -U "$PG_SUPERUSER" -d "$db" -v ON_ERROR_STOP=1 -X -A -t -F "$(printf '\t')" -c \
-    "select vault, locator, content_digest, byte_length from observation.blob_manifests m
-     where not exists (select 1 from observation.blob_tombstones t where t.manifest_id = m.manifest_id) order by created_at" > "$RROOT/work/$db.manifests.tsv"
+    "select $TVE as vault, m.locator, m.content_digest, m.byte_length from observation.blob_manifests m
+     where not exists (select 1 from observation.blob_tombstones t where t.manifest_id = m.manifest_id) order by m.created_at" > "$RROOT/work/$db.manifests.tsv"
   S="$(node "$RROOT/work/verify-blobs.mjs" "$VAULT" "$RROOT/work/$db.manifests.tsv")"
   say "  $db: $S"
   T=$(jq -r .total <<<"$S"); V=$(jq -r .present_verified <<<"$S"); A=$(jq -r .absent <<<"$S"); DM=$(jq -r .digest_mismatch <<<"$S"); LM=$(jq -r .length_mismatch <<<"$S")
@@ -849,13 +875,14 @@ else
                                 select count(*) from audit.audit_events e
                                 left join b on b.partition_id = e.partition_id
                                 where b.next_seq is null or e.audit_seq >= b.next_seq")"
+    TVE="$(tier_vault_expr "$db")"
     if [[ -n "$BTS" && "$BTS" != "null" ]]; then
-      rpsq_tsv "$db" "select vault, locator, content_digest, byte_length from observation.blob_manifests
-                      where created_at > '$BTS'::timestamptz
-                        and not exists (select 1 from observation.blob_tombstones t where t.manifest_id = observation.blob_manifests.manifest_id)
-                      order by created_at" > "$RROOT/work/$db.after-boundary.tsv"
-      rpsq "$db" "select coalesce(json_agg(json_build_object('manifest_id', manifest_id, 'vault', vault, 'locator', locator, 'created_at', created_at) order by created_at), '[]'::json)::text
-                  from observation.blob_manifests where created_at > '$BTS'::timestamptz" > "$RROOT/work/$db.after-boundary.json"
+      rpsq_tsv "$db" "select $TVE as vault, m.locator, m.content_digest, m.byte_length from observation.blob_manifests m
+                      where m.created_at > '$BTS'::timestamptz
+                        and not exists (select 1 from observation.blob_tombstones t where t.manifest_id = m.manifest_id)
+                      order by m.created_at" > "$RROOT/work/$db.after-boundary.tsv"
+      rpsq "$db" "select coalesce(json_agg(json_build_object('manifest_id', m.manifest_id, 'vault', $TVE, 'locator', m.locator, 'created_at', m.created_at) order by m.created_at), '[]'::json)::text
+                  from observation.blob_manifests m where m.created_at > '$BTS'::timestamptz" > "$RROOT/work/$db.after-boundary.json"
     else
       : > "$RROOT/work/$db.after-boundary.tsv"; printf '[]' > "$RROOT/work/$db.after-boundary.json"
     fi
@@ -866,9 +893,13 @@ else
     if [[ "$OUTSIDE" != "0" ]]; then
       say "  $db: the following fall OUTSIDE the bundle and must be re-collected or accepted as lost:"
       node -e '
-        const {readFileSync}=require("node:fs"); const {existsSync}=require("node:fs"); const {join}=require("node:path");
-        const rows=JSON.parse(readFileSync(process.argv[2],"utf8"));
-        for (const r of rows) if (!existsSync(join(process.argv[3], r.vault, r.locator)))
+        const {readFileSync, existsSync, readdirSync}=require("node:fs"); const {join, dirname, basename}=require("node:path");
+        const rows=JSON.parse(readFileSync(process.argv[2],"utf8")); const V=process.argv[3];
+        // an archived manifest whose copy is recorded but not yet published (0071) has its bytes under a staged name beside the locator, or still hot
+        const present=(r)=>{ if (existsSync(join(V, r.vault, r.locator))) return true; if (r.vault!=="archive") return false;
+          const p=join(V,"archive",r.locator); let names=[]; try { names=readdirSync(dirname(p)); } catch { names=[]; }
+          return names.some((n)=>n.startsWith(`${basename(p)}.staging-`)) || existsSync(join(V,"evidence",r.locator)); };
+        for (const r of rows) if (!present(r))
           console.log(`    ${r.manifest_id}  ${r.vault}/${r.locator}  admitted ${r.created_at}`);
       ' -- "$RROOT/work/$db.after-boundary.json" "$VAULT"
     fi
@@ -911,6 +942,7 @@ start_api() {
     EYE_REDIS_HOST=127.0.0.1 EYE_REDIS_PORT="$REDIS_PORT" \
     EYE_RUNTIME_PORT="$API_PORT" EYE_SCHEDULER_ENABLED="$scheduler" \
     EYE_VAULT_QUARANTINE_ROOT="$VAULT/quarantine" EYE_VAULT_EVIDENCE_ROOT="$VAULT/evidence" \
+    EYE_VAULT_ARCHIVE_ROOT="$VAULT/archive" EYE_VAULT_EXPORT_ROOT="$VAULT/export" \
     EYE_DEGRADED_DIR="$JOURNAL_DIR" \
     EYE_CONNECTOR_REPLAY_ROOT="${EYE_RESTORE_REPLAY_ROOT:-$REPO/fixtures/phase1/replay}" \
     ${NODE_PATH_FOR_API:+NODE_PATH="$NODE_PATH_FOR_API"} \

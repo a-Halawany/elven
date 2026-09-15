@@ -18,6 +18,7 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { ObservationReads, RegistryWrites } from '../observation.capabilities.js';
 import { validateSourceContract, type SourceContractV1 } from './source-contract.js';
 import { SchedulerService, type ScheduleRuntime } from '../scheduling/scheduler.service.js';
+import { SourceCredentialStore } from './source-credentials.js';
 
 export interface SourceReadiness {
   /** live · live-unscheduled · replay · operator-upload · blocked-rights · blocked-credential · inactive */
@@ -86,7 +87,7 @@ function bad(corr: string, msg: string, status = 422): HttpException {
 
 @Injectable()
 export class SourcesService {
-  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, private readonly scheduler: SchedulerService) {}
+  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, private readonly scheduler: SchedulerService, private readonly credentials: SourceCredentialStore) {}
   /**
    * Register a source contract as `draft`. It cannot self-approve and it cannot
    * be activated here — both are separate governed actions with their own
@@ -153,8 +154,9 @@ export class SourcesService {
       freshness_state: null,
       // SRC@v2 (migration 0028) adds the optional backfill declaration and the
       // publisher's attribution notice; a contract using neither is still a v1.
-      schema_ref: c.security_and_operations.backfill !== undefined
-        || c.authority_and_rights.attribution != null ? 'SRC@v2' : 'SRC@v1',
+      // B11 (migration 0070 §1): SRC@v3 adds the credential header; a contract not naming it is admitted as before.
+      schema_ref: c.security_and_operations.credential_header != null ? 'SRC@v3'
+        : c.security_and_operations.backfill !== undefined || c.authority_and_rights.attribution != null ? 'SRC@v2' : 'SRC@v1',
       ontology_ref: null,
       correction_of: null,
       supersedes: c.lifecycle.supersedes_version != null
@@ -331,7 +333,8 @@ export class SourcesService {
       let verdict: SourceReadiness['verdict']; let reason: string;
       if (lifecycle !== 'active') { verdict = 'inactive'; reason = `contract version ${String(s.contract_version)} is ${lifecycle}`; }
       else if (upload) { verdict = 'operator-upload'; reason = 'records arrive only when an operator uploads them; nothing is polled'; }
-      else if (credentialRef !== null) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential${mode === 'live' ? (scheduled ? '; the schedule entry cannot be served' : '; nothing is scheduled') : ''}`; }
+      // B11: a credential the deployment BINDS (a non-empty `EYE_SRC_<NAME>`) no longer blocks — the run carries it (the governed credential path); one it does not bind still does.
+      else if (credentialRef !== null && !this.credentials.has(credentialRef)) { verdict = 'blocked-credential'; reason = `the contract names credential ${credentialRef}, and this deployment binds no source credential under that name${mode === 'live' ? (scheduled ? '; the schedule entry cannot be served' : '; nothing is scheduled') : ''}`; }
       else if (mode === 'live') {
         verdict = scheduled ? 'live' : 'live-unscheduled';
         reason = verdict === 'live'
@@ -340,7 +343,7 @@ export class SourcesService {
       } else if (rights !== 'confirmed') { verdict = 'blocked-rights'; reason = `reuse rights are ${rights}: the source stays in replay until the publisher's terms are resolved`; }
       else { verdict = 'replay'; reason = 'rights confirmed and no credential needed: live collection needs a new contract version declaring it, approved and activated by a second operator'; }
       out.push({ ...s, readiness: {
-        verdict, reason, credential: credentialRef === null ? 'none required' : `reference ${credentialRef} (not bound in this deployment)`,
+        verdict, reason, credential: credentialRef === null ? 'none required' : `reference ${credentialRef} (${this.credentials.has(credentialRef) ? 'bound in this deployment; the run carries it' : 'not bound in this deployment'})`,
         scheduled, cadence_seconds: schedule === undefined ? null : Number(schedule['cadence_seconds']), scheduler_enabled: schedulerEnabled,
         automatic: {
           schedule_entry: schedule === undefined ? null : { status: String(schedule['status']), cadence_seconds: Number(schedule['cadence_seconds']), scheduler_id: String(schedule['scheduler_id']) },

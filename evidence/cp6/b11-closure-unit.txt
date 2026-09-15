@@ -1,0 +1,11 @@
+=== the unit suite at the B11 closure tree (apps/api: pnpm test — the hermetic suites, then the meta suite), 2026-09-15, the final staged-copy design; a run with no concurrent edit of the tree (the C16 hermetic gate tests digest the tracked tree at the start and the end of the run) ===
+
+ Test Files  40 passed (40)
+      Tests  2156 passed (2156)
+   Start at  15:11:13
+   Duration  373.48s (transform 2.97s, setup 0ms, import 6.15s, tests 1832.26s, environment 2ms)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  15:17:26
+   Duration  200.02s (transform 10ms, setup 0ms, import 15ms, tests 199.94s, environment 0ms)
+EXIT 0

@@ -1,0 +1,9 @@
+=== the full integration suite at the B11 closure tree (apps/api: pnpm test:int:all) on a fresh database (0001–0071), 2026-09-15 — the final staged-copy design, listing failures fail closed; the closure harness's 9 cases included ===
+
+$ vitest run --config vitest.int.config.ts
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  61 passed (61)
+      Tests  994 passed (994)
+   Start at  12:57:18
+   Duration  484.85s (transform 1.27s, setup 292ms, import 20.47s, tests 459.37s, environment 3ms)
+EXIT 0

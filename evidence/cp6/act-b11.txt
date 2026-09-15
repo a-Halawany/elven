@@ -1,0 +1,147 @@
+=== CP-6 batch B11 on the demonstration (NORDWERK, eye_demo) — 2026-09-13T14:15:06Z, head 8463174 ===
+
+0. the demonstration database migrated with 0070 (rehearsed first on a restored copy; the copy is disposable)
+     backup 48114768 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/8704aca5-efd0-4164-8e07-dbc1322f9c20/scratchpad/b11/demo/eye_demo-pre-0070-20260913T141506Z.dump
+   before:
+     [{"filename":"0069_b10_closure_accesses_and_port_owned_types.sql","digest":"2f36f4b252f70fab","applied_at":"2026-09-13T10:30:06.292Z"}]
+     [{"binding_state":"bound","count":"26"},{"binding_state":"partial","count":"24"}]
+   the demonstration API stopped for the migration (pid 5959)
+   migrate (0070 through the migrator):
+     applying 0070_b11_credential_path_retention_executors_and_safe_scope.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+   after:
+     [{"filename":"0069_b10_closure_accesses_and_port_owned_types.sql","digest":"2f36f4b252f70fab","applied_at":"2026-09-13T10:30:06.292Z"},{"filename":"0070_b11_credential_path_retention_executors_and_safe_scope.sql","digest":"023ebd3034512cd1","applied_at":"2026-09-13T14:15:12.313Z"}]
+     [{"binding_state":"bound","count":"26"},{"binding_state":"partial","count":"24"}]
+     [{"interface_id":"L3-I04","binding_state":"bound","bound_to":"RetentionActionDue@v1 from POST …/retention/actions/open and POST …/retention/schedules/evaluate (retention.open_action / retention.evaluate_schedules; the acti"}]
+
+   the demonstration API restarted on the B11 build (dist built at this tree):
+     dist already built at this head; no rebuild
+     {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"de
+     
+   the scheduler's reconciliation after the restart (the six REST agents no longer match the connector's digest):
+     [Nest] 73555  - 09/13/2026, 5:15:14 PM     LOG [observation.collection-worker] reconciled 6/6 persisted schedule(s); workers: 1
+     [Nest] 73555  - 09/13/2026, 5:15:14 PM     LOG [AgentWorkerService] reconciled 1/1 room briefing cadence(s)
+
+0b. the REST agents re-provisioned for the connector's new digest (the governed credential path is a transport behaviour the digest now covers — §9.11.10's rule)
+   
+   === REST agents re-provisioned for connector digest dbd65634937a… (governed routes) ===
+   
+     ✓ imf-portwatch-chokepoints: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ imf-portwatch-chokepoints: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+     ✓ imf-portwatch-ports: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ imf-portwatch-ports: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+     ✓ worldbank-indicators: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ worldbank-indicators: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+     ✓ eu-sanctions-payload: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ eu-sanctions-payload: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+     ✓ ecb-eurusd: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ ecb-eurusd: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+     ✓ gdelt-discovery: agent 01a09b1f… registered on digest dbd65634937a… (owner a.hoffmann)
+     ✓ gdelt-discovery: agent 01a09045… (digest e27ca96f7958…) revoked by m.dvorak
+   
+   === 6 registered, 6 revoked, 0 already current — done ===
+   
+   the API restarted once more so the scheduler reconciles the persisted schedules to the new agents:
+     [Nest] 73582  - 09/13/2026, 5:15:27 PM     LOG [AgentWorkerService] reconciled 1/1 room briefing cadence(s)
+   proof — one operator-triggered run on ecb-eurusd under the new agent:
+     ecb-eurusd@v2 operator run 01a09b1f… finished: admitted 1 · unchanged/noop 0 · quarantined 0
+       trigger: {"by":"principal:01a084f5-75d2-776d-a4a1-0073ec383c43","kind":"operator"} · run.finished: bytes transferred 7287 · bytes stored 7287
+
+1. UN Comtrade — the activation act under the owner's authorization of 2026-09-12 (the policy read; the contract by reference; stops at the key the owner binds)
+   
+   === UN Comtrade — the activation act under the owner's authorization of 2026-09-12 (governed routes only) ===
+   
+   0. the register as it stands
+     · un-comtrade-upload v1 active · replay · rights confirmed · cadence 604800 s · budgets {"timeout_ms":60000,"max_retries":2,"max_concurrency":2,"max_bytes_per_run":33554432,"max_requests_per_run":25}
+     · un-comtrade (live, rest): not registered yet
+   
+   1. register un-comtrade v1 (live, rest) as a.hoffmann — the credential by reference, the upload contract's cadence and budgets carried
+     ✓ registered 01a09b1f… v1 (draft) [policy decision 01a09b1f… · audit seq 93143]
+   
+   2. approval by a DIFFERENT operator (m.dvorak); the rights recorded
+     ✓ approved [policy decision 01a09b1f… · audit seq 93145]
+     ✓ rights: confirmed (internal analysis; the policy quoted as evidence) [policy decision 01a09b1f… · audit seq 93146]
+   
+   3. the readiness register: is the credential bound on this deployment?
+     · un-comtrade v1 approved: inactive — contract version 1 is approved; credential reference EYE_SRC_COMTRADE_KEY (not bound in this deployment)
+     ✓ the act STOPS here, approved and not active: the deployment binds no credential named EYE_SRC_COMTRADE_KEY. The owner binds the free-tier key as EYE_SRC_COMTRADE_KEY in .eye-local/env on the demonstration host (never in the repository) and re-runs this script; it then activates v1 and triggers one operator run. No cadence, budget or purchase changes; nothing was collected.
+   
+   === stopped before activation — the key is the owner's to bind (0 problem(s)) ===
+   
+
+2. the retention act — the archive tier, the customer export package, the safe referential scope
+
+=== CP-6 batch B11 · the archive tier, the customer export package and the safe referential scope on the demonstration ===
+
+1. ARCHIVE — the current eu-sanctions-rss evidence (B10 reviewed it) moved to the archive tier; retrieval still served
+  · the target: evidence 01a09afe…@1 — manifest 01a09afe…, 3934 bytes, digest da7a781777b9…, hot at .eye-local/vault/evidence/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/f1a475a6-fa97-4ade-be83-ccf8e839095a
+  ✓ P. Novák opened archive action 01a09b1f… (opened)
+  ✓ scope resolved: 1 item(s), 1 to execute, 0 held; digest 007d02e824fa…
+  ·   execute: archived: the manifest and its digest are kept, the bytes move from the hot tier to the archive tier (its evidence is admitted) (tier hot)
+  ✓ H. Bergmann approved on the scope digest
+  ✓ executed: 1 archived, 0 refused; hot copies removed after the commit: 1, failed 0
+  · the tier ledger: hot → archive by action 01a09b1f… at 2026-09-13T14:15:43.637Z, digest da7a781777b9…; custody: custody.archived
+  · the host: archive path PRESENT, hot path ABSENT
+  ✓ verified: state verified, verified true
+  ·   PASS manifest 01a09afe-abee-7d72-aa4e-eb6aab335744: archived — bytes in the archive tier under the manifest's digest, absent from the hot tier, the tier recorded — expected {"tier":"archive","archived":true,"tombstone":false,"bytes_present":false,"archive_present":true,"archive_digest_ok":true}, observed {"tier":"archive","hold_id":null,"archived":true,"tombstone":false,"bytes_present":false,"archive_present":true,"archive_digest_ok":true}
+  ✓ no DeletionVerified published for the archive
+  ✓ A. Hoffmann downloads the evidence: HTTP 201, 3934 bytes, digest the manifest's, integrity verified, tier archive, availability archived
+  · the detail: manifest tier archive, archived at 2026-09-13T14:15:43.637Z, availability {"tier":"archive","state":"archived"}
+
+2. CUSTOMER EXPORT — the two most recent current NORDWERK internal evidence objects packaged under the export namespace, verified offline by the customer's verifier, then revoked
+  · the targets: 01a084f8…@1 (240 bytes), 01a084f5…@1 (1045 bytes); no confidential object on the demonstration — the redaction gate is exercised on the harness
+  ✓ P. Novák opened customer export 01a09b1f… (opened); ceiling internal, destination export
+  ✓ scope resolved: 2 item(s), 2 to execute, excluded 0; digest fbe7b52ad791…
+  ·   execute: packaged: the canonical record and the bytes are copied into the export package; the source is untouched
+  ·   execute: packaged: the canonical record and the bytes are copied into the export package; the source is untouched
+  ✓ H. Bergmann approved on the scope digest
+  ✓ executed: 2 exported, 0 refused; package 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a09b1f-c38c-7a32-8309-dd6fd716a689/ — 2 object(s), 0 excluded, 1285 bytes, package digest b01ad90601b6c001…, manifest digest 7e5a490bb6377922…
+      export package: /Users/halawany/work/personal/mohammed/new_project/.eye-local/vault/export/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a09b1f-c38c-7a32-8309-dd6fd716a689
+        PASS  manifest.json present and parses — 9307 bytes, file digest 7e5a490bb6377922e44fe2adb5c5f31f36e70c558b976f95d5c906c122babd4a
+        PASS  format is eye-customer-export/1 — format "eye-customer-export/1"
+        PASS  signature scheme is eye-digest-chain/1 — scheme "eye-digest-chain/1"
+        PASS  objects is a list — 2 object(s)
+        PASS  integrity objects[0] 01a084f5-8bbe-7aa8-aa12-cf639434a479@1: 01a084f5-8bbe-7aa8-aa12-cf64ce855db5.bin sha256 and size — 1045 bytes, a12178c691923b61d3d09d8a596912affc75773dca177eecf71f792ad4aa59e6
+        PASS  re-import objects[0] 01a084f5-8bbe-7aa8-aa12-cf639434a479@1: payload binds the bytes, 43-field header and payload recompute to the canonical digest — canonical digest 1fff7df3715073ab20922f6ac247ee1f8601fa2dc242711f23acb99a8cb79039
+        PASS  integrity objects[1] 01a084f8-a311-709d-8167-16d16f076c30@1: 01a084f8-a311-709d-8167-16d267a7914e.bin sha256 and size — 240 bytes, 6da0f3b6848dfd9bcc2858b8d43819cd051f1b5413213b39a555d9ffc3d70c67
+        PASS  re-import objects[1] 01a084f8-a311-709d-8167-16d16f076c30@1: payload binds the bytes, 43-field header and payload recompute to the canonical digest — canonical digest 17f8c1b7b0257c77029b19fe0886b0778df19dbb11ffbe916eee9ba59e713973
+        integrity 2/2; re-import 2/2
+        PASS  completeness: every listed file present and every file listed — 3 entries in the directory: manifest.json + 2 object file(s)
+        excluded 0: nothing was withheld
+        PASS  redaction: every exported record's classification is within the ceiling "internal" — 2 record(s) at or below internal
+        PASS  chain: sha256(JCS(objects)) = signature.objects_digest — 96ec33423eb3e6d3ece2a11c878c16dab12945552114ee2f4f5dc6d63cce9605 = 96ec33423eb3e6d3ece2a11c878c16dab12945552114ee2f4f5dc6d63cce9605
+        PASS  chain: sha256(JCS({format, package, authorization, gates, objects_digest, excluded, bound_to, statement})) = signature.package_digest — b01ad90601b6c00137c99c1ede44a539f06130475b9c51281ca3f159f31e334f = b01ad90601b6c00137c99c1ede44a539f06130475b9c51281ca3f159f31e334f
+        PASS  chain: signature.bound_to restates the covered authorization (action_id = package.action_id, scope_digest = authorization.scope_digest, approval_id = authorization.approval_id) — bound to action 01a09b1f-c38c-7a32-8309-dd6fd716a689, scope digest fbe7b52ad791e9d730a46c30743bd8f42ac8bb25a13dafdc215f10a4a2e5e138, approval 01a09b1f-c474-7fa0-852e-a37cc10695a5
+        PASS  authenticity: the package digest equals the digest the product recorded (--expect-package-digest) — recorded b01ad90601b6c00137c99c1ede44a539f06130475b9c51281ca3f159f31e334f
+      PACKAGE OK: 2 objects, 1285 bytes, package digest b01ad90601b6c00137c99c1ede44a539f06130475b9c51281ca3f159f31e334f
+      
+  ✓ the customer's verifier (reads the package alone): PACKAGE OK
+  ✓ verified: state verified, verified true
+  ·   PASS manifest 01a084f5-8bbe-7aa8-aa12-cf64ce855db5: exported — listed in the package with its bytes present under the manifest's digest (the source's present state recorded, not required)
+  ·   PASS manifest 01a084f8-a311-709d-8167-16d267a7914e: exported — listed in the package with its bytes present under the manifest's digest (the source's present state recorded, not required)
+  ·   PASS the export package: manifest.json present with the recorded digests, every listed object present and nothing unlisted, not revoked
+  ✓ the export read: 3 file(s); signature {"scheme":"eye-digest-chain/1","objects_digest":"96ec33423eb3e6d3ece2a11c878c16dab12945552114ee2f4f5dc6d63cce9605","package_digest":"b01ad90601b6c00137c99c1ede44a539f06130475b9c51281ca3f159f31e334f","bound_to":{"action_id":"01a09b1f-c38c-7a32-8309-dd6fd716a689","scope_digest":"fbe7b52ad791e9d730a46c30743bd8f42ac8bb25a13dafdc215f10a4a2e5e138","approval_id":"01a09b1f-c474-7fa0-852e-a37cc10695a5"},"statement":"the package digest is bound to the approval on the resolved scope and recorded in the append-only retention ledger; verify offline with scripts/retention/verify-export.mjs and authenticate the digest against the product record"}
+  ✓ H. Bergmann revoked the package: {"action_id":"01a09b1f-c38c-7a32-8309-dd6fd716a689","revoked_at":"2026-09-13T14:15:46.860067+00:00","locator_prefix":"01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a09b1f; bytes removed true
+  ✓ the read after the revocation refused: 409 the export package of 01a09b1f-c38c-7a32-8309-dd6fd716a689 was revoked at 2026-09-13T14:15:46.859Z; its bytes are gone
+  · the host: the package directory is GONE
+  ✓ the source evidence still downloads (A. Hoffmann): HTTP 201, 240 bytes
+
+3. SAFE SCOPE — a deletion of a superseded evidence version whose bytes a claim under review still names PAUSES with the dependents named; decided, it proceeds
+  · the target: evidence 01a084f5…@2 (imf-portwatch-chokepoints), manifest 01a084f5…, digest fa9c6102710a…
+  · claims naming these bytes without an asserted edge: 1; asserted edges resting on them: 0
+  ✓ A. Hoffmann challenged claim 01a084f5…@1: review case 01a09b1f… queued
+  ✓ P. Novák opened deletion 01a09b1f…
+  · resolved: state paused, 1 item(s), 0 to execute, 1 blocking — action paused / unresolved_dependency / human_review: the scope cannot be retired safely: 1 blocking item(s) — manifest 01a084f5-8708-7afc-a22d-ca183bd6c446 ← review_case:01a09b1f-c9d3-7188-bd71-288f6ff832cf
+  ·   blocking: the referential scope cannot be proven safe: 1 live reference(s) rest on this evidence version (details.dependents); retire, decide, supersede or close them, then resolve again; dependents [{"ref":"01a09b1f-c9d3-7188-bd71-288f6ff832cf","kind":"review_case","claim":"01a084f5-9d5c-7cac-bf03-8a5e22fbbb09@1","route":"decide the review case (approve, correct or reject — intelligence.review.decide); then resolve again","queued_reason":"challenged","version_aware":true}]
+  ✓ PAUSED: the referential scope could not be proven safe — the dependents named for a person
+  ✓ H. Bergmann's approval of the paused action refused: 409 retention approval rejected: 01a09b1f-c9dd-7a1f-8771-55edf0c61704 is paused — only a resolved scope is approved
+  ✓ L. Ferreira decided case 01a09b1f…: approved
+  ✓ resolved again: state scope_resolved, 1 to execute; digest bc4964597cd9… (was e9a94ce73a55…)
+  ✓ executed: 1 tombstoned, bytes removed 1
+  ✓ verified: verified
+  ✓ DeletionVerified published: executed 1, residuals null
+
+=== the act completed with every scene producing its effect ===
+
+=== exit 0 — 2026-09-13T14:15:48Z ===
