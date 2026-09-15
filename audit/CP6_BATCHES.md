@@ -1331,7 +1331,7 @@ failed before egress; bound → the `.invalid` host → failed transport; the lo
 credential's value anywhere); P1 the reads and the PDP. The first run 6/10 on one harness fixture defect (the symlink case's cleanup);
 the second 10/10. The suites the changes touch 134/134 in five files; the full integration suite **1016/1016 in 63 files** on a fresh
 database; the upgrade proof with 0022–0073 (52 migrations); the web typecheck, build and tests. Units: AU-IDP-0179, AU-IDP-0180 and
-AU-COM-0060 `open` → `verified:local` (3,555 = 3,183 open + 341 local + 31 CI); AU-COM-0056/0058, AU-IDP-0227, AU-INF-0854 and
+AU-COM-0060 `open` → `verified:local`, then `verified:ci` at `3a5a181` (ci 35032929806, 1016/1016 in 63 files on a fresh database; 3,555 = 3,183 open + 338 local + 34 CI); AU-COM-0056/0058, AU-IDP-0227, AU-INF-0854 and
 AU-DP-0097 carry clauses; the requirement rows V03-T-047 (the gate whole; `partial` on the EXECUTION half of the boundary row),
 DP-47-001/-002/-003/-005/-006, DZ-17, SC-24, NZ-20, DAT-SV-08 `missing` → `partial`, DPD-19 and LR-23 `partial` → `implemented`,
 CMP-102 `partial`, DP-54-006, ES-53-003/-004 carry the clauses.

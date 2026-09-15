@@ -2835,10 +2835,10 @@ receipt, the retired schedule.
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `2d760e4` | **`main`: #49 merged** (B12; second parent `70b85a6`) | 35025939601 green (the C17 archive packaged); C17 finalize 35027783826 green; C19 anchor 35027874264 green | 35025939594 green |
-| the B13 head | **B13** (0073; the schedule retirement, the export's download, destinations, deliveries and receipts, the key-based signature; the web; the harness; the act) — PR `phase6-b13` → `main` | the hosted run is bound in the records refresh after the push (one commit; no refresh chain) | — |
+| **`3a5a181`** | **B13** (0073; the schedule retirement, the export's download, destinations, deliveries and receipts, the key-based signature; the web; the harness; the act) — PR #50 `phase6-b13` → `main` | **35032929806 green** — build-test: unit 2156/2156 and the meta suite 9/9, acceptance 58/58, the integration suite **1016/1016 in 63 files** on a fresh database (`phase6-retention-b13` 10/10), the upgrade proof through 0073 (+52 rows, 73 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-3a5a181-build-test-summary.txt`) | 35032929929 green |
 
-Statuses: AU-IDP-0179, AU-IDP-0180 and AU-COM-0060 `open` → `verified:local` (the B13 harness on a fresh database; `verified:ci` on
-the hosted run); the split reads **3,555 = 3,183 open + 341 local + 31 CI**. Requirement rows: DPD-19 and LR-23 `partial` →
+Statuses: AU-IDP-0179, AU-IDP-0180 and AU-COM-0060 `open` → `verified:local` (the B13 harness on a fresh database) → **`verified:ci`** (the
+hosted run at `3a5a181`, bound in this records refresh); the split reads **3,555 = 3,183 open + 338 local + 34 CI**. Requirement rows: DPD-19 and LR-23 `partial` →
 `implemented` (passed:harness, branch-only); DP-47-001/-002/-003/-005/-006, DZ-17 (the export half of the exchange staging tier),
 SC-24, NZ-20 (the transfer station), DAT-SV-08 `missing` → `partial`; V03-T-047 stays `partial` (the export gate whole; the
 EXECUTION half of the boundary row open); CMP-102 `partial`; DP-54-006 (external processor receipts), ES-53-003/-004 carry the
@@ -2861,6 +2861,5 @@ hardening campaign.
 **Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
 index-tier degradation behaviours; every deployment leg (S7).
 
-**Acceptance work remaining** — the hosted run at the B13 head bound in the three units and the records; #50's merge under the
-existing authorization and its archive chain; the owner's key for Comtrade and the owner's walks of the pages; the next batch from
+**Acceptance work remaining** — #50's merge under the existing authorization and its archive chain on `main`; the owner's key for Comtrade and the owner's walks of the pages; the next batch from
 the register (the delivery sequence continues); comprehensive hardening after the feature scope, with the residuals.
