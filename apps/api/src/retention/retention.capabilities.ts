@@ -55,6 +55,11 @@ export interface RetentionReads {
   readExportDeliveries(): any;
   /** B14 (0074 §3): the revocation notices sent to the destinations that received a package, every outcome a row. */
   readExportRevocationNotices(): any;
+  /** B15 (D1): the relationship closure of an export — the claims' lineage naming the exported evidence (0023 §5), the graph's edges and entities with their identifiers (0024). */
+  readClaimLineage(): any;
+  readEdges(): any;
+  readEntities(): any;
+  readEntityIdentifiers(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   outboxPartitionTelemetry(): Promise<Row[]>;
   /** B11: a manifest's tier as the ledger says — 'hot' when it never moved. */
@@ -173,6 +178,10 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readExportDestinations(): any { return this.from('retention.export_destinations'); }
   readExportDeliveries(): any { return this.from('retention.export_deliveries'); }
   readExportRevocationNotices(): any { return this.from('retention.export_revocation_notices'); }
+  readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
+  readEdges(): any { return this.from('graph.edges_current'); }
+  readEntities(): any { return this.from('graph.entities_current'); }
+  readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async outboxPartitionTelemetry(): Promise<Row[]> { return this.call<Row>(sql`select * from objects.outbox_partition_telemetry()`); }
   async tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> { return tierOf(this, manifestId); }

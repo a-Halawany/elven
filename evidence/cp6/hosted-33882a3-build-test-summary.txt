@@ -1,0 +1,12 @@
+=== the totals of the hosted `ci` run 35074350184 at 33882a3 (PR #52 phase6-b15 → phase6-b14, retargeted to main after #51 merged; build-test job 104723078501; the synthetic merge d486df5 of 33882a3 into 20d0b0f), 2026-09-16 — the lines of the job log that carry a total, as printed; C19 lifecycle 35074350249 green ===
+
+packages/tokens test:  Test Files  1 passed (1) · Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6) · Tests  203 passed (203)
+apps/web test:  Test Files  2 passed (2) · Tests  6 passed (6)
+apps/api test (the unit suite):  Test Files  40 passed (40) · Tests  2156 passed (2156)
+apps/api test (the meta suite):  Test Files  1 passed (1) · Tests  9 passed (9)
+the acceptance suite:  Test Files  1 passed (1) · Tests  58 passed (58)
+the integration suite on a fresh database (test:int:all):  ✓ test/int/phase6-retention-b15.test.ts (3 tests) 22059ms · Test Files  65 passed (65) · Tests  1024 passed (1024)
+the post-C18 upgrade proof:  ✓ Phase 0 suite seeds and passes at 0021: 297/297 passed · ✓ public.schema_migrations: +54 row(s), exactly what these migrations declare they add · ✓ Phase 0 authority behaviour after the upgrade: 297/297 passed · ✓ virgin database migrated from empty (75 files) · ✓ Phase 1 and Phase 2 suites on upgraded data: 275/275 passed
+C18:  C18 dual-path proof: PASS · C18 evidence verification: PASS · Test Files  7 passed (7) · Tests  612 passed (612) · Test Files  2 passed (2) · Tests  44 passed (44)
+supply-chain: success · browser-regression: success

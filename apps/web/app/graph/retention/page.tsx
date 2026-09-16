@@ -983,6 +983,13 @@ export default function RetentionPage() {
                       {exported.detail.signing_key !== null && exported.detail.signing_key !== undefined && <> · the key is <strong>{str(exported.detail.signing_key.state)}</strong>, purpose <strong>{str(exported.detail.signing_key.purpose)}</strong>{exported.detail.signing_key.state === 'retired' ? ' (a package signed by a key retired since still verifies against its recorded public key)' : ''}</>}
                       {exported.detail.signing_key === null && <> · no key: the digest chain (a package built while no key was active)</>}
                     </DefinitionRow>
+                    <DefinitionRow term="Graph links">
+                      {(() => {
+                        const links = ((exported.detail.manifest as Record<string, unknown> | null)?.['package'] as Record<string, unknown> | undefined)?.['links'] as Record<string, unknown> | null | undefined;
+                        if (links === null || links === undefined) return <>none — a package built before B15 carries no relationship closure</>;
+                        return <><Mono>{str(links['file'])}</Mono> ({str(links['byte_length'])} bytes, sha256 <Mono>{str(links['links_digest'])}</Mono>, inside the digest chain): {str(links['claims'])} claim(s) by lineage, {str(links['edges'])} edge(s), {str(links['entities'])} entit{links['entities'] === 1 ? 'y' : 'ies'} with their identifiers, {str(links['excluded'])} excluded under the ceiling</>;
+                      })()}
+                    </DefinitionRow>
                     <DefinitionRow term="Expires">
                       {exported.detail.expires_at === null ? 'never (a package built before B13 carries no expiry)' : exported.detail.expires_at === undefined ? str(exported.detail.package['expires_at']) : fmtInstant(exported.detail.expires_at)}
                       {exported.detail.expired === true && <> · <strong style={critical}>expired</strong> — the download and the delivery are refused</>}
@@ -1102,7 +1109,9 @@ export default function RetentionPage() {
                 same answer). The package's ARCHIVE is one deterministic tar — manifest.json first, then the object files by name — rebuilt from the files and compared
                 with the digest recorded at the build before it is served: a mismatch is refused, never served. Refused once the package is revoked or expired. The browser
                 saves <Mono>&lt;action id&gt;.tar</Mono> when the link below is clicked; verify it with <Mono>scripts/retention/verify-export.mjs --tar</Mono> and, for a
-                key-based signature, <Mono>--public-key</Mono>.
+                key-based signature, <Mono>--public-key</Mono>. This answer holds the archive whole (its ceiling 256 MiB); a LARGER package is served by the stream route
+                <Mono>POST …/export/stream</Mono> (B15) — the raw tar with its length and digests in headers, of any size under 64 GiB, assembled from the files as it is
+                sent — for the customer's tool, not the browser.
               </p>
               <div style={controlRow}>
                 <GovernedButton label="Download the archive" pendingLabel="downloading"

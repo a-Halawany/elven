@@ -37,7 +37,8 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { constants as fsc } from 'node:fs';
+import type { Readable } from 'node:stream';
+import { constants as fsc, createReadStream } from 'node:fs';
 import { access, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { EYE_CONFIG } from '../../config/config.module.js';
@@ -72,7 +73,7 @@ export class VaultIntegrityError extends Error {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** A package file: the manifest, or one object's bytes named by its manifest id. Nothing else is ever written or read under a package. */
-const PACKAGE_FILE_RE = /^(manifest\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin)$/;
+const PACKAGE_FILE_RE = /^(manifest\.json|links\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin)$/;
 /**
  * B12 (C17): the temp name of an interrupted write — `<uuid>.tmp-<uuid>` for a store, `<uuid>.staging-<attempt>.tmp-<uuid>` for a staged
  * copy (the temp lives beside the file it was to become). The sweeper removes these and nothing else by name.
@@ -187,7 +188,7 @@ export class VaultService {
 
   /** A file of a package: `manifest.json` or `<manifest_id>.bin`, contained in the package directory. */
   private pathForPackage(scope: VaultScope, actionId: string, name: string): string {
-    if (!PACKAGE_FILE_RE.test(name)) throw new VaultIntegrityError('scope', 'a package file is manifest.json or <manifest id>.bin');
+    if (!PACKAGE_FILE_RE.test(name)) throw new VaultIntegrityError('scope', 'a package file is manifest.json, links.json (B15) or <manifest id>.bin');
     const dir = this.packageDir(scope, actionId);
     const full = resolve(dir, name);
     if (!contains(dir, full) || full === dir) throw new VaultIntegrityError('scope', 'resolved path escapes the package directory');
@@ -660,6 +661,17 @@ export class VaultService {
     } catch {
       throw new VaultIntegrityError('missing', 'the package file is not retrievable');
     }
+  }
+
+  /**
+   * B15 (D2): one file of a package as a STREAM SOURCE — its size now, and a reader opened when the archive stream reaches it — so
+   * a package's archive is assembled without the package in memory; `missing` when it is not there.
+   */
+  async openPackageFile(scope: VaultScope, actionId: string, name: string): Promise<{ size: number; open: () => Readable }> {
+    const full = this.pathForPackage(scope, actionId, name);
+    let size: number;
+    try { size = (await stat(full)).size; } catch { throw new VaultIntegrityError('missing', 'the package file is not retrievable'); }
+    return { size, open: () => createReadStream(full, { highWaterMark: 1024 * 1024 }) };
   }
 
   /** The names in a package directory (everything there, listed or not — the verifier is what says which is which); `[]` when absent. */

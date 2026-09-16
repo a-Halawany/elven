@@ -67,7 +67,7 @@ import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
 import type { ObservationController } from '../../src/observation/observation.controller.js';
 import type { RetentionController } from '../../src/retention/retention.controller.js';
 import { VaultService } from '../../src/observation/vault/vault.service.js';
-import { EXPORT_ARCHIVE_MAX_BYTES, buildUstar, parseUstar } from '../../src/retention/export-archive.js';
+import { EXPORT_ARCHIVE_MAX_BYTES, buildUstar, listedFilesOf, parseUstar } from '../../src/retention/export-archive.js';
 import { contentDigest } from '@eye/contracts';
 import { Phase4Harness } from './phase4-helpers.js';
 import { TERMS_CSV } from './phase5-fixtures.js';
@@ -421,7 +421,7 @@ describe('E · THE SIGNED EXPORT (D3, D4; C3, C5, C14)', () => {
     expect(row).toMatchObject({ signing_key_id: KEY1_ID, byte_total: mA.byte_length + mB.byte_length, revoked_at: null });
     expect(await expiresAfterIs(EXP1, '30 days')).toBe(true);
     const dir = exportDir(EXP1);
-    expect(readdirSync(dir).sort()).toEqual(['manifest.json', `${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort());
+    expect(readdirSync(dir).sort()).toEqual(['manifest.json', 'links.json', `${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort()); // B15: links.json beside the manifest and the object files
     const manifestBytes = readFileSync(join(dir, 'manifest.json'));
     expect(sha256(manifestBytes)).toBe(row.manifest_digest);
     const manifest = JSON.parse(manifestBytes.toString('utf8')) as Row & { signature: Row; objects: Row[] };
@@ -433,11 +433,11 @@ describe('E · THE SIGNED EXPORT (D3, D4; C3, C5, C14)', () => {
     // The signature is over the ASCII hex of the package digest (D3): node's own verify against the public half generated here.
     expect(cryptoVerify(null, Buffer.from(row.package_digest, 'utf8'), KEY1.publicKey, Buffer.from(sig, 'base64'))).toBe(true);
     expect(cryptoVerify(null, Buffer.from(row.package_digest, 'utf8'), KEY2.publicKey, Buffer.from(sig, 'base64'))).toBe(false);
-    // B11's B4/B5 pin the directory's three files and the three execution rows: the archive digest and the key travel in the record row's evidence (C4), no extra row.
+    // B11's B4/B5 pin the directory's files and the execution rows (B15: the closure's row retention.export_links before the record's): the archive digest and the key travel in the record row's evidence (C4), no extra row.
     const execs = await executions(EXP1);
-    expect(execs.map((e) => [e.port, e.outcome])).toEqual([['vault.export', 'done'], ['vault.export', 'done'], ['retention.record_export_package', 'done']]);
-    expect(execs[2]!.evidence).toMatchObject({ archive_digest: row.archive_digest, signing_key_id: KEY1_ID });
-    expect(execs[2]!.evidence['expires_at']).toBeDefined();
+    expect(execs.map((e) => [e.port, e.outcome])).toEqual([['vault.export', 'done'], ['vault.export', 'done'], ['retention.export_links', 'done'], ['retention.record_export_package', 'done']]);
+    expect(execs[3]!.evidence).toMatchObject({ archive_digest: row.archive_digest, signing_key_id: KEY1_ID });
+    expect(execs[3]!.evidence['expires_at']).toBeDefined();
     expect(await events(EXP1)).toContain('export.built');
     // The read route carries the key a customer fetches: its public PEM, its purpose and its state.
     const rd = await getExport(steward, EXP1);
@@ -518,9 +518,11 @@ describe('A · THE ARCHIVE (D2, D7; C4, C12)', () => {
     // (ii) the package's archive, recomputed here as C4 fixes it: the manifest's own package.built_at (seconds), manifest.json first, the listed files by name.
     const dir = exportDir(EXP1);
     const manifestBytes = readFileSync(join(dir, 'manifest.json'));
-    const manifest = JSON.parse(manifestBytes.toString('utf8')) as { package: { built_at: string }; objects: Array<{ bytes: { file: string } }> };
-    const listed = manifest.objects.map((o) => o.bytes.file).sort();
-    expect(listed).toEqual([`${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort());
+    const manifest = JSON.parse(manifestBytes.toString('utf8')) as { package: { built_at: string; links?: unknown }; objects: Array<{ bytes: { file: string } }> };
+    expect(manifest.objects.map((o) => o.bytes.file).sort()).toEqual([`${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort());
+    // B15: the files the manifest LISTS are the object files and the links file it names (package.links.file), sorted by name.
+    const listed = listedFilesOf(manifest.objects, manifest);
+    expect(listed).toEqual([`${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`, 'links.json'].sort());
     const mtime = Math.floor(Date.parse(manifest.package.built_at) / 1000);
     const rebuilt = buildUstar([{ name: 'manifest.json', bytes: manifestBytes }, ...listed.map((f) => ({ name: f, bytes: readFileSync(join(dir, f)) }))], mtime);
     expect(sha256(rebuilt)).toBe(exp1.archiveDigest);
@@ -656,7 +658,7 @@ describe('T · THE TRANSFER-STATION DELIVERY and its GATES (0073 §4; D6, D9; C6
     expect(readdirSync(dir).sort()).toEqual(['delivery.json', 'package.sig', 'package.tar']);
     const tar1 = readFileSync(join(dir, 'package.tar'));
     expect(sha256(tar1)).toBe(exp1.archiveDigest);
-    expect(parseUstar(tar1).map((e) => e.name)).toEqual(['manifest.json', ...[`${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort()]);
+    expect(parseUstar(tar1).map((e) => e.name)).toEqual(['manifest.json', ...[`${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`, 'links.json'].sort()]); // B15: links.json among the listed files
     const manifest = readJson(join(exportDir(EXP1), 'manifest.json'));
     const sig = readJson(join(dir, 'package.sig'));
     expect(containsString(sig, KEY1_ID)).toBe(true);
@@ -879,7 +881,7 @@ describe('P · THE PDP and the reads (D7, D10, C19)', () => {
     expect(rd).toMatchObject({ expired: false, archive_digest: exp1.archiveDigest });
     expect(rd.expires_at).not.toBeNull();
     expect(rd.deliveries).toHaveLength(rows.length);
-    expect(rd.files).toHaveLength(3);
+    expect(rd.files).toHaveLength(4); // B15: manifest.json, links.json and the two object files
     expect(containsString(rd, process.env[KEY1_REF]!)).toBe(false);
     // The download's holders (D7): the steward, the authority, the domain and tenant admins and the AUDITOR — not the analyst.
     await expect(downloadExport(analyst, EXP1)).rejects.toMatchObject({ status: 403 });

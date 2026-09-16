@@ -31,6 +31,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
 import { createGunzip, createInflate, createBrotliDecompress } from 'node:zlib';
+import type { Readable } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { redactUrl } from './redaction.js';
 import * as fault from '../fault-injection.js';
@@ -317,7 +318,8 @@ export async function egress(req: EgressRequest): Promise<EgressResult> {
  */
 export interface DeliveryRequest {
   url: string;
-  body: Buffer;
+  /** The body whole, or (B15, D2) a stream of a known length — the archive assembled from the files on disk as it is sent. */
+  body: Buffer | { stream: Readable; length: number };
   headers?: Record<string, string>;
   credentials?: { authorization?: string };
   policy: EgressPolicy;
@@ -353,7 +355,7 @@ export async function deliverPinned(req: DeliveryRequest, pinnedAddress: string)
     'user-agent': 'the-eye-retention/1.0 (+governed export delivery)',
     ...(req.headers ?? {}),
     'content-type': req.contentType ?? 'application/x-tar',
-    'content-length': String(req.body.byteLength),
+    'content-length': String(Buffer.isBuffer(req.body) ? req.body.byteLength : req.body.length),
     host: target.host,
   };
   if (req.credentials?.authorization !== undefined) headers['authorization'] = req.credentials.authorization;
@@ -390,7 +392,7 @@ interface RawResponse {
 }
 
 /** One hop. B13 (C17): a method and a body for the delivery form; the GET form passes neither and behaves as it always has. */
-function once(url: URL, pinnedAddress: string, headers: Record<string, string>, policy: EgressPolicy, opts?: { method?: 'GET' | 'POST'; body?: Buffer }): Promise<RawResponse> {
+function once(url: URL, pinnedAddress: string, headers: Record<string, string>, policy: EgressPolicy, opts?: { method?: 'GET' | 'POST'; body?: Buffer | { stream: Readable; length: number } }): Promise<RawResponse> {
   return new Promise<RawResponse>((resolvePromise, reject) => {
     // The AGENT connects to the PINNED address; `servername` keeps SNI and
     // certificate verification bound to the real hostname, so pinning the address
@@ -482,6 +484,11 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
       const tls = typeof e.code === 'string' && (e.code.startsWith('ERR_TLS') || e.code.startsWith('CERT_') || e.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || e.code === 'DEPTH_ZERO_SELF_SIGNED_CERT');
       reject(new EgressRefused(tls ? 'tls_failure' : 'transport_failure', tls ? 'TLS certificate verification failed' : 'transport failure'));
     });
-    r.end(opts?.body);
+    // B15 (D2): a streamed body is piped as it is produced (the length announced in the headers); a source that fails ends the request.
+    if (opts?.body !== undefined && !Buffer.isBuffer(opts.body)) {
+      const src = opts.body.stream;
+      src.on('error', (e) => { r.destroy(e); reject(new EgressRefused('transport_failure', `the request body could not be read: ${String((e as Error).message).slice(0, 200)}`)); });
+      src.pipe(r);
+    } else r.end(opts?.body);
   });
 }

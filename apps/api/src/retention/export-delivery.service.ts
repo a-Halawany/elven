@@ -31,10 +31,13 @@
  * the egress class; the station files name the key id and carry the PUBLIC key only.
  */
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
 import { access, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import type { Readable } from 'node:stream';
 import { VaultService, sha256 } from '../observation/vault/vault.service.js';
 import { deliver, EgressRefused, type DeliveryRequest, type EgressPolicy, type EgressResult } from '../observation/connectors/http-client.js';
 import { DestinationCredentialStore, KEY_SIGNATURE_SCHEME } from './export-signing.js';
@@ -69,7 +72,9 @@ export interface DeliveryPackage {
   tenantId: string; domainId: string; actionId: string;
   deliveryId: string; attempt: number;
   destinationKey: string; recipient: string; purpose: string;
-  tar: Buffer; archiveDigest: string; packageDigest: string; manifestDigest: string;
+  /** B15 (D2): the archive as a stream source of known size — opened per write; the digest below is the recorded one, verified before the open. */
+  archive: { open: () => Promise<{ stream: Readable; digest: () => Promise<string> }>; size: number };
+  archiveDigest: string; packageDigest: string; manifestDigest: string;
   /** The manifest's signature block as written (scheme /1 or /2). */
   signature: Row;
   /** For a /2 package: the key as recorded, with its state NOW (a key retired since the build still verifies; the recipient is told). */
@@ -158,7 +163,7 @@ export class ExportDeliveryService {
     const mine: string[] = [];
     try {
       await mkdir(dir, { recursive: true, mode: 0o700 });
-      await this.writeContentAddressed(files.package, pkg.tar, mine);
+      await this.writeContentAddressedStream(files.package, pkg.archive, pkg.archiveDigest, mine);
       await this.writeContentAddressed(files.signature, sig, mine);
       await this.writeReplacing(files.delivery, Buffer.from(`${JSON.stringify(deliveryJson, null, 2)}\n`, 'utf8'), mine);
     } catch (e) {
@@ -203,6 +208,48 @@ export class ExportDeliveryService {
       return;
     }
     if (await this.writeTemp(full, bytes, 'wx')) created.push(full);
+  }
+
+  /**
+   * B15 (D2): `package.tar` streamed to its temp name (never in memory), fsync'd, renamed; content-addressed by DIGEST — an existing file
+   * is hashed by streaming and compared with the recorded archive digest (identical accepted, differing refused); the stream's own
+   * digest, known when it ends, is compared with the recorded one before the rename (a source that changed under the stream is refused).
+   */
+  private async writeContentAddressedStream(full: string, archive: DeliveryPackage['archive'], recordedDigest: string, created: string[]): Promise<void> {
+    let existing: string | null = null;
+    try { await access(full, fsc.F_OK); existing = await digestOfFile(full); } catch { existing = null; }
+    if (existing !== null) {
+      if (existing !== recordedDigest) throw new StationWriteFailed(`${full} is already at the station and differs from this package (sha256 ${existing} at the station, ${recordedDigest} here); the delivery is refused, nothing overwritten`);
+      return;
+    }
+    const tmp = `${full}.tmp-${randomUUID()}`;
+    const built = await archive.open();
+    const handle = await open(tmp, 'wx', 0o600);
+    try {
+      await pipeline(built.stream, createWriteStream(tmp, { fd: handle.fd, autoClose: false }));
+      await handle.sync();
+    } catch (e) {
+      await handle.close().catch(() => undefined);
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw e;
+    }
+    await handle.close();
+    const streamed = await built.digest();
+    if (streamed !== recordedDigest) { await rm(tmp, { force: true }).catch(() => undefined); throw new StationWriteFailed(`the archive streamed to the station digests to ${streamed}, not the recorded ${recordedDigest}; nothing written`); }
+    try {
+      await access(full, fsc.F_OK);
+      // A file appeared meanwhile (a concurrent attempt): compared, never overwritten.
+      await rm(tmp, { force: true });
+      const have = await digestOfFile(full);
+      if (have !== recordedDigest) throw new StationWriteFailed(`${full} appeared at the station during this write and differs from this package`);
+      return;
+    } catch (e) {
+      if (e instanceof StationWriteFailed) throw e;
+      // ENOENT is the expected case — continue.
+    }
+    await rename(tmp, full);
+    await syncDir(dirname(full));
+    created.push(full);
   }
 
   /** Temp + fsync + rename over whatever is there (the previous attempt's file); counted as created only when nothing was there. */
@@ -275,7 +322,8 @@ export class ExportDeliveryService {
     const credential = a.credentialRef === null ? null : this.credentials.resolve(a.credentialRef);
     let res: EgressResult;
     try {
-      res = await this.egress.deliver({ url: url.toString(), body: pkg.tar, headers, ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }), policy: this.policyFor(url, a.trustAnchorPem) });
+      const built = await pkg.archive.open();
+      res = await this.egress.deliver({ url: url.toString(), body: { stream: built.stream, length: pkg.archive.size }, headers, ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }), policy: this.policyFor(url, a.trustAnchorPem) });
     } catch (e) {
       if (e instanceof EgressRefused) {
         const cls: DeliveryFailureClass = ['address_not_public', 'host_not_allowed', 'scheme_not_allowed', 'redirect_not_followed', 'too_many_redirects', 'redirect_target_refused'].includes(e.refusalClass) ? 'egress_refused' : 'transport';
@@ -472,6 +520,13 @@ export function receiptState(receipt: Row, archiveDigest: string, packageDigest:
   if (v === true && a === archiveDigest && p === packageDigest) return 'acknowledged';
   if ((a !== undefined && a !== archiveDigest) || (p !== undefined && p !== packageDigest) || v === false) return 'mismatched';
   return 'delivered';
+}
+
+/** The sha256 of a file, streamed. */
+async function digestOfFile(full: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(full, { highWaterMark: 1024 * 1024 })) hash.update(chunk as Buffer);
+  return hash.digest('hex');
 }
 
 /** True when `child` is `parent` or lies inside it (the vault's own rule, restated for the station). */
