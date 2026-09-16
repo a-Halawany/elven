@@ -3102,7 +3102,7 @@ destination (nothing reached it) not, the mismatched receipt kept. ALL SCENES HE
 |---|---|---|---|
 | `47cca31` | **#51 merged** (B14) under the owner's authorization | 35080668461 green (C17 finalize 35082250495, C19 anchor 35082320539 green) | 35080668362 green |
 | `88057d2` | **#52 merged** (B15) after retargeting to `main` | 35085514555 green (C17 finalize 35087366921, C19 anchor 35087461561 green) | 35085514462 green |
-| the B16 head | **B16** (0076; the partner, the import, the versioned closure, held recipients, the key binding; the harness; the act) — PR `phase6-b16` → `main` | bound in the records commit once its run completes | — |
+| **`f4b2345`** | **B16** (0076; the partner, the import, the versioned closure, held recipients, the key binding; the harness; the act) — PR #53 `phase6-b16` → `main` | **35097020135 green** — build-test: unit 2184/2184 and the meta suite 9/9, acceptance 58/58, the integration suite **1030/1030 in 66 files** on a fresh database (`phase6-retention-b16` 6/6), the upgrade proof through 0076 (+55 rows, 76 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-f4b2345-build-test-summary.txt`) | 35097020209 green |
 
 Statuses: AU-COM-0058 stays `verified:local` with the B15-F1 qualification LIFTED (re-bound to `phase6-retention-b16` V1 and I1);
 DP-47-003 stays `implemented` with the same clause; DP-47-005, DP-47-006 and DZ-17 `partial` → `implemented` (passed:harness,
@@ -3134,8 +3134,8 @@ structural residuals.
 package at rest in transit beyond TLS; the remaining capabilities of the interface register's 24 partial contracts; the source-derived
 memory records; index-tier degradation behaviours; every deployment leg (S7).
 
-**Acceptance work remaining** — B16's PR: its hosted run bound once in a records commit, the merge on the owner's word (not
-pre-authorized) and its archive chain on `main`; the owner's decision on a public host for the recipient; the owner's key for Comtrade
+**Acceptance work remaining** — B16's PR #53: its hosted run bound here once; the merge on the owner's word (not pre-authorized)
+and its archive chain on `main`; the owner's decision on a public host for the recipient; the owner's key for Comtrade
 and the owner's walks of the pages; the next batch from the register (the publication of imported knowledge to subscribers, then the
 24 partial contracts, the source-derived memory, index-tier degradation); comprehensive hardening after the feature scope, with the
 residuals and the six register rows left for it.

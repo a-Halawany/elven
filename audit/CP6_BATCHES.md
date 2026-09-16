@@ -1742,7 +1742,9 @@ sampler's sum — arrayBuffers had been added twice — the actions view's name)
 B11-closure, B12, B13, B14, B15, B16) **80/80** on a fresh database (the B15 L1 pins moved to the /2 closure with `object_version`; the
 B15 S2 measurement replaced by the sampled high-water mark); the full integration suite **1030/1030 in 66 files** on a fresh database
 (twice: before and after the D5 corrections); the upgrade proof with 0022–0076 (55 migrations; 35 registry rows); the unit suite
-**2184/2184** and the meta suite 9/9; the web typecheck, build and tests. THE CUSTOMER'S TOOLS: `scripts/retention/import-package.mjs`
+**2184/2184** and the meta suite 9/9; the web typecheck, build and tests. The hosted run at `f4b2345` — ci 35097020135 (1030/1030 in 66
+files on a fresh database with `phase6-retention-b16` 6/6; the upgrade proof +55 rows, 76 files; C18 612/612 + 44), C19 35097020209 —
+bound in the records commit, no unit promoted by it (the merge of PR #53 awaits the owner's word). THE CUSTOMER'S TOOLS: `scripts/retention/import-package.mjs`
 (the customer's import tool over the real route: inline under the body limit, or by the station); `compare-round-trip.mjs` (the origin
 package, the re-export and the import's record: every record carried under its mapped id with the same version and bytes, the header
 preserved field by field, `imported_from` recovering each origin identity, every claim version with the SAME version and its lineage,
