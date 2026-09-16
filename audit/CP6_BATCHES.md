@@ -1576,8 +1576,11 @@ acknowledged), the https delivery streaming it to the recipient (its store holdi
 MiB. The first runs on harness fixtures (a column name; the upload contract's 16 MiB per object; a verified action is not verified again;
 the response double's auto-destroy), then **3/3**. The six retention harnesses (B11, B11-closure, B12, B13, B14, B15) **74/74** on a fresh
 database; the full integration suite **1024/1024 in 65 files** on a fresh database; the upgrade proof with 0022–0075 (54 migrations); the unit suite; the web typecheck,
-build and tests. Units: AU-COM-0058 `open` → `verified:local` (its one open clause — graph links — delivered: the closure packaged, inside
-the chain, verified offline); AU-DP-0097 carries the clause (knowledge structures — the derived claims, edges and entities — retrieved
+build and tests. The hosted run at `33882a3` — ci 35074350184 (1024/1024 in 65 files on a fresh
+database with `phase6-retention-b15` 3/3), C19 35074350249 — bound in the records commit, no unit promoted by it (Codex's B15-F1,
+below, qualifies the closure until B16). Units: AU-COM-0058 `open` → `verified:local` (its one open clause — graph links — delivered: the closure packaged, inside
+the chain, verified offline — QUALIFIED by Codex's B15-F1: the closure carries each claim's latest version only, an edge may reference an
+earlier one; corrected and re-bound in B16); AU-DP-0097 carries the clause (knowledge structures — the derived claims, edges and entities — retrieved
 with the records; decisions, audit material and configuration remain); the requirement rows DP-47-003 `partial` → `implemented`
 (graph links and manifest integrity with the closure inside the chain; passed:harness, branch-only), DP-47-002 and DP-47-006 carry the
 clauses (the relationship closure and large-scale export delivered; encryption, the round-trip fixture — the import — and customer

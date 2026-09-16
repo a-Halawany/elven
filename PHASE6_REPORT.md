@@ -3012,12 +3012,16 @@ above the in-memory ceiling is the harness's proof — no synthetic bulk is adde
 
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
-| `20d0b0f` | B14's records head on PR #51 (`phase6-b14` → `main`) | (the run at the records head; #51's merge awaits the owner's word) | |
-| B15 | 0075; the closure, the streamed archive; the verifier and the fetch tool; the harness; the act — PR `phase6-b15` → `phase6-b14` | (bound in the records refresh after the push) | |
+| `20d0b0f` | B14's records head on PR #51 (`phase6-b14` → `main`); **#51 merged** on the owner's authorization as **`47cca31`** (Codex's bounded review at `3b7c44c` / `33882a3` closing B13-F1) | 35072239498 green | 35072239546 green |
+| **`33882a3`** | **B15** (0075; the closure, the streamed archive; the verifier and the fetch tool; the harness; the act) — PR #52 `phase6-b15`, retargeted to `main` after #51 merged | **35074350184 green** — build-test: unit 2156/2156 and the meta suite 9/9, acceptance 58/58, the integration suite **1024/1024 in 65 files** on a fresh database (`phase6-retention-b15` 3/3), the upgrade proof through 0075 (+54 rows, 75 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-33882a3-build-test-summary.txt`) | 35074350249 green |
 
 Statuses: AU-COM-0058 `open` → `verified:local` (its one open clause — graph links — delivered); AU-DP-0097 carries the clause; the
 requirement rows DP-47-003 `partial` → `implemented` (passed:harness, branch-only), DP-47-002 and DP-47-006 carry the clauses. The
-split reads **3,555 = 3,182 open + 339 local + 34 CI**. The interface register unchanged at 26/24/0. No completion percentage; no
+split reads **3,555 = 3,182 open + 339 local + 34 CI**. The hosted run at `33882a3` is bound here ONCE, with no unit promoted to
+`verified:ci` by it: Codex's bounded review (filed under `audit/reviews`) found B15-F1 — the closure carries a claim's LATEST version
+only, while an edge may reference an earlier one — so AU-COM-0058's local verification and DP-47-003's `implemented` are qualified
+by that clause until B16 corrects it on a versioned fixture and the records are adjusted in that batch (Codex: "make the record
+adjustment in the implementation batch, not as a separate gate cycle"). The interface register unchanged at 26/24/0. No completion percentage; no
 deployment leg accepted.
 
 ### 29.5 Functioning, partial, missing — and the acceptance work remaining
