@@ -1480,7 +1480,8 @@ asserted; port refusals seen raw in process; the read of a revoked package), the
 proof with 0022–0074 (53 migrations); the unit suite 2156/2156 and the meta suite 9/9; the web typecheck, build and tests. Units: none
 moves — B14 completes no whole unit; AU-COM-0060 and AU-IDP-0180 (verified:ci at `3a5a181`) carry the B14 evidence in their prose;
 the requirement rows ES-29-005 `missing` → `partial` (the revocation context and the recipient's obligation carried to the recipient
-and acknowledged; "enforceable" beyond the notice and the acknowledgement remains — the recipient's copies are outside the product's
+and acknowledged; the hosted run at `3b7c44c` — ci 35070312503, 1021/1021 in 64 files on a fresh database with `phase6-retention-b14`
+5/5, C19 35070312431 — bound in the records commit; "enforceable" beyond the notice and the acknowledgement remains — the recipient's copies are outside the product's
 custody), ES-29-002 (recipient revocation delivered; the other dimensions stay), ES-53-004 (the declared anchor; the receipt binding),
 DP-47-005 and DP-47-002 (the binding; the notice), V03-T-047 (revocation reaching the destination), ES-08-004 (the export half's
 recipient obligations; the cross-domain reference stays missing) carry the clauses. The split stays **3,555 = 3,183 open + 338

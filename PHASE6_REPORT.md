@@ -2942,7 +2942,7 @@ event; (6) the state. ALL SCENES HELD (19 checks).
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `be72aa8` | **`main`: #50 merged** (B13; second parent `37e0339`) | 35066467509 green; C17 finalize 35067820527 green; C19 anchor 35067913755 green | 35066467514 green |
-| B14 | 0074; the receipt binding, the trust anchor, the egress split, the synthetic recipient, the revocation notice; the web; the harness; the act — PR `phase6-b14` → `main` | (bound in the records refresh after the push) | |
+| **`3b7c44c`** | **B14** (0074; the receipt binding, the trust anchor, the egress split, the synthetic recipient, the revocation notice; the web; the harness; the act) — PR #51 `phase6-b14` → `main` | **35070312503 green** — build-test: unit 2156/2156 and the meta suite 9/9, acceptance 58/58, the integration suite **1021/1021 in 64 files** on a fresh database (`phase6-retention-b14` 5/5), the upgrade proof through 0074 (+53 rows, 74 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-3b7c44c-build-test-summary.txt`) | 35070312431 green |
 
 Statuses: no unit moves (B14 completes no whole unit); AU-COM-0060 and AU-IDP-0180 carry the B14 evidence; the requirement rows
 ES-29-005 `missing` → `partial`; ES-29-002, ES-53-004, DP-47-002, DP-47-005, V03-T-047 and ES-08-004 carry the clauses. The split
