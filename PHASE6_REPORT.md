@@ -3195,8 +3195,8 @@ in the partition. ALL SCENES HELD (52 checks).
 
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
-| `1d6eea3` | B16's records head on PR #53 (`phase6-b16` → `main`; the merge awaits the owner's word) | its own run follows the push | — |
-| the B17 head | **B17** (0077; the publication, the propagation, the signed notice, the review gate; the harness; the act) — PR `phase6-b17` → `phase6-b16`, retargeted to `main` when #53 merges | bound in the records commit once its run completes | — |
+| `1d6eea3` | B16's records head on PR #53 (`phase6-b16` → `main`; the merge awaits the owner's word) | 35099348274 green | 35099348275 green |
+| **`2d92385`** | **B17** (0077; the publication, the propagation, the signed notice, the review gate; the harness; the act) — PR #54 `phase6-b17` → `phase6-b16`, retargeted to `main` when #53 merges | **35115226285 green** — build-test: unit 2210/2210 and the meta suite 9/9, acceptance 58/58, the integration suite **1035/1035 in 67 files** on a fresh database (`phase6-retention-b17` 5/5), the upgrade proof through 0077 (+56 rows, 77 files), C18 612/612 + 44; supply-chain and browser-regression green (`evidence/cp6/hosted-2d92385-build-test-summary.txt`) | 35115226352 green |
 
 Statuses: ES-08-004 and ES-29-005 stay `partial` with the B17 clause (the cross-domain REFERENCE and obligations on derived use remain);
 DP-47-005 stays `implemented` with the clause; AU-COM-0060, AU-COM-0062 and AU-DP-0097 carry it; L1-I03 and L3-I04's bindings extended
@@ -3222,7 +3222,7 @@ archive tier's structural residuals.
 package beyond TLS; the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
 index-tier degradation behaviours; every deployment leg (S7).
 
-**Acceptance work remaining** — #53's merge on the owner's word and its archive chain on `main`; B17's PR retargeted after it, its
-hosted run bound once, its merge on the owner's word; the owner's decision on a public host for the recipient; the owner's key for
+**Acceptance work remaining** — #53's merge on the owner's word and its archive chain on `main`; B17's PR #54 retargeted after it (its
+hosted run bound here once), its merge on the owner's word; the owner's decision on a public host for the recipient; the owner's key for
 Comtrade and the owner's walks of the pages; the next batch from the register (the 24 partial interface contracts, the source-derived
 memory, index-tier degradation); comprehensive hardening after the feature scope, with the residuals and the register rows left for it.

@@ -1920,7 +1920,10 @@ CLM objects; a SQL quote; a record's lifecycle is `admitted`; the error body's d
 the four subscription harnesses **163/163** on a fresh database (the memory-mappings digest changed: they register fresh); the full
 integration suite **1035/1035 in 67 files** on a fresh database; the upgrade proof with 0022–0077 (56 migrations; 35 registry rows); the
 unit suite **2210/2210** (with `import-package` 31, `revocation-notice` 13, `change-events-import` 10 — the sign/verify round trip, the
-withdrawal header, the truncation arithmetic, the walk seeds) and the meta suite 9/9; the web typecheck, build and tests. STATED: the
+withdrawal header, the truncation arithmetic, the walk seeds) and the meta suite 9/9; the web typecheck, build and tests. The hosted run
+at `2d92385` — ci 35115226285 (1035/1035 in 67 files on a fresh database with `phase6-retention-b17` 5/5; the upgrade proof +56 rows,
+77 files; C18 612/612 + 44), C19 35115226352 — bound in the records commit, no unit promoted by it (the merge of PR #54 awaits #53's and
+the owner's word). STATED: the
 propagation reaches the tenant's OWN domains on this installation — another tenant's domain and a foreign installation are the STATION
 path; a legal hold holds the revocation (answered `mismatched` until lifted); a copy another live import holds is left (`held_by`); a
 notice signed by a later key is verifiable only where the importer declared that key as a partner of the same party; the memory-mappings
